@@ -2,7 +2,7 @@
 
 At the IOTA Foundation, we consider the security of our systems a top priority. But no matter how much effort we put into system security, there can still be vulnerabilities present. If you've discovered a vulnerability, please follow the guidelines below to report it to our security team:
 <ul>
-	<li>E-mail your findings to security@iota.org. If the report contains highly sensitive information, please consider encrypting your findings using our contact@iota.org (466385BD0B40D9550F93C04746A440CCE5664A64) PGP key.</li>
+	<li>E-mail your findings to security@iota.org. If the report contains highly sensitive information, please consider encrypting your findings using our security@iota.org (1F211CB6E8A158722F9053D3E27A933040CF05B9) PGP key.</li>
 </ul>
 Please follow these rules when testing/reporting vulnerabilities:
 <ul>
