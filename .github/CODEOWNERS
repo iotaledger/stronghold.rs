@@ -1,0 +1,6 @@
+# Order is important, the last matching pattern takes the most precedence
+
+# Working group   Lead                        Members
+*                 daniel.yvetot@iota.org
+/.github/         daniel.yvetot@iota.org
+/spec/            daniel.yvetot@iota.org
