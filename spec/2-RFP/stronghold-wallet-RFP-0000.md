@@ -32,6 +32,7 @@ Stronghold. Here is a current list:
 ## Requirements
 [requirements]: #requirements
 
+The following are security requirements as proposed by the wallet team.
 ###
 ```
 SNAPSHOTS
