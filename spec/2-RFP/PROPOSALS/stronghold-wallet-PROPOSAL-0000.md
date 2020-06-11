@@ -90,9 +90,16 @@ Are there compatibility concerns?
 
 ## Technical Proposal
 [technical-proposal]: #technical-proposal
-<!--
-Introduce and explain the technical proposal
--->
+```yaml
+strongholdSettings
+  accounts: [
+    { id: uint8
+
+
+  ]
+
+
+```
 
 ### Reference-level explanation
 [reference-level-explanation]: #reference-level-explanation
