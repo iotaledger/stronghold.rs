@@ -52,16 +52,18 @@ sole purpose of isolating the seed, private keys, personally identifiable inform
 to the genuinely hostile environment of user devices. It uses snapshotting and internal mechanisms for threshold signature
 schemes that MAY be distributed across devices.
 
+It is based on a suite of low-level libraries collectively called "parti" that provide tooling and algorithms to build secure systems
+in Rust in a way that can be embedded and deployed to cross platform devices. Parti is a collection of libraries which deal with the
+obfuscation and sharing of secret values both mutable and immutable between devices.
+
 ## Motivation
 [motivation]: #motivation
-<!--
-Why are we doing this? What use cases does it support? What is the expected outcome?
--->
+We are making Stronghold because there is a very real need to
 
 ## Product Introduction
 [product]: #product
 <!--
-Talk about the business reasons for the product's existence, what it is for and who it serves.
+Talk about the business reasons for the product's existence, what it is for and whom it serves.
 -->
 
 ## Stakeholders
