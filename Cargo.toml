@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "vault",
+    "primitives",
+    "random",
+    "crypto"
+]
