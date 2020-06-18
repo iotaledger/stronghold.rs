@@ -136,6 +136,7 @@ macro_rules! write64_little_endian {
 #[macro_export]
 macro_rules! eq_const_time {
     ($a:expr, $b:expr) => {{
+        use crate::{or, xor};
         match $a.len() == $b.len() {
             true => {
                 let mut x = 0;

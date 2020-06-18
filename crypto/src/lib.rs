@@ -4,8 +4,9 @@ use thiserror::Error as DeriveError;
 mod chacha_ietf;
 mod chachapoly;
 #[macro_use]
-pub mod internal;
+mod internal;
 mod poly;
+#[macro_use]
 mod verify;
 
 #[derive(DeriveError, Debug)]
