@@ -1,0 +1,25 @@
+[package]
+name = "fuzz"
+version = "0.1.0"
+authors = ["tensor-programming <tensordeveloper@gmail.com>"]
+edition = "2018"
+
+
+[dependencies]
+crypto = { path = "../" }
+sodiumoxide = "0.2"
+num_cpus = "1"
+hex = "0.4"
+
+[profile.dev]
+overflow-checks = true
+panic = "abort"
+
+[profile.release]
+overflow-checks = true
+panic = "abort"
+
+[profile.bench]
+overflow-checks = true
+
+[workspace]

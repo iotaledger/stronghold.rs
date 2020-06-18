@@ -6,8 +6,8 @@ mod internal;
 #[macro_use]
 mod verify;
 
-mod chacha_ietf;
-mod chachapoly;
+pub mod chacha_ietf;
+pub mod chachapoly;
 mod poly;
 mod xchacha;
 
