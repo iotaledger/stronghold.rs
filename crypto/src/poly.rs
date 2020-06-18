@@ -1,4 +1,7 @@
-use crate::internal::poly::{poly1305_finish, poly1305_init, poly1305_update};
+use crate::{
+    internal::poly::{poly1305_finish, poly1305_init, poly1305_update},
+    verify_auth, verify_keygen,
+};
 
 use primitives::{
     auth::{MessageAuthCode, MessageAuthCodeInfo},
@@ -40,7 +43,7 @@ impl SecretKeyGen for Poly1305 {
         buf: &mut [u8],
         rng: &mut dyn SecureRng,
     ) -> Result<usize, Box<dyn Error + 'static>> {
-        vfy_keygen!(POLY1305_KEY => buf);
+        verify_keygen!(POLY1305_KEY => buf);
 
         rng.random(&mut buf[..POLY1305_KEY])?;
         Ok(POLY1305_KEY)
@@ -64,7 +67,7 @@ impl MessageAuthCode for Poly1305 {
         data: &[u8],
         key: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
-        vfy_auth!(key => [POLY1305_KEY], => [buf, POLY1305_TAG]);
+        verify_auth!(key => [POLY1305_KEY], => [buf, POLY1305_TAG]);
 
         let (mut r, mut s, mut u, mut a) = (vec![0; 5], vec![0; 4], vec![0; 5], vec![0; 5]);
         poly1305_init(&mut r, &mut s, &mut u, key);

@@ -3,6 +3,7 @@ use thiserror::Error as DeriveError;
 
 mod internal;
 mod poly;
+mod verify;
 
 #[derive(DeriveError, Debug)]
 pub enum Error {
@@ -10,6 +11,8 @@ pub enum Error {
     InvalidData,
     #[error("Interface Error occuring")]
     InterfaceError,
+    #[error("Error: `{0}`")]
+    CryptoError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
