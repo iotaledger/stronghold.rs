@@ -1,34 +1,37 @@
-use crate::internal::chacha::chacha20_ietf_block;
+use crate::{
+    chacha_ietf::CHACHA20_KEY,
+    internal::chacha::{chacha20_block, h_chacha20_hash},
+};
 use primitives::{
     cipher::{Cipher, CipherInfo},
     rng::{SecretKeyGen, SecureRng},
 };
 use std::{cmp::min, error::Error};
 
-#[cfg(target_pointer_width = "64")]
-pub const CHACHA20_MAX: usize = 4_294_967_296 * 64;
-#[cfg(target_pointer_width = "32")]
-pub const CHACHA20_MAX: usize = usize::max_value();
+pub const XCHACHA20_MAX: usize = usize::max_value();
+pub const XCHACHA20_KEY: usize = CHACHA20_KEY;
+pub const XCHACHA20_NONCE: usize = 24;
 
-pub const CHACHA20_KEY: usize = 32;
-pub const CHACHA20_NONCE: usize = 12;
-
-pub struct ChaCha20Ietf;
-impl ChaCha20Ietf {
+pub struct XChaCha20;
+impl XChaCha20 {
     pub fn cipher() -> Box<dyn Cipher> {
         Box::new(Self)
     }
 
-    pub fn xor(key: &[u8], nonce: &[u8], mut n: u32, mut data: &mut [u8]) {
-        assert_eq!(CHACHA20_KEY, key.len());
-        assert_eq!(CHACHA20_NONCE, nonce.len());
+    pub fn xor(key: &[u8], nonce: &[u8], mut n: u64, mut data: &mut [u8]) {
+        assert_eq!(XCHACHA20_KEY, key.len());
+        assert_eq!(XCHACHA20_NONCE, nonce.len());
+
+        let (x_nonce, nonce) = nonce.split_at(16);
+        let mut x_key = vec![0; 32];
+        h_chacha20_hash(key, x_nonce, &mut x_key);
 
         let mut buf = vec![0; 64];
         while !data.is_empty() {
-            chacha20_ietf_block(key, nonce, n, &mut buf);
+            chacha20_block(&x_key, nonce, n, &mut buf);
             n = n
                 .checked_add(1)
-                .expect("The ChaCha20-IETF block counter must not exceed 2^32 - 1");
+                .expect("The ChaCha20 block counter must not exceed 2^64 - 1");
 
             let to_xor = min(data.len(), buf.len());
             (0..to_xor).for_each(|i| data[i] = xor!(data[i], buf[i]));
@@ -36,49 +39,48 @@ impl ChaCha20Ietf {
         }
     }
 }
-impl SecretKeyGen for ChaCha20Ietf {
+impl SecretKeyGen for XChaCha20 {
     fn new_secret_key(
         &self,
         buf: &mut [u8],
         rng: &mut dyn SecureRng,
     ) -> Result<usize, Box<dyn Error + 'static>> {
-        verify_keygen!(CHACHA20_KEY => buf);
+        verify_keygen!(XCHACHA20_KEY => buf);
 
-        rng.random(&mut buf[..CHACHA20_KEY])?;
-        Ok(CHACHA20_KEY)
+        rng.random(&mut buf[..XCHACHA20_KEY])?;
+        Ok(XCHACHA20_KEY)
     }
 }
-impl Cipher for ChaCha20Ietf {
+impl Cipher for XChaCha20 {
     fn info(&self) -> CipherInfo {
         CipherInfo {
-            id: "ChaCha20Ietf",
+            id: "XChaCha20",
             one_time: true,
-            key_lens: CHACHA20_KEY..CHACHA20_KEY,
-            nonce_lens: CHACHA20_NONCE..CHACHA20_NONCE,
+            key_lens: XCHACHA20_KEY..XCHACHA20_KEY,
+            nonce_lens: XCHACHA20_NONCE..XCHACHA20_NONCE,
             tag_lens: 0..0,
         }
     }
 
-    fn predict_encrypted_max(&self, plain_len: usize) -> usize {
-        plain_len
+    fn predict_encrypted_max(&self, plaintext_len: usize) -> usize {
+        plaintext_len
     }
 
     fn encrypt(
         &self,
         buf: &mut [u8],
-        plain_len: usize,
+        plaintext_len: usize,
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_encrypt!(
-            key => [CHACHA20_KEY], nonce => [CHACHA20_NONCE],
-            plain_len => [buf, CHACHA20_MAX]
+            key => [XCHACHA20_KEY], nonce => [XCHACHA20_NONCE],
+            plaintext_len => [buf, XCHACHA20_MAX]
         );
 
-        Self::xor(key, nonce, 0, &mut buf[..plain_len]);
-        Ok(plain_len)
+        Self::xor(key, nonce, 0, &mut buf[..plaintext_len]);
+        Ok(plaintext_len)
     }
-
     fn encrypt_to(
         &self,
         buf: &mut [u8],
@@ -87,8 +89,8 @@ impl Cipher for ChaCha20Ietf {
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_encrypt!(
-            key => [CHACHA20_KEY], nonce => [CHACHA20_NONCE],
-            plaintext => [buf, CHACHA20_MAX]
+            key => [XCHACHA20_KEY], nonce => [XCHACHA20_NONCE],
+            plaintext => [buf, XCHACHA20_MAX]
         );
 
         buf[..plaintext.len()].copy_from_slice(plaintext);
@@ -104,8 +106,8 @@ impl Cipher for ChaCha20Ietf {
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_decrypt!(
-            key => [CHACHA20_KEY], nonce => [CHACHA20_NONCE],
-            ciphertext_len => [buf, CHACHA20_MAX]
+            key => [XCHACHA20_KEY], nonce => [XCHACHA20_NONCE],
+            ciphertext_len => [buf, XCHACHA20_MAX]
         );
 
         Self::xor(key, nonce, 0, &mut buf[..ciphertext_len]);
@@ -119,8 +121,8 @@ impl Cipher for ChaCha20Ietf {
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_decrypt!(
-            key => [CHACHA20_KEY], nonce => [CHACHA20_NONCE],
-            ciphertext => [buf, CHACHA20_MAX]
+            key => [XCHACHA20_KEY], nonce => [XCHACHA20_NONCE],
+            ciphertext => [buf, XCHACHA20_MAX]
         );
 
         buf[..ciphertext.len()].copy_from_slice(ciphertext);

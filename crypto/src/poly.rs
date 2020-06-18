@@ -1,7 +1,4 @@
-use crate::{
-    internal::poly::{poly1305_finish, poly1305_init, poly1305_update},
-    verify_auth, verify_keygen,
-};
+use crate::internal::poly::{poly1305_finish, poly1305_init, poly1305_update};
 
 use primitives::{
     auth::{MessageAuthCode, MessageAuthCodeInfo},

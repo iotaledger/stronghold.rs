@@ -1,7 +1,4 @@
-use crate::{
-    chacha_ietf::ChaCha20Ietf, eq_const_time, poly::Poly1305, verify_keygen, verify_open,
-    verify_seal,
-};
+use crate::{chacha_ietf::ChaCha20Ietf, poly::Poly1305};
 use primitives::{
     cipher::{AeadCipher, Cipher, CipherInfo},
     rng::{SecretKeyGen, SecureRng},

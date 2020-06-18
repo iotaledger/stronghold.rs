@@ -1,13 +1,15 @@
 pub use primitives;
 use thiserror::Error as DeriveError;
 
-mod chacha_ietf;
-mod chachapoly;
 #[macro_use]
 mod internal;
-mod poly;
 #[macro_use]
 mod verify;
+
+mod chacha_ietf;
+mod chachapoly;
+mod poly;
+mod xchacha;
 
 #[derive(DeriveError, Debug)]
 pub enum Error {
