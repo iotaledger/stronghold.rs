@@ -2,6 +2,7 @@ pub use primitives;
 use thiserror::Error as DeriveError;
 
 mod internal;
+mod poly;
 
 #[derive(DeriveError, Debug)]
 pub enum Error {
