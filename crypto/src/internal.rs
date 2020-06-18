@@ -50,19 +50,19 @@ macro_rules! negate {
 }
 
 #[macro_export]
-macro_rules! and {
-    ($a:expr, $b:expr) => {{
-        $a & $b
-    }};
-}
-
-#[macro_export]
 macro_rules! or {
     ($a:expr, $b:expr) => {{
         $a | $b
     }};
     ($a:expr, $b:expr, $c:expr, $d:expr) => {{
         $a | $b | $c | $d
+    }};
+}
+
+#[macro_export]
+macro_rules! and {
+    ($a:expr, $b:expr) => {{
+        $a & $b
     }};
 }
 
@@ -134,14 +134,6 @@ macro_rules! write64_little_endian {
 }
 
 #[macro_export]
-macro_rules! split64_little_endian {
-    ($num:expr => $u32s:expr) => {{
-        $u32s[0] = shift_right!($num, 0) as u32;
-        $u32s[1] = shift_right!($num, 32) as u32;
-    }};
-}
-
-#[macro_export]
 macro_rules! eq_const_time {
     ($a:expr, $b:expr) => {{
         match $a.len() == $b.len() {
@@ -154,6 +146,14 @@ macro_rules! eq_const_time {
             }
             false => false,
         }
+    }};
+}
+
+#[macro_export]
+macro_rules! split64_little_endian {
+    ($num:expr => $u32s:expr) => {{
+        $u32s[0] = shift_right!($num, 0) as u32;
+        $u32s[1] = shift_right!($num, 32) as u32;
     }};
 }
 

@@ -1,7 +1,10 @@
 pub use primitives;
 use thiserror::Error as DeriveError;
 
-mod internal;
+mod chacha_ietf;
+mod chachapoly;
+#[macro_use]
+pub mod internal;
 mod poly;
 mod verify;
 

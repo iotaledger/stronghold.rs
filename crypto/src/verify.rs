@@ -118,9 +118,7 @@ macro_rules! verify_open {
             _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
             _ if $nonce.constrain_value() != $nonce_size => Err("Invalid nonce length"),
             _ if $ciphertext.constrain_value() > $ciphertext_limit => Err("Too much data"),
-            _ if $ciphertext.constrain_value() < $tag_size => {
-                Err($crate::ChachaPolyError::InvalidData)?
-            }
+            _ if $ciphertext.constrain_value() < $tag_size => Err($crate::Error::InvalidData)?,
             _ if $buf.constrain_value() + $tag_size < $ciphertext.constrain_value() => {
                 Err("Buffer is too small")
             }
