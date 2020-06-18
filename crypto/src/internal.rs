@@ -77,7 +77,7 @@ macro_rules! xor {
 macro_rules! greater_than {
     ($a:expr, $b:expr) => {{
         let c = sub!($b, $a);
-        shr!(xor!(c, and!(xor!($a, $b), xor!($a, c))), 31)
+        shift_right!(xor!(c, and!(xor!($a, $b), xor!($a, c))), 31)
     }};
 }
 
@@ -85,7 +85,7 @@ macro_rules! greater_than {
 macro_rules! equal {
     ($a:expr, $b:expr) => {{
         let q = xor!($a, $b);
-        not_bool!(shr!(or!(q, neg!(q)), 31))
+        not_bool!(shift_right!(or!(q, negate!(q)), 31))
     }};
 }
 
@@ -99,45 +99,45 @@ macro_rules! not_bool {
 #[macro_export]
 macro_rules! mux_bool {
     ($c:expr, $x:expr, $y:expr) => {{
-        xor!($y, and!(neg!($c), xor!($x, $y)))
+        xor!($y, and!(negate!($c), xor!($x, $y)))
     }};
 }
 
 #[macro_export]
-macro_rules! read32_little_edian {
+macro_rules! read32_little_endian {
     ($data:expr) => {{
         or!(
-            shl!($data[0] as u32, 0),
-            shl!($data[1] as u32, 8),
-            shl!($data[2] as u32, 16),
-            shl!($data[3] as u32, 24)
+            shift_left!($data[0] as u32, 0),
+            shift_left!($data[1] as u32, 8),
+            shift_left!($data[2] as u32, 16),
+            shift_left!($data[3] as u32, 24)
         )
     }};
 }
 
 #[macro_export]
-macro_rules! write32_little_edian {
+macro_rules! write32_little_endian {
     ($num:expr => $data:expr) => {{
-        $data[0] = shr!($num, 0) as u8;
-        $data[1] = shr!($num, 8) as u8;
-        $data[2] = shr!($num, 16) as u8;
-        $data[3] = shr!($num, 24) as u8;
+        $data[0] = shift_right!($num, 0) as u8;
+        $data[1] = shift_right!($num, 8) as u8;
+        $data[2] = shift_right!($num, 16) as u8;
+        $data[3] = shift_right!($num, 24) as u8;
     }};
 }
 
 #[macro_export]
-macro_rules! write64_little_edian {
+macro_rules! write64_little_endian {
 	($num:expr => $data:expr) => ({
-		write32_le!(shr!($num,  0) => &mut $data[0..]);
-		write32_le!(shr!($num, 32) => &mut $data[4..]);
+		write32_le!(shift_right!($num,  0) => &mut $data[0..]);
+		write32_le!(shift_right!($num, 32) => &mut $data[4..]);
 	});
 }
 
 #[macro_export]
-macro_rules! split64_little_edian {
+macro_rules! split64_little_endian {
     ($num:expr => $u32s:expr) => {{
-        $u32s[0] = shr!($num, 0) as u32;
-        $u32s[1] = shr!($num, 32) as u32;
+        $u32s[0] = shift_right!($num, 0) as u32;
+        $u32s[1] = shift_right!($num, 32) as u32;
     }};
 }
 
