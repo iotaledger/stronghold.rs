@@ -17,6 +17,14 @@ pub trait Cipher: SecretKeyGen {
     fn encrypt(
         &self,
         buf: &mut [u8],
+        plain_len: usize,
+        key: &[u8],
+        nonce: &[u8],
+    ) -> Result<usize, Box<dyn Error + 'static>>;
+
+    fn encrypt_to(
+        &self,
+        buf: &mut [u8],
         plain: &[u8],
         key: &[u8],
         nonce: &[u8],
