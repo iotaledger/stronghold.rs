@@ -9,3 +9,10 @@ edition = "2018"
 [dependencies]
 thiserror = "1.0"
 anyhow = "1.0"
+
+
+[profile.release]
+overflow-checks = true
+
+[profile.dev]
+overflow-checks = true
