@@ -100,13 +100,13 @@ impl ChaChaPolyTestVector {
         );
 
         if ct_crypto != ct_sodium {
-            eprintln!("ChachaPoly Mismatch!. Inputs:");
+            eprintln!("Mismatch!. Inputs:");
             eprintln!("Key: {}", self.key.encode_hex::<String>());
             eprintln!("Nonce: {}", self.nonce.encode_hex::<String>());
-            eprintln!("Plaintext: {}", self.plain.encode_hex::<String>());
+            eprintln!("Plain: {}", self.plain.encode_hex::<String>());
             eprintln!("Additional data: {}", self.ad.encode_hex::<String>());
             eprintln!("Outputs:");
-            eprintln!("Ours: {}", ct_crypto.encode_hex::<String>());
+            eprintln!("Crypto: {}", ct_crypto.encode_hex::<String>());
             eprintln!("Libsodium: {}", ct_sodium.encode_hex::<String>());
             panic!("... aborting. Please save and report this error!");
         }
