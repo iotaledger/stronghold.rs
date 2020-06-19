@@ -118,7 +118,7 @@ fn main() {
     let threads_str = env::var("THREADS").unwrap_or(num_cpus::get().to_string());
     let threads = usize::from_str(&threads_str).expect("Invalid value of THREADS");
 
-    let limit_str = env::var("TEST_VECTOR_LIMIT").unwrap_or(264.to_string());
+    let limit_str = env::var("VECTOR_LIMIT").unwrap_or(264.to_string());
     let limit = usize::from_str(&limit_str).expect("Invalid value of TEST_VECTOR_LIMIT");
 
     for _ in 0..threads {
