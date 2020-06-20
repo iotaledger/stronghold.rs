@@ -1,9 +1,19 @@
 use thiserror::Error as DeriveError;
 
-pub mod base64;
-pub mod crypt_box;
-pub mod types;
-pub mod vault;
+mod base64;
+mod crypt_box;
+mod types;
+mod vault;
+
+pub use crate::{
+    base64::{Base64Decodable, Base64Encodable},
+    crypt_box::{BoxProvider, Key},
+    types::utils::{Id, IndexHint},
+    vault::{
+        DBReader, DBView, DBWriter, DeleteRequest, ListResult, ReadRequest, ReadResult,
+        WriteRequest,
+    },
+};
 
 #[derive(DeriveError, Debug)]
 pub enum Error {
