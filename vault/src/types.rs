@@ -1,7 +1,7 @@
 use std::mem;
 
-mod commits;
-mod utils;
+pub mod commits;
+pub mod utils;
 
 pub trait AsView<T: Sized>: AsRef<[u8]> {
     fn view(&self) -> &T {
