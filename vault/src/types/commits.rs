@@ -119,6 +119,47 @@ impl TypedCommit for RevocationCommit {
     }
 }
 
+impl Commit {
+    pub fn untyped(&self) -> &UntypedCommit {
+        self.view()
+    }
+
+    pub fn typed<T: TypedCommit>(&self) -> Option<&T>
+    where
+        Self: AsView<T>,
+    {
+        match self.untyped().r#type {
+            r#type if r#type == T::r#type() => Some(self.view()),
+            _ => None,
+        }
+    }
+
+    pub fn typed_mut<T: TypedCommit>(&mut self) -> Option<&mut T>
+    where
+        Self: AsViewMut<T>,
+    {
+        match self.untyped().r#type {
+            r#type if r#type == T::r#type() => Some(self.view_mut()),
+            _ => None,
+        }
+    }
+
+    pub fn force_typed<T: TypedCommit>(&self) -> &T
+    where
+        Self: AsView<T>,
+    {
+        self.typed().expect("This commit cannot be viewed as `T`")
+    }
+
+    pub fn force_typed_mut<T: TypedCommit>(&mut self) -> &mut T
+    where
+        Self: AsViewMut<T>,
+    {
+        self.typed_mut()
+            .expect("This commit cannot be viewed as `T`")
+    }
+}
+
 impl InitCommit {
     pub fn new(owner: Id, ctr: Val) -> Commit {
         let mut commit = Commit::default();
