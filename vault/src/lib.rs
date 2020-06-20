@@ -3,6 +3,7 @@ use thiserror::Error as DeriveError;
 pub mod base64;
 pub mod crypt_box;
 pub mod types;
+pub mod vault;
 
 #[derive(DeriveError, Debug)]
 pub enum Error {
