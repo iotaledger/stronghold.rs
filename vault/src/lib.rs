@@ -11,6 +11,8 @@ pub enum Error {
     DatabaseError(String),
     #[error("Version Error: `{0}`")]
     VersionError(String),
+    #[error("Chain error: `{0}`")]
+    ChainError(String),
     #[error("Base64Error")]
     Base64Error,
     #[error("Interface Error")]
