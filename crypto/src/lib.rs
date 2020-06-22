@@ -1,4 +1,3 @@
-pub use primitives;
 use thiserror::Error as DeriveError;
 
 #[macro_use]
@@ -6,12 +5,18 @@ mod internal;
 #[macro_use]
 mod verify;
 
-pub mod chacha_ietf;
-pub mod chachapoly;
-pub mod chachapoly_ietf;
-pub mod poly;
-pub mod xchacha;
-pub mod xchachapoly;
+mod chacha_ietf;
+mod chachapoly;
+mod chachapoly_ietf;
+mod poly;
+mod xchacha;
+mod xchachapoly;
+
+pub use crate::{
+    chacha_ietf::ChaCha20Ietf, chachapoly_ietf::ChachaPolyIetf, poly::Poly1305, xchacha::XChaCha20,
+    xchachapoly::XChaChaPoly,
+};
+pub use primitives;
 
 #[derive(DeriveError, Debug)]
 pub enum Error {

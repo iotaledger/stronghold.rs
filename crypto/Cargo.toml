@@ -12,6 +12,7 @@ thiserror = "1.0"
 anyhow = "1.0"
 
 [dev-dependencies]
+json = "0.12"
 hex = "0.4"
 
 [profile.release]
