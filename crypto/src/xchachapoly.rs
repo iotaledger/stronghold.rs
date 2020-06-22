@@ -1,4 +1,8 @@
-use crate::{chacha_ietf::ChaCha20Ietf, poly::Poly1305};
+use crate::{
+    chachapoly_ietf::{ChachaPolyIetf, CHACHAPOLY_KEY, CHACHAPOLY_MAX, CHACHAPOLY_TAG},
+    poly::Poly1305,
+    xchacha::XChaCha20,
+};
 use primitives::{
     cipher::{AeadCipher, Cipher, CipherInfo},
     rng::{SecretKeyGen, SecureRng},
@@ -6,29 +10,26 @@ use primitives::{
 
 use std::error::Error;
 
-#[cfg(target_pointer_width = "64")]
-pub const CHACHAPOLY_MAX: usize = (4_294_967_296 - 1) * 64;
+#[allow(unused)]
+pub const XCHACHAPOLY_MAX: usize = CHACHAPOLY_MAX;
 
-#[cfg(target_pointer_width = "32")]
-pub const CHACHAPOLY_MAX: usize = usize::max_value() - 16;
+pub const XCHACHAPOLY_KEY: usize = CHACHAPOLY_KEY;
+pub const XCHACHAPOLY_NONCE: usize = 24;
+pub const XCHACHAPOLY_TAG: usize = CHACHAPOLY_TAG;
 
-pub const CHACHAPOLY_KEY: usize = 32;
-pub const CHACHAPOLY_NONCE: usize = 12;
-pub const CHACHAPOLY_TAG: usize = 16;
-
-pub fn chachapoly_seal(data: &mut [u8], tag: &mut [u8], ad: &[u8], key: &[u8], nonce: &[u8]) {
-    ChaCha20Ietf::xor(key, nonce, 1, data);
+fn xchachapoly_seal(data: &mut [u8], tag: &mut [u8], ad: &[u8], key: &[u8], nonce: &[u8]) {
+    XChaCha20::xor(key, nonce, 1, data);
 
     let mut foot = Vec::with_capacity(16);
     foot.extend_from_slice(&(ad.len() as u64).to_le_bytes());
     foot.extend_from_slice(&(data.len() as u64).to_le_bytes());
 
     let mut pkey = vec![0; 32];
-    ChaCha20Ietf::xor(key, nonce, 0, &mut pkey);
+    XChaCha20::xor(key, nonce, 0, &mut pkey);
     Poly1305::chachapoly_auth(tag, ad, data, &foot, &pkey);
 }
 
-pub fn chachapoly_open(
+fn xchachapoly_open(
     data: &mut [u8],
     tag: &[u8],
     ad: &[u8],
@@ -40,44 +41,46 @@ pub fn chachapoly_open(
     foot.extend_from_slice(&(data.len() as u64).to_le_bytes());
 
     let (mut pkey, mut verify_tag) = (vec![0; 32], vec![0; 16]);
-    ChaCha20Ietf::xor(key, nonce, 0, &mut pkey);
+    XChaCha20::xor(key, nonce, 0, &mut pkey);
     Poly1305::chachapoly_auth(&mut verify_tag, ad, data, &foot, &pkey);
 
     Ok(match eq_const_time!(&tag, &verify_tag) {
-        true => ChaCha20Ietf::xor(key, nonce, 1, data),
+        true => XChaCha20::xor(key, nonce, 1, data),
         false => Err(crate::Error::InvalidData)?,
     })
 }
 
-pub struct ChachaPolyIetf;
-impl ChachaPolyIetf {
+pub struct XChachaPoly;
+
+impl XChachaPoly {
     pub fn cipher() -> Box<dyn Cipher> {
         Box::new(Self)
     }
+
     pub fn aead_cipher() -> Box<dyn AeadCipher> {
         Box::new(Self)
     }
 }
-impl SecretKeyGen for ChachaPolyIetf {
+impl SecretKeyGen for XChachaPoly {
     fn new_secret_key(
         &self,
         buf: &mut [u8],
         rng: &mut dyn SecureRng,
     ) -> Result<usize, Box<dyn Error + 'static>> {
-        verify_keygen!(CHACHAPOLY_KEY => buf);
+        verify_keygen!(XCHACHAPOLY_KEY => buf);
 
-        rng.random(&mut buf[..CHACHAPOLY_KEY])?;
-        Ok(CHACHAPOLY_KEY)
+        rng.random(&mut buf[..XCHACHAPOLY_KEY])?;
+        Ok(XCHACHAPOLY_KEY)
     }
 }
-impl Cipher for ChachaPolyIetf {
+impl Cipher for XChachaPoly {
     fn info(&self) -> CipherInfo {
         CipherInfo {
-            id: "ChachaPolyIetf",
+            id: "XChachaPoly",
             one_time: true,
-            key_lens: CHACHAPOLY_KEY..CHACHAPOLY_KEY,
-            nonce_lens: CHACHAPOLY_NONCE..CHACHAPOLY_NONCE,
-            tag_lens: CHACHAPOLY_TAG..CHACHAPOLY_TAG,
+            key_lens: XCHACHAPOLY_KEY..XCHACHAPOLY_KEY,
+            nonce_lens: XCHACHAPOLY_NONCE..XCHACHAPOLY_NONCE,
+            tag_lens: XCHACHAPOLY_TAG..XCHACHAPOLY_TAG,
         }
     }
 
@@ -123,7 +126,7 @@ impl Cipher for ChachaPolyIetf {
         self.open_to(buf, ciphertext, &[], key, nonce)
     }
 }
-impl AeadCipher for ChachaPolyIetf {
+impl AeadCipher for XChachaPoly {
     fn seal(
         &self,
         buf: &mut [u8],
@@ -133,13 +136,13 @@ impl AeadCipher for ChachaPolyIetf {
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_seal!(
-            key => [CHACHAPOLY_KEY], nonce => [CHACHAPOLY_NONCE],
-            plaintext_len => [buf, CHACHAPOLY_MAX]
+            key => [XCHACHAPOLY_KEY], nonce => [XCHACHAPOLY_NONCE],
+            plaintext_len => [buf, XCHACHAPOLY_MAX]
         );
 
         let (data, tag) = buf.split_at_mut(plaintext_len);
-        chachapoly_seal(data, &mut tag[..CHACHAPOLY_TAG], ad, key, nonce);
-        Ok(plaintext_len + CHACHAPOLY_TAG)
+        xchachapoly_seal(data, &mut tag[..XCHACHAPOLY_TAG], ad, key, nonce);
+        Ok(plaintext_len + XCHACHAPOLY_TAG)
     }
     fn seal_with(
         &self,
@@ -150,14 +153,14 @@ impl AeadCipher for ChachaPolyIetf {
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_seal!(
-            key => [CHACHAPOLY_KEY], nonce => [CHACHAPOLY_NONCE],
-            plaintext => [buf, CHACHAPOLY_MAX]
+            key => [XCHACHAPOLY_KEY], nonce => [XCHACHAPOLY_NONCE],
+            plaintext => [buf, XCHACHAPOLY_MAX]
         );
 
         let (data, tag) = buf.split_at_mut(plaintext.len());
         data.copy_from_slice(plaintext);
-        chachapoly_seal(data, &mut tag[..CHACHAPOLY_TAG], ad, key, nonce);
-        Ok(plaintext.len() + CHACHAPOLY_TAG)
+        xchachapoly_seal(data, &mut tag[..XCHACHAPOLY_TAG], ad, key, nonce);
+        Ok(plaintext.len() + XCHACHAPOLY_TAG)
     }
 
     fn open(
@@ -169,13 +172,13 @@ impl AeadCipher for ChachaPolyIetf {
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_open!(
-            key => [CHACHAPOLY_KEY], nonce => [CHACHAPOLY_NONCE],
-            ciphertext_len => [buf, CHACHAPOLY_TAG, CHACHAPOLY_MAX]
+            key => [XCHACHAPOLY_KEY], nonce => [XCHACHAPOLY_NONCE],
+            ciphertext_len => [buf, XCHACHAPOLY_TAG, XCHACHAPOLY_MAX]
         );
 
-        let (data, tag) = buf.split_at_mut(ciphertext_len - CHACHAPOLY_TAG);
-        chachapoly_open(data, &tag[..CHACHAPOLY_TAG], ad, key, nonce)?;
-        Ok(ciphertext_len - CHACHAPOLY_TAG)
+        let (data, tag) = buf.split_at_mut(ciphertext_len - XCHACHAPOLY_TAG);
+        xchachapoly_open(data, &tag[..XCHACHAPOLY_TAG], ad, key, nonce)?;
+        Ok(ciphertext_len - XCHACHAPOLY_TAG)
     }
     fn open_to(
         &self,
@@ -186,19 +189,19 @@ impl AeadCipher for ChachaPolyIetf {
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_open!(
-            key => [CHACHAPOLY_KEY], nonce => [CHACHAPOLY_NONCE],
-            ciphertext => [buf, CHACHAPOLY_TAG, CHACHAPOLY_MAX]
+            key => [XCHACHAPOLY_KEY], nonce => [XCHACHAPOLY_NONCE],
+            ciphertext => [buf, XCHACHAPOLY_TAG, XCHACHAPOLY_MAX]
         );
 
-        let (data, tag) = ciphertext.split_at(ciphertext.len() - CHACHAPOLY_TAG);
+        let (data, tag) = ciphertext.split_at(ciphertext.len() - XCHACHAPOLY_TAG);
         buf[..data.len()].copy_from_slice(data);
-        chachapoly_open(
+        xchachapoly_open(
             &mut buf[..data.len()],
-            &tag[..CHACHAPOLY_TAG],
+            &tag[..XCHACHAPOLY_TAG],
             ad,
             key,
             nonce,
         )?;
-        Ok(ciphertext.len() - CHACHAPOLY_TAG)
+        Ok(ciphertext.len() - XCHACHAPOLY_TAG)
     }
 }

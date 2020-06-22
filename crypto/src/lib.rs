@@ -8,8 +8,10 @@ mod verify;
 
 pub mod chacha_ietf;
 pub mod chachapoly;
-mod poly;
-mod xchacha;
+pub mod chachapoly_ietf;
+pub mod poly;
+pub mod xchacha;
+pub mod xchachapoly;
 
 #[derive(DeriveError, Debug)]
 pub enum Error {
