@@ -10,6 +10,7 @@ edition = "2018"
 vault = {path = "../../vault"}
 crypto = {path = "../../crypto"}
 random = {path = "../../random"}
+primitives = {path = "../../primitives"}
 
 [profile.release]
 overflow-checks = true
