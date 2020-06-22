@@ -1,16 +1,17 @@
 mod common;
 
 use common::{JsonValueExt, ResultExt};
-use crypto::XChaCha20;
+use crypto::ChaCha20Ietf;
 use json::JsonValue;
 
-const VECTORS: &str = include_str!("xchacha.json");
+const VECTORS: &str = include_str!("chacha_ietf.json");
 
 #[derive(Debug)]
 struct TestVector {
     id: String,
     key: Vec<u8>,
     nonce: Vec<u8>,
+    plain: Vec<u8>,
     cipher: Vec<u8>,
 }
 
@@ -24,6 +25,7 @@ impl TestVector {
                 id: vec["id"].check_string(),
                 key: vec["key"].check_bytes(),
                 nonce: vec["nonce"].check_bytes(),
+                plain: vec["plain"].check_bytes(),
                 cipher: vec["cipher"].check_bytes(),
             });
         }
@@ -31,21 +33,32 @@ impl TestVector {
         vecs
     }
 
-    pub fn test_keystream_encryption(&self) -> &Self {
-        let mut buf = vec![0; self.cipher.len()];
-        XChaCha20::cipher()
-            .encrypt(&mut buf, self.cipher.len(), &self.key, &self.nonce)
+    pub fn test_encryption(&self) -> &Self {
+        let mut buf = self.plain.clone();
+        ChaCha20Ietf::cipher()
+            .encrypt(&mut buf, self.plain.len(), &self.key, &self.nonce)
             .unwrap();
         assert_eq!(buf, self.cipher, "Vector: \"{}\"", self.id);
-
+        let mut buf = vec![0; self.cipher.len()];
+        ChaCha20Ietf::cipher()
+            .encrypt_to(&mut buf, &self.plain, &self.key, &self.nonce)
+            .unwrap();
+        assert_eq!(buf, self.cipher, "Vector: \"{}\"", self.id);
         self
     }
-    pub fn test_keystream_decryption(&self) -> &Self {
-        let mut buf = vec![0; self.cipher.len()];
-        XChaCha20::cipher()
+
+    pub fn test_decryption(&self) -> &Self {
+        let mut buf = self.cipher.clone();
+        ChaCha20Ietf::cipher()
             .decrypt(&mut buf, self.cipher.len(), &self.key, &self.nonce)
             .unwrap();
-        assert_eq!(buf, self.cipher, "Vector: \"{}\"", self.id);
+        assert_eq!(buf, self.plain, "Vector: \"{}\"", self.id);
+
+        let mut buf = vec![0; self.plain.len()];
+        ChaCha20Ietf::cipher()
+            .decrypt_to(&mut buf, &self.cipher, &self.key, &self.nonce)
+            .unwrap();
+        assert_eq!(buf, self.plain, "Vector: \"{}\"", self.id);
 
         self
     }
@@ -54,7 +67,7 @@ impl TestVector {
 #[test]
 fn test_crypto() {
     for vec in TestVector::load() {
-        vec.test_keystream_encryption().test_keystream_decryption();
+        vec.test_encryption().test_decryption();
     }
 }
 
@@ -90,12 +103,12 @@ impl ApiTestVector {
         let input = vec![0; self.enc_input_len];
         let mut buf = vec![0; self.enc_buf_len];
 
-        let error = XChaCha20::cipher()
+        let error = ChaCha20Ietf::cipher()
             .encrypt(&mut buf, input.len(), &key, &nonce)
             .error_or(format!("Vector: \"{}\"", self.id));
         assert_eq!(error.to_string(), self.error, "Vector: \"{}\"", self.id);
 
-        let error = XChaCha20::cipher()
+        let error = ChaCha20Ietf::cipher()
             .encrypt_to(&mut buf, &input, &key, &nonce)
             .error_or(format!("Vector: \"{}\"", self.id));
         assert_eq!(error.to_string(), self.error, "Vector: \"{}\"", self.id);
@@ -109,12 +122,12 @@ impl ApiTestVector {
         let input = vec![0; self.dec_input_len];
         let mut buf = vec![0; self.dec_buf_len];
 
-        let error = XChaCha20::cipher()
+        let error = ChaCha20Ietf::cipher()
             .decrypt(&mut buf, input.len(), &key, &nonce)
             .error_or(format!("Vector: \"{}\"", self.id));
         assert_eq!(error.to_string(), self.error, "Vector: \"{}\"", self.id);
 
-        let error = XChaCha20::cipher()
+        let error = ChaCha20Ietf::cipher()
             .decrypt_to(&mut buf, &input, &key, &nonce)
             .error_or(format!("Vector: \"{}\"", self.id));
         assert_eq!(error.to_string(), self.error, "Vector: \"{}\"", self.id);
