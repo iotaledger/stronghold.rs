@@ -1,5 +1,5 @@
 use crate::{
-    chachapoly_ietf::{ChachaPolyIetf, CHACHAPOLY_KEY, CHACHAPOLY_MAX, CHACHAPOLY_TAG},
+    chachapoly_ietf::{ChaChaPolyIetf, CHACHAPOLY_KEY, CHACHAPOLY_MAX, CHACHAPOLY_TAG},
     poly::Poly1305,
     xchacha::XChaCha20,
 };

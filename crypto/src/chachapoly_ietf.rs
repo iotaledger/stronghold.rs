@@ -47,8 +47,8 @@ pub fn chachapoly_open(
     })
 }
 
-pub struct ChachaPolyIetf;
-impl ChachaPolyIetf {
+pub struct ChaChaPolyIetf;
+impl ChaChaPolyIetf {
     pub fn cipher() -> Box<dyn Cipher> {
         Box::new(Self)
     }
@@ -56,7 +56,7 @@ impl ChachaPolyIetf {
         Box::new(Self)
     }
 }
-impl SecretKeyGen for ChachaPolyIetf {
+impl SecretKeyGen for ChaChaPolyIetf {
     fn new_secret_key(
         &self,
         buf: &mut [u8],
@@ -68,10 +68,10 @@ impl SecretKeyGen for ChachaPolyIetf {
         Ok(CHACHAPOLY_KEY)
     }
 }
-impl Cipher for ChachaPolyIetf {
+impl Cipher for ChaChaPolyIetf {
     fn info(&self) -> CipherInfo {
         CipherInfo {
-            id: "ChachaPolyIetf",
+            id: "ChaChaPolyIetf",
             one_time: true,
             key_lens: CHACHAPOLY_KEY..CHACHAPOLY_KEY,
             nonce_lens: CHACHAPOLY_NONCE..CHACHAPOLY_NONCE,
@@ -121,7 +121,7 @@ impl Cipher for ChachaPolyIetf {
         self.open_to(buf, ciphertext, &[], key, nonce)
     }
 }
-impl AeadCipher for ChachaPolyIetf {
+impl AeadCipher for ChaChaPolyIetf {
     fn seal(
         &self,
         buf: &mut [u8],
