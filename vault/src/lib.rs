@@ -27,6 +27,8 @@ pub enum Error {
     Base64Error,
     #[error("Interface Error")]
     InterfaceError,
+    #[error("Other Error")]
+    OtherError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

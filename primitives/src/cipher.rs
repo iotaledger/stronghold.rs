@@ -57,7 +57,7 @@ pub trait AeadCipher: Cipher {
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>>;
 
-    fn seal_to(
+    fn seal_with(
         &self,
         buf: &mut [u8],
         plain: &[u8],
