@@ -11,6 +11,11 @@ thiserror = "1.0"
 anyhow = "1.0"
 
 
+[dev-dependencies]
+json = "^0.12"
+crypto = {path = "../crypto", version = "0.1"}
+random = {path = "../random", version = "0.1"}
+
 [profile.release]
 overflow-checks = true
 
