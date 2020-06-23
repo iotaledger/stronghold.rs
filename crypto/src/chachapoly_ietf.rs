@@ -79,116 +79,116 @@ impl Cipher for ChaChaPolyIetf {
         }
     }
 
-    fn predict_encrypted_max(&self, plaintext_len: usize) -> usize {
-        plaintext_len + 16
+    fn predict_encrypted_max(&self, plain_len: usize) -> usize {
+        plain_len + 16
     }
 
     fn encrypt(
         &self,
         buf: &mut [u8],
-        plaintext_len: usize,
+        plain_len: usize,
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
-        self.seal(buf, plaintext_len, &[], key, nonce)
+        self.seal(buf, plain_len, &[], key, nonce)
     }
     fn encrypt_to(
         &self,
         buf: &mut [u8],
-        plaintext: &[u8],
+        plain: &[u8],
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
-        self.seal_with(buf, plaintext, &[], key, nonce)
+        self.seal_with(buf, plain, &[], key, nonce)
     }
 
     fn decrypt(
         &self,
         buf: &mut [u8],
-        ciphertext_len: usize,
+        cipher_len: usize,
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
-        self.open(buf, ciphertext_len, &[], key, nonce)
+        self.open(buf, cipher_len, &[], key, nonce)
     }
     fn decrypt_to(
         &self,
         buf: &mut [u8],
-        ciphertext: &[u8],
+        cipher: &[u8],
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
-        self.open_to(buf, ciphertext, &[], key, nonce)
+        self.open_to(buf, cipher, &[], key, nonce)
     }
 }
 impl AeadCipher for ChaChaPolyIetf {
     fn seal(
         &self,
         buf: &mut [u8],
-        plaintext_len: usize,
+        plain_len: usize,
         ad: &[u8],
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_seal!(
             key => [CHACHAPOLY_KEY], nonce => [CHACHAPOLY_NONCE],
-            plaintext_len => [buf, CHACHAPOLY_MAX]
+            plain_len => [buf, CHACHAPOLY_MAX]
         );
 
-        let (data, tag) = buf.split_at_mut(plaintext_len);
+        let (data, tag) = buf.split_at_mut(plain_len);
         chachapoly_seal(data, &mut tag[..CHACHAPOLY_TAG], ad, key, nonce);
-        Ok(plaintext_len + CHACHAPOLY_TAG)
+        Ok(plain_len + CHACHAPOLY_TAG)
     }
     fn seal_with(
         &self,
         buf: &mut [u8],
-        plaintext: &[u8],
+        plain: &[u8],
         ad: &[u8],
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_seal!(
             key => [CHACHAPOLY_KEY], nonce => [CHACHAPOLY_NONCE],
-            plaintext => [buf, CHACHAPOLY_MAX]
+            plain => [buf, CHACHAPOLY_MAX]
         );
 
-        let (data, tag) = buf.split_at_mut(plaintext.len());
-        data.copy_from_slice(plaintext);
+        let (data, tag) = buf.split_at_mut(plain.len());
+        data.copy_from_slice(plain);
         chachapoly_seal(data, &mut tag[..CHACHAPOLY_TAG], ad, key, nonce);
-        Ok(plaintext.len() + CHACHAPOLY_TAG)
+        Ok(plain.len() + CHACHAPOLY_TAG)
     }
 
     fn open(
         &self,
         buf: &mut [u8],
-        ciphertext_len: usize,
+        cipher_len: usize,
         ad: &[u8],
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_open!(
             key => [CHACHAPOLY_KEY], nonce => [CHACHAPOLY_NONCE],
-            ciphertext_len => [buf, CHACHAPOLY_TAG, CHACHAPOLY_MAX]
+            cipher_len => [buf, CHACHAPOLY_TAG, CHACHAPOLY_MAX]
         );
 
-        let (data, tag) = buf.split_at_mut(ciphertext_len - CHACHAPOLY_TAG);
+        let (data, tag) = buf.split_at_mut(cipher_len - CHACHAPOLY_TAG);
         chachapoly_open(data, &tag[..CHACHAPOLY_TAG], ad, key, nonce)?;
-        Ok(ciphertext_len - CHACHAPOLY_TAG)
+        Ok(cipher_len - CHACHAPOLY_TAG)
     }
     fn open_to(
         &self,
         buf: &mut [u8],
-        ciphertext: &[u8],
+        cipher: &[u8],
         ad: &[u8],
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_open!(
             key => [CHACHAPOLY_KEY], nonce => [CHACHAPOLY_NONCE],
-            ciphertext => [buf, CHACHAPOLY_TAG, CHACHAPOLY_MAX]
+            cipher => [buf, CHACHAPOLY_TAG, CHACHAPOLY_MAX]
         );
 
-        let (data, tag) = ciphertext.split_at(ciphertext.len() - CHACHAPOLY_TAG);
+        let (data, tag) = cipher.split_at(cipher.len() - CHACHAPOLY_TAG);
         buf[..data.len()].copy_from_slice(data);
         chachapoly_open(
             &mut buf[..data.len()],
@@ -197,6 +197,6 @@ impl AeadCipher for ChaChaPolyIetf {
             key,
             nonce,
         )?;
-        Ok(ciphertext.len() - CHACHAPOLY_TAG)
+        Ok(cipher.len() - CHACHAPOLY_TAG)
     }
 }

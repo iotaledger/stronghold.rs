@@ -34,7 +34,7 @@ impl TestVector {
         Poly1305::message_auth_code()
             .auth(&mut buf, &self.data, &self.key)
             .unwrap();
-        assert_eq!(buf, self.mac, "Test vector: \"{}\"", self.id);
+        assert_eq!(buf, self.mac, "Vector: \"{}\"", self.id);
 
         self
     }
@@ -78,13 +78,8 @@ impl ApiTestVector {
 
         let error = Poly1305::message_auth_code()
             .auth(&mut buf, &data, &key)
-            .error_or(format!("Test vector: \"{}\"", self.id));
-        assert_eq!(
-            error.to_string(),
-            self.error,
-            "Test vector: \"{}\"",
-            self.id
-        );
+            .error_or(format!("Vector: \"{}\"", self.id));
+        assert_eq!(error.to_string(), self.error, "Vector: \"{}\"", self.id);
 
         self
     }

@@ -50,17 +50,15 @@ macro_rules! verify_auth {
 #[macro_export]
 macro_rules! verify_encrypt {
     ($key:expr => [$key_size:expr], $nonce:expr => [$nonce_size:expr],
-		$plaintext:expr => [$buf:expr, $plaintext_limit:expr]) => {{
+		$plain:expr => [$buf:expr, $plain_limit:expr]) => {{
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
         let error = match true {
             _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
             _ if $nonce.constrain_value() != $nonce_size => Err("Invalid nonce length"),
-            _ if $plaintext.constrain_value() > $plaintext_limit => Err("Too much data"),
-            _ if $plaintext.constrain_value() > $buf.constrain_value() => {
-                Err("Buffer is too small")
-            }
+            _ if $plain.constrain_value() > $plain_limit => Err("Too much data"),
+            _ if $plain.constrain_value() > $buf.constrain_value() => Err("Buffer is too small"),
             _ => Ok(()),
         };
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
@@ -70,17 +68,15 @@ macro_rules! verify_encrypt {
 #[macro_export]
 macro_rules! verify_decrypt {
     ($key:expr => [$key_size:expr], $nonce:expr => [$nonce_size:expr],
-		$ciphertext:expr => [$buf:expr, $ciphertext_limit:expr]) => {{
+		$cipher:expr => [$buf:expr, $cipher_limit:expr]) => {{
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
         let error = match true {
             _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
             _ if $nonce.constrain_value() != $nonce_size => Err("Invalid nonce length"),
-            _ if $ciphertext.constrain_value() > $ciphertext_limit => Err("Too much data"),
-            _ if $ciphertext.constrain_value() > $buf.constrain_value() => {
-                Err("Buffer is too small")
-            }
+            _ if $cipher.constrain_value() > $cipher_limit => Err("Too much data"),
+            _ if $cipher.constrain_value() > $buf.constrain_value() => Err("Buffer is too small"),
             _ => Ok(()),
         };
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
@@ -90,15 +86,15 @@ macro_rules! verify_decrypt {
 #[macro_export]
 macro_rules! verify_seal {
     ($key:expr => [$key_size:expr], $nonce:expr => [$nonce_const:expr],
-		$plaintext:expr => [$buf:expr, $plaintext_limit:expr]) => {{
+		$plain:expr => [$buf:expr, $plain_limit:expr]) => {{
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
         let error = match true {
             _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
             _ if $nonce.constrain_value() != $nonce_const => Err("Invalid nonce length"),
-            _ if $plaintext.constrain_value() > $plaintext_limit => Err("Too much data"),
-            _ if $buf.constrain_value() < $plaintext.constrain_value() + CHACHAPOLY_TAG => {
+            _ if $plain.constrain_value() > $plain_limit => Err("Too much data"),
+            _ if $buf.constrain_value() < $plain.constrain_value() + CHACHAPOLY_TAG => {
                 Err("Buffer is too small")
             }
             _ => Ok(()),
@@ -110,16 +106,16 @@ macro_rules! verify_seal {
 #[macro_export]
 macro_rules! verify_open {
     ($key:expr => [$key_size:expr], $nonce:expr => [$nonce_size:expr],
-		$ciphertext:expr => [$buf:expr, $tag_size:expr, $ciphertext_limit:expr]) => {{
+		$cipher:expr => [$buf:expr, $tag_size:expr, $cipher_limit:expr]) => {{
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
         let error = match true {
             _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
             _ if $nonce.constrain_value() != $nonce_size => Err("Invalid nonce length"),
-            _ if $ciphertext.constrain_value() > $ciphertext_limit => Err("Too much data"),
-            _ if $ciphertext.constrain_value() < $tag_size => Err($crate::Error::InvalidData)?,
-            _ if $buf.constrain_value() + $tag_size < $ciphertext.constrain_value() => {
+            _ if $cipher.constrain_value() > $cipher_limit => Err("Too much data"),
+            _ if $cipher.constrain_value() < $tag_size => Err($crate::Error::InvalidData)?,
+            _ if $buf.constrain_value() + $tag_size < $cipher.constrain_value() => {
                 Err("Buffer is too small")
             }
             _ => Ok(()),

@@ -82,49 +82,49 @@ impl Cipher for ChaCha20Ietf {
     fn encrypt_to(
         &self,
         buf: &mut [u8],
-        plaintext: &[u8],
+        plain: &[u8],
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_encrypt!(
             key => [CHACHA20_KEY], nonce => [CHACHA20_NONCE],
-            plaintext => [buf, CHACHA20_MAX]
+            plain => [buf, CHACHA20_MAX]
         );
 
-        buf[..plaintext.len()].copy_from_slice(plaintext);
-        Self::xor(key, nonce, 0, &mut buf[..plaintext.len()]);
-        Ok(plaintext.len())
+        buf[..plain.len()].copy_from_slice(plain);
+        Self::xor(key, nonce, 0, &mut buf[..plain.len()]);
+        Ok(plain.len())
     }
 
     fn decrypt(
         &self,
         buf: &mut [u8],
-        ciphertext_len: usize,
+        cipher_len: usize,
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_decrypt!(
             key => [CHACHA20_KEY], nonce => [CHACHA20_NONCE],
-            ciphertext_len => [buf, CHACHA20_MAX]
+            cipher_len => [buf, CHACHA20_MAX]
         );
 
-        Self::xor(key, nonce, 0, &mut buf[..ciphertext_len]);
-        Ok(ciphertext_len)
+        Self::xor(key, nonce, 0, &mut buf[..cipher_len]);
+        Ok(cipher_len)
     }
     fn decrypt_to(
         &self,
         buf: &mut [u8],
-        ciphertext: &[u8],
+        cipher: &[u8],
         key: &[u8],
         nonce: &[u8],
     ) -> Result<usize, Box<dyn Error + 'static>> {
         verify_decrypt!(
             key => [CHACHA20_KEY], nonce => [CHACHA20_NONCE],
-            ciphertext => [buf, CHACHA20_MAX]
+            cipher => [buf, CHACHA20_MAX]
         );
 
-        buf[..ciphertext.len()].copy_from_slice(ciphertext);
-        Self::xor(key, nonce, 0, &mut buf[..ciphertext.len()]);
-        Ok(ciphertext.len())
+        buf[..cipher.len()].copy_from_slice(cipher);
+        Self::xor(key, nonce, 0, &mut buf[..cipher.len()]);
+        Ok(cipher.len())
     }
 }

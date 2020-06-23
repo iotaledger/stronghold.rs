@@ -176,21 +176,21 @@ impl ApiTestVector {
 
         let error = ChaChaPolyIetf::aead_cipher()
             .seal(&mut buf, input.len(), &ad, &key, &nonce)
-            .error_or(format!("Test vector: \"{}\"", self.id));
+            .error_or(format!("Vector: \"{}\"", self.id));
         assert_eq!(
             error.to_string(),
             self.error,
-            "Test vector: \"{}\"",
+            "Vector: \"{}\"",
             self.id
         );
 
         let error = ChaChaPolyIetf::aead_cipher()
             .seal_with(&mut buf, &input, &ad, &key, &nonce)
-            .error_or(format!("Test vector: \"{}\"", self.id));
+            .error_or(format!("Vector: \"{}\"", self.id));
         assert_eq!(
             error.to_string(),
             self.error,
-            "Test vector: \"{}\"",
+            "Vector: \"{}\"",
             self.id
         );
 
@@ -206,21 +206,21 @@ impl ApiTestVector {
 
         let error = ChaChaPolyIetf::aead_cipher()
             .open(&mut buf, input.len(), &ad, &key, &nonce)
-            .error_or(format!("Test vector: \"{}\"", self.id));
+            .error_or(format!("Vector: \"{}\"", self.id));
         assert_eq!(
             error.to_string(),
             self.error,
-            "Test vector: \"{}\"",
+            "Vector: \"{}\"",
             self.id
         );
 
         let error = ChaChaPolyIetf::aead_cipher()
             .open_to(&mut buf, &input, &ad, &key, &nonce)
-            .error_or(format!("Test vector: \"{}\"", self.id));
+            .error_or(format!("Vector: \"{}\"", self.id));
         assert_eq!(
             error.to_string(),
             self.error,
-            "Test vector: \"{}\"",
+            "Vector: \"{}\"",
             self.id
         );
 
