@@ -6,7 +6,7 @@ use primitives::{
 };
 use random::OsRng;
 
-use crypto::{chacha_ietf::ChaCha20Ietf, xchachapoly::XChaChaPoly};
+use crypto::{ChaCha20Ietf, XChaChaPoly};
 
 use std::{cell::RefCell, mem};
 
