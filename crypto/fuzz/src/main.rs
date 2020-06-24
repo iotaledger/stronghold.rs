@@ -79,7 +79,7 @@ impl ChaChaPolyTestVector {
     pub fn test(self) {
         let mut ct_crypto = vec![0u8; self.plain.len() + 16];
         ChaChaPolyIetf
-            .seal_to(
+            .seal_with(
                 &mut ct_crypto,
                 &self.plain,
                 &self.ad,
