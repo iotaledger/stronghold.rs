@@ -39,7 +39,7 @@ fn main() {
     };
 
     ids.iter()
-        .for_each(|uid| Client::<Provider>::create_chain(&key, *uid));
+        .for_each(|id| Client::<Provider>::create_chain(&key, *id));
 
     loop {
         Worker::start(key.clone());

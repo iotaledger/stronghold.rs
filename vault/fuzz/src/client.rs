@@ -22,8 +22,8 @@ pub struct Db<P: BoxProvider> {
 }
 
 impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
-    pub fn create_chain(key: &Key<P>, uid: Id) {
-        let req = DBWriter::<P>::create_chain(key, uid);
+    pub fn create_chain(key: &Key<P>, id: Id) {
+        let req = DBWriter::<P>::create_chain(key, id);
         remote::send_until_success(TransactionRequest::Write(req.clone()));
     }
 
@@ -54,30 +54,30 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     fn create_entry(&self) {
         let payload = CRng::payload();
         self.db.take(|db| {
-            let (uid, req) = db
+            let (id, req) = db
                 .writer(self.id)
                 .write(&payload, IndexHint::new(b"").expect(line_error!()))
                 .expect(line_error!());
             Env::shadow_storage()
                 .write()
                 .expect(line_error!())
-                .insert(uid.as_ref().to_vec(), payload);
+                .insert(id.as_ref().to_vec(), payload);
             req.into_iter().for_each(|req| {
                 remote::send_until_success(TransactionRequest::Write(req));
             });
         });
     }
     fn revoke_entry(&self) {
-        let uid = match self.db.random_entry() {
-            Some(uid) => uid,
+        let id = match self.db.random_entry() {
+            Some(id) => id,
             None => return,
         };
         self.db.take(|db| {
-            let (to_write, to_delete) = db.writer(self.id).revoke(uid).expect(line_error!());
+            let (to_write, to_delete) = db.writer(self.id).revoke(id).expect(line_error!());
             Env::shadow_storage()
                 .write()
                 .expect(line_error!())
-                .remove(uid.as_ref());
+                .remove(id.as_ref());
             remote::send_until_success(TransactionRequest::Write(to_write));
             remote::send_until_success(TransactionRequest::Delete(to_delete));
         });
