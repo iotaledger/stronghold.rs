@@ -39,7 +39,7 @@ impl ChainIndex {
     }
 
     pub fn owners(&self) -> impl Iterator<Item = (&Id, &[Entry])> {
-        self.0.iter().map(|(uid, chain)| (uid, chain.as_slice()))
+        self.0.iter().map(|(id, chain)| (id, chain.as_slice()))
     }
 
     pub fn get(&self, owner: &Id) -> Option<&[Entry]> {
@@ -62,7 +62,7 @@ impl ChainIndex {
         let chain = self.force_get(owner);
         chain
             .iter()
-            .filter_map(|e| Some((e.typed::<RevocationCommit>()?.uid, e)))
+            .filter_map(|e| Some((e.typed::<RevocationCommit>()?.id, e)))
     }
 
     pub fn foreign_data(&self, except: &Id) -> impl Iterator<Item = &Entry> {
@@ -80,21 +80,21 @@ impl ValidIndex {
     pub fn new(chains: &ChainIndex) -> Self {
         let mut valid: HashMap<_, _> = chains
             .all()
-            .filter_map(|e| Some((e.typed::<DataCommit>()?.uid, e.clone())))
+            .filter_map(|e| Some((e.typed::<DataCommit>()?.id, e.clone())))
             .collect();
         chains
             .all()
             .filter_map(|e| e.typed::<RevocationCommit>())
             .for_each(|r| {
-                valid.remove(&r.uid);
+                valid.remove(&r.id);
             });
 
         valid.shrink_to_fit();
         Self(valid)
     }
 
-    pub fn get(&self, uid: &Id) -> Option<&Entry> {
-        self.0.get(uid)
+    pub fn get(&self, id: &Id) -> Option<&Entry> {
+        self.0.get(id)
     }
 
     pub fn all(&self) -> impl Iterator<Item = &Entry> + ExactSizeIterator {

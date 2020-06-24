@@ -45,7 +45,7 @@ impl<P: BoxProvider> DBView<P> {
         self.valid
             .all()
             .map(|e| e.force_typed::<DataCommit>())
-            .map(|d| (d.uid, d.index_hint))
+            .map(|d| (d.id, d.index_hint))
     }
 
     pub fn absolute_balance(&self) -> (usize, usize) {
@@ -88,16 +88,16 @@ impl<P: BoxProvider> DBView<P> {
 }
 
 impl<'a, P: BoxProvider> DBReader<'a, P> {
-    pub fn prepare_read(&self, uid: Id) -> crate::Result<ReadRequest> {
-        match self.view.valid.get(&uid) {
-            Some(_) => Ok(ReadRequest::payload::<P>(uid)),
+    pub fn prepare_read(&self, id: Id) -> crate::Result<ReadRequest> {
+        match self.view.valid.get(&id) {
+            Some(_) => Ok(ReadRequest::payload::<P>(id)),
             _ => Err(crate::Error::InterfaceError),
         }
     }
 
     pub fn read(&self, ta: ReadResult) -> crate::Result<Vec<u8>> {
-        let uid = Id::load(ta.id()).map_err(|_| crate::Error::InterfaceError)?;
-        match self.view.valid.get(&uid) {
+        let id = Id::load(ta.id()).map_err(|_| crate::Error::InterfaceError)?;
+        match self.view.valid.get(&id) {
             Some(e) => e.open_payload(&self.view.key, ta.data()),
             _ => Err(crate::Error::InterfaceError)?,
         }
@@ -117,23 +117,23 @@ impl<P: BoxProvider> DBWriter<P> {
     }
 
     pub fn write(self, data: &[u8], hint: IndexHint) -> crate::Result<(Id, Vec<WriteRequest>)> {
-        let uid = Id::random::<P>()?;
+        let id = Id::random::<P>()?;
         let ctr = self.view.chain.force_last(&self.owner).ctr() + 1;
 
-        let commit = DataCommit::new(self.owner, ctr, uid, hint);
+        let commit = DataCommit::new(self.owner, ctr, id, hint);
         let entry = Entry::new(&self.view.key, commit);
-        Ok((uid, entry.write_payload(&self.view.key, data)?))
+        Ok((id, entry.write_payload(&self.view.key, data)?))
     }
 
-    pub fn revoke(self, uid: Id) -> crate::Result<(WriteRequest, DeleteRequest)> {
-        let start_ctr = match self.view.valid.get(&uid) {
+    pub fn revoke(self, id: Id) -> crate::Result<(WriteRequest, DeleteRequest)> {
+        let start_ctr = match self.view.valid.get(&id) {
             Some(_) => self.view.chain.force_last(&self.owner).ctr() + 1,
             _ => Err(crate::Error::InterfaceError)?,
         };
 
-        let commit = RevocationCommit::new(self.owner, start_ctr, uid);
+        let commit = RevocationCommit::new(self.owner, start_ctr, id);
         let to_write = Entry::new(&self.view.key, commit).write();
-        let to_delete = DeleteRequest::uid(uid);
+        let to_delete = DeleteRequest::uid(id);
         Ok((to_write, to_delete))
     }
 
@@ -193,7 +193,7 @@ impl<P: BoxProvider> DBWriter<P> {
         for entry in self.view.valid.all_for_owner(other) {
             let this_ctr = this_ctr + to_write.len() as u64;
             let entry = entry.force_typed::<DataCommit>();
-            let commit = DataCommit::new(self.owner, this_ctr, entry.uid, entry.index_hint);
+            let commit = DataCommit::new(self.owner, this_ctr, entry.id, entry.index_hint);
             to_write.push(Entry::new(&self.view.key, commit).write());
         }
 

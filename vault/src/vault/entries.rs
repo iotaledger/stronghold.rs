@@ -89,9 +89,9 @@ impl WriteRequest {
         }
     }
 
-    pub(in crate) fn payload(uid: Id, payload: SealedPayload) -> Self {
+    pub(in crate) fn payload(id: Id, payload: SealedPayload) -> Self {
         Self {
-            id: uid.as_ref().to_vec(),
+            id: id.as_ref().to_vec(),
             data: payload.as_ref().to_vec(),
         }
     }
@@ -112,9 +112,9 @@ impl DeleteRequest {
         }
     }
 
-    pub(in crate) fn uid(uid: Id) -> Self {
+    pub(in crate) fn uid(id: Id) -> Self {
         Self {
-            id: uid.as_ref().to_vec(),
+            id: id.as_ref().to_vec(),
         }
     }
 
@@ -166,8 +166,8 @@ impl Entry {
 
     pub fn force_uid(&self) -> Id {
         self.typed::<DataCommit>()
-            .map(|d| d.uid)
-            .or_else(|| self.typed::<RevocationCommit>().map(|r| r.uid))
+            .map(|d| d.id)
+            .or_else(|| self.typed::<RevocationCommit>().map(|r| r.id))
             .expect("There is no Id in this commit")
     }
 
@@ -180,13 +180,13 @@ impl Entry {
         key: &Key<P>,
         data: &[u8],
     ) -> crate::Result<Vec<WriteRequest>> {
-        let uid = self.force_typed::<DataCommit>().uid;
+        let id = self.force_typed::<DataCommit>().id;
         let payload: SealedPayload = data
             .to_vec()
-            .encrypt(key, uid.as_ref())
+            .encrypt(key, id.as_ref())
             .expect("Failed to encrypt payload");
         Ok(vec![
-            WriteRequest::payload(uid, payload),
+            WriteRequest::payload(id, payload),
             WriteRequest::commit(self.sealed()),
         ])
     }
@@ -196,8 +196,8 @@ impl Entry {
         key: &Key<P>,
         data: &[u8],
     ) -> crate::Result<Vec<u8>> {
-        let uid = self.force_typed::<DataCommit>().uid;
-        let payload = SealedPayload::from(data.to_vec()).decrypt(key, uid.as_ref())?;
+        let id = self.force_typed::<DataCommit>().id;
+        let payload = SealedPayload::from(data.to_vec()).decrypt(key, id.as_ref())?;
         Ok(payload)
     }
 }

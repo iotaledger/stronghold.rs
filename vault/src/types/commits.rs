@@ -42,7 +42,7 @@ pub struct DataCommit {
     pub owner: Id,
     #[allow(unused)]
     pub ctr: Val,
-    pub uid: Id,
+    pub id: Id,
     pub index_hint: IndexHint,
 }
 
@@ -59,7 +59,7 @@ pub struct RevocationCommit {
     pub owner: Id,
     #[allow(unused)]
     pub ctr: Val,
-    pub uid: Id,
+    pub id: Id,
 }
 
 #[repr(packed)]
@@ -82,14 +82,14 @@ impl CommitType {
 }
 
 impl DataCommit {
-    pub fn new(owner: Id, ctr: Val, uid: Id, index_hint: IndexHint) -> Commit {
+    pub fn new(owner: Id, ctr: Val, id: Id, index_hint: IndexHint) -> Commit {
         let mut commit = Commit::default();
         let view: &mut Self = commit.view_mut();
 
         view.r#type = (CommitType::DataCommit as u64).into();
         view.owner = owner;
         view.ctr = ctr;
-        view.uid = uid;
+        view.id = id;
         view.index_hint = index_hint;
         commit
     }
@@ -102,14 +102,14 @@ impl TypedCommit for DataCommit {
 }
 
 impl RevocationCommit {
-    pub fn new(owner: Id, ctr: Val, uid: Id) -> Commit {
+    pub fn new(owner: Id, ctr: Val, id: Id) -> Commit {
         let mut commit = Commit::default();
         let view: &mut Self = commit.view_mut();
 
         view.r#type = (CommitType::RevocationCommit as u64).into();
         view.owner = owner;
         view.ctr = ctr;
-        view.uid = uid;
+        view.id = id;
         commit
     }
 }

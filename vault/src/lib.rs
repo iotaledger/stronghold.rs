@@ -29,6 +29,8 @@ pub enum Error {
     InterfaceError,
     #[error("Other Error")]
     OtherError(String),
+    #[error("Crypto Error: `{0}`")]
+    CryptoError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
