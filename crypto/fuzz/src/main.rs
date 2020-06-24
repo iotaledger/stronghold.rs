@@ -1,4 +1,4 @@
-use crypto::{chachapoly::ChachaPolyIetf, primitives::cipher::AeadCipher};
+use crypto::{primitives::cipher::AeadCipher, ChaChaPolyIetf};
 use hex::ToHex;
 use sodiumoxide::crypto::{aead::chacha20poly1305_ietf, stream::salsa20};
 
@@ -78,7 +78,7 @@ impl ChaChaPolyTestVector {
 
     pub fn test(self) {
         let mut ct_crypto = vec![0u8; self.plain.len() + 16];
-        ChachaPolyIetf
+        ChaChaPolyIetf
             .seal_to(
                 &mut ct_crypto,
                 &self.plain,
