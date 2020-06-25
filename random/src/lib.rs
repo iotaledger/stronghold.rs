@@ -5,6 +5,7 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
+// Error for dealing with errors from the OS RNG.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct OsRandomErr;
 impl Display for OsRandomErr {
@@ -14,6 +15,7 @@ impl Display for OsRandomErr {
 }
 impl Error for OsRandomErr {}
 
+// an interface for the OS's secure RNG
 pub struct OsRng;
 impl OsRng {
     pub fn secure_rng() -> Box<dyn SecureRng> {
@@ -23,10 +25,12 @@ impl OsRng {
 
 impl SecureRng for OsRng {
     fn random(&mut self, buf: &mut [u8]) -> Result<(), Box<dyn Error + 'static>> {
+        // the API bridge
         extern "C" {
             fn os_random_secrandom(buf: *mut u8, len: usize) -> u8;
         }
 
+        // call to the c code
         Ok(
             match unsafe { os_random_secrandom(buf.as_mut_ptr(), buf.len()) } {
                 0 => (),

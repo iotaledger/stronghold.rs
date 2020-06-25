@@ -1,9 +1,12 @@
+// include stdlib.h and size_t
 #include <stdlib.h>
 #include <stdint.h>
 
+// variable dependencies and includes.
 #if defined(USE_GETRANDOM)
 #include <sys/random.h>
 #elif defined(USE_ARC4RANDOM)
+// stdlib.h is already included.
 #elif defined(USE_SECRANDOMCOPYBYTES)
 #include <Security/SecRandom.h>
 #elif defined(USE_CRYPTGENRANDOM)
@@ -13,6 +16,8 @@
 #include <stdio.h>
 #endif
 
+// Get a secure series of random bytes and pass the length into a buffer.
+// returns 0 upon success and 1 upon error.
 uint8_t os_random_secrandom(uint8_t *buf, size_t len)
 {
 #if defined(USE_GETRANDOM)
