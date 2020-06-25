@@ -34,7 +34,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
             db: Db::new(key),
         };
         thread::Builder::new()
-            .name(format!("Client thread (UID: {:?})", id))
+            .name(format!("Client thread (ID: {:?})", id))
             .spawn(move || this.worker())
             .expect(line_error!())
     }
