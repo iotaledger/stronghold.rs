@@ -56,15 +56,44 @@ It is based on a suite of low-level libraries collectively called "parti" that p
 in Rust in a way that can be embedded and deployed to cross platform devices. Parti is a collection of libraries which deal with the
 obfuscation and sharing of secret values both mutable and immutable between devices.
 
+The primary task is to isolate the activity of “privileged” functions from other parts of the software stack. For example, a primary
+goal is to create a software enclave where private keys are used to sign messages without revealing those keys to other functions.
+
 ## Motivation
 [motivation]: #motivation
-We are making Stronghold because there is a very real need to
+### Research
+Coming on the heels of the Trinity attack, it became clear that a new method for securing secrets needed to be manufactured and made
+available to the pantheon of IOTA Products.
+
+### Market opportunities
+- Integration with the Wallet, Nodes, Identity, Access and developer toolchains strengthens IOTA’s internal position.
+- Publishing the low-level libraries will enable third-parties interested in secure rust-based systems will expand the visibility
+of IOTA in the security community
+
+### Alignment with mission
+- Creating and maintaining open source software, and providing educational opportunities is the core mission of the IOTA Stiftung.
+
+### Current resources/technology
+- Using off-the-shelf libraries has always been a trade-off. Writing the library in Rust using as few external dependencies as
+possible is a good baseline. Designing the library such that cryptographic primitives can be replaced will make the library viable
+in the long-term.
 
 ## Product Introduction
 [product]: #product
-<!--
-Talk about the business reasons for the product's existence, what it is for and whom it serves.
--->
+### Business Application Benefits
+- Enhance the security posture of critical IOTA Products
+- Enhance the perception of the IF as a “security-focussed” organisation.
+- Create new avenues for partnership and 3rd party implementation.
+
+### Technical Benefits
+- Writing in rust gives a number of memory-safety benefits
+- Fuzzing from the beginning improves confidence of software fitness
+- Providing reference implementation gives assurance to integrators
+
+### Educational Benefits
+- Rust is a single source of code truth is a practice that the IF is interested in.
+- Helping developers new to IOTA use a secure system from the beginning is a good way to train.
+- Learning about Fuzzing is useful for all developers.
 
 ## Stakeholders
 [stakeholders]: #stakeholders
@@ -233,3 +262,4 @@ be addressed in the future independently of the solution that comes out it?
 [future-possibilities]: #future-possibilities
 - Having a CLI
 - Having a service that can run as a daemon
+- Using a remote stronghold
