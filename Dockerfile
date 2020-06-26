@@ -22,6 +22,8 @@ RUN RUSTFLAGS=-Clinker=musl-gcc cargo build --release --target=x86_64-unknown-li
 
 RUN cd crypto/fuzz && RUSTFLAGS=-Clinker=musl-gcc cargo build --release --target=x86_64-unknown-linux-musl
 
+RUN cd vault/fuzz && RUSTFLAGS=-Clinker=musl-gcc cargo build --release --target=x86_64-unknown-linux-musl
+
 # ------------------------------------------------------------------------------
 # Crypto Fuzz Stage
 # ------------------------------------------------------------------------------
@@ -34,6 +36,10 @@ RUN adduser -D -s /bin/sh -u 1000 -G parti parti
 
 WORKDIR /home/parti/bin/
 
+# Build Crypto Fuzzer 
 COPY --from=cargo-build /usr/src/parti/crypto/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
 
-CMD ["sh", "-c", "./fuzz > crypto.log"]
+# Build vault Fuzzer
+# COPY --from=cargo-build /usr/src/parti/vault/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
+
+CMD ["fuzz"]
