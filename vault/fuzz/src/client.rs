@@ -10,23 +10,27 @@ use std::{
 };
 use vault::{BoxProvider, DBWriter, Id, IndexHint, Key};
 
+// fuzzing client
 pub struct Client<P: BoxProvider> {
     counter: usize,
     id: Id,
     db: Db<P>,
 }
 
+// vault wrapper
 pub struct Db<P: BoxProvider> {
     key: Key<P>,
     db: RefCell<Option<vault::DBView<P>>>,
 }
 
 impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
+    // generate new chain in vault
     pub fn create_chain(key: &Key<P>, id: Id) {
         let req = DBWriter::<P>::create_chain(key, id);
         remote::send_until_success(TransactionRequest::Write(req.clone()));
     }
 
+    // start a client
     pub fn start(counter: usize, key: Key<P>, id: Id) -> JoinHandle<()> {
         let this = Self {
             counter,
@@ -39,8 +43,10 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
             .expect(line_error!())
     }
 
+    // client worker
     fn worker(self) {
         for _ in 0..self.counter {
+            // execute a random transaction
             match CRng::usize(7) {
                 0..=2 => self.create_entry(),
                 3..=5 => self.revoke_entry(),
@@ -96,6 +102,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 }
 
 impl<P: BoxProvider> Db<P> {
+    // creates a new vault wrapper
     pub fn new(key: Key<P>) -> Self {
         let req = remote::send_until_success(TransactionRequest::List).list();
         let db = vault::DBView::load(key.clone(), req).expect(line_error!());
@@ -105,7 +112,9 @@ impl<P: BoxProvider> Db<P> {
         }
     }
 
+    // get a random entry
     pub fn random_entry(&self) -> Option<Id> {
+        //get all entries
         let _db = self.db.borrow();
         let db = _db.as_ref().expect(line_error!());
         let mut entries = match db.entries() {
@@ -113,14 +122,18 @@ impl<P: BoxProvider> Db<P> {
             _ => return None,
         };
 
+        // select random
         let choice = CRng::usize(entries.len());
         Some(entries.nth(choice).expect(line_error!()).0)
     }
+
+    // calls the function f with the vault and loads a new instance after f has completed.
     pub fn take<T>(&self, f: impl FnOnce(vault::DBView<P>) -> T) -> T {
         let mut _db = self.db.borrow_mut();
         let db = _db.take().expect(line_error!());
         let retval = f(db);
 
+        // reload vault
         let req = remote::send_until_success(TransactionRequest::List).list();
         *_db = Some(vault::DBView::load(self.key.clone(), req).expect(line_error!()));
         retval

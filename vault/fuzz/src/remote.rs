@@ -4,6 +4,7 @@ use vault::{DeleteRequest, ListResult, WriteRequest};
 
 use std::{thread, time::Duration};
 
+// vault request
 #[derive(Clone)]
 pub enum TransactionRequest {
     List,
@@ -11,6 +12,7 @@ pub enum TransactionRequest {
     Delete(DeleteRequest),
 }
 
+// vault result
 #[derive(Clone)]
 pub enum TransactionResult {
     List(ListResult),
@@ -19,6 +21,7 @@ pub enum TransactionResult {
 }
 
 impl TransactionResult {
+    // return a list of results
     pub fn list(self) -> ListResult {
         match self {
             TransactionResult::List(list) => list,
@@ -27,7 +30,9 @@ impl TransactionResult {
     }
 }
 
+// send a message
 fn send(req: TransactionRequest) -> Option<TransactionResult> {
+    // should request fail or not
     if CRng::bool(Env::error_probability()) {
         None?
     }
@@ -59,12 +64,14 @@ fn send(req: TransactionRequest) -> Option<TransactionResult> {
         }
     };
 
+    // should result fail or not
     match CRng::bool(Env::error_probability()) {
         false => Some(res),
         true => None,
     }
 }
 
+// send a request until there is a response - emulates network
 pub fn send_until_success(req: TransactionRequest) -> TransactionResult {
     loop {
         match send(req.clone()) {

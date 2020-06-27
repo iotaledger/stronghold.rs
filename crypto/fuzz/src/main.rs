@@ -130,7 +130,7 @@ impl ChaChaPolyTestVector {
 
         // Compare the sealed data.
         if ct_crypto != ct_sodium {
-            eprintln!("Error. Inputs:");
+            eprintln!("Error Information:");
             eprintln!("Key: {}", self.key.encode_hex::<String>());
             eprintln!("Nonce: {}", self.nonce.encode_hex::<String>());
             eprintln!("Plain: {}", self.plain.encode_hex::<String>());
