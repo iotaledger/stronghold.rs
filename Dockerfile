@@ -37,9 +37,9 @@ RUN adduser -D -s /bin/sh -u 1000 -G parti parti
 WORKDIR /home/parti/bin/
 
 # Build Crypto Fuzzer 
-COPY --from=cargo-build /usr/src/parti/crypto/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
+# COPY --from=cargo-build /usr/src/parti/crypto/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
 
 # Build vault Fuzzer
-# COPY --from=cargo-build /usr/src/parti/vault/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
+COPY --from=cargo-build /usr/src/parti/vault/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
 
-CMD ["fuzz"]
+CMD ["sh", "-c", "./fuzz"]
