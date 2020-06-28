@@ -42,4 +42,4 @@ WORKDIR /home/parti/bin/
 # Build vault Fuzzer
 COPY --from=cargo-build /usr/src/parti/vault/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
 
-CMD ["sh", "-c", "./fuzz"]
+CMD ["sh", "-c", "./fuzz > fuzz.log"]
