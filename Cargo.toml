@@ -3,5 +3,6 @@ members = [
     "vault",
     "primitives",
     "random",
-    "crypto"
+    "crypto",
+    "snapshot"
 ]
