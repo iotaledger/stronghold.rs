@@ -1,3 +1,3 @@
-fn main() {
-    println!("Hello, world!");
-}
+mod error;
+
+pub use error::{Error, Result};
