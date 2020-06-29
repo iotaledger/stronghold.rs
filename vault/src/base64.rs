@@ -1,10 +1,13 @@
+// a base64 encoder and decoder
 pub struct Base64;
 impl Base64 {
+    // base64 badding character
     const PADDING: u8 = b'=';
 
+    // encode data using a base64 uri-safe character set.
     pub fn encode_data(data: &[u8]) -> String {
+        // encode data
         let mut base = Vec::new();
-
         for chunk in data.chunks(3) {
             let num: usize = [16, 8, 0]
                 .iter()
@@ -16,6 +19,7 @@ impl Base64 {
                 .for_each(|b| base.push(Self::encode_byte(b)));
         }
 
+        // apply padding
         let to_pad = match data.len() % 3 {
             2 => 1,
             1 => 2,
@@ -32,7 +36,9 @@ impl Base64 {
         }
     }
 
+    // decode data from base64 based off of the URI safe character set
     pub fn decode_data(base: &[u8]) -> crate::Result<Vec<u8>> {
+        // find and remove padding.
         let (padded, base) = match base
             .iter()
             .rev()
@@ -44,6 +50,7 @@ impl Base64 {
             padded => (padded, &base[..base.len() - padded]),
         };
 
+        // decode the data.
         let mut data = Vec::new();
         for chunk in base.chunks(4) {
             let num: usize = [18usize, 12, 6, 0]
@@ -58,10 +65,12 @@ impl Base64 {
                 .for_each(|b| data.push(b));
         }
 
+        // remove any trailing padding related zeroes
         data.truncate(data.len() - padded);
         Ok(data)
     }
 
+    // encode a byte
     fn encode_byte(b: usize) -> u8 {
         match b {
             b @ 0..=25 => (b as u8 - 0) + b'A',
@@ -73,6 +82,7 @@ impl Base64 {
         }
     }
 
+    // decode a byte
     fn decode_byte(b: u8) -> crate::Result<usize> {
         match b {
             b @ b'A'..=b'Z' => Ok((b - b'A') as usize + 0),
@@ -85,10 +95,12 @@ impl Base64 {
     }
 }
 
+// a trait to make types base64 encodable
 pub trait Base64Encodable {
     fn base64(&self) -> String;
 }
 
+// a trait to make types base64 decodable
 pub trait Base64Decodable: Sized {
     fn from_base64(base: impl AsRef<[u8]>) -> crate::Result<Self>;
 }

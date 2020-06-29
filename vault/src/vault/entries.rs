@@ -17,71 +17,85 @@ use std::{
     vec::IntoIter,
 };
 
+// result of a list transaction
 #[derive(Clone)]
 pub struct ListResult {
     ids: Vec<Vec<u8>>,
 }
 
+// a read transaction
 #[derive(Clone)]
 pub struct ReadRequest {
     id: Vec<u8>,
 }
 
+// a read transaction result
 #[derive(Clone)]
 pub struct ReadResult {
     id: Vec<u8>,
     data: Vec<u8>,
 }
 
+// a write transaction
 #[derive(Clone)]
 pub struct WriteRequest {
     id: Vec<u8>,
     data: Vec<u8>,
 }
 
+// a delete transaction
 #[derive(Clone)]
 pub struct DeleteRequest {
     id: Vec<u8>,
 }
 
+// an entry in the vault
 #[derive(Clone)]
 pub struct Entry(Arc<(Commit, SealedCommit)>);
 
 impl ListResult {
+    // create new llist result
     pub fn new(ids: Vec<Vec<u8>>) -> Self {
         Self { ids }
     }
+    // get the ids of entries
     pub fn ids(&self) -> &Vec<Vec<u8>> {
         &self.ids
     }
 }
 
 impl ReadRequest {
+    // create a new read request
     pub(in crate) fn payload<P: BoxProvider>(id: Id) -> Self {
         Self {
             id: id.as_ref().to_vec(),
         }
     }
+    // id of entry
     pub fn id(&self) -> &[u8] {
         &self.id
     }
 }
 
 impl ReadResult {
+    // new read result
     pub fn new(id: Vec<u8>, data: Vec<u8>) -> Self {
         Self { id, data }
     }
 
+    // id of read result
     pub fn id(&self) -> &[u8] {
         &self.id
     }
 
+    // data of entry
     pub fn data(&self) -> &[u8] {
         &self.data
     }
 }
 
 impl WriteRequest {
+    // create a new write request
     pub(in crate) fn commit(commit: &SealedCommit) -> Self {
         Self {
             id: commit.as_ref().to_vec(),
@@ -89,6 +103,7 @@ impl WriteRequest {
         }
     }
 
+    // creates a new request to write
     pub(in crate) fn payload(id: Id, payload: SealedPayload) -> Self {
         Self {
             id: id.as_ref().to_vec(),
@@ -96,52 +111,63 @@ impl WriteRequest {
         }
     }
 
+    // id of entry
     pub fn id(&self) -> &[u8] {
         &self.id
     }
 
+    // data of entry
     pub fn data(&self) -> &[u8] {
         &self.data
     }
 }
 
 impl DeleteRequest {
+    // create new delete request
     pub(in crate) fn commit(commit: &SealedCommit) -> Self {
         Self {
             id: commit.as_ref().to_vec(),
         }
     }
 
+    // create delete request by id
     pub(in crate) fn uid(id: Id) -> Self {
         Self {
             id: id.as_ref().to_vec(),
         }
     }
 
+    // get id of delete request
     pub fn id(&self) -> &[u8] {
         &self.id
     }
 }
 
 impl Entry {
+    // open a commit from entry by id
     pub fn open<P: BoxProvider>(key: &Key<P>, id: &[u8]) -> Option<Self> {
+        // get fields and create commit
         let sealed = SealedCommit::from(id.to_vec());
         let packed = sealed.decrypt(key, b"").ok()?;
         Some(Self(Arc::new((packed, sealed))))
     }
+    // create a new entry
     pub fn new<P: BoxProvider>(key: &Key<P>, commit: Commit) -> Self {
         let sealed = commit.encrypt(key, b"").expect("Failed to encrypt commit");
         Self(Arc::new((commit, sealed)))
     }
 
+    // create a sealed commit
     pub fn sealed(&self) -> &SealedCommit {
         &(self.0).1
     }
 
+    // the commit for this entry
     pub fn commit(&self) -> &Commit {
         &(self.0).0
     }
 
+    // get a typed commit view
     pub fn typed<T: TypedCommit>(&self) -> Option<&T>
     where
         Commit: AsView<T>,
@@ -149,6 +175,7 @@ impl Entry {
         self.commit().typed()
     }
 
+    // get a typed commit view
     pub fn force_typed<T: TypedCommit>(&self) -> &T
     where
         Commit: AsView<T>,
@@ -156,14 +183,17 @@ impl Entry {
         self.commit().force_typed()
     }
 
+    // get commit owner
     pub fn owner(&self) -> Id {
         self.commit().untyped().owner
     }
 
+    // get commit counter
     pub fn ctr(&self) -> Val {
         self.commit().untyped().ctr
     }
 
+    // the id if the entry is data or a revoke
     pub fn force_uid(&self) -> Id {
         self.typed::<DataCommit>()
             .map(|d| d.id)
@@ -171,10 +201,12 @@ impl Entry {
             .expect("There is no Id in this commit")
     }
 
+    // create a write request
     pub fn write(&self) -> WriteRequest {
         WriteRequest::commit(self.sealed())
     }
 
+    // create a write request
     pub fn write_payload<P: BoxProvider>(
         &self,
         key: &Key<P>,
@@ -191,6 +223,7 @@ impl Entry {
         ])
     }
 
+    // open the payload
     pub fn open_payload<P: BoxProvider>(
         &self,
         key: &Key<P>,

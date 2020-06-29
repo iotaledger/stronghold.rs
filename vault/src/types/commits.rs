@@ -11,6 +11,7 @@ use std::{
     hash::Hash,
 };
 
+// generic commit type
 #[repr(u64)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 enum CommitType {
@@ -19,63 +20,87 @@ enum CommitType {
     InitCommit = 10,
 }
 
+// a sealed commit
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct SealedCommit(Vec<u8>);
 
+// a generic commit (untyped)
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Commit(Vec<u8>);
 
+// untyped commit view
 #[repr(packed)]
 #[derive(Debug)]
 pub struct UntypedCommit {
-    pub r#type: Val,
+    // commit type
+    pub type_id: Val,
+    // owner
     pub owner: Id,
+    // counter
     pub ctr: Val,
 }
 
+// a data commit
 #[repr(packed)]
 #[derive(Debug)]
 pub struct DataCommit {
+    // commit type
     #[allow(unused)]
-    pub r#type: Val,
+    pub type_id: Val,
     #[allow(unused)]
+    // owner
     pub owner: Id,
     #[allow(unused)]
+    // counter
     pub ctr: Val,
+    // id for this entry
     pub id: Id,
+    // hint for indexing
     pub index_hint: IndexHint,
 }
 
+// a typed commit
 pub trait TypedCommit {
-    fn r#type() -> Val;
+    fn type_id() -> Val;
 }
 
+// a revocation commit
 #[repr(packed)]
 #[derive(Debug)]
 pub struct RevocationCommit {
+    // commit type
     #[allow(unused)]
-    pub r#type: Val,
+    pub type_id: Val,
+    // owner
     #[allow(unused)]
     pub owner: Id,
+    // counter
     #[allow(unused)]
     pub ctr: Val,
+    // id for entry
     pub id: Id,
 }
 
+// commit that initializes the chain
 #[repr(packed)]
 #[derive(Debug)]
 pub struct InitCommit {
+    // commit type
     #[allow(unused)]
-    pub r#type: Val,
+    pub type_id: Val,
+    // owner
     #[allow(unused)]
     pub owner: Id,
+    // counter
     pub ctr: Val,
 }
 
+// some sealed data
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct SealedPayload(Vec<u8>);
 
 impl CommitType {
+    // convert commit type into the number
     pub fn val(&self) -> Val {
         Val::from(*self as u64)
     }
@@ -86,7 +111,7 @@ impl DataCommit {
         let mut commit = Commit::default();
         let view: &mut Self = commit.view_mut();
 
-        view.r#type = (CommitType::DataCommit as u64).into();
+        view.type_id = (CommitType::DataCommit as u64).into();
         view.owner = owner;
         view.ctr = ctr;
         view.id = id;
@@ -96,7 +121,7 @@ impl DataCommit {
 }
 
 impl TypedCommit for DataCommit {
-    fn r#type() -> Val {
+    fn type_id() -> Val {
         CommitType::DataCommit.val()
     }
 }
@@ -106,7 +131,7 @@ impl RevocationCommit {
         let mut commit = Commit::default();
         let view: &mut Self = commit.view_mut();
 
-        view.r#type = (CommitType::RevocationCommit as u64).into();
+        view.type_id = (CommitType::RevocationCommit as u64).into();
         view.owner = owner;
         view.ctr = ctr;
         view.id = id;
@@ -114,7 +139,7 @@ impl RevocationCommit {
     }
 }
 impl TypedCommit for RevocationCommit {
-    fn r#type() -> Val {
+    fn type_id() -> Val {
         CommitType::RevocationCommit.val()
     }
 }
@@ -128,8 +153,8 @@ impl Commit {
     where
         Self: AsView<T>,
     {
-        match self.untyped().r#type {
-            r#type if r#type == T::r#type() => Some(self.view()),
+        match self.untyped().type_id {
+            type_id if type_id == T::type_id() => Some(self.view()),
             _ => None,
         }
     }
@@ -138,8 +163,8 @@ impl Commit {
     where
         Self: AsViewMut<T>,
     {
-        match self.untyped().r#type {
-            r#type if r#type == T::r#type() => Some(self.view_mut()),
+        match self.untyped().type_id {
+            type_id if type_id == T::type_id() => Some(self.view_mut()),
             _ => None,
         }
     }
@@ -165,7 +190,7 @@ impl InitCommit {
         let mut commit = Commit::default();
         let view: &mut Self = commit.view_mut();
 
-        view.r#type = (CommitType::InitCommit as u64).into();
+        view.type_id = (CommitType::InitCommit as u64).into();
         view.owner = owner;
         view.ctr = ctr;
         commit
@@ -173,7 +198,7 @@ impl InitCommit {
 }
 
 impl TypedCommit for InitCommit {
-    fn r#type() -> Val {
+    fn type_id() -> Val {
         CommitType::InitCommit.val()
     }
 }
