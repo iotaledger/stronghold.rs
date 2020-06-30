@@ -32,6 +32,15 @@ pub fn key_dir() -> crate::Result<PathBuf> {
     Ok(key_dir)
 }
 
+pub fn keystore_dir() -> crate::Result<PathBuf> {
+    let main_dir = main_dir()?;
+    let store_dir = main_dir.join("keystore");
+
+    verify_or_create(&store_dir)?;
+
+    Ok(store_dir)
+}
+
 pub fn verify_or_create(dir: &Path) -> crate::Result<()> {
     if dir.is_dir() {
         return Ok(());

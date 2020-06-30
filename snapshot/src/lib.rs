@@ -1,5 +1,6 @@
 mod error;
 mod files;
+mod keys;
 mod snapshot;
 mod utils;
 
