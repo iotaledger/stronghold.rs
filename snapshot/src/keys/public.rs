@@ -18,7 +18,7 @@ pub struct PublicWrapper {
 #[derive(Serialize, Deserialize, Clone)]
 pub enum KeyAction {
     New(PublicWrapper),
-    SignRequest(PublicWrapper),
+    Sign(PublicWrapper),
     Revoke(PublicWrapper),
 }
 
@@ -34,7 +34,7 @@ impl PublicKey {
         calc_hash(&bytes)
     }
 
-    fn verify(&self, payload: &[u8], expected: &[u8]) -> bool {
+    pub fn verify(&self, payload: &[u8], expected: &[u8]) -> bool {
         let sig = sign::Signature::from_slice(payload);
         if let None = sig {
             return false;
@@ -68,16 +68,14 @@ impl KeyAction {
     pub fn get_digest(&self) -> Vec<u8> {
         match self {
             KeyAction::New(kw) => calc_hash(&concat(&["new".as_bytes(), &kw.get_digest()])),
-            KeyAction::SignRequest(kw) => {
-                calc_hash(&concat(&["sign".as_bytes(), &kw.get_digest()]))
-            }
+            KeyAction::Sign(kw) => calc_hash(&concat(&["sign".as_bytes(), &kw.get_digest()])),
             KeyAction::Revoke(kw) => calc_hash(&concat(&["revoke".as_bytes(), &kw.get_digest()])),
         }
     }
 }
 
 impl ActionSignature {
-    fn get_digest(&self) -> Vec<u8> {
+    pub fn get_digest(&self) -> Vec<u8> {
         calc_hash(&concat(&[self.key_id.as_bytes(), &self.payload]))
     }
 }
