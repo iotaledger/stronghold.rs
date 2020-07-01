@@ -24,7 +24,7 @@ pub enum KeyAction {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ActionSignature {
-    pub key_id: String,
+    pub id: String,
     pub payload: Vec<u8>,
 }
 
@@ -76,6 +76,6 @@ impl KeyAction {
 
 impl ActionSignature {
     pub fn get_digest(&self) -> Vec<u8> {
-        calc_hash(&concat(&[self.key_id.as_bytes(), &self.payload]))
+        calc_hash(&concat(&[self.id.as_bytes(), &self.payload]))
     }
 }

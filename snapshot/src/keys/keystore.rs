@@ -117,7 +117,7 @@ impl KeyStore {
 
             match &it.action {
                 KeyAction::New(kw) => {
-                    let mut sign_key = trusted.get(&it.signature.key_id);
+                    let mut sign_key = trusted.get(&it.signature.id);
                     if idx != 0 {
                         if let None = sign_key {
                             return None;
@@ -153,7 +153,7 @@ impl KeyStore {
                     }
                 }
                 KeyAction::Revoke(kw) => {
-                    let sign_key = trusted.get(&it.signature.key_id);
+                    let sign_key = trusted.get(&it.signature.id);
                     if let None = sign_key {
                         return None;
                     };
@@ -198,7 +198,7 @@ impl StoreInternals {
     }
 }
 
-fn write_head_file(head: &[u8]) -> crate::Result<()> {
+pub fn write_head_file(head: &[u8]) -> crate::Result<()> {
     let file = crate::files::keystore_head()?;
     let contents = serde_json::to_string(head)?;
     let res = fs::write(file, contents.as_bytes())?;
