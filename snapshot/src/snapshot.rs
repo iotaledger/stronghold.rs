@@ -61,7 +61,7 @@ fn pull_stream(header: &[u8], &Key(ref key): &Key) -> crate::Result<Stream<Pull>
 }
 
 // encrypt an input with a password in using secretstream.
-pub fn encrypt(input: Vec<u8>, out: &mut File, password: &[u8]) -> crate::Result<()> {
+pub fn encrypt_snapshot(input: Vec<u8>, out: &mut File, password: &[u8]) -> crate::Result<()> {
     // convert vector to slice
     let mut slice = input.as_slice();
     // setup buffer
@@ -109,7 +109,11 @@ pub fn encrypt(input: Vec<u8>, out: &mut File, password: &[u8]) -> crate::Result
 }
 
 // decrypt file into a vector with a password.
-pub fn decrypt(input: &mut File, output: &mut Vec<u8>, password: &[u8]) -> crate::Result<()> {
+pub fn decrypt_snapshot(
+    input: &mut File,
+    output: &mut Vec<u8>,
+    password: &[u8],
+) -> crate::Result<()> {
     // check to see if the file is long enough
     if input.metadata()?.len()
         <= (pwhash::SALTBYTES + secretstream::HEADERBYTES + SIGN.len()) as u64
