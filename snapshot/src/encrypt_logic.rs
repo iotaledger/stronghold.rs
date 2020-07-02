@@ -173,3 +173,42 @@ pub fn decrypt_snapshot(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use sodiumoxide::crypto::secretstream::Tag;
+
+    #[test]
+    fn test_key_derivation() {
+        let salt = generate_salt().unwrap();
+        let key_one = derive_key_from_password(b"some long password", &salt).unwrap();
+        let key_two = derive_key_from_password(b"some long password", &salt).unwrap();
+
+        // same keys as long as the salt is the same.
+        assert_eq!(key_one, key_two);
+    }
+
+    #[test]
+    fn test_stream() {
+        // get salt and key from password.
+        let salt = generate_salt().unwrap();
+        let key = derive_key_from_password(b"a password", &salt).unwrap();
+        // data to write to stream.
+        let data = b"data";
+
+        // create a new push_stream with key.
+        let (mut push_stream, header) = create_stream(&key).unwrap();
+
+        // put in the header and key to get the pull_stream.
+        let mut pull_stream = pull_stream(&header.0, &key).unwrap();
+
+        // push the data into the push stream to encrypt it.
+        let cipher = push_stream.push(data, None, Tag::Final).unwrap();
+
+        // pull the data through the pull_stream to decrypt it.
+        let (plain, _) = pull_stream.pull(&cipher, None).unwrap();
+
+        assert_eq!(data, &plain.as_slice());
+    }
+}
