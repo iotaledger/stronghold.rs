@@ -10,7 +10,7 @@ document: SCOPE
 version: 0000
 maintainer: Daniel Thompson-Yvetot <daniel.yvetot@iota.org>
 contributors: [tensorprogramming <tensordeveloper@gmail.com>, Daniel Thompson-Yvetot <daniel.yvetot@iota.org>]
-sponsors: []
+sponsors: [Navin Ramachandran <navin@iota.org>]
 licenses: ["MIT/Apache-2", "CC-BY-INTL-3.0"]
 updated: 2020-MAY-29
 ```
