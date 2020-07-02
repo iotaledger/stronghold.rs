@@ -104,18 +104,34 @@ in the long-term.
 
 ## Guide-level explanation
 [guide-level-explanation]: #guide-level-explanation
-<!--
-Explain the proposal as if it was already included in the language and you were
-teaching it to another programmer. That generally means:
 
-- Introducing new named concepts.
-- Explaining the feature largely in terms of examples.
-- Explaining how programmers should *think* about the feature, and how it should impact the
- way they use this software. It should explain the impact as concretely as possible.
-- If applicable, provide sample error messages, deprecation warnings, or migration guidance.
-- If applicable, describe the differences between teaching this to existing programmers
-and new programmers.
--->
+Stronghold itself has several core components:
+
+### 1. Low level libraries (parti.rs)
+
+There are 5 low level libraries:
+  - crypto (swappable crypto implementation, chacha20poly1305 & salsa20)
+  - primitives (shared structs and traits)
+  - random (secure implementation of random)
+  - snapshot (stateful storage management)
+  - vault (interaction with storage)
+
+### 2. High level library (stronghold.rs)
+
+The high level library integrates parti.rs and iota.rs to a fully fledged secret storage and
+enclave based system for operations in the context of the IOTA Protocol.
+
+It's primary purpose is to serve as the operational enclave for several IOTA Products:
+- Wallet
+- Identity
+- Access
+
+### 3. Actor Model layer
+
+The Actor Model layer is a thin wrapper for message parsing and message sending that is
+built for interaction with the wallet and any other projects that deem the actor model
+suitable to their needs.
+
 
 ## Prior art
 [prior-art]: #prior-art
