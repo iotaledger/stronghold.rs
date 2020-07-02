@@ -5,46 +5,25 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub fn main_dir() -> crate::Result<PathBuf> {
+pub fn home_dir() -> crate::Result<PathBuf> {
     let home = dirs::home_dir().unwrap();
-    let main_dir = home.join(format!(".{}", "parti"));
+    let home_dir = home.join(format!(".{}", "parti"));
 
-    verify_or_create(&main_dir);
+    verify_or_create(&home_dir);
 
-    Ok(main_dir)
+    Ok(home_dir)
 }
 
 pub fn snapshot_dir() -> crate::Result<PathBuf> {
-    let main_dir = main_dir()?;
-    let snapshot_dir = main_dir.join("snapshots");
+    let home_dir = home_dir()?;
+    let snapshot_dir = home_dir.join("snapshots");
 
     verify_or_create(&snapshot_dir)?;
 
     Ok(snapshot_dir)
 }
 
-pub fn key_dir() -> crate::Result<PathBuf> {
-    let main_dir = main_dir()?;
-    let key_dir = main_dir.join("keys");
-
-    verify_or_create(&key_dir)?;
-
-    Ok(key_dir)
-}
-
-pub fn keystore_file() -> crate::Result<PathBuf> {
-    let key_dir = key_dir()?;
-
-    Ok(key_dir.join("keystore"))
-}
-
-pub fn keystore_head() -> crate::Result<PathBuf> {
-    let key_dir = key_dir()?;
-
-    Ok(key_dir.join("head"))
-}
-
-pub fn verify_or_create(dir: &Path) -> crate::Result<()> {
+fn verify_or_create(dir: &Path) -> crate::Result<()> {
     if dir.is_dir() {
         return Ok(());
     }

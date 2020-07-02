@@ -9,10 +9,10 @@ use std::{
 };
 
 const CHUNK_SIZE: usize = 512; // data chunk size
-const SIGN: [u8; 5] = [50, 41, 52, 54, 49]; // PARTI in hex
+const SIGN: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49]; // PARTI in hex
 
 // generate the salt for the encryption algorithm.
-pub fn generate_salt() -> crate::Result<pwhash::Salt> {
+fn generate_salt() -> crate::Result<pwhash::Salt> {
     // generate salt
     let salt = pwhash::gen_salt();
     // hash salt with sha256
@@ -24,7 +24,7 @@ pub fn generate_salt() -> crate::Result<pwhash::Salt> {
 }
 
 // derive key from salt and password.
-pub fn derive_key_from_password(password: &[u8], salt: &pwhash::Salt) -> crate::Result<Key> {
+fn derive_key_from_password(password: &[u8], salt: &pwhash::Salt) -> crate::Result<Key> {
     // empty key
     let mut key = [0; secretstream::KEYBYTES];
 
@@ -44,7 +44,7 @@ pub fn derive_key_from_password(password: &[u8], salt: &pwhash::Salt) -> crate::
 }
 
 // create an encryption push stream and a header.
-pub fn create_stream(&Key(ref key): &Key) -> crate::Result<(Stream<Push>, Header)> {
+fn create_stream(&Key(ref key): &Key) -> crate::Result<(Stream<Push>, Header)> {
     let stream_key = secretstream::Key(key.to_owned());
 
     Stream::init_push(&stream_key)
@@ -52,7 +52,7 @@ pub fn create_stream(&Key(ref key): &Key) -> crate::Result<(Stream<Push>, Header
 }
 
 // create a decryption pull stream.
-pub fn pull_stream(header: &[u8], &Key(ref key): &Key) -> crate::Result<Stream<Pull>> {
+fn pull_stream(header: &[u8], &Key(ref key): &Key) -> crate::Result<Stream<Pull>> {
     let stream_key = secretstream::Key(key.to_owned());
     let header = Header::from_slice(header).expect("Invalid Header size");
 

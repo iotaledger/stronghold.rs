@@ -8,8 +8,6 @@ pub enum Error {
     SnapshotError(String),
     #[error("Crypto Error: `{0}`")]
     CryptoError(String),
-    #[error("Random Error: `{0}`")]
-    RNGError(#[from] Box<dyn std::error::Error>),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
