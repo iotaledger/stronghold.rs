@@ -4,8 +4,10 @@ use common::{JsonValueExt, ResultExt};
 use crypto::ChaCha20Ietf;
 use json::JsonValue;
 
+// vector data.
 const VECTORS: &str = include_str!("chacha_ietf.json");
 
+// struct for vector data
 #[derive(Debug)]
 struct TestVector {
     id: String,
@@ -16,6 +18,7 @@ struct TestVector {
 }
 
 impl TestVector {
+    // load the json vectors
     pub fn load() -> Vec<Self> {
         let json = json::parse(VECTORS).unwrap();
         let mut vecs = Vec::new();
@@ -32,13 +35,15 @@ impl TestVector {
 
         vecs
     }
-
+    // test encryption
     pub fn test_encryption(&self) -> &Self {
+        // encrypt
         let mut buf = self.plain.clone();
         ChaCha20Ietf::cipher()
             .encrypt(&mut buf, self.plain.len(), &self.key, &self.nonce)
             .unwrap();
         assert_eq!(buf, self.cipher, "Vector: \"{}\"", self.id);
+        // encrypt with buffer
         let mut buf = vec![0; self.cipher.len()];
         ChaCha20Ietf::cipher()
             .encrypt_to(&mut buf, &self.plain, &self.key, &self.nonce)
@@ -47,13 +52,16 @@ impl TestVector {
         self
     }
 
+    // test decryption
     pub fn test_decryption(&self) -> &Self {
+        // decryption
         let mut buf = self.cipher.clone();
         ChaCha20Ietf::cipher()
             .decrypt(&mut buf, self.cipher.len(), &self.key, &self.nonce)
             .unwrap();
         assert_eq!(buf, self.plain, "Vector: \"{}\"", self.id);
 
+        // test decryption with buffer
         let mut buf = vec![0; self.plain.len()];
         ChaCha20Ietf::cipher()
             .decrypt_to(&mut buf, &self.cipher, &self.key, &self.nonce)
@@ -71,6 +79,7 @@ fn test_crypto() {
     }
 }
 
+// API test vector
 #[derive(Default, Clone, Debug)]
 pub struct ApiTestVector {
     id: String,
@@ -83,6 +92,7 @@ pub struct ApiTestVector {
     error: String,
 }
 impl ApiTestVector {
+    // load json vectors
     pub fn load() -> Vec<Self> {
         let json = json::parse(VECTORS).unwrap();
         let mut defaults = Self::default();
@@ -97,6 +107,7 @@ impl ApiTestVector {
         vecs
     }
 
+    // test encryption
     pub fn test_encryption(&self) -> &Self {
         let key = vec![0; self.key_len];
         let nonce = vec![0; self.nonce_len];
@@ -116,6 +127,7 @@ impl ApiTestVector {
         self
     }
 
+    // test decryption
     pub fn test_decryption(&self) -> &Self {
         let key = vec![0; self.key_len];
         let nonce = vec![0; self.nonce_len];
@@ -135,6 +147,7 @@ impl ApiTestVector {
         self
     }
 
+    // load json
     fn load_json(&mut self, j: &JsonValue) {
         self.id = j["id"].option_string(&self.id);
         self.key_len = j["key_len"].option_usize(self.key_len);

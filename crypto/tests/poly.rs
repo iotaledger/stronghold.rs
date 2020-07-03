@@ -4,8 +4,10 @@ use common::{JsonValueExt, ResultExt};
 use crypto::Poly1305;
 use json::JsonValue;
 
+// vector data.
 const VECTORS: &str = include_str!("poly.json");
 
+// struct for vector data
 #[derive(Debug)]
 struct TestVector {
     id: String,
@@ -15,6 +17,7 @@ struct TestVector {
 }
 
 impl TestVector {
+    // load json vectors
     pub fn load() -> Vec<Self> {
         let json = json::parse(VECTORS).unwrap();
         let mut vecs = Vec::new();
@@ -29,6 +32,7 @@ impl TestVector {
         vecs
     }
 
+    // test mac calculation
     pub fn test_mac(&self) -> &Self {
         let mut buf = vec![0; self.mac.len()];
         Poly1305::message_auth_code()
@@ -47,6 +51,7 @@ fn test_crypto() {
     }
 }
 
+// API test vector
 #[derive(Default, Clone, Debug)]
 pub struct ApiTestVector {
     id: String,
@@ -57,6 +62,7 @@ pub struct ApiTestVector {
 }
 
 impl ApiTestVector {
+    // load json
     pub fn load() -> Vec<Self> {
         let json = json::parse(VECTORS).unwrap();
         let mut defaults = Self::default();
@@ -71,6 +77,7 @@ impl ApiTestVector {
         vecs
     }
 
+    /// Tests the MAC Calculation
     pub fn test_mac(&self) -> &Self {
         let key = vec![0; self.key_len];
         let data = vec![0; self.data_len];
@@ -84,6 +91,7 @@ impl ApiTestVector {
         self
     }
 
+    // load json
     fn load_json(&mut self, j: &JsonValue) {
         self.id = j["id"].option_string(&self.id);
         self.key_len = j["key_len"].option_usize(self.key_len);

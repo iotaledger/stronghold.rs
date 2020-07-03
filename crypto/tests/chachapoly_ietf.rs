@@ -4,8 +4,10 @@ use common::{JsonValueExt, ResultExt};
 use crypto::ChaChaPolyIetf;
 use json::JsonValue;
 
+// json vector data
 const VECTORS: &str = include_str!("chachapoly_ietf.json");
 
+// struct for json vector data
 #[derive(Debug)]
 struct TestVector {
     id: String,
@@ -17,6 +19,7 @@ struct TestVector {
 }
 
 impl TestVector {
+    // load json data
     pub fn load() -> Vec<Self> {
         let json = json::parse(VECTORS).unwrap();
         let mut vecs = Vec::new();
@@ -35,6 +38,7 @@ impl TestVector {
         vecs
     }
 
+    // test encryption
     pub fn test_encryption(&self) -> &Self {
         let mut buf = self.plain.clone();
         buf.extend_from_slice(&[0; 16]);
@@ -43,6 +47,7 @@ impl TestVector {
             .unwrap();
         assert_eq!(buf, self.cipher, "Vector: \"{}\"", self.id);
 
+        // encryption with buffer
         let mut buf = vec![0; self.cipher.len()];
         ChaChaPolyIetf::aead_cipher()
             .seal_with(&mut buf, &self.plain, &self.ad, &self.key, &self.nonce)
@@ -51,6 +56,7 @@ impl TestVector {
         self
     }
 
+    // test decryption
     pub fn test_decryption(&self) -> &Self {
         let mut buf = self.cipher.clone();
         let len = ChaChaPolyIetf::aead_cipher()
@@ -69,6 +75,7 @@ impl TestVector {
             self.id
         );
 
+        // decryption with buffer
         let mut buf = vec![0; self.plain.len()];
         ChaChaPolyIetf::aead_cipher()
             .open_to(&mut buf, &self.cipher, &self.ad, &self.key, &self.nonce)
@@ -86,6 +93,7 @@ fn test_crypto() {
     }
 }
 
+// MAC error vector
 #[derive(Debug)]
 struct ErrorVector {
     id: String,
@@ -96,6 +104,7 @@ struct ErrorVector {
 }
 
 impl ErrorVector {
+    // load data from json
     pub fn load() -> Vec<Self> {
         let json = json::parse(VECTORS).unwrap();
         let mut vecs = Vec::new();
@@ -111,6 +120,7 @@ impl ErrorVector {
         vecs
     }
 
+    // test decryption
     pub fn test_decryption(&self) -> &Self {
         let mut buf = self.cipher.clone();
         let error = ChaChaPolyIetf::aead_cipher()
@@ -140,6 +150,7 @@ fn test_error() {
     }
 }
 
+// api vector struct
 #[derive(Default, Clone, Debug)]
 pub struct ApiTestVector {
     id: String,
@@ -153,6 +164,7 @@ pub struct ApiTestVector {
     error: String,
 }
 impl ApiTestVector {
+    // load json
     pub fn load() -> Vec<Self> {
         let json = json::parse(VECTORS).unwrap();
         let mut defaults = Self::default();
@@ -167,6 +179,7 @@ impl ApiTestVector {
         vecs
     }
 
+    // test encryption
     pub fn test_encryption(&self) -> &Self {
         let key = vec![0; self.key_len];
         let nonce = vec![0; self.nonce_len];
@@ -177,26 +190,17 @@ impl ApiTestVector {
         let error = ChaChaPolyIetf::aead_cipher()
             .seal(&mut buf, input.len(), &ad, &key, &nonce)
             .error_or(format!("Vector: \"{}\"", self.id));
-        assert_eq!(
-            error.to_string(),
-            self.error,
-            "Vector: \"{}\"",
-            self.id
-        );
+        assert_eq!(error.to_string(), self.error, "Vector: \"{}\"", self.id);
 
         let error = ChaChaPolyIetf::aead_cipher()
             .seal_with(&mut buf, &input, &ad, &key, &nonce)
             .error_or(format!("Vector: \"{}\"", self.id));
-        assert_eq!(
-            error.to_string(),
-            self.error,
-            "Vector: \"{}\"",
-            self.id
-        );
+        assert_eq!(error.to_string(), self.error, "Vector: \"{}\"", self.id);
 
         self
     }
 
+    // test decryption
     pub fn test_decryption(&self) -> &Self {
         let key = vec![0; self.key_len];
         let nonce = vec![0; self.nonce_len];
@@ -207,26 +211,17 @@ impl ApiTestVector {
         let error = ChaChaPolyIetf::aead_cipher()
             .open(&mut buf, input.len(), &ad, &key, &nonce)
             .error_or(format!("Vector: \"{}\"", self.id));
-        assert_eq!(
-            error.to_string(),
-            self.error,
-            "Vector: \"{}\"",
-            self.id
-        );
+        assert_eq!(error.to_string(), self.error, "Vector: \"{}\"", self.id);
 
         let error = ChaChaPolyIetf::aead_cipher()
             .open_to(&mut buf, &input, &ad, &key, &nonce)
             .error_or(format!("Vector: \"{}\"", self.id));
-        assert_eq!(
-            error.to_string(),
-            self.error,
-            "Vector: \"{}\"",
-            self.id
-        );
+        assert_eq!(error.to_string(), self.error, "Vector: \"{}\"", self.id);
 
         self
     }
 
+    // load json
     fn load_json(&mut self, j: &JsonValue) {
         self.id = j["id"].option_string(&self.id);
         self.key_len = j["key_len"].option_usize(self.key_len);

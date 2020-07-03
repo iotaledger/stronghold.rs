@@ -1,11 +1,17 @@
 use hex::decode;
 use json::{iterators::Members, JsonValue};
 
+// extension for JsonValue
 pub trait JsonValueExt {
+    // decode string
     fn check_string(&self) -> String;
+    // hex-decode string into byte vector
     fn check_bytes(&self) -> Vec<u8>;
+    // check if null
     fn check_array_iter(&self) -> Members;
+    // get usize if not null
     fn option_usize(&self, def: usize) -> usize;
+    // get string if not null
     fn option_string(&self, def: impl ToString) -> String;
 }
 
@@ -38,7 +44,9 @@ impl JsonValueExt for JsonValue {
     }
 }
 
+// result extension
 pub trait ResultExt<T, E> {
+    // unwraps error and panics
     fn error_or(self, msg: impl ToString) -> E;
 }
 

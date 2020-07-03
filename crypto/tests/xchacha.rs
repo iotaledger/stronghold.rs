@@ -4,8 +4,10 @@ use common::{JsonValueExt, ResultExt};
 use crypto::XChaCha20;
 use json::JsonValue;
 
+// vector data.
 const VECTORS: &str = include_str!("xchacha.json");
 
+// struct for vector data
 #[derive(Debug)]
 struct TestVector {
     id: String,
@@ -15,6 +17,7 @@ struct TestVector {
 }
 
 impl TestVector {
+    // load the json vectors
     pub fn load() -> Vec<Self> {
         let json = json::parse(VECTORS).unwrap();
         let mut vecs = Vec::new();
@@ -31,6 +34,7 @@ impl TestVector {
         vecs
     }
 
+    // test encryption
     pub fn test_keystream_encryption(&self) -> &Self {
         let mut buf = vec![0; self.cipher.len()];
         XChaCha20::cipher()
@@ -40,6 +44,8 @@ impl TestVector {
 
         self
     }
+
+    // test decryption
     pub fn test_keystream_decryption(&self) -> &Self {
         let mut buf = vec![0; self.cipher.len()];
         XChaCha20::cipher()
@@ -58,6 +64,7 @@ fn test_crypto() {
     }
 }
 
+// API test vector
 #[derive(Default, Clone, Debug)]
 pub struct ApiTestVector {
     id: String,
@@ -70,6 +77,7 @@ pub struct ApiTestVector {
     error: String,
 }
 impl ApiTestVector {
+    // load json vectors
     pub fn load() -> Vec<Self> {
         let json = json::parse(VECTORS).unwrap();
         let mut defaults = Self::default();
@@ -84,6 +92,7 @@ impl ApiTestVector {
         vecs
     }
 
+    // test encryption
     pub fn test_encryption(&self) -> &Self {
         let key = vec![0; self.key_len];
         let nonce = vec![0; self.nonce_len];
@@ -103,6 +112,7 @@ impl ApiTestVector {
         self
     }
 
+    // test decryption
     pub fn test_decryption(&self) -> &Self {
         let key = vec![0; self.key_len];
         let nonce = vec![0; self.nonce_len];
@@ -122,6 +132,7 @@ impl ApiTestVector {
         self
     }
 
+    // load json
     fn load_json(&mut self, j: &JsonValue) {
         self.id = j["id"].option_string(&self.id);
         self.key_len = j["key_len"].option_usize(self.key_len);
