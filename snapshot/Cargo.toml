@@ -17,7 +17,6 @@ sodiumoxide = "0.2"
 # file system
 dirs = "2.0"
 
-zeroize = {version = "1.1", features = ["zeroize_derive"]}
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

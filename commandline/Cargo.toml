@@ -7,3 +7,15 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+#lib sodium
+sodiumoxide = "0.2"
+
+zeroize = {version = "1.1", features = ["zeroize_derive"]}
+
+crypto = {path = "../crypto"}
+random = {path = "../random"}
+snapshot = {path = "../snapshot"}
