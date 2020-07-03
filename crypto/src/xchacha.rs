@@ -8,31 +8,41 @@ use primitives::{
 };
 use std::{cmp::min, error::Error};
 
+// max bytes that can be processed with a key/nonce combo
 pub const XCHACHA20_MAX: usize = usize::max_value();
+// size of the key
 pub const XCHACHA20_KEY: usize = CHACHA20_KEY;
+// size of the nonce
 pub const XCHACHA20_NONCE: usize = 24;
 
 pub struct XChaCha20;
 impl XChaCha20 {
+    // builds a new Cipher with XChaCha20
     pub fn cipher() -> Box<dyn Cipher> {
         Box::new(Self)
     }
 
+    // Xor the bytes with XChaCha20 kestream.
     pub fn xor(key: &[u8], nonce: &[u8], mut n: u64, mut data: &mut [u8]) {
+        // check input
         assert_eq!(XCHACHA20_KEY, key.len());
         assert_eq!(XCHACHA20_NONCE, nonce.len());
 
+        // derive key
         let (x_nonce, nonce) = nonce.split_at(16);
         let mut x_key = vec![0; 32];
         h_chacha20_hash(key, x_nonce, &mut x_key);
 
+        // XOR data
         let mut buf = vec![0; 64];
         while !data.is_empty() {
+            // Calculate next block
             chacha20_block(&x_key, nonce, n, &mut buf);
             n = n
                 .checked_add(1)
                 .expect("The ChaCha20 block counter must not exceed 2^64 - 1");
 
+            // XOR blocks
             let to_xor = min(data.len(), buf.len());
             (0..to_xor).for_each(|i| data[i] = xor!(data[i], buf[i]));
             data = &mut data[to_xor..];

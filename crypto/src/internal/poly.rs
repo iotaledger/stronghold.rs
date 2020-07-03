@@ -1,6 +1,8 @@
 use std::cmp::min;
 
+// loads a key into r and s and computes the key multipliers
 pub fn poly1305_init(r: &mut [u32], s: &mut [u32], mu: &mut [u32], key: &[u8]) {
+    // load key
     r[0] = and!(
         shift_right!(read32_little_endian!(&key[0..]), 0),
         0x03FFFFFF
@@ -27,6 +29,7 @@ pub fn poly1305_init(r: &mut [u32], s: &mut [u32], mu: &mut [u32], key: &[u8]) {
     s[2] = read32_little_endian!(&key[24..]);
     s[3] = read32_little_endian!(&key[28..]);
 
+    // compute multipliers
     mu[0] = 0;
     mu[1] = mult!(r[1], 5);
     mu[2] = mult!(r[2], 5);
@@ -34,11 +37,15 @@ pub fn poly1305_init(r: &mut [u32], s: &mut [u32], mu: &mut [u32], key: &[u8]) {
     mu[4] = mult!(r[4], 5);
 }
 
+// updates the value a with any data using the key and the multipliers
+// pads any incomplete block with 0 bytes.
 pub fn poly1305_update(a: &mut [u32], r: &[u32], mu: &[u32], mut data: &[u8], is_last: bool) {
     let mut buf = vec![0; 16];
     let mut w = vec![0; 5];
 
+    // process data
     while !data.is_empty() {
+        // put data into buffer and append 0x01 byte as padding as needed
         let buf_len = min(data.len(), buf.len());
         if buf_len < 16 {
             buf.copy_from_slice(&[0; 16]);
@@ -48,6 +55,7 @@ pub fn poly1305_update(a: &mut [u32], r: &[u32], mu: &[u32], mut data: &[u8], is
         }
         buf[..buf_len].copy_from_slice(&data[..buf_len]);
 
+        // decode next block into an accumulator.  Apply high bit if needed.
         a[0] = add!(
             a[0],
             and!(
@@ -93,11 +101,14 @@ pub fn poly1305_update(a: &mut [u32], r: &[u32], mu: &[u32], mut data: &[u8], is
             ),
         };
 
+        // converts values into u64s to avoid overflow
         macro_rules! m {
             ($a:expr, $b:expr) => {{
                 mult!($a as u64, $b as u64)
             }};
         }
+
+        // multiply
         w[0] = add!(
             m!(a[0], r[0]),
             m!(a[1], mu[4]),
@@ -134,6 +145,7 @@ pub fn poly1305_update(a: &mut [u32], r: &[u32], mu: &[u32], mut data: &[u8], is
             m!(a[4], r[0])
         );
 
+        // modular reduction
         let mut c;
         c = shift_right!(w[0], 26);
         a[0] = and!(w[0] as u32, 0x3FFFFFF);
@@ -154,11 +166,14 @@ pub fn poly1305_update(a: &mut [u32], r: &[u32], mu: &[u32], mut data: &[u8], is
         a[1] = add!(a[1], shift_right!(a[0], 26));
         a[0] = and!(a[0], 0x3FFFFFF);
 
+        // modify data.
         data = &data[buf_len..];
     }
 }
 
+// finishes authentication
 pub fn poly1305_finish(tag: &mut [u8], a: &mut [u32], s: &[u32]) {
+    // modular reduction
     let mut c;
     c = shift_right!(a[1], 26);
     a[1] = and!(a[1], 0x3ffffff);
@@ -176,6 +191,7 @@ pub fn poly1305_finish(tag: &mut [u8], a: &mut [u32], s: &[u32]) {
     a[0] = and!(a[0], 0x3ffffff);
     a[1] = add!(a[1], c);
 
+    // reduce if values is in the range (2^130-5, 2^130]
     let mut mux = greater_than!(a[0], 0x03FFFFFAu32);
     for i in 1..5 {
         mux = and!(mux, equal!(a[i], 0x03FFFFFF))
@@ -189,6 +205,7 @@ pub fn poly1305_finish(tag: &mut [u8], a: &mut [u32], s: &[u32]) {
         a[i] = mux_bool!(mux, t, a[i]);
     }
 
+    // convert back to 32bit words and add second half of key mod 2^128
     let mut word;
     word = add!(a[0] as u64, shift_left!(a[1] as u64, 26), s[0] as u64);
     write32_little_endian!(word as u32 => &mut tag[0..]);

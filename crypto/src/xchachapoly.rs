@@ -10,25 +10,33 @@ use primitives::{
 
 use std::error::Error;
 
+// max bytes that can be processed with a key/nonce combo
 #[allow(unused)]
 pub const XCHACHAPOLY_MAX: usize = CHACHAPOLY_MAX;
-
+// size of the key
 pub const XCHACHAPOLY_KEY: usize = CHACHAPOLY_KEY;
+// size of the nonce
 pub const XCHACHAPOLY_NONCE: usize = 24;
+// size of the auth tag
 pub const XCHACHAPOLY_TAG: usize = CHACHAPOLY_TAG;
 
+// encrypts data inplace and authenticates it
 fn xchachapoly_seal(data: &mut [u8], tag: &mut [u8], ad: &[u8], key: &[u8], nonce: &[u8]) {
+    // xor and encrypt the data.
     XChaCha20::xor(key, nonce, 1, data);
 
+    // build a footer
     let mut foot = Vec::with_capacity(16);
     foot.extend_from_slice(&(ad.len() as u64).to_le_bytes());
     foot.extend_from_slice(&(data.len() as u64).to_le_bytes());
 
+    // compute Poly1305 key and auth tag
     let mut pkey = vec![0; 32];
     XChaCha20::xor(key, nonce, 0, &mut pkey);
     Poly1305::chachapoly_auth(tag, ad, data, &foot, &pkey);
 }
 
+// decrypts data inplace after validation
 fn xchachapoly_open(
     data: &mut [u8],
     tag: &[u8],
@@ -36,14 +44,17 @@ fn xchachapoly_open(
     key: &[u8],
     nonce: &[u8],
 ) -> Result<(), Box<dyn Error + 'static>> {
+    // build footer
     let mut foot = Vec::with_capacity(16);
     foot.extend_from_slice(&(ad.len() as u64).to_le_bytes());
     foot.extend_from_slice(&(data.len() as u64).to_le_bytes());
 
+    // get poly1305 key and auth tag
     let (mut pkey, mut verify_tag) = (vec![0; 32], vec![0; 16]);
     XChaCha20::xor(key, nonce, 0, &mut pkey);
     Poly1305::chachapoly_auth(&mut verify_tag, ad, data, &foot, &pkey);
 
+    // validate the tags.
     Ok(match eq_const_time!(&tag, &verify_tag) {
         true => XChaCha20::xor(key, nonce, 1, data),
         false => Err(crate::Error::InvalidData)?,
@@ -53,22 +64,27 @@ fn xchachapoly_open(
 pub struct XChaChaPoly;
 
 impl XChaChaPoly {
+    // builds a new Cipher with XChaChaPolyIETF
     pub fn cipher() -> Box<dyn Cipher> {
         Box::new(Self)
     }
 
+    // builds an AEAD Cipher with XChaChaPolyIETF
     pub fn aead_cipher() -> Box<dyn AeadCipher> {
         Box::new(Self)
     }
 }
 impl SecretKeyGen for XChaChaPoly {
+    // generate a new secret key
     fn new_secret_key(
         &self,
         buf: &mut [u8],
         rng: &mut dyn SecureRng,
     ) -> Result<usize, Box<dyn Error + 'static>> {
+        // validate input
         verify_keygen!(XCHACHAPOLY_KEY => buf);
 
+        // generate key
         rng.random(&mut buf[..XCHACHAPOLY_KEY])?;
         Ok(XCHACHAPOLY_KEY)
     }

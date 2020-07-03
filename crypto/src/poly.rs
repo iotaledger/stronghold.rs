@@ -7,16 +7,20 @@ use primitives::{
 
 use std::error::Error;
 
+// Size of the Key
 pub const POLY1305_KEY: usize = 32;
+// Size of the auth tag
 pub const POLY1305_TAG: usize = 16;
 
 pub struct Poly1305;
 
 impl Poly1305 {
+    // creates a MAC
     pub fn message_auth_code() -> Box<dyn MessageAuthCode> {
         Box::new(Self)
     }
 
+    // function to create ChaChaPoly-IETF AEAD
     pub(in crate) fn chachapoly_auth(
         tag: &mut [u8],
         ad: &[u8],

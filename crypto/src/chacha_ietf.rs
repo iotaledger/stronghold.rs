@@ -4,32 +4,39 @@ use primitives::{
     rng::{SecretKeyGen, SecureRng},
 };
 use std::{cmp::min, error::Error};
-
+// max bytes that can be processed with a key/nonce combo
 #[cfg(target_pointer_width = "64")]
 pub const CHACHA20_MAX: usize = 4_294_967_296 * 64;
 #[cfg(target_pointer_width = "32")]
 pub const CHACHA20_MAX: usize = usize::max_value();
-
+// Size of Key
 pub const CHACHA20_KEY: usize = 32;
+// Size of Nonce
 pub const CHACHA20_NONCE: usize = 12;
 
 pub struct ChaCha20Ietf;
 impl ChaCha20Ietf {
+    // create a new Cipher with ChaCha20IETF
     pub fn cipher() -> Box<dyn Cipher> {
         Box::new(Self)
     }
 
+    // Xor data with ChaCha20 keystream
     pub fn xor(key: &[u8], nonce: &[u8], mut n: u32, mut data: &mut [u8]) {
+        // verify inputs
         assert_eq!(CHACHA20_KEY, key.len());
         assert_eq!(CHACHA20_NONCE, nonce.len());
 
+        // xor the data
         let mut buf = vec![0; 64];
         while !data.is_empty() {
+            // compute blocks
             chacha20_ietf_block(key, nonce, n, &mut buf);
             n = n
                 .checked_add(1)
                 .expect("The ChaCha20-IETF block counter must not exceed 2^32 - 1");
 
+            // xor blocks
             let to_xor = min(data.len(), buf.len());
             (0..to_xor).for_each(|i| data[i] = xor!(data[i], buf[i]));
             data = &mut data[to_xor..];

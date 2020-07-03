@@ -4,28 +4,36 @@ use primitives::{
     rng::{SecretKeyGen, SecureRng},
 };
 use std::error::Error;
-
+// max bytes that can be processed with a key/nonce combo
 #[cfg(target_pointer_width = "64")]
 pub const CHACHAPOLY_MAX: usize = (4_294_967_296 - 1) * 64;
 #[cfg(target_pointer_width = "32")]
 pub const CHACHAPOLY_MAX: usize = usize::max_value() - 16;
 
+// size of key
 pub const CHACHAPOLY_KEY: usize = 32;
+// size of nonce
 pub const CHACHAPOLY_NONCE: usize = 12;
+// size of auth tag
 pub const CHACHAPOLY_TAG: usize = 16;
 
+// encrypts data in place
 pub fn chachapoly_seal(data: &mut [u8], tag: &mut [u8], ad: &[u8], key: &[u8], nonce: &[u8]) {
+    // encrypt data
     ChaCha20Ietf::xor(key, nonce, 1, data);
 
+    // create footer
     let mut foot = Vec::with_capacity(16);
     foot.extend_from_slice(&(ad.len() as u64).to_le_bytes());
     foot.extend_from_slice(&(data.len() as u64).to_le_bytes());
 
+    // compute poly key and auth tag
     let mut pkey = vec![0; 32];
     ChaCha20Ietf::xor(key, nonce, 0, &mut pkey);
     Poly1305::chachapoly_auth(tag, ad, data, &foot, &pkey);
 }
 
+// open data and decrypt it in place.
 pub fn chachapoly_open(
     data: &mut [u8],
     tag: &[u8],
@@ -33,14 +41,17 @@ pub fn chachapoly_open(
     key: &[u8],
     nonce: &[u8],
 ) -> Result<(), Box<dyn Error + 'static>> {
+    // build footer
     let mut foot = Vec::with_capacity(16);
     foot.extend_from_slice(&(ad.len() as u64).to_le_bytes());
     foot.extend_from_slice(&(data.len() as u64).to_le_bytes());
 
+    // compute poly key and auth tag
     let (mut pkey, mut vfy_tag) = (vec![0; 32], vec![0; 16]);
     ChaCha20Ietf::xor(key, nonce, 0, &mut pkey);
     Poly1305::chachapoly_auth(&mut vfy_tag, ad, data, &foot, &pkey);
 
+    // validate tags
     Ok(match eq_const_time!(&tag, &vfy_tag) {
         true => ChaCha20Ietf::xor(key, nonce, 1, data),
         false => Err(crate::Error::InvalidData)?,
@@ -49,9 +60,11 @@ pub fn chachapoly_open(
 
 pub struct ChaChaPolyIetf;
 impl ChaChaPolyIetf {
+    // create a new Cipher with ChaChaPolyIETF
     pub fn cipher() -> Box<dyn Cipher> {
         Box::new(Self)
     }
+    // create a new AEAD Cipher with ChaChaPolyIETF
     pub fn aead_cipher() -> Box<dyn AeadCipher> {
         Box::new(Self)
     }
