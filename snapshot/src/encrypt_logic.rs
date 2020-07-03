@@ -108,6 +108,8 @@ pub fn encrypt_snapshot(input: Vec<u8>, out: &mut File, password: &[u8]) -> crat
     Ok(())
 }
 
+pub fn encrypt_key(input: Vec<u8>, snapshot: &mut File) {}
+
 // decrypt file into a vector with a password.
 pub fn decrypt_snapshot(
     input: &mut File,

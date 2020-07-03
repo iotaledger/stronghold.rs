@@ -4,5 +4,6 @@ members = [
     "primitives",
     "random",
     "crypto",
-    "snapshot"
+    "snapshot",
+    "commandline"
 ]
