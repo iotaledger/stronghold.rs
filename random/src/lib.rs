@@ -47,6 +47,7 @@ mod test {
     const TEST_SIZES: &[usize] = &[1 * 1024 * 1024, 4 * 1024 * 1024, (4 * 1024 * 1024) + 15];
     const ITERATIONS: usize = 8;
 
+    // test the uniform distribution of byte values.
     fn test_uniform_dist(buf: &[u8]) {
         let mut dist = vec![0f64; 256];
         buf.iter().for_each(|b| dist[*b as usize] += 1.0);
