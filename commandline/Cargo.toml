@@ -16,6 +16,16 @@ sodiumoxide = "0.2"
 
 zeroize = {version = "1.1", features = ["zeroize_derive"]}
 
+vault = {path = "../vault"}
 crypto = {path = "../crypto"}
 random = {path = "../random"}
 snapshot = {path = "../snapshot"}
+primitives = {path = "../primitives"}
+
+[[bin]]
+name = "daemon"
+path = "src/daemon/main.rs"
+
+[[bin]]
+name = "client"
+path = "src/client/main.rs"
