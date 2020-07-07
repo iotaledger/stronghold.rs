@@ -8,6 +8,7 @@
 mod encrypt_logic;
 mod error;
 mod files;
+mod serialize;
 
 pub use error::{Error, Result};
 
