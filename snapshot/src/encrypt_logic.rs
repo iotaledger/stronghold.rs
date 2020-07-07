@@ -8,7 +8,7 @@ use std::{
     io::{Read, Write},
 };
 
-const CHUNK_SIZE: usize = 512; // data chunk size
+const CHUNK_SIZE: usize = 256; // data chunk size
 const SIGN: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49]; // PARTI in hex
 
 // generate the salt for the encryption algorithm.
@@ -160,7 +160,7 @@ pub fn decrypt_snapshot(
             Ok(bytes_read) if bytes_read > 0 => {
                 // pull each chunk from the stream and decrypt.
                 let (decrypt, _tag) = stream.pull(&buf[..bytes_read], None).map_err(|_| {
-                    crate::Error::SnapshotError("Stream pull failed, could decrypt file".into())
+                    crate::Error::SnapshotError("Stream pull failed, could decrypt snapshot".into())
                 })?;
 
                 // put the vectors into the output vector.
@@ -178,6 +178,7 @@ pub fn decrypt_snapshot(
 mod test {
     use super::*;
     use sodiumoxide::crypto::secretstream::Tag;
+    use std::fs::OpenOptions;
 
     #[test]
     fn test_key_derivation() {
@@ -210,5 +211,65 @@ mod test {
         let (plain, _) = pull_stream.pull(&cipher, None).unwrap();
 
         assert_eq!(data, &plain.as_slice());
+    }
+
+    #[test]
+
+    fn test_id_file() {
+        let client_id = b"12345";
+        let key = secretstream::gen_key();
+
+        let mut encrypt = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("test/id_file.snapshot")
+            .unwrap();
+
+        let mut decrypt = OpenOptions::new()
+            .read(true)
+            .open("test/id_file.snapshot")
+            .unwrap();
+
+        let mut output: Vec<u8> = Vec::new();
+
+        encrypt_snapshot(client_id.to_vec(), &mut encrypt, &key.0).unwrap();
+
+        decrypt_snapshot(&mut decrypt, &mut output, &key.0).unwrap();
+
+        assert_eq!(client_id.to_vec(), output);
+    }
+
+    #[test]
+    fn test_snapshot() {
+        let password = b"some_password";
+        let data = vec![
+            69, 59, 116, 81, 23, 91, 2, 212, 10, 248, 108, 227, 167, 142, 2, 205, 202, 100, 216,
+            225, 53, 223, 223, 14, 153, 239, 46, 106, 120, 103, 85, 144, 69, 59, 116, 81, 23, 91,
+            2, 212, 10, 248, 108, 227, 167, 142, 2, 205, 202, 100, 216, 225, 53, 223, 223, 14, 153,
+            239, 46, 106, 120, 103, 85, 144, 69, 59, 116, 81, 23, 91, 2, 212, 10, 248, 108, 227,
+            167, 142, 2, 205, 202, 100, 216, 225, 53, 223, 223, 14, 153, 239, 46, 106, 120, 103,
+            85, 144,
+        ];
+
+        let expected = data.clone();
+
+        let mut encrypt = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("test/snapshot.snapshot")
+            .unwrap();
+
+        let mut decrypt = OpenOptions::new()
+            .read(true)
+            .open("test/snapshot.snapshot")
+            .unwrap();
+
+        let mut output: Vec<u8> = Vec::new();
+
+        encrypt_snapshot(data, &mut encrypt, password).unwrap();
+
+        decrypt_snapshot(&mut decrypt, &mut output, password).unwrap();
+
+        assert_eq!(expected, output);
     }
 }
