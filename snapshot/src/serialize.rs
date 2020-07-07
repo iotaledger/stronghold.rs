@@ -30,3 +30,21 @@ fn read_buffer(input: &mut &[u8]) -> Vec<u8> {
     *input = rest;
     v.to_vec()
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_serialize_deserialize() {
+        let mut map = HashMap::new();
+        map.insert(vec![32, 1, 53], vec![39, 43, 5]);
+        map.insert(vec![52, 13, 53, 53], vec![31, 1]);
+        map.insert(vec![142], vec![1, 0, 125, 82, 13, 54, 69]);
+
+        let buf = serialize_map(&map);
+        let recovered = deserialize_buffer(&buf);
+
+        assert_eq!(map, recovered);
+    }
+}
