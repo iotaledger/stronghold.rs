@@ -1,5 +1,7 @@
 use std::{convert::TryFrom, marker::PhantomData};
 
+use serde::{Deserialize, Serialize};
+
 // a provider interface between the db and a crypto box. See https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox
 pub trait BoxProvider: Sized {
     // function for the key length of the crypto box
@@ -24,10 +26,12 @@ pub trait BoxProvider: Sized {
 }
 
 // A key to the crypto box.  Key is stored on the heap which makes it easier to erase.
+#[derive(Serialize, Deserialize)]
 pub struct Key<T: BoxProvider> {
     // bytes that make up the key
     pub key: Vec<u8>,
     // callback funciton invoked on drop
+    #[serde(skip_serializing, skip_deserializing)]
     drop_fn: Option<&'static fn(&mut [u8])>,
     // associated Provider
     _box_provider: PhantomData<T>,

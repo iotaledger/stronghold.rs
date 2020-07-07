@@ -4,6 +4,7 @@ use sodiumoxide::crypto::{
 };
 
 use std::{
+    collections::HashMap,
     fs::File,
     io::{Read, Write},
 };
