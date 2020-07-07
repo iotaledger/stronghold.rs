@@ -65,7 +65,6 @@ pub trait TypedCommit {
 }
 
 // a revocation commit
-#[repr(packed)]
 #[derive(Debug)]
 pub struct RevocationCommit {
     // commit type
@@ -82,7 +81,6 @@ pub struct RevocationCommit {
 }
 
 // commit that initializes the chain
-#[repr(packed)]
 #[derive(Debug)]
 pub struct InitCommit {
     // commit type
