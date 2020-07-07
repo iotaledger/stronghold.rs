@@ -16,7 +16,7 @@ fn generate_salt() -> crate::Result<pwhash::Salt> {
     // generate salt
     let salt = pwhash::gen_salt();
     // hash salt with sha256
-    let hash = hash::sha256::hash(&Vec::from(salt.0));
+    let hash = hash::sha256::hash(&salt.0);
     // repack salt
     let salt = pwhash::Salt::from_slice(hash.as_ref()).expect("Unable to rewrap salt");
 
