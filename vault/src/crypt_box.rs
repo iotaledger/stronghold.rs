@@ -26,7 +26,7 @@ pub trait BoxProvider: Sized {
 // A key to the crypto box.  Key is stored on the heap which makes it easier to erase.
 pub struct Key<T: BoxProvider> {
     // bytes that make up the key
-    key: Vec<u8>,
+    pub key: Vec<u8>,
     // callback funciton invoked on drop
     drop_fn: Option<&'static fn(&mut [u8])>,
     // associated Provider

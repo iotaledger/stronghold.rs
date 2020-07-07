@@ -3,7 +3,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use shared::{line_error, send_until_success, TransactionRequest};
+use commandline::{line_error, send_until_success, TransactionRequest};
 
 use vault::{BoxProvider, DBWriter, Id, IndexHint, Key};
 
@@ -18,7 +18,7 @@ pub struct Vault<P: BoxProvider> {
 }
 
 impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
-    pub fn new_tx(key: &Key<P>, id: Id) {
+    pub fn init_entry(key: &Key<P>, id: Id) {
         let req = DBWriter::<P>::create_chain(key, id);
 
         send_until_success(TransactionRequest::Write(req.clone()));
@@ -33,11 +33,35 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 
     pub fn create_entry(&self, payload: &[u8]) {
         self.vault.take(|store| {
-            let (id, req) = store
+            let (_, req) = store
                 .writer(self.id)
                 .write(&payload, IndexHint::new(b"").expect(line_error!()))
                 .expect(line_error!());
+
+            req.into_iter().for_each(|req| {
+                send_until_success(TransactionRequest::Write(req));
+            });
         })
+    }
+
+    pub fn revoke_entry(&self, id: Id) {
+        self.vault.take(|store| {
+            let (to_write, to_delete) = store.writer(self.id).revoke(id).expect(line_error!());
+            send_until_success(TransactionRequest::Write(to_write));
+            send_until_success(TransactionRequest::Delete(to_delete));
+        })
+    }
+
+    pub fn gc_chain(&self) {
+        self.vault.take(|store| {
+            let (to_write, to_delete) = store.writer(self.id).gc().expect(line_error!());
+            to_write.into_iter().for_each(|req| {
+                send_until_success(TransactionRequest::Write(req.clone()));
+            });
+            to_delete.into_iter().for_each(|req| {
+                send_until_success(TransactionRequest::Delete(req.clone()));
+            })
+        });
     }
 }
 

@@ -19,4 +19,8 @@ macro_rules! line_error {
 
 mod shared;
 
-pub use shared::connection::{send_until_success, TransactionRequest, TransactionResult};
+pub use shared::{
+    connection::{send_until_success, TransactionRequest, TransactionResult},
+    crypto::Provider,
+    env::Env,
+};

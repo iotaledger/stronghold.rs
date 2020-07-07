@@ -23,7 +23,7 @@ snapshot = {path = "../snapshot"}
 primitives = {path = "../primitives"}
 
 [lib]
-name = "shared"
+name = "commandline"
 path = "src/lib.rs"
 
 [[bin]]
