@@ -17,9 +17,9 @@ macro_rules! line_error {
     };
 }
 
-mod shared;
+mod logic;
 
-pub use shared::{
+pub use logic::{
     connection::{send_until_success, TransactionRequest, TransactionResult},
     crypto::Provider,
     env::Env,

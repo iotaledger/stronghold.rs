@@ -22,4 +22,8 @@ impl Env {
         )
         .clone()
     }
+
+    pub fn make_snapshot(data: Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>) {
+        
+    } 
 }

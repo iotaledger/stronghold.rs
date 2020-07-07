@@ -1,4 +1,4 @@
-use crate::shared::env::Env;
+use crate::logic::env::Env;
 
 use vault::{DeleteRequest, ListResult, WriteRequest};
 

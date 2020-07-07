@@ -1,0 +1,11 @@
+name: Parti POC CLI
+version: '1.0'
+author: Tensor Programming <tensordeveloper@gmail.com>
+about: Encrypts data into the Parti Vault.  Creates snapshots and can load from snapshots.
+subcommands:
+  - encrypt:
+      about: encrypts some plaintext into the vault
+      args:
+        - plain:
+            short: p
+            about: the plaintext you want to encrypt

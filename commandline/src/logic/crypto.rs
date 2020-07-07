@@ -112,7 +112,7 @@ impl BoxProvider for Provider {
         // seal the data
         XChaChaPoly
             .seal_with(ciphertext, plaintext, ad, key.bytes(), nonce)
-            .map_err(|e| vault::Error::OtherError(String::from("failed to seal")))?;
+            .map_err(|_| vault::Error::OtherError(String::from("failed to seal")))?;
         Ok(cbox)
     }
 
