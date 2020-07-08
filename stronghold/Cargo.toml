@@ -1,0 +1,7 @@
+[package]
+name = "stronghold"
+version = "0.1.0"
+authors = ["Marcelo R. Bianchi <marcelo.bianchi@iota.org>"]
+edition = "2018"
+
+[dependencies]
