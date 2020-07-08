@@ -33,3 +33,13 @@ subcommands:
             long: pass
             required: true
             takes_value: true
+  - list:
+      about: Lists the ids of the entries inside of your main snapshot
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password you want to use to encrypt the snapshot.
+            required: true
+            takes_value: true

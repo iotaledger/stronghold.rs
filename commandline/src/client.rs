@@ -36,7 +36,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 
     pub fn create_entry(&self, payload: Vec<u8>) {
         self.db.take(|db| {
-            let (id, req) = db
+            let (_, req) = db
                 .writer(self.id)
                 .write(&payload, IndexHint::new(b"").expect(line_error!()))
                 .expect(line_error!());
@@ -44,6 +44,12 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
             req.into_iter().for_each(|req| {
                 send_until_success(CRequest::Write(req));
             });
+        });
+    }
+
+    pub fn list_ids(&self) {
+        self.db.take(|db| {
+            db.entries().for_each(|(id, _)| println!("{:?}", id));
         });
     }
 
