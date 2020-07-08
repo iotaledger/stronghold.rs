@@ -10,9 +10,12 @@ use snapshot::{decrypt_snapshot, encrypt_snapshot, snapshot_dir};
 
 use clap::{load_yaml, App};
 use std::fs::{File, OpenOptions};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use crate::{client::Client, provider::Provider};
+use crate::{
+    client::{Client, Db},
+    provider::Provider,
+};
 
 #[macro_export]
 macro_rules! line_error {
@@ -43,6 +46,7 @@ fn main() {
                     let client: Client<Provider> =
                         bincode::deserialize(&buffer[..]).expect("Unable to deserialize data");
 
+                    client.perform_gc();
                     client.create_entry(plain.as_bytes().to_vec());
 
                     let snapshot = get_snapshot_path();
@@ -70,8 +74,25 @@ fn main() {
     }
 
     if let Some(matches) = matches.subcommand_matches("snapshot") {
-        if let Some(ref _pass) = matches.value_of("password") {
-            if let Some(ref _path) = matches.value_of("path") {}
+        if let Some(ref pass) = matches.value_of("password") {
+            if let Some(ref path) = matches.value_of("path") {
+                let mut buffer: Vec<u8> = Vec::new();
+                let path = Path::new(path);
+
+                let mut file = OpenOptions::new().read(true).open(path).unwrap();
+
+                decrypt_snapshot(&mut file, &mut buffer, pass.as_bytes()).unwrap();
+
+                let client: Client<Provider> =
+                    bincode::deserialize(&buffer[..]).expect("Unable to deserialize data");
+
+                client.perform_gc();
+
+                let mut file = OpenOptions::new().write(true).open(path).unwrap();
+
+                let data: Vec<u8> = bincode::serialize(&client).unwrap();
+                encrypt_snapshot(data, &mut file, pass.as_bytes()).unwrap();
+            }
         }
     }
 }

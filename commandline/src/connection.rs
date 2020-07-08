@@ -37,6 +37,7 @@ pub fn send(req: CRequest) -> Option<CResult> {
                 .keys()
                 .cloned()
                 .collect();
+
             CResult::List(ListResult::new(entries))
         }
         CRequest::Write(write) => {
