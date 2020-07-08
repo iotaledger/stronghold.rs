@@ -15,4 +15,5 @@ pub use error::{Error, Result};
 pub use {
     encrypt_logic::{decrypt_snapshot, encrypt_snapshot},
     files::{home_dir, snapshot_dir},
+    serialize::{deserialize_buffer, serialize_map},
 };
