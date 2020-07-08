@@ -10,7 +10,7 @@ use std::{
 
 const CHUNK_SIZE: usize = 256; // data chunk size
 const SIGN: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49]; // PARTI in hex
-const VERSION: [u8; 2] = [0x1, 0x0];
+const VERSION: [u8; 2] = [0x1, 0x0]; // version 1.0 in hex
 
 // generate the salt for the encryption algorithm.
 fn generate_salt() -> crate::Result<pwhash::Salt> {
@@ -117,39 +117,43 @@ pub fn decrypt_snapshot(
     password: &[u8],
 ) -> crate::Result<()> {
     // check to see if the file is long enough
-    if input.metadata()?.len()
-        <= (pwhash::SALTBYTES + secretstream::HEADERBYTES + SIGN.len()) as u64
-    {
-        return Err(crate::Error::SnapshotError(
-            "Snapshot is not valid or encrypted".into(),
-        ));
-    }
+    check_file_len(input)?;
 
-    // setup signature and salt.
-    let mut salt = [0u8; pwhash::SALTBYTES];
-    let mut sign = [0u8; 5];
-    let mut version = [0u8; 2];
+    // setup signature, salt and version buffers.
+    let salt = get_salt(input, true)?;
 
-    input.read_exact(&mut sign)?;
-    input.read_exact(&mut version)?;
+    decrypt_file(input, output, password, salt)?;
 
-    if version != VERSION {
-        panic!("Snapshot version is incorrect");
-    }
+    Ok(())
+}
 
-    // if sign is the same expected read in all of the salt.
-    if sign == SIGN {
-        input.read_exact(&mut salt)?;
-    } else {
-        // otherwise take the bytes from the sign and read the rest as the salt.
-        salt[..5].copy_from_slice(&sign);
-        input.read_exact(&mut salt[5..])?;
-    }
+// update a snapshot with the new version by re-encrypting the data.
+pub fn update_snapshot(input: &mut File, output: &mut File, password: &[u8]) -> crate::Result<()> {
+    // setup the buffer to read from the old snapshot.
+    let mut buffer: Vec<u8> = Vec::new();
 
-    // create a new salt.
-    let salt = pwhash::Salt(salt);
+    // check the file len
+    check_file_len(input)?;
 
-    // get the header.
+    // get the salt and ignore the version.
+    let salt = get_salt(input, false)?;
+
+    // decrypt the file into the buffer
+    decrypt_file(input, &mut buffer, password, salt)?;
+
+    // re-encrypt the file into a new snapshot.
+    encrypt_snapshot(buffer, output, password)?;
+
+    Ok(())
+}
+
+fn decrypt_file(
+    input: &mut File,
+    output: &mut Vec<u8>,
+    password: &[u8],
+    salt: pwhash::Salt,
+) -> crate::Result<()> {
+    // setup header buffer and extract it from the file
     let mut header = [0u8; secretstream::HEADERBYTES];
     input.read_exact(&mut header)?;
 
@@ -180,6 +184,62 @@ pub fn decrypt_snapshot(
     }
 
     Ok(())
+}
+
+// check to see if the file is long enough.
+fn check_file_len(input: &mut File) -> crate::Result<()> {
+    if input.metadata()?.len()
+        <= (pwhash::SALTBYTES + secretstream::HEADERBYTES + SIGN.len()) as u64
+    {
+        return Err(crate::Error::SnapshotError(
+            "Snapshot is not valid or encrypted".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+// check the version if the book is set and check the signature then extract the salt.
+fn get_salt(input: &mut File, chk_version: bool) -> crate::Result<pwhash::Salt> {
+    // setup the buffers
+    let mut sign = [0u8; 5];
+    let mut version = [0u8; 2];
+    let mut salt = [0u8; pwhash::SALTBYTES];
+
+    // get signature and version
+    input.read_exact(&mut sign)?;
+    input.read_exact(&mut version)?;
+
+    // if bool is set, check the version
+    if chk_version {
+        check_version(&version)?;
+    }
+
+    // if sign is the same expected read in all of the salt.
+    if sign == SIGN {
+        input.read_exact(&mut salt)?;
+    } else {
+        // otherwise take the bytes from the sign and read the rest as the salt.
+        salt[..5].copy_from_slice(&sign);
+        input.read_exact(&mut salt[5..])?;
+    }
+
+    // create a new salt.
+    let salt = pwhash::Salt(salt);
+
+    Ok(salt)
+}
+
+// check the version on the snapshot.
+fn check_version(version: &[u8]) -> crate::Result<()> {
+    // probably shouldn't do this, but if version is incorrect reject snapshot with error
+    if version != VERSION {
+        Err(crate::Error::SnapshotError(
+            "Snapshot version is incorrect".into(),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -222,32 +282,6 @@ mod test {
     }
 
     #[test]
-
-    fn test_id_file() {
-        let client_id = b"12345";
-        let key = secretstream::gen_key();
-
-        let mut encrypt = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open("test/id_file.snapshot")
-            .unwrap();
-
-        let mut decrypt = OpenOptions::new()
-            .read(true)
-            .open("test/id_file.snapshot")
-            .unwrap();
-
-        let mut output: Vec<u8> = Vec::new();
-
-        encrypt_snapshot(client_id.to_vec(), &mut encrypt, &key.0).unwrap();
-
-        decrypt_snapshot(&mut decrypt, &mut output, &key.0).unwrap();
-
-        assert_eq!(client_id.to_vec(), output);
-    }
-
-    #[test]
     fn test_snapshot() {
         let password = b"some_password";
         let data = vec![
@@ -275,6 +309,46 @@ mod test {
         let mut output: Vec<u8> = Vec::new();
 
         encrypt_snapshot(data, &mut encrypt, password).unwrap();
+
+        decrypt_snapshot(&mut decrypt, &mut output, password).unwrap();
+
+        assert_eq!(expected, output);
+    }
+
+    #[test]
+    fn test_update_snapshot() {
+        let password = b"some_password";
+        let data = vec![
+            69, 59, 116, 81, 23, 91, 2, 212, 10, 248, 108, 227, 167, 142, 2, 205, 202, 100, 216,
+            225, 53, 223, 223, 14, 153, 239, 46, 106, 120, 103, 85, 144, 69, 59, 116, 81, 23, 91,
+            2, 212, 10, 248, 108, 227, 167, 142, 2, 205, 202, 100, 216, 225, 53, 223, 223, 14, 153,
+            239, 46, 106, 120, 103, 85, 144, 69, 59, 116, 81, 23, 91, 2, 212, 10, 248, 108, 227,
+            167, 142, 2, 205, 202, 100, 216, 225, 53, 223, 223, 14, 153, 239, 46, 106, 120, 103,
+            85, 144,
+        ];
+
+        let expected = data.clone();
+
+        let mut output: Vec<u8> = Vec::new();
+
+        let mut old = OpenOptions::new()
+            .read(true)
+            .open("test/snapshot.snapshot")
+            .unwrap();
+
+        let mut new = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open("test/updated_snapshot.snapshot")
+            .unwrap();
+
+        let mut decrypt = OpenOptions::new()
+            .read(true)
+            .open("test/updated_snapshot.snapshot")
+            .unwrap();
+
+        update_snapshot(&mut old, &mut new, password).unwrap();
 
         decrypt_snapshot(&mut decrypt, &mut output, password).unwrap();
 
