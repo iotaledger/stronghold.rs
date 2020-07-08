@@ -10,6 +10,7 @@ use std::{
 
 const CHUNK_SIZE: usize = 256; // data chunk size
 const SIGN: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49]; // PARTI in hex
+const VERSION: [u8; 2] = [0x1, 0x0];
 
 // generate the salt for the encryption algorithm.
 fn generate_salt() -> crate::Result<pwhash::Salt> {
@@ -71,6 +72,7 @@ pub fn encrypt_snapshot(input: Vec<u8>, out: &mut File, password: &[u8]) -> crat
 
     // write the signature to the file first.
     out.write_all(&SIGN)?;
+    out.write_all(&VERSION)?;
 
     // get the salt and write it to the file.
     let salt = generate_salt()?;
@@ -126,8 +128,14 @@ pub fn decrypt_snapshot(
     // setup signature and salt.
     let mut salt = [0u8; pwhash::SALTBYTES];
     let mut sign = [0u8; 5];
+    let mut version = [0u8; 2];
 
     input.read_exact(&mut sign)?;
+    input.read_exact(&mut version)?;
+
+    if version != VERSION {
+        panic!("Snapshot version is incorrect");
+    }
 
     // if sign is the same expected read in all of the salt.
     if sign == SIGN {
