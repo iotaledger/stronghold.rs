@@ -1,14 +1,15 @@
+mod client;
+mod connection;
+mod crypt;
 mod provider;
-mod vault;
-
-use snapshot::{decrypt_snapshot, encrypt_snapshot, snapshot_dir};
+mod state;
 
 use clap::{load_yaml, App};
 
 use std::fs::OpenOptions;
 
 #[macro_export]
-macro_rules! error_line {
+macro_rules! line_error {
     () => {
         concat!("Error at ", file!(), ":", line!())
     };
@@ -21,15 +22,15 @@ fn main() {
     let yaml = load_yaml!("cli.yml");
     let matches = App::from(yaml).get_matches();
 
-    if matches.subcommand_matches("encrypt").is_none()
-        || matches.subcommand_matches("snapshot").is_none()
-    {
-        println!("Pass in --help to see how to use this commandline");
-    }
+    let read_old_snapshot = OpenOptions::new().read(true).open("../data.snapshot");
 
     if let Some(matches) = matches.subcommand_matches("encrypt") {
         if let Some(ref _pass) = matches.value_of("password") {
-            if let Some(ref plain) = matches.value_of("plain") {};
+            if let Some(plain) = matches.value_of("plain") {
+                if let Err(_) = read_old_snapshot {
+                } else {
+                }
+            };
         };
     }
 }
