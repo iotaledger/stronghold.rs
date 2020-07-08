@@ -11,6 +11,8 @@ use std::{
     hash::Hash,
 };
 
+use serde::{Deserialize, Serialize};
+
 // generic commit type
 #[repr(u64)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
@@ -21,11 +23,11 @@ enum CommitType {
 }
 
 // a sealed commit
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SealedCommit(Vec<u8>);
 
 // a generic commit (untyped)
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Commit(Vec<u8>);
 
 // untyped commit view
@@ -65,6 +67,7 @@ pub trait TypedCommit {
 }
 
 // a revocation commit
+#[repr(packed)]
 #[derive(Debug)]
 pub struct RevocationCommit {
     // commit type
@@ -81,6 +84,7 @@ pub struct RevocationCommit {
 }
 
 // commit that initializes the chain
+#[repr(packed)]
 #[derive(Debug)]
 pub struct InitCommit {
     // commit type

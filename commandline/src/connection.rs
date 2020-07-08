@@ -1,5 +1,7 @@
 use vault::{DeleteRequest, ListResult, WriteRequest};
 
+use std::{thread, time::Duration};
+
 use crate::line_error;
 use crate::state::State;
 
@@ -29,22 +31,42 @@ impl CResult {
 pub fn send(req: CRequest) -> Option<CResult> {
     let result = match req {
         CRequest::List => {
-            let entries = State::storage_channel().keys().cloned().collect();
+            let entries = State::backup_map()
+                .read()
+                .expect(line_error!())
+                .keys()
+                .cloned()
+                .collect();
             CResult::List(ListResult::new(entries))
         }
         CRequest::Write(write) => {
-            State::storage_channel()
-                .insert(write.id().to_vec(), write.data().to_vec())
-                .unwrap();
+            State::backup_map()
+                .write()
+                .expect(line_error!())
+                .insert(write.id().to_vec(), write.data().to_vec());
 
             CResult::Write
         }
         CRequest::Delete(del) => {
-            State::storage_channel().remove(del.id());
+            State::backup_map()
+                .write()
+                .expect(line_error!())
+                .remove(del.id());
 
             CResult::Delete
         }
     };
 
     Some(result)
+}
+
+pub fn send_until_success(req: CRequest) -> CResult {
+    loop {
+        match send(req.clone()) {
+            Some(result) => {
+                break result;
+            }
+            None => thread::sleep(Duration::from_millis(50)),
+        }
+    }
 }

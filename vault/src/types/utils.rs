@@ -6,9 +6,11 @@ use std::{
     ops::{Add, AddAssign},
 };
 
+use serde::{Deserialize, Serialize};
+
 // An Id with length of 24
 #[repr(transparent)]
-#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Id([u8; 24]);
 
 // a index hint

@@ -13,9 +13,10 @@ use crate::{
 
 use std::{
     fmt::{self, Debug, Formatter},
-    sync::Arc,
     vec::IntoIter,
 };
+
+use serde::{Deserialize, Serialize};
 
 // result of a list transaction
 #[derive(Clone)]
@@ -50,11 +51,11 @@ pub struct DeleteRequest {
 }
 
 // an entry in the vault
-#[derive(Clone)]
-pub struct Entry(Arc<(Commit, SealedCommit)>);
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Entry((Commit, SealedCommit));
 
 impl ListResult {
-    // create new llist result
+    // create new list result
     pub fn new(ids: Vec<Vec<u8>>) -> Self {
         Self { ids }
     }
@@ -149,12 +150,12 @@ impl Entry {
         // get fields and create commit
         let sealed = SealedCommit::from(id.to_vec());
         let packed = sealed.decrypt(key, b"").ok()?;
-        Some(Self(Arc::new((packed, sealed))))
+        Some(Self((packed, sealed)))
     }
     // create a new entry
     pub fn new<P: BoxProvider>(key: &Key<P>, commit: Commit) -> Self {
         let sealed = commit.encrypt(key, b"").expect("Failed to encrypt commit");
-        Self(Arc::new((commit, sealed)))
+        Self((commit, sealed))
     }
 
     // create a sealed commit

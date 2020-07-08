@@ -10,7 +10,7 @@ edition = "2018"
 thiserror = "1.0"
 anyhow = "1.0"
 
-serde = {version = "1.0.114", features = ["derive"]}
+serde = {version = "1.0", features = ["derive"]}
 
 [dev-dependencies]
 json = "0.12"

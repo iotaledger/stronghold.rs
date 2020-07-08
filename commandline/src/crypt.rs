@@ -9,20 +9,19 @@ use crate::line_error;
 use std::{cell::RefCell, mem};
 
 pub struct CRng {
-    key: [u8; 32],
+    pub key: [u8; 32],
     counter: u64,
 }
 
 impl CRng {
     thread_local! {
-        static CRNG: RefCell<CRng> = RefCell::new({
+        pub static CRNG: RefCell<CRng> = RefCell::new({
             let mut key = [0; 32];
-            OsRng.random(&mut key).expect("Fialed to generate random seed");
+            OsRng.random(&mut key).expect("Failed to generate random seed");
             CRng {
                 key, counter: 0
             }
         });
-
     }
 
     pub fn random(buf: &mut [u8]) {

@@ -8,10 +8,14 @@ use crate::{
 
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 // index over all entries by an owner and ordered by the counter
+#[derive(Serialize, Deserialize)]
 pub struct ChainIndex(HashMap<Id, Vec<Entry>>);
 
 // index of all valid entries.
+#[derive(Serialize, Deserialize)]
 pub struct ValidIndex(HashMap<Id, Entry>);
 
 impl ChainIndex {

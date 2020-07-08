@@ -1,90 +1,87 @@
-use vault::{BoxProvider, DBView, DBWriter, Id, IndexHint, Key};
+use vault::{BoxProvider, DBWriter, Id, IndexHint, Key};
 
 use crate::{
-    connection::{send, CRequest},
-    line_error,
+    connection::{send_until_success, CRequest},
+    line_error, State,
 };
 
 use std::cell::RefCell;
 
 pub struct Client<P: BoxProvider> {
-    owner: Id,
-    vault: Vault<P>,
+    pub id: Id,
+    pub db: Db<P>,
 }
 
-pub struct Vault<P: BoxProvider> {
-    pub key: Key<P>,
-    pub entries: RefCell<Option<DBView<P>>>,
+pub struct Db<P: BoxProvider> {
+    key: Key<P>,
+    db: RefCell<Option<vault::DBView<P>>>,
 }
 
 impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
-    pub fn init_chain(key: &Key<P>, id: Id) {
-        let write = DBWriter::<P>::create_chain(key, id);
-        send(CRequest::Write(write.clone()));
+    pub fn create_chain(key: Key<P>, id: Id) -> Client<P> {
+        let req = DBWriter::<P>::create_chain(&key.clone(), id);
+        send_until_success(CRequest::Write(req.clone()));
+
+        let client = Self {
+            id: id,
+            db: Db::<P>::new(key),
+        };
+
+        client
     }
 
-    pub fn new(key: Key<P>, owner: Id) -> Client<P> {
-        Self {
-            owner,
-            vault: Vault::new(key),
-        }
-    }
-
-    pub fn new_entry(&self, payload: Vec<u8>) {
-        self.vault.call(|store| {
-            let (id, res) = store
-                .writer(self.owner)
+    pub fn create_entry(&self, payload: Vec<u8>) {
+        self.db.take(|db| {
+            let (id, req) = db
+                .writer(self.id)
                 .write(&payload, IndexHint::new(b"").expect(line_error!()))
                 .expect(line_error!());
 
-            res.into_iter().for_each(|ent| {
-                send(CRequest::Write(ent));
+            req.into_iter().for_each(|req| {
+                send_until_success(CRequest::Write(req));
             });
         });
     }
 
     pub fn revoke_entry(&self, id: Id) {
-        self.vault.call(|store| {
-            let (write, delete) = store.writer(self.owner).revoke(id).expect(line_error!());
+        self.db.take(|db| {
+            let (to_write, to_delete) = db.writer(self.id).revoke(id).expect(line_error!());
 
-            send(CRequest::Write(write));
-            send(CRequest::Delete(delete));
+            send_until_success(CRequest::Write(to_write));
+            send_until_success(CRequest::Delete(to_delete));
         });
     }
 
-    pub fn preform_gc(&self) {
-        self.vault.call(|store| {
-            let (write, delete) = store.writer(self.owner).gc().expect(line_error!());
-            write.into_iter().for_each(|wr| {
-                send(CRequest::Write(wr.clone()));
+    pub fn perform_gc(&self) {
+        self.db.take(|db| {
+            let (to_write, to_delete) = db.writer(self.id).gc().expect(line_error!());
+            to_write.into_iter().for_each(|req| {
+                send_until_success(CRequest::Write(req.clone()));
             });
-
-            delete.into_iter().for_each(|del| {
-                send(CRequest::Delete(del.clone()));
+            to_delete.into_iter().for_each(|req| {
+                send_until_success(CRequest::Delete(req.clone()));
             });
         });
     }
 }
 
-impl<P: BoxProvider> Vault<P> {
+impl<P: BoxProvider> Db<P> {
     pub fn new(key: Key<P>) -> Self {
-        let res = send(CRequest::List).unwrap().list();
-        let view = DBView::load(key.clone(), res).expect(line_error!());
+        let req = send_until_success(CRequest::List).list();
+        let db = vault::DBView::load(key.clone(), req).expect(line_error!());
         Self {
             key,
-            entries: RefCell::new(Some(view)),
+            db: RefCell::new(Some(db)),
         }
     }
 
-    pub fn call<T>(&self, f: impl FnOnce(DBView<P>) -> T) -> T {
-        let mut reference = self.entries.borrow_mut();
+    pub fn take<T>(&self, f: impl FnOnce(vault::DBView<P>) -> T) -> T {
+        let mut _db = self.db.borrow_mut();
+        let db = _db.take().expect(line_error!());
+        let retval = f(db);
 
-        let view = reference.take().expect(line_error!());
-        let val = f(view);
-
-        let res = send(CRequest::List).unwrap().list();
-        *reference = Some(DBView::load(self.key.clone(), res).expect(line_error!()));
-
-        val
+        let req = send_until_success(CRequest::List).list();
+        *_db = Some(vault::DBView::load(self.key.clone(), req).expect(line_error!()));
+        retval
     }
 }

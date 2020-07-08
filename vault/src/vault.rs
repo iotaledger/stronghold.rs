@@ -12,12 +12,15 @@ use crate::{
 
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 mod entries;
 mod indices;
 
 pub use crate::vault::entries::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
 
 // A view over the vault
+#[derive(Serialize, Deserialize)]
 pub struct DBView<P: BoxProvider> {
     key: Key<P>,
     chain: ChainIndex,
@@ -44,6 +47,7 @@ impl<P: BoxProvider> DBView<P> {
         // build indices
         let chain = ChainIndex::new(entries)?;
         let valid = ValidIndex::new(&chain);
+
         Ok(Self { key, chain, valid })
     }
 

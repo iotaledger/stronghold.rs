@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
+use std::sync::{Arc, RwLock};
+
 use crate::line_error;
 
+#[macro_export]
 macro_rules! lazy_static {
     ($init:expr => $type:ty) => {{
         static mut VALUE: Option<$type> = None;
@@ -14,9 +17,9 @@ macro_rules! lazy_static {
 
 pub struct State;
 impl State {
-    pub fn storage_channel() -> HashMap<Vec<u8>, Vec<u8>> {
+    pub fn backup_map() -> Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>> {
         lazy_static!(
-            HashMap::new() => HashMap<Vec<u8>, Vec<u8>>
+            Arc::new(RwLock::new(HashMap::new())) => Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>
         )
         .clone()
     }
