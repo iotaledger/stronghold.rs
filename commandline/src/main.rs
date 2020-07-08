@@ -88,7 +88,8 @@ fn main() {
 
                 client.perform_gc();
 
-                let mut file = OpenOptions::new().write(true).open(path).unwrap();
+                let new_path = path.parent().unwrap().join("recomputed.snapshot");
+                let mut file = OpenOptions::new().write(true).open(new_path).unwrap();
 
                 let data: Vec<u8> = bincode::serialize(&client).unwrap();
                 encrypt_snapshot(data, &mut file, pass.as_bytes()).unwrap();
