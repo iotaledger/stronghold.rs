@@ -4,9 +4,15 @@ mod crypt;
 mod provider;
 mod state;
 
-use clap::{load_yaml, App};
+use vault::{Id, Key};
 
-use std::fs::OpenOptions;
+use snapshot::{decrypt_snapshot, encrypt_snapshot, snapshot_dir};
+
+use clap::{load_yaml, App};
+use std::fs::{File, OpenOptions};
+use std::path::PathBuf;
+
+use crate::{client::Client, provider::Provider};
 
 #[macro_export]
 macro_rules! line_error {
@@ -22,15 +28,92 @@ fn main() {
     let yaml = load_yaml!("cli.yml");
     let matches = App::from(yaml).get_matches();
 
-    let read_old_snapshot = OpenOptions::new().read(true).open("../data.snapshot");
+    let snapshot = get_snapshot_path();
 
     if let Some(matches) = matches.subcommand_matches("encrypt") {
-        if let Some(ref _pass) = matches.value_of("password") {
+        if let Some(ref pass) = matches.value_of("password") {
             if let Some(plain) = matches.value_of("plain") {
-                if let Err(_) = read_old_snapshot {
+                if snapshot.exists() {
+                    let mut buffer = Vec::new();
+                    let snapshot = get_snapshot_path();
+                    let mut file = OpenOptions::new().read(true).open(snapshot).unwrap();
+
+                    decrypt_snapshot(&mut file, &mut buffer, pass.as_bytes()).unwrap();
+
+                    let client: Client<Provider> =
+                        bincode::deserialize(&buffer[..]).expect("Unable to deserialize data");
+
+                    client.create_entry(plain.as_bytes().to_vec());
+
+                    let snapshot = get_snapshot_path();
+                    let mut file = OpenOptions::new().write(true).open(snapshot).unwrap();
+
+                    let data: Vec<u8> = bincode::serialize(&client).unwrap();
+                    encrypt_snapshot(data, &mut file, pass.as_bytes()).unwrap();
                 } else {
+                    let key = Key::<Provider>::random().unwrap();
+                    let id = Id::random::<Provider>().unwrap();
+                    let client = Client::create_chain(key, id);
+                    client.create_entry(plain.as_bytes().to_vec());
+
+                    let mut file = OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .open(snapshot)
+                        .unwrap();
+
+                    let data: Vec<u8> = bincode::serialize(&client).unwrap();
+                    encrypt_snapshot(data, &mut file, pass.as_bytes()).unwrap();
                 }
             };
         };
     }
+
+    if let Some(matches) = matches.subcommand_matches("snapshot") {
+        if let Some(ref _pass) = matches.value_of("password") {
+            if let Some(ref _path) = matches.value_of("path") {}
+        }
+    }
 }
+
+fn get_snapshot_path() -> PathBuf {
+    let path = snapshot_dir().expect("Unable to get the snapshot directory");
+
+    let snapshot = path.join("backup.snapshot");
+
+    snapshot
+}
+
+// #[cfg(test)]
+// mod test {
+//     use super::*;
+
+//     #[test]
+//     fn test_bincode() {
+//         let pass = "test";
+//         let key = Key::<Provider>::random().unwrap();
+//         let id = Id::random::<Provider>().unwrap();
+//         let client = Client::create_chain(key, id);
+//         client.create_entry("test".as_bytes().to_vec());
+//         let mut buffer: Vec<u8> = Vec::new();
+
+//         let data: Vec<u8> = bincode::serialize(&client).unwrap();
+//         println!("{:?}", &data);
+
+//         let mut write = OpenOptions::new()
+//             .create(true)
+//             .write(true)
+//             .open("test")
+//             .unwrap();
+
+//         encrypt_snapshot(data, &mut write, pass.as_bytes()).unwrap();
+
+//         let mut read = OpenOptions::new().read(true).open("test").unwrap();
+
+//         decrypt_snapshot(&mut read, &mut buffer, pass.as_bytes()).unwrap();
+
+//         let incoming_client = bincode::deserialize::<Client<Provider>>(&buffer[..]).unwrap();
+
+//         incoming_client.create_entry("another test".as_bytes().to_vec());
+//     }
+// }

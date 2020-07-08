@@ -2,18 +2,22 @@ use vault::{BoxProvider, DBWriter, Id, IndexHint, Key};
 
 use crate::{
     connection::{send_until_success, CRequest},
-    line_error, State,
+    line_error,
 };
 
 use std::cell::RefCell;
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
 pub struct Client<P: BoxProvider> {
     pub id: Id,
     pub db: Db<P>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Db<P: BoxProvider> {
-    key: Key<P>,
+    pub key: Key<P>,
     db: RefCell<Option<vault::DBView<P>>>,
 }
 

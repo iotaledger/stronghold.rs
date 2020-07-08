@@ -14,6 +14,6 @@ pub use error::{Error, Result};
 
 pub use {
     files::{home_dir, snapshot_dir},
-    logic::{decrypt_snapshot, encrypt_snapshot},
+    logic::{decrypt_snapshot, encrypt_snapshot, update_snapshot},
     serialize::{deserialize_buffer, serialize_map},
 };
