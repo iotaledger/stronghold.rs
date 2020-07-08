@@ -9,9 +9,6 @@ edition = "2018"
 [dependencies]
 clap = { version = "3.0.0-beta.1", features = ["yaml"] }
 
-#lib sodium
-sodiumoxide = "0.2"
-
 vault = {path = "../vault"}
 crypto = {path = "../crypto"}
 random = {path = "../random"}
