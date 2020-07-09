@@ -1,9 +1,8 @@
-use vault::{BoxProvider, DBWriter, Id, IndexHint, Key};
+use vault::{BoxProvider, DBWriter, Id, IndexHint, Key, ReadRequest};
 
 use crate::{
     connection::{send_until_success, CRequest, CResult},
     line_error,
-    state::State,
 };
 
 use std::cell::RefCell;
@@ -12,13 +11,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Client<P: BoxProvider> {
-    pub id: Id,
-    pub db: Db<P>,
+    id: Id,
+    db: Db<P>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Db<P: BoxProvider> {
-    pub key: Key<P>,
+    key: Key<P>,
     db: RefCell<Option<vault::DBView<P>>>,
 }
 
@@ -50,7 +49,8 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 
     pub fn list_ids(&self) {
         self.db.take(|db| {
-            db.entries().for_each(|(id, _)| println!("{:?}", id));
+            db.entries()
+                .for_each(|(id, hint)| println!("Id: {:?}, Hint: {:?}", id, hint));
         });
     }
 
@@ -59,9 +59,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
             let reader = db.reader();
             let req = reader.prepare_read(id).expect(line_error!());
 
-            if let CResult::Read(res) = send_until_success(CRequest::Read(req)) {
-                let res = reader.read(res).expect(line_error!());
-            };
+            println!("{:?}", req);
         });
     }
 

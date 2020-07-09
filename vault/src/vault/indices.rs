@@ -11,11 +11,11 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 // index over all entries by an owner and ordered by the counter
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ChainIndex(HashMap<Id, Vec<Entry>>);
 
 // index of all valid entries.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ValidIndex(HashMap<Id, Entry>);
 
 impl ChainIndex {
@@ -116,7 +116,7 @@ impl ValidIndex {
         Self(valid)
     }
 
-    // get chain by owner
+    // get chain by id
     pub fn get(&self, id: &Id) -> Option<&Entry> {
         self.0.get(id)
     }

@@ -66,7 +66,7 @@ pub fn send(req: CRequest) -> Option<CResult> {
                 .cloned()
                 .unwrap();
 
-            CResult::Read(ReadResult::new(read.into(), state))
+            CResult::Read(ReadResult::new(read.into(), state.clone()))
         }
     };
 

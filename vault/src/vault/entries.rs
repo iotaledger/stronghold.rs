@@ -38,7 +38,7 @@ pub struct ReadResult {
 }
 
 // a write transaction
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct WriteRequest {
     id: Vec<u8>,
     data: Vec<u8>,
@@ -67,7 +67,7 @@ impl ListResult {
 
 impl ReadRequest {
     // create a new read request
-    pub(in crate) fn payload<P: BoxProvider>(id: Id) -> Self {
+    pub fn payload<P: BoxProvider>(id: Id) -> Self {
         Self {
             id: id.as_ref().to_vec(),
         }
