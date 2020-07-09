@@ -9,6 +9,7 @@ mod state;
 use vault::{Id, Key};
 
 use snapshot::{decrypt_snapshot, encrypt_snapshot, snapshot_dir};
+use vault::Base64Decodable;
 
 use clap::{load_yaml, App};
 use std::fs::OpenOptions;
@@ -85,6 +86,25 @@ fn main() {
             serialize_to_snapshot(&snapshot, pass, client);
         }
     }
+
+    if let Some(matches) = matches.subcommand_matches("read") {
+        if let Some(ref pass) = matches.value_of("password") {
+            if let Some(ref id) = matches.value_of("id") {
+                let snapshot = get_snapshot_path();
+                let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
+
+                client.perform_gc();
+
+                let id = Vec::from_base64(id.as_bytes()).unwrap();
+                let id = Id::load(&id).unwrap();
+
+                client.read_entry_by_id(id);
+
+                let snapshot = get_snapshot_path();
+                serialize_to_snapshot(&snapshot, pass, client);
+            }
+        }
+    }
 }
 
 fn get_snapshot_path() -> PathBuf {
@@ -106,7 +126,11 @@ fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider>
 }
 
 fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: Client<Provider>) {
-    let mut file = OpenOptions::new().write(true).open(snapshot).unwrap();
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(snapshot)
+        .unwrap();
 
     let data: Vec<u8> = bincode::serialize(&client).unwrap();
     encrypt_snapshot(data, &mut file, pass.as_bytes()).unwrap();

@@ -1,4 +1,4 @@
-use vault::{DeleteRequest, ListResult, WriteRequest};
+use vault::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
 
 use std::{thread, time::Duration};
 
@@ -10,6 +10,7 @@ pub enum CRequest {
     List,
     Write(WriteRequest),
     Delete(DeleteRequest),
+    Read(ReadRequest),
 }
 
 #[derive(Clone)]
@@ -17,6 +18,7 @@ pub enum CResult {
     List(ListResult),
     Write,
     Delete,
+    Read(ReadResult),
 }
 
 impl CResult {
@@ -55,6 +57,16 @@ pub fn send(req: CRequest) -> Option<CResult> {
                 .remove(del.id());
 
             CResult::Delete
+        }
+        CRequest::Read(read) => {
+            let state = State::backup_map()
+                .read()
+                .expect(line_error!())
+                .get(read.id())
+                .cloned()
+                .unwrap();
+
+            CResult::Read(ReadResult::new(read.into(), state))
         }
     };
 

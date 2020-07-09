@@ -1,8 +1,9 @@
 use vault::{BoxProvider, DBWriter, Id, IndexHint, Key};
 
 use crate::{
-    connection::{send_until_success, CRequest},
+    connection::{send_until_success, CRequest, CResult},
     line_error,
+    state::State,
 };
 
 use std::cell::RefCell;
@@ -50,6 +51,22 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     pub fn list_ids(&self) {
         self.db.take(|db| {
             db.entries().for_each(|(id, _)| println!("{:?}", id));
+        });
+    }
+
+    pub fn read_entry_by_id(&self, id: Id) {
+        self.db.take(|db| {
+            println!("{:?}", State::backup_map());
+
+            let reader = db.reader();
+            let req = reader.prepare_read(id).expect(line_error!());
+
+            println!("{:?}", req);
+            if let CResult::Read(res) = send_until_success(CRequest::Read(req)) {
+                println!("{:?}", res);
+                let res = reader.read(res).expect(line_error!());
+                println!("{:?}", res);
+            };
         });
     }
 

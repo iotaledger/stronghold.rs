@@ -25,13 +25,13 @@ pub struct ListResult {
 }
 
 // a read transaction
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ReadRequest {
     id: Vec<u8>,
 }
 
 // a read transaction result
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ReadResult {
     id: Vec<u8>,
     data: Vec<u8>,

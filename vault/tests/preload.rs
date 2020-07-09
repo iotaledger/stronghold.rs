@@ -15,11 +15,12 @@ fn testset(set: &str) {
     let existing: HashMap<_, _> = entries
         .into_iter()
         .map(|(id, hint)| (reader.prepare_read(id).unwrap(), hint))
-        .map(|(ta, hint)| (vault.read(ta).unwrap(), hint))
-        .map(|(ta, hint)| (hint, reader.read(ta).unwrap()))
+        .map(|(req, hint)| (vault.read(req).unwrap(), hint))
+        .map(|(res, hint)| (hint, reader.read(res).unwrap()))
         .collect();
 
     let plain = PlainVault::from_json(DATA, set);
+
     assert_eq!(existing, plain.entries);
 }
 

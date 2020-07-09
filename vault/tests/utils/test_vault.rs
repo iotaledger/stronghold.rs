@@ -58,10 +58,10 @@ impl TestVault {
     }
 
     pub fn read(&self, req: ReadRequest) -> Option<ReadResult> {
-        let name = req.into();
+        let id = req.into();
         self.entries
-            .get(&name)
-            .map(|data| ReadResult::new(name, data.clone()))
+            .get(&id)
+            .map(|data| ReadResult::new(id, data.clone()))
     }
 
     pub fn key(&self) -> &Key<Provider> {

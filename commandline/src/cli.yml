@@ -16,7 +16,7 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password you want to use to encrypt the snapshot.
+            about: the password you want to use to encrypt/decrypt the snapshot.
             required: true
             takes_value: true
   - snapshot:
@@ -40,6 +40,23 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password you want to use to encrypt the snapshot.
+            about: the password you want to use to encrypt/decrypt the snapshot.
+            required: true
+            takes_value: true
+  - read:
+      about: read an entry by id
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password you want to use to encrypt/decrypt the snapshot.
+            required: true
+            takes_value: true
+        - id:
+            short: i
+            long: id
+            value_name: id
+            about: the id of the entry that you want to unbox
             required: true
             takes_value: true
