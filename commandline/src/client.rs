@@ -56,16 +56,11 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 
     pub fn read_entry_by_id(&self, id: Id) {
         self.db.take(|db| {
-            println!("{:?}", State::backup_map());
-
             let reader = db.reader();
             let req = reader.prepare_read(id).expect(line_error!());
 
-            println!("{:?}", req);
             if let CResult::Read(res) = send_until_success(CRequest::Read(req)) {
-                println!("{:?}", res);
                 let res = reader.read(res).expect(line_error!());
-                println!("{:?}", res);
             };
         });
     }
