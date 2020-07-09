@@ -220,7 +220,6 @@ impl AsMut<[u8]> for SealedCommit {
         &mut self.0
     }
 }
-impl Decrypt<(), Commit> for SealedCommit {}
 
 impl Default for Commit {
     fn default() -> Self {
@@ -264,6 +263,7 @@ impl AsMut<[u8]> for SealedPayload {
 }
 
 impl Encrypt<SealedCommit> for Commit {}
+impl Decrypt<(), Commit> for SealedCommit {}
 impl AsView<UntypedCommit> for Commit {}
 impl AsView<DataCommit> for Commit {}
 impl AsViewMut<DataCommit> for Commit {}

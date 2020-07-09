@@ -44,7 +44,7 @@ subcommands:
             required: true
             takes_value: true
   - read:
-      about: read an entry by id
+      about: read an associated entry by id
       args:
         - password:
             short: w
@@ -57,6 +57,6 @@ subcommands:
             short: i
             long: id
             value_name: id
-            about: the id of the entry that you want to unbox
+            about: the id of the entry
             required: true
             takes_value: true

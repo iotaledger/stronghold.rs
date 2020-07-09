@@ -12,10 +12,12 @@ use snapshot::{decrypt_snapshot, encrypt_snapshot, snapshot_dir};
 use vault::Base64Decodable;
 
 use clap::{load_yaml, App};
+use std::collections::HashMap;
 use std::fs::OpenOptions;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::{client::Client, provider::Provider};
+use crate::{client::Client, provider::Provider, state::State};
 
 #[macro_export]
 macro_rules! line_error {
@@ -117,6 +119,7 @@ fn get_snapshot_path() -> PathBuf {
 }
 
 fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider> {
+    upload_state();
     let mut buffer = Vec::new();
 
     let mut file = OpenOptions::new().read(true).open(snapshot).expect(
@@ -130,6 +133,7 @@ fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider>
 }
 
 fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: Client<Provider>) {
+    offload_state();
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -142,36 +146,33 @@ fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: Client<Provider
     encrypt_snapshot(data, &mut file, pass.as_bytes()).expect("Couldn't write to the snapshot");
 }
 
-// #[cfg(test)]
-// mod test {
-//     use super::*;
+fn offload_state() {
+    let path = snapshot_dir().unwrap().join("map_data");
 
-//     #[test]
-//     fn test_bincode() {
-//         let pass = "test";
-//         let key = Key::<Provider>::random().unwrap();
-//         let id = Id::random::<Provider>().unwrap();
-//         let client = Client::create_chain(key, id);
-//         client.create_entry("test".as_bytes().to_vec());
-//         let mut buffer: Vec<u8> = Vec::new();
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(path)
+        .expect("Unable to access map data");
 
-//         let data: Vec<u8> = bincode::serialize(&client).unwrap();
-//         println!("{:?}", &data);
+    let data: Vec<u8> = bincode::serialize(&State::offload_data()).expect("couldn't serialize map");
 
-//         let mut write = OpenOptions::new()
-//             .create(true)
-//             .write(true)
-//             .open("test")
-//             .unwrap();
+    file.write_all(&data).expect("unable to write to map file");
+}
 
-//         encrypt_snapshot(data, &mut write, pass.as_bytes()).unwrap();
+fn upload_state() {
+    let path = snapshot_dir().unwrap().join("map_data");
+    let mut buffer: Vec<u8> = Vec::new();
 
-//         let mut read = OpenOptions::new().read(true).open("test").unwrap();
+    let mut file = OpenOptions::new()
+        .read(true)
+        .open(path)
+        .expect("Unable to access map data");
 
-//         decrypt_snapshot(&mut read, &mut buffer, pass.as_bytes()).unwrap();
+    file.read_to_end(&mut buffer).expect("unable to read data");
 
-//         let incoming_client = bincode::deserialize::<Client<Provider>>(&buffer[..]).unwrap();
+    let map: HashMap<Vec<u8>, Vec<u8>> =
+        bincode::deserialize(&buffer[..]).expect("unable to deserialize map");
 
-//         incoming_client.create_entry("another test".as_bytes().to_vec());
-//     }
-// }
+    State::upload_data(map);
+}
