@@ -4,10 +4,7 @@ use crate::{
         commits::{DataCommit, InitCommit, RevocationCommit},
         utils::{Id, IndexHint, Val},
     },
-    vault::{
-        entries::Entry,
-        indices::{ChainIndex, ValidIndex},
-    },
+    vault::indices::{ChainIndex, ValidIndex},
 };
 
 use std::collections::HashMap;
@@ -17,14 +14,16 @@ use serde::{Deserialize, Serialize};
 mod entries;
 mod indices;
 
-pub use crate::vault::entries::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
+pub use crate::vault::entries::{
+    DeleteRequest, Entry, ListResult, ReadRequest, ReadResult, WriteRequest,
+};
 
 // A view over the vault
 #[derive(Serialize, Deserialize)]
 pub struct DBView<P: BoxProvider> {
     key: Key<P>,
-    chain: ChainIndex,
-    valid: ValidIndex,
+    pub chain: ChainIndex,
+    pub valid: ValidIndex,
 }
 
 // A reader for the DBView

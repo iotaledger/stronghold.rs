@@ -1,5 +1,7 @@
 use std::mem;
 
+pub use commits::{DataCommit, SealedCommit, SealedPayload};
+
 pub mod commits;
 pub mod utils;
 

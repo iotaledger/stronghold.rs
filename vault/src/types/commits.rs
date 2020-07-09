@@ -23,11 +23,11 @@ enum CommitType {
 }
 
 // a sealed commit
-#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SealedCommit(Vec<u8>);
 
 // a generic commit (untyped)
-#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Commit(Vec<u8>);
 
 // untyped commit view

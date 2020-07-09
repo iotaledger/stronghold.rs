@@ -46,8 +46,8 @@ fn main() {
                     let snapshot = get_snapshot_path();
                     serialize_to_snapshot(&snapshot, pass, client);
                 } else {
-                    let key = Key::<Provider>::random().unwrap();
-                    let id = Id::random::<Provider>().unwrap();
+                    let key = Key::<Provider>::random().expect("Unable to generate a new key");
+                    let id = Id::random::<Provider>().expect("Unable to generate a new id");
                     let client = Client::create_chain(key, id);
                     client.create_entry(plain.as_bytes().to_vec());
 
@@ -95,8 +95,9 @@ fn main() {
 
                 client.perform_gc();
 
-                let id = Vec::from_base64(id.as_bytes()).unwrap();
-                let id = Id::load(&id).unwrap();
+                let id = Vec::from_base64(id.as_bytes())
+                    .expect("couldn't convert the id to from base64");
+                let id = Id::load(&id).expect("Couldn't build a new Id");
 
                 client.read_entry_by_id(id);
 
@@ -118,9 +119,12 @@ fn get_snapshot_path() -> PathBuf {
 fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider> {
     let mut buffer = Vec::new();
 
-    let mut file = OpenOptions::new().read(true).open(snapshot).unwrap();
+    let mut file = OpenOptions::new().read(true).open(snapshot).expect(
+        "Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.",
+    );
 
-    decrypt_snapshot(&mut file, &mut buffer, pass.as_bytes()).unwrap();
+    decrypt_snapshot(&mut file, &mut buffer, pass.as_bytes())
+        .expect("unable to decrypt the snapshot");
 
     bincode::deserialize(&buffer[..]).expect("Unable to deserialize data")
 }
@@ -130,10 +134,12 @@ fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: Client<Provider
         .write(true)
         .create(true)
         .open(snapshot)
-        .unwrap();
+        .expect(
+        "Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.",
+    );
 
-    let data: Vec<u8> = bincode::serialize(&client).unwrap();
-    encrypt_snapshot(data, &mut file, pass.as_bytes()).unwrap();
+    let data: Vec<u8> = bincode::serialize(&client).expect("Couldn't serialize the client data");
+    encrypt_snapshot(data, &mut file, pass.as_bytes()).expect("Couldn't write to the snapshot");
 }
 
 // #[cfg(test)]
