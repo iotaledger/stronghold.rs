@@ -12,8 +12,3 @@ primitives = {path = "../primitives", version = "0.1"}
 [build-dependencies]
 cc = "1.0"
 
-[profile.release]
-overflow-checks = true
-
-[profile.bench]
-overflow-checks = true

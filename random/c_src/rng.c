@@ -7,12 +7,12 @@
 #include <sys/random.h>
 #elif defined(USE_ARC4RANDOM)
 // stdlib.h is already included.
-#elif defined(USE_SECRANDOMCOPYBYTES)
+#elif defined(USE_SECRANDOM)
 #include <Security/SecRandom.h>
 #elif defined(USE_CRYPTGENRANDOM)
 #include <windows.h>
 #include <Wincrypt.h>
-#elif defined(USE_DEV_URANDOM)
+#elif defined(USE_DEV_RANDOM)
 #include <stdio.h>
 #endif
 
@@ -25,7 +25,7 @@ uint8_t os_random_secrandom(uint8_t *buf, size_t len)
 #elif defined(USE_ARC4RANDOM)
     arc4random_buf(buf, len);
     return 0;
-#elif defined(USE_SECRANDOMCOPYBYTES)
+#elif defined(USE_SECRANDOM)
     return SecRandomCopyBytes(kSecRandomDefault, len, buf) == errSecSuccess ? 0 : 1;
 #elif defined(USE_CRYPTGENRANDOM)
     HCRYPTPROV rng;
@@ -35,7 +35,7 @@ uint8_t os_random_secrandom(uint8_t *buf, size_t len)
     uint8_t ret_val = CryptGenRandom(rng, (DWORD)len, (BYTE *)buf) == 0 ? 1 : 0;
     CryptReleaseContext(rng, 0);
     return ret_val;
-#elif defined(USE_DEV_URANDOM)
+#elif defined(USE_DEV_RANDOM)
     FILE *urandom = fopen("/dev/urandom", "r");
     if (urandom == NULL)
         return 1;

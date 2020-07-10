@@ -8,9 +8,3 @@ edition = "2018"
 
 [dependencies]
 
-
-[profile.release]
-overflow-checks = true
-
-[profile.dev]
-overflow-checks = true

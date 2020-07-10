@@ -16,9 +16,3 @@ serde = {version = "1.0", features = ["derive"]}
 json = "0.12"
 crypto = {path = "../crypto", version = "0.1"}
 random = {path = "../random", version = "0.1"}
-
-[profile.release]
-overflow-checks = true
-
-[profile.dev]
-overflow-checks = true

@@ -2,7 +2,7 @@
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn macos_secrandom() -> Option<&'static str> {
     println!("cargo:rustc-link-lib=framework=Security");
-    Some("USE_SECRANDOMCOPYBYTES")
+    Some("USE_SECRANDOM")
 }
 
 // checks if the current version of glibc supports the getrandom function
@@ -22,7 +22,7 @@ fn linux_check_getrandom() -> Option<&'static str> {
 
     match (v[0], v[1]) {
         (2...255, 25...255) => Some("USE_GETRANDOM"),
-        _ => Some("USE_DEV_URANDOM"),
+        _ => Some("USE_DEV_RANDOM"),
     }
 }
 

@@ -15,8 +15,3 @@ anyhow = "1.0"
 json = "0.12"
 hex = "0.4"
 
-[profile.release]
-overflow-checks = true
-
-[profile.dev]
-overflow-checks = true
