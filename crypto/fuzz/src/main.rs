@@ -24,14 +24,14 @@ struct SecureRng {
 }
 
 // ChaChaPolyIetf Test Vector.
-struct ChaChaPolyTestVector {
+struct ChaChaPolyVector {
     key: Vec<u8>,
     nonce: Vec<u8>,
     plain: Vec<u8>,
     ad: Vec<u8>,
 }
-
-struct XChaChaPolyTestVector {
+// XChaChaPolyIetf Test Vector.
+struct XChaChaPolyVector {
     key: Vec<u8>,
     nonce: Vec<u8>,
     plain: Vec<u8>,
@@ -130,14 +130,14 @@ impl ChaChaPolyTestVector {
 
         // Compare the sealed data.
         if ct_crypto != ct_sodium {
-            eprintln!("Error Information:");
+            eprintln!("Error Report:");
             eprintln!("Key: {}", self.key.encode_hex::<String>());
             eprintln!("Nonce: {}", self.nonce.encode_hex::<String>());
             eprintln!("Plain: {}", self.plain.encode_hex::<String>());
-            eprintln!("Additional data: {}", self.ad.encode_hex::<String>());
+            eprintln!("AD: {}", self.ad.encode_hex::<String>());
             eprintln!("Outputs:");
             eprintln!("Crypto: {}", ct_crypto.encode_hex::<String>());
-            eprintln!("Libsodium: {}", ct_sodium.encode_hex::<String>());
+            eprintln!("Sodiumoxide: {}", ct_sodium.encode_hex::<String>());
             panic!("Exiting. Please save this error information.");
         }
         // increment the counter.
@@ -183,14 +183,14 @@ impl XChaChaPolyTestVector {
 
         // Compare the sealed data.
         if ct_crypto != ct_sodium {
-            eprintln!("Error Information:");
+            eprintln!("Error Report:");
             eprintln!("Key: {}", self.key.encode_hex::<String>());
             eprintln!("Nonce: {}", self.nonce.encode_hex::<String>());
             eprintln!("Plain: {}", self.plain.encode_hex::<String>());
-            eprintln!("Additional data: {}", self.ad.encode_hex::<String>());
+            eprintln!("AD: {}", self.ad.encode_hex::<String>());
             eprintln!("Outputs:");
             eprintln!("Crypto: {}", ct_crypto.encode_hex::<String>());
-            eprintln!("Libsodium: {}", ct_sodium.encode_hex::<String>());
+            eprintln!("Sodiumoxide: {}", ct_sodium.encode_hex::<String>());
             panic!("Exiting. Please save this error information.");
         }
         // increment the counter.
@@ -200,7 +200,7 @@ impl XChaChaPolyTestVector {
 
 fn main() {
     // get the threads from the THREADS enviroment var.
-    let threads_str = env::var("THREADS").unwrap_or(num_cpus::get().to_string());
+    let threads_str = env::var("NUM_THREADS").unwrap_or(num_cpus::get().to_string());
     let threads = usize::from_str(&threads_str).expect("Invalid value of THREADS");
 
     // load the enviroment limit from the VECTOR_LIMIT env var.
@@ -211,14 +211,14 @@ fn main() {
     for _ in 0..threads {
         let mut rng = SecureRng::new();
         thread::spawn(move || loop {
-            ChaChaPolyTestVector::random(limit, &mut rng).test();
-            XChaChaPolyTestVector::random(limit, &mut rng).test()
+            ChaChaPolyVector::random(limit, &mut rng).test();
+            XChaChaPolyVector::random(limit, &mut rng).test()
         });
     }
 
     // Show the progress of fuzzing.
     println!(
-        "Starting fuzzing [THREADS = {}, VECTOR_LIMIT = {} bytes]...",
+        "Spraying Fuzz [Num Of Threads = {}, Vector Limit = {} bytes]...",
         threads, limit
     );
     loop {

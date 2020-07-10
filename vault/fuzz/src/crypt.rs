@@ -27,7 +27,7 @@ impl Provider {
 impl CRng {
     // thread local crng
     thread_local! {
-        static CRng: RefCell<CRng> = RefCell::new({
+        static CRNG: RefCell<CRng> = RefCell::new({
             let mut key = [0; 32];
             OsRng.random(&mut key).expect("Failed to generate seed");
             CRng {
@@ -38,7 +38,7 @@ impl CRng {
 
     // fill buffer with random bytes.
     pub fn random(buf: &mut [u8]) {
-        Self::CRng.with(|crng| {
+        Self::CRNG.with(|crng| {
             // get crng instance
             let mut crng = crng.borrow_mut();
             buf.iter_mut().for_each(|x| *x = 0);
@@ -112,7 +112,7 @@ impl BoxProvider for Provider {
         // seal the data
         XChaChaPoly
             .seal_with(ciphertext, plaintext, ad, key.bytes(), nonce)
-            .map_err(|e| vault::Error::OtherError(String::from("failed to seal")))?;
+            .map_err(|_| vault::Error::OtherError(String::from("failed to seal")))?;
         Ok(cbox)
     }
 

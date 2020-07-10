@@ -43,7 +43,7 @@ impl<P: BoxProvider + Send + 'static> Worker<P> {
             }
 
             // print status and sleep
-            print_status!(b"v");
+            print_status!(b"|");
             thread::sleep(Duration::from_secs(1));
         }
     }

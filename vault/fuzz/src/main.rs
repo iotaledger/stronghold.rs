@@ -16,9 +16,9 @@ macro_rules! line_error {
 }
 
 mod client;
+mod connection;
 mod crypt;
 mod env;
-mod remote;
 mod skynet;
 mod worker;
 
@@ -36,10 +36,10 @@ fn main() {
     // print info.
     eprintln! {
         "Spraying fuzz [{}: {}, {}: {}, {}: {}, {}: {}]...",
-        "client_counter", Env::client_count(),
-        "Error_probability", Env::error_probability(),
-        "Verify_internal", Env::verify_interval(),
-        "Retry_delay_ms", Env::retry_delay_ms(),
+        "Number of Clients", Env::client_count(),
+        "Error rate", Env::error_rate(),
+        "Verification rate", Env::verify_number(),
+        "Retry delay", Env::retry_delay(),
     };
 
     // start fuzzing
@@ -53,7 +53,7 @@ fn main() {
         // start iterations
         let join_handles: Vec<_> = ids
             .iter()
-            .map(|i| Client::<Provider>::start(Env::verify_interval(), key.clone(), *i))
+            .map(|i| Client::<Provider>::start(Env::verify_number(), key.clone(), *i))
             .collect();
 
         join_handles
@@ -63,7 +63,7 @@ fn main() {
         // generate machine to assimilate chains
         let first = ids.get(0).expect(line_error!());
         Machine::new(*first, key.clone()).assimilate_rand(&ids[1..]);
-        print_status!(b"@");
+        print_status!(b"^");
 
         // lock the vault
         let (_store, _shadow) = (Env::storage(), Env::shadow_storage());
@@ -100,6 +100,6 @@ fn main() {
             entries, shadow_entries,
             "Real and shadow vault payloads are not equal"
         );
-        print_status!(b"=\n");
+        print_status!(b"##\n");
     }
 }

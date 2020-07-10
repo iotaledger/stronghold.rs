@@ -49,21 +49,21 @@ impl Env {
 
     // get amount of clients or the default.
     pub fn client_count() -> usize {
-        lazy_env!("CLIENT_COUNT", 67 => usize)
+        lazy_env!("CLIENT_COUNT", 30 => usize)
     }
 
     // get the defined error probability or the default.
-    pub fn error_probability() -> usize {
-        lazy_env!("ERR_PROBABILITY", 7 => usize)
+    pub fn error_rate() -> usize {
+        lazy_env!("ERROR_RATE", 5 => usize)
     }
 
     // get the verify interval; how many transactions should complete before verification
-    pub fn verify_interval() -> usize {
-        lazy_env!("VERIFY_INTERVAL", 384 => usize)
+    pub fn verify_number() -> usize {
+        lazy_env!("VERIFY_NUMBER", 155 => usize)
     }
 
     // get the delay to wait until a transaction is retried.
-    pub fn retry_delay_ms() -> u64 {
-        lazy_env!("RETRY_DELAY", 77 => u64)
+    pub fn retry_delay() -> u64 {
+        lazy_env!("RETRY_DELAY", 52 => u64)
     }
 }

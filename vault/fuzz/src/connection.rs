@@ -33,7 +33,7 @@ impl TransactionResult {
 // send a message
 fn send(req: TransactionRequest) -> Option<TransactionResult> {
     // should request fail or not
-    if CRng::bool(Env::error_probability()) {
+    if CRng::bool(Env::error_rate()) {
         None?
     }
 
@@ -65,7 +65,7 @@ fn send(req: TransactionRequest) -> Option<TransactionResult> {
     };
 
     // should result fail or not
-    match CRng::bool(Env::error_probability()) {
+    match CRng::bool(Env::error_rate()) {
         false => Some(res),
         true => None,
     }
@@ -76,7 +76,7 @@ pub fn send_until_success(req: TransactionRequest) -> TransactionResult {
     loop {
         match send(req.clone()) {
             Some(result) => break result,
-            None => thread::sleep(Duration::from_millis(Env::retry_delay_ms())),
+            None => thread::sleep(Duration::from_millis(Env::retry_delay())),
         }
     }
 }

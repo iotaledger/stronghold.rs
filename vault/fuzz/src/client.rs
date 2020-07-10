@@ -1,7 +1,7 @@
 use crate::{
+    connection::{self, TransactionRequest},
     crypt::CRng,
     env::Env,
-    remote::{self, TransactionRequest},
 };
 
 use std::{
@@ -27,7 +27,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     // generate new chain in vault
     pub fn create_chain(key: &Key<P>, id: Id) {
         let req = DBWriter::<P>::create_chain(key, id);
-        remote::send_until_success(TransactionRequest::Write(req.clone()));
+        connection::send_until_success(TransactionRequest::Write(req.clone()));
     }
 
     // start a client
@@ -53,9 +53,9 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
                 6 => self.perform_gc(),
                 _ => unreachable!(),
             }
-            print_status!(b".");
+            print_status!(b"*");
         }
-        print_status!(b"+");
+        print_status!(b"$");
     }
     fn create_entry(&self) {
         let payload = CRng::payload();
@@ -69,7 +69,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
                 .expect(line_error!())
                 .insert(id.as_ref().to_vec(), payload);
             req.into_iter().for_each(|req| {
-                remote::send_until_success(TransactionRequest::Write(req));
+                connection::send_until_success(TransactionRequest::Write(req));
             });
         });
     }
@@ -84,18 +84,18 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
                 .write()
                 .expect(line_error!())
                 .remove(id.as_ref());
-            remote::send_until_success(TransactionRequest::Write(to_write));
-            remote::send_until_success(TransactionRequest::Delete(to_delete));
+            connection::send_until_success(TransactionRequest::Write(to_write));
+            connection::send_until_success(TransactionRequest::Delete(to_delete));
         });
     }
     fn perform_gc(&self) {
         self.db.take(|db| {
             let (to_write, to_delete) = db.writer(self.id).gc().expect(line_error!());
             to_write.into_iter().for_each(|req| {
-                remote::send_until_success(TransactionRequest::Write(req.clone()));
+                connection::send_until_success(TransactionRequest::Write(req.clone()));
             });
             to_delete.into_iter().for_each(|req| {
-                remote::send_until_success(TransactionRequest::Delete(req.clone()));
+                connection::send_until_success(TransactionRequest::Delete(req.clone()));
             });
         });
     }
@@ -104,7 +104,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 impl<P: BoxProvider> Db<P> {
     // creates a new vault wrapper
     pub fn new(key: Key<P>) -> Self {
-        let req = remote::send_until_success(TransactionRequest::List).list();
+        let req = connection::send_until_success(TransactionRequest::List).list();
         let db = vault::DBView::load(key.clone(), req).expect(line_error!());
         Self {
             key,
@@ -134,7 +134,7 @@ impl<P: BoxProvider> Db<P> {
         let retval = f(db);
 
         // reload vault
-        let req = remote::send_until_success(TransactionRequest::List).list();
+        let req = connection::send_until_success(TransactionRequest::List).list();
         *_db = Some(vault::DBView::load(self.key.clone(), req).expect(line_error!()));
         retval
     }
