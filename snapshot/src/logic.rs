@@ -172,7 +172,9 @@ fn decrypt_file(
             Ok(bytes_read) if bytes_read > 0 => {
                 // pull each chunk from the stream and decrypt.
                 let (decrypt, _tag) = stream.pull(&buf[..bytes_read], None).map_err(|_| {
-                    crate::Error::SnapshotError("Stream pull failed, could decrypt snapshot".into())
+                    crate::Error::SnapshotError(
+                        "Stream pull failed, could not decrypt snapshot".into(),
+                    )
                 })?;
 
                 // put the vectors into the output vector.
@@ -309,46 +311,6 @@ mod test {
         let mut output: Vec<u8> = Vec::new();
 
         encrypt_snapshot(data, &mut encrypt, password).unwrap();
-
-        decrypt_snapshot(&mut decrypt, &mut output, password).unwrap();
-
-        assert_eq!(expected, output);
-    }
-
-    #[test]
-    fn test_update_snapshot() {
-        let password = b"some_password";
-        let data = vec![
-            69, 59, 116, 81, 23, 91, 2, 212, 10, 248, 108, 227, 167, 142, 2, 205, 202, 100, 216,
-            225, 53, 223, 223, 14, 153, 239, 46, 106, 120, 103, 85, 144, 69, 59, 116, 81, 23, 91,
-            2, 212, 10, 248, 108, 227, 167, 142, 2, 205, 202, 100, 216, 225, 53, 223, 223, 14, 153,
-            239, 46, 106, 120, 103, 85, 144, 69, 59, 116, 81, 23, 91, 2, 212, 10, 248, 108, 227,
-            167, 142, 2, 205, 202, 100, 216, 225, 53, 223, 223, 14, 153, 239, 46, 106, 120, 103,
-            85, 144,
-        ];
-
-        let expected = data.clone();
-
-        let mut output: Vec<u8> = Vec::new();
-
-        let mut old = OpenOptions::new()
-            .read(true)
-            .open("test/snapshot.snapshot")
-            .unwrap();
-
-        let mut new = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open("test/updated_snapshot.snapshot")
-            .unwrap();
-
-        let mut decrypt = OpenOptions::new()
-            .read(true)
-            .open("test/updated_snapshot.snapshot")
-            .unwrap();
-
-        update_snapshot(&mut old, &mut new, password).unwrap();
 
         decrypt_snapshot(&mut decrypt, &mut output, password).unwrap();
 
