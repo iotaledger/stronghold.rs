@@ -94,9 +94,6 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 
     pub fn perform_gc(&self) {
         self.db.take(|db| {
-            // println!("{:?}", db.chain);
-            // println!("{:?}", db.valid);
-
             let (to_write, to_delete) = db.writer(self.id).gc().expect(line_error!());
             to_write.into_iter().for_each(|req| {
                 send_until_success(CRequest::Write(req.clone()));

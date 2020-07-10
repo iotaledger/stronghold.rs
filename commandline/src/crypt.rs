@@ -17,7 +17,7 @@ impl CRng {
     thread_local! {
         pub static CRNG: RefCell<CRng> = RefCell::new({
             let mut key = [0; 32];
-            OsRng.random(&mut key).expect("Failed to generate random seed");
+            OsRng.random(&mut key).expect(line_error!("Failed to generate random seed"));
             CRng {
                 key, counter: 0
             }
