@@ -97,7 +97,7 @@ pub struct InitCommit {
     pub ctr: Val,
 }
 
-// some sealed data
+// some sealed payload data
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct SealedPayload(Vec<u8>);
 
@@ -262,6 +262,7 @@ impl AsMut<[u8]> for SealedPayload {
     }
 }
 
+// implemented traits.
 impl Encrypt<SealedCommit> for Commit {}
 impl Decrypt<(), Commit> for SealedCommit {}
 impl AsView<UntypedCommit> for Commit {}

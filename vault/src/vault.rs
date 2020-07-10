@@ -17,7 +17,16 @@ mod indices;
 pub use crate::vault::entries::{
     DeleteRequest, Entry, ListResult, ReadRequest, ReadResult, WriteRequest,
 };
+// ChainIndex({gFWc16O30VzWlMd3uLSGUVVF8x8Z2Quz:
+// [Entry { sealed: "MVhFjuo7P5_wNpoFMEE-sOzyVUMEQeMOh5c-_RReLUD4Lc4D1r8QblYAnMXa4jSUfE5vE2_m6I511FYUcv3jagb1z2Va6IZrV2r4ZCySx1u-Iy_Jkc18ghDjafGsf3TVZb8u5DqnHHHCuQkxgFi3vBTVB2OXPoCk7C_Goi_aoW0=",
+//          commit: "AAAAAAAAAAqAVZzXo7fRXNaUx3e4tIZRVUXzHxnZC7MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==", data: None, revocation: None, init: Some(InitCommit { type_id: 10, owner: gFWc16O30VzWlMd3uLSGUVVF8x8Z2Quz, ctr: 0 }) },
+//  Entry { sealed: "Zmmtd3qJgUQTwqTu3VwxeLML3FvVs-iH8OVfc_-zs1f8d-bt5U6AFna2qjK9FHgKoW8f6ErbnPRyeFuIzYP-9AVrCIE2U1VkSFvHcCMOd5fxM2r_p364Hpb0OsUnU3lRXmax1eIhZWf2GFFuRXZPsWv8HmoNDjY7WcKYnXQrdJc=",
+//          commit: "AAAAAAAAAAGAVZzXo7fRXNaUx3e4tIZRVUXzHxnZC7MAAAAAAAAAAROapHTHmnAGXPfaHDEQv3DEkx3DHO3FfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==", data: Some(DataCommit { type_id: 1, owner: gFWc16O30VzWlMd3uLSGUVVF8x8Z2Quz, ctr: 1, id: E5qkdMeacAZc99ocMRC_cMSTHcMc7cV8, index_hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA }), revocation: None, init: None }]})
 
+//ValidIndex({E5qkdMeacAZc99ocMRC_cMSTHcMc7cV8:
+// Entry { sealed: "Zmmtd3qJgUQTwqTu3VwxeLML3FvVs-iH8OVfc_-zs1f8d-bt5U6AFna2qjK9FHgKoW8f6ErbnPRyeFuIzYP-9AVrCIE2U1VkSFvHcCMOd5fxM2r_p364Hpb0OsUnU3lRXmax1eIhZWf2GFFuRXZPsWv8HmoNDjY7WcKYnXQrdJc=",
+//         commit: "AAAAAAAAAAGAVZzXo7fRXNaUx3e4tIZRVUXzHxnZC7MAAAAAAAAAAROapHTHmnAGXPfaHDEQv3DEkx3DHO3FfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+//         data: Some(DataCommit { type_id: 1, owner: gFWc16O30VzWlMd3uLSGUVVF8x8Z2Quz, ctr: 1, id: E5qkdMeacAZc99ocMRC_cMSTHcMc7cV8, index_hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA }), revocation: None, init: None }})
 // A view over the vault
 #[derive(Serialize, Deserialize)]
 pub struct DBView<P: BoxProvider> {

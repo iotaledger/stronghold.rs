@@ -275,6 +275,7 @@ impl Into<Vec<u8>> for DeleteRequest {
     }
 }
 
+// debug for entry
 impl Debug for Entry {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.debug_struct("Entry")

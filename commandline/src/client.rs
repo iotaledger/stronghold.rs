@@ -6,14 +6,14 @@ use crate::{
     state::State,
 };
 
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::HashMap};
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Client<P: BoxProvider> {
     pub id: Id,
-    db: Db<P>,
+    pub db: Db<P>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -22,7 +22,18 @@ pub struct Db<P: BoxProvider> {
     db: RefCell<Option<vault::DBView<P>>>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct Snapshot<P: BoxProvider> {
+    pub id: Id,
+    pub db: Db<P>,
+    state: HashMap<Vec<u8>, Vec<u8>>,
+}
+
 impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
+    pub fn new(id: Id, db: Db<P>) -> Self {
+        Self { id, db }
+    }
+
     pub fn create_chain(key: Key<P>, id: Id) -> Client<P> {
         let req = DBWriter::<P>::create_chain(&key.clone(), id);
         send_until_success(CRequest::Write(req.clone()));
@@ -80,6 +91,9 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 
     pub fn perform_gc(&self) {
         self.db.take(|db| {
+            // println!("{:?}", db.chain);
+            // println!("{:?}", db.valid);
+
             let (to_write, to_delete) = db.writer(self.id).gc().expect(line_error!());
             to_write.into_iter().for_each(|req| {
                 send_until_success(CRequest::Write(req.clone()));
@@ -109,5 +123,32 @@ impl<P: BoxProvider> Db<P> {
         let req = send_until_success(CRequest::List).list();
         *_db = Some(vault::DBView::load(self.key.clone(), req).expect(line_error!()));
         retval
+    }
+}
+
+impl<P: BoxProvider> Snapshot<P> {
+    pub fn new(id: Id, db: Db<P>) -> Self {
+        let mut map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+        State::backup_map()
+            .write()
+            .expect("failed to read map")
+            .clone()
+            .into_iter()
+            .for_each(|(k, v)| {
+                map.insert(k, v);
+            });
+
+        Self { id, db, state: map }
+    }
+
+    pub fn offload(self) -> (Id, Db<P>) {
+        self.state.into_iter().for_each(|(k, v)| {
+            State::backup_map()
+                .write()
+                .expect("couldn't open map")
+                .insert(k, v);
+        });
+
+        (self.id, self.db)
     }
 }

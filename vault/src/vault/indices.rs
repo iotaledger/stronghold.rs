@@ -126,7 +126,7 @@ impl ValidIndex {
         self.0.values()
     }
 
-    // get all valid for owner
+    // get all valid for owner id
     pub fn all_for_owner(&self, owner: &Id) -> impl Iterator<Item = &Entry> {
         let owner = *owner;
         self.all().filter(move |e| e.owner() == owner)
