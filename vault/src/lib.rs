@@ -17,10 +17,7 @@ mod vault;
 pub use crate::{
     base64::{Base64Decodable, Base64Encodable},
     crypt_box::{BoxProvider, Decrypt, Encrypt, Key},
-    types::{
-        utils::{Id, IndexHint},
-        AsView, AsViewMut, DataCommit, SealedCommit, SealedPayload,
-    },
+    types::utils::{Id, IndexHint},
     vault::{
         DBReader, DBView, DBWriter, DeleteRequest, Entry, ListResult, ReadRequest, ReadResult,
         WriteRequest,

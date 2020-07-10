@@ -27,12 +27,13 @@ pub use crate::vault::entries::{
 // Entry { sealed: "Zmmtd3qJgUQTwqTu3VwxeLML3FvVs-iH8OVfc_-zs1f8d-bt5U6AFna2qjK9FHgKoW8f6ErbnPRyeFuIzYP-9AVrCIE2U1VkSFvHcCMOd5fxM2r_p364Hpb0OsUnU3lRXmax1eIhZWf2GFFuRXZPsWv8HmoNDjY7WcKYnXQrdJc=",
 //         commit: "AAAAAAAAAAGAVZzXo7fRXNaUx3e4tIZRVUXzHxnZC7MAAAAAAAAAAROapHTHmnAGXPfaHDEQv3DEkx3DHO3FfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
 //         data: Some(DataCommit { type_id: 1, owner: gFWc16O30VzWlMd3uLSGUVVF8x8Z2Quz, ctr: 1, id: E5qkdMeacAZc99ocMRC_cMSTHcMc7cV8, index_hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA }), revocation: None, init: None }})
+
 // A view over the vault
 #[derive(Serialize, Deserialize)]
 pub struct DBView<P: BoxProvider> {
     key: Key<P>,
-    pub chain: ChainIndex,
-    pub valid: ValidIndex,
+    chain: ChainIndex,
+    valid: ValidIndex,
 }
 
 // A reader for the DBView
