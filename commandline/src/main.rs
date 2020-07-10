@@ -119,7 +119,6 @@ fn get_snapshot_path() -> PathBuf {
 }
 
 fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider> {
-    upload_state();
     let mut buffer = Vec::new();
 
     let mut file = OpenOptions::new().read(true).open(snapshot).expect(
@@ -129,11 +128,12 @@ fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider>
     decrypt_snapshot(&mut file, &mut buffer, pass.as_bytes())
         .expect("unable to decrypt the snapshot");
 
+    upload_state();
+
     bincode::deserialize(&buffer[..]).expect("Unable to deserialize data")
 }
 
 fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: Client<Provider>) {
-    offload_state();
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -143,6 +143,7 @@ fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: Client<Provider
     );
 
     let data: Vec<u8> = bincode::serialize(&client).expect("Couldn't serialize the client data");
+    offload_state();
     encrypt_snapshot(data, &mut file, pass.as_bytes()).expect("Couldn't write to the snapshot");
 }
 
