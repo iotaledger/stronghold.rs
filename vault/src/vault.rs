@@ -32,8 +32,8 @@ pub use crate::vault::entries::{
 #[derive(Serialize, Deserialize)]
 pub struct DBView<P: BoxProvider> {
     key: Key<P>,
-    chain: ChainIndex,
-    valid: ValidIndex,
+    pub chain: ChainIndex,
+    pub valid: ValidIndex,
 }
 
 // A reader for the DBView

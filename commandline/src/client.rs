@@ -18,20 +18,23 @@ pub struct Client<P: BoxProvider> {
 
 #[derive(Serialize, Deserialize)]
 pub struct Db<P: BoxProvider> {
-    key: Key<P>,
+    pub key: Key<P>,
     db: RefCell<Option<vault::DBView<P>>>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Snapshot<P: BoxProvider> {
     pub id: Id,
-    pub db: Db<P>,
+    pub key: Key<P>,
     state: HashMap<Vec<u8>, Vec<u8>>,
 }
 
 impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
-    pub fn new(id: Id, db: Db<P>) -> Self {
-        Self { id, db }
+    pub fn new(id: Id, key: Key<P>) -> Self {
+        Self {
+            id,
+            db: Db::<P>::new(key),
+        }
     }
 
     pub fn create_chain(key: Key<P>, id: Id) -> Client<P> {
@@ -75,7 +78,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
                     .read(ReadResult::new(read.into(), data))
                     .expect(line_error!());
 
-                println!("{:?}", String::from_utf8(entry).unwrap());
+                println!("Plain: {:?}", String::from_utf8(entry).unwrap());
             };
         });
     }
@@ -127,7 +130,7 @@ impl<P: BoxProvider> Db<P> {
 }
 
 impl<P: BoxProvider> Snapshot<P> {
-    pub fn new(id: Id, db: Db<P>) -> Self {
+    pub fn new(id: Id, key: Key<P>) -> Self {
         let mut map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
         State::backup_map()
             .write()
@@ -138,10 +141,14 @@ impl<P: BoxProvider> Snapshot<P> {
                 map.insert(k, v);
             });
 
-        Self { id, db, state: map }
+        Self {
+            id,
+            key,
+            state: map,
+        }
     }
 
-    pub fn offload(self) -> (Id, Db<P>) {
+    pub fn offload(self) -> (Id, Key<P>) {
         self.state.into_iter().for_each(|(k, v)| {
             State::backup_map()
                 .write()
@@ -149,6 +156,6 @@ impl<P: BoxProvider> Snapshot<P> {
                 .insert(k, v);
         });
 
-        (self.id, self.db)
+        (self.id, self.key)
     }
 }

@@ -133,9 +133,9 @@ fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider>
     let snap: Snapshot<Provider> =
         bincode::deserialize(&buffer[..]).expect("Unable to deserialize data");
 
-    let (id, db) = snap.offload();
+    let (id, key) = snap.offload();
 
-    let client = Client::<Provider>::new(id, db);
+    let client = Client::<Provider>::new(id, key);
 
     client
 }
@@ -149,7 +149,7 @@ fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: Client<Provider
         "Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.",
     );
 
-    let snap: Snapshot<Provider> = Snapshot::new(client.id, client.db);
+    let snap: Snapshot<Provider> = Snapshot::new(client.id, client.db.key);
 
     let data: Vec<u8> = bincode::serialize(&snap).expect("Couldn't serialize the client data");
     encrypt_snapshot(data, &mut file, pass.as_bytes()).expect("Couldn't write to the snapshot");
