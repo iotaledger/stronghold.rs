@@ -8,7 +8,7 @@ use std::{
     cell::RefCell,
     thread::{self, JoinHandle},
 };
-use vault::{BoxProvider, DBWriter, Id, IndexHint, Key};
+use vault::{BoxProvider, DBWriter, Id, Key, RecordHint};
 
 // fuzzing client
 pub struct Client<P: BoxProvider> {
@@ -62,7 +62,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         self.db.take(|db| {
             let (id, req) = db
                 .writer(self.id)
-                .write(&payload, IndexHint::new(b"").expect(line_error!()))
+                .write(&payload, RecordHint::new(b"").expect(line_error!()))
                 .expect(line_error!());
             Env::shadow_storage()
                 .write()

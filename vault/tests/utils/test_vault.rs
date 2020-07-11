@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use vault::{
-    Base64Decodable, Base64Encodable, IndexHint, Key, ListResult, ReadRequest, ReadResult,
+    Base64Decodable, Base64Encodable, Key, ListResult, ReadRequest, ReadResult, RecordHint,
 };
 
 use super::provider::Provider;
@@ -12,7 +12,7 @@ pub struct TestVault {
 }
 
 pub struct PlainVault {
-    pub entries: HashMap<IndexHint, Vec<u8>>,
+    pub entries: HashMap<RecordHint, Vec<u8>>,
 }
 
 impl TestVault {
@@ -108,7 +108,7 @@ impl PlainVault {
             let data = Vec::from_base64(data).expect(error_line!("Invalid base64 `data` field"));
 
             let hint =
-                IndexHint::new(&hint).expect(error_line!("Invalid data in `index-hint` field"));
+                RecordHint::new(&hint).expect(error_line!("Invalid data in `RecordHint` field"));
             entries.insert(hint, data);
         }
         Self { entries }

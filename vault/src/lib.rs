@@ -3,21 +3,21 @@
 
 // the format of this databse is based off of ordered data chains.
 
-// A Chain start with an `InitCommit`.  Changes to the data is represented
-// as a descendent of the InitCommit. The data also features a counter field.
-// Any commit that isn't a descendent of the InitCommit is ignored.
+// A Chain start with an `InitTransaction`.  Changes to the data is represented
+// as a descendent of the InitTransaction. The data also features a counter field.
+// Any transaction that isn't a descendent of the InitTransaction is ignored.
 
 use thiserror::Error as DeriveError;
 
 mod base64;
-mod crypt_box;
+mod crypto_box;
 mod types;
 mod vault;
 
 pub use crate::{
     base64::{Base64Decodable, Base64Encodable},
-    crypt_box::{BoxProvider, Decrypt, Encrypt, Key},
-    types::utils::{Id, IndexHint},
+    crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
+    types::utils::{Id, RecordHint},
     vault::{
         DBReader, DBView, DBWriter, DeleteRequest, Entry, ListResult, ReadRequest, ReadResult,
         WriteRequest,

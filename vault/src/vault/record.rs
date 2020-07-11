@@ -1,6 +1,6 @@
 use crate::{
     types::{
-        commits::{DataCommit, InitCommit, RevocationCommit},
+        transactions::{DataTransaction, InitTransaction, RevocationTransaction},
         utils::Id,
     },
     vault::entries::Entry,
@@ -10,35 +10,35 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-// index over all entries by an owner and ordered by the counter
+// Record over all entries by an owner and ordered by the counter
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ChainIndex(HashMap<Id, Vec<Entry>>);
+pub struct ChainRecord(HashMap<Id, Vec<Entry>>);
 
-// index of all valid entries.
+// Record of all valid entries.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ValidIndex(HashMap<Id, Entry>);
+pub struct ValidRecord(HashMap<Id, Entry>);
 
-impl ChainIndex {
-    // create a new index
+impl ChainRecord {
+    // create a new record
     pub fn new(i: impl Iterator<Item = Entry>) -> crate::Result<Self> {
         // sort entries by owner
         let mut chains: HashMap<_, Vec<Entry>> = HashMap::new();
         i.for_each(|e| chains.entry(e.owner()).or_default().push(e.clone()));
 
-        // order chains and remove all non-referenced commits
+        // order chains and remove all non-referenced transactions
         for (_, chain) in chains.iter_mut() {
-            // sort commits by counter
+            // sort transactions by counter
             chain.sort_by_key(|e| e.ctr());
             let (start, mut ctr) = chain
                 .iter()
                 .enumerate()
                 .rev()
-                .find_map(|(start, e)| Some((start, e.typed::<InitCommit>()?.ctr)))
+                .find_map(|(start, e)| Some((start, e.typed::<InitTransaction>()?.ctr)))
                 .ok_or(crate::Error::ChainError(String::from(
-                    "Chain does not contain a start commit",
+                    "Chain does not contain a start transaction",
                 )))?;
 
-            // get commits that are ancestors of the InitCommit
+            // get transactions that are ancestors of the InitTransaction
             *chain = chain
                 .iter()
                 .skip(start)
@@ -46,7 +46,7 @@ impl ChainIndex {
                 .cloned()
                 .collect();
         }
-        Ok(ChainIndex(chains))
+        Ok(ChainRecord(chains))
     }
 
     // get chains by owner
@@ -76,12 +76,12 @@ impl ChainIndex {
         self.0.values().flatten()
     }
 
-    // get all revoked commits in the chain by owner
+    // get all revoked transactions in the chain by owner
     pub fn own_revoked(&self, owner: &Id) -> impl Iterator<Item = (Id, &Entry)> {
         let chain = self.force_get(owner);
         chain
             .iter()
-            .filter_map(|e| Some((e.typed::<RevocationCommit>()?.id, e)))
+            .filter_map(|e| Some((e.typed::<RevocationTransaction>()?.id, e)))
     }
 
     // get all foreign data not owned by the id
@@ -92,21 +92,21 @@ impl ChainIndex {
             .filter(move |(owner, _)| **owner != except)
             .map(|(_, chain)| chain)
             .flatten()
-            .filter(|e| e.typed::<DataCommit>().is_some())
+            .filter(|e| e.typed::<DataTransaction>().is_some())
     }
 }
 
-impl ValidIndex {
-    // create a new index
-    pub fn new(chains: &ChainIndex) -> Self {
+impl ValidRecord {
+    // create a new valid record
+    pub fn new(chains: &ChainRecord) -> Self {
         // collect the data and remove revoked ones
         let mut valid: HashMap<_, _> = chains
             .all()
-            .filter_map(|e| Some((e.typed::<DataCommit>()?.id, e.clone())))
+            .filter_map(|e| Some((e.typed::<DataTransaction>()?.id, e.clone())))
             .collect();
         chains
             .all()
-            .filter_map(|e| e.typed::<RevocationCommit>())
+            .filter_map(|e| e.typed::<RevocationTransaction>())
             .for_each(|r| {
                 valid.remove(&r.id);
             });

@@ -1,4 +1,4 @@
-use vault::{BoxProvider, DBWriter, Id, IndexHint, Key, ReadResult};
+use vault::{BoxProvider, DBWriter, Id, Key, ReadResult, RecordHint};
 
 use crate::{
     connection::{send_until_success, CRequest},
@@ -53,7 +53,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         self.db.take(|db| {
             let (_, req) = db
                 .writer(self.id)
-                .write(&payload, IndexHint::new(b"").expect(line_error!()))
+                .write(&payload, RecordHint::new(b"").expect(line_error!()))
                 .expect(line_error!());
 
             req.into_iter().for_each(|req| {

@@ -1,4 +1,4 @@
-use crate::{base64::Base64Encodable, crypt_box::BoxProvider};
+use crate::{base64::Base64Encodable, crypto_box::BoxProvider};
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Formatter},
@@ -16,7 +16,7 @@ pub struct Id([u8; 24]);
 // a index hint
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
-pub struct IndexHint([u8; 24]);
+pub struct RecordHint([u8; 24]);
 
 // a big endian encoded number
 #[repr(transparent)]
@@ -43,7 +43,7 @@ impl Id {
     }
 }
 
-impl IndexHint {
+impl RecordHint {
     // create a new random Id for hint
     pub fn new(hint: impl AsRef<[u8]>) -> crate::Result<Self> {
         let hint = match hint.as_ref() {
@@ -82,12 +82,12 @@ impl Debug for Id {
     }
 }
 
-impl AsRef<[u8]> for IndexHint {
+impl AsRef<[u8]> for RecordHint {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
-impl Debug for IndexHint {
+impl Debug for RecordHint {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.0.base64())
     }

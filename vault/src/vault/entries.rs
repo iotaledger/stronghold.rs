@@ -1,10 +1,10 @@
 use crate::{
     base64::Base64Encodable,
-    crypt_box::{BoxProvider, Decrypt, Encrypt, Key},
+    crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
     types::{
-        commits::{
-            Commit, DataCommit, InitCommit, RevocationCommit, SealedCommit, SealedPayload,
-            TypedCommit,
+        transactions::{
+            DataTransaction, InitTransaction, RevocationTransaction, SealedPayload,
+            SealedTransaction, Transaction, TypedTransaction,
         },
         utils::{Id, Val},
         AsView,
@@ -52,7 +52,7 @@ pub struct DeleteRequest {
 
 // an entry in the vault
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Entry((Commit, SealedCommit));
+pub struct Entry((Transaction, SealedTransaction));
 
 impl ListResult {
     // create new list result
@@ -97,9 +97,9 @@ impl ReadResult {
 
 impl WriteRequest {
     // create a new write request
-    pub(in crate) fn commit(commit: &SealedCommit) -> Self {
+    pub(in crate) fn transaction(transaction: &SealedTransaction) -> Self {
         Self {
-            id: commit.as_ref().to_vec(),
+            id: transaction.as_ref().to_vec(),
             data: Vec::new(),
         }
     }
@@ -125,9 +125,9 @@ impl WriteRequest {
 
 impl DeleteRequest {
     // create new delete request
-    pub(in crate) fn commit(commit: &SealedCommit) -> Self {
+    pub(in crate) fn transaction(transaction: &SealedTransaction) -> Self {
         Self {
-            id: commit.as_ref().to_vec(),
+            id: transaction.as_ref().to_vec(),
         }
     }
 
@@ -145,66 +145,68 @@ impl DeleteRequest {
 }
 
 impl Entry {
-    // open a commit from entry by id
+    // open a transaction from entry by id
     pub fn open<P: BoxProvider>(key: &Key<P>, id: &[u8]) -> Option<Self> {
-        // get fields and create commit
-        let sealed = SealedCommit::from(id.to_vec());
+        // get fields and create transaction
+        let sealed = SealedTransaction::from(id.to_vec());
         let packed = sealed.decrypt(key, b"").ok()?;
         Some(Self((packed, sealed)))
     }
     // create a new entry
-    pub fn new<P: BoxProvider>(key: &Key<P>, commit: Commit) -> Self {
-        let sealed = commit.encrypt(key, b"").expect("Failed to encrypt commit");
-        Self((commit, sealed))
+    pub fn new<P: BoxProvider>(key: &Key<P>, transaction: Transaction) -> Self {
+        let sealed = transaction
+            .encrypt(key, b"")
+            .expect("Failed to encrypt transaction");
+        Self((transaction, sealed))
     }
 
-    // create a sealed commit
-    pub fn sealed(&self) -> &SealedCommit {
+    // create a sealed transaction
+    pub fn sealed(&self) -> &SealedTransaction {
         &(self.0).1
     }
 
-    // the commit for this entry
-    pub fn commit(&self) -> &Commit {
+    // the transaction for this entry
+    pub fn transaction(&self) -> &Transaction {
         &(self.0).0
     }
 
-    // get a typed commit view
-    pub fn typed<T: TypedCommit>(&self) -> Option<&T>
+    // get a typed transaction view
+    pub fn typed<T: TypedTransaction>(&self) -> Option<&T>
     where
-        Commit: AsView<T>,
+        Transaction: AsView<T>,
     {
-        self.commit().typed()
+        self.transaction().typed()
     }
 
-    // get a typed commit view
-    pub fn force_typed<T: TypedCommit>(&self) -> &T
+    // get a typed transaction view
+    pub fn force_typed<T: TypedTransaction>(&self) -> &T
     where
-        Commit: AsView<T>,
+        Transaction: AsView<T>,
     {
-        self.commit().force_typed()
+        self.transaction().force_typed()
     }
 
-    // get commit owner
+    // get transaction owner
     pub fn owner(&self) -> Id {
-        self.commit().untyped().owner
+        self.transaction().untyped().owner
     }
 
-    // get commit counter
+    // get transaction counter
     pub fn ctr(&self) -> Val {
-        self.commit().untyped().ctr
+        self.transaction().untyped().ctr
     }
 
     // the id if the entry is data or a revoke
     pub fn force_uid(&self) -> Id {
-        self.typed::<DataCommit>()
+        self.typed::<DataTransaction>()
             .map(|d| d.id)
-            .or_else(|| self.typed::<RevocationCommit>().map(|r| r.id))
-            .expect("There is no Id in this commit")
+            .or_else(|| self.typed::<RevocationTransaction>().map(|r| r.id))
+            .expect("There is no Id in this transaction")
     }
 
     // create a write request
     pub fn write(&self) -> WriteRequest {
-        WriteRequest::commit(self.sealed())
+        WriteRequest::transaction(self.sealed())
     }
 
     // create a write request
@@ -213,14 +215,14 @@ impl Entry {
         key: &Key<P>,
         data: &[u8],
     ) -> crate::Result<Vec<WriteRequest>> {
-        let id = self.force_typed::<DataCommit>().id;
+        let id = self.force_typed::<DataTransaction>().id;
         let payload: SealedPayload = data
             .to_vec()
             .encrypt(key, id.as_ref())
             .expect("Failed to encrypt payload");
         Ok(vec![
             WriteRequest::payload(id, payload),
-            WriteRequest::commit(self.sealed()),
+            WriteRequest::transaction(self.sealed()),
         ])
     }
 
@@ -230,7 +232,7 @@ impl Entry {
         key: &Key<P>,
         data: &[u8],
     ) -> crate::Result<Vec<u8>> {
-        let id = self.force_typed::<DataCommit>().id;
+        let id = self.force_typed::<DataTransaction>().id;
         let payload = SealedPayload::from(data.to_vec()).decrypt(key, id.as_ref())?;
         Ok(payload)
     }
@@ -280,10 +282,10 @@ impl Debug for Entry {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.debug_struct("Entry")
             .field("sealed", &self.sealed().base64())
-            .field("commit", &self.commit().base64())
-            .field("data", &self.typed::<DataCommit>())
-            .field("revocation", &self.typed::<RevocationCommit>())
-            .field("init", &self.typed::<InitCommit>())
+            .field("transaction", &self.transaction().base64())
+            .field("data", &self.typed::<DataTransaction>())
+            .field("revocation", &self.typed::<RevocationTransaction>())
+            .field("init", &self.typed::<InitTransaction>())
             .finish()
     }
 }

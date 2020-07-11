@@ -1,8 +1,8 @@
 use std::mem;
 
-pub use commits::{DataCommit, SealedCommit, SealedPayload};
+pub use transactions::{DataTransaction, SealedPayload, SealedTransaction};
 
-pub mod commits;
+pub mod transactions;
 pub mod utils;
 
 // a view over raw data.

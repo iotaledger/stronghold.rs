@@ -1,10 +1,10 @@
 use crate::{
-    crypt_box::{BoxProvider, Key},
+    crypto_box::{BoxProvider, Key},
     types::{
-        commits::{DataCommit, InitCommit, RevocationCommit},
-        utils::{Id, IndexHint, Val},
+        transactions::{DataTransaction, InitTransaction, RevocationTransaction},
+        utils::{Id, RecordHint, Val},
     },
-    vault::indices::{ChainIndex, ValidIndex},
+    vault::record::{ChainRecord, ValidRecord},
 };
 
 use std::collections::HashMap;
@@ -12,28 +12,18 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 mod entries;
-mod indices;
+mod record;
 
 pub use crate::vault::entries::{
     DeleteRequest, Entry, ListResult, ReadRequest, ReadResult, WriteRequest,
 };
-// ChainIndex({gFWc16O30VzWlMd3uLSGUVVF8x8Z2Quz:
-// [Entry { sealed: "MVhFjuo7P5_wNpoFMEE-sOzyVUMEQeMOh5c-_RReLUD4Lc4D1r8QblYAnMXa4jSUfE5vE2_m6I511FYUcv3jagb1z2Va6IZrV2r4ZCySx1u-Iy_Jkc18ghDjafGsf3TVZb8u5DqnHHHCuQkxgFi3vBTVB2OXPoCk7C_Goi_aoW0=",
-//          commit: "AAAAAAAAAAqAVZzXo7fRXNaUx3e4tIZRVUXzHxnZC7MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==", data: None, revocation: None, init: Some(InitCommit { type_id: 10, owner: gFWc16O30VzWlMd3uLSGUVVF8x8Z2Quz, ctr: 0 }) },
-//  Entry { sealed: "Zmmtd3qJgUQTwqTu3VwxeLML3FvVs-iH8OVfc_-zs1f8d-bt5U6AFna2qjK9FHgKoW8f6ErbnPRyeFuIzYP-9AVrCIE2U1VkSFvHcCMOd5fxM2r_p364Hpb0OsUnU3lRXmax1eIhZWf2GFFuRXZPsWv8HmoNDjY7WcKYnXQrdJc=",
-//          commit: "AAAAAAAAAAGAVZzXo7fRXNaUx3e4tIZRVUXzHxnZC7MAAAAAAAAAAROapHTHmnAGXPfaHDEQv3DEkx3DHO3FfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==", data: Some(DataCommit { type_id: 1, owner: gFWc16O30VzWlMd3uLSGUVVF8x8Z2Quz, ctr: 1, id: E5qkdMeacAZc99ocMRC_cMSTHcMc7cV8, index_hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA }), revocation: None, init: None }]})
-
-//ValidIndex({E5qkdMeacAZc99ocMRC_cMSTHcMc7cV8:
-// Entry { sealed: "Zmmtd3qJgUQTwqTu3VwxeLML3FvVs-iH8OVfc_-zs1f8d-bt5U6AFna2qjK9FHgKoW8f6ErbnPRyeFuIzYP-9AVrCIE2U1VkSFvHcCMOd5fxM2r_p364Hpb0OsUnU3lRXmax1eIhZWf2GFFuRXZPsWv8HmoNDjY7WcKYnXQrdJc=",
-//         commit: "AAAAAAAAAAGAVZzXo7fRXNaUx3e4tIZRVUXzHxnZC7MAAAAAAAAAAROapHTHmnAGXPfaHDEQv3DEkx3DHO3FfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-//         data: Some(DataCommit { type_id: 1, owner: gFWc16O30VzWlMd3uLSGUVVF8x8Z2Quz, ctr: 1, id: E5qkdMeacAZc99ocMRC_cMSTHcMc7cV8, index_hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA }), revocation: None, init: None }})
 
 // A view over the vault
 #[derive(Serialize, Deserialize)]
 pub struct DBView<P: BoxProvider> {
     key: Key<P>,
-    pub chain: ChainIndex,
-    pub valid: ValidIndex,
+    pub chain: ChainRecord,
+    pub valid: ValidRecord,
 }
 
 // A reader for the DBView
@@ -54,18 +44,20 @@ impl<P: BoxProvider> DBView<P> {
         let entries = ids.into_iter().filter_map(|id| Entry::open(&key, &id));
 
         // build indices
-        let chain = ChainIndex::new(entries)?;
-        let valid = ValidIndex::new(&chain);
+        let chain = ChainRecord::new(entries)?;
+        let valid = ValidRecord::new(&chain);
 
         Ok(Self { key, chain, valid })
     }
 
-    // iterate over all valid ids and index hints
-    pub fn entries<'a>(&'a self) -> impl Iterator<Item = (Id, IndexHint)> + ExactSizeIterator + 'a {
+    // iterate over all valid ids and record hints
+    pub fn entries<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (Id, RecordHint)> + ExactSizeIterator + 'a {
         self.valid
             .all()
-            .map(|e| e.force_typed::<DataCommit>())
-            .map(|d| (d.id, d.index_hint))
+            .map(|e| e.force_typed::<DataTransaction>())
+            .map(|d| (d.id, d.record_hint))
     }
 
     // valid entires compared to total entries
@@ -136,8 +128,8 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
 impl<P: BoxProvider> DBWriter<P> {
     // create a new chain owned by owner
     pub fn create_chain(key: &Key<P>, owner: Id) -> WriteRequest {
-        let commit = InitCommit::new(owner, Val::from(0u64));
-        Entry::new(key, commit).write()
+        let transaction = InitTransaction::new(owner, Val::from(0u64));
+        Entry::new(key, transaction).write()
     }
 
     // amount of valid entries compared to amount of total entries in this chain
@@ -147,21 +139,21 @@ impl<P: BoxProvider> DBWriter<P> {
         (valid, all)
     }
 
-    // generate a commit and return the entry's id along with a WriteRequest.
-    pub fn write(self, data: &[u8], hint: IndexHint) -> crate::Result<(Id, Vec<WriteRequest>)> {
+    // generate a transaction and return the entry's id along with a WriteRequest.
+    pub fn write(self, data: &[u8], hint: RecordHint) -> crate::Result<(Id, Vec<WriteRequest>)> {
         // generate id
         let id = Id::random::<P>()?;
         // get counter
         let ctr = self.view.chain.force_last(&self.owner).ctr() + 1;
 
-        // create commit
-        let commit = DataCommit::new(self.owner, ctr, id, hint);
+        // create transaction
+        let transaction = DataTransaction::new(self.owner, ctr, id, hint);
         // create entry
-        let entry = Entry::new(&self.view.key, commit);
+        let entry = Entry::new(&self.view.key, transaction);
         Ok((id, entry.write_payload(&self.view.key, data)?))
     }
 
-    // creates a revocation commit.  Returns WriteRequest and DeleteRequest
+    // creates a revocation transaction.  Returns WriteRequest and DeleteRequest
     pub fn revoke(self, id: Id) -> crate::Result<(WriteRequest, DeleteRequest)> {
         // check if id is still valid and get counter
         let start_ctr = match self.view.valid.get(&id) {
@@ -169,53 +161,53 @@ impl<P: BoxProvider> DBWriter<P> {
             _ => Err(crate::Error::InterfaceError)?,
         };
 
-        // generate commit
-        let commit = RevocationCommit::new(self.owner, start_ctr, id);
+        // generate transaction
+        let transaction = RevocationTransaction::new(self.owner, start_ctr, id);
         // generate entry
-        let to_write = Entry::new(&self.view.key, commit).write();
+        let to_write = Entry::new(&self.view.key, transaction).write();
         // create delete request
         let to_delete = DeleteRequest::uid(id);
         Ok((to_write, to_delete))
     }
 
-    // create a new InitCommit for an owned chain.  Returns WriteRequests and DeleteRequests
+    // create a new InitTransaction for an owned chain.  Returns WriteRequests and DeleteRequests
     pub fn gc(self) -> crate::Result<(Vec<WriteRequest>, Vec<DeleteRequest>)> {
-        // create InitCommit
+        // create InitTransaction
         let start_ctr = self.view.chain.force_last(&self.owner).ctr() + 1;
-        let start = InitCommit::new(self.owner, start_ctr);
+        let start = InitTransaction::new(self.owner, start_ctr);
         let mut to_write = vec![Entry::new(&self.view.key, start).write()];
 
-        // Recommit revocation commit
+        // Retransaction revocation transaction
         let revoked: HashMap<_, _> = self.view.chain.own_revoked(&self.owner).collect();
         for data in self.view.chain.foreign_data(&self.owner) {
             if let Some(entry) = revoked.get(&data.force_uid()) {
-                // clone and get view of commit
-                let mut commit = entry.commit().clone();
-                let view = commit.force_typed_mut::<RevocationCommit>();
+                // clone and get view of transaction
+                let mut transaction = entry.transaction().clone();
+                let view = transaction.force_typed_mut::<RevocationTransaction>();
 
-                // update commit and create transaction
+                // update transaction and create transaction
                 view.ctr = start_ctr + to_write.len() as u64;
-                to_write.push(Entry::new(&self.view.key, commit).write())
+                to_write.push(Entry::new(&self.view.key, transaction).write())
             }
         }
 
-        // recommit data
+        // retransaction data
         for entry in self.view.valid.all_for_owner(&self.owner) {
-            // create updated commit
-            let mut commit = entry.commit().clone();
-            let view = commit.force_typed_mut::<DataCommit>();
+            // create updated transaction
+            let mut transaction = entry.transaction().clone();
+            let view = transaction.force_typed_mut::<DataTransaction>();
             view.ctr = start_ctr + to_write.len() as u64;
 
             // create the transaction
-            to_write.push(Entry::new(&self.view.key, commit).write());
+            to_write.push(Entry::new(&self.view.key, transaction).write());
         }
-        // move init commit to end.  Keeps the old chain valid until the new InitCommit is written.
+        // move init transaction to end.  Keeps the old chain valid until the new InitTransaction is written.
         to_write.rotate_left(1);
 
-        // create a delete transction to delete all old and non-valid commits
+        // create a delete transction to delete all old and non-valid transactions
         let mut to_delete = Vec::new();
         for entry in self.view.chain.force_get(&self.owner) {
-            to_delete.push(DeleteRequest::commit(entry.sealed()));
+            to_delete.push(DeleteRequest::transaction(entry.sealed()));
         }
         Ok((to_write, to_delete))
     }
@@ -235,32 +227,34 @@ impl<P: BoxProvider> DBWriter<P> {
             .ok_or(crate::Error::InterfaceError)?;
         let mut to_write = Vec::new();
 
-        // Recommit Revocation commit
+        // Retransaction Revocation transaction
         let revoked: HashMap<_, _> = self.view.chain.own_revoked(other).collect();
         for data in self.view.chain.foreign_data(other) {
             if let Some(entry) = revoked.get(&data.force_uid()) {
                 let this_ctr = this_ctr + to_write.len() as u64;
-                let commit = RevocationCommit::new(self.owner, this_ctr, entry.force_uid());
-                to_write.push(Entry::new(&self.view.key, commit).write())
+                let transaction =
+                    RevocationTransaction::new(self.owner, this_ctr, entry.force_uid());
+                to_write.push(Entry::new(&self.view.key, transaction).write())
             }
         }
 
-        // copy all valid commits
+        // copy all valid transactions
         for entry in self.view.valid.all_for_owner(other) {
             let this_ctr = this_ctr + to_write.len() as u64;
-            let entry = entry.force_typed::<DataCommit>();
-            let commit = DataCommit::new(self.owner, this_ctr, entry.id, entry.index_hint);
-            to_write.push(Entry::new(&self.view.key, commit).write());
+            let entry = entry.force_typed::<DataTransaction>();
+            let transaction =
+                DataTransaction::new(self.owner, this_ctr, entry.id, entry.record_hint);
+            to_write.push(Entry::new(&self.view.key, transaction).write());
         }
 
-        // create an InitCommit
-        let other_start_commit = InitCommit::new(*other, other_ctr);
-        to_write.push(Entry::new(&self.view.key, other_start_commit).write());
+        // create an InitTransaction
+        let other_start_transaction = InitTransaction::new(*other, other_ctr);
+        to_write.push(Entry::new(&self.view.key, other_start_transaction).write());
 
-        // delete the old commits
+        // delete the old transactions
         let mut to_delete = Vec::new();
         for entry in self.view.chain.force_get(other) {
-            to_delete.push(DeleteRequest::commit(entry.sealed()));
+            to_delete.push(DeleteRequest::transaction(entry.sealed()));
         }
         Ok((to_write, to_delete))
     }
