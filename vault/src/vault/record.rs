@@ -19,7 +19,7 @@ pub struct ChainRecord(HashMap<Id, Vec<Entry>>);
 pub struct ValidRecord(HashMap<Id, Entry>);
 
 impl ChainRecord {
-    // create a new record
+    // create a new chain of records
     pub fn new(i: impl Iterator<Item = Entry>) -> crate::Result<Self> {
         // sort entries by owner
         let mut chains: HashMap<_, Vec<Entry>> = HashMap::new();
@@ -97,7 +97,7 @@ impl ChainRecord {
 }
 
 impl ValidRecord {
-    // create a new valid record
+    // create a new valid record chain
     pub fn new(chains: &ChainRecord) -> Self {
         // collect the data and remove revoked ones
         let mut valid: HashMap<_, _> = chains

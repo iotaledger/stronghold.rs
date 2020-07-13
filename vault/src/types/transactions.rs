@@ -109,6 +109,7 @@ impl TransactionType {
 }
 
 impl DataTransaction {
+    // create a new data transaction.
     pub fn new(owner: Id, ctr: Val, id: Id, record_hint: RecordHint) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
@@ -129,6 +130,7 @@ impl TypedTransaction for DataTransaction {
 }
 
 impl RevocationTransaction {
+    // create a new revocation transaction.
     pub fn new(owner: Id, ctr: Val, id: Id) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
@@ -189,6 +191,7 @@ impl Transaction {
 }
 
 impl InitTransaction {
+    // create a new init transaction.
     pub fn new(owner: Id, ctr: Val) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();

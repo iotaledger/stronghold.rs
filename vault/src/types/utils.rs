@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Id([u8; 24]);
 
-// a index hint
+// a record hint
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RecordHint([u8; 24]);

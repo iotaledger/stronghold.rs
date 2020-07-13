@@ -3,9 +3,9 @@
 
 // the format of this databse is based off of ordered data chains.
 
-// A Chain start with an `InitTransaction`.  Changes to the data is represented
+// A Chain of records starts with an `InitTransaction`.  Changes to the data is represented
 // as a descendent of the InitTransaction. The data also features a counter field.
-// Any transaction that isn't a descendent of the InitTransaction is ignored.
+// Any transaction that isn't a descendent of the InitTransaction is ignored and is not considered valid.
 
 use thiserror::Error as DeriveError;
 

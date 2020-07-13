@@ -79,7 +79,7 @@ impl<T: BoxProvider> Clone for Key<T> {
         }
     }
 }
-
+// call the drop hook on dropping the key.
 impl<T: BoxProvider> Drop for Key<T> {
     fn drop(&mut self) {
         if let Some(hook) = self.drop_fn {
