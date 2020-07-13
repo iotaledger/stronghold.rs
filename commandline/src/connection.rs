@@ -5,6 +5,7 @@ use std::{thread, time::Duration};
 use crate::line_error;
 use crate::state::State;
 
+// requests to the vault.
 #[derive(Clone)]
 pub enum CRequest {
     List,
@@ -13,6 +14,7 @@ pub enum CRequest {
     Read(ReadRequest),
 }
 
+// results from the vault.
 #[derive(Clone)]
 pub enum CResult {
     List(ListResult),
@@ -22,6 +24,7 @@ pub enum CResult {
 }
 
 impl CResult {
+    // get a list result back.
     pub fn list(self) -> ListResult {
         match self {
             CResult::List(list) => list,
@@ -30,10 +33,12 @@ impl CResult {
     }
 }
 
+// resolve the requests into responses.
 pub fn send(req: CRequest) -> Option<CResult> {
     let result = match req {
+        // if the request is a list, get the keys from the map and put them into a ListResult.
         CRequest::List => {
-            let entries = State::backup_map()
+            let entries = State::storage_map()
                 .read()
                 .expect(line_error!())
                 .keys()
@@ -42,24 +47,27 @@ pub fn send(req: CRequest) -> Option<CResult> {
 
             CResult::List(ListResult::new(entries))
         }
+        // on write, write data to the map and send back a Write result.
         CRequest::Write(write) => {
-            State::backup_map()
+            State::storage_map()
                 .write()
                 .expect(line_error!())
                 .insert(write.id().to_vec(), write.data().to_vec());
 
             CResult::Write
         }
+        // on delete, delete data from the map and send back a Delete result.
         CRequest::Delete(del) => {
-            State::backup_map()
+            State::storage_map()
                 .write()
                 .expect(line_error!())
                 .remove(del.id());
 
             CResult::Delete
         }
+        // on read, read the data from the map and send it back in a Read Result.
         CRequest::Read(read) => {
-            let state = State::backup_map()
+            let state = State::storage_map()
                 .read()
                 .expect(line_error!())
                 .get(read.id())
@@ -73,6 +81,7 @@ pub fn send(req: CRequest) -> Option<CResult> {
     Some(result)
 }
 
+// Loop until there is a Result.
 pub fn send_until_success(req: CRequest) -> CResult {
     loop {
         match send(req.clone()) {

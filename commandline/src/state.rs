@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::line_error;
 
+// lazy static macro
 #[macro_export]
 macro_rules! lazy_static {
     ($init:expr => $type:ty) => {{
@@ -17,16 +18,18 @@ macro_rules! lazy_static {
 
 pub struct State;
 impl State {
-    pub fn backup_map() -> Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>> {
+    // lazy static global hashmap
+    pub fn storage_map() -> Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>> {
         lazy_static!(
             Arc::new(RwLock::new(HashMap::new())) => Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>
         )
         .clone()
     }
 
+    // offload the hashmap data.
     pub fn offload_data() -> HashMap<Vec<u8>, Vec<u8>> {
         let mut map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-        State::backup_map()
+        State::storage_map()
             .write()
             .expect("failed to read map")
             .clone()
@@ -38,9 +41,10 @@ impl State {
         map
     }
 
+    // upload data to the hashmap.
     pub fn upload_data(map: HashMap<Vec<u8>, Vec<u8>>) {
         map.into_iter().for_each(|(k, v)| {
-            State::backup_map()
+            State::storage_map()
                 .write()
                 .expect("couldn't open map")
                 .insert(k, v);

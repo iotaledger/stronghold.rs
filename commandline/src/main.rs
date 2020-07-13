@@ -15,6 +15,7 @@ use clap::{load_yaml, App, ArgMatches};
 
 use std::path::Path;
 
+// create a line error with the file and the line number
 #[macro_export]
 macro_rules! line_error {
     () => {
@@ -25,6 +26,7 @@ macro_rules! line_error {
     };
 }
 
+// handle the encryption command.
 fn encrypt_command(matches: &ArgMatches) {
     let snapshot = get_snapshot_path();
 
@@ -36,7 +38,7 @@ fn encrypt_command(matches: &ArgMatches) {
                     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
                     client.perform_gc();
-                    client.create_entry(plain.as_bytes().to_vec());
+                    client.create_record(plain.as_bytes().to_vec());
 
                     let snapshot = get_snapshot_path();
                     serialize_to_snapshot(&snapshot, pass, client);
@@ -44,7 +46,7 @@ fn encrypt_command(matches: &ArgMatches) {
                     let key = Key::<Provider>::random().expect("Unable to generate a new key");
                     let id = Id::random::<Provider>().expect("Unable to generate a new id");
                     let client = Client::create_chain(key, id);
-                    client.create_entry(plain.as_bytes().to_vec());
+                    client.create_record(plain.as_bytes().to_vec());
 
                     let snapshot = get_snapshot_path();
                     serialize_to_snapshot(&snapshot, pass, client);
@@ -54,6 +56,7 @@ fn encrypt_command(matches: &ArgMatches) {
     }
 }
 
+// handle the snapshot command.
 fn snapshot_command(matches: &ArgMatches) {
     if let Some(matches) = matches.subcommand_matches("snapshot") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -71,6 +74,7 @@ fn snapshot_command(matches: &ArgMatches) {
     }
 }
 
+// handle the list command.
 fn list_command(matches: &ArgMatches) {
     if let Some(matches) = matches.subcommand_matches("list") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -87,6 +91,7 @@ fn list_command(matches: &ArgMatches) {
     }
 }
 
+// handle the read command.
 fn read_command(matches: &ArgMatches) {
     if let Some(matches) = matches.subcommand_matches("read") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -100,7 +105,7 @@ fn read_command(matches: &ArgMatches) {
                     .expect("couldn't convert the id to from base64");
                 let id = Id::load(&id).expect("Couldn't build a new Id");
 
-                client.read_entry_by_id(id);
+                client.read_record_by_id(id);
 
                 let snapshot = get_snapshot_path();
                 serialize_to_snapshot(&snapshot, pass, client);

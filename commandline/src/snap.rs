@@ -8,6 +8,7 @@ use crate::{
     provider::Provider,
 };
 
+// get the snapshot path.
 pub(in crate) fn get_snapshot_path() -> PathBuf {
     let path = snapshot_dir().expect("Unable to get the snapshot directory");
 
@@ -16,6 +17,7 @@ pub(in crate) fn get_snapshot_path() -> PathBuf {
     snapshot
 }
 
+// deserialize the snapshot data from the snapshot file.
 pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider> {
     let mut buffer = Vec::new();
 
@@ -36,6 +38,7 @@ pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Cl
     client
 }
 
+// serialize the snapshot data into the snapshot file.
 pub(in crate) fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: Client<Provider>) {
     let mut file = OpenOptions::new()
         .write(true)
