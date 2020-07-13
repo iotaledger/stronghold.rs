@@ -1,7 +1,7 @@
-use vault::{BoxProvider, DBWriter, Id, Key, ReadResult, RecordHint};
+use vault::{BoxProvider, DBView, DBWriter, Id, Key, RecordHint};
 
 use crate::{
-    connection::{send_until_success, CRequest},
+    connection::{send_until_success, CRequest, CResult},
     line_error,
     state::State,
 };
@@ -19,7 +19,7 @@ pub struct Client<P: BoxProvider> {
 #[derive(Serialize, Deserialize)]
 pub struct Db<P: BoxProvider> {
     pub key: Key<P>,
-    db: RefCell<Option<vault::DBView<P>>>,
+    db: RefCell<Option<DBView<P>>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -72,23 +72,12 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     pub fn read_entry_by_id(&self, id: Id) {
         self.db.take(|db| {
             let read = db.reader().prepare_read(id).expect("unable to read id");
-            if let Some(data) = State::backup_map().read().unwrap().get(read.id()).cloned() {
-                let entry = db
-                    .reader()
-                    .read(ReadResult::new(read.into(), data))
-                    .expect(line_error!());
+
+            if let CResult::Read(read) = send_until_success(CRequest::Read(read)) {
+                let entry = db.reader().read(read).expect(line_error!());
 
                 println!("Plain: {:?}", String::from_utf8(entry).unwrap());
-            };
-        });
-    }
-
-    pub fn revoke_entry(&self, id: Id) {
-        self.db.take(|db| {
-            let (to_write, to_delete) = db.writer(self.id).revoke(id).expect(line_error!());
-
-            send_until_success(CRequest::Write(to_write));
-            send_until_success(CRequest::Delete(to_delete));
+            }
         });
     }
 
@@ -128,15 +117,7 @@ impl<P: BoxProvider> Db<P> {
 
 impl<P: BoxProvider> Snapshot<P> {
     pub fn new(id: Id, key: Key<P>) -> Self {
-        let mut map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-        State::backup_map()
-            .write()
-            .expect("failed to read map")
-            .clone()
-            .into_iter()
-            .for_each(|(k, v)| {
-                map.insert(k, v);
-            });
+        let map = State::offload_data();
 
         Self {
             id,
@@ -146,12 +127,7 @@ impl<P: BoxProvider> Snapshot<P> {
     }
 
     pub fn offload(self) -> (Id, Key<P>) {
-        self.state.into_iter().for_each(|(k, v)| {
-            State::backup_map()
-                .write()
-                .expect("couldn't open map")
-                .insert(k, v);
-        });
+        State::upload_data(self.state);
 
         (self.id, self.key)
     }

@@ -1,8 +1,5 @@
-#![allow(dead_code)]
-
 mod client;
 mod connection;
-mod crypt;
 mod provider;
 mod snap;
 mod state;
