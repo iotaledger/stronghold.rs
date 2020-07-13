@@ -9,10 +9,10 @@ const DATA: &str = include_str!("data.json");
 fn testset(set: &str) {
     let vault = TestVault::from_json(DATA, set);
     let view = vault::DBView::load(vault.key().clone(), vault.list()).unwrap();
-    let entries: Vec<_> = view.entries().collect();
+    let records: Vec<_> = view.records().collect();
 
     let reader = view.reader();
-    let existing: HashMap<_, _> = entries
+    let existing: HashMap<_, _> = records
         .into_iter()
         .map(|(id, hint)| (reader.prepare_read(id).unwrap(), hint))
         .map(|(req, hint)| (vault.read(req).unwrap(), hint))
@@ -21,7 +21,7 @@ fn testset(set: &str) {
 
     let plain = PlainVault::from_json(DATA, set);
 
-    assert_eq!(existing, plain.entries);
+    assert_eq!(existing, plain.records);
 }
 
 #[test]

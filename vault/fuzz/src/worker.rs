@@ -34,7 +34,7 @@ impl<P: BoxProvider + Send + 'static> Worker<P> {
 
             // read each entry.
             let reader = view.reader();
-            for (id, _) in view.entries() {
+            for (id, _) in view.records() {
                 let req = reader.prepare_read(id).expect(line_error!());
                 let data = storage.get(req.id()).expect(line_error!());
                 let _payload = reader

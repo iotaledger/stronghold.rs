@@ -72,32 +72,32 @@ fn main() {
             _shadow.read().expect(line_error!()),
         );
 
-        // load vault and gather all entries.
+        // load vault and gather all records.
         let list_res = ListResult::new(store.keys().cloned().collect());
         let view = DBView::load(key.clone(), list_res).expect(line_error!());
 
-        let mut entries = HashMap::new();
-        for (id, _) in view.entries() {
+        let mut records = HashMap::new();
+        for (id, _) in view.records() {
             // read the data.
             let read = view.reader().prepare_read(id).expect(line_error!());
             let data = store.get(read.id()).expect(line_error!()).clone();
 
-            // open an entry
-            let entry = view
+            // open an record
+            let record = view
                 .reader()
                 .read(ReadResult::new(read.into(), data))
                 .expect(line_error!());
-            entries.insert(id, entry);
+            records.insert(id, record);
         }
 
-        let shadow_entries: HashMap<_, _> = shadow
+        let shadow_records: HashMap<_, _> = shadow
             .iter()
             .map(|(id, data)| (Id::load(id).expect(line_error!()), data.clone()))
             .collect();
 
-        // compare real to shadow entries.
+        // compare real to shadow records.
         assert_eq!(
-            entries, shadow_entries,
+            records, shadow_records,
             "Real and shadow vault payloads are not equal"
         );
         print_status!(b"##\n");

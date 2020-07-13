@@ -39,14 +39,14 @@ fn send(req: TransactionRequest) -> Option<TransactionResult> {
 
     let res = match req {
         TransactionRequest::List => {
-            let entries = Env::storage()
+            let records = Env::storage()
                 .read()
                 .expect(line_error!())
                 .keys()
                 .cloned()
                 .collect();
 
-            TransactionResult::List(ListResult::new(entries))
+            TransactionResult::List(ListResult::new(records))
         }
         TransactionRequest::Write(write) => {
             Env::storage()

@@ -50,16 +50,16 @@ pub struct DeleteRequest {
     id: Vec<u8>,
 }
 
-// an entry in the vault
+// an record in the vault
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Entry((Transaction, SealedTransaction));
+pub struct Record((Transaction, SealedTransaction));
 
 impl ListResult {
     // create new list result
     pub fn new(ids: Vec<Vec<u8>>) -> Self {
         Self { ids }
     }
-    // get the ids of entries
+    // get the ids of records
     pub fn ids(&self) -> &Vec<Vec<u8>> {
         &self.ids
     }
@@ -72,7 +72,7 @@ impl ReadRequest {
             id: id.as_ref().to_vec(),
         }
     }
-    // id of entry
+    // id of record
     pub fn id(&self) -> &[u8] {
         &self.id
     }
@@ -89,7 +89,7 @@ impl ReadResult {
         &self.id
     }
 
-    // data of entry
+    // data of record
     pub fn data(&self) -> &[u8] {
         &self.data
     }
@@ -112,12 +112,12 @@ impl WriteRequest {
         }
     }
 
-    // id of entry
+    // id of record
     pub fn id(&self) -> &[u8] {
         &self.id
     }
 
-    // data of entry
+    // data of record
     pub fn data(&self) -> &[u8] {
         &self.data
     }
@@ -144,15 +144,15 @@ impl DeleteRequest {
     }
 }
 
-impl Entry {
-    // open a transaction from entry by id
+impl Record {
+    // open a transaction from record by id
     pub fn open<P: BoxProvider>(key: &Key<P>, id: &[u8]) -> Option<Self> {
         // get fields and create transaction
         let sealed = SealedTransaction::from(id.to_vec());
         let packed = sealed.decrypt(key, b"").ok()?;
         Some(Self((packed, sealed)))
     }
-    // create a new entry
+    // create a new record
     pub fn new<P: BoxProvider>(key: &Key<P>, transaction: Transaction) -> Self {
         let sealed = transaction
             .encrypt(key, b"")
@@ -165,7 +165,7 @@ impl Entry {
         &(self.0).1
     }
 
-    // the transaction for this entry
+    // the transaction for this record
     pub fn transaction(&self) -> &Transaction {
         &(self.0).0
     }
@@ -196,7 +196,7 @@ impl Entry {
         self.transaction().untyped().ctr
     }
 
-    // the id if the entry is data or a revoke
+    // the id if the record is data or a revoke
     pub fn force_uid(&self) -> Id {
         self.typed::<DataTransaction>()
             .map(|d| d.id)
@@ -277,10 +277,10 @@ impl Into<Vec<u8>> for DeleteRequest {
     }
 }
 
-// debug for entry
-impl Debug for Entry {
+// debug for record
+impl Debug for Record {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.debug_struct("Entry")
+        f.debug_struct("Record")
             .field("sealed", &self.sealed().base64())
             .field("transaction", &self.transaction().base64())
             .field("data", &self.typed::<DataTransaction>())

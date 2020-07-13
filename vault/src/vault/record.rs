@@ -3,26 +3,26 @@ use crate::{
         transactions::{DataTransaction, InitTransaction, RevocationTransaction},
         utils::Id,
     },
-    vault::entries::Entry,
+    vault::results::Record,
 };
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-// Record over all entries by an owner and ordered by the counter
+// Record over all records by an owner and ordered by the counter
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ChainRecord(HashMap<Id, Vec<Entry>>);
+pub struct ChainRecord(HashMap<Id, Vec<Record>>);
 
-// Record of all valid entries.
+// Record of all valid records.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ValidRecord(HashMap<Id, Entry>);
+pub struct ValidRecord(HashMap<Id, Record>);
 
 impl ChainRecord {
     // create a new chain of records
-    pub fn new(i: impl Iterator<Item = Entry>) -> crate::Result<Self> {
-        // sort entries by owner
-        let mut chains: HashMap<_, Vec<Entry>> = HashMap::new();
+    pub fn new(i: impl Iterator<Item = Record>) -> crate::Result<Self> {
+        // sort records by owner
+        let mut chains: HashMap<_, Vec<Record>> = HashMap::new();
         i.for_each(|e| chains.entry(e.owner()).or_default().push(e.clone()));
 
         // order chains and remove all non-referenced transactions
@@ -50,34 +50,34 @@ impl ChainRecord {
     }
 
     // get chains by owner
-    pub fn owners(&self) -> impl Iterator<Item = (&Id, &[Entry])> {
+    pub fn owners(&self) -> impl Iterator<Item = (&Id, &[Record])> {
         self.0.iter().map(|(id, chain)| (id, chain.as_slice()))
     }
 
-    // get an entry in the chain by owner
-    pub fn get(&self, owner: &Id) -> Option<&[Entry]> {
+    // get an record in the chain by owner
+    pub fn get(&self, owner: &Id) -> Option<&[Record]> {
         self.0.get(owner).map(|e| e.as_slice())
     }
 
-    // get all entries owned by the owner or panic
-    pub fn force_get(&self, owner: &Id) -> &[Entry] {
+    // get all records owned by the owner or panic
+    pub fn force_get(&self, owner: &Id) -> &[Record] {
         self.get(owner).expect("There is no chain for this owner")
     }
 
-    // get the last entry of a chain by owner
-    pub fn force_last(&self, owner: &Id) -> &Entry {
+    // get the last record of a chain by owner
+    pub fn force_last(&self, owner: &Id) -> &Record {
         self.force_get(owner)
             .last()
-            .expect("The chain is empty and thus has no last entry")
+            .expect("The chain is empty and thus has no last record")
     }
 
-    // get all entries
-    pub fn all(&self) -> impl Iterator<Item = &Entry> {
+    // get all records
+    pub fn all(&self) -> impl Iterator<Item = &Record> {
         self.0.values().flatten()
     }
 
     // get all revoked transactions in the chain by owner
-    pub fn own_revoked(&self, owner: &Id) -> impl Iterator<Item = (Id, &Entry)> {
+    pub fn own_revoked(&self, owner: &Id) -> impl Iterator<Item = (Id, &Record)> {
         let chain = self.force_get(owner);
         chain
             .iter()
@@ -85,7 +85,7 @@ impl ChainRecord {
     }
 
     // get all foreign data not owned by the id
-    pub fn foreign_data(&self, except: &Id) -> impl Iterator<Item = &Entry> {
+    pub fn foreign_data(&self, except: &Id) -> impl Iterator<Item = &Record> {
         let except = *except;
         self.0
             .iter()
@@ -117,17 +117,17 @@ impl ValidRecord {
     }
 
     // get chain by id
-    pub fn get(&self, id: &Id) -> Option<&Entry> {
+    pub fn get(&self, id: &Id) -> Option<&Record> {
         self.0.get(id)
     }
 
-    // get all valid entries
-    pub fn all(&self) -> impl Iterator<Item = &Entry> + ExactSizeIterator {
+    // get all valid records
+    pub fn all(&self) -> impl Iterator<Item = &Record> + ExactSizeIterator {
         self.0.values()
     }
 
     // get all valid for owner id
-    pub fn all_for_owner(&self, owner: &Id) -> impl Iterator<Item = &Entry> {
+    pub fn all_for_owner(&self, owner: &Id) -> impl Iterator<Item = &Record> {
         let owner = *owner;
         self.all().filter(move |e| e.owner() == owner)
     }

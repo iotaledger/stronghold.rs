@@ -48,8 +48,8 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         for _ in 0..self.counter {
             // execute a random transaction
             match CRng::usize(7) {
-                0..=2 => self.create_entry(),
-                3..=5 => self.revoke_entry(),
+                0..=2 => self.create_record(),
+                3..=5 => self.revoke_record(),
                 6 => self.perform_gc(),
                 _ => unreachable!(),
             }
@@ -57,7 +57,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         }
         print_status!(b"$");
     }
-    fn create_entry(&self) {
+    fn create_record(&self) {
         let payload = CRng::payload();
         self.db.take(|db| {
             let (id, req) = db
@@ -73,8 +73,8 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
             });
         });
     }
-    fn revoke_entry(&self) {
-        let id = match self.db.random_entry() {
+    fn revoke_record(&self) {
+        let id = match self.db.random_record() {
             Some(id) => id,
             None => return,
         };
@@ -112,19 +112,19 @@ impl<P: BoxProvider> Db<P> {
         }
     }
 
-    // get a random entry
-    pub fn random_entry(&self) -> Option<Id> {
-        //get all entries
+    // get a random record
+    pub fn random_record(&self) -> Option<Id> {
+        //get all records
         let _db = self.db.borrow();
         let db = _db.as_ref().expect(line_error!());
-        let mut entries = match db.entries() {
-            entries if entries.len() > 0 => entries,
+        let mut records = match db.records() {
+            records if records.len() > 0 => records,
             _ => return None,
         };
 
         // select random
-        let choice = CRng::usize(entries.len());
-        Some(entries.nth(choice).expect(line_error!()).0)
+        let choice = CRng::usize(records.len());
+        Some(records.nth(choice).expect(line_error!()).0)
     }
 
     // calls the function f with the vault and loads a new instance after f has completed.

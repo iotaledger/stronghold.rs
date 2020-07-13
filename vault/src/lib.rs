@@ -19,7 +19,7 @@ pub use crate::{
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
     types::utils::{Id, RecordHint},
     vault::{
-        DBReader, DBView, DBWriter, DeleteRequest, Entry, ListResult, ReadRequest, ReadResult,
+        DBReader, DBView, DBWriter, DeleteRequest, ListResult, ReadRequest, ReadResult, Record,
         WriteRequest,
     },
 };

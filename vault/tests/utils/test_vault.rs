@@ -8,11 +8,11 @@ use crate::error_line;
 
 pub struct TestVault {
     pub key: Key<Provider>,
-    pub entries: HashMap<Vec<u8>, Vec<u8>>,
+    pub records: HashMap<Vec<u8>, Vec<u8>>,
 }
 
 pub struct PlainVault {
-    pub entries: HashMap<RecordHint, Vec<u8>>,
+    pub records: HashMap<RecordHint, Vec<u8>>,
 }
 
 impl TestVault {
@@ -20,7 +20,7 @@ impl TestVault {
     pub fn empty(key: Key<Provider>) -> Self {
         Self {
             key,
-            entries: HashMap::new(),
+            records: HashMap::new(),
         }
     }
 
@@ -37,29 +37,29 @@ impl TestVault {
         let key = Vec::from_base64(key).expect(error_line!("Invalid base64 `key` field"));
         let key = Key::load(key).expect(error_line!("Invalid data in `key` field"));
 
-        let mut entries = HashMap::new();
-        for entry in db["storage"][name].members() {
-            let name = entry["name"]
+        let mut records = HashMap::new();
+        for record in db["storage"][name].members() {
+            let name = record["name"]
                 .as_str()
                 .expect(error_line!("Missing `name` field"));
-            let data = entry["data"]
+            let data = record["data"]
                 .as_str()
                 .expect(error_line!("Missing `data` field"));
 
             let name = Vec::from_base64(name).expect(error_line!("Invalid base64 `name` field"));
             let data = Vec::from_base64(data).expect(error_line!("Invalid base64 `data` field"));
-            entries.insert(name, data);
+            records.insert(name, data);
         }
-        Self { key, entries }
+        Self { key, records }
     }
 
     pub fn list(&self) -> ListResult {
-        ListResult::new(self.entries.keys().cloned().collect())
+        ListResult::new(self.records.keys().cloned().collect())
     }
 
     pub fn read(&self, req: ReadRequest) -> Option<ReadResult> {
         let id = req.into();
-        self.entries
+        self.records
             .get(&id)
             .map(|data| ReadResult::new(id, data.clone()))
     }
@@ -71,7 +71,7 @@ impl TestVault {
     #[allow(unused)]
     pub fn dump_json(&self) -> String {
         let mut array = json::Array::new();
-        self.entries.iter().for_each(|(name, data)| {
+        self.records.iter().for_each(|(name, data)| {
             array.push(json::object! {
                 "name" => name.base64(),
                 "data" => data.base64()
@@ -85,7 +85,7 @@ impl PlainVault {
     #[allow(unused)]
     pub fn empty() -> Self {
         Self {
-            entries: HashMap::new(),
+            records: HashMap::new(),
         }
     }
     pub fn from_json(data: &str, name: &str) -> Self {
@@ -95,12 +95,12 @@ impl PlainVault {
             error_line!("No array for the requested name")
         );
 
-        let mut entries = HashMap::new();
-        for entry in db["plain"][name].members() {
-            let hint = entry["hint"]
+        let mut records = HashMap::new();
+        for record in db["plain"][name].members() {
+            let hint = record["hint"]
                 .as_str()
                 .expect(error_line!("Missing `hint` field"));
-            let data = entry["data"]
+            let data = record["data"]
                 .as_str()
                 .expect(error_line!("Missing `data` field"));
 
@@ -109,14 +109,14 @@ impl PlainVault {
 
             let hint =
                 RecordHint::new(&hint).expect(error_line!("Invalid data in `RecordHint` field"));
-            entries.insert(hint, data);
+            records.insert(hint, data);
         }
-        Self { entries }
+        Self { records }
     }
     #[allow(unused)]
     pub fn dump_json(&self) -> String {
         let mut array = json::Array::new();
-        self.entries.iter().for_each(|(hint, data)| {
+        self.records.iter().for_each(|(hint, data)| {
             array.push(json::object! {
                 "hint" => hint.base64(),
                 "data" => data.base64()

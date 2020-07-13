@@ -72,7 +72,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     // list the ids and hints of all of the records in the Vault.
     pub fn list_ids(&self) {
         self.db.take(|db| {
-            db.entries()
+            db.records()
                 .for_each(|(id, hint)| println!("Id: {:?}, Hint: {:?}", id, hint));
         });
     }
