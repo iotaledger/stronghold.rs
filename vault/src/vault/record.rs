@@ -10,11 +10,11 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-// Record over all records by an owner and ordered by the counter
+// List over all records by an owner and ordered by the counter
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChainRecord(HashMap<Id, Vec<Record>>);
 
-// Record of all valid records.
+// List of all valid records.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ValidRecord(HashMap<Id, Record>);
 
@@ -54,7 +54,7 @@ impl ChainRecord {
         self.0.iter().map(|(id, chain)| (id, chain.as_slice()))
     }
 
-    // get an record in the chain by owner
+    // get a record in the chain by owner
     pub fn get(&self, owner: &Id) -> Option<&[Record]> {
         self.0.get(owner).map(|e| e.as_slice())
     }

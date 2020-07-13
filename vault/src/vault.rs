@@ -60,7 +60,7 @@ impl<P: BoxProvider> DBView<P> {
             .map(|d| (d.id, d.record_hint))
     }
 
-    // valid entires compared to total records
+    // valid records compared to total records
     pub fn absolute_balance(&self) -> (usize, usize) {
         (self.valid.all().count(), self.chain.all().count())
     }
@@ -106,7 +106,7 @@ impl<P: BoxProvider> DBView<P> {
 }
 
 impl<'a, P: BoxProvider> DBReader<'a, P> {
-    // create a read transaction to read the record with inputted id. Returns None if there was no record for the ID
+    // create a read request to read the record with inputted id. Returns None if there was no record for the ID
     pub fn prepare_read(&self, id: Id) -> crate::Result<ReadRequest> {
         match self.view.valid.get(&id) {
             Some(_) => Ok(ReadRequest::payload::<P>(id)),

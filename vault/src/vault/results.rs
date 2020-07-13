@@ -50,7 +50,7 @@ pub struct DeleteRequest {
     id: Vec<u8>,
 }
 
-// an record in the vault
+// a record in the vault
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Record((Transaction, SealedTransaction));
 
@@ -89,7 +89,7 @@ impl ReadResult {
         &self.id
     }
 
-    // data of record
+    // data from record
     pub fn data(&self) -> &[u8] {
         &self.data
     }
@@ -196,7 +196,7 @@ impl Record {
         self.transaction().untyped().ctr
     }
 
-    // the id if the record is data or a revoke
+    // Get the id if the record's Transaction is of type data or revoke
     pub fn force_uid(&self) -> Id {
         self.typed::<DataTransaction>()
             .map(|d| d.id)
@@ -277,7 +277,7 @@ impl Into<Vec<u8>> for DeleteRequest {
     }
 }
 
-// debug for record
+// debug for records
 impl Debug for Record {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.debug_struct("Record")
