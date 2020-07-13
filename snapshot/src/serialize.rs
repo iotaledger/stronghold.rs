@@ -1,5 +1,8 @@
 use std::{collections::HashMap, convert::TryInto};
 
+// helpers to work with hashmaps in the snapshot.
+
+// serialize a hashmap
 pub fn serialize_map(map: &HashMap<Vec<u8>, Vec<u8>>) -> Vec<u8> {
     map.iter().fold(Vec::new(), |mut acc, (k, v)| {
         acc.extend(&k.len().to_le_bytes());
@@ -10,6 +13,7 @@ pub fn serialize_map(map: &HashMap<Vec<u8>, Vec<u8>>) -> Vec<u8> {
     })
 }
 
+// deseralize a hashmap
 pub fn deserialize_buffer(bytes: &Vec<u8>) -> HashMap<Vec<u8>, Vec<u8>> {
     let mut map = HashMap::new();
 
@@ -23,6 +27,7 @@ pub fn deserialize_buffer(bytes: &Vec<u8>) -> HashMap<Vec<u8>, Vec<u8>> {
     map
 }
 
+// read the buffer.
 fn read_buffer(input: &mut &[u8]) -> Vec<u8> {
     let (len, rest) = input.split_at(std::mem::size_of::<usize>());
     let len = usize::from_le_bytes(len.try_into().unwrap());
