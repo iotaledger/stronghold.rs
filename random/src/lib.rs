@@ -5,6 +5,8 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
+// Rust Bindings to major C random headers.  A library that creates secure random number generators.
+
 // Error for dealing with errors from the OS RNG.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct OsRandomErr;
