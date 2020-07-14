@@ -1,0 +1,16 @@
+[package]
+name = "vault"
+version = "0.1.0"
+authors = ["tensor-programming <tensordeveloper@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+thiserror = "1.0"
+anyhow = "1.0"
+
+serde = {version = "1.0", features = ["derive"]}
+
+[dev-dependencies]
+json = "0.12"
+crypto = {path = "../crypto", version = "0.1"}
+random = {path = "../random", version = "0.1"}
