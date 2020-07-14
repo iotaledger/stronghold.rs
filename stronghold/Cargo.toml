@@ -1,0 +1,8 @@
+[package]
+name = "stronghold"
+version = "0.1.0"
+authors = ["Marcelo R. Bianchi <marcelo.bianchi@iota.org>"]
+edition = "2018"
+
+[dependencies]
+bee-ternary = { git = "https://github.com/iotaledger/bee", features = ["serde1"] }
