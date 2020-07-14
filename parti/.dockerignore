@@ -1,5 +1,0 @@
-.git
-.cache
-target/
-*/target/
-Cargo.lock
