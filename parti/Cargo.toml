@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    "vault",
+    "primitives",
+    "random",
+    "crypto",
+    "snapshot",
+    "commandline"
+]
+
+[profile.release]
+overflow-checks = true
+panic = "abort"
+
+[profile.dev]
+overflow-checks = true
+panic = "abort"
+
+[profile.bench]
+overflow-checks = true

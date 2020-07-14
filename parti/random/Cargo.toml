@@ -1,0 +1,12 @@
+[package]
+name = "random"
+version = "0.1.0"
+authors = ["tensor-programming <tensordeveloper@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+primitives = {path = "../primitives", version = "0.1"}
+
+[build-dependencies]
+cc = "1.0"
+

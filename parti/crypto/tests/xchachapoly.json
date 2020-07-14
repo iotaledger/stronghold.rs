@@ -1,0 +1,130 @@
+{
+    "crypto": [
+        {
+            "id": "https://github.com/jedisct1/libsodium/blob/master/test/default/aead_xchacha20poly1305.c Vector #1",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6c7",
+            "plain": "4C616469657320616E642047656E746C656D656E206F662074686520636C617373206F66202739393A204966204920636F756C64206F6666657220796F75206F6E6C79206F6E652074697020666F7220746865206675747572652C2073756E73637265656E20776F756C642062652069742E",
+            "cipher": "f8ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e68420"
+        }
+    ],
+    "error": [
+        {
+            "id": "Invalid key",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e90",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6c7",
+            "cipher": "f8ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e68420"
+        },
+        {
+            "id": "Invalid nonce",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515254",
+            "ad": "50515253c0c1c2c3c4c5c6c7",
+            "cipher": "f8ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e68420"
+        },
+        {
+            "id": "Invalid AD",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6c8",
+            "cipher": "f8ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e68420"
+        },
+        {
+            "id": "Invalid message",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6c7",
+            "cipher": "08ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e68420"
+        },
+        {
+            "id": "Invalid MAC",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6c7",
+            "cipher": "f8ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e68421"
+        },
+        {
+            "id": "Extended AD",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6c7c8",
+            "cipher": "f8ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e68420"
+        },
+        {
+            "id": "Extended message",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6c7",
+            "cipher": "00f8ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e68420"
+        },
+        {
+            "id": "Extended MAC",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6c7",
+            "cipher": "f8ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e6842021"
+        },
+        {
+            "id": "Truncated AD",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6",
+            "cipher": "f8ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e68420"
+        },
+        {
+            "id": "Truncated message",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6c7",
+            "cipher": "ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e68420"
+        },
+        {
+            "id": "Truncated MAC",
+            "key": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+            "nonce": "07000000404142434445464748494a4b4c4d4e4f50515253",
+            "ad": "50515253c0c1c2c3c4c5c6c7",
+            "cipher": "f8ebea4875044066fc162a0604e171feecfb3d20425248563bcfd5a155dcc47bbda70b86e5ab9b55002bd1274c02db35321acd7af8b2e2d25015e136b7679458e9f43243bf719d639badb5feac03f80a19a96ef10cb1d15333a837b90946ba3854ee74da3f2585efc7e1e170e17e15e563e77601f4f85cafa8e5877614e143e684"
+        }
+    ],
+    "api": {
+        "defaults": {
+            "key_len": 32,
+            "nonce_len": 24,
+            "ad_len": 64,
+            "enc_input_len": 263,
+            "enc_buf_len": 279,
+            "dec_input_len": 279,
+            "dec_buf_len": 263
+        },
+        "tests": [
+            {
+                "id": "Invalid key length (< 32)",
+                "key_len": 31,
+                "error": "Error: `Invalid key length`"
+            },
+            {
+                "id": "Invalid key length (> 32)",
+                "key_len": 33,
+                "error": "Error: `Invalid key length`"
+            },
+            {
+                "id": "Invalid nonce length (< 24)",
+                "nonce_len": 23,
+                "error": "Error: `Invalid nonce length`"
+            },
+            {
+                "id": "Invalid nonce length (> 24)",
+                "nonce_len": 25,
+                "error": "Error: `Invalid nonce length`"
+            },
+            {
+                "id": "Invalid buffer length (< input_len)",
+                "enc_buf_len": 278,
+                "dec_buf_len": 262,
+                "error": "Error: `Buffer is too small`"
+            }
+        ]
+    }
+}
