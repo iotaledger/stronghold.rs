@@ -31,6 +31,7 @@ subcommands:
         - password:
             short: w
             long: pass
+            about: the password for the snapshot you want to load.
             required: true
             takes_value: true
   - list:
@@ -58,5 +59,32 @@ subcommands:
             long: id
             value_name: id
             about: the id of the record you want to revoke.
+            required: true
+            takes_value: true
+  - revoke:
+      about: Revoke a record by id
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password for the existing snapshot.
+            required: true
+            takes_value: true
+        - id:
+            short: i
+            long: id
+            value_name: id
+            about: the id of the entry
+            required: true
+            takes_value: true
+  - garbage_collect:
+      about: Garbage collect the entire vault and remove revoked records.
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password for the existing snapshot.
             required: true
             takes_value: true
