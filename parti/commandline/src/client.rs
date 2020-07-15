@@ -103,7 +103,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         });
     }
 
-    // revoke data by id.
+    // create a revoke transaction in the chain.
     pub fn revoke_record_by_id(&self, id: Id) {
         self.db.take(|db| {
             let (to_write, to_delete) = db.writer(self.id).revoke(id).expect(line_error!());
