@@ -34,29 +34,29 @@ subcommands:
             required: true
             takes_value: true
   - list:
-      about: Lists the ids of the entries inside of your main snapshot
+      about: Lists the ids of the records inside of your main snapshot
       args:
         - password:
             short: w
             long: pass
             value_name: password
-            about: the password you want to use to encrypt/decrypt the snapshot.
+            about: the password for the existing snapshot.
             required: true
             takes_value: true
   - read:
-      about: read an associated entry by id
+      about: read an associated record by id
       args:
         - password:
             short: w
             long: pass
             value_name: password
-            about: the password you want to use to encrypt/decrypt the snapshot.
+            about: the password for the existing snapshot.
             required: true
             takes_value: true
         - id:
             short: i
             long: id
             value_name: id
-            about: the id of the entry
+            about: the id of the record you want to revoke.
             required: true
             takes_value: true
