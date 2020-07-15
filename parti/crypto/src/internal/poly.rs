@@ -194,16 +194,16 @@ pub fn poly1305_finish(tag: &mut [u8], a: &mut [u32], s: &[u32]) {
 
     // reduce if values is in the range (2^130-5, 2^130]
     let mut mux = greater_than!(a[0], 0x03FFFFFAu32);
-    for i in 1..5 {
-        mux = and!(mux, equal!(a[i], 0x03FFFFFF))
+    for i in a.iter().take(5).skip(1) {
+        mux = and!(mux, equal!(i, 0x03FFFFFF))
     }
 
     c = 5;
-    for i in 0..5 {
-        let mut t = add!(a[i], c);
+    for i in a.iter_mut().take(5) {
+        let mut t = add!(i, c);
         c = shift_right!(t, 26);
         t = and!(t, 0x03FFFFFF);
-        a[i] = mux_bool!(mux, t, a[i]);
+        *i = mux_bool!(mux, t, *i);
     }
 
     // convert back to 32bit words and add second half of key mod 2^128
