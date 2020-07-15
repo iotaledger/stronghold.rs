@@ -107,7 +107,7 @@ fn read_command(matches: &ArgMatches) {
     }
 }
 
-// revoke data from the user's chain of records.
+// create a record with a revoke transaction.  Data isn't actually deleted until it is garbage collected.
 fn revoke_command(matches: &ArgMatches) {
     if let Some(matches) = matches.subcommand_matches("revoke") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -127,7 +127,7 @@ fn revoke_command(matches: &ArgMatches) {
     }
 }
 
-// garbage collect the chain of records.
+// garbage collect the chain.  Remove any revoked data from the chain.
 fn garbage_collect_vault_command(matches: &ArgMatches) {
     if let Some(matches) = matches.subcommand_matches("garbage_collect") {
         if let Some(ref pass) = matches.value_of("password") {
