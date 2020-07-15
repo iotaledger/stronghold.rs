@@ -84,21 +84,22 @@ pub fn poly1305_update(a: &mut [u32], r: &[u32], mu: &[u32], mut data: &[u8], is
                 0x03FFFFFF
             )
         );
-        a[4] = match buf_len < 16 && is_last {
-            true => add!(
+        a[4] = if buf_len < 16 && is_last {
+            add!(
                 a[4],
                 or!(
                     shift_right!(read32_little_endian!(&buf[12..]), 8),
                     0x00000000
                 )
-            ),
-            false => add!(
+            )
+        } else {
+            add!(
                 a[4],
                 or!(
                     shift_right!(read32_little_endian!(&buf[12..]), 8),
                     0x01000000
                 )
-            ),
+            )
         };
 
         // converts values into u64s to avoid overflow
