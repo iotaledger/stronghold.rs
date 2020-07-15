@@ -33,12 +33,12 @@ impl SecureRng for OsRng {
         }
 
         // call to the c code
-        Ok(
+        Ok({
             match unsafe { os_random_secrandom(buf.as_mut_ptr(), buf.len()) } {
                 0 => (),
                 _ => Err(OsRandomErr)?,
-            },
-        )
+            }
+        })
     }
 }
 
