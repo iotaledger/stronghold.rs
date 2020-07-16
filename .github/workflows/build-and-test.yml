@@ -15,9 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        rust: [nightly, beta, stable]
         project: [parti, stronghold]
+        rust: [nightly, beta, stable]
+        os: [ubuntu-latest]
 
     steps:
     - uses: actions/checkout@v2
