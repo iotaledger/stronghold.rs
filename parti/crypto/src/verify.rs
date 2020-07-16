@@ -26,11 +26,13 @@ macro_rules! verify_keygen {
     ($size:expr => $buf:expr) => {{
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
-
-        let error = match true {
-            _ if $buf.constrain_value() != $size => Err("Invalid buffer size"),
-            _ => Ok(()),
+        
+        let error = if $buf.constrain_value() != $size {
+            Err("Invalid buffer size")
+        } else {
+            Ok(())
         };
+
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
 }
