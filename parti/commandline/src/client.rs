@@ -102,6 +102,16 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
             });
         });
     }
+
+    // create a revoke transaction in the chain.
+    pub fn revoke_record_by_id(&self, id: Id) {
+        self.db.take(|db| {
+            let (to_write, to_delete) = db.writer(self.id).revoke(id).expect(line_error!());
+
+            send_until_success(CRequest::Write(to_write));
+            send_until_success(CRequest::Delete(to_delete));
+        });
+    }
 }
 
 impl<P: BoxProvider> Vault<P> {
@@ -132,11 +142,7 @@ impl<P: BoxProvider> Snapshot<P> {
     pub fn new(id: Id, key: Key<P>) -> Self {
         let map = State::offload_data();
 
-        Self {
-            id,
-            key,
-            state: map,
-        }
+        Self { id, key, state: map }
     }
 
     // offload the snapshot data to the state map.

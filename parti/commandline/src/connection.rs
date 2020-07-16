@@ -2,8 +2,7 @@ use vault::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
 
 use std::{thread, time::Duration};
 
-use crate::line_error;
-use crate::state::State;
+use crate::{line_error, state::State};
 
 // requests to the vault.
 #[derive(Clone)]
@@ -61,7 +60,7 @@ pub fn send(req: CRequest) -> Option<CResult> {
             State::storage_map()
                 .write()
                 .expect(line_error!())
-                .remove(del.id());
+                .retain(|id, _| *id != del.id());
 
             CResult::Delete
         }

@@ -14,9 +14,7 @@ use serde::{Deserialize, Serialize};
 mod record;
 mod results;
 
-pub use crate::vault::results::{
-    DeleteRequest, ListResult, ReadRequest, ReadResult, Record, WriteRequest,
-};
+pub use crate::vault::results::{DeleteRequest, ListResult, ReadRequest, ReadResult, Record, WriteRequest};
 
 // A view over the vault
 #[derive(Serialize, Deserialize)]
@@ -51,9 +49,7 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     // iterate over all valid ids and record hints
-    pub fn records<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = (Id, RecordHint)> + ExactSizeIterator + 'a {
+    pub fn records<'a>(&'a self) -> impl Iterator<Item = (Id, RecordHint)> + ExactSizeIterator + 'a {
         self.valid
             .all()
             .map(|e| e.force_typed::<DataTransaction>())
@@ -77,11 +73,9 @@ impl<P: BoxProvider> DBView<P> {
     pub fn not_older_than(&self, chain_ctrs: &HashMap<Id, u64>) -> crate::Result<()> {
         let this_ctrs = self.chain_ctrs();
         chain_ctrs.iter().try_for_each(|(chain, other_ctr)| {
-            let this_ctr = this_ctrs
-                .get(chain)
-                .ok_or(crate::Error::VersionError(String::from(
-                    "This database is older than the reference database",
-                )))?;
+            let this_ctr = this_ctrs.get(chain).ok_or(crate::Error::VersionError(String::from(
+                "This database is older than the reference database",
+            )))?;
             match this_ctr >= other_ctr {
                 true => Ok(()),
                 false => Err(crate::Error::VersionError(String::from(
@@ -177,7 +171,7 @@ impl<P: BoxProvider> DBWriter<P> {
         let start = InitTransaction::new(self.owner, start_ctr);
         let mut to_write = vec![Record::new(&self.view.key, start).write()];
 
-        // Retransaction revocation transaction
+        // locate revocation transactions
         let revoked: HashMap<_, _> = self.view.chain.own_revoked(&self.owner).collect();
         for data in self.view.chain.foreign_data(&self.owner) {
             if let Some(record) = revoked.get(&data.force_uid()) {
@@ -191,7 +185,7 @@ impl<P: BoxProvider> DBWriter<P> {
             }
         }
 
-        // retransaction data
+        // rebuild transactions and records data
         for record in self.view.valid.all_for_owner(&self.owner) {
             // create updated transaction
             let mut transaction = record.transaction().clone();
@@ -213,10 +207,7 @@ impl<P: BoxProvider> DBWriter<P> {
     }
 
     // take ownership of a chain
-    pub fn take_ownership(
-        self,
-        other: &Id,
-    ) -> crate::Result<(Vec<WriteRequest>, Vec<DeleteRequest>)> {
+    pub fn take_ownership(self, other: &Id) -> crate::Result<(Vec<WriteRequest>, Vec<DeleteRequest>)> {
         // get counters
         let this_ctr = self.view.chain.force_last(&self.owner).ctr() + 1;
         let other_ctr = self
@@ -227,13 +218,12 @@ impl<P: BoxProvider> DBWriter<P> {
             .ok_or(crate::Error::InterfaceError)?;
         let mut to_write = Vec::new();
 
-        // Retransaction Revocation transaction
+        // locate Revocation transaction
         let revoked: HashMap<_, _> = self.view.chain.own_revoked(other).collect();
         for data in self.view.chain.foreign_data(other) {
             if let Some(record) = revoked.get(&data.force_uid()) {
                 let this_ctr = this_ctr + to_write.len() as u64;
-                let transaction =
-                    RevocationTransaction::new(self.owner, this_ctr, record.force_uid());
+                let transaction = RevocationTransaction::new(self.owner, this_ctr, record.force_uid());
                 to_write.push(Record::new(&self.view.key, transaction).write())
             }
         }
@@ -242,8 +232,7 @@ impl<P: BoxProvider> DBWriter<P> {
         for record in self.view.valid.all_for_owner(other) {
             let this_ctr = this_ctr + to_write.len() as u64;
             let record = record.force_typed::<DataTransaction>();
-            let transaction =
-                DataTransaction::new(self.owner, this_ctr, record.id, record.record_hint);
+            let transaction = DataTransaction::new(self.owner, this_ctr, record.id, record.record_hint);
             to_write.push(Record::new(&self.view.key, transaction).write());
         }
 
