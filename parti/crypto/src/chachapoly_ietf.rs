@@ -54,7 +54,7 @@ pub fn chachapoly_open(
     // validate tags
     if eq_const_time!(&tag, &vfy_tag) {
         Ok(ChaCha20Ietf::xor(key, nonce, 1, data))
-    }else{
+    } else {
         Err(crate::Error::InvalidData)?
     }
 }
