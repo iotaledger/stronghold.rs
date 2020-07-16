@@ -32,7 +32,12 @@ impl Base64 {
 
         match String::from_utf8(base) {
             Ok(s) => s,
-            Err(_) => panic!("{}", crate::Error::Base64Error),
+            Err(e) => {
+                let error = e.utf8_error();
+                let valid_up_to = error.valid_up_to();
+                let error_msg = format!("Fail encoding to base64: valid_up_to({})",valid_up_to);
+                panic!("{}", crate::Error::Base64ErrorDetailed(error_msg))
+            },
         }
     }
 

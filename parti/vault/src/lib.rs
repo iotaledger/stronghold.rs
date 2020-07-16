@@ -35,6 +35,8 @@ pub enum Error {
     ChainError(String),
     #[error("Base64Error")]
     Base64Error,
+    #[error("Base64Error: `{0}`")]
+    Base64ErrorDetailed(String),
     #[error("Interface Error")]
     InterfaceError,
     #[error("Other Error")]
