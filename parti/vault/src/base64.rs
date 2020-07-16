@@ -90,7 +90,7 @@ impl Base64 {
     // decode a byte
     fn decode_byte(b: u8) -> crate::Result<usize> {
         match b {
-            b @ b'A'..=b'Z' => Ok((b - b'A') as usize + 0),
+            b @ b'A'..=b'Z' => Ok((b - b'A') as usize),
             b @ b'a'..=b'z' => Ok((b - b'a') as usize + 26),
             b @ b'0'..=b'9' => Ok((b - b'0') as usize + 52),
             b'-' => Ok(62),
