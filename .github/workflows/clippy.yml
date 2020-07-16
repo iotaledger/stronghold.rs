@@ -24,3 +24,4 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --manifest-path=${{ matrix.project }}/Cargo.toml --all-targets --all-features -- -D warnings
+          name: clippy-${{ matrix.project }}
