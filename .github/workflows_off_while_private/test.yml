@@ -17,7 +17,7 @@ jobs:
         rust: [nightly, beta, stable]
 
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v2
 
     - name: Install ${{ matrix.rust }}
       uses: actions-rs/toolchain@v1
