@@ -56,7 +56,7 @@ pub fn chachapoly_open(
         ChaCha20Ietf::xor(key, nonce, 1, data);
         Ok(())
     } else {
-        Err(crate::Error::InvalidData)?
+        return Err(crate::Error::InvalidData.into())
     }
 }
 
