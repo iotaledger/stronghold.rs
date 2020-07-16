@@ -1,4 +1,4 @@
-name: Test
+name: Build and run tests
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
       - master
 
 jobs:
-  test:
+  build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -43,7 +43,13 @@ jobs:
         path: target
         key: ${{ matrix.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.toml') }}
 
-    - name: Tests
+    - name: Build
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --all --release
+
+    - name: Run tests
       uses: actions-rs/cargo@v1
       with:
         command: test
