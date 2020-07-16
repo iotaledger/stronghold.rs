@@ -51,7 +51,7 @@ impl Base64 {
             .count()
         {
             _ if base.len() % 4 != 0 => return Err(crate::Error::Base64Error),
-            padded if padded > 2 => Err(crate::Error::Base64Error)?,
+            padded if padded > 2 => return Err(crate::Error::Base64Error),
             padded => (padded, &base[..base.len() - padded]),
         };
 
