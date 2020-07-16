@@ -7,14 +7,19 @@ on:
   pull_request:
     branches:
       - master
+      - dev
 
 jobs:
   clippy:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [parti, stronghold]
+
     steps:
       - uses: actions/checkout@v2
       - run: rustup component add clippy
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets --all-features -- -D warnings
+          args: --manifest-path=${{ matrix.project }}/Cargo.toml --all-targets --all-features -- -D warnings
