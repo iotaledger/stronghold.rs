@@ -82,12 +82,16 @@ macro_rules! verify_decrypt {
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
-        let error = match true {
-            _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
-            _ if $nonce.constrain_value() != $nonce_size => Err("Invalid nonce length"),
-            _ if $cipher.constrain_value() > $cipher_limit => Err("Too much data"),
-            _ if $cipher.constrain_value() > $buf.constrain_value() => Err("Buffer is too small"),
-            _ => Ok(()),
+        let error = if $key.constrain_value() != $key_size {
+            Err("Invalid key length")
+        }else if $nonce.constrain_value() != $nonce_size {
+            Err("Invalid nonce length")
+        }else if $cipher.constrain_value() > $cipher_limit {
+            Err("Too much data")
+        }else if $cipher.constrain_value() > $buf.constrain_value() {
+            Err("Buffer is too small")
+        }else{
+            Ok(())
         };
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
