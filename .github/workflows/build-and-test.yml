@@ -47,14 +47,12 @@ jobs:
 
     - name: Build ${{ matrix.project }}
       uses: actions-rs/cargo@v1
-      working-directory: ${{ matrix.project }}
       with:
         command: build
-        args: --all --release
+        args: --manifest-path=${{ matrix.project }}/Cargo.toml --all --release
 
     - name: Run tests for ${{ matrix.project }}
       uses: actions-rs/cargo@v1
-      working-directory: ${{ matrix.project }}
       with:
         command: test
-        args: --all --release
+        args: --manifest-path=${{ matrix.project }}/Cargo.toml --all --release
