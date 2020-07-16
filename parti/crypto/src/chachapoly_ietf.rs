@@ -52,10 +52,11 @@ pub fn chachapoly_open(
     Poly1305::chachapoly_auth(&mut vfy_tag, ad, data, &foot, &pkey);
 
     // validate tags
-    Ok(match eq_const_time!(&tag, &vfy_tag) {
-        true => ChaCha20Ietf::xor(key, nonce, 1, data),
-        false => Err(crate::Error::InvalidData)?,
-    })
+    if eq_const_time!(&tag, &vfy_tag) {
+        Ok(ChaCha20Ietf::xor(key, nonce, 1, data))
+    }else{
+        Err(crate::Error::InvalidData)?
+    }
 }
 
 pub struct ChaChaPolyIetf;
