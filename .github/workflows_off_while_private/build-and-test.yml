@@ -9,12 +9,13 @@ on:
       - master
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest]
         rust: [nightly, beta, stable]
+        project: [parti, stronghold]
 
     steps:
     - uses: actions/checkout@v2
@@ -29,28 +30,30 @@ jobs:
       uses: actions/cache@v2
       with:
         path: ~/.cargo/registry
-        key: ${{ matrix.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.toml') }}
+        key: ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.toml') }}
 
     - name: Cache cargo index
       uses: actions/cache@v2
       with:
         path: ~/.cargo/git
-        key: ${{ matrix.os }}-${{ matrix.rust }}-cargo-index-${{ hashFiles('**/Cargo.toml') }}
+        key: ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-index-${{ hashFiles('**/Cargo.toml') }}
 
     - name: Cache cargo target
       uses: actions/cache@v2
       with:
-        path: target
-        key: ${{ matrix.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.toml') }}
+        path: ${{ matrix.project}}/target
+        key: ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.toml') }}
 
-    - name: Build
+    - name: Build ${{ matrix.project }}
       uses: actions-rs/cargo@v1
+      working-directory: ${{ matrix.project }}
       with:
         command: build
         args: --all --release
 
-    - name: Run tests
+    - name: Run tests for ${{ matrix.project }}
       uses: actions-rs/cargo@v1
+      working-directory: ${{ matrix.project }}
       with:
         command: test
         args: --all --release
