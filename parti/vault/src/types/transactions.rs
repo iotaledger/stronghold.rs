@@ -1,3 +1,7 @@
+#![allow(clippy::new_ret_no_self)]/*
+Used for new() fns in InitTransaction, DataTransaction & RevocationTransaction impls
+These fns don't return Self, instead return Transaction struct which let us write this code in a simpler way*/
+
 use crate::{
     crypto_box::{Decrypt, Encrypt},
     types::{
