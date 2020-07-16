@@ -78,7 +78,7 @@ impl Base64 {
     // encode a byte
     fn encode_byte(b: usize) -> u8 {
         match b {
-            b @ 0..=25 => (b as u8 - 0) + b'A',
+            b @ 0..=25 => (b as u8) + b'A',
             b @ 26..=51 => (b as u8 - 26) + b'a',
             b @ 52..=61 => (b as u8 - 52) + b'0',
             62 => b'-',
