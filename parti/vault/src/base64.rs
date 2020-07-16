@@ -50,7 +50,7 @@ impl Base64 {
             .take_while(|b| **b == Self::PADDING)
             .count()
         {
-            _ if base.len() % 4 != 0 => Err(crate::Error::Base64Error)?,
+            _ if base.len() % 4 != 0 => return Err(crate::Error::Base64Error),
             padded if padded > 2 => Err(crate::Error::Base64Error)?,
             padded => (padded, &base[..base.len() - padded]),
         };
