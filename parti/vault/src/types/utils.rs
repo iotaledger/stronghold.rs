@@ -48,7 +48,7 @@ impl RecordHint {
     pub fn new(hint: impl AsRef<[u8]>) -> crate::Result<Self> {
         let hint = match hint.as_ref() {
             hint if hint.len() <= 24 => hint,
-            _ => Err(crate::Error::InterfaceError)?,
+            _ => return Err(crate::Error::InterfaceError),
         };
 
         // copy hint
