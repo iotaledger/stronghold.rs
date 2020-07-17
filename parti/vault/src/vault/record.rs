@@ -29,14 +29,17 @@ impl ChainRecord {
         for (_, chain) in chains.iter_mut() {
             // sort transactions by counter
             chain.sort_by_key(|e| e.ctr());
-            let (start, mut ctr) = chain
+            let result = chain
                 .iter()
                 .enumerate()
                 .rev()
-                .find_map(|(start, e)| Some((start, e.typed::<InitTransaction>()?.ctr)))
-                .ok_or(crate::Error::ChainError(String::from(
-                    "Chain does not contain a start transaction",
-                )))?;
+                .find_map(|(start, e)| Some((start, e.typed::<InitTransaction>()?.ctr)));
+                
+            if result.is_none() {
+                return Err(crate::Error::ChainError(String::from("Chain does not contain a start transaction",)));
+            }
+            
+            let (start, mut ctr) = result.unwrap();
 
             // get transactions that are ancestors of the InitTransaction
             *chain = chain
