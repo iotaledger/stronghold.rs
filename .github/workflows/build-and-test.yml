@@ -51,7 +51,7 @@ jobs:
         key: ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.toml') }}-$CURRENT_DATE
         # Restore from outdated cache for speed
         restore-keys: |
-        ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.toml') }}
+          ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.toml') }}
 
     - name: Build ${{ matrix.project }}
       uses: actions-rs/cargo@v1
