@@ -23,7 +23,7 @@ impl ChainRecord {
     pub fn new(i: impl Iterator<Item = Record>) -> crate::Result<Self> {
         // sort records by owner
         let mut chains: HashMap<_, Vec<Record>> = HashMap::new();
-        i.for_each(|e| chains.entry(e.owner()).or_default().push(e.clone()));
+        i.for_each(|e| chains.entry(e.owner()).or_default().push(e));
 
         // order chains and remove all non-referenced transactions
         for (_, chain) in chains.iter_mut() {
