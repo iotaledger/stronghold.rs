@@ -28,12 +28,12 @@ impl OsRng {
 impl SecureRng for OsRng {
     /// fill the `buf` with random bytes.
     fn random(&mut self, buf: &mut [u8]) -> Result<(), Box<dyn Error + 'static>> {
-        /// the API bridge
+        // the API bridge
         extern "C" {
             fn os_random_secrandom(buf: *mut u8, len: usize) -> u8;
         }
 
-        /// call to the c code
+        // call to the c code
         Ok(match unsafe { os_random_secrandom(buf.as_mut_ptr(), buf.len()) } {
             0 => (),
             _ => Err(OsRandomErr)?,
