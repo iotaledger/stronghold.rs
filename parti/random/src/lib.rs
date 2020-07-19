@@ -5,9 +5,9 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
-// Rust Bindings to major C random headers.  A library that creates secure random number generators.
+/// Rust Bindings to major C random generator headers.  A library that creates secure random number generators.
 
-// Error for dealing with errors from the OS RNG.
+/// Error for dealing with errors from the OS RNG.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct OsRandomErr;
 impl Display for OsRandomErr {
@@ -17,7 +17,7 @@ impl Display for OsRandomErr {
 }
 impl Error for OsRandomErr {}
 
-// an interface for the OS's secure RNG
+/// an interface for the OS's secure RNG
 pub struct OsRng;
 impl OsRng {
     pub fn secure_rng() -> Box<dyn SecureRng> {
@@ -26,19 +26,18 @@ impl OsRng {
 }
 
 impl SecureRng for OsRng {
+    /// fill the `buf` with random bytes.
     fn random(&mut self, buf: &mut [u8]) -> Result<(), Box<dyn Error + 'static>> {
-        // the API bridge
+        /// the API bridge
         extern "C" {
             fn os_random_secrandom(buf: *mut u8, len: usize) -> u8;
         }
 
-        // call to the c code
-        Ok(
-            match unsafe { os_random_secrandom(buf.as_mut_ptr(), buf.len()) } {
-                0 => (),
-                _ => Err(OsRandomErr)?,
-            },
-        )
+        /// call to the c code
+        Ok(match unsafe { os_random_secrandom(buf.as_mut_ptr(), buf.len()) } {
+            0 => (),
+            _ => Err(OsRandomErr)?,
+        })
     }
 }
 
@@ -49,7 +48,7 @@ mod test {
     const TEST_SIZES: &[usize] = &[1 * 1024 * 1024, 4 * 1024 * 1024, (4 * 1024 * 1024) + 15];
     const ITERATIONS: usize = 8;
 
-    // test the uniform distribution of byte values.
+    /// test the uniform distribution of byte values.
     fn test_uniform_dist(buf: &[u8]) {
         let mut dist = vec![0f64; 256];
         buf.iter().for_each(|b| dist[*b as usize] += 1.0);
