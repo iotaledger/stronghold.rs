@@ -1,7 +1,7 @@
 /// Vault is an in-memory database specification which is designed to work
 /// without a central server. The data in the database follows a versioned format
-/// where each user can access a chain of data that documents changes to a group or piece of related data.  Only
-/// the user which holds the associated id and key may modify the data in a chain.
+/// where each user can access a chain of data that documents changes to a group or piece of related data over
+/// time. Only the user which holds the associated id and key may modify the data in a chain.
 ///
 /// Every Data chain starts with an `InitTransaction`.  The `InitTransaction` contains the user's designated id,
 /// some metadata and no sealed data. Any proceeding data on the same chain needs to be a descendent of this
