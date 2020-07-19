@@ -1,28 +1,13 @@
 use std::cmp::min;
 
-// loads a key into r and s and computes the key multipliers
+/// Loads a key into r and s and computes the key multipliers
 pub fn poly1305_init(r: &mut [u32], s: &mut [u32], mu: &mut [u32], key: &[u8]) {
     // load key
-    r[0] = and!(
-        shift_right!(read32_little_endian!(&key[0..]), 0),
-        0x03FFFFFF
-    );
-    r[1] = and!(
-        shift_right!(read32_little_endian!(&key[3..]), 2),
-        0x03FFFF03
-    );
-    r[2] = and!(
-        shift_right!(read32_little_endian!(&key[6..]), 4),
-        0x03FFC0FF
-    );
-    r[3] = and!(
-        shift_right!(read32_little_endian!(&key[9..]), 6),
-        0x03F03FFF
-    );
-    r[4] = and!(
-        shift_right!(read32_little_endian!(&key[12..]), 8),
-        0x000FFFFF
-    );
+    r[0] = and!(shift_right!(read32_little_endian!(&key[0..]), 0), 0x03FFFFFF);
+    r[1] = and!(shift_right!(read32_little_endian!(&key[3..]), 2), 0x03FFFF03);
+    r[2] = and!(shift_right!(read32_little_endian!(&key[6..]), 4), 0x03FFC0FF);
+    r[3] = and!(shift_right!(read32_little_endian!(&key[9..]), 6), 0x03F03FFF);
+    r[4] = and!(shift_right!(read32_little_endian!(&key[12..]), 8), 0x000FFFFF);
 
     s[0] = read32_little_endian!(&key[16..]);
     s[1] = read32_little_endian!(&key[20..]);
@@ -37,8 +22,8 @@ pub fn poly1305_init(r: &mut [u32], s: &mut [u32], mu: &mut [u32], key: &[u8]) {
     mu[4] = mult!(r[4], 5);
 }
 
-// updates the value a with any data using the key and the multipliers
-// pads any incomplete block with 0 bytes.
+/// updates the value a with any data using the key and the multipliers
+/// pads any incomplete block with 0 bytes.
 pub fn poly1305_update(a: &mut [u32], r: &[u32], mu: &[u32], mut data: &[u8], is_last: bool) {
     let mut buf = vec![0; 16];
     let mut w = vec![0; 5];
@@ -58,46 +43,28 @@ pub fn poly1305_update(a: &mut [u32], r: &[u32], mu: &[u32], mut data: &[u8], is
         // decode next block into an accumulator.  Apply high bit if needed.
         a[0] = add!(
             a[0],
-            and!(
-                shift_right!(read32_little_endian!(&buf[0..]), 0),
-                0x03FFFFFF
-            )
+            and!(shift_right!(read32_little_endian!(&buf[0..]), 0), 0x03FFFFFF)
         );
         a[1] = add!(
             a[1],
-            and!(
-                shift_right!(read32_little_endian!(&buf[3..]), 2),
-                0x03FFFFFF
-            )
+            and!(shift_right!(read32_little_endian!(&buf[3..]), 2), 0x03FFFFFF)
         );
         a[2] = add!(
             a[2],
-            and!(
-                shift_right!(read32_little_endian!(&buf[6..]), 4),
-                0x03FFFFFF
-            )
+            and!(shift_right!(read32_little_endian!(&buf[6..]), 4), 0x03FFFFFF)
         );
         a[3] = add!(
             a[3],
-            and!(
-                shift_right!(read32_little_endian!(&buf[9..]), 6),
-                0x03FFFFFF
-            )
+            and!(shift_right!(read32_little_endian!(&buf[9..]), 6), 0x03FFFFFF)
         );
         a[4] = match buf_len < 16 && is_last {
             true => add!(
                 a[4],
-                or!(
-                    shift_right!(read32_little_endian!(&buf[12..]), 8),
-                    0x00000000
-                )
+                or!(shift_right!(read32_little_endian!(&buf[12..]), 8), 0x00000000)
             ),
             false => add!(
                 a[4],
-                or!(
-                    shift_right!(read32_little_endian!(&buf[12..]), 8),
-                    0x01000000
-                )
+                or!(shift_right!(read32_little_endian!(&buf[12..]), 8), 0x01000000)
             ),
         };
 
@@ -171,7 +138,7 @@ pub fn poly1305_update(a: &mut [u32], r: &[u32], mu: &[u32], mut data: &[u8], is
     }
 }
 
-// finishes authentication
+/// finishes authentication
 pub fn poly1305_finish(tag: &mut [u8], a: &mut [u32], s: &[u32]) {
     // modular reduction
     let mut c;
@@ -210,18 +177,10 @@ pub fn poly1305_finish(tag: &mut [u8], a: &mut [u32], s: &[u32]) {
     word = add!(a[0] as u64, shift_left!(a[1] as u64, 26), s[0] as u64);
     write32_little_endian!(word as u32 => &mut tag[0..]);
 
-    word = add!(
-        shift_right!(word, 32),
-        shift_left!(a[2] as u64, 20),
-        s[1] as u64
-    );
+    word = add!(shift_right!(word, 32), shift_left!(a[2] as u64, 20), s[1] as u64);
     write32_little_endian!(word as u32 => &mut tag[4..]);
 
-    word = add!(
-        shift_right!(word, 32),
-        shift_left!(a[3] as u64, 14),
-        s[2] as u64
-    );
+    word = add!(shift_right!(word, 32), shift_left!(a[3] as u64, 14), s[2] as u64);
     write32_little_endian!(word as u32 => &mut tag[8..]);
 
     word = add!(shift_right!(word, 32) as u32, shift_left!(a[4], 8), s[3]) as u64;

@@ -8,21 +8,21 @@ use primitives::{
 };
 use std::{cmp::min, error::Error};
 
-// max bytes that can be processed with a key/nonce combo
+/// max bytes that can be processed with a key/nonce combo
 pub const XCHACHA20_MAX: usize = usize::max_value();
-// size of the key
+/// size of the key
 pub const XCHACHA20_KEY: usize = CHACHA20_KEY;
-// size of the nonce
+/// size of the nonce
 pub const XCHACHA20_NONCE: usize = 24;
 
 pub struct XChaCha20;
 impl XChaCha20 {
-    // builds a new Cipher with XChaCha20
+    /// builds a new Cipher with XChaCha20
     pub fn cipher() -> Box<dyn Cipher> {
         Box::new(Self)
     }
 
-    // Xor the bytes with XChaCha20 kestream.
+    /// Xor the bytes with XChaCha20 kestream.
     pub fn xor(key: &[u8], nonce: &[u8], mut n: u64, mut data: &mut [u8]) {
         // check input
         assert_eq!(XCHACHA20_KEY, key.len());
@@ -50,11 +50,7 @@ impl XChaCha20 {
     }
 }
 impl SecretKeyGen for XChaCha20 {
-    fn new_secret_key(
-        &self,
-        buf: &mut [u8],
-        rng: &mut dyn SecureRng,
-    ) -> Result<usize, Box<dyn Error + 'static>> {
+    fn new_secret_key(&self, buf: &mut [u8], rng: &mut dyn SecureRng) -> Result<usize, Box<dyn Error + 'static>> {
         verify_keygen!(XCHACHA20_KEY => buf);
 
         rng.random(&mut buf[..XCHACHA20_KEY])?;

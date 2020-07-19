@@ -1,10 +1,10 @@
-// ChaCha20 Basis Constants
+/// ChaCha20 Basis Constants
 const BASIS: [u32; 4] = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
 
-// Does ChaCha20 Rounds over the state
+/// Does ChaCha20 Rounds over the state
 fn chacha20_rounds(state: &mut [u32]) {
     for _ in 0..10 {
-        // macro fro a quater round
+        // macro for a quater round
         macro_rules! quarter_round {
             ($a:expr, $b:expr, $c:expr, $d:expr) => {{
                 state[$a] = add!(state[$a], state[$b]);
@@ -22,7 +22,7 @@ fn chacha20_rounds(state: &mut [u32]) {
             }};
         }
 
-        // 8 quarter rounds
+        // Eight quarter rounds
         quarter_round!(0, 4, 8, 12);
         quarter_round!(1, 5, 9, 13);
         quarter_round!(2, 6, 10, 14);
@@ -34,7 +34,7 @@ fn chacha20_rounds(state: &mut [u32]) {
     }
 }
 
-// HChaCha20 implementation
+/// HChaCha20 implementation
 pub fn h_chacha20_hash(key: &[u8], nonce: &[u8], buf: &mut [u8]) {
     // initialize state
     let mut state = vec![0u32; 16];
@@ -51,7 +51,7 @@ pub fn h_chacha20_hash(key: &[u8], nonce: &[u8], buf: &mut [u8]) {
     (12..16).for_each(|i| write32_little_endian!(state[i] => &mut buf_b[(i - 12) * 4..]));
 }
 
-// calculates the nth ChaCha20-IETF block into a buffer
+/// calculates the nth ChaCha20-IETF block into a buffer
 pub fn chacha20_ietf_block(key: &[u8], nonce: &[u8], n: u32, buf: &mut [u8]) {
     // create buffer
     let mut state = vec![0u32; 32];
@@ -72,7 +72,7 @@ pub fn chacha20_ietf_block(key: &[u8], nonce: &[u8], n: u32, buf: &mut [u8]) {
     (0..16).for_each(|i| write32_little_endian!(mixed[i] => &mut buf[i * 4..]));
 }
 
-// calculates the nth ChaCha20 block into a buffer
+/// calculates the nth ChaCha20 block into a buffer
 pub fn chacha20_block(key: &[u8], nonce: &[u8], n: u64, buf: &mut [u8]) {
     // create buffer
     let mut state = vec![0u32; 32];
