@@ -4,7 +4,7 @@ const BASIS: [u32; 4] = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
 /// Does ChaCha20 Rounds over the state
 fn chacha20_rounds(state: &mut [u32]) {
     for _ in 0..10 {
-        /// macro for a quater round
+        // macro for a quater round
         macro_rules! quarter_round {
             ($a:expr, $b:expr, $c:expr, $d:expr) => {{
                 state[$a] = add!(state[$a], state[$b]);
@@ -22,7 +22,7 @@ fn chacha20_rounds(state: &mut [u32]) {
             }};
         }
 
-        /// Eight quarter rounds
+        // Eight quarter rounds
         quarter_round!(0, 4, 8, 12);
         quarter_round!(1, 5, 9, 13);
         quarter_round!(2, 6, 10, 14);
@@ -36,16 +36,16 @@ fn chacha20_rounds(state: &mut [u32]) {
 
 /// HChaCha20 implementation
 pub fn h_chacha20_hash(key: &[u8], nonce: &[u8], buf: &mut [u8]) {
-    /// initialize state
+    // initialize state
     let mut state = vec![0u32; 16];
     (0..4).for_each(|i| state[i] = BASIS[i]);
     (4..12).for_each(|i| state[i] = read32_little_endian!(&key[(i - 4) * 4..]));
     (12..16).for_each(|i| state[i] = read32_little_endian!(&nonce[(i - 12) * 4..]));
 
-    /// run the rounds
+    // run the rounds
     chacha20_rounds(&mut state);
 
-    /// write to the output
+    // write to the output
     let (buf_a, buf_b) = buf.split_at_mut(16);
     (0..4).for_each(|i| write32_little_endian!(state[i] => &mut buf_a[i* 4..]));
     (12..16).for_each(|i| write32_little_endian!(state[i] => &mut buf_b[(i - 12) * 4..]));
@@ -53,42 +53,42 @@ pub fn h_chacha20_hash(key: &[u8], nonce: &[u8], buf: &mut [u8]) {
 
 /// calculates the nth ChaCha20-IETF block into a buffer
 pub fn chacha20_ietf_block(key: &[u8], nonce: &[u8], n: u32, buf: &mut [u8]) {
-    /// create buffer
+    // create buffer
     let mut state = vec![0u32; 32];
     let (init, mixed) = state.split_at_mut(16);
 
-    /// initialize buffer
+    // initialize buffer
     (0..4).for_each(|i| init[i] = BASIS[i]);
     (4..12).for_each(|i| init[i] = read32_little_endian!(&key[(i - 4) * 4..]));
     init[12] = n;
     (13..16).for_each(|i| init[i] = read32_little_endian!(&nonce[(i - 13) * 4..]));
 
-    /// mix the buffer
+    // mix the buffer
     mixed.copy_from_slice(init);
     chacha20_rounds(mixed);
 
-    /// write the mixed state into the buffer
+    // write the mixed state into the buffer
     (0..16).for_each(|i| mixed[i] = add!(mixed[i], init[i]));
     (0..16).for_each(|i| write32_little_endian!(mixed[i] => &mut buf[i * 4..]));
 }
 
 /// calculates the nth ChaCha20 block into a buffer
 pub fn chacha20_block(key: &[u8], nonce: &[u8], n: u64, buf: &mut [u8]) {
-    /// create buffer
+    // create buffer
     let mut state = vec![0u32; 32];
     let (init, mixed) = state.split_at_mut(16);
 
-    /// initialize buffer
+    // initialize buffer
     (0..4).for_each(|i| init[i] = BASIS[i]);
     (4..12).for_each(|i| init[i] = read32_little_endian!(&key[(i - 4) * 4..]));
     split64_little_endian!(n => &mut init[12..]);
     (14..16).for_each(|i| init[i] = read32_little_endian!(&nonce[(i - 14) * 4..]));
 
-    /// mix the buffer
+    // mix the buffer
     mixed.copy_from_slice(init);
     chacha20_rounds(mixed);
 
-    /// write the mixed state into the buffer
+    // write the mixed state into the buffer
     (0..16).for_each(|i| mixed[i] = add!(mixed[i], init[i]));
     (0..16).for_each(|i| write32_little_endian!(mixed[i] => &mut buf[i * 4..]));
 }
