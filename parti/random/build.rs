@@ -1,11 +1,11 @@
-/// links the macos security framework to the lib
+// links the macos security framework to the lib
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn macos_secrandom() -> Option<&'static str> {
     println!("cargo:rustc-link-lib=framework=Security");
     Some("USE_SECRANDOM")
 }
 
-/// checks if the current version of glibc supports the getrandom function
+// checks if the current version of glibc supports the getrandom function
 #[cfg(target_os = "linux")]
 fn linux_check_getrandom() -> Option<&'static str> {
     use std::{ffi::CStr, os::raw::c_char, str::FromStr};
@@ -27,7 +27,7 @@ fn linux_check_getrandom() -> Option<&'static str> {
 }
 
 fn main() {
-    /// determine which secure random number generator should be used.
+    // determine which secure random number generator should be used.
     #[allow(unused_assignments)]
     let mut secure_random = None;
 
@@ -48,10 +48,10 @@ fn main() {
         secure_random = linux_check_getrandom()
     }
 
-    /// check to see if there is a specified RNG
+    // check to see if there is a specified RNG
     let secure_random = secure_random.expect("No secure random number generator known for the target platform");
 
-    /// build and compile the library.
+    // build and compile the library.
     cc::Build::new()
         .file("c_src/rng.c")
         .define(secure_random, None)
