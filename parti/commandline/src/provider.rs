@@ -43,7 +43,7 @@ impl BoxProvider for Provider {
     fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> vault::Result<Vec<u8>> {
         let mut plain = match data.len() {
             len if len >= Self::box_overhead() => vec![0; len - Self::box_overhead()],
-            _ => Err(vault::Error::CryptoError(String::from("Truncated cipher")))?,
+            _ => return Err(vault::Error::CryptoError(String::from("Truncated cipher"))),
         };
 
         let (nonce, cipher) = data.split_at(Self::NONCE_LEN);
