@@ -18,7 +18,7 @@ pub fn deserialize_buffer(bytes: &[u8]) -> HashMap<Vec<u8>, Vec<u8>> {
     let mut map = HashMap::new();
 
     let mut left = &bytes[..];
-    while left.is_empty() {
+    while !left.is_empty() {
         let k = read_buffer(&mut left);
         let v = read_buffer(&mut left);
         map.insert(k, v);
@@ -49,6 +49,8 @@ mod test {
 
         let buf = serialize_map(&map);
         let recovered = deserialize_buffer(&buf);
+
+        println!("{:?}, {:?}", buf, recovered);
 
         assert_eq!(map, recovered);
     }
