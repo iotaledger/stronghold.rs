@@ -31,9 +31,7 @@ pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Cl
 
     let (id, key) = snap.offload();
 
-    let client = Client::<Provider>::new(id, key);
-
-    client
+    Client::<Provider>::new(id, key)
 }
 
 // serialize the snapshot data into the snapshot file.
