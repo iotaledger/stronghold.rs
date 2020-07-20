@@ -55,12 +55,11 @@ fn xchachapoly_open(
     Poly1305::chachapoly_auth(&mut verify_tag, ad, data, &foot, &pkey);
 
     // validate the tags.
-    let result = if eq_const_time!(&tag, &verify_tag) {
-        XChaCha20::xor(key, nonce, 1, data)
-    } else {
-        Err(crate::Error::InvalidData)?
-    };
-    Ok(result)
+    if !eq_const_time!(&tag, &verify_tag) {
+        return Err(crate::Error::InvalidData.into())
+    }
+    XChaCha20::xor(key, nonce, 1, data);
+    Ok(())
 }
 
 pub struct XChaChaPoly;
