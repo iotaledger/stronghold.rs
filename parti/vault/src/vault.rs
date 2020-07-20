@@ -87,7 +87,7 @@ impl<P: BoxProvider> DBView<P> {
             } else {
                 Err(crate::Error::VersionError(String::from(
                     "This database is older than the reference database",
-                )))?
+                )))
             }
         })
     }
