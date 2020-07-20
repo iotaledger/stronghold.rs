@@ -10,16 +10,16 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-// List over all records by an owner and ordered by the counter
+/// List over all records by an owner and ordered by the counter
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChainRecord(HashMap<Id, Vec<Record>>);
 
-// List of all valid records.
+/// List of all valid records.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ValidRecord(HashMap<Id, Record>);
 
 impl ChainRecord {
-    // create a new chain of records
+    /// create a new chain of records
     pub fn new(i: impl Iterator<Item = Record>) -> crate::Result<Self> {
         // sort records by owner
         let mut chains: HashMap<_, Vec<Record>> = HashMap::new();
@@ -52,34 +52,34 @@ impl ChainRecord {
         Ok(ChainRecord(chains))
     }
 
-    // get chains by owner
+    /// get chains by owner id
     pub fn owners(&self) -> impl Iterator<Item = (&Id, &[Record])> {
         self.0.iter().map(|(id, chain)| (id, chain.as_slice()))
     }
 
-    // get a record in the chain by owner
+    /// get a record in the chain by owner id
     pub fn get(&self, owner: &Id) -> Option<&[Record]> {
         self.0.get(owner).map(|e| e.as_slice())
     }
 
-    // get all records owned by the owner or panic
+    /// get all records owned by the owner id or panic
     pub fn force_get(&self, owner: &Id) -> &[Record] {
         self.get(owner).expect("There is no chain for this owner")
     }
 
-    // get the last record of a chain by owner
+    /// get the last record of a chain by owner id
     pub fn force_last(&self, owner: &Id) -> &Record {
         self.force_get(owner)
             .last()
             .expect("The chain is empty and thus has no last record")
     }
 
-    // get all records
+    /// get all records in the vault
     pub fn all(&self) -> impl Iterator<Item = &Record> {
         self.0.values().flatten()
     }
 
-    // get all revoked transactions in the chain by owner
+    /// get all revoked transactions in the chain by owner id
     pub fn own_revoked(&self, owner: &Id) -> impl Iterator<Item = (Id, &Record)> {
         let chain = self.force_get(owner);
         chain
@@ -87,7 +87,7 @@ impl ChainRecord {
             .filter_map(|e| Some((e.typed::<RevocationTransaction>()?.id, e)))
     }
 
-    // get all foreign data not owned by the id
+    /// get all foreign data not owned by the owner id
     pub fn foreign_data(&self, except: &Id) -> impl Iterator<Item = &Record> {
         let except = *except;
         self.0
@@ -100,7 +100,7 @@ impl ChainRecord {
 }
 
 impl ValidRecord {
-    // create a new valid record chain
+    /// create a new valid record chain
     pub fn new(chains: &ChainRecord) -> Self {
         // collect the data and remove revoked ones
         let mut valid: HashMap<_, _> = chains
@@ -119,17 +119,17 @@ impl ValidRecord {
         Self(valid)
     }
 
-    // get chain by id
+    /// get chain by id
     pub fn get(&self, id: &Id) -> Option<&Record> {
         self.0.get(id)
     }
 
-    // get all valid records
+    /// get all valid records
     pub fn all(&self) -> impl Iterator<Item = &Record> + ExactSizeIterator {
         self.0.values()
     }
 
-    // get all valid for owner id
+    /// get all valid for owner id
     pub fn all_for_owner(&self, owner: &Id) -> impl Iterator<Item = &Record> {
         let owner = *owner;
         self.all().filter(move |e| e.owner() == owner)

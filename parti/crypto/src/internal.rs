@@ -1,5 +1,5 @@
-// all macros avoid overflow and underflow.
-// addition macro
+/// all macros avoid overflow and underflow.
+/// addition macro
 #[macro_export]
 macro_rules! add {
     ($a:expr, $b:expr) => {{
@@ -9,14 +9,11 @@ macro_rules! add {
         $a.wrapping_add($b).wrapping_add($c)
     }};
     ($a:expr, $b:expr, $c:expr, $d:expr, $e:expr) => {{
-        $a.wrapping_add($b)
-            .wrapping_add($c)
-            .wrapping_add($d)
-            .wrapping_add($e)
+        $a.wrapping_add($b).wrapping_add($c).wrapping_add($d).wrapping_add($e)
     }};
 }
 
-// subtraction macro
+/// subtraction macro
 #[macro_export]
 macro_rules! sub {
     ($a:expr, $b:expr) => {{
@@ -24,7 +21,7 @@ macro_rules! sub {
     }};
 }
 
-// multiplication macro
+/// multiplication macro
 #[macro_export]
 macro_rules! mult {
     ($a:expr, $b:expr) => {{
@@ -32,7 +29,7 @@ macro_rules! mult {
     }};
 }
 
-// bit shift right macro
+/// bit shift right macro
 #[macro_export]
 macro_rules! shift_right {
     ($a:expr, $b:expr) => {{
@@ -40,7 +37,7 @@ macro_rules! shift_right {
     }};
 }
 
-// bit shift left macro
+/// bit shift left macro
 #[macro_export]
 macro_rules! shift_left {
     ($a:expr, $b:expr) => {{
@@ -48,7 +45,7 @@ macro_rules! shift_left {
     }};
 }
 
-// negation macro
+/// negation macro
 #[macro_export]
 macro_rules! negate {
     ($a:expr) => {{
@@ -56,7 +53,7 @@ macro_rules! negate {
     }};
 }
 
-// logical or macro
+/// logical or macro
 #[macro_export]
 macro_rules! or {
     ($a:expr, $b:expr) => {{
@@ -67,7 +64,7 @@ macro_rules! or {
     }};
 }
 
-// logical and macro
+/// logical and macro
 #[macro_export]
 macro_rules! and {
     ($a:expr, $b:expr) => {{
@@ -75,7 +72,7 @@ macro_rules! and {
     }};
 }
 
-// logical xor macro
+/// logical xor macro
 #[macro_export]
 macro_rules! xor {
     ($a:expr, $b:expr) => {{
@@ -83,8 +80,8 @@ macro_rules! xor {
     }};
 }
 
-// comparison macros: 1 is true and 0 is false.
-// greater than macro
+/// comparison macros: 1 is true and 0 is false.
+/// greater than macro
 #[macro_export]
 macro_rules! greater_than {
     ($a:expr, $b:expr) => {{
@@ -93,7 +90,7 @@ macro_rules! greater_than {
     }};
 }
 
-// equal to macro
+/// equal to macro
 #[macro_export]
 macro_rules! equal {
     ($a:expr, $b:expr) => {{
@@ -102,7 +99,7 @@ macro_rules! equal {
     }};
 }
 
-// logical Not macro
+/// logical Not macro
 #[macro_export]
 macro_rules! not_bool {
     ($a:expr) => {{
@@ -110,7 +107,7 @@ macro_rules! not_bool {
     }};
 }
 
-// Multiplexer macro
+/// Multiplexer macro
 #[macro_export]
 macro_rules! mux_bool {
     ($c:expr, $x:expr, $y:expr) => {{
@@ -118,7 +115,7 @@ macro_rules! mux_bool {
     }};
 }
 
-// Little Endian Decode macro
+/// Little Endian Decode macro
 #[macro_export]
 macro_rules! read32_little_endian {
     ($data:expr) => {{
@@ -131,7 +128,7 @@ macro_rules! read32_little_endian {
     }};
 }
 
-// Little Endian Encode macro u32
+/// Little Endian Encode macro u32
 #[macro_export]
 macro_rules! write32_little_endian {
     ($num:expr => $data:expr) => {{
@@ -142,7 +139,7 @@ macro_rules! write32_little_endian {
     }};
 }
 
-// Little Endian Encode macro u64
+/// Little Endian Encode macro u64
 #[macro_export]
 macro_rules! write64_little_endian {
 	($num:expr => $data:expr) => ({
@@ -151,7 +148,7 @@ macro_rules! write64_little_endian {
 	});
 }
 
-// constant time comparison macro
+/// constant time comparison macro
 #[macro_export]
 macro_rules! eq_const_time {
     ($a:expr, $b:expr) => {{
@@ -168,7 +165,7 @@ macro_rules! eq_const_time {
     }};
 }
 
-// u64 to two u32s: Little Endian split macro
+/// u64 to two u32s: Little Endian split macro
 #[macro_export]
 macro_rules! split64_little_endian {
     ($num:expr => $u32s:expr) => {{

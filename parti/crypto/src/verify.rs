@@ -1,9 +1,9 @@
-// extension on usize for constrained values.
+/// extension on usize for constrained values.
 pub trait USizeExt {
     fn constrain_value(&self) -> usize;
 }
 
-// slice extension for constrainted values
+/// slice extension for constrainted values
 pub trait SliceExt {
     fn constrain_value(&self) -> usize;
 }
@@ -20,7 +20,7 @@ impl<T: AsRef<[u8]>> SliceExt for T {
     }
 }
 
-// verify size of buffer
+/// verify size of buffer
 #[macro_export]
 macro_rules! verify_keygen {
     ($size:expr => $buf:expr) => {{
@@ -37,7 +37,7 @@ macro_rules! verify_keygen {
     }};
 }
 
-// verify auth parameters
+/// verify auth parameters
 #[macro_export]
 macro_rules! verify_auth {
     ($key:expr => [$key_size:expr], => [$buf:expr, $tag_size:expr]) => {{
@@ -54,7 +54,7 @@ macro_rules! verify_auth {
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
 }
-// verify encryption parameters
+/// verify encryption parameters
 #[macro_export]
 macro_rules! verify_encrypt {
     ($key:expr => [$key_size:expr], $nonce:expr => [$nonce_size:expr],
@@ -76,7 +76,7 @@ macro_rules! verify_encrypt {
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
 }
-// verify decryption parameters
+/// verify decryption parameters
 #[macro_export]
 macro_rules! verify_decrypt {
     ($key:expr => [$key_size:expr], $nonce:expr => [$nonce_size:expr],
@@ -99,7 +99,7 @@ macro_rules! verify_decrypt {
     }};
 }
 
-// verify seal parameters
+/// verify seal parameters
 #[macro_export]
 macro_rules! verify_seal {
     ($key:expr => [$key_size:expr], $nonce:expr => [$nonce_const:expr],
@@ -121,7 +121,7 @@ macro_rules! verify_seal {
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
 }
-// verify opening in place parameters
+/// verify opening in place parameters
 #[macro_export]
 macro_rules! verify_open {
     ($key:expr => [$key_size:expr], $nonce:expr => [$nonce_size:expr],

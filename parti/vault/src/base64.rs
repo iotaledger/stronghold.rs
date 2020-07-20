@@ -1,10 +1,10 @@
 // a base64 encoder and decoder
 pub struct Base64;
 impl Base64 {
-    // base64 badding character
+    /// base64 padding character
     const PADDING: u8 = b'=';
 
-    // encode data using a base64 uri-safe character set.
+    /// encode `data` using a base64 uri-safe character set.
     pub fn encode_data(data: &[u8]) -> String {
         // encode data
         let mut base = Vec::new();
@@ -25,10 +25,7 @@ impl Base64 {
             1 => 2,
             _ => 0,
         };
-        base.iter_mut()
-            .rev()
-            .take(to_pad)
-            .for_each(|b| *b = Self::PADDING);
+        base.iter_mut().rev().take(to_pad).for_each(|b| *b = Self::PADDING);
 
         match String::from_utf8(base) {
             Ok(s) => s,
@@ -41,17 +38,12 @@ impl Base64 {
         }
     }
 
-    // decode data from base64 based off of the URI safe character set
+    /// decode data from base64 based off of the URI safe character set
     pub fn decode_data(base: &[u8]) -> crate::Result<Vec<u8>> {
         // find and remove padding.
-        let (padded, base) = match base
-            .iter()
-            .rev()
-            .take_while(|b| **b == Self::PADDING)
-            .count()
-        {
-            _ if base.len() % 4 != 0 => return Err(crate::Error::Base64Error),
-            padded if padded > 2 => return Err(crate::Error::Base64Error),
+        let (padded, base) = match base.iter().rev().take_while(|b| **b == Self::PADDING).count() {
+            _ if base.len() % 4 != 0 => Err(crate::Error::Base64Error)?,
+            padded if padded > 2 => Err(crate::Error::Base64Error)?,
             padded => (padded, &base[..base.len() - padded]),
         };
 
@@ -61,13 +53,8 @@ impl Base64 {
             let num: usize = [18usize, 12, 6, 0]
                 .iter()
                 .zip(chunk.iter())
-                .try_fold(0, |acc, (s, b)| {
-                    Self::decode_byte(*b).map(|b| acc + (b << *s))
-                })?;
-            [16, 8, 0]
-                .iter()
-                .map(|s| (num >> s) as u8)
-                .for_each(|b| data.push(b));
+                .try_fold(0, |acc, (s, b)| Self::decode_byte(*b).map(|b| acc + (b << *s)))?;
+            [16, 8, 0].iter().map(|s| (num >> s) as u8).for_each(|b| data.push(b));
         }
 
         // remove any trailing padding related zeroes
@@ -75,7 +62,7 @@ impl Base64 {
         Ok(data)
     }
 
-    // encode a byte
+    /// encode a single byte
     fn encode_byte(b: usize) -> u8 {
         match b {
             b @ 0..=25 => (b as u8) + b'A',
@@ -87,7 +74,7 @@ impl Base64 {
         }
     }
 
-    // decode a byte
+    /// decode a single byte
     fn decode_byte(b: u8) -> crate::Result<usize> {
         match b {
             b @ b'A'..=b'Z' => Ok((b - b'A') as usize),
@@ -100,12 +87,12 @@ impl Base64 {
     }
 }
 
-// a trait to make types base64 encodable
+/// a trait to make types base64 encodable
 pub trait Base64Encodable {
     fn base64(&self) -> String;
 }
 
-// a trait to make types base64 decodable
+/// a trait to make types base64 decodable
 pub trait Base64Decodable: Sized {
     fn from_base64(base: impl AsRef<[u8]>) -> crate::Result<Self>;
 }

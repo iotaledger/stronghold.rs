@@ -21,7 +21,7 @@ pub use primitives;
 pub enum Error {
     #[error("Invalid Data")]
     InvalidData,
-    #[error("Interface Error occuring")]
+    #[error("Crypto Interface Error")]
     InterfaceError,
     #[error("Error: `{0}`")]
     CryptoError(String),

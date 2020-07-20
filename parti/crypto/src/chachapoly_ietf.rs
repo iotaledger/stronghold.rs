@@ -4,20 +4,20 @@ use primitives::{
     rng::{SecretKeyGen, SecureRng},
 };
 use std::error::Error;
-// max bytes that can be processed with a key/nonce combo
+/// max bytes that can be processed with a key/nonce combo
 #[cfg(target_pointer_width = "64")]
 pub const CHACHAPOLY_MAX: usize = (4_294_967_296 - 1) * 64;
 #[cfg(target_pointer_width = "32")]
 pub const CHACHAPOLY_MAX: usize = usize::max_value() - 16;
 
-// size of key
+/// size of key
 pub const CHACHAPOLY_KEY: usize = 32;
-// size of nonce
+/// size of nonce
 pub const CHACHAPOLY_NONCE: usize = 12;
-// size of auth tag
+/// size of auth tag
 pub const CHACHAPOLY_TAG: usize = 16;
 
-// encrypts data in place
+/// encrypts data in place
 pub fn chachapoly_seal(data: &mut [u8], tag: &mut [u8], ad: &[u8], key: &[u8], nonce: &[u8]) {
     // encrypt data
     ChaCha20Ietf::xor(key, nonce, 1, data);
@@ -33,7 +33,7 @@ pub fn chachapoly_seal(data: &mut [u8], tag: &mut [u8], ad: &[u8], key: &[u8], n
     Poly1305::chachapoly_auth(tag, ad, data, &foot, &pkey);
 }
 
-// open data and decrypt it in place.
+/// open data and decrypt it in place.
 pub fn chachapoly_open(
     data: &mut [u8],
     tag: &[u8],
@@ -60,6 +60,7 @@ pub fn chachapoly_open(
     }
 }
 
+/// ChaChaPolyIETF cipher
 pub struct ChaChaPolyIetf;
 impl ChaChaPolyIetf {
     // create a new Cipher with ChaChaPolyIETF
@@ -72,11 +73,7 @@ impl ChaChaPolyIetf {
     }
 }
 impl SecretKeyGen for ChaChaPolyIetf {
-    fn new_secret_key(
-        &self,
-        buf: &mut [u8],
-        rng: &mut dyn SecureRng,
-    ) -> Result<usize, Box<dyn Error + 'static>> {
+    fn new_secret_key(&self, buf: &mut [u8], rng: &mut dyn SecureRng) -> Result<usize, Box<dyn Error + 'static>> {
         verify_keygen!(CHACHAPOLY_KEY => buf);
 
         rng.random(&mut buf[..CHACHAPOLY_KEY])?;
@@ -205,13 +202,7 @@ impl AeadCipher for ChaChaPolyIetf {
 
         let (data, tag) = cipher.split_at(cipher.len() - CHACHAPOLY_TAG);
         buf[..data.len()].copy_from_slice(data);
-        chachapoly_open(
-            &mut buf[..data.len()],
-            &tag[..CHACHAPOLY_TAG],
-            ad,
-            key,
-            nonce,
-        )?;
+        chachapoly_open(&mut buf[..data.len()], &tag[..CHACHAPOLY_TAG], ad, key, nonce)?;
         Ok(cipher.len() - CHACHAPOLY_TAG)
     }
 }

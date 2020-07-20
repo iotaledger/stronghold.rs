@@ -8,23 +8,23 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-// An Id with length of 24
+/// An Id with length of 24
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Id([u8; 24]);
 
-// a record hint
+/// a record hint
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RecordHint([u8; 24]);
 
-// a big endian encoded number
+/// a big endian encoded number
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Val([u8; 8]);
 
 impl Id {
-    // create a random ID
+    /// create a random ID
     pub fn random<P: BoxProvider>() -> crate::Result<Self> {
         let mut buf = [0; 24];
         P::random_buf(&mut buf)?;
@@ -32,7 +32,7 @@ impl Id {
         Ok(Self(buf))
     }
 
-    // load an ID from data
+    /// load an ID from inputted `data`
     pub fn load(data: &[u8]) -> crate::Result<Self> {
         let mut id = match data.len() {
             len if len == 24 => [0; 24],
@@ -44,7 +44,7 @@ impl Id {
 }
 
 impl RecordHint {
-    // create a new random Id for hint
+    /// create a new random Id for hint
     pub fn new(hint: impl AsRef<[u8]>) -> crate::Result<Self> {
         let hint = match hint.as_ref() {
             hint if hint.len() <= 24 => hint,
@@ -59,11 +59,11 @@ impl RecordHint {
 }
 
 impl Val {
-    // the val as u64
+    /// the val as u64
     pub fn u64(self) -> u64 {
         u64::from_be_bytes(self.0)
     }
-    // returns current val and increments it by one after
+    /// returns current val and increments it by one after
     pub fn postfix_increment(&mut self) -> Self {
         let old = *self;
         *self += 1;

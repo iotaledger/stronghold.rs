@@ -17,7 +17,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-// generic transaction type
+/// generic transaction type enum
 #[repr(u64)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 enum TransactionType {
@@ -26,94 +26,94 @@ enum TransactionType {
     Init = 10,
 }
 
-// a sealed transaction
+/// a sealed transaction
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SealedTransaction(Vec<u8>);
 
-// a generic transaction (untyped)
+/// a generic transaction (untyped)
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Transaction(Vec<u8>);
 
-// untyped transaction view
+/// untyped transaction view
 #[repr(packed)]
 #[derive(Debug)]
 pub struct UntypedTransaction {
-    // transaction type
+    /// transaction type
     pub type_id: Val,
-    // owner
+    /// owner id
     pub owner: Id,
-    // counter
+    /// counter value
     pub ctr: Val,
 }
 
-// a data transaction
+/// a data transaction
 #[repr(packed)]
 #[derive(Debug)]
 pub struct DataTransaction {
-    // transaction type
+    /// transaction type
     #[allow(unused)]
     pub type_id: Val,
     #[allow(unused)]
-    // owner
+    /// owner id
     pub owner: Id,
     #[allow(unused)]
-    // counter
+    /// counter
     pub ctr: Val,
-    // id for this entry
+    /// unique id for this transaction
     pub id: Id,
-    // a record hint
+    /// a record hint
     pub record_hint: RecordHint,
 }
 
-// a typed transaction
+/// a typed transaction
 pub trait TypedTransaction {
     fn type_id() -> Val;
 }
 
-// a revocation transaction
+/// a revocation transaction
 #[repr(packed)]
 #[derive(Debug)]
 pub struct RevocationTransaction {
-    // transaction type
+    /// transaction type
     #[allow(unused)]
     pub type_id: Val,
-    // owner
+    /// owner id
     #[allow(unused)]
     pub owner: Id,
-    // counter
+    /// counter
     #[allow(unused)]
     pub ctr: Val,
-    // id for entry
+    /// unique id for transaction
     pub id: Id,
 }
 
-// transaction that initializes the chain
+/// transaction that initializes a new chain
 #[repr(packed)]
 #[derive(Debug)]
 pub struct InitTransaction {
-    // transaction type
+    /// transaction type
     #[allow(unused)]
     pub type_id: Val,
-    // owner
+    /// owner id
     #[allow(unused)]
     pub owner: Id,
-    // counter
+    /// counter value
     pub ctr: Val,
 }
 
-// some sealed payload data
+/// some sealed payload data
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct SealedPayload(Vec<u8>);
 
 impl TransactionType {
-    // convert transaction type into the number
+    /// convert transaction type into its associated number value.
     pub fn val(&self) -> Val {
         Val::from(*self as u64)
     }
 }
 
 impl DataTransaction {
-    // create a new data transaction.
+    /// create a new data transaction.
     pub fn new(owner: Id, ctr: Val, id: Id, record_hint: RecordHint) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
@@ -134,7 +134,7 @@ impl TypedTransaction for DataTransaction {
 }
 
 impl RevocationTransaction {
-    // create a new revocation transaction.
+    /// create a new revocation transaction.
     pub fn new(owner: Id, ctr: Val, id: Id) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
@@ -181,21 +181,19 @@ impl Transaction {
     where
         Self: AsView<T>,
     {
-        self.typed()
-            .expect("This transaction cannot be viewed as `T`")
+        self.typed().expect("This transaction cannot be viewed as `T`")
     }
 
     pub fn force_typed_mut<T: TypedTransaction>(&mut self) -> &mut T
     where
         Self: AsViewMut<T>,
     {
-        self.typed_mut()
-            .expect("This transaction cannot be viewed as `T`")
+        self.typed_mut().expect("This transaction cannot be viewed as `T`")
     }
 }
 
 impl InitTransaction {
-    // create a new init transaction.
+    /// create a new init transaction.
     pub fn new(owner: Id, ctr: Val) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
@@ -270,7 +268,7 @@ impl AsMut<[u8]> for SealedPayload {
     }
 }
 
-// implemented traits.
+/// implemented traits.
 impl Encrypt<SealedTransaction> for Transaction {}
 impl Decrypt<(), Transaction> for SealedTransaction {}
 impl AsView<UntypedTransaction> for Transaction {}

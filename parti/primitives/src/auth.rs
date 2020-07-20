@@ -2,41 +2,31 @@ use crate::rng::SecretKeyGen;
 
 use std::{error::Error, ops::Range};
 
-// Message Authentication Code information block
+/// Message Authentication Code information block
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct MessageAuthCodeInfo {
-    // ID for the MAC
+    /// the ID for the MAC
     pub id: &'static str,
-    // is the MAC onetime?
+    /// indicates whether or not the MAC a one shot
     pub one_time: bool,
-    // length of the MAC
+    /// length of the MAC
     pub len: usize,
-    // supported MAC lengths
+    /// A range of the supported MAC lengths
     pub mac_lens: Range<usize>,
-    // supported key lengths
+    /// A range of the supported key lengths
     pub key_lens: Range<usize>,
 }
 
-// a Message authentication interface that is stateless and oneshot.
+/// a Message authentication interface (MAC) that is stateless and can be a one shot.
 pub trait MessageAuthCode: SecretKeyGen {
-    // get the info about the MAC
+    /// get the info about the MAC
     fn info(&self) -> MessageAuthCodeInfo;
-    // authenticate the data using the key.  Returns the MAC length
-    fn auth(
-        &self,
-        buf: &mut [u8],
-        data: &[u8],
-        key: &[u8],
-    ) -> Result<usize, Box<dyn Error + 'static>>;
+    /// authenticate the `data` using the `key` through the `buf` buffer.  Returns the MAC length in a `Result`
+    fn auth(&self, buf: &mut [u8], data: &[u8], key: &[u8]) -> Result<usize, Box<dyn Error + 'static>>;
 }
 
-// an extension for a variable Message authentication code.
+/// an extension for a Variable length Message Authentication Code (MAC).
 pub trait VarLenMessageAuthCode: MessageAuthCode {
-    // authenticates the data using a key.  Returns the MAC's length.
-    fn varlen_auth(
-        &self,
-        buf: &mut [u8],
-        data: &[u8],
-        key: &[u8],
-    ) -> Result<usize, Box<dyn Error + 'static>>;
+    /// Authenticates the `data` using a `key` through the `buf` buffer.  Returns the MAC's length in a `Result`.
+    fn varlen_auth(&self, buf: &mut [u8], data: &[u8], key: &[u8]) -> Result<usize, Box<dyn Error + 'static>>;
 }
