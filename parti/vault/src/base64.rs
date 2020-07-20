@@ -32,9 +32,9 @@ impl Base64 {
             Err(e) => {
                 let error = e.utf8_error();
                 let valid_up_to = error.valid_up_to();
-                let error_msg = format!("Fail encoding to base64: valid_up_to({})",valid_up_to);
+                let error_msg = format!("Fail encoding to base64: valid_up_to({})", valid_up_to);
                 panic!("{}", crate::Error::Base64ErrorDetailed(error_msg))
-            },
+            }
         }
     }
 
@@ -42,8 +42,8 @@ impl Base64 {
     pub fn decode_data(base: &[u8]) -> crate::Result<Vec<u8>> {
         // find and remove padding.
         let (padded, base) = match base.iter().rev().take_while(|b| **b == Self::PADDING).count() {
-            _ if base.len() % 4 != 0 => Err(crate::Error::Base64Error)?,
-            padded if padded > 2 => Err(crate::Error::Base64Error)?,
+            _ if base.len() % 4 != 0 => return Err(crate::Error::Base64Error),
+            padded if padded > 2 => return Err(crate::Error::Base64Error),
             padded => (padded, &base[..base.len() - padded]),
         };
 
