@@ -78,11 +78,11 @@ impl<P: BoxProvider> DBView<P> {
         let this_ctrs = self.chain_ctrs();
         chain_ctrs.iter().try_for_each(|(chain, other_ctr)| {
             let this_ctr = this_ctrs
-                .get(chain)
-                .ok_or(crate::Error::VersionError(String::from(
-                    "This database is older than the reference database",
-                )))?;
-            match this_ctr >= other_ctr {
+                .get(chain);
+            if this_ctr.is_none() {
+                return Err(crate::Error::VersionError(String::from("This database is older than the reference database",)));
+            }
+            match this_ctr.unwrap() >= other_ctr {
                 true => Ok(()),
                 false => Err(crate::Error::VersionError(String::from(
                     "This database is older than the reference database",
