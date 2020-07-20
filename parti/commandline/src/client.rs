@@ -43,7 +43,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 
     // create a chain for the user
     pub fn create_chain(key: Key<P>, id: Id) -> Client<P> {
-        let req = DBWriter::<P>::create_chain(&key.clone(), id);
+        let req = DBWriter::<P>::create_chain(&key, id);
         // send to the connection interface.
         send_until_success(CRequest::Write(req.clone()));
 
