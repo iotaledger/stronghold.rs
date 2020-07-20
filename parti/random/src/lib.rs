@@ -45,7 +45,7 @@ impl SecureRng for OsRng {
 mod test {
     use super::OsRng;
 
-    const TEST_SIZES: &[usize] = &[1 * 1024 * 1024, 4 * 1024 * 1024, (4 * 1024 * 1024) + 15];
+    const TEST_SIZES: &[usize] = &[1024 * 1024, 4 * 1024 * 1024, (4 * 1024 * 1024) + 15];
     const ITERATIONS: usize = 8;
 
     /// test the uniform distribution of byte values.
@@ -75,6 +75,6 @@ mod test {
     #[test]
     #[should_panic]
     fn testing_uniform_dist() {
-        test_uniform_dist(&vec![0; (4 * 1024 * 1024) + 15])
+        test_uniform_dist(&[0; (4 * 1024 * 1024) + 15])
     }
 }
