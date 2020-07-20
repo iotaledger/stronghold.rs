@@ -96,7 +96,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
                 send_until_success(CRequest::Write(req));
             });
             to_delete.into_iter().for_each(|req| {
-                send_until_success(CRequest::Delete(req.clone()));
+                send_until_success(CRequest::Delete(req));
             });
         });
     }
