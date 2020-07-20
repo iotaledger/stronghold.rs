@@ -93,7 +93,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         self.db.take(|db| {
             let (to_write, to_delete) = db.writer(self.id).gc().expect(line_error!());
             to_write.into_iter().for_each(|req| {
-                send_until_success(CRequest::Write(req.clone()));
+                send_until_success(CRequest::Write(req));
             });
             to_delete.into_iter().for_each(|req| {
                 send_until_success(CRequest::Delete(req.clone()));
