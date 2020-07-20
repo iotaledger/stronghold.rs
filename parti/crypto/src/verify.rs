@@ -134,7 +134,7 @@ macro_rules! verify_open {
         } else if $cipher.constrain_value() > $cipher_limit {
             Err("Too much data")
         } else if $cipher.constrain_value() < $tag_size {
-            Err($crate::Error::InvalidData)?
+            return Err($crate::Error::InvalidData.into());
         } else if $buf.constrain_value() + $tag_size < $cipher.constrain_value() {
             Err("Buffer is too small")
         } else {
