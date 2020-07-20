@@ -14,7 +14,7 @@ pub fn serialize_map(map: &HashMap<Vec<u8>, Vec<u8>>) -> Vec<u8> {
 }
 
 // deseralize a hashmap
-pub fn deserialize_buffer(bytes: &Vec<u8>) -> HashMap<Vec<u8>, Vec<u8>> {
+pub fn deserialize_buffer(bytes: &[u8]) -> HashMap<Vec<u8>, Vec<u8>> {
     let mut map = HashMap::new();
 
     let mut left = &bytes[..];
