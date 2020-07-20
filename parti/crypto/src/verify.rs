@@ -44,10 +44,12 @@ macro_rules! verify_auth {
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
-        let error = match true {
-            _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
-            _ if $buf.constrain_value() < $tag_size => Err("Buffer is too small"),
-            _ => Ok(()),
+        let error = if $key.constrain_value() != $key_size {
+            Err("Invalid key length")
+        } else if $buf.constrain_value() < $tag_size {
+            Err("Buffer is too small")
+        } else {
+            Ok(())
         };
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
