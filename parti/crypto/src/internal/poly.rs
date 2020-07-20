@@ -57,15 +57,22 @@ pub fn poly1305_update(a: &mut [u32], r: &[u32], mu: &[u32], mut data: &[u8], is
             a[3],
             and!(shift_right!(read32_little_endian!(&buf[9..]), 6), 0x03FFFFFF)
         );
-        a[4] = match buf_len < 16 && is_last {
-            true => add!(
+        a[4] = if buf_len < 16 && is_last {
+            add!(
                 a[4],
-                or!(shift_right!(read32_little_endian!(&buf[12..]), 8), 0x00000000)
-            ),
-            false => add!(
+                or!(
+                    shift_right!(read32_little_endian!(&buf[12..]), 8),
+                    0x00000000
+                )
+            )
+        } else {
+            add!(
                 a[4],
-                or!(shift_right!(read32_little_endian!(&buf[12..]), 8), 0x01000000)
-            ),
+                or!(
+                    shift_right!(read32_little_endian!(&buf[12..]), 8),
+                    0x01000000
+                )
+            )
         };
 
         // converts values into u64s to avoid overflow
@@ -160,16 +167,16 @@ pub fn poly1305_finish(tag: &mut [u8], a: &mut [u32], s: &[u32]) {
 
     // reduce if values is in the range (2^130-5, 2^130]
     let mut mux = greater_than!(a[0], 0x03FFFFFAu32);
-    for i in 1..5 {
-        mux = and!(mux, equal!(a[i], 0x03FFFFFF))
+    for i in a.iter().take(5).skip(1) {
+        mux = and!(mux, equal!(i, 0x03FFFFFF))
     }
 
     c = 5;
-    for i in 0..5 {
-        let mut t = add!(a[i], c);
+    for i in a.iter_mut().take(5) {
+        let mut t = add!(i, c);
         c = shift_right!(t, 26);
         t = and!(t, 0x03FFFFFF);
-        a[i] = mux_bool!(mux, t, a[i]);
+        *i = mux_bool!(mux, t, *i);
     }
 
     // convert back to 32bit words and add second half of key mod 2^128

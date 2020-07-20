@@ -31,15 +31,17 @@ impl JsonValueExt for JsonValue {
         self.members()
     }
     fn option_usize(&self, def: usize) -> usize {
-        match self.is_number() {
-            true => self.as_usize().unwrap(),
-            false => def,
+        if self.is_number() {
+            self.as_usize().unwrap()
+        } else {
+            def
         }
     }
     fn option_string(&self, def: impl ToString) -> String {
-        match self.is_string() {
-            true => self.as_str().unwrap().to_string(),
-            false => def.to_string(),
+        if self.is_string() {
+            self.as_str().unwrap().to_string()
+        } else {
+            def.to_string()
         }
     }
 }

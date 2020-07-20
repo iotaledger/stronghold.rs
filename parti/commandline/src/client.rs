@@ -43,16 +43,14 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 
     // create a chain for the user
     pub fn create_chain(key: Key<P>, id: Id) -> Client<P> {
-        let req = DBWriter::<P>::create_chain(&key.clone(), id);
+        let req = DBWriter::<P>::create_chain(&key, id);
         // send to the connection interface.
-        send_until_success(CRequest::Write(req.clone()));
+        send_until_success(CRequest::Write(req));
 
-        let client = Self {
-            id: id,
+        Self {
+            id,
             db: Vault::<P>::new(key),
-        };
-
-        client
+        }
     }
 
     // create a record in the vault.
@@ -95,10 +93,10 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         self.db.take(|db| {
             let (to_write, to_delete) = db.writer(self.id).gc().expect(line_error!());
             to_write.into_iter().for_each(|req| {
-                send_until_success(CRequest::Write(req.clone()));
+                send_until_success(CRequest::Write(req));
             });
             to_delete.into_iter().for_each(|req| {
-                send_until_success(CRequest::Delete(req.clone()));
+                send_until_success(CRequest::Delete(req));
             });
         });
     }

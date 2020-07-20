@@ -26,11 +26,13 @@ macro_rules! verify_keygen {
     ($size:expr => $buf:expr) => {{
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
-
-        let error = match true {
-            _ if $buf.constrain_value() != $size => Err("Invalid buffer size"),
-            _ => Ok(()),
+        
+        let error = if $buf.constrain_value() != $size {
+            Err("Invalid buffer size")
+        } else {
+            Ok(())
         };
+
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
 }
@@ -42,10 +44,12 @@ macro_rules! verify_auth {
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
-        let error = match true {
-            _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
-            _ if $buf.constrain_value() < $tag_size => Err("Buffer is too small"),
-            _ => Ok(()),
+        let error = if $key.constrain_value() != $key_size {
+            Err("Invalid key length")
+        } else if $buf.constrain_value() < $tag_size {
+            Err("Buffer is too small")
+        } else {
+            Ok(())
         };
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
@@ -58,12 +62,16 @@ macro_rules! verify_encrypt {
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
-        let error = match true {
-            _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
-            _ if $nonce.constrain_value() != $nonce_size => Err("Invalid nonce length"),
-            _ if $plain.constrain_value() > $plain_limit => Err("Too much data"),
-            _ if $plain.constrain_value() > $buf.constrain_value() => Err("Buffer is too small"),
-            _ => Ok(()),
+        let error = if $key.constrain_value() != $key_size {
+            Err("Invalid key length")
+        }else if $nonce.constrain_value() != $nonce_size {
+            Err("Invalid nonce length")
+        }else if $plain.constrain_value() > $plain_limit {
+            Err("Too much data")
+        }else if $plain.constrain_value() > $buf.constrain_value() {
+            Err("Buffer is too small")
+        }else{
+            Ok(())
         };
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
@@ -76,12 +84,16 @@ macro_rules! verify_decrypt {
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
-        let error = match true {
-            _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
-            _ if $nonce.constrain_value() != $nonce_size => Err("Invalid nonce length"),
-            _ if $cipher.constrain_value() > $cipher_limit => Err("Too much data"),
-            _ if $cipher.constrain_value() > $buf.constrain_value() => Err("Buffer is too small"),
-            _ => Ok(()),
+        let error = if $key.constrain_value() != $key_size {
+            Err("Invalid key length")
+        }else if $nonce.constrain_value() != $nonce_size {
+            Err("Invalid nonce length")
+        }else if $cipher.constrain_value() > $cipher_limit {
+            Err("Too much data")
+        }else if $cipher.constrain_value() > $buf.constrain_value() {
+            Err("Buffer is too small")
+        }else{
+            Ok(())
         };
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
@@ -95,12 +107,16 @@ macro_rules! verify_seal {
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
-        let error = match true {
-            _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
-            _ if $nonce.constrain_value() != $nonce_const => Err("Invalid nonce length"),
-            _ if $plain.constrain_value() > $plain_limit => Err("Too much data"),
-            _ if $buf.constrain_value() < $plain.constrain_value() + CHACHAPOLY_TAG => Err("Buffer is too small"),
-            _ => Ok(()),
+        let error = if $key.constrain_value() != $key_size {
+            Err("Invalid key length")
+        } else if $nonce.constrain_value() != $nonce_const {
+            Err("Invalid nonce length")
+        } else if $plain.constrain_value() > $plain_limit {
+            Err("Too much data")
+        } else if $buf.constrain_value() < $plain.constrain_value() + CHACHAPOLY_TAG {
+            Err("Buffer is too small")
+        } else {
+            Ok(())
         };
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};
@@ -113,13 +129,18 @@ macro_rules! verify_open {
         #[allow(unused_imports)]
         use $crate::verify::{SliceExt, USizeExt};
 
-        let error = match true {
-            _ if $key.constrain_value() != $key_size => Err("Invalid key length"),
-            _ if $nonce.constrain_value() != $nonce_size => Err("Invalid nonce length"),
-            _ if $cipher.constrain_value() > $cipher_limit => Err("Too much data"),
-            _ if $cipher.constrain_value() < $tag_size => Err($crate::Error::InvalidData)?,
-            _ if $buf.constrain_value() + $tag_size < $cipher.constrain_value() => Err("Buffer is too small"),
-            _ => Ok(()),
+        let error = if $key.constrain_value() != $key_size {
+            Err("Invalid key length")
+        } else if $nonce.constrain_value() != $nonce_size {
+            Err("Invalid nonce length")
+        } else if $cipher.constrain_value() > $cipher_limit {
+            Err("Too much data")
+        } else if $cipher.constrain_value() < $tag_size {
+            return Err($crate::Error::InvalidData.into());
+        } else if $buf.constrain_value() + $tag_size < $cipher.constrain_value() {
+            Err("Buffer is too small")
+        } else {
+            Ok(())
         };
         error.map_err(|e| $crate::Error::CryptoError(e.into()))?;
     }};

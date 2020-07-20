@@ -1,3 +1,7 @@
+#![allow(clippy::new_ret_no_self)]/*
+Used for new() fns in InitTransaction, DataTransaction & RevocationTransaction impls
+These fns don't return Self, instead return Transaction struct which let us write this code in a simpler way*/
+
 use crate::{
     crypto_box::{Decrypt, Encrypt},
     types::{
@@ -17,9 +21,9 @@ use serde::{Deserialize, Serialize};
 #[repr(u64)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 enum TransactionType {
-    DataTransaction = 1,
-    RevocationTransaction = 2,
-    InitTransaction = 10,
+    Data = 1,
+    Revocation = 2,
+    Init = 10,
 }
 
 /// a sealed transaction
@@ -114,7 +118,7 @@ impl DataTransaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
 
-        view.type_id = (TransactionType::DataTransaction as u64).into();
+        view.type_id = (TransactionType::Data as u64).into();
         view.owner = owner;
         view.ctr = ctr;
         view.id = id;
@@ -125,7 +129,7 @@ impl DataTransaction {
 
 impl TypedTransaction for DataTransaction {
     fn type_id() -> Val {
-        TransactionType::DataTransaction.val()
+        TransactionType::Data.val()
     }
 }
 
@@ -135,7 +139,7 @@ impl RevocationTransaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
 
-        view.type_id = (TransactionType::RevocationTransaction as u64).into();
+        view.type_id = (TransactionType::Revocation as u64).into();
         view.owner = owner;
         view.ctr = ctr;
         view.id = id;
@@ -144,7 +148,7 @@ impl RevocationTransaction {
 }
 impl TypedTransaction for RevocationTransaction {
     fn type_id() -> Val {
-        TransactionType::RevocationTransaction.val()
+        TransactionType::Revocation.val()
     }
 }
 
@@ -194,7 +198,7 @@ impl InitTransaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
 
-        view.type_id = (TransactionType::InitTransaction as u64).into();
+        view.type_id = (TransactionType::Init as u64).into();
         view.owner = owner;
         view.ctr = ctr;
         transaction
@@ -203,7 +207,7 @@ impl InitTransaction {
 
 impl TypedTransaction for InitTransaction {
     fn type_id() -> Val {
-        TransactionType::InitTransaction.val()
+        TransactionType::Init.val()
     }
 }
 

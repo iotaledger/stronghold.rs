@@ -29,7 +29,12 @@ impl Base64 {
 
         match String::from_utf8(base) {
             Ok(s) => s,
-            Err(_) => panic!("{}", crate::Error::Base64Error),
+            Err(e) => {
+                let error = e.utf8_error();
+                let valid_up_to = error.valid_up_to();
+                let error_msg = format!("Fail encoding to base64: valid_up_to({})", valid_up_to);
+                panic!("{}", crate::Error::Base64ErrorDetailed(error_msg))
+            }
         }
     }
 
@@ -37,8 +42,8 @@ impl Base64 {
     pub fn decode_data(base: &[u8]) -> crate::Result<Vec<u8>> {
         // find and remove padding.
         let (padded, base) = match base.iter().rev().take_while(|b| **b == Self::PADDING).count() {
-            _ if base.len() % 4 != 0 => Err(crate::Error::Base64Error)?,
-            padded if padded > 2 => Err(crate::Error::Base64Error)?,
+            _ if base.len() % 4 != 0 => return Err(crate::Error::Base64Error),
+            padded if padded > 2 => return Err(crate::Error::Base64Error),
             padded => (padded, &base[..base.len() - padded]),
         };
 
@@ -60,7 +65,7 @@ impl Base64 {
     /// encode a single byte
     fn encode_byte(b: usize) -> u8 {
         match b {
-            b @ 0..=25 => (b as u8 - 0) + b'A',
+            b @ 0..=25 => (b as u8) + b'A',
             b @ 26..=51 => (b as u8 - 26) + b'a',
             b @ 52..=61 => (b as u8 - 52) + b'0',
             62 => b'-',
@@ -72,7 +77,7 @@ impl Base64 {
     /// decode a single byte
     fn decode_byte(b: u8) -> crate::Result<usize> {
         match b {
-            b @ b'A'..=b'Z' => Ok((b - b'A') as usize + 0),
+            b @ b'A'..=b'Z' => Ok((b - b'A') as usize),
             b @ b'a'..=b'z' => Ok((b - b'a') as usize + 26),
             b @ b'0'..=b'9' => Ok((b - b'0') as usize + 52),
             b'-' => Ok(62),
