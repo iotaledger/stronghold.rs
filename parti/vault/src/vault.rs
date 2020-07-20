@@ -159,7 +159,7 @@ impl<P: BoxProvider> DBWriter<P> {
         // check if id is still valid and get counter
         let start_ctr = match self.view.valid.get(&id) {
             Some(_) => self.view.chain.force_last(&self.owner).ctr() + 1,
-            _ => Err(crate::Error::InterfaceError)?,
+            _ => return Err(crate::Error::InterfaceError),
         };
 
         // generate transaction
