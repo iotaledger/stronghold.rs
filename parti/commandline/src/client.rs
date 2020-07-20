@@ -48,7 +48,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         send_until_success(CRequest::Write(req.clone()));
 
         Self {
-            id: id,
+            id,
             db: Vault::<P>::new(key),
         }
     }
