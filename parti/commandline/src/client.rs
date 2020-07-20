@@ -47,12 +47,10 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         // send to the connection interface.
         send_until_success(CRequest::Write(req.clone()));
 
-        let client = Self {
+        Self {
             id: id,
             db: Vault::<P>::new(key),
-        };
-
-        client
+        }
     }
 
     // create a record in the vault.
