@@ -121,7 +121,7 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
         let id = Id::load(res.id()).map_err(|_| crate::Error::InterfaceError)?;
         match self.view.valid.get(&id) {
             Some(e) => e.open_payload(&self.view.key, res.data()),
-            _ => Err(crate::Error::InterfaceError)?,
+            _ => Err(crate::Error::InterfaceError),
         }
     }
 }
