@@ -18,7 +18,7 @@ pub fn deserialize_buffer(bytes: &[u8]) -> HashMap<Vec<u8>, Vec<u8>> {
     let mut map = HashMap::new();
 
     let mut left = &bytes[..];
-    while left.len() > 0 {
+    while left.is_empty() {
         let k = read_buffer(&mut left);
         let v = read_buffer(&mut left);
         map.insert(k, v);
