@@ -49,8 +49,7 @@ fn main() {
     }
 
     // check to see if there is a specified RNG
-    let secure_random =
-        secure_random.expect("No secure random number generator known for the target platform");
+    let secure_random = secure_random.expect("No secure random number generator known for the target platform");
 
     // build and compile the library.
     cc::Build::new()

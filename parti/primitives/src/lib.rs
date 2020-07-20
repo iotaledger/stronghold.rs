@@ -1,17 +1,17 @@
-// A generate purpose API for various Cryptographic Primitives.
-// This crate's aim is to provide an abstraction layer that allows you to swap the backend easily.
+/// A general purpose API for Cryptographic Primitives.
+///  This crate's aim is to provide an abstraction layer that allows you to swap the backend easily.
 
-// Message Auth Code
+/// Message Auth Code
 pub mod auth;
-// Cipher
+/// Cipher
 pub mod cipher;
-// Hash
+/// Hash
 pub mod hash;
-// Key derive function
+/// Key derive function
 pub mod key_derv_func;
-// Pbkdf
+/// PBKDF
 pub mod pbkdf;
-// Random Number Generator
+/// Random Number Generator
 pub mod rng;
-// Asymmetric Signing
+/// Asymmetric Signing
 pub mod signing;

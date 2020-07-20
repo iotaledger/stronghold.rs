@@ -5,17 +5,14 @@ pub use transactions::{DataTransaction, SealedPayload, SealedTransaction};
 pub mod transactions;
 pub mod utils;
 
-// a view over raw data.
+/// a view over raw data.
 pub trait AsView<T: Sized>: AsRef<[u8]> {
-    // creates a view
+    /// creates a view over `self`.
     fn view(&self) -> &T {
         // get the bytes
         let bytes = self.as_ref();
         // validate the bytes
-        assert!(
-            mem::size_of::<T>() <= bytes.len(),
-            "Can't create view over this memory"
-        );
+        assert!(mem::size_of::<T>() <= bytes.len(), "Can't create view over this memory");
         // get the pointer
         let bytes = bytes.as_ptr();
         // validate alignment
@@ -29,17 +26,14 @@ pub trait AsView<T: Sized>: AsRef<[u8]> {
     }
 }
 
-// a mutable view over raw data.
+/// a mutable view over raw data.
 pub trait AsViewMut<T: Sized>: AsMut<[u8]> {
-    // creates a mutable view
+    /// creates a mutable view over `self`.
     fn view_mut(&mut self) -> &mut T {
         // get bytes
         let bytes = self.as_mut();
         // validate bytes
-        assert!(
-            mem::size_of::<T>() <= bytes.len(),
-            "Can't create view over this memory"
-        );
+        assert!(mem::size_of::<T>() <= bytes.len(), "Can't create view over this memory");
         // get mute pointer
         let bytes = bytes.as_mut_ptr();
         // validate alignment

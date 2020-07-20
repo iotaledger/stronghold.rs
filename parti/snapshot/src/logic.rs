@@ -8,11 +8,14 @@ use std::{
     io::{Read, Write},
 };
 
-const CHUNK_SIZE: usize = 4096; // data chunk size
-const SIGN: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49]; // PARTI in hex
-const VERSION: [u8; 2] = [0x1, 0x0]; // version 1.0 in hex
+const CHUNK_SIZE: usize = 4096;
+/// data chunk size
+const SIGN: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
+/// PARTI in hex
+const VERSION: [u8; 2] = [0x1, 0x0];
+/// version 1.0 in hex
 
-// generate the salt for the encryption algorithm.
+/// generate the salt for the encryption algorithm.
 fn generate_salt() -> crate::Result<pwhash::Salt> {
     // generate salt
     let salt = pwhash::gen_salt();
@@ -24,7 +27,7 @@ fn generate_salt() -> crate::Result<pwhash::Salt> {
     Ok(salt)
 }
 
-// derive key from salt and password.
+/// derive key from salt and password.
 fn derive_key_from_password(password: &[u8], salt: &pwhash::Salt) -> crate::Result<Key> {
     // empty key
     let mut key = [0; secretstream::KEYBYTES];
@@ -42,14 +45,14 @@ fn derive_key_from_password(password: &[u8], salt: &pwhash::Salt) -> crate::Resu
     }
 }
 
-// create an encryption push stream and a header.
+/// create an encryption push stream and a header.
 fn create_stream(&Key(ref key): &Key) -> crate::Result<(Stream<Push>, Header)> {
     let stream_key = secretstream::Key(key.to_owned());
 
     Stream::init_push(&stream_key).map_err(|_| crate::Error::SnapshotError("Unable to create stream".into()))
 }
 
-// create a decryption pull stream.
+/// create a decryption pull stream.
 fn pull_stream(header: &[u8], &Key(ref key): &Key) -> crate::Result<Stream<Pull>> {
     let stream_key = secretstream::Key(key.to_owned());
     let header = Header::from_slice(header).expect("Invalid Header size");
@@ -57,7 +60,7 @@ fn pull_stream(header: &[u8], &Key(ref key): &Key) -> crate::Result<Stream<Pull>
     Stream::init_pull(&header, &stream_key).map_err(|_| crate::Error::SnapshotError("Unable to open stream".into()))
 }
 
-// encrypt an input with a password in using secretstream.
+/// encrypt an input with a password in using secretstream.
 pub fn encrypt_snapshot(input: Vec<u8>, out: &mut File, password: &[u8]) -> crate::Result<()> {
     // convert vector to slice
     let mut slice = input.as_slice();
@@ -106,7 +109,7 @@ pub fn encrypt_snapshot(input: Vec<u8>, out: &mut File, password: &[u8]) -> crat
     Ok(())
 }
 
-// decrypt file into a vector with a password.
+/// decrypt file into a vector with a password.
 pub fn decrypt_snapshot(input: &mut File, output: &mut Vec<u8>, password: &[u8]) -> crate::Result<()> {
     // check to see if the file is long enough
     check_file_len(input)?;
@@ -119,7 +122,7 @@ pub fn decrypt_snapshot(input: &mut File, output: &mut Vec<u8>, password: &[u8])
     Ok(())
 }
 
-// update a snapshot with the new version by re-encrypting the data.
+/// update a snapshot with the new version by re-encrypting the data.
 pub fn update_snapshot(input: &mut File, output: &mut File, password: &[u8]) -> crate::Result<()> {
     // setup the buffer to read from the old snapshot.
     let mut buffer: Vec<u8> = Vec::new();
@@ -139,6 +142,7 @@ pub fn update_snapshot(input: &mut File, output: &mut File, password: &[u8]) -> 
     Ok(())
 }
 
+// logic to decrypt the file.
 fn decrypt_file(input: &mut File, output: &mut Vec<u8>, password: &[u8], salt: pwhash::Salt) -> crate::Result<()> {
     // setup header buffer and extract it from the file
     let mut header = [0u8; secretstream::HEADERBYTES];
@@ -173,7 +177,7 @@ fn decrypt_file(input: &mut File, output: &mut Vec<u8>, password: &[u8], salt: p
     Ok(())
 }
 
-// check to see if the file is long enough.
+/// check to see if the file is long enough.
 fn check_file_len(input: &mut File) -> crate::Result<()> {
     if input.metadata()?.len() <= (pwhash::SALTBYTES + secretstream::HEADERBYTES + SIGN.len()) as u64 {
         return Err(crate::Error::SnapshotError("Snapshot is not valid or encrypted".into()));
@@ -182,7 +186,7 @@ fn check_file_len(input: &mut File) -> crate::Result<()> {
     Ok(())
 }
 
-// check the version if the book is set and check the signature then extract the salt.
+/// check the version if the book is set and check the signature then extract the salt.
 fn get_salt(input: &mut File, chk_version: bool) -> crate::Result<pwhash::Salt> {
     // setup the buffers
     let mut sign = [0u8; 5];
@@ -213,7 +217,7 @@ fn get_salt(input: &mut File, chk_version: bool) -> crate::Result<pwhash::Salt> 
     Ok(salt)
 }
 
-// check the version on the snapshot.
+/// check the version on the snapshot.
 fn check_version(version: &[u8]) -> crate::Result<()> {
     // probably shouldn't do this, but if version is incorrect reject snapshot with error
     if version != VERSION {

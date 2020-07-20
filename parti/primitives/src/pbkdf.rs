@@ -1,35 +1,35 @@
 use std::{error::Error, ops::Range};
 
-// information about the PBKDF implementation.
+/// information block describing the PBKDF implementation.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct PbkdfInfo {
-    // the id of the PBKDF
+    /// the id of the PBKDF
     pub id: &'static str,
-    // supported output lengths
+    /// A range of the supported output lengths
     pub output_lens: Range<usize>,
-    // supported password lengths
+    /// A range of the supported password lengths
     pub password_lens: Range<usize>,
-    // supported salt lengths
+    /// A range of the supported salt lengths
     pub salt_lens: Range<usize>,
-    // default CPU cost
+    /// the default CPU cost
     pub cpu_cost: u64,
-    // supported CPU costs
+    /// supported CPU costs
     pub cpu_costs: Range<usize>,
-    // default memory cost
+    /// the default memory costs
     pub memory_cost: u64,
-    // supported CPU costs
+    /// A range of the supported CPU costs
     pub memory_costs: Range<u64>,
-    // default parallelism which is 0 if PBKDF does not support threading
+    /// default parallelism which is 0 if PBKDF does not support threading
     pub parallelism: u64,
-    // supported parallelism.
+    /// Range of supported parallelism.
     pub parallelisms: Range<u64>,
 }
 
-// a stateless oneshot PBKDF interface
+/// A PBKDF
 pub trait Pbkdf {
-    // returns the info of the PBKDF
+    /// returns the info of the PBKDF
     fn info(&self) -> PbkdfInfo;
-    // fills the buffer with bytes derived from the password parameterized by the CPU cost.
+    /// fills the buffer with bytes derived from the password parameterized by the CPU cost.
     fn derive(
         &self,
         buf: &mut [u8],
@@ -39,9 +39,9 @@ pub trait Pbkdf {
     ) -> Result<(), Box<dyn Error + 'static>>;
 }
 
-// A stateless oneshot memory hardened PBKDF interface
+/// A memory hardened PBKDF
 pub trait StatelessPbkdf: Pbkdf {
-    // fills the buffer with bytes derived from the password parameterized by the CPU cost.
+    /// fills the buffer with bytes derived from the password parameterized by the CPU cost.
     fn derive_stateless(
         &self,
         buf: &mut [u8],

@@ -4,24 +4,24 @@ use primitives::{
     rng::{SecretKeyGen, SecureRng},
 };
 use std::{cmp::min, error::Error};
-// max bytes that can be processed with a key/nonce combo
+/// max bytes that can be processed with a key/nonce combo
 #[cfg(target_pointer_width = "64")]
 pub const CHACHA20_MAX: usize = 4_294_967_296 * 64;
 #[cfg(target_pointer_width = "32")]
 pub const CHACHA20_MAX: usize = usize::max_value();
-// Size of Key
+/// Size of Key
 pub const CHACHA20_KEY: usize = 32;
-// Size of Nonce
+/// Size of Nonce
 pub const CHACHA20_NONCE: usize = 12;
 
 pub struct ChaCha20Ietf;
 impl ChaCha20Ietf {
-    // create a new Cipher with ChaCha20IETF
+    /// create a new Cipher with ChaCha20IETF
     pub fn cipher() -> Box<dyn Cipher> {
         Box::new(Self)
     }
 
-    // Xor data with ChaCha20 keystream
+    /// Xor data with ChaCha20 keystream
     pub fn xor(key: &[u8], nonce: &[u8], mut n: u32, mut data: &mut [u8]) {
         // verify inputs
         assert_eq!(CHACHA20_KEY, key.len());
@@ -44,11 +44,7 @@ impl ChaCha20Ietf {
     }
 }
 impl SecretKeyGen for ChaCha20Ietf {
-    fn new_secret_key(
-        &self,
-        buf: &mut [u8],
-        rng: &mut dyn SecureRng,
-    ) -> Result<usize, Box<dyn Error + 'static>> {
+    fn new_secret_key(&self, buf: &mut [u8], rng: &mut dyn SecureRng) -> Result<usize, Box<dyn Error + 'static>> {
         verify_keygen!(CHACHA20_KEY => buf);
 
         rng.random(&mut buf[..CHACHA20_KEY])?;
