@@ -17,7 +17,7 @@ jobs:
       matrix:
         project: [parti, stronghold]
         rust: [nightly, beta, stable]
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
     - uses: actions/checkout@v2
@@ -29,25 +29,38 @@ jobs:
         override: true
 
     - name: Get current date
-      run: echo ::set-env name=CURRENT_DATE::$(date +'%Y-%m-%d')
+      if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+      run: echo "::set-env name=CURRENT_DATE::$(date +'%Y-%m-%d')"
+
+    - name: Get current date
+      if: matrix.os == 'windows-latest'
+      run: echo "::set-env name=CURRENT_DATE::$(Get-Date -Format "yyyy-MM-dd")"
 
     - name: Cache cargo registry
       uses: actions/cache@v2
       with:
         path: ~/.cargo/registry
-        key: ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.toml') }}
+        # Add date to the cache to keep it up to date
+        key: ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.toml') }}-${{ env.CURRENT_DATE }}
+        # Restore from outdated cache for speed
+        restore-keys: |
+          ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.toml') }}
 
     - name: Cache cargo index
       uses: actions/cache@v2
       with:
         path: ~/.cargo/git
-        key: ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-index-${{ hashFiles('**/Cargo.toml') }}
+        # Add date to the cache to keep it up to date
+        key: ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-index-${{ hashFiles('**/Cargo.toml') }}-${{ env.CURRENT_DATE }}
+        # Restore from outdated cache for speed
+        restore-keys: |
+          ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-index-${{ hashFiles('**/Cargo.toml') }}
 
     - name: Cache cargo target
       uses: actions/cache@v2
       with:
         path: ${{ matrix.project}}/target
-        # Add date to the cache to keep it up to date (for example, new nightly toolchain update may change build cache)
+        # Add date to the cache to keep it up to date
         key: ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.toml') }}-${{ env.CURRENT_DATE }}
         # Restore from outdated cache for speed
         restore-keys: |
