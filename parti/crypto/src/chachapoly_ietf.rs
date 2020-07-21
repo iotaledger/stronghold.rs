@@ -81,7 +81,6 @@ impl SecretKeyGen for ChaChaPolyIetf {
     }
 }
 
-#[allow(clippy::reversed_empty_ranges)]
 impl Cipher for ChaChaPolyIetf {
     fn info(&self) -> CipherInfo {
         CipherInfo {

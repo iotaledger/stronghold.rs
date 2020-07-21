@@ -53,7 +53,6 @@ impl SecretKeyGen for ChaCha20Ietf {
     }
 }
 
-#[allow(clippy::reversed_empty_ranges)]
 impl Cipher for ChaCha20Ietf {
     fn info(&self) -> CipherInfo {
         CipherInfo {

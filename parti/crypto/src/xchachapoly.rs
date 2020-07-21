@@ -88,7 +88,6 @@ impl SecretKeyGen for XChaChaPoly {
     }
 }
 
-#[allow(clippy::reversed_empty_ranges)]
 impl Cipher for XChaChaPoly {
     fn info(&self) -> CipherInfo {
         CipherInfo {

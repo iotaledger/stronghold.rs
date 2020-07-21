@@ -41,7 +41,6 @@ impl SecretKeyGen for Poly1305 {
     }
 }
 
-#[allow(clippy::reversed_empty_ranges)]
 impl MessageAuthCode for Poly1305 {
     fn info(&self) -> MessageAuthCodeInfo {
         MessageAuthCodeInfo {

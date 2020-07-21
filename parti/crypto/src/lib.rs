@@ -1,3 +1,5 @@
+#![allow(clippy::reversed_empty_ranges)]
+
 use thiserror::Error as DeriveError;
 
 #[macro_use]
