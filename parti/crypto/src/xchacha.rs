@@ -57,6 +57,8 @@ impl SecretKeyGen for XChaCha20 {
         Ok(XCHACHA20_KEY)
     }
 }
+
+#[allow(clippy::reversed_empty_ranges)]
 impl Cipher for XChaCha20 {
     fn info(&self) -> CipherInfo {
         CipherInfo {

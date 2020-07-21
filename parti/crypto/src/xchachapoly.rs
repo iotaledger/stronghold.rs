@@ -56,7 +56,7 @@ fn xchachapoly_open(
 
     // validate the tags.
     if !eq_const_time!(&tag, &verify_tag) {
-        return Err(crate::Error::InvalidData.into())
+        return Err(crate::Error::InvalidData.into());
     }
     XChaCha20::xor(key, nonce, 1, data);
     Ok(())
@@ -87,6 +87,8 @@ impl SecretKeyGen for XChaChaPoly {
         Ok(XCHACHAPOLY_KEY)
     }
 }
+
+#[allow(clippy::reversed_empty_ranges)]
 impl Cipher for XChaChaPoly {
     fn info(&self) -> CipherInfo {
         CipherInfo {

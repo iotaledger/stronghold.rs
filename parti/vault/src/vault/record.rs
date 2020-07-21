@@ -34,11 +34,13 @@ impl ChainRecord {
                 .enumerate()
                 .rev()
                 .find_map(|(start, e)| Some((start, e.typed::<InitTransaction>()?.ctr)));
-                
+
             if result.is_none() {
-                return Err(crate::Error::ChainError(String::from("Chain does not contain a start transaction",)));
+                return Err(crate::Error::ChainError(String::from(
+                    "Chain does not contain a start transaction",
+                )));
             }
-            
+
             let (start, mut ctr) = result.unwrap();
 
             // get transactions that are ancestors of the InitTransaction

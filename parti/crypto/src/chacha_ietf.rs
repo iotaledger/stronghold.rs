@@ -4,6 +4,7 @@ use primitives::{
     rng::{SecretKeyGen, SecureRng},
 };
 use std::{cmp::min, error::Error};
+
 /// max bytes that can be processed with a key/nonce combo
 #[cfg(target_pointer_width = "64")]
 pub const CHACHA20_MAX: usize = 4_294_967_296 * 64;
@@ -51,6 +52,8 @@ impl SecretKeyGen for ChaCha20Ietf {
         Ok(CHACHA20_KEY)
     }
 }
+
+#[allow(clippy::reversed_empty_ranges)]
 impl Cipher for ChaCha20Ietf {
     fn info(&self) -> CipherInfo {
         CipherInfo {
