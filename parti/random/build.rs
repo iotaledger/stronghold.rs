@@ -16,7 +16,7 @@ fn linux_check_getrandom() -> Option<&'static str> {
     let v: Vec<u8> = unsafe { CStr::from_ptr(gnu_get_libc_version()) }
         .to_str()
         .unwrap()
-        .split(".")
+        .split('.')
         .map(|s| u8::from_str(s).unwrap())
         .collect();
 
