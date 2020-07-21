@@ -11,9 +11,7 @@ use crate::{
 pub(in crate) fn get_snapshot_path() -> PathBuf {
     let path = snapshot_dir().expect("Unable to get the snapshot directory");
 
-    let snapshot = path.join("backup.snapshot");
-
-    snapshot
+    path.join("backup.snapshot")
 }
 
 // deserialize the snapshot data from the snapshot file.
@@ -31,9 +29,7 @@ pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Cl
 
     let (id, key) = snap.offload();
 
-    let client = Client::<Provider>::new(id, key);
-
-    client
+    Client::<Provider>::new(id, key)
 }
 
 // serialize the snapshot data into the snapshot file.

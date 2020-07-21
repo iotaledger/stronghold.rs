@@ -36,7 +36,7 @@ impl Id {
     pub fn load(data: &[u8]) -> crate::Result<Self> {
         let mut id = match data.len() {
             len if len == 24 => [0; 24],
-            _ => Err(crate::Error::InterfaceError)?,
+            _ => return Err(crate::Error::InterfaceError),
         };
         id.copy_from_slice(data);
         Ok(Self(id))
@@ -48,7 +48,7 @@ impl RecordHint {
     pub fn new(hint: impl AsRef<[u8]>) -> crate::Result<Self> {
         let hint = match hint.as_ref() {
             hint if hint.len() <= 24 => hint,
-            _ => Err(crate::Error::InterfaceError)?,
+            _ => return Err(crate::Error::InterfaceError),
         };
 
         // copy hint

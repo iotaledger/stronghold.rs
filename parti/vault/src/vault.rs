@@ -75,14 +75,16 @@ impl<P: BoxProvider> DBView<P> {
     pub fn not_older_than(&self, chain_ctrs: &HashMap<Id, u64>) -> crate::Result<()> {
         let this_ctrs = self.chain_ctrs();
         chain_ctrs.iter().try_for_each(|(chain, other_ctr)| {
-            let this_ctr = this_ctrs.get(chain).ok_or(crate::Error::VersionError(String::from(
-                "This database is older than the reference database",
-            )))?;
-            match this_ctr >= other_ctr {
-                true => Ok(()),
-                false => Err(crate::Error::VersionError(String::from(
+            let this_ctr = this_ctrs.get(chain).ok_or_else(|| {
+                crate::Error::VersionError(String::from("This database is older than the reference database"))
+            })?;
+
+            if this_ctr >= other_ctr {
+                Ok(())
+            } else {
+                Err(crate::Error::VersionError(String::from(
                     "This database is older than the reference database",
-                )))?,
+                )))
             }
         })
     }
@@ -117,7 +119,7 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
         let id = Id::load(res.id()).map_err(|_| crate::Error::InterfaceError)?;
         match self.view.valid.get(&id) {
             Some(e) => e.open_payload(&self.view.key, res.data()),
-            _ => Err(crate::Error::InterfaceError)?,
+            _ => Err(crate::Error::InterfaceError),
         }
     }
 }
@@ -158,7 +160,7 @@ impl<P: BoxProvider> DBWriter<P> {
         // check if id is still valid and get counter
         let start_ctr = match self.view.valid.get(&id) {
             Some(_) => self.view.chain.force_last(&self.owner).ctr() + 1,
-            _ => Err(crate::Error::InterfaceError)?,
+            _ => return Err(crate::Error::InterfaceError),
         };
 
         // generate transaction

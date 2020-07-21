@@ -153,15 +153,14 @@ macro_rules! write64_little_endian {
 macro_rules! eq_const_time {
     ($a:expr, $b:expr) => {{
         use crate::{or, xor};
-        match $a.len() == $b.len() {
-            true => {
-                let mut x = 0;
-                for i in 0..$a.len() {
-                    x = or!(x, xor!($a[i], $b[i]))
-                }
-                x == 0
+        if $a.len() == $b.len() {
+            let mut x = 0;
+            for i in 0..$a.len() {
+                x = or!(x, xor!($a[i], $b[i]))
             }
-            false => false,
+            x == 0
+        } else {
+            false
         }
     }};
 }

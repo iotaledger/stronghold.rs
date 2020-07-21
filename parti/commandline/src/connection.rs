@@ -73,7 +73,7 @@ pub fn send(req: CRequest) -> Option<CResult> {
                 .cloned()
                 .expect(line_error!());
 
-            CResult::Read(ReadResult::new(read.into(), state.clone()))
+            CResult::Read(ReadResult::new(read.into(), state))
         }
     };
 
