@@ -5,4 +5,5 @@
 
 /// Stronghold Account Module
 mod account;
-mod address;
+mod storage;
+

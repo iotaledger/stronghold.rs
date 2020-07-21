@@ -6,3 +6,12 @@ edition = "2018"
 
 [dependencies]
 bee-ternary = { git = "https://github.com/iotaledger/bee", features = ["serde1"] }
+
+#parti
+vault = {path = "../parti/vault"}
+crypto = {path = "../parti/crypto"}
+random = {path = "../parti/random"}
+snapshot = {path = "../parti/snapshot"}
+primitives = {path = "../parti/primitives"}
+bincode = "1.3.1"
+serde = {version = "1.0.114", features = ["derive"]}
