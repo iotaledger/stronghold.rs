@@ -1,4 +1,4 @@
-#![allow(clippy::reversed_empty_ranges)]
+#![cfg_attr(feature = "cargo-clippy", allow(clippy::reversed_empty_ranges))]
 
 use thiserror::Error as DeriveError;
 
