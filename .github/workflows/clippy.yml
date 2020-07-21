@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-      - name: Install clippy with nightly toolchain
+      - name: Install clippy with stable toolchain
         uses: actions-rs/toolchain@v1
         with:
             profile: minimal
