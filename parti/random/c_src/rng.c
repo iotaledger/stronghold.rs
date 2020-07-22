@@ -29,7 +29,7 @@ uint8_t os_random_secrandom(uint8_t *buf, size_t len)
     return SecRandomCopyBytes(kSecRandomDefault, len, buf) == errSecSuccess ? 0 : 1;
 #elif defined(USE_CRYPTGENRANDOM)
     HCRYPTPROV rng;
-    if (CryptAcquireContext(&rng, NULL, NULL, PROV_RSA_FULL, CRYPT_SILENT) == 0)
+    if (CryptAcquireContext(&rng, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT | CRYPT_SILENT) == 0)
         return 1;
 
     uint8_t ret_val = CryptGenRandom(rng, (DWORD)len, (BYTE *)buf) == 0 ? 1 : 0;
