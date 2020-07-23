@@ -7,8 +7,8 @@
 /// - ChaCha20-Poly1305
 /// - XChaCha20-Poly1305
 ///
-/// The internals of these algorithms are defined using macros to make them compose with one another.
-///
+/// The internals of these algorithms are defined using macros to make them compose with one another. The
+/// algorithms were tested against libsodium's algorithms to verify their integrity.
 use thiserror::Error as DeriveError;
 
 #[macro_use]
