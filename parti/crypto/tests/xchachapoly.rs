@@ -60,20 +60,9 @@ impl TestVector {
     pub fn test_decryption(&self) -> &Self {
         let mut buf = self.cipher.clone();
         let len = XChaChaPoly::aead_cipher()
-            .open(
-                &mut buf,
-                self.cipher.len(),
-                &self.ad,
-                &self.key,
-                &self.nonce,
-            )
+            .open(&mut buf, self.cipher.len(), &self.ad, &self.key, &self.nonce)
             .unwrap();
-        assert_eq!(
-            &buf[..len],
-            self.plain.as_slice(),
-            "Vector: \"{}\"",
-            self.id
-        );
+        assert_eq!(&buf[..len], self.plain.as_slice(), "Vector: \"{}\"", self.id);
 
         let mut buf = vec![0; self.plain.len()];
         XChaChaPoly::aead_cipher()
@@ -123,13 +112,7 @@ impl ErrorTestVector {
     pub fn test_decryption(&self) -> &Self {
         let mut buf = self.cipher.clone();
         let error = XChaChaPoly::aead_cipher()
-            .open(
-                &mut buf,
-                self.cipher.len(),
-                &self.ad,
-                &self.key,
-                &self.nonce,
-            )
+            .open(&mut buf, self.cipher.len(), &self.ad, &self.key, &self.nonce)
             .error_or(format!("Vector: \"{}\"", self.id));
         assert_eq!(error.to_string(), "Invalid Data", "Vector: \"{}\"", self.id);
 

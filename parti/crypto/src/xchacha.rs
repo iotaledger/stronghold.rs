@@ -57,6 +57,7 @@ impl SecretKeyGen for XChaCha20 {
         Ok(XCHACHA20_KEY)
     }
 }
+
 impl Cipher for XChaCha20 {
     fn info(&self) -> CipherInfo {
         CipherInfo {

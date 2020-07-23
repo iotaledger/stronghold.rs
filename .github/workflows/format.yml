@@ -7,13 +7,20 @@ on:
   pull_request:
     branches:
       - master
+      - dev
 
 jobs:
   format:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [parti, stronghold]
+
     steps:
     - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
+    - name: Install rustfmt with nightly toolchain
+      uses: actions-rs/toolchain@v1
       with:
           profile: minimal
           toolchain: nightly
@@ -22,4 +29,4 @@ jobs:
     - uses: actions-rs/cargo@v1
       with:
         command: fmt
-        args: --all -- --check
+        args: --manifest-path=${{ matrix.project }}/Cargo.toml --all -- --check

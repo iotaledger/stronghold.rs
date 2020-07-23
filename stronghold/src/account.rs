@@ -1,80 +1,106 @@
 struct Account {
     id: String,
     external: bool,
-    created: i64,
+    created_at: i64,
     last_decryption: Option<i64>,
     decryption_counter: i32,
     export_counter: i32,
-    mnemonic_encrypted: String,
-    passphrase_encrypted: Option<String>,
-    decryption_password_hashed: String
+    bip39mnemonic_encrypted: String,
+    bip39passphrase_encrypted: Option<String>,
+    password_hashed: String,
 }
 
+struct AccountNew {
+    id: String,
+    external: bool,
+    created_at: i64,
+    last_decryption: Option<i64>,
+    decryption_counter: i32,
+    export_counter: i32,
+    bip39mnemonic: String,
+    bip39passphrase: Option<String>,
+    password: String,
+}
 
-impl Account {
-
-    //Low level fns
-
-    fn new(
-        &self,
-        id: String,
-        external: bool,
-        created: i64,
-        last_decryption: Option<i64>,
-        decryption_counter: i32,
-        export_counter: i32,
-        mnemonic: String,
-        passphrase: Option<String>,
-        decryption_password_hashed: String
-    ) -> Account {
+impl From<AccountNew> for Account {
+    fn from(account_new: AccountNew) -> Self {
         Account {
-            id: "sha256 of the first address".to_string(),
-            external: external,
-            created: 154862,
+            id: account_new.id,
+            external: account_new.external,
+            created_at: account_new.created_at,
+            last_decryption: None,
+            decryption_counter: account_new.decryption_counter,
+            export_counter: account_new.export_counter,
+            bip39mnemonic_encrypted: "fn encryptmnemonic(password)".into(),
+            bip39passphrase_encrypted: Some("fn encryptpassphrase(password)".into()),
+            password_hashed: "fn hashpassword(password)".into(),
+        }
+    }
+}
+
+struct AccountToCreate {
+    bip39passphrase: Option<String>,
+    password: String,
+}
+
+impl From<AccountToCreate> for AccountNew {
+    fn from(account_to_create: AccountToCreate) -> Self {
+        AccountNew {
+            id: "fn sha256(address m44/0'/0'/0/0)".to_string(),
+            external: false,
+            created_at: 0, //fn get_time()
             last_decryption: None,
             decryption_counter: 0,
             export_counter: 0,
-            mnemonic_encrypted: mnemonic.to_string(),//encrypt(mnemonic)
-            passphrase_encrypted: passphrase,
-            decryption_password_hashed: "100xsha256 of the password".to_string()
+            bip39mnemonic: "fn generate_mnemonic()".to_string(),
+            bip39passphrase: account_to_create.bip39passphrase,
+            password: account_to_create.password,
         }
+    }
+}
+
+struct AccountToImport {
+    created_at: i64,
+    last_decryption: Option<i64>,
+    decryption_counter: i32,
+    export_counter: i32,
+    bip39mnemonic: String,
+    bip39passphrase: Option<String>,
+    password: String,
+}
+
+impl From<AccountToImport> for AccountNew {
+    fn from(account_to_import: AccountToImport) -> Self {
+        AccountNew {
+            id: "fn sha256(address m44/0'/0'/0/0)".to_string(),
+            external: false,
+            created_at: account_to_import.created_at,
+            last_decryption: None,
+            decryption_counter: account_to_import.decryption_counter,
+            export_counter: account_to_import.export_counter,
+            bip39mnemonic: account_to_import.bip39mnemonic,
+            bip39passphrase: account_to_import.bip39passphrase,
+            password: account_to_import.password,
+        }
+    }
+}
+
+impl Account {
+    //Low level fns
+
+    fn new(&self, account_new: AccountNew) -> Account {
+        account_new.into()
     }
 
     //High level fns
 
-    fn import(
-        &self,
-        created: i64,
-        last_decryption: Option<i64>,
-        decryption_counter: i32,
-        export_counter: i32,
-        mnemonic: String,
-        passphrase: Option<String>,
-        encryption_password: String
-    ) -> Account {
-        let id = "sha256 of the first address".to_string();
-        let external = true;
-        let mnemonic_encrypted = mnemonic;
-        let passphrase_encrypted = passphrase;
-        let decryption_password_hashed = encryption_password;
-        return Account::new(&self,id,external,created,last_decryption,decryption_counter,export_counter,mnemonic_encrypted,passphrase_encrypted,decryption_password_hashed);
+    fn import(&self, account_to_import: AccountToImport) -> Account {
+        let account_new: AccountNew = account_to_import.into();
+        account_new.into()
     }
 
-    fn create(
-        &self,
-        passphrase: String,
-        encryption_password: String
-    ) -> Account {
-        let id = "IAkdwuj...".to_string();
-        let external = false;
-        let created = 29384823923;
-        let last_decryption = None;
-        let decryption_counter = 0;
-        let export_counter = 0;
-        let mnemonic = "random mnemonic".to_string();
-        let mnemonic_encrypted = mnemonic;
-        let passphrase_encrypted = Some(passphrase.to_string());
-        let decryption_password_hashed = encryption_password;
-        return Account::new(&self,id,external,created,last_decryption,decryption_counter,export_counter,mnemonic_encrypted,passphrase_encrypted,decryption_password_hashed);
+    fn create(&self, account_to_create: AccountToCreate) -> Account {
+        let account_new: AccountNew = account_to_create.into();
+        account_new.into()
     }
 }
