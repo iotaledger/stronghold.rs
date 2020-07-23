@@ -41,7 +41,7 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password for the existing snapshot.
+            about: the password for the snapshot.
             required: true
             takes_value: true
   - read:
@@ -51,7 +51,7 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password for the existing snapshot.
+            about: the password for the snapshot.
             required: true
             takes_value: true
         - id:
@@ -68,7 +68,7 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password for the existing snapshot.
+            about: the password for the snapshot.
             required: true
             takes_value: true
         - id:
@@ -85,6 +85,16 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password for the existing snapshot.
+            about: the password for the snapshot.
+            required: true
+            takes_value: true
+  - take_ownership:
+      about: Take ownership of an existing chain.
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password for the snapshot.
             required: true
             takes_value: true

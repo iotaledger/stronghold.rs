@@ -37,7 +37,7 @@ impl ChainRecord {
 
             if result.is_none() {
                 return Err(crate::Error::ChainError(String::from(
-                    "Chain does not contain a start transaction",
+                    "Chain does not contain an initial transaction",
                 )));
             }
 

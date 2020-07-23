@@ -39,7 +39,7 @@ pub struct DBWriter<P: BoxProvider> {
 impl<P: BoxProvider> DBView<P> {
     /// Opens a vault using a key. Accepts the `ids` of the records that you want to load.  
     pub fn load(key: Key<P>, ids: ListResult) -> crate::Result<Self> {
-        // get records based on the Ids
+        // get records based on the Ids and open them with the key.
         let records = ids.into_iter().filter_map(|id| Record::open(&key, &id));
 
         // build indices
