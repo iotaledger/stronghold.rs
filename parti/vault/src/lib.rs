@@ -6,18 +6,16 @@
 /// Every Data chain starts with an `InitTransaction`.  The `InitTransaction` contains the user's designated id,
 /// and some metadata. Any proceeding data on the same chain needs to be a descendent of this original record or
 /// else it is considered invalid.
-///   
-///   Sample Diagram
-///       +------+
-///       | Init | ---- [revoke record]
-///       |  Tx  | ---- [data record] --+
-///       +------+                      |
-///           |                         |
-///           |                 [invalid record]
-///       [data record]
-///
-/// ** note: The Invalid Record is invalid because it is not a direct descendant of the Init Tx.
-///
+//   Sample Diagram
+//       +------+
+//       | Init | ---- [revoke record]
+//       |  Tx  | ---- [data record] --+
+//       +------+                      |
+//           |                         |
+//           |                 [invalid record]
+//       [data record]
+//
+// ** note: The Invalid Record is invalid because it is not a direct descendant of the Init Tx.
 /// Data can be added to the chain via a `DataTransaction`.  The `DataTransaction` is associated to the chain
 /// through the owner's ID and it contains its own randomly generated ID.  As with every other record, a
 /// `DataTransaction` contains a Counter which allows the Vault to identify which record is the latest in the
@@ -27,7 +25,6 @@
 /// created and it references the id of a existing `DataTransaction`. The `RevocationTransaction` stages the
 /// associated record for deletion. The record is deleted when the chain preforms a garbage collection and the
 /// `RevocationTransaction` is deleted along with it.
-///
 use thiserror::Error as DeriveError;
 
 mod base64;
