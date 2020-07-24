@@ -48,7 +48,7 @@ impl From<AccountToCreate> for AccountNew {
         AccountNew {
             id: "fn sha256(address m44/0'/0'/0/0)".to_string(),
             external: false,
-            created_at: 0, //fn get_time()
+            created_at: 0, // fn get_time()
             last_decryption: None,
             decryption_counter: 0,
             export_counter: 0,
@@ -86,13 +86,13 @@ impl From<AccountToImport> for AccountNew {
 }
 
 impl Account {
-    //Low level fns
+    // Low level fns
 
     fn new(&self, account_new: AccountNew) -> Account {
         account_new.into()
     }
 
-    //High level fns
+    // High level fns
 
     fn import(&self, account_to_import: AccountToImport) -> Account {
         let account_new: AccountNew = account_to_import.into();

@@ -20,7 +20,7 @@
 //! makes no guarantees to the fitness of this library for any purposes.
 
 pub use crypto;
-pub use vault;
 pub use primitives;
 pub use random;
 pub use snapshot;
+pub use vault;
