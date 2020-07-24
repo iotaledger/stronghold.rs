@@ -1,4 +1,4 @@
-use vault::{BoxProvider, DBView, DBWriter, Id, Key, ListResult, RecordHint};
+use parti::vault::{BoxProvider, DBView, DBWriter, Id, Key, ListResult, RecordHint};
 
 use crate::{
     connection::{send_until_success, CRequest, CResult},
@@ -132,7 +132,7 @@ impl<P: BoxProvider> Vault<P> {
     // create a new vault for the key.
     pub fn new(key: Key<P>) -> Self {
         let req = send_until_success(CRequest::List).list();
-        let db = vault::DBView::load(key.clone(), req).expect(line_error!());
+        let db = parti::vault::DBView::load(key.clone(), req).expect(line_error!());
         Self {
             key,
             db: RefCell::new(Some(db)),
