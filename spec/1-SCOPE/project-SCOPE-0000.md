@@ -125,7 +125,6 @@ enclave based system for operations in the context of the IOTA Protocol.
 Its primary purpose is to serve as the operational enclave for several IOTA Products:
 - Wallet
 - Identity
-- Access
 
 This work will be undertaken in house by IOTA developers.
 

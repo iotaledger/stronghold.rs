@@ -12,7 +12,7 @@ maintainer: Daniel Thompson-Yvetot <daniel.yvetot@iota.org>
 contributors: [Dave de Fijter <dave.defijter@iota.org>, tensorprogramming <tensordeveloper@gmail.com>, Daniel Thompson-Yvetot <daniel.yvetot@iota.org>, Marcelo Bianchi <marcelo.bianchi@iota.org>]
 sponsors: [Navin Ramachandran <navin@iota.org>]
 licenses: ["MIT/Apache-2", "CC-BY-INTL-3.0"]
-updated: YYYY-updated: 2020-July-24
+updated: 2020-July-24
 ```
 
 ## Summary

@@ -15,6 +15,11 @@ licenses: ["MIT/Apache-2", "CC-BY-INTL-3.0"]
 updated: 2020-JUNE-29
 ```
 
+## Summary
+[summary]: #summary
+
+This proposal shows a complete fixture for all interfaces needed for a wallet. Its purpose is to serve as a mock implementation during development, and then as for compliance testing as the project develops.
+
 # Wallet Fixture (Stronghold)
 Fixture of stronghold implementation with wallet. This can be considered a "proof of concept"
 
