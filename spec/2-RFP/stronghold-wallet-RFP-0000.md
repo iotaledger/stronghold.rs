@@ -10,7 +10,7 @@ document: SCOPE
 version: 0000
 maintainer: Daniel Thompson-Yvetot <daniel.yvetot@iota.org>
 contributors: [tensorprogramming <tensordeveloper@gmail.com>, Daniel Thompson-Yvetot <daniel.yvetot@iota.org>]
-sponsors: []
+sponsors: [Navin Ramachandran <navin@iota.org>]
 licenses: ["MIT/Apache-2", "CC-BY-INTL-3.0"]
 updated: 2020-MAY-29
 ```
@@ -26,8 +26,7 @@ and is based on needs defined in the Project Scope document.
 Summarise in 3-5 sentences in normal English what it is that proposals in this context should address.
 -->
 ### Wallet Security Requirements
-The use case of the wallet will require a number of solutions, many of which need to be supported by
-Stronghold. Here is a current list:
+The use case of the wallet will require a number of solutions, many of which need to be supported by Stronghold. Here is a current list:
 
 ## Requirements
 [requirements]: #requirements
@@ -74,7 +73,6 @@ INTERNALS
 Security Settings Overview (SHIELD)
 Notifications
 ```
-
 
 ## Considerations
 [considerations]: #considerations

@@ -1,8 +1,18 @@
 [package]
-name = "stronghold"
+name = "iota-stronghold"
 version = "0.1.0"
 authors = ["Marcelo R. Bianchi <marcelo.bianchi@iota.org>"]
 edition = "2018"
+license = "Apache-2.0/MIT"
+readme = "README.md"
+keywords = ["iota", "stronghold"]
+categories = [ "security" ]
+description = "A rust implementation of the IOTA Stronghold low-level libraries"
+homepage = "https://iota.org"
+repository = "https://github.com/iotaledger/stronghold.rs"
 
 [dependencies]
 bee-ternary = { git = "https://github.com/iotaledger/bee", features = ["serde1"] }
+
+[lib]
+name = "stronghold"
