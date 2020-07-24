@@ -1,4 +1,4 @@
-![banner](./.meta/stronghold_banner.png)
+![banner](./.meta/stronghold_banner.jpg)
 
 ## Introduction
 [summary]: #summary
