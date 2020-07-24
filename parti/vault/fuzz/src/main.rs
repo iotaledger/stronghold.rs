@@ -8,7 +8,7 @@ macro_rules! print_status {
     }};
 }
 
-// creates error descript with file and line.
+// creates error description with file and line.
 macro_rules! line_error {
     () => {
         concat!("Error at ", file!(), ":", line!())
@@ -43,8 +43,7 @@ fn main() {
     };
 
     // start fuzzing
-    ids.iter()
-        .for_each(|id| Client::<Provider>::create_chain(&key, *id));
+    ids.iter().for_each(|id| Client::<Provider>::create_chain(&key, *id));
 
     loop {
         // start worker
@@ -96,10 +95,7 @@ fn main() {
             .collect();
 
         // compare real to shadow records.
-        assert_eq!(
-            records, shadow_records,
-            "Real and shadow vault payloads are not equal"
-        );
+        assert_eq!(records, shadow_records, "Real and shadow vault payloads are not equal");
         print_status!(b"##\n");
     }
 }
