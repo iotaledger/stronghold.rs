@@ -3,17 +3,16 @@
 
 ## Frontmatter
 [frontmatter]: #frontmatter
-
 ```yaml
 title: Stronghold
 stub: stronghold
 document: Engineering Specification
 version: 0000
 maintainer: Daniel Thompson-Yvetot <daniel.yvetot@iota.org>
-contributors: [Firstname Lastname <email@address.tld>]
-sponsors: [Firstname Lastname <email@address.tld>]
-licenses: ["Apache-2"]
-updated: YYYY-MMM-DD
+contributors: [Dave de Fijter <dave.defijter@iota.org>, tensorprogramming <tensordeveloper@gmail.com>, Daniel Thompson-Yvetot <daniel.yvetot@iota.org>, Marcelo Bianchi <marcelo.bianchi@iota.org>]
+sponsors: [Navin Ramachandran <navin@iota.org>]
+licenses: ["MIT/Apache-2", "CC-BY-INTL-3.0"]
+updated: YYYY-updated: 2020-July-24
 ```
 
 ## Summary

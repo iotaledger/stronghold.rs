@@ -4,19 +4,19 @@
 ## Frontmatter
 [frontmatter]: #frontmatter
 ```yaml
-title: Project
-stub: project
+title: Stronghold
+stub: stronghold
 document: PTR
 version: 0000
 maintainer: Daniel Thompsopn-Yvetot <daniel.yvetot@iota.org>
 contributors: [Marcelo <marcelo.bianchi@iota.org>]
-sponsors: [Firstname Lastname <email@address.tld>]
-licenses: ["Apache 2.0"]
+sponsors: [Navin Ramachandran <navin@iota.org>]
+licenses: ["MIT/Apache-2", "CC-BY-INTL-3.0"]
 updated: 2020-JUNE-29
 ```
 
 # Wallet Fixture (Stronghold)
-Fixture of stronghold implementation with wallet
+Fixture of stronghold implementation with wallet. This can be considered a "proof of concept"
 
 ```json
 [
