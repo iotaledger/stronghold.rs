@@ -1,4 +1,4 @@
-## Vault Fuzz Client
+## Crypto Fuzz Client
 
 ### Description
 
