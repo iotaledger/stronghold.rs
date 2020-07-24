@@ -6,6 +6,6 @@ This Fuzz Client sends random data into the cryptographic algorithms defined in 
 
 ### Execution instructions
 
-The user can set a two environment variables for this client. A `NUM_THREADS` var can be set to specify how many thread should be used. By default, the client will use all of the threads on the system. A `VECTOR_LIMIT` var can be set to specify how large the random inputted encrypted data can be. By default, this value is set to 264 bytes.
+The user can set two environment variables for this client. A `NUM_THREADS` var can be set to specify how many thread should be used. By default, the client will use all of the threads on the system. A `VECTOR_LIMIT` var can be set to specify how large the random inputed encrypted data can be. By default, this value is set to 264 bytes.
 
 The fuzz client can be executed by running `cargo run` or by using the `dockerfile` in the root of the project. If docker is used, make sure to uncomment the `build crypto fuzzer line` line and comment out the `build vault fuzzer` line.
