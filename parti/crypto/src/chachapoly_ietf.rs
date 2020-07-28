@@ -80,6 +80,7 @@ impl SecretKeyGen for ChaChaPolyIetf {
         Ok(CHACHAPOLY_KEY)
     }
 }
+
 impl Cipher for ChaChaPolyIetf {
     fn info(&self) -> CipherInfo {
         CipherInfo {

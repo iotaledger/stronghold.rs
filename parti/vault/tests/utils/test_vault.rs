@@ -1,7 +1,5 @@
 use std::collections::HashMap;
-use vault::{
-    Base64Decodable, Base64Encodable, Key, ListResult, ReadRequest, ReadResult, RecordHint,
-};
+use vault::{Base64Decodable, Base64Encodable, Key, ListResult, ReadRequest, ReadResult, RecordHint};
 
 use super::provider::Provider;
 use crate::error_line;
@@ -31,20 +29,14 @@ impl TestVault {
             error_line!("No `storage`-array for the requested name")
         );
 
-        let key = db["key"]
-            .as_str()
-            .expect(error_line!("Missing key in JSON document"));
+        let key = db["key"].as_str().expect(error_line!("Missing key in JSON document"));
         let key = Vec::from_base64(key).expect(error_line!("Invalid base64 `key` field"));
         let key = Key::load(key).expect(error_line!("Invalid data in `key` field"));
 
         let mut records = HashMap::new();
         for record in db["storage"][name].members() {
-            let name = record["name"]
-                .as_str()
-                .expect(error_line!("Missing `name` field"));
-            let data = record["data"]
-                .as_str()
-                .expect(error_line!("Missing `data` field"));
+            let name = record["name"].as_str().expect(error_line!("Missing `name` field"));
+            let data = record["data"].as_str().expect(error_line!("Missing `data` field"));
 
             let name = Vec::from_base64(name).expect(error_line!("Invalid base64 `name` field"));
             let data = Vec::from_base64(data).expect(error_line!("Invalid base64 `data` field"));
@@ -59,9 +51,7 @@ impl TestVault {
 
     pub fn read(&self, req: ReadRequest) -> Option<ReadResult> {
         let id = req.into();
-        self.records
-            .get(&id)
-            .map(|data| ReadResult::new(id, data.clone()))
+        self.records.get(&id).map(|data| ReadResult::new(id, data.clone()))
     }
 
     pub fn key(&self) -> &Key<Provider> {
@@ -97,18 +87,13 @@ impl PlainVault {
 
         let mut records = HashMap::new();
         for record in db["plain"][name].members() {
-            let hint = record["hint"]
-                .as_str()
-                .expect(error_line!("Missing `hint` field"));
-            let data = record["data"]
-                .as_str()
-                .expect(error_line!("Missing `data` field"));
+            let hint = record["hint"].as_str().expect(error_line!("Missing `hint` field"));
+            let data = record["data"].as_str().expect(error_line!("Missing `data` field"));
 
             let hint = Vec::from_base64(hint).expect(error_line!("Invalid base64 `hint` field"));
             let data = Vec::from_base64(data).expect(error_line!("Invalid base64 `data` field"));
 
-            let hint =
-                RecordHint::new(&hint).expect(error_line!("Invalid data in `RecordHint` field"));
+            let hint = RecordHint::new(&hint).expect(error_line!("Invalid data in `RecordHint` field"));
             records.insert(hint, data);
         }
         Self { records }

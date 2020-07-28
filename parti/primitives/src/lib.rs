@@ -1,5 +1,6 @@
 /// A general purpose API for Cryptographic Primitives.
-///  This crate's aim is to provide an abstraction layer that allows you to swap the backend easily.
+/// This crate's aim is to provide an abstraction layer with extensible cryptographic primitives. Each primitive
+/// contains an info data structure for describing the constraints of the algorithm and at least one trait.
 
 /// Message Auth Code
 pub mod auth;

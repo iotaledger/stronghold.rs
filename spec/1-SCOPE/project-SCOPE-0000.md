@@ -12,7 +12,7 @@ maintainer: Daniel Thompson-Yvetot <daniel.yvetot@iota.org>
 contributors: [tensorprogramming <tensordeveloper@gmail.com>, Daniel Thompson-Yvetot <daniel.yvetot@iota.org>]
 sponsors: [Navin Ramachandran <navin@iota.org>]
 licenses: ["MIT/Apache-2", "CC-BY-INTL-3.0"]
-updated: 2020-MAY-29
+updated: 2020-July-24
 ```
 
 ## License
@@ -125,7 +125,6 @@ enclave based system for operations in the context of the IOTA Protocol.
 Its primary purpose is to serve as the operational enclave for several IOTA Products:
 - Wallet
 - Identity
-- Access
 
 This work will be undertaken in house by IOTA developers.
 

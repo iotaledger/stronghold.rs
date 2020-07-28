@@ -1,4 +1,4 @@
-use vault::{BoxProvider, DBView, DBWriter, Id, Key, RecordHint};
+use parti::vault::{BoxProvider, DBView, DBWriter, Id, Key, ListResult, RecordHint};
 
 use crate::{
     connection::{send_until_success, CRequest, CResult},
@@ -34,7 +34,7 @@ pub struct Snapshot<P: BoxProvider> {
 
 impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     // create a new client
-    pub fn new(id: Id, key: Key<P>) -> Self {
+    pub fn new(key: Key<P>, id: Id) -> Self {
         Self {
             id,
             db: Vault::<P>::new(key),
@@ -101,6 +101,22 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         });
     }
 
+    // Take ownership of an existing chain.  Requires that the new owner knows the old key to unlock the data.
+    pub fn take_ownership(&self, old: Id) {
+        // load all of the data from the storage vault.
+        let ids = send_until_success(CRequest::List).list();
+        // use the key to unlock the data.
+        let db = DBView::load(self.db.key.clone(), ListResult::new(ids.into())).expect(line_error!());
+
+        let (to_write, to_delete) = db.writer(self.id).take_ownership(&old).expect(line_error!());
+        to_write.into_iter().for_each(|req| {
+            send_until_success(CRequest::Write(req));
+        });
+        to_delete.into_iter().for_each(|req| {
+            send_until_success(CRequest::Delete(req));
+        });
+    }
+
     // create a revoke transaction in the chain.
     pub fn revoke_record_by_id(&self, id: Id) {
         self.db.take(|db| {
@@ -116,7 +132,7 @@ impl<P: BoxProvider> Vault<P> {
     // create a new vault for the key.
     pub fn new(key: Key<P>) -> Self {
         let req = send_until_success(CRequest::List).list();
-        let db = vault::DBView::load(key.clone(), req).expect(line_error!());
+        let db = parti::vault::DBView::load(key.clone(), req).expect(line_error!());
         Self {
             key,
             db: RefCell::new(Some(db)),
@@ -130,7 +146,7 @@ impl<P: BoxProvider> Vault<P> {
         let retval = f(db);
 
         let req = send_until_success(CRequest::List).list();
-        *_db = Some(vault::DBView::load(self.key.clone(), req).expect(line_error!()));
+        *_db = Some(DBView::load(self.key.clone(), req).expect(line_error!()));
         retval
     }
 }

@@ -10,7 +10,7 @@ use crate::{
     snap::{deserialize_from_snapshot, get_snapshot_path, serialize_to_snapshot},
 };
 
-use vault::{Base64Decodable, Id, Key};
+use parti::vault::{Base64Decodable, Id, Key};
 
 use clap::{load_yaml, App, ArgMatches};
 
@@ -143,6 +143,26 @@ fn garbage_collect_vault_command(matches: &ArgMatches) {
     }
 }
 
+// Take ownership of an existing chain. Requires that the new chain owner knows the old key to unlock the data.
+fn take_ownership_command(matches: &ArgMatches) {
+    if let Some(matches) = matches.subcommand_matches("take_ownership") {
+        if let Some(ref pass) = matches.value_of("password") {
+            let new_id = Id::random::<Provider>().expect("Unable to generate a new id");
+
+            let snapshot = get_snapshot_path();
+            let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
+            let new_client: Client<Provider> = Client::create_chain(client.db.key, new_id);
+
+            new_client.take_ownership(client.id);
+
+            println!("Old owner id: {:?}\nNew owner id: {:?}", client.id, new_client.id);
+
+            let snapshot = get_snapshot_path();
+            serialize_to_snapshot(&snapshot, pass, new_client);
+        }
+    }
+}
+
 fn main() {
     let yaml = load_yaml!("cli.yml");
     let matches = App::from(yaml).get_matches();
@@ -153,4 +173,5 @@ fn main() {
     list_command(&matches);
     revoke_command(&matches);
     garbage_collect_vault_command(&matches);
+    take_ownership_command(&matches);
 }

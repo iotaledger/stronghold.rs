@@ -3,6 +3,7 @@ name = "snapshot"
 version = "0.1.0"
 authors = ["tensor-programming <tensordeveloper@gmail.com>"]
 edition = "2018"
+readme = "README.md"
 
 [dependencies]
 # error handling
@@ -13,7 +14,7 @@ anyhow = "1.0"
 sodiumoxide = "0.2"
 
 # file system
-dirs = "2.0"
+dirs = "3.0"
 
 crypto = {path = "../crypto"}
 random = {path = "../random"}

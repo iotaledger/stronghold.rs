@@ -1,4 +1,4 @@
-use snapshot::{decrypt_snapshot, encrypt_snapshot, snapshot_dir};
+use parti::snapshot::{decrypt_snapshot, encrypt_snapshot, snapshot_dir};
 
 use std::{fs::OpenOptions, path::PathBuf};
 
@@ -29,7 +29,7 @@ pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Cl
 
     let (id, key) = snap.offload();
 
-    Client::<Provider>::new(id, key)
+    Client::<Provider>::new(key, id)
 }
 
 // serialize the snapshot data into the snapshot file.

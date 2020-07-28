@@ -1,12 +1,25 @@
-[workspace]
-members = [
-    "vault",
-    "primitives",
-    "random",
-    "crypto",
-    "snapshot",
-    "commandline"
-]
+[package]
+name = "iota-parti"
+version = "0.1.0"
+authors = ["tensorprogramming <tensordeveloper@gmail.com>"]
+edition = "2018"
+license = "Apache-2.0 OR MIT"
+readme = "README.md"
+keywords = ["iota", "stronghold"]
+categories = [ "security" ]
+description = "A rust implementation of the IOTA Stronghold low-level libraries"
+homepage = "https://iota.org"
+repository = "https://github.com/iotaledger/stronghold.rs"
+
+[lib]
+name = "parti"
+
+[dependencies]
+crypto = { version = "0.1", path = "crypto" }
+vault = { version = "0.1", path = "vault" }
+primitives = { version = "0.1", path = "primitives" }
+random = { version = "0.1", path = "random" }
+snapshot = { version = "0.1", path = "snapshot" }
 
 [profile.release]
 overflow-checks = true

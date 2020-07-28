@@ -6,6 +6,11 @@ use std::{
 };
 
 /// Rust Bindings to major C random generator headers.  A library that creates secure random number generators.
+///
+/// This crate implements the RNG (random number generator) traits defined in the primitives crate to describe a secure
+/// random number generator. C code was used when creating this crate because all of the major platforms feature battle
+/// tested RNG libraries. This C code is bridged with Rust using CC and Rust’s FFI (foreign function
+/// interface). This crate supports windows, mac, linux, iOS and a few BSD flavors.
 
 /// Error for dealing with errors from the OS RNG.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
