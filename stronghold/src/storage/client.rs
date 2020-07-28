@@ -67,11 +67,12 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     }
 
     // list the ids and hints of all of the records in the Vault.
-    pub fn list_ids(&self) {
+    pub fn list_ids(&self) -> Vec<Id> {
+        let mut ids = Vec::new();
         self.db.take(|db| {
-            db.records()
-                .for_each(|(id, hint)| println!("Id: {:?}, Hint: {:?}", id, hint));
-        });
+            db
+        }).records().for_each(|(id, hint)| ids.push(id));
+        ids
     }
 
     // read a record by its ID into plaintext.
@@ -139,7 +140,11 @@ impl<P: BoxProvider> Snapshot<P> {
     pub fn new(id: Id, key: Key<P>) -> Self {
         let map = State::offload_data();
 
-        Self { id, key, state: map }
+        Self {
+            id,
+            key,
+            state: map,
+        }
     }
 
     // offload the snapshot data to the state map.

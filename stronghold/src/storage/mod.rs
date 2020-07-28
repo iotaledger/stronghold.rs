@@ -1,4 +1,4 @@
-// create a line error with the file and the line number
+/// create a line error with the file and the line number
 #[macro_export]
 macro_rules! line_error {
     () => {
@@ -19,13 +19,16 @@ use client::Client;
 use provider::Provider;
 use snap::{deserialize_from_snapshot, get_snapshot_path, serialize_to_snapshot};
 
-use vault::{Base64Decodable, Id, Key};
+pub use vault::{Base64Decodable, Id, Key};
 
 use std::path::Path;
 
-
-
 // handle the encryption command.
+pub fn exists() -> bool {
+    let snapshot = get_snapshot_path();
+    snapshot.exists()
+}
+
 pub fn encrypt(plain: &str, pass: &str) {
     let snapshot = get_snapshot_path();
 
@@ -59,15 +62,18 @@ pub fn snapshot(path: &str, pass: &str) {
 }
 
 // handle the list command.
-pub fn list(pass: &str) {
+pub fn list(pass: &str) -> Vec<Id> {
     let snapshot = get_snapshot_path();
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-    client.list_ids();
+    let ids = client.list_ids();
 
     let snapshot = get_snapshot_path();
     serialize_to_snapshot(&snapshot, pass, client);
+
+    ids
 }
+
 
 // handle the read command.
 pub fn read(id: &str, pass: &str) {

@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::line_error;
 
-// lazy static macro
+/// lazy static macro
 #[macro_export]
 macro_rules! lazy_static {
     ($init:expr => $type:ty) => {{

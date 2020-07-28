@@ -18,14 +18,15 @@ pub(in crate) fn get_snapshot_path() -> PathBuf {
 pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider> {
     let mut buffer = Vec::new();
 
-    let mut file = OpenOptions::new()
-        .read(true)
-        .open(snapshot)
-        .expect("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.");
+    let mut file = OpenOptions::new().read(true).open(snapshot).expect(
+        "Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.",
+    );
 
-    decrypt_snapshot(&mut file, &mut buffer, pass.as_bytes()).expect("unable to decrypt the snapshot");
+    decrypt_snapshot(&mut file, &mut buffer, pass.as_bytes())
+        .expect("unable to decrypt the snapshot");
 
-    let snap: Snapshot<Provider> = bincode::deserialize(&buffer[..]).expect("Unable to deserialize data");
+    let snap: Snapshot<Provider> =
+        bincode::deserialize(&buffer[..]).expect("Unable to deserialize data");
 
     let (id, key) = snap.offload();
 
@@ -38,10 +39,13 @@ pub(in crate) fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: C
         .write(true)
         .create(true)
         .open(snapshot)
-        .expect("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.");
+        .expect(
+        "Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.",
+    );
 
     // clear contents of the file before writing.
-    file.set_len(0).expect("unable to clear the contents of the file file");
+    file.set_len(0)
+        .expect("unable to clear the contents of the file file");
 
     let snap: Snapshot<Provider> = Snapshot::new(client.id, client.db.key);
 

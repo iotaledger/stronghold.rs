@@ -2,7 +2,7 @@ use vault::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
 
 use std::{thread, time::Duration};
 
-use super::{state::State};
+use super::state::State;
 
 // requests to the vault.
 #[derive(Clone)]
