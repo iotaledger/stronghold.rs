@@ -74,7 +74,6 @@ pub fn list(pass: &str) -> Vec<Id> {
     ids
 }
 
-
 // handle the read command.
 pub fn read(id: &str, pass: &str) {
     let snapshot = get_snapshot_path();

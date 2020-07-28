@@ -44,10 +44,7 @@ impl State {
     // upload data to the hashmap.
     pub fn upload_data(map: HashMap<Vec<u8>, Vec<u8>>) {
         map.into_iter().for_each(|(k, v)| {
-            State::storage_map()
-                .write()
-                .expect("couldn't open map")
-                .insert(k, v);
+            State::storage_map().write().expect("couldn't open map").insert(k, v);
         });
     }
 }

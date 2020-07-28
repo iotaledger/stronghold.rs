@@ -1,14 +1,14 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Account/*Encrypted*/ {
+pub struct Account /*Encrypted*/ {
     id: String,
     external: bool,
     created_at: u64,
     //last_decryption: Option<u64>,
     //decryption_counter: u32,
     export_counter: u32,
-    bip39mnemonic/*_encrypted*/: String,
+    bip39mnemonic: String,
     //bip39passphrase_encrypted: Option<String>,
     //password_hashed: String,
 }
@@ -29,7 +29,7 @@ struct AccountDecrypted {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AccountToCreate {
     //pub bip39passphrase: Option<String>,
-    //pub password: String,
+//pub password: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -43,7 +43,7 @@ pub struct AccountToImport {
     //pub password: String,
 }
 
-impl From<AccountDecrypted> for Account/*Encrypted*/ {
+impl From<AccountDecrypted> for Account /*Encrypted*/ {
     fn from(account_new: AccountDecrypted) -> Self {
         Account {
             id: account_new.id,
@@ -91,21 +91,21 @@ impl From<AccountToImport> for AccountDecrypted {
     }
 }
 
-impl Account/*Encrypted*/ {
+impl Account /*Encrypted*/ {
     //Low level fns
 
-    fn new(account_new: AccountDecrypted) -> Result<Account/*Encrypted*/, &'static str> {
+    fn new(account_new: AccountDecrypted) -> Result<Account /*Encrypted*/, &'static str> {
         Ok(account_new.into())
     }
 
     //High level fns
 
-    pub fn import(account_to_import: AccountToImport) -> Result<Account/*Encrypted*/, &'static str> {
+    pub fn import(account_to_import: AccountToImport) -> Result<Account /*Encrypted*/, &'static str> {
         let account_new: AccountDecrypted = account_to_import.into();
         Ok(account_new.into())
     }
 
-    pub fn create(account_to_create: AccountToCreate) -> Result<Account/*Encrypted*/, &'static str> {
+    pub fn create(account_to_create: AccountToCreate) -> Result<Account /*Encrypted*/, &'static str> {
         let account_new: AccountDecrypted = account_to_create.into();
         Ok(account_new.into())
     }

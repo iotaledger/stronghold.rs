@@ -10,9 +10,9 @@ mod account;
 mod storage;
 
 use std::panic;
-use account::{Account, AccountToCreate, AccountToImport};
-use serde::{Serialize, Deserialize};
-use serde_json;
+//use account::{Account, AccountToCreate, AccountToImport};
+use serde::{Deserialize, Serialize};
+//use serde_json;
 
 /// Stronghold doc com
 struct Stronghold;
@@ -20,39 +20,45 @@ struct Stronghold;
 //{"id":"","external":true,"created":0,"lastDecryption":0,"decryptionCounter":0,"exportCounter":0,"bip39Mnemonic":"","bip39Passphrase":""}
 
 impl Stronghold {
-
     //proably should be moved to storage
-    pub fn list_ids(&self, snapshot_password: &'static str) -> Result<Vec<storage::Id>,&'static str> {
+    pub fn list_ids(&self, snapshot_password: &'static str) -> Result<Vec<storage::Id>, &'static str> {
         if storage::exists() {
-            let result = panic::catch_unwind(|| {
-                storage::list(snapshot_password)
-            });
-            if result.is_ok() {
-                Ok(result.unwrap())
-            }else{
+            let result = panic::catch_unwind(|| storage::list(snapshot_password));
+            if let Ok(ids) = result {
+                Ok(ids)
+            } else {
                 Err("Existent snapshot file cannot be read. Maybe wrong password or corrupted file")
             }
+        /*
+        if result.is_ok() {
+            Ok(result?)
         }else{
+            Err("Existent snapshot file cannot be read. Maybe wrong password or corrupted file")
+        }*/
+        } else {
             Err("Snapshot file not found")
         }
     }
 
     //the index should be in the last slot of the storage
     fn update_index(&self, stronghold_index: StrongholdIndex, snapshot_password: &'static str) {
-        self.list_ids(snapshot_password);
+        //self.list_ids(snapshot_password);
     }
 
-    pub fn new_snapshot(&self, /*accounts, */snapshot_password: &'static str) -> Result<Vec<storage::Id>,&'static str> {
+    pub fn new_snapshot(
+        &self,
+        /*accounts, */ snapshot_password: &'static str,
+    ) -> Result<Vec<storage::Id>, &'static str> {
         let stronghold_index = StrongholdIndex::new();
         let stronghold_index_serialized = serde_json::to_string(&stronghold_index).unwrap();
         let result = panic::catch_unwind(|| {
-            storage::encrypt(&stronghold_index_serialized,snapshot_password);
+            storage::encrypt(&stronghold_index_serialized, snapshot_password);
             storage::list(snapshot_password)
         });
-        if result.is_ok() {
-            Ok(result.unwrap())
-        }else{
-            Err("Error creating snapshot")
+        if let Ok(ids) = result {
+            Ok(ids)
+        } else {
+            Err("Existent snapshot file cannot be read. Maybe wrong password or corrupted file")
         }
     }
 
@@ -64,7 +70,7 @@ impl Stronghold {
     pub fn account_get() {
 
     }*/
-/*
+    /*
     pub fn account_create(
         //bip39passphrase: Option<String>,
         snapshot_password: String,//for snapshot
@@ -73,12 +79,12 @@ impl Stronghold {
         if snapshot_password.is_empty() {
             return Err("Invalid parameters: Password is missing");
         }
-        
+
         let account_to_create = AccountToCreate {
             //bip39passphrase,
             //password, //account password
         };
-        
+
         let account = Account::create(account_to_create);
         //if ok add to snapshot
         Ok(account?)
@@ -145,14 +151,11 @@ impl Stronghold {
 struct StrongholdIndex {
     /* created_at , decryption counter, export counter , etc? */
     id: &'static str,
-    ids: Vec<storage::Id>
+    ids: Vec<storage::Id>,
 }
 
 impl StrongholdIndex {
     pub fn new(/* accounts */) -> Self {
-        Self {
-            id: "",
-            ids: vec![]
-        }
+        Self { id: "", ids: vec![] }
     }
 }
