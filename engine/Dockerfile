@@ -5,7 +5,7 @@
 
 FROM rust:1.44-slim AS cargo-build
 
-WORKDIR /usr/src/parti
+WORKDIR /usr/src/engine
 
 RUN apt-get update
 
@@ -34,16 +34,16 @@ RUN cd vault/fuzz && RUSTFLAGS=-Clinker=musl-gcc cargo build --release --target=
 
 FROM alpine:latest
 
-RUN addgroup -g 1000 parti
+RUN addgroup -g 1000 engine
 
-RUN adduser -D -s /bin/sh -u 1000 -G parti parti
+RUN adduser -D -s /bin/sh -u 1000 -G engine engine
 
-WORKDIR /home/parti/bin/
+WORKDIR /home/engine/bin/
 
-# Build Crypto Fuzzer 
-# COPY --from=cargo-build /usr/src/parti/crypto/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
+# Build Crypto Fuzzer
+# COPY --from=cargo-build /usr/src/engine/crypto/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
 
 # Build vault Fuzzer
-COPY --from=cargo-build /usr/src/parti/vault/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
+COPY --from=cargo-build /usr/src/engine/vault/fuzz/target/x86_64-unknown-linux-musl/release/fuzz .
 
 CMD ["sh", "-c", "./fuzz > fuzz.log"]

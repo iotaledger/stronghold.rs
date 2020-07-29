@@ -52,8 +52,8 @@ sole purpose of isolating the seed, private keys, personally identifiable inform
 to the genuinely hostile environment of user devices. It uses snapshotting and internal mechanisms for threshold signature
 schemes that MAY be distributed across devices.
 
-It is based on a suite of low-level libraries collectively called "parti" that provide tooling and algorithms to build secure systems
-in Rust in a way that can be embedded and deployed to cross platform devices. Parti is a collection of libraries which deal with the
+It is based on a suite of low-level libraries collectively called "engine" that provide tooling and algorithms to build secure systems
+in Rust in a way that can be embedded and deployed to cross platform devices. Engine is a collection of libraries which deal with the
 obfuscation and sharing of secret values both mutable and immutable between devices.
 
 The primary task is to isolate the activity of “privileged” functions from other parts of the software stack. For example, a primary
@@ -105,7 +105,7 @@ from Engineering to Product and developer outreach.
 
 Stronghold itself has several core components:
 
-### 1. Low level libraries (parti.rs)
+### 1. Low level libraries (engine.rs)
 
 There are 5 low level libraries:
 - crypto (swappable crypto implementation, chacha20poly1305 & salsa20)
@@ -119,7 +119,7 @@ prior work from Daniel Thompson-Yvetot and Tensor at their security boutique "IO
 
 ### 2. High level library (stronghold.rs)
 
-The high level library integrates parti.rs and iota.rs to a fully fledged secret storage and
+The high level library integrates engine.rs and iota.rs to a fully fledged secret storage and
 enclave based system for operations in the context of the IOTA Protocol.
 
 Its primary purpose is to serve as the operational enclave for several IOTA Products:

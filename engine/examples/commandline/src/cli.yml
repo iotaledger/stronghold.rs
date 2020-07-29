@@ -1,7 +1,7 @@
-name: Parti POC CLI
+name: Engine POC CLI
 version: '1.0'
 author: Tensor Programming <tensordeveloper@gmail.com>
-about: Encrypts data into the Parti Vault.  Creates snapshots and can load from snapshots.
+about: Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
 subcommands:
   - encrypt:
       args:

@@ -1,6 +1,6 @@
-# parti
+# engine
 
-Parti is the collection of low-level crates with which application architects can build higher-level implementations of Strongholds for a variety of purposes. It is platform agnostic, in that it should run anywhere a Rust Compiler will work.
+Engine is the collection of low-level crates with which application architects can build higher-level implementations of Strongholds for a variety of purposes. It is platform agnostic, in that it should run anywhere a Rust Compiler will work.
 
 It is composed of 5 primary crates:
 - primitives
@@ -13,16 +13,16 @@ It is composed of 5 primary crates:
 This library has not yet been audited for security, so use at your own peril. Until a formal third-party security audit has taken place, the IOTA Foundation makes no guarantees to the fitness of this library for any purposes.
 
 ## Example
-We have an example in the `examples/commandline` folder that you can use as a reference when developing applications with Parti.
+We have an example in the `examples/commandline` folder that you can use as a reference when developing applications with Engine.
 
 ## Running tests
-You can run all tests by doing the following from the `parti` directory:
+You can run all tests by doing the following from the `engine` directory:
 ```
 cargo test --all
 ```
 
 ## Running fuzzers
-Parti comes with a two internal fuzzing systems, please see `/vault/fuzz` and `/crypto/fuzz`.
+Engine comes with a two internal fuzzing systems, please see `/vault/fuzz` and `/crypto/fuzz`.
 
 ## Supporting the project
 If this library has been useful to you and you feel like contributing, please see our contribution guidelines for all the ways in which you can contribute.

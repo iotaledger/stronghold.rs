@@ -1,7 +1,7 @@
 //! A system for securely managing secrets.
 //!
 //! This top-level crate contains references to the others that make up
-//! the IOTA Parti low-level crates.
+//! the IOTA Stronghold's low-level crates known as "Stronghold-Engine".
 //!
 //! # Layout
 //!

@@ -1,13 +1,13 @@
 [workspace]
 members = [
-    "parti",
-    "parti/vault",
-    "parti/primitives",
-    "parti/random",
-    "parti/crypto",
-    "parti/snapshot",
+    "engine",
+    "engine/vault",
+    "engine/primitives",
+    "engine/random",
+    "engine/crypto",
+    "engine/snapshot",
     "stronghold",
 ]
 exclude = [
-  "parti/examples/commandline",
+  "engine/examples/commandline",
 ]

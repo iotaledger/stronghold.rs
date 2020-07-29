@@ -24,7 +24,7 @@ This document introduces the High-Level Specification of the Stronghold, specifi
 
 A Stronghold is composed of two underlying libraries:
 - iota.rs (the client libraries)
-- parti (low-level stronghold)
+- engine (low-level stronghold)
 
 Furthermore, it provides an actor wrapper (for IOTA's `actors.rs`) that enables it to participate in message-passing architectures, such as the IOTA Wallet.
 

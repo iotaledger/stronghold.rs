@@ -1,18 +1,18 @@
 [package]
-name = "iota-parti"
+name = "stronghold-engine"
 version = "0.1.0"
 authors = ["tensorprogramming <tensordeveloper@gmail.com>"]
 edition = "2018"
 license = "Apache-2.0 OR MIT"
 readme = "README.md"
-keywords = ["iota", "stronghold"]
+keywords = ["iota", "stronghold", "cryptography", "security"]
 categories = [ "security" ]
 description = "A rust implementation of the IOTA Stronghold low-level libraries"
 homepage = "https://iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
 
 [lib]
-name = "parti"
+name = "engine"
 
 [dependencies]
 crypto = { version = "0.1", path = "crypto" }

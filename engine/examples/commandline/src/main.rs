@@ -10,7 +10,7 @@ use crate::{
     snap::{deserialize_from_snapshot, get_snapshot_path, serialize_to_snapshot},
 };
 
-use parti::vault::{Base64Decodable, Id, Key};
+use engine::vault::{Base64Decodable, Id, Key};
 
 use clap::{load_yaml, App, ArgMatches};
 
