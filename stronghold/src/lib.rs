@@ -22,21 +22,14 @@ struct Stronghold;
 impl Stronghold {
     //proably should be moved to storage
     pub fn list_ids(&self, snapshot_password: &'static str) -> Result<Vec<storage::Id>, &'static str> {
-        if storage::exists() {
-            let result = panic::catch_unwind(|| storage::list(snapshot_password));
-            if let Ok(ids) = result {
-                Ok(ids)
-            } else {
-                Err("Existent snapshot file cannot be read. Maybe wrong password or corrupted file")
-            }
-        /*
-        if result.is_ok() {
-            Ok(result?)
-        }else{
-            Err("Existent snapshot file cannot be read. Maybe wrong password or corrupted file")
-        }*/
+        if !storage::exists() {
+            return Err("Snapshot file not found")
+        }
+        let result = panic::catch_unwind(|| storage::list(snapshot_password));
+        if let Ok(ids) = result {
+            Ok(ids)
         } else {
-            Err("Snapshot file not found")
+            Err("Existent snapshot file cannot be read. Maybe wrong password or corrupted file")
         }
     }
 
