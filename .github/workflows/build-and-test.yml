@@ -16,8 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         project: [parti, stronghold]
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
+        # os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest]
     steps:
     - uses: actions/checkout@v2
 
@@ -28,12 +28,13 @@ jobs:
         override: true
 
     - name: Get current date
-      if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+      # if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+      if: matrix.os == 'ubuntu-latest'
       run: echo "::set-env name=CURRENT_DATE::$(date +'%Y-%m-%d')"
 
-    - name: Get current date
-      if: matrix.os == 'windows-latest'
-      run: echo "::set-env name=CURRENT_DATE::$(Get-Date -Format "yyyy-MM-dd")"
+    # - name: Get current date
+    #  if: matrix.os == 'windows-latest'
+    #  run: echo "::set-env name=CURRENT_DATE::$(Get-Date -Format "yyyy-MM-dd")"
 
     - name: Cache cargo registry
       uses: actions/cache@v2
