@@ -143,12 +143,11 @@ impl Stronghold {
 #[derive(Serialize, Deserialize, Debug)]
 struct StrongholdIndex {
     /* created_at , decryption counter, export counter , etc? */
-    id: &'static str,
     ids: Vec<storage::Id>,
 }
 
 impl StrongholdIndex {
     pub fn new(/* accounts */) -> Self {
-        Self { id: "", ids: vec![] }
+        Self { ids: vec![] }
     }
 }
