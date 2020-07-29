@@ -19,6 +19,8 @@ use client::Client;
 use provider::Provider;
 use snap::{deserialize_from_snapshot, get_snapshot_path, serialize_to_snapshot};
 
+use engine::{vault};
+
 pub use vault::{Base64Decodable, Id, Key};
 
 use std::path::Path;

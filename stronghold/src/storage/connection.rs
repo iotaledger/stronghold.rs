@@ -1,3 +1,5 @@
+use engine::{vault};
+
 use vault::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
 
 use std::{thread, time::Duration};

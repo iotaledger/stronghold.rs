@@ -1,3 +1,5 @@
+use engine::{vault};
+
 use vault::{BoxProvider, DBView, DBWriter, Id, Key, RecordHint};
 
 use super::{
