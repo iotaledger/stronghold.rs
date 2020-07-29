@@ -35,7 +35,7 @@ impl CResult {
 }
 
 // resolve the requests into responses.
-pub fn send(req: CRequest) -> Option<CResult> {
+pub fn send(req: CRequest) -> CResult {
     let result = match req {
         // if the request is a list, get the keys from the map and put them into a ListResult.
         CRequest::List => {
@@ -79,17 +79,5 @@ pub fn send(req: CRequest) -> Option<CResult> {
         }
     };
 
-    Some(result)
-}
-
-// Loop until there is a Result.
-pub fn send_until_success(req: CRequest) -> CResult {
-    loop {
-        match send(req.clone()) {
-            Some(result) => {
-                break result;
-            }
-            None => thread::sleep(Duration::from_millis(50)),
-        }
-    }
+    result
 }
