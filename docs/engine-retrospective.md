@@ -1,6 +1,6 @@
 #### Authors: Tensor Programming - \<tensor@tauri.studio>
 
-# **Stronghold Stronghold Engine Retrospective Document**
+# **Stronghold Engine Retrospective Document**
 
 ***Abstract:***
 
