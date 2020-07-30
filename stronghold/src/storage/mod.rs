@@ -77,11 +77,11 @@ pub fn list(pass: &str) -> Vec<Id> {
 }
 
 // handle the read command.
-pub fn read(id: &str, pass: &str) -> Result<String, &'static str> {
+pub fn read(id: Id, pass: &str) -> Result<String, &'static str> {
     let snapshot = get_snapshot_path();
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-    let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
+    let id = Vec::from_base64(id).expect("couldn't convert the id to from base64");
     let id = Id::load(&id).expect("Couldn't build a new Id");
 
     let snapshot = get_snapshot_path();
@@ -91,11 +91,11 @@ pub fn read(id: &str, pass: &str) -> Result<String, &'static str> {
 }
 
 // create a record with a revoke transaction.  Data isn't actually deleted until it is garbage collected.
-pub fn revoke(id: &str, pass: &str) {
+pub fn revoke(id: Id, pass: &str) {
     let snapshot = get_snapshot_path();
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-    let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
+    let id = Vec::from_base64(id).expect("couldn't convert the id to from base64");
     let id = Id::load(&id).expect("Couldn't build a new Id");
 
     client.revoke_record_by_id(id);
