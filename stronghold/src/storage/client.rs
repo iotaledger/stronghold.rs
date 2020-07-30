@@ -76,16 +76,22 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     }
 
     // read a record by its ID into plaintext.
-    pub fn read_record_by_id(&self, id: Id) {
+    pub fn read_record_by_id(&self, id: Id) -> Result<String, &'static str> {
         self.db.take(|db| {
             let read = db.reader().prepare_read(id).expect("unable to read id");
 
             if let CResult::Read(read) = send(CRequest::Read(read)) {
                 let record = db.reader().read(read).expect(line_error!());
 
-                println!("Plain: {:?}", String::from_utf8(record).unwrap());
+                if let Ok(content) = String::from_utf8(record) {
+                    Ok(content)
+                } else {
+                    Err("Error reading")
+                }
+            }else{
+                Err("Error reading")
             }
-        });
+        })
     }
 
     // Garbage collect the chain and build a new one.
