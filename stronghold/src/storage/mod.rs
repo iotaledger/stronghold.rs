@@ -84,10 +84,12 @@ pub fn read(id: Id, pass: &str) -> Result<String, &'static str> {
     let id = Vec::from_base64(id).expect("couldn't convert the id to from base64");
     let id = Id::load(&id).expect("Couldn't build a new Id");
 
+    let record = client.read_record_by_id(id);
+
     let snapshot = get_snapshot_path();
     serialize_to_snapshot(&snapshot, pass, client);
 
-    client.read_record_by_id(id)
+    record
 }
 
 // create a record with a revoke transaction.  Data isn't actually deleted until it is garbage collected.
