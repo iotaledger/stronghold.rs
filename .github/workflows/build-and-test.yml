@@ -8,6 +8,10 @@ on:
     branches:
       - main
       - dev
+    paths-ignore:
+      - 'docs/**'
+      - 'spec/**'
+      - '.meta/**'
 
 jobs:
   build-and-test:
