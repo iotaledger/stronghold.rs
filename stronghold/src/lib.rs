@@ -38,7 +38,29 @@ impl Stronghold {
         //self.list_ids(snapshot_password);
     }
 
-    pub fn new_snapshot(
+    // after add, update or remove accounts we have to get the last index and update it
+    fn get_index(&self, snapshot_password: &'static str) -> Result<StrongholdIndex, &'static str> {
+        let ids = self.list_ids(snapshot_password).unwrap();//todo: handle error
+        let mut index: Option<StrongholdIndex> = None;
+        for (i,id) in ids.into_iter().enumerate().rev() {
+            let content = storage::read(id,snapshot_password).unwrap();//todo: handle error
+            let result = panic::catch_unwind(|| {
+                let _index: StrongholdIndex = serde_json::from_str( &content ).unwrap();
+                _index
+            });
+            if result.is_ok() {
+                index = Some(result.unwrap());
+                break;
+            }
+        }
+        if let Some(x) = index {
+            Ok(x)
+        }else{
+            Err("Index not found")
+        }
+    }
+
+    fn new_snapshot(
         &self,
         /*accounts, */ snapshot_password: &'static str,
     ) -> Result<Vec<storage::Id>, &'static str> {
