@@ -1,16 +1,18 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Account /*Encrypted*/ {
+pub struct Account
+// Encrypted
+{
     id: String,
     external: bool,
     created_at: u64,
-    //last_decryption: Option<u64>,
-    //decryption_counter: u32,
+    // last_decryption: Option<u64>,
+    // decryption_counter: u32,
     export_counter: u32,
     bip39mnemonic: String,
-    //bip39passphrase_encrypted: Option<String>,
-    //password_hashed: String,
+    /* bip39passphrase_encrypted: Option<String>,
+     * password_hashed: String, */
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -18,32 +20,33 @@ struct AccountDecrypted {
     id: String,
     external: bool,
     created_at: u64,
-    //last_decryption: Option<u64>,
-    //decryption_counter: u32,
+    // last_decryption: Option<u64>,
+    // decryption_counter: u32,
     export_counter: u32,
     bip39mnemonic: String,
-    //bip39passphrase: Option<String>,
-    //password: String,
+    /* bip39passphrase: Option<String>,
+     * password: String, */
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AccountToCreate {
-    //pub bip39passphrase: Option<String>,
-//pub password: String,
+    // pub bip39passphrase: Option<String>,
+// pub password: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AccountToImport {
     pub created_at: u64,
-    //pub last_decryption: Option<u64>,
-    //pub decryption_counter: u32,
+    // pub last_decryption: Option<u64>,
+    // pub decryption_counter: u32,
     pub export_counter: u32,
     pub bip39mnemonic: String,
-    //pub bip39passphrase: Option<String>,
-    //pub password: String,
+    /* pub bip39passphrase: Option<String>,
+     * pub password: String, */
 }
 
-impl From<AccountDecrypted> for Account /*Encrypted*/ {
+impl From<AccountDecrypted> for Account // Encrypted
+{
     fn from(account_new: AccountDecrypted) -> Self {
         Account {
             id: account_new.id,
@@ -64,13 +67,13 @@ impl From<AccountToCreate> for AccountDecrypted {
         AccountDecrypted {
             id: "fn sha256(address m44/0'/0'/0/0)".to_string(),
             external: false,
-            created_at: 0, //fn get_time()
-            //last_decryption: None,
-            //decryption_counter: 0,
+            created_at: 0, // fn get_time()
+            // last_decryption: None,
+            // decryption_counter: 0,
             export_counter: 0,
             bip39mnemonic: "fn generate_mnemonic()".to_string(),
-            //bip39passphrase: account_to_create.bip39passphrase,
-            //password: account_to_create.password,
+            /* bip39passphrase: account_to_create.bip39passphrase,
+             * password: account_to_create.password, */
         }
     }
 }
@@ -81,31 +84,32 @@ impl From<AccountToImport> for AccountDecrypted {
             id: "fn sha256(address m44/0'/0'/0/0)".to_string(),
             external: false,
             created_at: account_to_import.created_at,
-            //last_decryption: None,
-            //decryption_counter: account_to_import.decryption_counter,
+            // last_decryption: None,
+            // decryption_counter: account_to_import.decryption_counter,
             export_counter: account_to_import.export_counter,
             bip39mnemonic: account_to_import.bip39mnemonic,
-            //bip39passphrase: account_to_import.bip39passphrase,
-            //password: account_to_import.password,
+            /* bip39passphrase: account_to_import.bip39passphrase,
+             * password: account_to_import.password, */
         }
     }
 }
 
-impl Account /*Encrypted*/ {
-    //Low level fns
+impl Account // Encrypted
+{
+    // Low level fns
 
-    fn new(account_new: AccountDecrypted) -> Result<Account /*Encrypted*/, &'static str> {
+    fn new(account_new: AccountDecrypted) -> Result<Account /* Encrypted */, &'static str> {
         Ok(account_new.into())
     }
 
-    //High level fns
+    // High level fns
 
-    pub fn import(account_to_import: AccountToImport) -> Result<Account /*Encrypted*/, &'static str> {
+    pub fn import(account_to_import: AccountToImport) -> Result<Account /* Encrypted */, &'static str> {
         let account_new: AccountDecrypted = account_to_import.into();
         Ok(account_new.into())
     }
 
-    pub fn create(account_to_create: AccountToCreate) -> Result<Account /*Encrypted*/, &'static str> {
+    pub fn create(account_to_create: AccountToCreate) -> Result<Account /* Encrypted */, &'static str> {
         let account_new: AccountDecrypted = account_to_create.into();
         Ok(account_new.into())
     }
