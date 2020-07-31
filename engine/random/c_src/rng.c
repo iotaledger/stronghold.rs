@@ -27,21 +27,8 @@ uint8_t os_random_secrandom(uint8_t *buf, size_t len)
 #elif defined(USE_SECRANDOM)
     return SecRandomCopyBytes(kSecRandomDefault, len, buf) == errSecSuccess ? 0 : 1;
 #elif defined(USE_CRYPTGENRANDOM)
-    BCRYPT_ALG_HANDLE algo_handle;
-    NTSTATUS ret1 = BCryptOpenAlgorithmProvider(&algo_handle, BCRYPT_RNG_ALGORITHM,
-                                                MS_PRIMITIVE_PROVIDER, 0);
-    if (BCRYPT_SUCCESS(ret1))
-    {
-        NTSTATUS ret2 = BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-        BCryptCloseAlgorithmProvider(algo_handle, 0);
-
-        return BCRYPT_SUCCESS(ret2) ? 0 : 1;
-    }
-    else
-    {
-        return 1;
-    }
-
+    NTSTATUS ret2 = BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    return BCRYPT_SUCCESS(ret2) ? 0 : 1;
 #elif defined(USE_DEV_RANDOM)
     FILE *urandom = fopen("/dev/urandom", "r");
     if (urandom == NULL)
