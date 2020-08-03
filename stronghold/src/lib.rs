@@ -30,7 +30,7 @@ impl Stronghold {
 
     //the index should be in the last slot of the storage
     fn update_index(&self, snapshot_password: &'static str) -> Result<storage::Id, &'static str> {
-        let (is_last, record_id, mut index) = self.get_index(snapshot_password).unwrap();//todo: handle error
+        let (is_last, record_id, mut index) = self.get_index(snapshot_password);
         if !is_last {
             for (i,id) in self.list_ids(snapshot_password)/*TODO> check performance(called twice)*/.into_iter().enumerate().rev() {
                 if id == record_id {
@@ -47,7 +47,7 @@ impl Stronghold {
     }
 
     // after add, update or remove accounts we have to get the last index and update it
-    fn get_index(&self, snapshot_password: &'static str) -> Result<(bool , storage::Id , Index), &'static str> {
+    fn get_index(&self, snapshot_password: &'static str) -> (bool , storage::Id , Index) {
         let ids = self.list_ids(snapshot_password);
         let mut index: Option<(bool , storage::Id , Index)> = None;
         let ids_len = ids.len();
@@ -64,30 +64,37 @@ impl Stronghold {
             }
         }
         if let Some(x) = index {
-            Ok(x)
+            x
         }else{
-            Err("Index not found in snapshot file")
+            panic!("Index not found in snapshot file")
         }
     }
 
-    fn new_snapshot(
-        &self,
-        /*accounts, */ snapshot_password: &'static str,
-    ) -> Vec<storage::Id> {
+    fn new_snapshot(&self,/*accounts, */ snapshot_password: &'static str) -> Vec<storage::Id> {
         let index = Index::new();
         let index_serialized = serde_json::to_string(&index).unwrap();
         storage::encrypt(&index_serialized, snapshot_password);
         storage::list(snapshot_password)
     }
 
-    // List ids of account
-    /*pub fn account_list(skip: u16, limit: u16) -> Result<Vec<Account>, &'static str>  {
-        Ok(Account::new)
+    pub fn read_account(&self, id: storage::Id, snapshot_password: &'static str) -> account::Account {
+        let decrypted = storage::read(id, snapshot_password);
+        panic::catch_unwind(|| {
+            let account: account::Account = serde_json::from_str( &decrypted ).unwrap();//try to decode into Index
+            account
+        }).expect("Corrupted snapshot")
     }
 
-    pub fn account_get() {
-
-    }*/
+    // List ids of account
+    pub fn account_list(&self, snapshot_password: &'static str, skip: u16, limit: u16) -> Vec< (storage::Id, account::Account) >  {
+        let (is_last, record_id, index) = self.get_index(snapshot_password);
+        let mut accounts = vec![];
+        for id in index.ids.into_iter() {
+            accounts.push( (id, self.read_account(id, snapshot_password)) );
+        }
+        accounts
+    }
+    
     /*
     pub fn account_create(
         //bip39passphrase: Option<String>,
