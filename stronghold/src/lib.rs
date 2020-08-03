@@ -82,7 +82,7 @@ impl Stronghold {
         panic::catch_unwind(|| {
             let account: account::Account = serde_json::from_str( &decrypted ).unwrap();//try to decode into Index
             account
-        }).expect("Corrupted snapshot")
+        }).expect("Cannot decode record into account. corrupt index?")
     }
 
     // List ids of account
