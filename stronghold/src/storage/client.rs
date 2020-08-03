@@ -76,20 +76,15 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     }
 
     // read a record by its ID into plaintext.
-    pub fn read_record_by_id(&self, id: Id) -> Result<String, &'static str> {
+    pub fn read_record_by_id(&self, id: Id) -> String {
         self.db.take(|db| {
             let read = db.reader().prepare_read(id).expect("unable to read id");
 
             if let CResult::Read(read) = send(CRequest::Read(read)) {
                 let record = db.reader().read(read).expect(line_error!());
-
-                if let Ok(content) = String::from_utf8(record) {
-                    Ok(content)
-                } else {
-                    Err("Error reading")
-                }
+                String::from_utf8(record).expect("unable to read id")
             }else{
-                Err("Error reading")
+                panic!("unable to read id")
             }
         })
     }

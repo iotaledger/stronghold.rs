@@ -77,7 +77,7 @@ pub fn list(pass: &str) -> Vec<Id> {
 }
 
 // handle the read command.
-pub fn read(id: Id, pass: &str) -> Result<String, &'static str> {
+pub fn read(id: Id, pass: &str) -> String {
     let snapshot = get_snapshot_path();
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
