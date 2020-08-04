@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account /*Encrypted*/ {
-    id: String,
+    pub id: String,
     external: bool,
     created_at: u64,
     //last_decryption: Option<u64>,
