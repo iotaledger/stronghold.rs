@@ -21,7 +21,7 @@ use snap::{deserialize_from_snapshot, get_snapshot_path, serialize_to_snapshot};
 
 use engine::{vault};
 
-pub use vault::{Base64Decodable, Id, Key};
+pub use vault::{Base64Decodable, Id, Key, RecordHint};
 
 use std::path::Path;
 
@@ -31,14 +31,14 @@ pub fn exists() -> bool {
     snapshot.exists()
 }
 
-pub fn encrypt(plain: &str, pass: &str) {
+pub fn encrypt(hint: &str, plain: &str, pass: &str) -> Id {
     let snapshot = get_snapshot_path();
-
+    let record_id: Id;
     if snapshot.exists() {
         let snapshot = get_snapshot_path();
         let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-        client.create_record(plain.as_bytes().to_vec());
+        record_id = client.create_record(plain.as_bytes().to_vec(), hint.as_bytes());
 
         let snapshot = get_snapshot_path();
         serialize_to_snapshot(&snapshot, pass, client);
@@ -46,11 +46,13 @@ pub fn encrypt(plain: &str, pass: &str) {
         let key = Key::<Provider>::random().expect("Unable to generate a new key");
         let id = Id::random::<Provider>().expect("Unable to generate a new id");
         let client = Client::create_chain(key, id);
-        client.create_record(plain.as_bytes().to_vec());
+
+        record_id = client.create_record(plain.as_bytes().to_vec(), hint.as_bytes());
 
         let snapshot = get_snapshot_path();
         serialize_to_snapshot(&snapshot, pass, client);
     }
+    record_id
 }
 
 // handle the snapshot command.
@@ -64,16 +66,16 @@ pub fn snapshot(path: &str, pass: &str) {
 }
 
 // handle the list command.
-pub fn list(pass: &str) -> Vec<Id> {
+pub fn get_index(pass: &str) -> Vec<(Id , RecordHint)> {
     let snapshot = get_snapshot_path();
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-    let ids = client.list_ids();
+    let index = client.get_index();
 
     let snapshot = get_snapshot_path();
     serialize_to_snapshot(&snapshot, pass, client);
 
-    ids
+    index
 }
 
 // handle the read command.
@@ -112,7 +114,7 @@ pub fn garbage_collect_vault(pass: &str) {
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
     client.perform_gc();
-    client.list_ids();
+    client.get_index();
 
     let snapshot = get_snapshot_path();
     serialize_to_snapshot(&snapshot, pass, client);
