@@ -55,9 +55,9 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     }
 
     // create a record in the vault.
-    pub fn create_record(&self, payload: Vec<u8>) {
+    pub fn create_record(&self, payload: Vec<u8>) -> Id {
         self.db.take(|db| {
-            let (_, req) = db
+            let (record_id, req) = db
                 .writer(self.id)
                 .write(&payload, RecordHint::new(b"").expect(line_error!()))
                 .expect(line_error!());
@@ -65,7 +65,9 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
             req.into_iter().for_each(|req| {
                 send(CRequest::Write(req));
             });
-        });
+
+            record_id
+        })
     }
 
     // list the ids and hints of all of the records in the Vault.
