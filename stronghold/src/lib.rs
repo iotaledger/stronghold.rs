@@ -72,25 +72,24 @@ impl Stronghold {
             if i+1 > limit {
                 break;
             }
-            let id_ascii = format!("{:?}",account_id).as_str();
-            account_ids.push(id_ascii);
+            account_ids.push(format!("{:?}",account_id).as_str());
         }
         account_ids
     }
     
-    // List ids of account
-    pub fn list_accounts(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< storage::RecordHint >  {
-        let account_ids = Vec::new();
-        for (i, (_ , account_id)) in storage::get_index(snapshot_password).into_iter().enumerate() {
+    // List accounts
+    pub fn list_accounts(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< Account >  {
+        let accounts = Vec::new();
+        for (i, (record_id , _)) in storage::get_index(snapshot_password).into_iter().enumerate() {
             if i+1 <= skip {
                 continue;
             }
             if i+1 > limit {
                 break;
             }
-            account_ids.push(account_id);
+            accounts.push(self.get_account_by_record_id(record_id,snapshot_password));
         }
-        account_ids
+        accounts
     }
     
     pub fn account_create(
