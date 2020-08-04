@@ -9,10 +9,10 @@ mod account;
 /// Stronghold Storage Module
 mod storage;
 
-use std::panic;
+use account::{Account,AccountToCreate,AccountToImport};
+use std::str;
 //use account::{Account, AccountToCreate, AccountToImport};
-use serde::{Deserialize, Serialize};
-//use serde_json;
+use serde_json;
 
 /// Stronghold doc com
 struct Stronghold;
@@ -20,82 +20,79 @@ struct Stronghold;
 //{"id":"","external":true,"created":0,"lastDecryption":0,"decryptionCounter":0,"exportCounter":0,"bip39Mnemonic":"","bip39Passphrase":""}
 
 impl Stronghold {
-    //proably should be moved to storage
-    pub fn list_ids(&self, snapshot_password: &'static str) -> Vec<storage::Id> {
-        if !storage::exists() {
-            panic!("Snapshot file not found")
-        }
-        storage::list(snapshot_password)
-    }
 
-    //the index should be in the last slot of the storage
-    fn update_index(&self, snapshot_password: &'static str) -> Result<storage::Id, &'static str> {
-        let (is_last, record_id, mut index) = self.get_index(snapshot_password);
-        if !is_last {
-            for (i,id) in self.list_ids(snapshot_password)/*TODO> check performance(called twice)*/.into_iter().enumerate().rev() {
-                if id == record_id {
-                    break
-                }
-                index.ids.push(id);
+    fn find_record_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
+        let index = storage::get_index(snapshot_password);
+        for (record_id,account_id) in index {
+            if format!("{:?}",account_id) == account_id_target {
+                return record_id;
             }
-            let index_serialized = serde_json::to_string(&index).unwrap();
-            storage::encrypt(&index_serialized, snapshot_password);
-            Ok(storage::list(snapshot_password).last().copied().unwrap())/*TODO> check performance(fn encrypt could give the id)*/
-        }else{
-            Err("No update needed")
-        }
+        };
+        panic!("Unable to find record id with specified account id");
     }
 
-    // after add, update or remove accounts we have to get the last index and update it
-    fn get_index(&self, snapshot_password: &'static str) -> (bool , storage::Id , Index) {
-        let ids = self.list_ids(snapshot_password);
-        let mut index: Option<(bool , storage::Id , Index)> = None;
-        let ids_len = ids.len();
-        for (i,id) in ids.into_iter().enumerate().rev() {
-            let content = storage::read(id,snapshot_password);//todo: handle error
-            let result = panic::catch_unwind(|| {
-                let _index: Index = serde_json::from_str( &content ).unwrap();//try to decode into Index
-                _index
-            });
-            if result.is_ok() {
-                let is_last: bool = ids_len == i+1;
-                index = Some( ( is_last , id , result.unwrap() ) );
-                break;
-            }
-        }
-        if let Some(x) = index {
-            x
-        }else{
-            panic!("Index not found in snapshot file")
-        }
+    pub fn get_account(&self, account_id: &str, snapshot_password: &str) -> Account {
+        let index = storage::get_index(snapshot_password);
+        let account: Option<Account>;
+        let record_id = self.find_record_id(account_id, snapshot_password);
+        let decrypted = storage::read(record_id, snapshot_password);
+        self.decode_record(&decrypted)
     }
 
-    fn new_snapshot(&self,/*accounts, */ snapshot_password: &'static str) -> Vec<storage::Id> {
-        let index = Index::new();
-        let index_serialized = serde_json::to_string(&index).unwrap();
-        storage::encrypt(&index_serialized, snapshot_password);
-        storage::list(snapshot_password)
+    fn decode_record(&self, decrypted: &str) -> Account {
+        let x: Account = serde_json::from_str(&decrypted).expect("Error reading record from snapshot");
+        x
     }
 
-    pub fn read_account(&self, id: storage::Id, snapshot_password: &'static str) -> account::Account {
-        let decrypted = storage::read(id, snapshot_password);
-        panic::catch_unwind(|| {
-            let account: account::Account = serde_json::from_str( &decrypted ).unwrap();//try to decode into Index
-            account
-        }).expect("Cannot decode record into account. corrupt index?")
+    fn get_account_by_record_id(&self, record_id: storage::Id, snapshot_password: &str) -> Account {
+        let decrypted = storage::read(record_id, snapshot_password);
+        self.decode_record(&decrypted)
+    }
+
+    pub fn delete_account(&self, account_id: &str, snapshot_password: &str) -> Account {
+        let record_id = self.find_record_id(account_id, snapshot_password);
+        let account = self.get_account_by_record_id(record_id,snapshot_password);
+        storage::revoke(record_id, snapshot_password);
+        storage::garbage_collect_vault(snapshot_password);
+        account
+    }
+
+    pub fn save_account(&self, account: Account, snapshot_password: &str) -> storage::Id {
+        let account_serialized = serde_json::to_string(&account).expect("Error saving account in snapshot");
+        storage::encrypt(&account.id, &account_serialized, snapshot_password)
     }
 
     // List ids of account
-    pub fn account_list(&self, snapshot_password: &'static str, skip: u16, limit: u16) -> Vec< (storage::Id, account::Account) >  {
-        let (is_last, record_id, index) = self.get_index(snapshot_password);
-        let mut accounts = vec![];
-        for id in index.ids.into_iter() {
-            accounts.push( (id, self.read_account(id, snapshot_password)) );
+    pub fn get_account_index(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< &str >  {
+        let account_ids = Vec::new();
+        for (i, (_ , account_id)) in storage::get_index(snapshot_password).into_iter().enumerate() {
+            if i+1 <= skip {
+                continue;
+            }
+            if i+1 > limit {
+                break;
+            }
+            let id_ascii = format!("{:?}",account_id).as_str();
+            account_ids.push(id_ascii);
         }
-        accounts
+        account_ids
     }
     
-    /*
+    // List ids of account
+    pub fn list_accounts(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< storage::RecordHint >  {
+        let account_ids = Vec::new();
+        for (i, (_ , account_id)) in storage::get_index(snapshot_password).into_iter().enumerate() {
+            if i+1 <= skip {
+                continue;
+            }
+            if i+1 > limit {
+                break;
+            }
+            account_ids.push(account_id);
+        }
+        account_ids
+    }
+    
     pub fn account_create(
         //bip39passphrase: Option<String>,
         snapshot_password: String,//for snapshot
@@ -105,16 +102,13 @@ impl Stronghold {
             return Err("Invalid parameters: Password is missing");
         }
 
-        let account_to_create = AccountToCreate {
-            //bip39passphrase,
-            //password, //account password
-        };
+        if let Err(account) = Account::create(AccountToCreate{}) {
+            Err(account)
+        }else{
 
-        let account = Account::create(account_to_create);
-        //if ok add to snapshot
-        Ok(account?)
+        }
     }
-
+    /*
     pub fn account_import(
         created_at: u64,
         last_decryption: Option<u64>,
@@ -170,16 +164,4 @@ impl Stronghold {
     pub fn account_export() {
 
     }*/
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
-struct Index {
-    /* created_at , decryption counter, export counter , etc? */
-    ids: Vec<storage::Id>
-}
-
-impl Index {
-    pub fn new(/* accounts */) -> Self {
-        Self { ids: vec![] }
-    }
 }
