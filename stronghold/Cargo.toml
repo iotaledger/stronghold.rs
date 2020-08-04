@@ -19,7 +19,6 @@ bee-ternary = { git = "https://github.com/iotaledger/bee", features = ["serde1"]
 
 #engine
 stronghold-engine = {path = "../engine"}
-bincode = "1.3.1"
 
 #stronghold
 serde = {version = "1.0.114"}
