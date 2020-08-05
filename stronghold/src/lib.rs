@@ -57,14 +57,14 @@ impl Stronghold {
         account
     }
 
-    pub fn save_account(&self, account: Account, snapshot_password: &str) -> storage::Id {
-        let account_serialized = serde_json::to_string(&account).expect("Error saving account in snapshot");
+    pub fn save_account(&self, account: &Account, snapshot_password: &str) -> storage::Id {
+        let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
         storage::encrypt(&account.id, &account_serialized, snapshot_password)
     }
 
     // List ids of accounts
-    pub fn get_account_index(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< &str >  {
-        let account_ids = Vec::new();
+    pub fn get_account_index(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< String >  {
+        let mut account_ids = Vec::new();
         for (i, (_ , account_id)) in storage::get_index(snapshot_password).into_iter().enumerate() {
             if i+1 <= skip {
                 continue;
@@ -72,14 +72,14 @@ impl Stronghold {
             if i+1 > limit {
                 break;
             }
-            account_ids.push(format!("{:?}",account_id).as_str());
+            account_ids.push(format!("{:?}",account_id));
         }
         account_ids
     }
     
     // List accounts
     pub fn list_accounts(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< Account >  {
-        let accounts = Vec::new();
+        let mut accounts = Vec::new();
         for (i, (record_id , _)) in storage::get_index(snapshot_password).into_iter().enumerate() {
             if i+1 <= skip {
                 continue;
@@ -97,7 +97,7 @@ impl Stronghold {
             panic!("Invalid parameters: Password is missing");
         }
         let account = Account::create(AccountToCreate).unwrap();
-        self.save_account(account,snapshot_password);
+        self.save_account(&account,snapshot_password);
         account
     }
 
@@ -124,7 +124,7 @@ impl Stronghold {
             //password,
         }).unwrap();
 
-        self.save_account(account,snapshot_password);
+        self.save_account(&account,snapshot_password);
 
         account
     }
