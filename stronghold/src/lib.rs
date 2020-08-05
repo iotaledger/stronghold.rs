@@ -49,7 +49,7 @@ impl Stronghold {
         self.decode_record(&decrypted)
     }
 
-    pub fn delete_account(&self, account_id: &str, snapshot_password: &str) -> Account {
+    pub fn remove_account(&self, account_id: &str, snapshot_password: &str) -> Account {
         let record_id = self.find_record_id(account_id, snapshot_password);
         let account = self.get_account_by_record_id(record_id,snapshot_password);
         storage::revoke(record_id, snapshot_password);
