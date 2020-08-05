@@ -27,10 +27,10 @@ struct AccountDecrypted {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct AccountToCreate {
+pub struct AccountToCreate;/* {
     //pub bip39passphrase: Option<String>,
 //pub password: String,
-}
+}*/
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AccountToImport {

@@ -62,7 +62,7 @@ impl Stronghold {
         storage::encrypt(&account.id, &account_serialized, snapshot_password)
     }
 
-    // List ids of account
+    // List ids of accounts
     pub fn get_account_index(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< &str >  {
         let account_ids = Vec::new();
         for (i, (_ , account_id)) in storage::get_index(snapshot_password).into_iter().enumerate() {
@@ -92,21 +92,17 @@ impl Stronghold {
         accounts
     }
     
-    pub fn account_create(
-        //bip39passphrase: Option<String>,
-        snapshot_password: String,//for snapshot
-        //password: String//for account encryption
-    ) -> Result<Account, &'static str> {
+    pub fn create_account(snapshot_password: &str) -> Account {
         if snapshot_password.is_empty() {
-            return Err("Invalid parameters: Password is missing");
+            panic!("Invalid parameters: Password is missing");
         }
-
-        if let Err(account) = Account::create(AccountToCreate{}) {
-            Err(account)
-        }else{
-
-        }
+        let account = Account::create(AccountToCreate).unwrap();
+        let serialized = serde_json::to_string(&account).unwrap();
+        storage::encrypt(&account.id, &serialized, snapshot_password);
+        account
     }
+
+
     /*
     pub fn account_import(
         created_at: u64,
