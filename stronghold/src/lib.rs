@@ -102,15 +102,14 @@ impl Stronghold {
     }
 
     pub fn account_import(
+        &self,
         created_at: u64,
-        last_decryption: Option<u64>,
-        decryption_counter: u32,
-        export_counter: u32,
-        bip39mnemonic: String,
-        //bip39passphrase: Option<String>,
-        snapshot_password: String,//snapshot
-        //password: String//account
-    ) -> Result<Account, &'static str> {
+        last_decryption: Option<usize>,
+        decryption_counter: usize,
+        export_counter: usize,
+        bip39mnemonic: &str,
+        snapshot_password: &str,//snapshot
+    ) -> Account {
         if bip39mnemonic.is_empty() {
             return Err("Invalid parameters: bip39mnemonic is missing");
         }
@@ -119,19 +118,17 @@ impl Stronghold {
         }
         let account = Account::import(AccountToImport {
             created_at,
-            last_decryption,
-            decryption_counter,
             export_counter,
-            bip39mnemonic,
+            bip39mnemonic: String::from(bip39mnemonic),
             //bip39passphrase,
             //password,
-        })?;
+        }).unwrap();
 
-        // if is ok add to snapshot
+        self.save_account(account,snapshot_password);
 
-        Ok(account)
+        account
     }
-    */
+    
     /*
     pub fn account_remove() {
 
