@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
-use bip39;
-use bitcoin::network::constants::Network;
 use sha2::{Sha256, Digest};
 use hex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use bip39;
+use bitcoin::network::constants::Network;
+use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account /*Encrypted*/ {
@@ -69,16 +70,8 @@ pub fn generate_id(bip39mnemonic: &bip39::Mnemonic) -> String {
         let seed = bip39::Seed::new(bip39mnemonic, "");
         let mut extended_private = bitcoin::util::bip32::ExtendedPrivKey::new_master(Network::Bitcoin, seed.as_bytes()).unwrap();
         let secp256k1 = bitcoin::secp256k1::Secp256k1::new();
-        extended_private = extended_private.derive_priv(
-            &secp256k1,
-            &vec!(
-                bitcoin::util::bip32::ChildNumber::Hardened{index: 44},
-                bitcoin::util::bip32::ChildNumber::Hardened{index: 0},
-                bitcoin::util::bip32::ChildNumber::Hardened{index: 0},
-                bitcoin::util::bip32::ChildNumber::Normal{index: 0},
-                bitcoin::util::bip32::ChildNumber::Normal{index: 0}
-            )
-        ).unwrap();
+        let derivation_path = bitcoin::util::bip32::DerivationPath::from_str("m/44'/0'/0'/0/0").unwrap();
+        extended_private = extended_private.derive_priv(&secp256k1,&derivation_path).unwrap();
         let extended_public = bitcoin::util::bip32::ExtendedPubKey::from_private(&secp256k1, &extended_private);
         let address = format!("{}",bitcoin::util::address::Address::p2wpkh(&extended_public.public_key, bitcoin::network::constants::Network::Bitcoin));
         
@@ -148,4 +141,20 @@ impl Account /*Encrypted*/ {
         let account_new: AccountDecrypted = account_to_create.into();
         Ok(account_new.into())
     }
+
+    pub fn get_seed(&self) -> Result<bip39::Seed, &'static str> {
+        let bip39mnemonic = bip39::Mnemonic::from_phrase(&self.bip39mnemonic, bip39::Language::Spanish).unwrap();
+        Ok(bip39::Seed::new(&bip39mnemonic, ""))
+    }
+
+    pub fn get_address(&self, account_id: &str, path: &str, snapshot_password: &str) -> Result<String, &'static str> {
+        let seed = self.get_seed().unwrap();
+        let mut extended_private = bitcoin::util::bip32::ExtendedPrivKey::new_master(Network::Bitcoin, seed.as_bytes()).unwrap();
+        let secp256k1 = bitcoin::secp256k1::Secp256k1::new();
+        let derivation_path = bitcoin::util::bip32::DerivationPath::from_str(path).unwrap();
+        extended_private = extended_private.derive_priv(&secp256k1,&derivation_path).unwrap();
+        let extended_public = bitcoin::util::bip32::ExtendedPubKey::from_private(&secp256k1, &extended_private);
+        Ok(format!("{}",bitcoin::util::address::Address::p2wpkh(&extended_public.public_key, bitcoin::network::constants::Network::Bitcoin)))
+    }
+    
 }

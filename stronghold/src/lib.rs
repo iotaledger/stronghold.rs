@@ -108,7 +108,7 @@ impl Stronghold {
         decryption_counter: usize,
         export_counter: usize,
         bip39mnemonic: &str,
-        snapshot_password: &str,//snapshot
+        snapshot_password: &str//snapshot
     ) -> Account {
         if bip39mnemonic.is_empty() {
             panic!("Invalid parameters: bip39mnemonic is missing");
@@ -128,7 +128,7 @@ impl Stronghold {
 
         account
     }
-    
+
     /*
     pub fn transaction_sign() {
 
@@ -139,10 +139,6 @@ impl Stronghold {
     }
 
     pub fn message_decrypt() {
-
-    }
-
-    pub fn get_address() {
 
     }
 
