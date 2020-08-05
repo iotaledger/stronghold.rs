@@ -130,10 +130,6 @@ impl Stronghold {
     }
     
     /*
-    pub fn account_remove() {
-
-    }
-
     pub fn transaction_sign() {
 
     }

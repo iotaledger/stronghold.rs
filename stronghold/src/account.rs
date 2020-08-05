@@ -1,10 +1,15 @@
 use serde::{Deserialize, Serialize};
+use bip39;
+use bitcoin::network::constants::Network;
+use sha2::{Sha256, Digest};
+use hex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account /*Encrypted*/ {
     pub id: String,
     external: bool,
-    created_at: u64,
+    created_at: u128,
     //last_decryption: Option<usize>,
     //decryption_counter: usize,
     export_counter: usize,
@@ -17,7 +22,7 @@ pub struct Account /*Encrypted*/ {
 struct AccountDecrypted {
     id: String,
     external: bool,
-    created_at: u64,
+    created_at: u128,
     //last_decryption: Option<usize>,
     //decryption_counter: usize,
     export_counter: usize,
@@ -34,7 +39,7 @@ pub struct AccountToCreate;/* {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AccountToImport {
-    pub created_at: u64,
+    pub created_at: u128,
     //pub last_decryption: Option<usize>,
     //pub decryption_counter: usize,
     pub export_counter: usize,
@@ -59,16 +64,47 @@ impl From<AccountDecrypted> for Account /*Encrypted*/ {
     }
 }
 
+pub fn generate_id(bip39mnemonic: &bip39::Mnemonic) -> String {
+        // Account ID generation: 1/2 : Derive seed into the first address
+        let seed = bip39::Seed::new(bip39mnemonic, "");
+        let mut extended_private = bitcoin::util::bip32::ExtendedPrivKey::new_master(Network::Bitcoin, seed.as_bytes()).unwrap();
+        let secp256k1 = bitcoin::secp256k1::Secp256k1::new();
+        extended_private = extended_private.derive_priv(
+            &secp256k1,
+            &vec!(
+                bitcoin::util::bip32::ChildNumber::Hardened{index: 44},
+                bitcoin::util::bip32::ChildNumber::Hardened{index: 0},
+                bitcoin::util::bip32::ChildNumber::Hardened{index: 0},
+                bitcoin::util::bip32::ChildNumber::Normal{index: 0},
+                bitcoin::util::bip32::ChildNumber::Normal{index: 0}
+            )
+        ).unwrap();
+        let extended_public = bitcoin::util::bip32::ExtendedPubKey::from_private(&secp256k1, &extended_private);
+        let address = format!("{}",bitcoin::util::address::Address::p2wpkh(&extended_public.public_key, bitcoin::network::constants::Network::Bitcoin));
+        
+        // Account ID generation: 2/2 : Hash generated address in order to get ID
+        let mut hasher = Sha256::new();
+        hasher.update(address);
+        hex::encode(&hasher.finalize())
+}
+
 impl From<AccountToCreate> for AccountDecrypted {
     fn from(account_to_create: AccountToCreate) -> Self {
+        // Mnemonic generation
+        let bip39mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
+        let bip39mnemonic_str = String::from(bip39mnemonic.phrase());
+
+        // ID generation
+        let id = generate_id(&bip39mnemonic);
+
         AccountDecrypted {
-            id: "fn sha256(address m44/0'/0'/0/0)".to_string(),
+            id,
             external: false,
-            created_at: 0, //fn get_time()
+            created_at: SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis(),
             //last_decryption: None,
             //decryption_counter: 0,
             export_counter: 0,
-            bip39mnemonic: "fn generate_mnemonic()".to_string(),
+            bip39mnemonic: String::from(bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase()),
             //bip39passphrase: account_to_create.bip39passphrase,
             //password: account_to_create.password,
         }
@@ -77,9 +113,12 @@ impl From<AccountToCreate> for AccountDecrypted {
 
 impl From<AccountToImport> for AccountDecrypted {
     fn from(account_to_import: AccountToImport) -> Self {
+        let bip39mnemonic = bip39::Mnemonic::from_phrase(&account_to_import.bip39mnemonic, bip39::Language::Spanish).expect("Invalid mnemonic");
+        // ID generation
+        let id = generate_id(&bip39mnemonic);
         AccountDecrypted {
-            id: "fn sha256(address m44/0'/0'/0/0)".to_string(),
-            external: false,
+            id,
+            external: true,
             created_at: account_to_import.created_at,
             //last_decryption: None,
             //decryption_counter: account_to_import.decryption_counter,
