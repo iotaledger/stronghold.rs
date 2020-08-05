@@ -92,18 +92,15 @@ impl Stronghold {
         accounts
     }
     
-    pub fn create_account(snapshot_password: &str) -> Account {
+    pub fn create_account(&self, snapshot_password: &str) -> Account {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: Password is missing");
         }
         let account = Account::create(AccountToCreate).unwrap();
-        let serialized = serde_json::to_string(&account).unwrap();
-        storage::encrypt(&account.id, &serialized, snapshot_password);
+        self.save_account(account,snapshot_password);
         account
     }
 
-
-    /*
     pub fn account_import(
         created_at: u64,
         last_decryption: Option<u64>,
