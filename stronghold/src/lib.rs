@@ -111,10 +111,10 @@ impl Stronghold {
         snapshot_password: &str,//snapshot
     ) -> Account {
         if bip39mnemonic.is_empty() {
-            return Err("Invalid parameters: bip39mnemonic is missing");
+            panic!("Invalid parameters: bip39mnemonic is missing");
         }
         if snapshot_password.is_empty() {
-            return Err("Invalid parameters: password is missing");
+            panic!("Invalid parameters: password is missing");
         }
         let account = Account::import(AccountToImport {
             created_at,
