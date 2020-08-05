@@ -103,7 +103,7 @@ impl Stronghold {
 
     pub fn account_import(
         &self,
-        created_at: u64,
+        created_at: u128,
         last_decryption: Option<usize>,
         decryption_counter: usize,
         export_counter: usize,
