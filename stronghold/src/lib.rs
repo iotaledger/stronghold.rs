@@ -129,6 +129,10 @@ impl Stronghold {
         account
     }
 
+    pub fn account_export(&self, account_id: &str, snapshot_password: &str) -> Account {
+        self.get_account(account_id, snapshot_password)
+    }
+
     /*
     pub fn transaction_sign() {
 
@@ -141,8 +145,5 @@ impl Stronghold {
     pub fn message_decrypt() {
 
     }
-
-    pub fn account_export() {
-
-    }*/
+    */
 }
