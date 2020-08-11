@@ -11,13 +11,10 @@ mod storage;
 
 use account::{Account,AccountToCreate,AccountToImport};
 use std::str;
-//use account::{Account, AccountToCreate, AccountToImport};
 use serde_json;
 
 /// Stronghold doc com
 struct Stronghold;
-
-//{"id":"","external":true,"created":0,"lastDecryption":0,"decryptionCounter":0,"exportCounter":0,"bip39Mnemonic":"","bip39Passphrase":""}
 
 impl Stronghold {
 
@@ -92,11 +89,11 @@ impl Stronghold {
         accounts
     }
     
-    pub fn create_account(&self, snapshot_password: &str) -> Account {
+    pub fn create_account(&self, bip39passphrase: Option<String>, snapshot_password: &str) -> Account {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: Password is missing");
         }
-        let account = Account::create(AccountToCreate).unwrap();
+        let account = Account::new(AccountToCreate {bip39passphrase}).unwrap();
         self.save_account(&account,snapshot_password);
         account
     }
@@ -108,7 +105,8 @@ impl Stronghold {
         decryption_counter: usize,
         export_counter: usize,
         bip39mnemonic: &str,
-        snapshot_password: &str//snapshot
+        bip39passphrase: Option<&str>,
+        snapshot_password: &str
     ) -> Account {
         if bip39mnemonic.is_empty() {
             panic!("Invalid parameters: bip39mnemonic is missing");
@@ -116,13 +114,14 @@ impl Stronghold {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: password is missing");
         }
-        let account = Account::import(AccountToImport {
+        let account: Account = AccountToImport {
             created_at,
-            export_counter,
             bip39mnemonic: String::from(bip39mnemonic),
-            //bip39passphrase,
-            //password,
-        }).unwrap();
+            bip39passphrase: match bip39passphrase {
+                Some(x) => Some(String::from(x)),
+                None => None
+            }
+        }.into();
 
         self.save_account(&account,snapshot_password);
 
