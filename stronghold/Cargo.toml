@@ -15,7 +15,7 @@ repository = "https://github.com/iotaledger/stronghold.rs"
 name = "stronghold"
 
 [dependencies]
-bee-ternary = { git = "https://github.com/iotaledger/bee", features = ["serde1"] }
+bee-signing-ext = { git = "https://github.com/wusyong/bee-p.git", branch = "sign-ext" , version = "^0.1.0-alpha" }
 
 #engine
 stronghold-engine = {path = "../engine"}
