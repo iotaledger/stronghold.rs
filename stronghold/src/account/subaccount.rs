@@ -5,7 +5,7 @@ pub struct SubAccount {
     label: String,
     receive_addresses_counter: usize,
     change_addresses_counter: usize,
-    transactions: Vec<String>
+    transactions: Vec<String>//maybe TODO: Improve performance using TryteBuff instead String
 }
 
 impl SubAccount {
