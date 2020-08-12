@@ -112,7 +112,7 @@ impl Stronghold {
         bip39_mnemonic: &str,
         bip39_passphrase: Option<&str>,
         snapshot_password: &str,
-        subaccounts_count: Vec<Subaccount>
+        subaccounts: Vec<Subaccount>
     ) -> Account {
         if bip39_mnemonic.is_empty() {
             panic!("Invalid parameters: bip39_mnemonic is missing");
@@ -127,7 +127,7 @@ impl Stronghold {
                 Some(x) => Some(String::from(x)),
                 None => None
             },
-            subaccounts_count
+            subaccounts
 
         }.into();
 
@@ -153,6 +153,8 @@ impl Stronghold {
         self.record_remove(record_id, &snapshot_password);
         self.account_save(&account, &snapshot_password)
     }
+
+
 
     /*fn subaccount_add(&self, account: Account, snapshot_password: &str) -> usize {
 
