@@ -17,7 +17,7 @@ pub struct Account {
     created_at: u128,
     bip39_mnemonic: String,
     bip39_passphrase: Option<String>,
-    subaccounts: Vec<Subaccount>
+    pub subaccounts: Vec<Subaccount>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -115,4 +115,10 @@ impl Account {
         Ok(format!("{}",bitcoin::util::address::Address::p2wpkh(&extended_public.public_key, bitcoin::network::constants::Network::Bitcoin)))
     }
     
+    pub fn add_subaccount(&mut self, label: String) {
+        self.subaccounts.push(Subaccount::new(label))
+    }
+
+    
+
 }
