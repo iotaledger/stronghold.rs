@@ -105,7 +105,7 @@ impl Account {
         Ok(bip39::Seed::new(&bip39_mnemonic, ""))
     }
 
-    pub fn get_address(&self, account_id: &str, path: &str, snapshot_password: &str) -> Result<String, &'static str> {
+    pub fn get_address(&self, path: &str, snapshot_password: &str) -> Result<String, &'static str> {
         let seed = self.get_seed().unwrap();
         let mut extended_private = bitcoin::util::bip32::ExtendedPrivKey::new_master(Network::Bitcoin, seed.as_bytes()).unwrap();
         let secp256k1 = bitcoin::secp256k1::Secp256k1::new();
