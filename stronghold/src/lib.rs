@@ -51,7 +51,7 @@ impl Stronghold {
     }
 
     // Remove existent account
-    pub fn remove_account(&self, account_id: &str, snapshot_password: &str) -> Account {
+    pub fn account_remove(&self, account_id: &str, snapshot_password: &str) -> Account {
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
         let account = self.account_get_by_record_id(&record_id,snapshot_password);
         storage::revoke(record_id, snapshot_password);
