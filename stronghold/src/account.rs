@@ -11,29 +11,31 @@ pub struct Account {
     pub id: String,
     external: bool,
     created_at: u128,
-    bip39mnemonic: String,
-    bip39passphrase: Option<String>,
+    bip39_mnemonic: String,
+    bip39_passphrase: Option<String>,
+    subaccounts_count: usize
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AccountToCreate {
-    pub bip39passphrase: Option<String>,
+    pub bip39_passphrase: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AccountToImport {
     pub created_at: u128,
-    pub bip39mnemonic: String,
-    pub bip39passphrase: Option<String>,
+    pub bip39_mnemonic: String,
+    pub bip39_passphrase: Option<String>,
+    pub subaccounts_count: usize
 }
 
-pub fn generate_id(bip39mnemonic: &bip39::Mnemonic, bip39passphrase: &Option<String>) -> String {
+pub fn generate_id(bip39_mnemonic: &bip39::Mnemonic, bip39_passphrase: &Option<String>) -> String {
         // Account ID generation: 1/2 : Derive seed into the first address
         let seed;
-        if let Some(bip39passphrase) = bip39passphrase {
-            seed = bip39::Seed::new(bip39mnemonic, &bip39passphrase);
+        if let Some(bip39_passphrase) = bip39_passphrase {
+            seed = bip39::Seed::new(bip39_mnemonic, &bip39_passphrase);
         }else{
-            seed = bip39::Seed::new(bip39mnemonic, "");
+            seed = bip39::Seed::new(bip39_mnemonic, "");
         }
         let mut extended_private = bitcoin::util::bip32::ExtendedPrivKey::new_master(Network::Bitcoin, seed.as_bytes()).unwrap();
         let secp256k1 = bitcoin::secp256k1::Secp256k1::new();
@@ -51,33 +53,35 @@ pub fn generate_id(bip39mnemonic: &bip39::Mnemonic, bip39passphrase: &Option<Str
 impl From<AccountToCreate> for Account {
     fn from(account_to_create: AccountToCreate) -> Self {
         // Mnemonic generation
-        let bip39mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
-        let bip39mnemonic_str = String::from(bip39mnemonic.phrase());
+        let bip39_mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
+        let bip39_mnemonic_str = String::from(bip39_mnemonic.phrase());
 
         // ID generation
-        let id = generate_id(&bip39mnemonic, &account_to_create.bip39passphrase);
+        let id = generate_id(&bip39_mnemonic, &account_to_create.bip39_passphrase);
 
         Account {
             id,
             external: false,
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis(),
-            bip39mnemonic: String::from(bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase()),
-            bip39passphrase: account_to_create.bip39passphrase,
+            bip39_mnemonic: String::from(bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase()),
+            bip39_passphrase: account_to_create.bip39_passphrase,
+            subaccounts_count: 1
         }
     }
 }
 
 impl From<AccountToImport> for Account {
     fn from(account_to_import: AccountToImport) -> Self {
-        let bip39mnemonic = bip39::Mnemonic::from_phrase(&account_to_import.bip39mnemonic, bip39::Language::Spanish).expect("Invalid mnemonic");
+        let bip39_mnemonic = bip39::Mnemonic::from_phrase(&account_to_import.bip39_mnemonic, bip39::Language::Spanish).expect("Invalid mnemonic");
         // ID generation
-        let id = generate_id(&bip39mnemonic, &account_to_import.bip39passphrase);
+        let id = generate_id(&bip39_mnemonic, &account_to_import.bip39_passphrase);
         Account {
             id,
             external: true,
             created_at: account_to_import.created_at,
-            bip39mnemonic: account_to_import.bip39mnemonic,
-            bip39passphrase: account_to_import.bip39passphrase,
+            bip39_mnemonic: account_to_import.bip39_mnemonic,
+            bip39_passphrase: account_to_import.bip39_passphrase,
+            subaccounts_count: account_to_import.subaccounts_count,
         }
     }
 }
@@ -93,8 +97,8 @@ impl Account {
     }
 
     fn get_seed(&self) -> Result<bip39::Seed, &'static str> {
-        let bip39mnemonic = bip39::Mnemonic::from_phrase(&self.bip39mnemonic, bip39::Language::Spanish).unwrap();
-        Ok(bip39::Seed::new(&bip39mnemonic, ""))
+        let bip39_mnemonic = bip39::Mnemonic::from_phrase(&self.bip39_mnemonic, bip39::Language::Spanish).unwrap();
+        Ok(bip39::Seed::new(&bip39_mnemonic, ""))
     }
 
     pub fn get_address(&self, account_id: &str, path: &str, snapshot_password: &str) -> Result<String, &'static str> {

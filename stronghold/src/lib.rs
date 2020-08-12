@@ -18,7 +18,8 @@ struct Stronghold;
 
 impl Stronghold {
 
-    fn find_record_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
+    // Find record id by account id
+    fn get_record_id_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
         let index = storage::get_index(snapshot_password);
         for (record_id,account_id) in index {
             if format!("{:?}",account_id) == account_id_target {
@@ -28,32 +29,37 @@ impl Stronghold {
         panic!("Unable to find record id with specified account id");
     }
 
-    pub fn get_account(&self, account_id: &str, snapshot_password: &str) -> Account {
+    // Get account by account id
+    pub fn get_account_by_id(&self, account_id: &str, snapshot_password: &str) -> Account {
         let index = storage::get_index(snapshot_password);
         let account: Option<Account>;
-        let record_id = self.find_record_id(account_id, snapshot_password);
+        let record_id = self.get_record_id_by_account_id(account_id, snapshot_password);
         let decrypted = storage::read(record_id, snapshot_password);
         self.decode_record(&decrypted)
     }
 
+    // Decode record into account
     fn decode_record(&self, decrypted: &str) -> Account {
         let x: Account = serde_json::from_str(&decrypted).expect("Error reading record from snapshot");
         x
     }
 
+    // Get account by record id
     fn get_account_by_record_id(&self, record_id: storage::Id, snapshot_password: &str) -> Account {
         let decrypted = storage::read(record_id, snapshot_password);
         self.decode_record(&decrypted)
     }
 
+    // Remove existent account
     pub fn remove_account(&self, account_id: &str, snapshot_password: &str) -> Account {
-        let record_id = self.find_record_id(account_id, snapshot_password);
+        let record_id = self.get_record_id_by_account_id(account_id, snapshot_password);
         let account = self.get_account_by_record_id(record_id,snapshot_password);
         storage::revoke(record_id, snapshot_password);
         storage::garbage_collect_vault(snapshot_password);
         account
     }
 
+    // Save account in a new record
     pub fn save_account(&self, account: &Account, snapshot_password: &str) -> storage::Id {
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
         storage::encrypt(&account.id, &account_serialized, snapshot_password)
@@ -89,38 +95,40 @@ impl Stronghold {
         accounts
     }
     
-    pub fn create_account(&self, bip39passphrase: Option<String>, snapshot_password: &str) -> Account {
+    // Create new account saving it
+    pub fn create_account(&self, bip39_passphrase: Option<String>, snapshot_password: &str) -> Account {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: Password is missing");
         }
-        let account = Account::new(AccountToCreate {bip39passphrase}).unwrap();
+        let account = Account::new(AccountToCreate {bip39_passphrase}).unwrap();
         self.save_account(&account,snapshot_password);
         account
     }
 
+    // Import new account saving it
     pub fn account_import(
         &self,
         created_at: u128,
-        last_decryption: Option<usize>,
-        decryption_counter: usize,
-        export_counter: usize,
-        bip39mnemonic: &str,
-        bip39passphrase: Option<&str>,
-        snapshot_password: &str
+        bip39_mnemonic: &str,
+        bip39_passphrase: Option<&str>,
+        snapshot_password: &str,
+        subaccounts_count: usize
     ) -> Account {
-        if bip39mnemonic.is_empty() {
-            panic!("Invalid parameters: bip39mnemonic is missing");
+        if bip39_mnemonic.is_empty() {
+            panic!("Invalid parameters: bip39_mnemonic is missing");
         }
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: password is missing");
         }
         let account: Account = AccountToImport {
             created_at,
-            bip39mnemonic: String::from(bip39mnemonic),
-            bip39passphrase: match bip39passphrase {
+            bip39_mnemonic: String::from(bip39_mnemonic),
+            bip39_passphrase: match bip39_passphrase {
                 Some(x) => Some(String::from(x)),
                 None => None
-            }
+            },
+            subaccounts_count
+
         }.into();
 
         self.save_account(&account,snapshot_password);
@@ -128,8 +136,21 @@ impl Stronghold {
         account
     }
 
+    // Returns an account by account id (increases the stored export counter)
     pub fn account_export(&self, account_id: &str, snapshot_password: &str) -> Account {
-        self.get_account(account_id, snapshot_password)
+        self.get_account_by_id(account_id, snapshot_password)
+    }
+
+    // Removes record from storage by record id
+    pub fn remove_record(&self, record_id: storage::Id, snapshot_password: &str) {
+        storage::revoke(record_id, snapshot_password);
+        storage::garbage_collect_vault(snapshot_password);
+    }
+
+    // Updates an account migrating its record
+    pub fn account_update(&self, account: Account, snapshot_password: &str) {
+        let id = self.get_record_id_by_account_id(&account.id, &snapshot_password);
+        
     }
 
     /*
