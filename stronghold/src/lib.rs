@@ -9,7 +9,7 @@ mod account;
 /// Stronghold Storage Module
 mod storage;
 
-use account::{Account,AccountToCreate,AccountToImport};
+use account::{Account,AccountToCreate,AccountToImport,Subaccount};
 use std::str;
 use serde_json;
 
@@ -112,7 +112,7 @@ impl Stronghold {
         bip39_mnemonic: &str,
         bip39_passphrase: Option<&str>,
         snapshot_password: &str,
-        subaccounts_count: usize
+        subaccounts_count: Vec<Subaccount>
     ) -> Account {
         if bip39_mnemonic.is_empty() {
             panic!("Invalid parameters: bip39_mnemonic is missing");
@@ -154,7 +154,9 @@ impl Stronghold {
         self.account_save(&account, &snapshot_password)
     }
 
-    
+    /*fn subaccount_add(&self, account: Account, snapshot_password: &str) -> usize {
+
+    }*/
 
     /*
     pub fn transaction_sign() {

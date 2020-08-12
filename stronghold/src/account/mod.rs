@@ -6,6 +6,10 @@ use bip39;
 use bitcoin::network::constants::Network;
 use std::str::FromStr;
 
+mod subaccount;
+
+pub use subaccount::{Subaccount};
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
     pub id: String,
@@ -13,7 +17,7 @@ pub struct Account {
     created_at: u128,
     bip39_mnemonic: String,
     bip39_passphrase: Option<String>,
-    subaccounts_count: usize
+    subaccounts_count: Vec<Subaccount>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -26,7 +30,7 @@ pub struct AccountToImport {
     pub created_at: u128,
     pub bip39_mnemonic: String,
     pub bip39_passphrase: Option<String>,
-    pub subaccounts_count: usize
+    pub subaccounts_count: Vec<Subaccount>
 }
 
 pub fn generate_id(bip39_mnemonic: &bip39::Mnemonic, bip39_passphrase: &Option<String>) -> String {
@@ -65,7 +69,7 @@ impl From<AccountToCreate> for Account {
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis(),
             bip39_mnemonic: String::from(bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase()),
             bip39_passphrase: account_to_create.bip39_passphrase,
-            subaccounts_count: 1
+            subaccounts_count: Vec::new()
         }
     }
 }
