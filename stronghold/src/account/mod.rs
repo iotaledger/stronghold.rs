@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 mod subaccount;
 
-pub use subaccount::{Subaccount};
+pub use subaccount::{SubAccount};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
@@ -17,7 +17,7 @@ pub struct Account {
     created_at: u128,
     bip39_mnemonic: String,
     bip39_passphrase: Option<String>,
-    pub subaccounts: Vec<Subaccount>
+    pub subaccounts: Vec<SubAccount>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -30,7 +30,7 @@ pub struct AccountToImport {
     pub created_at: u128,
     pub bip39_mnemonic: String,
     pub bip39_passphrase: Option<String>,
-    pub subaccounts: Vec<Subaccount>
+    pub subaccounts: Vec<SubAccount>
 }
 
 pub fn generate_id(bip39_mnemonic: &bip39::Mnemonic, bip39_passphrase: &Option<String>) -> String {
@@ -116,7 +116,7 @@ impl Account {
     }
     
     pub fn add_subaccount(&mut self, label: String) {
-        self.subaccounts.push(Subaccount::new(label))
+        self.subaccounts.push(SubAccount::new(label))
     }
 
     

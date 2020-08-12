@@ -9,7 +9,7 @@ mod account;
 /// Stronghold Storage Module
 mod storage;
 
-use account::{Account,AccountToCreate,AccountToImport,Subaccount};
+use account::{Account,AccountToCreate,AccountToImport,SubAccount};
 use std::str;
 use serde_json;
 
