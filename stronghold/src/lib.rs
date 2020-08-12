@@ -112,7 +112,7 @@ impl Stronghold {
         bip39_mnemonic: &str,
         bip39_passphrase: Option<&str>,
         snapshot_password: &str,
-        subaccounts: Vec<Subaccount>
+        subaccounts: Vec<SubAccount>
     ) -> Account {
         if bip39_mnemonic.is_empty() {
             panic!("Invalid parameters: bip39_mnemonic is missing");
