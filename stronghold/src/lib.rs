@@ -54,7 +54,7 @@ impl Stronghold {
     pub fn remove_account(&self, account_id: &str, snapshot_password: &str) -> Account {
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
         let account = self.account_get_by_record_id(&record_id,snapshot_password);
-        storage::revoke(&record_id, snapshot_password);
+        storage::revoke(record_id, snapshot_password);
         storage::garbage_collect_vault(snapshot_password);
         account
     }
@@ -142,7 +142,7 @@ impl Stronghold {
     }
 
     // Removes record from storage by record id
-    pub fn record_remove(&self, record_id: &storage::Id, snapshot_password: &str) {
+    pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
         storage::revoke(record_id, snapshot_password);
         storage::garbage_collect_vault(snapshot_password);
     }
@@ -150,7 +150,7 @@ impl Stronghold {
     // Updates an account migrating its record
     pub fn account_update(&self, account: Account, snapshot_password: &str) -> storage::Id {
         let record_id = self.record_get_by_account_id(&account.id, &snapshot_password);
-        self.record_remove(&record_id, &snapshot_password);
+        self.record_remove(record_id, &snapshot_password);
         self.account_save(&account, &snapshot_password)
     }
 
