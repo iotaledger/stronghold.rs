@@ -76,7 +76,7 @@ impl From<AccountToCreate> for Account {
 
 impl From<AccountToImport> for Account {
     fn from(account_to_import: AccountToImport) -> Self {
-        let bip39_mnemonic = bip39::Mnemonic::from_phrase(&account_to_import.bip39_mnemonic, bip39::Language::Spanish).expect("Invalid mnemonic");
+        let bip39_mnemonic = bip39::Mnemonic::from_phrase(&account_to_import.bip39_mnemonic, bip39::Language::English).expect("Invalid mnemonic");
         // ID generation
         let id = generate_id(&bip39_mnemonic, &account_to_import.bip39_passphrase);
         Account {
