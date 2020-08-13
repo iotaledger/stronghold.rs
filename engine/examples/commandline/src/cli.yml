@@ -44,6 +44,12 @@ subcommands:
             about: the password for the snapshot.
             required: true
             takes_value: true
+        - all:
+            short: A
+            long: all
+            value_name: all
+            about: include revoked records
+            takes_value: false
   - read:
       about: read an associated record by id
       args:

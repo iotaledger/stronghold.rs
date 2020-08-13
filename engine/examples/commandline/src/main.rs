@@ -83,7 +83,11 @@ fn list_command(matches: &ArgMatches) {
             let snapshot = get_snapshot_path();
             let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-            client.list_ids();
+            if matches.is_present("all") {
+                client.list_all_ids();
+            } else {
+                client.list_ids();
+            }
 
             let snapshot = get_snapshot_path();
             serialize_to_snapshot(&snapshot, pass, client);

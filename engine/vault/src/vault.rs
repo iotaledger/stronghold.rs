@@ -68,6 +68,14 @@ impl<P: BoxProvider> DBView<P> {
             .map(|d| (d.id, d.record_hint))
     }
 
+    /// Creates an iterator over all valid records ids.
+    pub fn all<'a>(&'a self) -> impl Iterator<Item = Id> + 'a {
+        self.chain
+            .all()
+            .filter_map(|e| e.typed::<DataTransaction>())
+            .map(|d| d.id)
+    }
+
     /// Check the balance of valid records compared to total records
     pub fn absolute_balance(&self) -> (usize, usize) {
         (self.valid.all().count(), self.chain.all().count())
