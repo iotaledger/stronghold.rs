@@ -88,9 +88,6 @@ fn list_command(matches: &ArgMatches) {
             } else {
                 client.list_ids();
             }
-
-            let snapshot = get_snapshot_path();
-            serialize_to_snapshot(&snapshot, pass, client);
         }
     }
 }
@@ -168,6 +165,29 @@ fn take_ownership_command(matches: &ArgMatches) {
     }
 }
 
+// Purge a record from the chain: revoke and then garbage collect.
+fn purge_command(matches: &ArgMatches) {
+    if let Some(matches) = matches.subcommand_matches("purge") {
+        if let Some(ref pass) = matches.value_of("password") {
+            if let Some(ref id) = matches.value_of("id") {
+                let snapshot = get_snapshot_path();
+                let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
+
+                let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
+                let id = Id::load(&id).expect("Couldn't build a new Id");
+
+                client.revoke_record_by_id(id);
+                client.perform_gc();
+
+                assert!(client.db.take(|db| db.all().find(|i| i == &id).is_none()));
+
+                let snapshot = get_snapshot_path();
+                serialize_to_snapshot(&snapshot, pass, client);
+            }
+        }
+    }
+}
+
 fn main() {
     let yaml = load_yaml!("cli.yml");
     let matches = App::from(yaml).get_matches();
@@ -179,4 +199,5 @@ fn main() {
     revoke_command(&matches);
     garbage_collect_vault_command(&matches);
     take_ownership_command(&matches);
+    purge_command(&matches);
 }
