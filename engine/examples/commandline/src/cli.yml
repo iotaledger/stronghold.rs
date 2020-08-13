@@ -58,7 +58,7 @@ subcommands:
             short: i
             long: id
             value_name: id
-            about: the id of the record you want to revoke.
+            about: the id of the record you want to read.
             required: true
             takes_value: true
   - revoke:
