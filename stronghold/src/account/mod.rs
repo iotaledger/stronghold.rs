@@ -7,6 +7,8 @@ use bitcoin::network::constants::Network;
 use std::str::FromStr;
 
 mod subaccount;
+mod dummybip39;
+use dummybip39::dummy_mnemonic_to_ed25_seed;
 
 pub use subaccount::{SubAccount};
 
@@ -37,9 +39,9 @@ pub fn generate_id(bip39_mnemonic: &bip39::Mnemonic, bip39_passphrase: &Option<S
         // Account ID generation: 1/2 : Derive seed into the first address
         let seed;
         if let Some(bip39_passphrase) = bip39_passphrase {
-            seed = bip39::Seed::new(bip39_mnemonic, &bip39_passphrase);
+            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, &bip39_passphrase);
         }else{
-            seed = bip39::Seed::new(bip39_mnemonic, "");
+            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
         }
         let mut extended_private = bitcoin::util::bip32::ExtendedPrivKey::new_master(Network::Bitcoin, seed.as_bytes()).unwrap();
         let secp256k1 = bitcoin::secp256k1::Secp256k1::new();
@@ -50,15 +52,14 @@ pub fn generate_id(bip39_mnemonic: &bip39::Mnemonic, bip39_passphrase: &Option<S
         
         // Account ID generation: 2/2 : Hash generated address in order to get ID
         let mut hasher = Sha256::new();
-        hasher.update(address);
-        hex::encode(&hasher.finalize())
+        hasher.input(address);
+        hex::encode(&hasher.result())
 }
 
 impl From<AccountToCreate> for Account {
     fn from(account_to_create: AccountToCreate) -> Self {
         // Mnemonic generation
         let bip39_mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
-        let bip39_mnemonic_str = String::from(bip39_mnemonic.phrase());
 
         // ID generation
         let id = generate_id(&bip39_mnemonic, &account_to_create.bip39_passphrase);
@@ -76,7 +77,7 @@ impl From<AccountToCreate> for Account {
 
 impl From<AccountToImport> for Account {
     fn from(account_to_import: AccountToImport) -> Self {
-        let bip39_mnemonic = bip39::Mnemonic::from_phrase(&account_to_import.bip39_mnemonic, bip39::Language::English).expect("Invalid mnemonic");
+        let bip39_mnemonic = bip39::Mnemonic::from_phrase(&account_to_import.bip39_mnemonic, bip39::Language::Spanish).expect("Invalid mnemonic");
         // ID generation
         let id = generate_id(&bip39_mnemonic, &account_to_import.bip39_passphrase);
         Account {
