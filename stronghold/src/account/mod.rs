@@ -45,7 +45,7 @@ pub fn generate_id(bip39_mnemonic: &bip39::Mnemonic, bip39_passphrase: &Option<S
         }
         let mut extended_private = bitcoin::util::bip32::ExtendedPrivKey::new_master(Network::Bitcoin, seed.as_bytes()).unwrap();
         let secp256k1 = bitcoin::secp256k1::Secp256k1::new();
-        let derivation_path = bitcoin::util::bip32::DerivationPath::from_str("m/44'/4218'/0'/0/0").unwrap();
+        let derivation_path = bitcoin::util::bip32::DerivationPath::from_str("m/44'/4218'/0'/0'/0'").unwrap();
         extended_private = extended_private.derive_priv(&secp256k1,&derivation_path).unwrap();
         let extended_public = bitcoin::util::bip32::ExtendedPubKey::from_private(&secp256k1, &extended_private);
         let address = format!("{}",bitcoin::util::address::Address::p2wpkh(&extended_public.public_key, bitcoin::network::constants::Network::Bitcoin));
