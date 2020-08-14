@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct SubAccount {
     label: String,
     receive_addresses_counter: usize,
-    change_addresses_counter: usize,
-    transactions: Vec<String>
+    change_addresses_counter: usize
 }
 
 impl SubAccount {
@@ -13,8 +12,7 @@ impl SubAccount {
         Self {
             label,
             receive_addresses_counter: 0,
-            change_addresses_counter: 0,
-            transactions: Vec::new()
+            change_addresses_counter: 0
         }
     }
 }
