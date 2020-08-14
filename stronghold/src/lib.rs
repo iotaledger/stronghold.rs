@@ -154,7 +154,12 @@ impl Stronghold {
         self.account_save(&account, &snapshot_password)
     }
 
-
+    pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) -> storage::Id {
+        let mut account = self.account_get_by_id(&account_id,snapshot_password);
+        let subaccount = SubAccount::new(String::from(label));
+        account.subaccounts.push(subaccount);
+        self.account_update(account,snapshot_password)
+    }
 
     /*fn subaccount_add(&self, account: Account, snapshot_password: &str) -> usize {
 
