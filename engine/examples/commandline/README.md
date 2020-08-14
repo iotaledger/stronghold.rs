@@ -56,15 +56,56 @@ Create a new chain by encrypting some data and get back the unique identifier
 of the newly created encrypted record containing our plain-text data:
 ```shell
 > stronghold encrypt --pass foo --plain secret text
-A2KVI4V0MTJf74KNqq5DAaCpMcK5hkx6
+zCeX9poxiirzBpiJGVE7wDReo5sYgyeS
 ```
 (Note that if you haven't/don't want to install the executable you can still
 run this as: `cargo run -- encrypt --pass foo --plain "secret text"`.)
 
 To read and decrypt the record we use the `read` command:
 ```shell
-> stronghold read --pass foo --id A2KVI4V0MTJf74KNqq5DAaCpMcK5hkx6
+> stronghold read --pass foo --id zCeX9poxiirzBpiJGVE7wDReo5sYgyeS
 Plain: "secret text"
+```
+
+In order to make the following examples less trivial, we create another entry:
+```shell
+> stronghold encrypt --pass foo --plain another secret is 42
+GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7
+```
+And now we can list the two records we currently have stored:
+```shell
+> stronghold list --pass foo
+Id: zCeX9poxiirzBpiJGVE7wDReo5sYgyeS, Hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+Id: GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7, Hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+```
+
+When we grow tired of keeping the record we can `revoke` it:
+```shell
+> stronghold revoke --pass foo --id zCeX9poxiirzBpiJGVE7wDReo5sYgyeS
+```
+And running the `list` command again we see that it has disappeared:
+```shell
+> stronghold list --pass foo
+Id: GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7, Hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+```
+But! The record is not actually removed until a garbage collection of the
+chain has taken place.
+Here's how you can see all records stored (not only the valid/unrevoked
+records):
+```shell
+> stronghold list --pass foo --all
+Id: zCeX9poxiirzBpiJGVE7wDReo5sYgyeS
+Id: GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7
+```
+So let's make sure it's actually removed:
+```shell
+> stronghold garbage_collect --pass foo
+Id: GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7, Hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+```
+And check that it has in fact been removed:
+```shell
+> stronghold list --pass foo --all
+Id: GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7
 ```
 ## Usage
 ```

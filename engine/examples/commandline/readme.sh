@@ -84,14 +84,47 @@ environment variable.
 Create a new chain by encrypting some data and get back the unique identifier
 of the newly created encrypted record containing our plain-text data:
 EOF
-ID=$(run_example encrypt --pass foo --plain "secret text")
+ID0=$(run_example encrypt --pass foo --plain "secret text")
 cat <<EOF >> "$OUT"
 (Note that if you haven't/don't want to install the executable you can still
 run this as: \`cargo run -- encrypt --pass foo --plain "secret text"\`.)
 
 To read and decrypt the record we use the \`read\` command:
 EOF
-run_example read --pass foo --id "$ID" > /dev/null
+run_example read --pass foo --id "$ID0" > /dev/null
+cat <<EOF >> "$OUT"
+
+In order to make the following examples less trivial, we create another entry:
+EOF
+ID1=$(run_example encrypt --pass foo --plain "another secret is 42")
+cat <<EOF >> "$OUT"
+And now we can list the two records we currently have stored:
+EOF
+run_example list --pass foo > /dev/null
+cat <<EOF >> "$OUT"
+
+When we grow tired of keeping the record we can \`revoke\` it:
+EOF
+run_example revoke --pass foo --id "$ID0" > /dev/null
+cat <<EOF >> "$OUT"
+And running the \`list\` command again we see that it has disappeared:
+EOF
+run_example list --pass foo > /dev/null
+cat <<EOF >> "$OUT"
+But! The record is not actually removed until a garbage collection of the
+chain has taken place.
+Here's how you can see all records stored (not only the valid/unrevoked
+records):
+EOF
+run_example list --pass foo --all > /dev/null
+cat <<EOF >> "$OUT"
+So let's make sure it's actually removed:
+EOF
+run_example garbage_collect --pass foo > /dev/null
+cat <<EOF >> "$OUT"
+And check that it has in fact been removed:
+EOF
+run_example list --pass foo --all > /dev/null
 
 cat <<EOF >> "$OUT"
 ## Usage
