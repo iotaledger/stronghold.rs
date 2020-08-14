@@ -30,7 +30,7 @@ impl Stronghold {
     }
 
     // Removes record from storage by record id
-    pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
+    fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
         storage::revoke(record_id, snapshot_password);
         storage::garbage_collect_vault(snapshot_password);
     }
