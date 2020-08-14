@@ -29,6 +29,18 @@ impl Stronghold {
         panic!("Unable to find record id with specified account id");
     }
 
+    // Removes record from storage by record id
+    pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
+        storage::revoke(record_id, snapshot_password);
+        storage::garbage_collect_vault(snapshot_password);
+    }
+
+    // Decode record into account
+    fn record_decode(&self, decrypted: &str) -> Account {
+        let x: Account = serde_json::from_str(&decrypted).expect("Error reading record from snapshot");
+        x
+    }
+
     // Get account by account id
     pub fn account_get_by_id(&self, account_id: &str, snapshot_password: &str) -> Account {
         let index = storage::get_index(snapshot_password);
@@ -36,12 +48,6 @@ impl Stronghold {
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
         let decrypted = storage::read(record_id, snapshot_password);
         self.record_decode(&decrypted)
-    }
-
-    // Decode record into account
-    fn record_decode(&self, decrypted: &str) -> Account {
-        let x: Account = serde_json::from_str(&decrypted).expect("Error reading record from snapshot");
-        x
     }
 
     // Get account by record id
@@ -141,12 +147,6 @@ impl Stronghold {
         self.account_get_by_id(account_id, snapshot_password)
     }
 
-    // Removes record from storage by record id
-    pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
-        storage::revoke(record_id, snapshot_password);
-        storage::garbage_collect_vault(snapshot_password);
-    }
-
     // Updates an account migrating its record
     pub fn account_update(&self, account: Account, snapshot_password: &str) -> storage::Id {
         let record_id = self.record_get_by_account_id(&account.id, &snapshot_password);
@@ -154,6 +154,7 @@ impl Stronghold {
         self.account_save(&account, &snapshot_password)
     }
 
+    // Adds subaccount updating an account
     pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) -> storage::Id {
         let mut account = self.account_get_by_id(&account_id,snapshot_password);
         let subaccount = SubAccount::new(String::from(label));
