@@ -5,7 +5,26 @@ set -o nounset -o pipefail -o errexit
 OUT=README.md
 
 DEFAULT_SNAPSHOT_DIR='~/.engine'
-TARGET="cargo run --"
+EXECUTABLE=stronghold
+PS='>'
+
+cargo build
+TARGET="target/debug/$EXECUTABLE"
+
+TMP=$(mktemp -d)
+trap 'rm -rf $TMP' EXIT
+
+export STRONGHOLD=$TMP/engine
+run_example() {
+    cat <<EOF >> "$OUT"
+\`\`\`shell
+$PS $EXECUTABLE $@
+EOF
+    $TARGET "$@" 2>&1 | tee -a "$OUT"
+    cat <<EOF >> "$OUT"
+\`\`\`
+EOF
+}
 
 cat <<EOF > "$OUT"
 # A Stronghold commandline interface
@@ -37,12 +56,12 @@ discarded in this process.
 ## Installation
 Build and install using [cargo](https://doc.rust-lang.org/cargo/):
 \`\`\`shell
-cargo install --path .
+$PS cargo install --path .
 \`\`\`
-By default this will install the \`stronghold\` executable under the user's cargo
-directory: \`~/.cargo/bin/stronghold\`, so make sure it's in your \`PATH\`:
+By default this will install the \`$EXECUTABLE\` executable under the user's cargo
+directory: \`~/.cargo/bin/$EXECUTABLE\`, so make sure it's in your \`PATH\`:
 \`\`\`shell
-export PATH=~/.cargo/bin:\$PATH
+$PS export PATH=~/.cargo/bin:\$PATH
 \`\`\`
 and refer to your shell's manual to make the change permanent
 ([bash](https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html#Bash-Startup-Files),
@@ -51,24 +70,30 @@ and refer to your shell's manual to make the change permanent
 If you only want to play around without installing anything you can run the
 commmandline interface directly:
 \`\`\`shell
-cargo run -- --help
+$PS cargo run -- --help
 \`\`\`
-That is in the usage examples bellow replace \`stronghold\` with \`cargo run --\`
+That is in the usage examples bellow replace \`$EXECUTABLE\` with \`cargo run --\`
 (note however that by default the snapshots will still be saved under the
 \`$DEFAULT_SNAPSHOT_DIR\` directory).
 
 ## Examples
-By default, \`stronghold\` will store its snapshots under the \`$DEFAULT_SNAPSHOT_DIR\`
+By default, \`$EXECUTABLE\` will store its snapshots under the \`$DEFAULT_SNAPSHOT_DIR\`
 directory. The location can be overridden by setting the \`STRONGHOLD\`
 environment variable.
 
-Create a new chain by encrypting some data:
-\`\`\`shell
-stronghold encrypt --pass foo --plain "secret text"
-\`\`\`
+Create a new chain by encrypting some data and get back the unique identifier
+of the newly created encrypted record containing our plain-text data:
+EOF
+ID=$(run_example encrypt --pass foo --plain "secret text")
+cat <<EOF >> "$OUT"
 (Note that if you haven't/don't want to install the executable you can still
 run this as: \`cargo run -- encrypt --pass foo --plain "secret text"\`.)
 
+To read and decrypt the record we use the \`read\` command:
+EOF
+run_example read --pass foo --id "$ID" > /dev/null
+
+cat <<EOF >> "$OUT"
 ## Usage
 \`\`\`
 EOF

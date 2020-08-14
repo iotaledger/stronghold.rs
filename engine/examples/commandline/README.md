@@ -27,12 +27,12 @@ discarded in this process.
 ## Installation
 Build and install using [cargo](https://doc.rust-lang.org/cargo/):
 ```shell
-cargo install --path .
+> cargo install --path .
 ```
 By default this will install the `stronghold` executable under the user's cargo
 directory: `~/.cargo/bin/stronghold`, so make sure it's in your `PATH`:
 ```shell
-export PATH=~/.cargo/bin:$PATH
+> export PATH=~/.cargo/bin:$PATH
 ```
 and refer to your shell's manual to make the change permanent
 ([bash](https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html#Bash-Startup-Files),
@@ -41,7 +41,7 @@ and refer to your shell's manual to make the change permanent
 If you only want to play around without installing anything you can run the
 commmandline interface directly:
 ```shell
-cargo run -- --help
+> cargo run -- --help
 ```
 That is in the usage examples bellow replace `stronghold` with `cargo run --`
 (note however that by default the snapshots will still be saved under the
@@ -52,13 +52,20 @@ By default, `stronghold` will store its snapshots under the `~/.engine`
 directory. The location can be overridden by setting the `STRONGHOLD`
 environment variable.
 
-Create a new chain by encrypting some data:
+Create a new chain by encrypting some data and get back the unique identifier
+of the newly created encrypted record containing our plain-text data:
 ```shell
-stronghold encrypt --pass foo --plain "secret text"
+> stronghold encrypt --pass foo --plain secret text
+A2KVI4V0MTJf74KNqq5DAaCpMcK5hkx6
 ```
 (Note that if you haven't/don't want to install the executable you can still
 run this as: `cargo run -- encrypt --pass foo --plain "secret text"`.)
 
+To read and decrypt the record we use the `read` command:
+```shell
+> stronghold read --pass foo --id A2KVI4V0MTJf74KNqq5DAaCpMcK5hkx6
+Plain: "secret text"
+```
 ## Usage
 ```
 Engine POC CLI 1.0
