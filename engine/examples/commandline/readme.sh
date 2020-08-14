@@ -1,3 +1,12 @@
+#!/bin/bash
+
+set -o nounset -o pipefail -o errexit
+
+OUT=README.md
+
+DEFAULT_SNAPSHOT_DIR='~/.engine'
+
+cat <<EOF > "$OUT"
 # A Stronghold commandline interface
 
 To show off the features of this set of libraries, an MVP command line tool was
@@ -26,60 +35,45 @@ discarded in this process.
 
 ## Installation
 Build and install using [cargo](https://doc.rust-lang.org/cargo/):
-```shell
+\`\`\`shell
 cargo install --path .
-```
-By default this will install the `stronghold` executable under the user's cargo
-directory: `~/.cargo/bin/stronghold`, so make sure it's in your `PATH`:
-```shell
-export PATH=~/.cargo/bin:$PATH
-```
+\`\`\`
+By default this will install the \`stronghold\` executable under the user's cargo
+directory: \`~/.cargo/bin/stronghold\`, so make sure it's in your \`PATH\`:
+\`\`\`shell
+export PATH=~/.cargo/bin:\$PATH
+\`\`\`
 and refer to your shell's manual to make the change permanent
 ([bash](https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html#Bash-Startup-Files),
 [zsh](http://zsh.sourceforge.net/Doc/Release/Files.html#Startup_002fShutdown-Files)).
 
 If you only want to play around without installing anything you can run the
 commmandline interface directly:
-```shell
+\`\`\`shell
 cargo run -- --help
-```
-That is in the usage examples bellow replace `stronghold` with `cargo run --`
+\`\`\`
+That is in the usage examples bellow replace \`stronghold\` with \`cargo run --\`
 (note however that by default the snapshots will still be saved under the
-`~/.engine` directory).
+\`$DEFAULT_SNAPSHOT_DIR\` directory).
 
 ### Examples
-By default, `stronghold` will store its snapshots under the `~/.engine`
-directory. The location can be overridden by setting the `STRONGHOLD`
+By default, \`stronghold\` will store its snapshots under the \`$DEFAULT_SNAPSHOT_DIR\`
+directory. The location can be overridden by setting the \`STRONGHOLD\`
 environment variable.
 
 Create a new chain by encrypting some data:
-```shell
+\`\`\`shell
 stronghold encrypt --pass foo --plain "secret text"
-```
+\`\`\`
 (Note that if you haven't/don't want to install the executable you can still
-run this as: `cargo run -- encrypt --pass foo --plain "secret text"`.)
+run this as: \`cargo run -- encrypt --pass foo --plain "secret text"\`.)
 
 ### Usage
-```
-Engine POC CLI 1.0
-Tensor Programming <tensordeveloper@gmail.com>
-Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
+\`\`\`
+EOF
 
-USAGE:
-    stronghold [SUBCOMMAND]
+cargo run -- --help >> "$OUT"
 
-FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
-
-SUBCOMMANDS:
-    encrypt            
-    garbage_collect    Garbage collect the entire vault and remove revoked records.
-    help               Prints this message or the help of the given subcommand(s)
-    list               Lists the ids of the records inside of your main snapshot
-    purge              Revoke a record by id and perform a gargbage collect
-    read               read an associated record by id
-    revoke             Revoke a record by id
-    snapshot           load from an existing snapshot
-    take_ownership     Take ownership of an existing chain.
-```
+cat <<EOF >> "$OUT"
+\`\`\`
+EOF
