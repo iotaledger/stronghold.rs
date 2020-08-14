@@ -4,6 +4,7 @@ use hmac::Hmac;
 use bip39;
 use bitcoin;
 use std::str::FromStr;
+use bech32::ToBase32;
 
 use bee_signing_ext::binary::ed25519;
 
@@ -47,4 +48,14 @@ pub(crate) fn dummy_derive(mut seed_to_derivate: bee_signing_ext::binary::ed2551
         seed_to_derivate = ed25519::Seed::from_bytes(privkey_bytes).unwrap();
     }
     panic!("Unexpected derivation path")
+}
+
+pub(crate) fn dummy_derive_into_address(ed_priv: ed25519::PrivateKey) {
+    let pubkey = ed_priv.generate_public_key();
+    let pubkey_as_bytes_in_box: Box<[u8]> = Box::new(*pubkey.as_bytes());
+    let mut pubkey_as_bytes_in_vec: Vec<u8> = pubkey_as_bytes_in_box.into_vec();
+    let prefix: Vec<u8> = vec![1];//prefix for ed25 addresses
+    let mut data = prefix;
+    data.append(&mut pubkey_as_bytes_in_vec);
+    bech32::encode("iota", data.to_base32()).unwrap();
 }
