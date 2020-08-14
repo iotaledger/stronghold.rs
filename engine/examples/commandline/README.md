@@ -47,7 +47,7 @@ That is in the usage examples bellow replace `stronghold` with `cargo run --`
 (note however that by default the snapshots will still be saved under the
 `~/.engine` directory).
 
-### Examples
+## Examples
 By default, `stronghold` will store its snapshots under the `~/.engine`
 directory. The location can be overridden by setting the `STRONGHOLD`
 environment variable.
@@ -59,7 +59,7 @@ stronghold encrypt --pass foo --plain "secret text"
 (Note that if you haven't/don't want to install the executable you can still
 run this as: `cargo run -- encrypt --pass foo --plain "secret text"`.)
 
-### Usage
+## Usage
 ```
 Engine POC CLI 1.0
 Tensor Programming <tensordeveloper@gmail.com>
@@ -82,4 +82,71 @@ SUBCOMMANDS:
     revoke             Revoke a record by id
     snapshot           load from an existing snapshot
     take_ownership     Take ownership of an existing chain.
+```
+
+### encrypt
+```
+stronghold-encrypt 
+
+USAGE:
+    stronghold encrypt --plain <plaintext> --pass <password>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -w, --pass <password>      the password you want to use to encrypt/decrypt the snapshot.
+    -p, --plain <plaintext>    a plaintext value that you want to encrypt.
+```
+
+### read
+```
+stronghold-read 
+read an associated record by id
+
+USAGE:
+    stronghold read --pass <password> --id <id>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -i, --id <id>            the id of the record you want to read.
+    -w, --pass <password>    the password for the snapshot.
+```
+
+### list
+```
+stronghold-list 
+Lists the ids of the records inside of your main snapshot
+
+USAGE:
+    stronghold list [FLAGS] --pass <password>
+
+FLAGS:
+    -A, --all        include revoked records
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -w, --pass <password>    the password for the snapshot.
+```
+
+### revoke
+```
+stronghold-revoke 
+Revoke a record by id
+
+USAGE:
+    stronghold revoke --pass <password> --id <id>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -i, --id <id>            the id of the entry
+    -w, --pass <password>    the password for the snapshot.
 ```

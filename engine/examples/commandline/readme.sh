@@ -5,6 +5,7 @@ set -o nounset -o pipefail -o errexit
 OUT=README.md
 
 DEFAULT_SNAPSHOT_DIR='~/.engine'
+TARGET="cargo run --"
 
 cat <<EOF > "$OUT"
 # A Stronghold commandline interface
@@ -56,7 +57,7 @@ That is in the usage examples bellow replace \`stronghold\` with \`cargo run --\
 (note however that by default the snapshots will still be saved under the
 \`$DEFAULT_SNAPSHOT_DIR\` directory).
 
-### Examples
+## Examples
 By default, \`stronghold\` will store its snapshots under the \`$DEFAULT_SNAPSHOT_DIR\`
 directory. The location can be overridden by setting the \`STRONGHOLD\`
 environment variable.
@@ -68,12 +69,20 @@ stronghold encrypt --pass foo --plain "secret text"
 (Note that if you haven't/don't want to install the executable you can still
 run this as: \`cargo run -- encrypt --pass foo --plain "secret text"\`.)
 
-### Usage
+## Usage
 \`\`\`
 EOF
 
-cargo run -- --help >> "$OUT"
+$TARGET --help >> "$OUT"
 
 cat <<EOF >> "$OUT"
 \`\`\`
 EOF
+
+for CMD in "encrypt" "read" "list" "revoke"; do
+  echo >> "$OUT"
+  echo "### $CMD" >> "$OUT"
+  echo '```' >> "$OUT"
+  $TARGET "$CMD" --help 2>&1 >> "$OUT"
+  echo '```' >> "$OUT"
+done
