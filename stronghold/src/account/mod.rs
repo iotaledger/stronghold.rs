@@ -37,24 +37,16 @@ pub struct AccountToImport {
     pub subaccounts: Vec<SubAccount>
 }
 
-pub fn generate_id(bip39_mnemonic: &bip39::Mnemonic, bip39_passphrase: &Option<String>) -> String {
+pub fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
         // Account ID generation: 1/2 : Derive seed into the first address
         let seed;
         if let Some(bip39_passphrase) = bip39_passphrase {
-            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic.phrase(), &bip39_passphrase);
+            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, &bip39_passphrase);
         }else{
-            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic.phrase(), "");
+            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
         }
-
-
-
-
-        let mut extended_private = bitcoin::util::bip32::ExtendedPrivKey::new_master(Network::Bitcoin, seed.as_bytes()).unwrap();
-        let secp256k1 = bitcoin::secp256k1::Secp256k1::new();
-        let derivation_path = bitcoin::util::bip32::DerivationPath::from_str("m/44'/4218'/0'/0'/0'").unwrap();
-        extended_private = extended_private.derive_priv(&secp256k1,&derivation_path).unwrap();
-        let extended_public = bitcoin::util::bip32::ExtendedPubKey::from_private(&secp256k1, &extended_private);
-        let address = format!("{}",bitcoin::util::address::Address::p2wpkh(&extended_public.public_key, bitcoin::network::constants::Network::Bitcoin));
+        let privkey = dummy_derive(seed,"m/44'/4218'/0'/0'");
+        let address = dummy_derive_into_address(privkey);
         
         // Account ID generation: 2/2 : Hash generated address in order to get ID
         let mut hasher = Sha256::new();
@@ -68,7 +60,7 @@ impl From<AccountToCreate> for Account {
         let bip39_mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
 
         // ID generation
-        let id = generate_id(&bip39_mnemonic, &account_to_create.bip39_passphrase);
+        let id = generate_id(&bip39_mnemonic.phrase(), &account_to_create.bip39_passphrase);
 
         Account {
             id,
@@ -85,7 +77,7 @@ impl From<AccountToImport> for Account {
     fn from(account_to_import: AccountToImport) -> Self {
         let bip39_mnemonic = bip39::Mnemonic::from_phrase(&account_to_import.bip39_mnemonic, bip39::Language::Spanish).expect("Invalid mnemonic");
         // ID generation
-        let id = generate_id(&bip39_mnemonic, &account_to_import.bip39_passphrase);
+        let id = generate_id(&bip39_mnemonic.phrase(), &account_to_import.bip39_passphrase);
         Account {
             id,
             external: true,
