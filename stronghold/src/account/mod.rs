@@ -107,19 +107,12 @@ impl Account {
         account_to_import.into()
     }
 
-    fn get_seed(&self) -> Result<bip39::Seed, &'static str> {
-        let bip39_mnemonic = bip39::Mnemonic::from_phrase(&self.bip39_mnemonic, bip39::Language::Spanish).unwrap();
-        Ok(bip39::Seed::new(&bip39_mnemonic, ""))
-    }
-
-    pub fn get_address(&self, path: &str, snapshot_password: &str) -> Result<String, &'static str> {
-        let seed = self.get_seed().unwrap();
-        let mut extended_private = bitcoin::util::bip32::ExtendedPrivKey::new_master(Network::Bitcoin, seed.as_bytes()).unwrap();
-        let secp256k1 = bitcoin::secp256k1::Secp256k1::new();
-        let derivation_path = bitcoin::util::bip32::DerivationPath::from_str(path).unwrap();
-        extended_private = extended_private.derive_priv(&secp256k1,&derivation_path).unwrap();
-        let extended_public = bitcoin::util::bip32::ExtendedPubKey::from_private(&secp256k1, &extended_private);
-        Ok(format!("{}",bitcoin::util::address::Address::p2wpkh(&extended_public.public_key, bitcoin::network::constants::Network::Bitcoin)))
+    fn get_seed(&self) -> ed25519::Seed {
+        let bip39_passphrase = match &self.bip39_passphrase {
+            Some(x) => x,
+            None => ""
+        };
+        dummy_mnemonic_to_ed25_seed(&self.bip39_mnemonic,&bip39_passphrase)
     }
     
     pub fn add_subaccount(&mut self, label: String) {
