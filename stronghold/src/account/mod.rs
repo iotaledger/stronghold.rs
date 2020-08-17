@@ -9,7 +9,7 @@ use bitcoin;
 
 mod subaccount;
 mod dummybip39;
-use dummybip39::{dummy_mnemonic_to_ed25_seed,dummy_derive};
+use dummybip39::{dummy_mnemonic_to_ed25_seed,dummy_derive,dummy_derive_into_address};
 use bee_signing_ext::binary::ed25519;
 
 pub use subaccount::{SubAccount};
@@ -122,6 +122,11 @@ impl Account {
     fn get_privkey(self, derivation_path: String) -> ed25519::PrivateKey {
         let seed = self.get_seed();
         dummy_derive(seed,&derivation_path)
+    }
+
+    pub fn get_address(self, derivation_path: String) -> String {
+        let privkey = self.get_privkey(derivation_path);
+        dummy_derive_into_address(privkey)
     }
 
 }
