@@ -173,10 +173,9 @@ impl Stronghold {
     }
 
     // Signs a message
-    pub fn message_sign(&self, message: &str, account_id: &str, sub_account_index: usize, internal: bool, index: usize, snapshot_password: &str) {
+    pub fn message_sign(&self, message: &str, account_id: &str, sub_account_index: usize, internal: bool, index: usize, snapshot_password: &str) -> [u8; 64] {
         let account = self.account_get_by_id(account_id, snapshot_password);
-        account.sign_message(message.as_bytes(), format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index));
-
+        account.sign_message(message.as_bytes(), format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index))
     }
 
     /*
