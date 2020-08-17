@@ -3,9 +3,6 @@ use sha2::{Sha256, Digest};
 use hex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use bip39;
-use bitcoin::network::constants::Network;
-use std::str::FromStr;
-use bitcoin;
 
 mod subaccount;
 mod dummybip39;
