@@ -26,10 +26,10 @@ fn _pbkdf2(input: &[u8], salt: &str) -> Vec<u8> {
 
 // todo: replace with bip39 library
 
-pub(crate) fn dummy_mnemonic_to_ed25_seed(mnemonic: &bip39::Mnemonic, password: &str) -> ed25519::Seed {    
+pub(crate) fn dummy_mnemonic_to_ed25_seed(mnemonic: &str, password: &str) -> ed25519::Seed {
     let salt = format!("mnemonic{}", password);
     let normalized_salt = salt.nfkd().to_string();
-    let bytes = _pbkdf2(mnemonic.phrase().as_bytes(), &normalized_salt);
+    let bytes = _pbkdf2(mnemonic.as_bytes(), &normalized_salt);
     ed25519::Seed::from_bytes(&bytes).unwrap()
 }
 
