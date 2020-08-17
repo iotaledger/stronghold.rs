@@ -5,10 +5,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bip39;
 use bitcoin::network::constants::Network;
 use std::str::FromStr;
+use bitcoin;
 
 mod subaccount;
 mod dummybip39;
-use dummybip39::dummy_mnemonic_to_ed25_seed;
+use dummybip39::{dummy_mnemonic_to_ed25_seed,dummy_derive};
+use bee_signing_ext::binary::ed25519;
 
 pub use subaccount::{SubAccount};
 
@@ -43,6 +45,10 @@ pub fn generate_id(bip39_mnemonic: &bip39::Mnemonic, bip39_passphrase: &Option<S
         }else{
             seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
         }
+
+
+
+
         let mut extended_private = bitcoin::util::bip32::ExtendedPrivKey::new_master(Network::Bitcoin, seed.as_bytes()).unwrap();
         let secp256k1 = bitcoin::secp256k1::Secp256k1::new();
         let derivation_path = bitcoin::util::bip32::DerivationPath::from_str("m/44'/4218'/0'/0'/0'").unwrap();
@@ -93,12 +99,12 @@ impl From<AccountToImport> for Account {
 
 impl Account {
 
-    pub fn new(account_to_create: AccountToCreate) -> Result<Account, &'static str> {
-        Ok(account_to_create.into())
+    pub fn new(account_to_create: AccountToCreate) -> Account {
+        account_to_create.into()
     }
 
-    pub fn import(account_to_import: AccountToImport) -> Result<Account, &'static str> {
-        Ok(account_to_import.into())
+    pub fn import(account_to_import: AccountToImport) -> Account {
+        account_to_import.into()
     }
 
     fn get_seed(&self) -> Result<bip39::Seed, &'static str> {
