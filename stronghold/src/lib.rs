@@ -162,6 +162,7 @@ impl Stronghold {
         self.account_update(account,snapshot_password)
     }
 
+    // Returns a new address and updates the account
     pub fn address_get(&self, account_id: &str, sub_account_index: usize, internal: bool, snapshot_password: &str) -> String {
         let mut account = self.account_get_by_id(account_id, snapshot_password);
         let sub_account = &mut account.subaccounts[sub_account_index];
