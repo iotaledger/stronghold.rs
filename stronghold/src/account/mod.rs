@@ -119,6 +119,9 @@ impl Account {
         self.subaccounts.push(SubAccount::new(label))
     }
 
-    
+    fn get_privkey(self, derivation_path: String) -> ed25519::PrivateKey {
+        let seed = self.get_seed();
+        dummy_derive(seed,&derivation_path)
+    }
 
 }
