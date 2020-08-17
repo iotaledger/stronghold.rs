@@ -118,7 +118,7 @@ impl Account {
         dummy_derive_into_address(privkey)
     }
 
-    fn sign_message(&self, message: &[u8], derivation_path: String) -> [u8; 64] {
+    pub fn sign_message(&self, message: &[u8], derivation_path: String) -> [u8; 64] {
         let privkey = self.get_privkey(derivation_path);
         privkey.sign(message).unwrap().to_bytes()
     }
