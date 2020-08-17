@@ -41,9 +41,9 @@ pub fn generate_id(bip39_mnemonic: &bip39::Mnemonic, bip39_passphrase: &Option<S
         // Account ID generation: 1/2 : Derive seed into the first address
         let seed;
         if let Some(bip39_passphrase) = bip39_passphrase {
-            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, &bip39_passphrase);
+            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic.phrase(), &bip39_passphrase);
         }else{
-            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
+            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic.phrase(), "");
         }
 
 
@@ -119,12 +119,12 @@ impl Account {
         self.subaccounts.push(SubAccount::new(label))
     }
 
-    fn get_privkey(self, derivation_path: String) -> ed25519::PrivateKey {
+    fn get_privkey(&self, derivation_path: String) -> ed25519::PrivateKey {
         let seed = self.get_seed();
         dummy_derive(seed,&derivation_path)
     }
 
-    pub fn get_address(self, derivation_path: String) -> String {
+    pub fn get_address(&self, derivation_path: String) -> String {
         let privkey = self.get_privkey(derivation_path);
         dummy_derive_into_address(privkey)
     }

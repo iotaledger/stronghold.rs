@@ -106,7 +106,7 @@ impl Stronghold {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: Password is missing");
         }
-        let account = Account::new(AccountToCreate {bip39_passphrase}).unwrap();
+        let account = Account::new(AccountToCreate {bip39_passphrase});
         self.account_save(&account,snapshot_password);
         account
     }
@@ -163,15 +163,15 @@ impl Stronghold {
     }
 
     pub fn address_get(&self, account_id: &str, sub_account_index: usize, internal: bool, snapshot_password: &str) -> String {
-        let account = self.account_get_by_id(account_id, snapshot_password);
-        let sub_account = account.subaccounts[sub_account_index];
-        let index = sub_account.addresses_increase_counter(internal) - 1;
-        account.get_address(format!("m/44'/4218'/{}'/{}'", !internal as u32, index))
+        let mut account = self.account_get_by_id(account_id, snapshot_password);
+        let sub_account = &mut account.subaccounts[sub_account_index];
+        let index = sub_account.addresses_increase_counter(internal);
+        let address = account.get_address(format!("m/44'/4218'/{}'/{}'", !internal as u32, index));
+        self.account_update(account,snapshot_password);
+        address
     }
 
-    /*fn subaccount_add(&self, account: Account, snapshot_password: &str) -> usize {
 
-    }*/
 
     /*
     pub fn transaction_sign() {

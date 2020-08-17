@@ -1,7 +1,6 @@
 use unicode_normalization::UnicodeNormalization;
 use pbkdf2;
 use hmac::Hmac;
-use bip39;
 use bitcoin;
 use std::str::FromStr;
 use bech32::ToBase32;

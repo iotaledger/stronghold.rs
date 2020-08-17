@@ -16,7 +16,7 @@ impl SubAccount {
         }
     }
 
-    pub fn addresses_increase_counter(&self, internal: bool) -> usize {
+    pub fn addresses_increase_counter(&mut self, internal: bool) -> usize {
         if internal {
             self.change_addresses_counter = self.change_addresses_counter + 1;
             return self.change_addresses_counter;
