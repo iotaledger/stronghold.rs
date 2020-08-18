@@ -13,6 +13,8 @@ use account::{Account,AccountToCreate,AccountToImport,SubAccount};
 use std::str;
 use serde_json;
 use base64;
+use bee_signing_ext::binary::ed25519;
+use bech32;
 
 /// Stronghold doc com
 struct Stronghold;
@@ -178,6 +180,29 @@ impl Stronghold {
         let account = self.account_get_by_id(account_id, snapshot_password);
         let signature: Vec<u8> = account.sign_message(message.as_bytes(), format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index)).to_vec();
         base64::encode(signature)
+    }
+
+    // Verify a signature
+    pub fn signature_verify(&self, address: &str, message: &str, signature: &str) -> bool {
+        //signature treatment
+        let bytes = &mut [0; 64];
+        let _ = base64::decode_config_slice(signature, base64::Config::new(base64::CharacterSet::Standard,true), bytes);
+        let signature = ed25519::Signature::from_bytes(*bytes).expect("Error decoding bytes into signature");
+
+        //address treatment
+        let (hrp, data_u5) = bech32::decode(address).expect("Invalid address");
+        let mut data = bech32::convert_bits(data_u5.as_ref(), 5, 8, true).expect("Error decoding bech32");
+        let address_type = data.remove(0);
+        if address_type == 0 {
+            panic!("ed25519 version address expected , WOTS version address found");
+        };
+        if address_type != 1 {
+            panic!("ed25519 address expected , unkown version address found");
+        };
+        let public_key = ed25519::PublicKey::from_bytes(data.as_ref()).expect("Error decoding data into public key");
+
+        //verification
+        public_key.verify(message.as_bytes(),&signature).expect("Error verifying signature")
     }
 
     /*
