@@ -12,6 +12,7 @@ mod storage;//storage will be saving records with accounts as jsons
 use account::{Account,AccountToCreate,AccountToImport,SubAccount};
 use std::str;
 use serde_json;
+use base64;
 
 /// Stronghold doc com
 struct Stronghold;
@@ -173,9 +174,10 @@ impl Stronghold {
     }
 
     // Signs a message
-    pub fn message_sign(&self, message: &str, account_id: &str, sub_account_index: usize, internal: bool, index: usize, snapshot_password: &str) -> [u8; 64] {
+    pub fn message_sign(&self, message: &str, account_id: &str, sub_account_index: usize, internal: bool, index: usize, snapshot_password: &str) -> String {
         let account = self.account_get_by_id(account_id, snapshot_password);
-        account.sign_message(message.as_bytes(), format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index))
+        let signature: Vec<u8> = account.sign_message(message.as_bytes(), format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index)).to_vec();
+        base64::encode(signature)
     }
 
     /*
