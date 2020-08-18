@@ -39,7 +39,7 @@ impl Stronghold {
     }
 
     // Decode record into account
-    fn record_decode(&self, decrypted: &str) -> Account {
+    fn account_from_json(&self, decrypted: &str) -> Account {
         let x: Account = serde_json::from_str(&decrypted).expect("Error reading record from snapshot");
         x
     }
@@ -50,13 +50,13 @@ impl Stronghold {
         let account: Option<Account>;
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
         let decrypted = storage::read(record_id, snapshot_password);
-        self.record_decode(&decrypted)
+        self.account_from_json(&decrypted)
     }
 
     // Get account by record id
     fn account_get_by_record_id(&self, record_id: &storage::Id, snapshot_password: &str) -> Account {
         let decrypted = storage::read(*record_id, snapshot_password);
-        self.record_decode(&decrypted)
+        self.account_from_json(&decrypted)
     }
 
     // Remove existent account
@@ -205,11 +205,9 @@ impl Stronghold {
         public_key.verify(message.as_bytes(),&signature).expect("Error verifying signature")
     }
 
+    pub fn record_save()
+    
     /*
-    pub fn transaction_sign() {
-
-    }
-
     pub fn message_decrypt() {
 
     }
