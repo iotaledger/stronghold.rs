@@ -176,9 +176,9 @@ impl Stronghold {
     }
 
     // Signs a message
-    pub fn message_sign(&self, message: &str, account_id: &str, sub_account_index: usize, internal: bool, index: usize, snapshot_password: &str) -> String {
+    pub fn message_sign(&self, message: &[u8], account_id: &str, sub_account_index: usize, internal: bool, index: usize, snapshot_password: &str) -> String {
         let account = self.account_get_by_id(account_id, snapshot_password);
-        let signature: Vec<u8> = account.sign_message(message.as_bytes(), format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index)).to_vec();
+        let signature: Vec<u8> = account.sign_message(message, format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index)).to_vec();
         base64::encode(signature)
     }
 
