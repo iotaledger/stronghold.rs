@@ -21,23 +21,6 @@ struct Stronghold;
 
 impl Stronghold {
 
-    // Find record id by account id
-    fn record_get_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
-        let index = storage::get_index(snapshot_password);
-        for (record_id,account_id) in index {
-            if format!("{:?}",account_id) == account_id_target {
-                return record_id;
-            }
-        };
-        panic!("Unable to find record id with specified account id");
-    }
-
-    // Removes record from storage by record id
-    fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
-        storage::revoke(record_id, snapshot_password);
-        storage::garbage_collect_vault(snapshot_password);
-    }
-
     // Decode record into account
     fn account_from_json(&self, decrypted: &str) -> Account {
         let x: Account = serde_json::from_str(&decrypted).expect("Error reading record from snapshot");
@@ -205,8 +188,28 @@ impl Stronghold {
         public_key.verify(message.as_bytes(),&signature).expect("Error verifying signature")
     }
 
-    pub fn record_save()
+    // Save custom data in as a new record from the snapshot
+    pub fn record_create(&self, label: &str, data: &str, snapshot_password: &str) -> storage::Id {
+        storage::encrypt(label, data, snapshot_password)
+    }
     
+    // Find record id by account id
+    fn record_get_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
+        let index = storage::get_index(snapshot_password);
+        for (record_id,account_id) in index {
+            if format!("{:?}",account_id) == account_id_target {
+                return record_id;
+            }
+        };
+        panic!("Unable to find record id with specified account id");
+    }
+
+    // Removes record from storage by record id
+    fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
+        storage::revoke(record_id, snapshot_password);
+        storage::garbage_collect_vault(snapshot_password);
+    }
+
     /*
     pub fn message_decrypt() {
 
