@@ -18,7 +18,7 @@ pub struct Account {
     created_at: u128,
     bip39_mnemonic: String,
     bip39_passphrase: Option<String>,
-    pub subaccounts: Vec<SubAccount>
+    pub sub_accounts: Vec<SubAccount>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -31,7 +31,7 @@ pub struct AccountToImport {
     pub created_at: u128,
     pub bip39_mnemonic: String,
     pub bip39_passphrase: Option<String>,
-    pub subaccounts: Vec<SubAccount>
+    pub sub_accounts: Vec<SubAccount>
 }
 
 pub fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
@@ -65,7 +65,7 @@ impl From<AccountToCreate> for Account {
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis(),
             bip39_mnemonic: String::from(bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase()),
             bip39_passphrase: account_to_create.bip39_passphrase,
-            subaccounts: Vec::new()
+            sub_accounts: Vec::new()
         }
     }
 }
@@ -81,7 +81,7 @@ impl From<AccountToImport> for Account {
             created_at: account_to_import.created_at,
             bip39_mnemonic: account_to_import.bip39_mnemonic,
             bip39_passphrase: account_to_import.bip39_passphrase,
-            subaccounts: account_to_import.subaccounts,
+            sub_accounts: account_to_import.sub_accounts,
         }
     }
 }
@@ -105,7 +105,7 @@ impl Account {
     }
     
     pub fn add_subaccount(&mut self, label: String) {
-        self.subaccounts.push(SubAccount::new(label))
+        self.sub_accounts.push(SubAccount::new(label))
     }
 
     fn get_privkey(&self, derivation_path: String) -> ed25519::PrivateKey {

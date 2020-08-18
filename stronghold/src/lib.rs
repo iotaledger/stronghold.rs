@@ -104,7 +104,7 @@ impl Stronghold {
         bip39_mnemonic: &str,
         bip39_passphrase: Option<&str>,
         snapshot_password: &str,
-        subaccounts: Vec<SubAccount>
+        sub_accounts: Vec<SubAccount>
     ) -> Account {
         if bip39_mnemonic.is_empty() {
             panic!("Invalid parameters: bip39_mnemonic is missing");
@@ -119,7 +119,7 @@ impl Stronghold {
                 Some(x) => Some(String::from(x)),
                 None => None
             },
-            subaccounts
+            sub_accounts
 
         }.into();
 
@@ -144,14 +144,14 @@ impl Stronghold {
     pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) -> storage::Id {
         let mut account = self.account_get_by_id(&account_id,snapshot_password);
         let subaccount = SubAccount::new(String::from(label));
-        account.subaccounts.push(subaccount);
+        account.sub_accounts.push(subaccount);
         self.account_update(account,snapshot_password)
     }
 
     // Returns a new address and updates the account
     pub fn address_get(&self, account_id: &str, sub_account_index: usize, internal: bool, snapshot_password: &str) -> String {
         let mut account = self.account_get_by_id(account_id, snapshot_password);
-        let sub_account = &mut account.subaccounts[sub_account_index];
+        let sub_account = &mut account.sub_accounts[sub_account_index];
         let index = sub_account.addresses_increase_counter(internal);
         let address = account.get_address(format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index));
         self.account_update(account,snapshot_password);
