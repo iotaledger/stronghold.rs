@@ -197,7 +197,7 @@ impl Stronghold {
             panic!("ed25519 version address expected , WOTS version address found");
         };
         if address_type != 1 {
-            panic!("ed25519 address expected , unkown version address found");
+            panic!("ed25519 address expected , unknown version address found");
         };
         let public_key = ed25519::PublicKey::from_bytes(data.as_ref()).expect("Error decoding data into public key");
 
