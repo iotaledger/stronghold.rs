@@ -4,12 +4,10 @@ use hex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use bip39;
 
-mod subaccount;
 mod dummybip39;
 use dummybip39::{dummy_mnemonic_to_ed25_seed,dummy_derive,dummy_derive_into_address};
 use bee_signing_ext::binary::ed25519;
 
-pub use subaccount::{SubAccount};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
@@ -123,4 +121,31 @@ impl Account {
         privkey.sign(message).unwrap().to_bytes()
     }
 
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SubAccount {
+    label: String,
+    receive_addresses_counter: usize,
+    change_addresses_counter: usize
+}
+
+impl SubAccount {
+    pub fn new(label: String) -> Self {
+        Self {
+            label,
+            receive_addresses_counter: 0,
+            change_addresses_counter: 0
+        }
+    }
+
+    pub fn addresses_increase_counter(&mut self, internal: bool) -> usize {
+        if internal {
+            self.change_addresses_counter = self.change_addresses_counter + 1;
+            return self.change_addresses_counter;
+        }else{
+            self.receive_addresses_counter = self.receive_addresses_counter + 1;
+            return self.receive_addresses_counter;
+        }
+    }
 }
