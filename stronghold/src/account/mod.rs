@@ -19,19 +19,6 @@ pub struct Account {
     pub sub_accounts: Vec<SubAccount>
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub(in crate) struct AccountToCreate {
-    pub bip39_passphrase: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub(in crate) struct AccountToImport {
-    pub created_at: u128,
-    pub bip39_mnemonic: String,
-    pub bip39_passphrase: Option<String>,
-    pub sub_accounts: Vec<SubAccount>
-}
-
 pub(in crate) fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
         // Account ID generation: 1/2 : Derive seed into the first address
         let seed;
