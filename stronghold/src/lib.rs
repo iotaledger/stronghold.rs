@@ -9,7 +9,7 @@ mod account;
 /// Stronghold Storage Module
 mod storage;//storage will be saving records with accounts as jsons
 
-use account::{Account,AccountToCreate,AccountToImport,SubAccount};
+use account::{Account,SubAccount};
 use std::str;
 use serde_json;
 use base64;
