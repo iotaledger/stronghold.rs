@@ -28,7 +28,7 @@ impl Stronghold {
     }
 
     // Get account by account id
-    pub fn account_get_by_id(&self, account_id: &str, snapshot_password: &str) -> Account {
+    fn account_get_by_id(&self, account_id: &str, snapshot_password: &str) -> Account {
         let index = storage::get_index(snapshot_password);
         let account: Option<Account>;
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
@@ -43,16 +43,15 @@ impl Stronghold {
     }
 
     // Remove existent account
-    pub fn account_remove(&self, account_id: &str, snapshot_password: &str) -> Account {
+    pub fn account_remove(&self, account_id: &str, snapshot_password: &str) {
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
         let account = self.account_get_by_record_id(&record_id,snapshot_password);
         storage::revoke(record_id, snapshot_password);
         storage::garbage_collect_vault(snapshot_password);
-        account
     }
 
     // Save account in a new record
-    pub fn account_save(&self, account: &Account, snapshot_password: &str) -> storage::Id {
+    fn account_save(&self, account: &Account, snapshot_password: &str) -> storage::Id {
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
         storage::encrypt(&account.id, &account_serialized, snapshot_password)
     }
@@ -92,7 +91,7 @@ impl Stronghold {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: Password is missing");
         }
-        let account = Account::new(AccountToCreate {bip39_passphrase});
+        let account = Account::new(bip39_passphrase);
         self.account_save(&account,snapshot_password);
         account
     }
@@ -101,7 +100,7 @@ impl Stronghold {
     pub fn account_import(
         &self,
         created_at: u128,
-        bip39_mnemonic: &str,
+        bip39_mnemonic: String,
         bip39_passphrase: Option<&str>,
         snapshot_password: &str,
         sub_accounts: Vec<SubAccount>
@@ -112,16 +111,18 @@ impl Stronghold {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: password is missing");
         }
-        let account: Account = AccountToImport {
-            created_at,
-            bip39_mnemonic: String::from(bip39_mnemonic),
-            bip39_passphrase: match bip39_passphrase {
-                Some(x) => Some(String::from(x)),
-                None => None
-            },
-            sub_accounts
 
-        }.into();
+        let bip39_passphrase = match bip39_passphrase {
+            Some(x) => Some(String::from(x)),
+            None => None
+        };
+
+        let account = Account::import(
+            created_at,
+            bip39_mnemonic,
+            bip39_passphrase,
+            sub_accounts
+        );
 
         self.account_save(&account,snapshot_password);
 
