@@ -12,11 +12,35 @@ As such they are to be seen as **experimental** and not ready for real-world app
 
 Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out with any concerns or suggestions you may have.
 
-## Project Status
-- Low-level libraries (beta quality, fuzzed)
-- High-level libraries (under active development)
-- FFI Bindings (to-do)
-- Rust Actor Wrapper (to-do)
+## Roadmap
+Here are some of the features and tasks that we are working on.
+
+### Documentation and Specification
+- [ ] User Handbooks
+- [ ] Specification Documentation
+
+### Performance and Testing
+- [x] Unit Tests
+- [x] Lowlevel Library Fuzzing
+- [ ] Realworld tests
+- [ ] Multiplatform benchmarks
+- [ ] Continuous Fuzzing
+
+### Applications
+- [x] Low-level libraries (beta quality, fuzzed)
+- [x] High-level libraries (under active development)
+- [ ] Rust Actor Wrapper
+- [ ] Portable CLI binary
+- [ ] Portable Daemon (for nodes, etc)
+- [ ] Dynamic high-performance store 
+- [ ] C FFI bindings
+- [ ] Sync service between strongholds
+
+### Hardware Integrations
+- [ ] Works with Yubikey
+- [ ] Works with Ledger Nano X
+- [ ] Use Secure Element to generate private keys for decryption
+- [ ] Move entirely to FPGA
 
 ## API Reference
 ```
