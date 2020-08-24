@@ -11,10 +11,7 @@ mod storage;//storage will be saving records with accounts as jsons
 
 use account::{Account,SubAccount};
 use std::str;
-use serde_json;
-use base64;
 use bee_signing_ext::binary::ed25519;
-use bech32;
 
 /// Stronghold doc com
 struct Stronghold;
@@ -60,10 +57,10 @@ impl Stronghold {
     pub fn account_index_get(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< String >  {
         let mut account_ids = Vec::new();
         for (i, (_ , account_id)) in storage::get_index(snapshot_password).into_iter().enumerate() {
-            if i+1 <= skip {
+            if i < skip {
                 continue;
             }
-            if i+1 > limit {
+            if i >= limit {
                 break;
             }
             account_ids.push(format!("{:?}",account_id));
@@ -75,10 +72,10 @@ impl Stronghold {
     pub fn account_list(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< Account >  {
         let mut accounts = Vec::new();
         for (i, (record_id , _)) in storage::get_index(snapshot_password).into_iter().enumerate() {
-            if i+1 <= skip {
+            if i < skip {
                 continue;
             }
-            if i+1 > limit {
+            if i >= limit {
                 break;
             }
             accounts.push(self.account_get_by_record_id(&record_id,snapshot_password));

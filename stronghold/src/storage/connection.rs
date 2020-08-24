@@ -34,7 +34,7 @@ impl CResult {
 
 // resolve the requests into responses.
 pub fn send(req: CRequest) -> CResult {
-    let result = match req {
+    match req {
         // if the request is a list, get the keys from the map and put them into a ListResult.
         CRequest::List => {
             let entries = State::storage_map()
@@ -75,7 +75,5 @@ pub fn send(req: CRequest) -> CResult {
 
             CResult::Read(ReadResult::new(read.into(), state))
         }
-    };
-
-    result
+    }
 }
