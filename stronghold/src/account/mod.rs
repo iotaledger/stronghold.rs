@@ -11,12 +11,13 @@ use bee_signing_ext::binary::ed25519;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
-    pub id: String,
+    id: String,
     external: bool,
     created_at: u128,
+    last_update_at: u128,
     bip39_mnemonic: String,
     bip39_passphrase: Option<String>,
-    pub sub_accounts: Vec<SubAccount>
+    sub_accounts: Vec<SubAccount>
 }
 
 pub(in crate) fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
@@ -101,6 +102,17 @@ impl Account {
         privkey.sign(message).unwrap().to_bytes()
     }
 
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn add_sub_account(&mut self, sub_account: SubAccount) {
+        self.sub_accounts.push(sub_account);
+    }
+
+    pub fn get_sub_account(&mut self, index: usize) -> &mut SubAccount {
+        &mut self.sub_accounts[index]
+}
 }
 
 #[derive(Serialize, Deserialize, Debug)]

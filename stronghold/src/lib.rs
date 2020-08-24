@@ -53,7 +53,7 @@ impl Stronghold {
     // Save account in a new record
     fn account_save(&self, account: &Account, snapshot_password: &str) -> storage::Id {
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
-        storage::encrypt(&account.id, &account_serialized, snapshot_password)
+        storage::encrypt(&account.id(), &account_serialized, snapshot_password)
     }
 
     // List ids of accounts
@@ -136,7 +136,7 @@ impl Stronghold {
 
     // Updates an account migrating its record
     pub fn account_update(&self, account: Account, snapshot_password: &str) -> storage::Id {
-        let record_id = self.record_get_by_account_id(&account.id, &snapshot_password);
+        let record_id = self.record_get_by_account_id(&account.id(), &snapshot_password);
         self.record_remove(record_id, &snapshot_password);
         self.account_save(&account, &snapshot_password)
     }
@@ -145,14 +145,14 @@ impl Stronghold {
     pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) -> storage::Id {
         let mut account = self.account_get_by_id(&account_id,snapshot_password);
         let subaccount = SubAccount::new(String::from(label));
-        account.sub_accounts.push(subaccount);
+        account.add_sub_account(subaccount);
         self.account_update(account,snapshot_password)
     }
 
     // Returns a new address and updates the account
     pub fn address_get(&self, account_id: &str, sub_account_index: usize, internal: bool, snapshot_password: &str) -> String {
         let mut account = self.account_get_by_id(account_id, snapshot_password);
-        let sub_account = &mut account.sub_accounts[sub_account_index];
+        let sub_account = &mut account.get_sub_account(sub_account_index);
         let index = sub_account.addresses_increase_counter(internal);
         let address = account.get_address(format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index));
         self.account_update(account,snapshot_password);
