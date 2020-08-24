@@ -1,4 +1,4 @@
-use engine::{vault};
+use engine::vault;
 
 use vault::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
 

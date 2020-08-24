@@ -7,17 +7,16 @@
 mod account;
 
 /// Stronghold Storage Module
-mod storage;//storage will be saving records with accounts as jsons
+mod storage; //storage will be saving records with accounts as jsons
 
-use account::{Account,SubAccount};
-use std::str;
+use account::{Account, SubAccount};
 use bee_signing_ext::binary::ed25519;
+use std::str;
 
 /// Stronghold doc com
 struct Stronghold;
 
 impl Stronghold {
-
     // Decode record into account
     fn account_from_json(&self, decrypted: &str) -> Account {
         let x: Account = serde_json::from_str(&decrypted).expect("Error reading record from snapshot");
@@ -42,7 +41,7 @@ impl Stronghold {
     // Remove existent account
     pub fn account_remove(&self, account_id: &str, snapshot_password: &str) {
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
-        let account = self.account_get_by_record_id(&record_id,snapshot_password);
+        let account = self.account_get_by_record_id(&record_id, snapshot_password);
         storage::revoke(record_id, snapshot_password);
         storage::garbage_collect_vault(snapshot_password);
     }
@@ -54,42 +53,42 @@ impl Stronghold {
     }
 
     // List ids of accounts
-    pub fn account_index_get(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< String >  {
+    pub fn account_index_get(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<String> {
         let mut account_ids = Vec::new();
-        for (i, (_ , account_id)) in storage::get_index(snapshot_password).into_iter().enumerate() {
+        for (i, (_, account_id)) in storage::get_index(snapshot_password).into_iter().enumerate() {
             if i < skip {
                 continue;
             }
             if i >= limit {
                 break;
             }
-            account_ids.push(format!("{:?}",account_id));
+            account_ids.push(format!("{:?}", account_id));
         }
         account_ids
     }
-    
+
     // List accounts
-    pub fn account_list(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec< Account >  {
+    pub fn account_list(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<Account> {
         let mut accounts = Vec::new();
-        for (i, (record_id , _)) in storage::get_index(snapshot_password).into_iter().enumerate() {
+        for (i, (record_id, _)) in storage::get_index(snapshot_password).into_iter().enumerate() {
             if i < skip {
                 continue;
             }
             if i >= limit {
                 break;
             }
-            accounts.push(self.account_get_by_record_id(&record_id,snapshot_password));
+            accounts.push(self.account_get_by_record_id(&record_id, snapshot_password));
         }
         accounts
     }
-    
+
     // Create new account saving it
     pub fn account_create(&self, bip39_passphrase: Option<String>, snapshot_password: &str) -> Account {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: Password is missing");
         }
         let account = Account::new(bip39_passphrase);
-        self.account_save(&account,snapshot_password);
+        self.account_save(&account, snapshot_password);
         account
     }
 
@@ -101,7 +100,7 @@ impl Stronghold {
         bip39_mnemonic: String,
         bip39_passphrase: Option<&str>,
         snapshot_password: &str,
-        sub_accounts: Vec<SubAccount>
+        sub_accounts: Vec<SubAccount>,
     ) -> Account {
         if bip39_mnemonic.is_empty() {
             panic!("Invalid parameters: bip39_mnemonic is missing");
@@ -112,7 +111,7 @@ impl Stronghold {
 
         let bip39_passphrase = match bip39_passphrase {
             Some(x) => Some(String::from(x)),
-            None => None
+            None => None,
         };
 
         let account = Account::import(
@@ -120,10 +119,10 @@ impl Stronghold {
             last_updated_on,
             bip39_mnemonic,
             bip39_passphrase,
-            sub_accounts
+            sub_accounts,
         );
 
-        self.account_save(&account,snapshot_password);
+        self.account_save(&account, snapshot_password);
 
         account
     }
@@ -143,34 +142,56 @@ impl Stronghold {
 
     // Adds subaccount updating an account
     pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) -> storage::Id {
-        let mut account = self.account_get_by_id(&account_id,snapshot_password);
+        let mut account = self.account_get_by_id(&account_id, snapshot_password);
         let subaccount = SubAccount::new(String::from(label));
         account.add_sub_account(subaccount);
-        self.account_update(&mut account,snapshot_password)
+        self.account_update(&mut account, snapshot_password)
     }
 
     // Show/Hide subaccount
     pub fn subaccount_hide(&self, account_id: &str, sub_account_index: usize, visible: bool, snapshot_password: &str) {
-        let mut account = self.account_get_by_id(&account_id,snapshot_password);
+        let mut account = self.account_get_by_id(&account_id, snapshot_password);
         let sub_account = &mut account.get_sub_account(sub_account_index);
         sub_account.set_display(visible);
-        self.account_update(&mut account,snapshot_password);
+        self.account_update(&mut account, snapshot_password);
     }
 
     // Returns a new address and updates the account
-    pub fn address_get(&self, account_id: &str, sub_account_index: usize, internal: bool, snapshot_password: &str) -> String {
+    pub fn address_get(
+        &self,
+        account_id: &str,
+        sub_account_index: usize,
+        internal: bool,
+        snapshot_password: &str,
+    ) -> String {
         let mut account = self.account_get_by_id(account_id, snapshot_password);
         let sub_account = &mut account.get_sub_account(sub_account_index);
         let index = sub_account.addresses_increase_counter(internal);
-        let address = account.get_address(format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index));
-        self.account_update(&mut account,snapshot_password);
+        let address = account.get_address(format!(
+            "m/44'/4218'/{}'/{}'/{}'",
+            sub_account_index, !internal as u32, index
+        ));
+        self.account_update(&mut account, snapshot_password);
         address
     }
 
     // Signs a message
-    pub fn signature_make(&self, message: &[u8], account_id: &str, sub_account_index: usize, internal: bool, index: usize, snapshot_password: &str) -> String {
+    pub fn signature_make(
+        &self,
+        message: &[u8],
+        account_id: &str,
+        sub_account_index: usize,
+        internal: bool,
+        index: usize,
+        snapshot_password: &str,
+    ) -> String {
         let account = self.account_get_by_id(account_id, snapshot_password);
-        let signature: Vec<u8> = account.sign_message(message, format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index)).to_vec();
+        let signature: Vec<u8> = account
+            .sign_message(
+                message,
+                format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index),
+            )
+            .to_vec();
         base64::encode(signature)
     }
 
@@ -178,7 +199,11 @@ impl Stronghold {
     pub fn signature_verify(&self, address: &str, message: &str, signature: &str) -> bool {
         //signature treatment
         let bytes = &mut [0; 64];
-        let _ = base64::decode_config_slice(signature, base64::Config::new(base64::CharacterSet::Standard,true), bytes);
+        let _ = base64::decode_config_slice(
+            signature,
+            base64::Config::new(base64::CharacterSet::Standard, true),
+            bytes,
+        );
         let signature = ed25519::Signature::from_bytes(*bytes).expect("Error decoding bytes into signature");
 
         //address treatment
@@ -194,22 +219,24 @@ impl Stronghold {
         let public_key = ed25519::PublicKey::from_bytes(data.as_ref()).expect("Error decoding data into public key");
 
         //verification
-        public_key.verify(message.as_bytes(),&signature).expect("Error verifying signature")
+        public_key
+            .verify(message.as_bytes(), &signature)
+            .expect("Error verifying signature")
     }
 
     // Save custom data in as a new record from the snapshot
     pub fn record_create(&self, label: &str, data: &str, snapshot_password: &str) -> storage::Id {
         storage::encrypt(label, data, snapshot_password)
     }
-    
+
     // Find record id by account id
     fn record_get_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
         let index = storage::get_index(snapshot_password);
-        for (record_id,account_id) in index {
-            if format!("{:?}",account_id) == account_id_target {
+        for (record_id, account_id) in index {
+            if format!("{:?}", account_id) == account_id_target {
                 return record_id;
             }
-        };
+        }
         panic!("Unable to find record id with specified account id");
     }
 

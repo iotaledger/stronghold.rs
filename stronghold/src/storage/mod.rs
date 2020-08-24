@@ -19,7 +19,7 @@ use client::Client;
 use provider::Provider;
 use snap::{deserialize_from_snapshot, get_snapshot_path, serialize_to_snapshot};
 
-use engine::{vault};
+use engine::vault;
 
 pub use vault::{Base64Decodable, Id, Key, RecordHint};
 
@@ -66,7 +66,7 @@ pub fn snapshot(path: &str, pass: &str) {
 }
 
 // handle the list command.
-pub fn get_index(pass: &str) -> Vec<(Id , RecordHint)> {
+pub fn get_index(pass: &str) -> Vec<(Id, RecordHint)> {
     let snapshot = get_snapshot_path();
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 

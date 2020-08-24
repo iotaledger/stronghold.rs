@@ -1,4 +1,4 @@
-use engine::{vault};
+use engine::vault;
 
 use vault::{BoxProvider, DBView, DBWriter, Id, Key, RecordHint};
 
@@ -73,7 +73,10 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     // list the ids and hints of all of the records in the Vault.
     pub fn get_index(&self) -> Vec<(Id, RecordHint)> {
         let mut index = Vec::new();
-        self.db.take(|db| db).records().for_each(|(id, hint)| index.push( (id, hint) ));
+        self.db
+            .take(|db| db)
+            .records()
+            .for_each(|(id, hint)| index.push((id, hint)));
         index
     }
 
@@ -85,7 +88,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
             if let CResult::Read(read) = send(CRequest::Read(read)) {
                 let record = db.reader().read(read).expect(line_error!());
                 String::from_utf8(record).expect("unable to read id")
-            }else{
+            } else {
                 panic!("unable to read id")
             }
         })

@@ -1,4 +1,4 @@
-use engine::{snapshot};
+use engine::snapshot;
 
 use snapshot::{decrypt_snapshot, encrypt_snapshot, snapshot_dir};
 

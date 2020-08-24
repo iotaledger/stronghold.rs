@@ -1,4 +1,4 @@
-use engine::{vault,crypto,random};
+use engine::{crypto, random, vault};
 
 use crypto::XChaChaPoly;
 use random::{

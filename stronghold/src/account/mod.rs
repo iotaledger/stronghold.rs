@@ -1,11 +1,10 @@
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod dummybip39;
-use dummybip39::{dummy_mnemonic_to_ed25_seed,dummy_derive,dummy_derive_into_address};
 use bee_signing_ext::binary::ed25519;
-
+use dummybip39::{dummy_derive, dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
@@ -15,28 +14,27 @@ pub struct Account {
     last_updated_on: u128,
     bip39_mnemonic: String,
     bip39_passphrase: Option<String>,
-    sub_accounts: Vec<SubAccount>
+    sub_accounts: Vec<SubAccount>,
 }
 
 pub(in crate) fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
-        // Account ID generation: 1/2 : Derive seed into the first address
-        let seed;
-        if let Some(bip39_passphrase) = bip39_passphrase {
-            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, &bip39_passphrase);
-        }else{
-            seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
-        }
-        let privkey = dummy_derive(seed,"m/44'/4218'/0'/0'");
-        let address = dummy_derive_into_address(privkey);
-        
-        // Account ID generation: 2/2 : Hash generated address in order to get ID
-        let mut hasher = Sha256::new();
-        hasher.input(address);
-        hex::encode(&hasher.result())
+    // Account ID generation: 1/2 : Derive seed into the first address
+    let seed;
+    if let Some(bip39_passphrase) = bip39_passphrase {
+        seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, &bip39_passphrase);
+    } else {
+        seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
+    }
+    let privkey = dummy_derive(seed, "m/44'/4218'/0'/0'");
+    let address = dummy_derive_into_address(privkey);
+
+    // Account ID generation: 2/2 : Hash generated address in order to get ID
+    let mut hasher = Sha256::new();
+    hasher.input(address);
+    hex::encode(&hasher.result())
 }
 
 impl Account {
-
     pub fn new(bip39_passphrase: Option<String>) -> Account {
         // Mnemonic generation
         let bip39_mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
@@ -47,11 +45,19 @@ impl Account {
         Account {
             id,
             external: false,
-            created_at: SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis(),
-            last_updated_on: SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis(),
-            bip39_mnemonic: String::from(bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase()),
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis(),
+            last_updated_on: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis(),
+            bip39_mnemonic: String::from(
+                bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase(),
+            ),
             bip39_passphrase,
-            sub_accounts: Vec::new()
+            sub_accounts: Vec::new(),
         }
     }
 
@@ -60,7 +66,7 @@ impl Account {
         last_updated_on: u128,
         bip39_mnemonic: String,
         bip39_passphrase: Option<String>,
-        sub_accounts: Vec<SubAccount>
+        sub_accounts: Vec<SubAccount>,
     ) -> Account {
         bip39::Mnemonic::from_phrase(&bip39_mnemonic, bip39::Language::Spanish).expect("Invalid mnemonic");
         // ID generation
@@ -79,18 +85,18 @@ impl Account {
     fn get_seed(&self) -> ed25519::Seed {
         let bip39_passphrase = match &self.bip39_passphrase {
             Some(x) => x,
-            None => ""
+            None => "",
         };
-        dummy_mnemonic_to_ed25_seed(&self.bip39_mnemonic,&bip39_passphrase)
+        dummy_mnemonic_to_ed25_seed(&self.bip39_mnemonic, &bip39_passphrase)
     }
-    
+
     pub fn add_subaccount(&mut self, label: String) {
         self.sub_accounts.push(SubAccount::new(label))
     }
 
     fn get_privkey(&self, derivation_path: String) -> ed25519::PrivateKey {
         let seed = self.get_seed();
-        dummy_derive(seed,&derivation_path)
+        dummy_derive(seed, &derivation_path)
     }
 
     pub fn get_address(&self, derivation_path: String) -> String {
@@ -116,12 +122,14 @@ impl Account {
     }
 
     pub fn last_updated_on(&mut self, update: bool) -> &u128 {
-        if update { 
-            self.last_updated_on = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis()
+        if update {
+            self.last_updated_on = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis()
         };
         &self.last_updated_on
     }
-
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -129,7 +137,7 @@ pub struct SubAccount {
     label: String,
     receive_addresses_counter: usize,
     change_addresses_counter: usize,
-    visible: bool
+    visible: bool,
 }
 
 impl SubAccount {
@@ -138,7 +146,7 @@ impl SubAccount {
             label,
             receive_addresses_counter: 0,
             change_addresses_counter: 0,
-            visible: true
+            visible: true,
         }
     }
 
@@ -146,7 +154,7 @@ impl SubAccount {
         if internal {
             self.change_addresses_counter += 1;
             self.change_addresses_counter
-        }else{
+        } else {
             self.receive_addresses_counter += 1;
             self.receive_addresses_counter
         }
@@ -155,5 +163,4 @@ impl SubAccount {
     pub fn set_display(&mut self, visible: bool) {
         self.visible = visible;
     }
-
 }
