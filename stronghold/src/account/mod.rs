@@ -14,7 +14,7 @@ pub struct Account {
     id: String,
     external: bool,
     created_at: u128,
-    last_update_at: u128,
+    last_updated_on: u128,
     bip39_mnemonic: String,
     bip39_passphrase: Option<String>,
     sub_accounts: Vec<SubAccount>
@@ -50,6 +50,7 @@ impl Account {
             id,
             external: false,
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis(),
+            last_updated_on: SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis(),
             bip39_mnemonic: String::from(bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase()),
             bip39_passphrase,
             sub_accounts: Vec::new()
@@ -58,6 +59,7 @@ impl Account {
 
     pub fn import(
         created_at: u128,
+        last_updated_on: u128,
         bip39_mnemonic: String,
         bip39_passphrase: Option<String>,
         sub_accounts: Vec<SubAccount>
@@ -68,7 +70,8 @@ impl Account {
         Account {
             id,
             external: true,
-            created_at: created_at,
+            created_at,
+            last_updated_on,
             bip39_mnemonic: bip39_mnemonic,
             bip39_passphrase: bip39_passphrase,
             sub_accounts: sub_accounts,
@@ -112,14 +115,15 @@ impl Account {
 
     pub fn get_sub_account(&mut self, index: usize) -> &mut SubAccount {
         &mut self.sub_accounts[index]
-}
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SubAccount {
     label: String,
     receive_addresses_counter: usize,
-    change_addresses_counter: usize
+    change_addresses_counter: usize,
+    visible: bool
 }
 
 impl SubAccount {
@@ -127,7 +131,8 @@ impl SubAccount {
         Self {
             label,
             receive_addresses_counter: 0,
-            change_addresses_counter: 0
+            change_addresses_counter: 0,
+            visible: true
         }
     }
 
@@ -139,5 +144,9 @@ impl SubAccount {
             self.receive_addresses_counter = self.receive_addresses_counter + 1;
             return self.receive_addresses_counter;
         }
+    }
+
+    pub fn set_display(&mut self, visible: bool) {
+        self.visible = visible;
     }
 }

@@ -100,6 +100,7 @@ impl Stronghold {
     pub fn account_import(
         &self,
         created_at: u128,
+        last_updated_on: u128,
         bip39_mnemonic: String,
         bip39_passphrase: Option<&str>,
         snapshot_password: &str,
@@ -119,6 +120,7 @@ impl Stronghold {
 
         let account = Account::import(
             created_at,
+            last_updated_on,
             bip39_mnemonic,
             bip39_passphrase,
             sub_accounts
@@ -147,6 +149,14 @@ impl Stronghold {
         let subaccount = SubAccount::new(String::from(label));
         account.add_sub_account(subaccount);
         self.account_update(account,snapshot_password)
+    }
+
+    // Show/Hide subaccount
+    pub fn subaccount_hide(&self, account_id: &str, sub_account_index: usize, visible: bool, snapshot_password: &str) {
+        let mut account = self.account_get_by_id(&account_id,snapshot_password);
+        let sub_account = &mut account.get_sub_account(sub_account_index);
+        sub_account.set_display(visible);
+        self.account_update(account,snapshot_password);
     }
 
     // Returns a new address and updates the account
