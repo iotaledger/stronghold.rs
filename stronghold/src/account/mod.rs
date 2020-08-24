@@ -116,6 +116,14 @@ impl Account {
     pub fn get_sub_account(&mut self, index: usize) -> &mut SubAccount {
         &mut self.sub_accounts[index]
     }
+
+    pub fn last_updated_on(&mut self, update: bool) -> &u128 {
+        if update { 
+            self.last_updated_on = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis()
+        };
+        &self.last_updated_on
+    }
+
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -149,4 +157,5 @@ impl SubAccount {
     pub fn set_display(&mut self, visible: bool) {
         self.visible = visible;
     }
+
 }
