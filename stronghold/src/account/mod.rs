@@ -4,8 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod dummybip39;
 use bee_signing_ext::binary::ed25519;
+use bee_signing_ext::Signer;
 use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
-use bee_signing_ext::{Signer};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
@@ -26,7 +26,8 @@ pub(in crate) fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<Str
     } else {
         seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
     }
-    let privkey = ed25519::Ed25519PrivateKey::generate_from_seed(&seed, "M/44H/4218H/0H/0H").expect("Error deriving seed");
+    let privkey =
+        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, "M/44H/4218H/0H/0H").expect("Error deriving seed");
     let address = dummy_derive_into_address(privkey);
 
     // Account ID generation: 2/2 : Hash generated address in order to get ID

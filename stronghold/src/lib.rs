@@ -212,10 +212,13 @@ impl Stronghold {
         if address_type != 1 {
             panic!("ed25519 address expected , unknown version address found");
         };
-        let public_key = ed25519::Ed25519PublicKey::from_bytes(data.as_ref()).expect("Error decoding data into public key");
+        let public_key =
+            ed25519::Ed25519PublicKey::from_bytes(data.as_ref()).expect("Error decoding data into public key");
 
         //verification
-        public_key.verify(&bytes, &signature).expect("Error verifying signature")
+        public_key
+            .verify(&bytes, &signature)
+            .expect("Error verifying signature")
     }
 
     // Save custom data in as a new record from the snapshot
