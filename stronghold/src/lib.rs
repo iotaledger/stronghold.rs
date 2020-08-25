@@ -197,7 +197,7 @@ impl Stronghold {
     }
 
     // Verify a signature
-    pub fn signature_verify(&self, address: &str, message: &str, signature: &str) -> () {
+    pub fn signature_verify(&self, address: &str, message: &str, signature: &str) {
         //signature treatment
         let bytes = base64::decode(message).expect("Error decoding base64");
         let signature = ed25519::Ed25519Signature::from_bytes(&bytes).expect("Error decoding bytes into signature");
