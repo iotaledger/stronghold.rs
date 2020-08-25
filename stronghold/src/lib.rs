@@ -11,6 +11,7 @@ mod storage; //storage will be saving records with accounts as jsons
 
 use account::{Account, SubAccount};
 use bee_signing_ext::binary::ed25519;
+use bee_signing_ext::{Signature, Verifier};
 use std::str;
 
 /// Stronghold doc com
@@ -196,15 +197,10 @@ impl Stronghold {
     }
 
     // Verify a signature
-    pub fn signature_verify(&self, address: &str, message: &str, signature: &str) -> bool {
+    pub fn signature_verify(&self, address: &str, message: &str, signature: &str) -> () {
         //signature treatment
-        let bytes = &mut [0; 64];
-        let _ = base64::decode_config_slice(
-            signature,
-            base64::Config::new(base64::CharacterSet::Standard, true),
-            bytes,
-        );
-        let signature = ed25519::Signature::from_bytes(*bytes).expect("Error decoding bytes into signature");
+        let bytes = base64::decode(message).expect("Error decoding base64");
+        let signature = ed25519::Ed25519Signature::from_bytes(&bytes).expect("Error decoding bytes into signature");
 
         //address treatment
         let (hrp, data_u5) = bech32::decode(address).expect("Invalid address");
@@ -216,12 +212,10 @@ impl Stronghold {
         if address_type != 1 {
             panic!("ed25519 address expected , unknown version address found");
         };
-        let public_key = ed25519::PublicKey::from_bytes(data.as_ref()).expect("Error decoding data into public key");
+        let public_key = ed25519::Ed25519PublicKey::from_bytes(data.as_ref()).expect("Error decoding data into public key");
 
         //verification
-        public_key
-            .verify(message.as_bytes(), &signature)
-            .expect("Error verifying signature")
+        public_key.verify(&bytes, &signature).expect("Error verifying signature")
     }
 
     // Save custom data in as a new record from the snapshot

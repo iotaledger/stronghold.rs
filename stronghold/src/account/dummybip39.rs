@@ -1,6 +1,5 @@
 use bech32::ToBase32;
 use hmac::Hmac;
-use std::str::FromStr;
 use unicode_normalization::UnicodeNormalization;
 
 use bee_signing_ext::binary::ed25519;
@@ -23,34 +22,14 @@ fn _pbkdf2(input: &[u8], salt: &str) -> Vec<u8> {
 
 // todo: replace with bip39 library
 
-pub(crate) fn dummy_mnemonic_to_ed25_seed(mnemonic: &str, password: &str) -> ed25519::Seed {
+pub(crate) fn dummy_mnemonic_to_ed25_seed(mnemonic: &str, password: &str) -> ed25519::Ed25519Seed {
     let salt = format!("mnemonic{}", password);
     let normalized_salt = salt.nfkd().to_string();
     let bytes = _pbkdf2(mnemonic.as_bytes(), &normalized_salt);
-    ed25519::Seed::from_bytes(&bytes).unwrap()
+    ed25519::Ed25519Seed::from_bytes(&bytes).unwrap()
 }
 
-pub(crate) fn dummy_derive(
-    mut seed_to_derivate: bee_signing_ext::binary::ed25519::Seed,
-    path: &str,
-) -> ed25519::PrivateKey {
-    let derivation_path = bitcoin::util::bip32::DerivationPath::from_str(path).expect("Unexpected derivation path");
-    let iterable = derivation_path.into_iter();
-    let iter_len = iterable.len();
-    let mut subseed: ed25519::PrivateKey;
-    for (i, children) in iterable.enumerate() {
-        let index: u64 = u32::from(*children).into();
-        let subseed = ed25519::PrivateKey::generate_from_seed(&seed_to_derivate, index).unwrap();
-        if i + 1 == iter_len {
-            return subseed;
-        }
-        let privkey_bytes: &[u8] = subseed.as_bytes();
-        seed_to_derivate = ed25519::Seed::from_bytes(privkey_bytes).unwrap();
-    }
-    panic!("Unexpected derivation path")
-}
-
-pub(crate) fn dummy_derive_into_address(ed_priv: ed25519::PrivateKey) -> String {
+pub(crate) fn dummy_derive_into_address(ed_priv: ed25519::Ed25519PrivateKey) -> String {
     let pubkey = ed_priv.generate_public_key();
     let pubkey_as_bytes_in_box: Box<[u8]> = Box::new(*pubkey.as_bytes());
     let mut pubkey_as_bytes_in_vec: Vec<u8> = pubkey_as_bytes_in_box.into_vec();

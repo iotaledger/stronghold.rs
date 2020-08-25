@@ -4,7 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod dummybip39;
 use bee_signing_ext::binary::ed25519;
-use dummybip39::{dummy_derive, dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
+use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
+use bee_signing_ext::{Signer};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
@@ -25,7 +26,7 @@ pub(in crate) fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<Str
     } else {
         seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
     }
-    let privkey = dummy_derive(seed, "m/44'/4218'/0'/0'");
+    let privkey = ed25519::Ed25519PrivateKey::generate_from_seed(&seed, "M/44H/4218H/0H/0H").expect("Error deriving seed");
     let address = dummy_derive_into_address(privkey);
 
     // Account ID generation: 2/2 : Hash generated address in order to get ID
@@ -82,7 +83,7 @@ impl Account {
         }
     }
 
-    fn get_seed(&self) -> ed25519::Seed {
+    fn get_seed(&self) -> ed25519::Ed25519Seed {
         let bip39_passphrase = match &self.bip39_passphrase {
             Some(x) => x,
             None => "",
@@ -94,9 +95,9 @@ impl Account {
         self.sub_accounts.push(SubAccount::new(label))
     }
 
-    fn get_privkey(&self, derivation_path: String) -> ed25519::PrivateKey {
+    fn get_privkey(&self, derivation_path: String) -> ed25519::Ed25519PrivateKey {
         let seed = self.get_seed();
-        dummy_derive(seed, &derivation_path)
+        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, &derivation_path).expect("Error deriving seed")
     }
 
     pub fn get_address(&self, derivation_path: String) -> String {
@@ -106,7 +107,7 @@ impl Account {
 
     pub fn sign_message(&self, message: &[u8], derivation_path: String) -> [u8; 64] {
         let privkey = self.get_privkey(derivation_path);
-        privkey.sign(message).unwrap().to_bytes()
+        privkey.sign(message).to_bytes()
     }
 
     pub fn id(&self) -> &str {
