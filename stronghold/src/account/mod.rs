@@ -3,8 +3,7 @@ use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod dummybip39;
-use bee_signing_ext::binary::ed25519;
-use bee_signing_ext::Signer;
+use bee_signing_ext::{binary::ed25519, Signer};
 use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
 
 #[derive(Serialize, Deserialize, Debug)]

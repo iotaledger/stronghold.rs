@@ -7,11 +7,10 @@
 mod account;
 
 /// Stronghold Storage Module
-mod storage; //storage will be saving records with accounts as jsons
+mod storage; // storage will be saving records with accounts as jsons
 
 use account::{Account, SubAccount};
-use bee_signing_ext::binary::ed25519;
-use bee_signing_ext::{Signature, Verifier};
+use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use std::str;
 
 /// Stronghold doc com
@@ -198,11 +197,11 @@ impl Stronghold {
 
     // Verify a signature
     pub fn signature_verify(&self, address: &str, message: &str, signature: &str) {
-        //signature treatment
+        // signature treatment
         let bytes = base64::decode(message).expect("Error decoding base64");
         let signature = ed25519::Ed25519Signature::from_bytes(&bytes).expect("Error decoding bytes into signature");
 
-        //address treatment
+        // address treatment
         let (hrp, data_u5) = bech32::decode(address).expect("Invalid address");
         let mut data = bech32::convert_bits(data_u5.as_ref(), 5, 8, true).expect("Error decoding bech32");
         let address_type = data.remove(0);
@@ -215,7 +214,7 @@ impl Stronghold {
         let public_key =
             ed25519::Ed25519PublicKey::from_bytes(data.as_ref()).expect("Error decoding data into public key");
 
-        //verification
+        // verification
         public_key
             .verify(&bytes, &signature)
             .expect("Error verifying signature")
@@ -243,9 +242,7 @@ impl Stronghold {
         storage::garbage_collect_vault(snapshot_password);
     }
 
-    /*
-    pub fn message_decrypt() {
-
-    }
-    */
+    // pub fn message_decrypt() {
+    //
+    // }
 }

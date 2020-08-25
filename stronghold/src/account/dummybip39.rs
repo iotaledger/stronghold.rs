@@ -5,13 +5,12 @@ use unicode_normalization::UnicodeNormalization;
 use bee_signing_ext::binary::ed25519;
 
 const PBKDF2_ROUNDS: usize = 2048;
-const PBKDF2_BYTES: usize = 32; //64 for secp256k1 , 32 for ed25
+const PBKDF2_BYTES: usize = 32; // 64 for secp256k1 , 32 for ed25
 
 /// PBKDF2 helper, used to generate [`Seed`][Seed] from [`Mnemonic`][Mnemonic]
 ///
 /// [Mnemonic]: ../mnemonic/struct.Mnemonic.html
 /// [Seed]: ../seed/struct.Seed.html
-///
 fn _pbkdf2(input: &[u8], salt: &str) -> Vec<u8> {
     let mut seed = vec![0u8; PBKDF2_BYTES];
 
@@ -33,7 +32,7 @@ pub(crate) fn dummy_derive_into_address(ed_priv: ed25519::Ed25519PrivateKey) -> 
     let pubkey = ed_priv.generate_public_key();
     let pubkey_as_bytes_in_box: Box<[u8]> = Box::new(*pubkey.as_bytes());
     let mut pubkey_as_bytes_in_vec: Vec<u8> = pubkey_as_bytes_in_box.into_vec();
-    let prefix: Vec<u8> = vec![1]; //prefix for ed25 addresses
+    let prefix: Vec<u8> = vec![1]; // prefix for ed25 addresses
     let mut data = prefix;
     data.append(&mut pubkey_as_bytes_in_vec);
     bech32::encode("iota", data.to_base32()).unwrap()
