@@ -1,7 +1,9 @@
+use engine::vault;
+
 use vault::{BoxProvider, DBView, DBWriter, Id, Key, RecordHint};
 
 use super::{
-    connection::{send_until_success, CRequest, CResult},
+    connection::{send, CRequest, CResult},
     state::State,
 };
 
@@ -44,7 +46,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     pub fn create_chain(key: Key<P>, id: Id) -> Client<P> {
         let req = DBWriter::<P>::create_chain(&key, id);
         // send to the connection interface.
-        send_until_success(CRequest::Write(req));
+        send(CRequest::Write(req));
 
         Self {
             id,
@@ -53,37 +55,43 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     }
 
     // create a record in the vault.
-    pub fn create_record(&self, payload: Vec<u8>) {
+    pub fn create_record(&self, payload: Vec<u8>, hint: &[u8]) -> Id {
         self.db.take(|db| {
-            let (_, req) = db
+            let (record_id, req) = db
                 .writer(self.id)
-                .write(&payload, RecordHint::new(b"").expect(line_error!()))
+                .write(&payload, RecordHint::new(hint).expect(line_error!()))
                 .expect(line_error!());
 
             req.into_iter().for_each(|req| {
-                send_until_success(CRequest::Write(req));
+                send(CRequest::Write(req));
             });
-        });
+
+            record_id
+        })
     }
 
     // list the ids and hints of all of the records in the Vault.
-    pub fn list_ids(&self) -> Vec<Id> {
-        let mut ids = Vec::new();
-        self.db.take(|db| db).records().for_each(|(id, hint)| ids.push(id));
-        ids
+    pub fn get_index(&self) -> Vec<(Id, RecordHint)> {
+        let mut index = Vec::new();
+        self.db
+            .take(|db| db)
+            .records()
+            .for_each(|(id, hint)| index.push((id, hint)));
+        index
     }
 
     // read a record by its ID into plaintext.
-    pub fn read_record_by_id(&self, id: Id) {
+    pub fn read_record_by_id(&self, id: Id) -> String {
         self.db.take(|db| {
             let read = db.reader().prepare_read(id).expect("unable to read id");
 
-            if let CResult::Read(read) = send_until_success(CRequest::Read(read)) {
+            if let CResult::Read(read) = send(CRequest::Read(read)) {
                 let record = db.reader().read(read).expect(line_error!());
-
-                println!("Plain: {:?}", String::from_utf8(record).unwrap());
+                String::from_utf8(record).expect("unable to read id")
+            } else {
+                panic!("unable to read id")
             }
-        });
+        })
     }
 
     // Garbage collect the chain and build a new one.
@@ -91,10 +99,10 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         self.db.take(|db| {
             let (to_write, to_delete) = db.writer(self.id).gc().expect(line_error!());
             to_write.into_iter().for_each(|req| {
-                send_until_success(CRequest::Write(req));
+                send(CRequest::Write(req));
             });
             to_delete.into_iter().for_each(|req| {
-                send_until_success(CRequest::Delete(req));
+                send(CRequest::Delete(req));
             });
         });
     }
@@ -104,8 +112,8 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
         self.db.take(|db| {
             let (to_write, to_delete) = db.writer(self.id).revoke(id).expect(line_error!());
 
-            send_until_success(CRequest::Write(to_write));
-            send_until_success(CRequest::Delete(to_delete));
+            send(CRequest::Write(to_write));
+            send(CRequest::Delete(to_delete));
         });
     }
 }
@@ -113,7 +121,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 impl<P: BoxProvider> Vault<P> {
     // create a new vault for the key.
     pub fn new(key: Key<P>) -> Self {
-        let req = send_until_success(CRequest::List).list();
+        let req = send(CRequest::List).list();
         let db = vault::DBView::load(key.clone(), req).expect(line_error!());
         Self {
             key,
@@ -127,7 +135,7 @@ impl<P: BoxProvider> Vault<P> {
         let db = _db.take().expect(line_error!());
         let retval = f(db);
 
-        let req = send_until_success(CRequest::List).list();
+        let req = send(CRequest::List).list();
         *_db = Some(vault::DBView::load(self.key.clone(), req).expect(line_error!()));
         retval
     }

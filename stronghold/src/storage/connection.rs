@@ -1,6 +1,6 @@
-use vault::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
+use engine::vault;
 
-use std::{thread, time::Duration};
+use vault::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
 
 use super::state::State;
 
@@ -33,8 +33,8 @@ impl CResult {
 }
 
 // resolve the requests into responses.
-pub fn send(req: CRequest) -> Option<CResult> {
-    let result = match req {
+pub fn send(req: CRequest) -> CResult {
+    match req {
         // if the request is a list, get the keys from the map and put them into a ListResult.
         CRequest::List => {
             let entries = State::storage_map()
@@ -74,20 +74,6 @@ pub fn send(req: CRequest) -> Option<CResult> {
                 .expect(line_error!());
 
             CResult::Read(ReadResult::new(read.into(), state))
-        }
-    };
-
-    Some(result)
-}
-
-// Loop until there is a Result.
-pub fn send_until_success(req: CRequest) -> CResult {
-    loop {
-        match send(req.clone()) {
-            Some(result) => {
-                break result;
-            }
-            None => thread::sleep(Duration::from_millis(50)),
         }
     }
 }

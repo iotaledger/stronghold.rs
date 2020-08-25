@@ -19,7 +19,9 @@ use client::Client;
 use provider::Provider;
 use snap::{deserialize_from_snapshot, get_snapshot_path, serialize_to_snapshot};
 
-pub use vault::{Base64Decodable, Id, Key};
+use engine::vault;
+
+pub use vault::{Base64Decodable, Id, Key, RecordHint};
 
 use std::path::Path;
 
@@ -29,14 +31,14 @@ pub fn exists() -> bool {
     snapshot.exists()
 }
 
-pub fn encrypt(plain: &str, pass: &str) {
+pub fn encrypt(hint: &str, plain: &str, pass: &str) -> Id {
     let snapshot = get_snapshot_path();
-
+    let record_id: Id;
     if snapshot.exists() {
         let snapshot = get_snapshot_path();
         let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-        client.create_record(plain.as_bytes().to_vec());
+        record_id = client.create_record(plain.as_bytes().to_vec(), hint.as_bytes());
 
         let snapshot = get_snapshot_path();
         serialize_to_snapshot(&snapshot, pass, client);
@@ -44,11 +46,13 @@ pub fn encrypt(plain: &str, pass: &str) {
         let key = Key::<Provider>::random().expect("Unable to generate a new key");
         let id = Id::random::<Provider>().expect("Unable to generate a new id");
         let client = Client::create_chain(key, id);
-        client.create_record(plain.as_bytes().to_vec());
+
+        record_id = client.create_record(plain.as_bytes().to_vec(), hint.as_bytes());
 
         let snapshot = get_snapshot_path();
         serialize_to_snapshot(&snapshot, pass, client);
     }
+    record_id
 }
 
 // handle the snapshot command.
@@ -62,38 +66,40 @@ pub fn snapshot(path: &str, pass: &str) {
 }
 
 // handle the list command.
-pub fn list(pass: &str) -> Vec<Id> {
+pub fn get_index(pass: &str) -> Vec<(Id, RecordHint)> {
     let snapshot = get_snapshot_path();
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-    let ids = client.list_ids();
+    let index = client.get_index();
 
     let snapshot = get_snapshot_path();
     serialize_to_snapshot(&snapshot, pass, client);
 
-    ids
+    index
 }
 
 // handle the read command.
-pub fn read(id: &str, pass: &str) {
+pub fn read(id: Id, pass: &str) -> String {
     let snapshot = get_snapshot_path();
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-    let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
+    let id = Vec::from_base64(id).expect("couldn't convert the id to from base64");
     let id = Id::load(&id).expect("Couldn't build a new Id");
 
-    client.read_record_by_id(id);
+    let record = client.read_record_by_id(id);
 
     let snapshot = get_snapshot_path();
     serialize_to_snapshot(&snapshot, pass, client);
+
+    record
 }
 
 // create a record with a revoke transaction.  Data isn't actually deleted until it is garbage collected.
-pub fn revoke(id: &str, pass: &str) {
+pub fn revoke(id: Id, pass: &str) {
     let snapshot = get_snapshot_path();
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-    let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
+    let id = Vec::from_base64(id).expect("couldn't convert the id to from base64");
     let id = Id::load(&id).expect("Couldn't build a new Id");
 
     client.revoke_record_by_id(id);
@@ -108,7 +114,7 @@ pub fn garbage_collect_vault(pass: &str) {
     let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
     client.perform_gc();
-    client.list_ids();
+    client.get_index();
 
     let snapshot = get_snapshot_path();
     serialize_to_snapshot(&snapshot, pass, client);
