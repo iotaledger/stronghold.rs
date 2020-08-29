@@ -19,15 +19,25 @@ mod account;
 
 /// Stronghold Storage Module
 mod storage; // storage will be saving records with accounts as jsons
+use storage::Storage;
 
 use account::{Account, SubAccount};
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
+use std::path::Path;
 use std::str;
 
 /// Stronghold doc com
-struct Stronghold;
+pub struct Stronghold {
+    storage: Storage,
+}
 
 impl Stronghold {
+    fn new<P: AsRef<Path>>(snapshot_path: P) -> Self {
+        Self {
+            storage: Storage::new(snapshot_path),
+        }
+    }
+
     // Decode record into account
     fn account_from_json(&self, decrypted: &str) -> Account {
         let x: Account = serde_json::from_str(&decrypted).expect("Error reading record from snapshot");
@@ -36,16 +46,16 @@ impl Stronghold {
 
     // Get account by account id
     fn account_get_by_id(&self, account_id: &str, snapshot_password: &str) -> Account {
-        let index = storage::get_index(snapshot_password);
+        let index = self.storage.get_index(snapshot_password);
         let account: Option<Account>;
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
-        let decrypted = storage::read(record_id, snapshot_password);
+        let decrypted = self.storage.read(record_id, snapshot_password);
         self.account_from_json(&decrypted)
     }
 
     // Get account by record id
     fn account_get_by_record_id(&self, record_id: &storage::Id, snapshot_password: &str) -> Account {
-        let decrypted = storage::read(*record_id, snapshot_password);
+        let decrypted = self.storage.read(*record_id, snapshot_password);
         self.account_from_json(&decrypted)
     }
 
@@ -53,20 +63,21 @@ impl Stronghold {
     pub fn account_remove(&self, account_id: &str, snapshot_password: &str) {
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
         let account = self.account_get_by_record_id(&record_id, snapshot_password);
-        storage::revoke(record_id, snapshot_password);
-        storage::garbage_collect_vault(snapshot_password);
+        self.storage.revoke(record_id, snapshot_password);
+        self.storage.garbage_collect_vault(snapshot_password);
     }
 
     // Save account in a new record
     fn account_save(&self, account: &Account, snapshot_password: &str) -> storage::Id {
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
-        storage::encrypt(&account.id(), &account_serialized, snapshot_password)
+        self.storage
+            .encrypt(&account.id(), &account_serialized, snapshot_password)
     }
 
     // List ids of accounts
     pub fn account_index_get(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<String> {
         let mut account_ids = Vec::new();
-        for (i, (_, account_id)) in storage::get_index(snapshot_password).into_iter().enumerate() {
+        for (i, (_, account_id)) in self.storage.get_index(snapshot_password).into_iter().enumerate() {
             if i < skip {
                 continue;
             }
@@ -81,7 +92,7 @@ impl Stronghold {
     // List accounts
     pub fn account_list(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<Account> {
         let mut accounts = Vec::new();
-        for (i, (record_id, _)) in storage::get_index(snapshot_password).into_iter().enumerate() {
+        for (i, (record_id, _)) in self.storage.get_index(snapshot_password).into_iter().enumerate() {
             if i < skip {
                 continue;
             }
@@ -233,12 +244,12 @@ impl Stronghold {
 
     // Save custom data in as a new record from the snapshot
     pub fn record_create(&self, label: &str, data: &str, snapshot_password: &str) -> storage::Id {
-        storage::encrypt(label, data, snapshot_password)
+        self.storage.encrypt(label, data, snapshot_password)
     }
 
     // Find record id by account id
     fn record_get_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
-        let index = storage::get_index(snapshot_password);
+        let index = self.storage.get_index(snapshot_password);
         for (record_id, account_id) in index {
             if format!("{:?}", account_id) == account_id_target {
                 return record_id;
@@ -249,8 +260,8 @@ impl Stronghold {
 
     // Removes record from storage by record id
     fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
-        storage::revoke(record_id, snapshot_password);
-        storage::garbage_collect_vault(snapshot_password);
+        self.storage.revoke(record_id, snapshot_password);
+        self.storage.garbage_collect_vault(snapshot_password);
     }
 
     // pub fn message_decrypt() {

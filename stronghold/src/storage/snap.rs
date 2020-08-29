@@ -11,7 +11,7 @@
 
 use engine::snapshot;
 
-use snapshot::{decrypt_snapshot, encrypt_snapshot, snapshot_dir};
+use snapshot::{decrypt_snapshot, encrypt_snapshot};
 
 use std::{fs::OpenOptions, path::PathBuf};
 
@@ -19,13 +19,6 @@ use super::{
     client::{Client, Snapshot},
     provider::Provider,
 };
-
-// get the snapshot path.
-pub(in crate) fn get_snapshot_path() -> PathBuf {
-    let path = snapshot_dir().expect("Unable to get the snapshot directory");
-
-    path.join("backup.snapshot")
-}
 
 // deserialize the snapshot data from the snapshot file.
 pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider> {
