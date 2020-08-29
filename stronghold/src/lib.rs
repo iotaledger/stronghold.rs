@@ -23,8 +23,7 @@ use storage::Storage;
 
 use account::{Account, SubAccount};
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
-use std::path::Path;
-use std::str;
+use std::{path::Path, str};
 
 /// Stronghold doc com
 pub struct Stronghold {
