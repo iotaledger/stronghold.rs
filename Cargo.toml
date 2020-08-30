@@ -1,12 +1,12 @@
 [workspace]
 members = [
+    "stronghold",
     "engine",
     "engine/vault",
     "engine/primitives",
     "engine/random",
     "engine/crypto",
-    "engine/snapshot",
-    "stronghold",
+    "engine/snapshot"
 ]
 exclude = [
   "engine/examples/commandline",
