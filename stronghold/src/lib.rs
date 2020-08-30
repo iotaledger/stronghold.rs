@@ -27,21 +27,18 @@
 
 #![warn(missing_docs, rust_2018_idioms)]
 #![allow(unused_variables, dead_code)]
-
-/// Stronghold Account Module
 mod account;
-
-/// Stronghold Storage Module
-mod storage; // storage will be saving records with accounts as jsons
-
+mod storage;
 use account::{Account, SubAccount};
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use std::str;
 
-/// Stronghold doc com
-struct Stronghold;
+/// Stronghold struct: Instantiation is required.
+pub struct Stronghold;
 
+/// Main stronghold implementation
 impl Stronghold {
+
     // Decode record into account
     fn account_from_json(&self, decrypted: &str) -> Account {
         let x: Account = serde_json::from_str(&decrypted).expect("Error reading record from snapshot");
