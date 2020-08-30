@@ -60,7 +60,14 @@ impl Stronghold {
         self.account_from_json(&decrypted)
     }
 
-    // Remove existent account
+    /// Removes an existing account from the snapshot.
+    ///
+    /// Given the `account id` of the account to remove and the `snapshot password` needed for decrypt the snapshot, searches and removes it from the snapshot file.
+    ///
+    /// # Example
+    /// ```no_run
+    /// account_remove("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "c/7f5cf@faaf$e2c%c588d");
+    /// ```
     pub fn account_remove(&self, account_id: &str, snapshot_password: &str) {
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
         let account = self.account_get_by_record_id(&record_id, snapshot_password);
