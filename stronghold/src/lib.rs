@@ -248,6 +248,11 @@ impl Stronghold {
         self.storage.encrypt(label, data, snapshot_password)
     }
 
+    // Get record by id
+    pub fn record_read(&self, record_id: &storage::Id, snapshot_password: &str) -> String {
+        self.storage.read(*record_id, snapshot_password)
+    }
+
     // Find record id by account id
     fn record_get_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
         let index = self.storage.get_index(snapshot_password);
