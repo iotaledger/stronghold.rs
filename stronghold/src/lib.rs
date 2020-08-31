@@ -169,7 +169,7 @@ impl Stronghold {
     /// `snapshot_password` password required for decrypt/encrypt the snapshot file.
     /// 
     /// `sub_accounts` set of SubAccounts belonging to the account
-    /// #Example
+    /// # Example
     ///  ```no_run
     /// let mnemonic = String::from("gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding");
     /// let snapshot_password = String::from("i:wj38siqo378e54e$");
@@ -222,7 +222,7 @@ impl Stronghold {
     /// `account_id` account id to export
     /// 
     /// `snapshot_password` required for decrypt the snapshot file
-    /// #Example
+    /// # Example
     /// ```no_run
     /// let account: Account = account_export("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "su3jA8kdD4nf:83");
     /// ```
@@ -248,7 +248,7 @@ impl Stronghold {
     /// 
     /// `snapshot_password` password required for decrypt/encrypt snapshot file
     /// 
-    /// #Example
+    /// # Example
     /// ```no_run
     /// subaccount_add("savings", "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "suHyeJdnJuJNU34;23");
     /// ```
@@ -270,7 +270,7 @@ impl Stronghold {
     /// `visible` if the subaccount should be visible or not
     /// 
     /// `snapshot_password` password required for decrypt/encrypt the snapshot file
-    /// #Example
+    /// # Example
     /// ```no_run
     /// subaccount_hide("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1")
     pub fn subaccount_hide(&self, account_id: &str, sub_account_index: usize, visible: bool, snapshot_password: &str) {
@@ -294,7 +294,7 @@ impl Stronghold {
     /// 
     /// For additional check bip39 spec https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki (note: for practical purposes in this library we are calling "account" to a master seed and "subaccount" to an bip39 account)
     ///
-    /// #Example
+    /// # Example
     /// ```no_run
     /// let address = address_get("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", 1, true, "si/(3jfiudmeiKSie");
     /// ```
@@ -332,7 +332,7 @@ impl Stronghold {
     /// 
     /// For additional check bip39 spec https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki (note: for practical purposes in this library we are calling "account" to a master seed and "subaccount" to an bip39 account)
     /// 
-    /// #Example
+    /// # Example
     /// ```no_run
     /// let message = "With this signed message you can verify my address ownership".as_bytes();
     /// let signature = signature_make(&message, "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", 0, false, 0);
@@ -366,7 +366,7 @@ impl Stronghold {
     /// 
     /// `signature` the signature to verify
     /// 
-    /// #Example
+    /// # Example
     /// ```no_run
     /// signature_verify("iot10ux2jxa9ashasuendazzrutwvyqv7m9emtgmx64wwdtewzqf4exq09lkta", "With this signed message you can verify my address ownership", "fMBliDcKbb8HAcjnQET24YhNz/88tKxJeyjSF1ZMky6VUxA3WCXzD7Gw296EHWdBx57ROmFqiYAUgdmVP9vVBg==")
     /// ```
@@ -402,7 +402,7 @@ impl Stronghold {
     /// 
     /// `snapshot_password` password required for decrypt/encrypt the snapshot file
     /// 
-    /// #Example
+    /// # Example
     /// ```no_run
     /// let id:storage::Id = record_create("colors", "red,white,violet");
     /// ```
@@ -416,7 +416,7 @@ impl Stronghold {
     /// 
     /// `snapshot_password` password required for decrypt/encrypt the snapshot file
     /// 
-    /// #Example
+    /// # Example
     /// ```no_run
     /// let id: storage::Id = record_get_by_account_id("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "suEu38kQmsn$eu");
     /// ```
@@ -436,7 +436,7 @@ impl Stronghold {
     /// 
     /// `snapshot_password` password required for decrypt/encrypt the snapshot file
     /// 
-    /// #Example
+    /// # Example
     /// ```no_run
     /// let id:storage::Id = record_create("colors", "red,white,violet");
     /// record_remove(id,"15ejdwur$%&yrh");
