@@ -28,6 +28,7 @@ mod state;
 
 use client::Client;
 use provider::Provider;
+pub use snap::snapshot_dir;
 use snap::{deserialize_from_snapshot, serialize_to_snapshot};
 
 use engine::vault;

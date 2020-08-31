@@ -11,6 +11,7 @@
 
 use engine::snapshot;
 
+pub use snapshot::snapshot_dir;
 use snapshot::{decrypt_snapshot, encrypt_snapshot};
 
 use std::{fs::OpenOptions, path::PathBuf};

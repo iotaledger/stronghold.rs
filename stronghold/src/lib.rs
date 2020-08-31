@@ -19,7 +19,7 @@ mod account;
 
 /// Stronghold Storage Module
 mod storage; // storage will be saving records with accounts as jsons
-use storage::Storage;
+use storage::{snapshot_dir, Storage};
 pub use storage::{Base64Decodable, Id};
 
 use account::{Account, SubAccount};
@@ -29,6 +29,14 @@ use std::{path::Path, str};
 /// Stronghold doc com
 pub struct Stronghold {
     storage: Storage,
+}
+
+impl Default for Stronghold {
+    fn default() -> Self {
+        Self {
+            storage: Storage::new(snapshot_dir().expect("failed to get snapshot dir")),
+        }
+    }
 }
 
 impl Stronghold {
