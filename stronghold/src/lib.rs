@@ -274,3 +274,18 @@ impl Stronghold {
     //
     // }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Stronghold;
+
+    #[test]
+    fn encrypt_value() {
+        let stronghold = Stronghold::default();
+        let value = "value_to_encrypt";
+        let id = stronghold.record_create("", value, "password");
+
+        let read = stronghold.record_read(&id, "password");
+        assert_eq!(read, value);
+    }
+}
