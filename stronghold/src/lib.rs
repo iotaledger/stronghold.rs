@@ -278,8 +278,7 @@ impl Stronghold {
 #[cfg(test)]
 pub mod test_utils {
     use engine::snapshot::snapshot_dir;
-    use rand::distributions::Alphanumeric;
-    use rand::{thread_rng, Rng};
+    use rand::{distributions::Alphanumeric, thread_rng, Rng};
     use std::path::PathBuf;
 
     pub fn with_snapshot<F: FnOnce(&PathBuf)>(cb: F) {
