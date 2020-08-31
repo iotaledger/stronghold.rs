@@ -276,16 +276,35 @@ impl Stronghold {
 }
 
 #[cfg(test)]
+pub mod test_utils {
+    use engine::snapshot::snapshot_dir;
+    use rand::distributions::Alphanumeric;
+    use rand::{thread_rng, Rng};
+    use std::path::PathBuf;
+
+    pub fn with_snapshot<F: FnOnce(&PathBuf)>(cb: F) {
+        let snapshot_filename: String = thread_rng().sample_iter(&Alphanumeric).take(15).collect();
+        let snapshot_path = snapshot_dir()
+            .expect("failed to get snapshot dir")
+            .join(snapshot_filename);
+        cb(&snapshot_path);
+        let _ = std::fs::remove_file(snapshot_path);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::Stronghold;
 
     #[test]
     fn create_record() {
-        let stronghold = Stronghold::default();
-        let value = "value_to_encrypt";
-        let id = stronghold.record_create("", value, "password");
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path);
+            let value = "value_to_encrypt";
+            let id = stronghold.record_create("", value, "password");
 
-        let read = stronghold.record_read(&id, "password");
-        assert_eq!(read, value);
+            let read = stronghold.record_read(&id, "password");
+            assert_eq!(read, value);
+        });
     }
 }

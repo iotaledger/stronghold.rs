@@ -141,15 +141,13 @@ mod tests {
 
     #[test]
     fn encrypt_value() {
-        let storage = Storage::new(
-            super::snapshot_dir()
-                .expect("failed to get snapshot dir")
-                .join("storage.test.snapshot"),
-        );
-        let value = "value_to_encrypt";
-        let id = storage.encrypt("", value, "password");
+        crate::test_utils::with_snapshot(|path| {
+            let storage = Storage::new(path);
+            let value = "value_to_encrypt";
+            let id = storage.encrypt("", value, "password");
 
-        let read = storage.read(id, "password");
-        assert_eq!(read, value);
+            let read = storage.read(id, "password");
+            assert_eq!(read, value);
+        });
     }
 }
