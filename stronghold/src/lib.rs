@@ -21,6 +21,7 @@ mod account;
 mod storage; // storage will be saving records with accounts as jsons
 pub use storage::Id;
 use storage::Storage;
+pub use storage::{Base64Decodable, Id};
 
 use account::{Account, SubAccount};
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
@@ -259,7 +260,7 @@ impl Stronghold {
     }
 
     // Removes record from storage by record id
-    fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
+    pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
         self.storage.revoke(record_id, snapshot_password);
         self.storage.garbage_collect_vault(snapshot_password);
     }
