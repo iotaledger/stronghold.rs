@@ -19,6 +19,7 @@ mod account;
 
 /// Stronghold Storage Module
 mod storage; // storage will be saving records with accounts as jsons
+pub use storage::Id;
 use storage::Storage;
 
 use account::{Account, SubAccount};
