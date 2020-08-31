@@ -108,9 +108,6 @@ impl Storage {
     pub fn read(&self, id: Id, pass: &str) -> String {
         let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass);
 
-        let id = Vec::from_base64(id).expect("couldn't convert the id to from base64");
-        let id = Id::load(&id).expect("Couldn't build a new Id");
-
         let record = client.read_record_by_id(id);
 
         serialize_to_snapshot(&self.snapshot_path, pass, client);
@@ -121,9 +118,6 @@ impl Storage {
     // create a record with a revoke transaction.  Data isn't actually deleted until it is garbage collected.
     pub fn revoke(&self, id: Id, pass: &str) {
         let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass);
-
-        let id = Vec::from_base64(id).expect("couldn't convert the id to from base64");
-        let id = Id::load(&id).expect("Couldn't build a new Id");
 
         client.revoke_record_by_id(id);
 
@@ -138,5 +132,20 @@ impl Storage {
         client.get_index();
 
         serialize_to_snapshot(&self.snapshot_path, pass, client);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Storage;
+
+    #[test]
+    fn encrypt_value() {
+        let storage = Storage::default();
+        let value = "value_to_encrypt";
+        let id = storage.encrypt("", value, "password");
+
+        let read = storage.read(id, "password");
+        assert_eq!(read, value);
     }
 }
