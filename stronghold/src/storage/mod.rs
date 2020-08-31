@@ -28,8 +28,7 @@ mod state;
 
 use client::Client;
 use provider::Provider;
-pub use snap::snapshot_dir;
-use snap::{deserialize_from_snapshot, serialize_to_snapshot};
+use snap::{deserialize_from_snapshot, serialize_to_snapshot, snapshot_dir};
 
 use engine::vault;
 
@@ -39,6 +38,14 @@ use std::path::{Path, PathBuf};
 
 pub struct Storage {
     snapshot_path: PathBuf,
+}
+
+impl Default for Storage {
+    fn default() -> Self {
+        Self {
+            snapshot_path: snapshot_dir().expect("failed to get snapshot dir"),
+        }
+    }
 }
 
 impl Storage {

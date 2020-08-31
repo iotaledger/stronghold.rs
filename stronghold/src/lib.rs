@@ -19,7 +19,7 @@ mod account;
 
 /// Stronghold Storage Module
 mod storage; // storage will be saving records with accounts as jsons
-use storage::{snapshot_dir, Storage};
+use storage::Storage;
 pub use storage::{Base64Decodable, Id};
 
 use account::{Account, SubAccount};
@@ -27,16 +27,9 @@ use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use std::{path::Path, str};
 
 /// Stronghold doc com
+#[derive(Default)]
 pub struct Stronghold {
     storage: Storage,
-}
-
-impl Default for Stronghold {
-    fn default() -> Self {
-        Self {
-            storage: Storage::new(snapshot_dir().expect("failed to get snapshot dir")),
-        }
-    }
 }
 
 impl Stronghold {
