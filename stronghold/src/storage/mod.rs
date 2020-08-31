@@ -43,7 +43,9 @@ pub struct Storage {
 impl Default for Storage {
     fn default() -> Self {
         Self {
-            snapshot_path: snapshot_dir().expect("failed to get snapshot dir"),
+            snapshot_path: snapshot_dir()
+                .expect("failed to get snapshot dir")
+                .join("backup.snapshot"),
         }
     }
 }
