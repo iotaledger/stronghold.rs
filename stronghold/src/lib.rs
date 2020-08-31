@@ -31,7 +31,7 @@ pub struct Stronghold {
 }
 
 impl Stronghold {
-    fn new<P: AsRef<Path>>(snapshot_path: P) -> Self {
+    pub fn new<P: AsRef<Path>>(snapshot_path: P) -> Self {
         Self {
             storage: Storage::new(snapshot_path),
         }
