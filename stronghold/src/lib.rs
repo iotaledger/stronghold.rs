@@ -50,7 +50,7 @@ pub struct Stronghold {
 impl Stronghold {
     /// Instantiates Stronghold
     ///
-    /// Use `snapshot_path` for set the snapshot file path
+    /// Use `snapshot_path` to set the snapshot file path
     ///
     /// # Example
     /// ```no_run
@@ -114,12 +114,12 @@ impl Stronghold {
 
     /// Lists ids of accounts.
     ///
-    /// Given the `snapshot password` for decrypt the snapshot, and `skip` and `limit` parameters for efficiently
+    /// Given the `snapshot password` to decrypt the snapshot, and `skip` and `limit` parameters to efficiently
     /// paginate results.
     ///
-    /// `skip` is used for avoid retrieving ids from the start.
+    /// `skip` is used to avoid retrieving ids from the start.
     ///
-    /// `limit` is used for avoid retrieving the entire list of ids until the end.
+    /// `limit` is used to avoid retrieving the entire list of ids until the end.
     ///
     /// # Example
     /// ```no_run
@@ -143,12 +143,12 @@ impl Stronghold {
 
     /// Lists accounts
     ///
-    /// Given the `snapshot password` for decrypt the snapshot, and `skip` and `limit` parameters for efficiently
+    /// Given the `snapshot password` to decrypt the snapshot, and `skip` and `limit` parameters to efficiently
     /// paginate results.
     ///
-    /// `skip` is used for avoid retrieving ids from the start.
+    /// `skip` is used to avoid retrieving ids from the start.
     ///
-    /// `limit` is used for avoid retrieving the entire list of ids until the end.
+    /// `limit` is used to avoid retrieving the entire list of ids until the end.
     ///
     /// # Example
     /// ```no_run
@@ -203,10 +203,10 @@ impl Stronghold {
     ///
     /// `last_updated_on` date and time in unix epoch in ms of when the account had its last update.
     ///
-    /// `bip39_mnemonic` word list space separated.
+    /// `bip39_mnemonic` word list that is space separated.
     ///
     /// `bip39_passphrase` used to salt the master seed generation. Optional parameter but essential if you had a
-    /// passphrase, otherwise you won't be able to correctly access to your wallet.
+    /// passphrase, otherwise you won't be able to correctly access your wallet.
     ///
     /// `snapshot_password` password required for decrypt/encrypt the snapshot file.
     ///
@@ -259,7 +259,7 @@ impl Stronghold {
     ///
     /// `account_id` account id to export
     ///
-    /// `snapshot_password` required for decrypt the snapshot file
+    /// `snapshot_password` required to decrypt the snapshot file
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
@@ -284,12 +284,12 @@ impl Stronghold {
 
     /// Adds a subaccount to an account
     ///
-    /// Specify the stored account with its id (`account_id`) , `snapshot_password` is required for decrypt/encrypt the
+    /// Specify the stored account with its id (`account_id`) , `snapshot_password` is required to decrypt/encrypt the
     /// snapshot file.
     ///
     /// `label` the name that you want to call it, only for anecdotal purpose
     ///
-    /// `account_id` id of the account to which will be added a subaccount
+    /// `account_id` id of the account to which a subaccount will be added 
     ///
     /// `snapshot_password` password required for decrypt/encrypt snapshot file
     ///
@@ -311,7 +311,7 @@ impl Stronghold {
         self.account_update(&mut account, snapshot_password)
     }
 
-    /// Switchs the visibility of a subaccount
+    /// Switches the visibility of a subaccount
     ///
     /// The subaccount won't be erased.
     ///
@@ -321,7 +321,7 @@ impl Stronghold {
     ///
     /// `visible` if the subaccount should be visible or not
     ///
-    /// `snapshot_password` password required for decrypt/encrypt the snapshot file
+    /// `snapshot_password` password required to decrypt/encrypt the snapshot file
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
@@ -341,19 +341,19 @@ impl Stronghold {
 
     /// Get an address
     ///
-    /// Given a account id (`account_id`) and a derivation path (composed by `sub_account_index` and `internal`) returns
+    /// Given an account id (`account_id`) and a derivation path (composed by `sub_account_index` and `internal`) returns
     /// an address.
     ///
-    /// `account_id` id of the account which the address that has to belong
+    /// `account_id` id of the account to which the address has to belong
     ///
-    /// `sub_account_index` number of subaccount which the address that has to belong
+    /// `sub_account_index` number of subaccount to which the address has to belong
     ///
-    /// `internal` chain which the address that has to belong (internal:false for receiving address and external:true
-    /// for change addresses)
+    /// `internal` chain to which the address has to belong (internal:false for receiving address and external:true
+    /// to change addresses)
     ///
-    /// `snapshot_password` password required for decrypt/encrypt the snapshot file
+    /// `snapshot_password` password required to decrypt/encrypt the snapshot file
     ///
-    /// For additional check bip39 spec https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki (note: for practical purposes in this library we are calling "account" to a master seed and "subaccount" to an bip39 account)
+    /// For additional check bip39 spec https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki (note: for practical purposes in this library we are calling "account" for a master seed and "subaccount" for a bip39 account)
     ///
     /// # Example
     /// ```no_run
@@ -367,7 +367,8 @@ impl Stronghold {
     /// );
     /// ```
     pub fn address_get(
-        // todo: rename to address_get_new? //todo: having to indicate the derivation path maybe is a too much low
+        // todo: rename to address_get_new?
+        //todo: having to indicate the derivation path maybe is a much too low
         // level thing
         &self,
         account_id: &str,
@@ -394,13 +395,13 @@ impl Stronghold {
     ///
     /// `account_id` id of the account which the private key that has to belong
     ///
-    /// `sub_account_index` number of subaccount which the private key that has to belong
+    /// `sub_account_index` number of subaccount to which the private key has to belong
     ///
-    /// `internal` chain which the private key that has to belong
+    /// `internal` chain to which the private key has to belong
     ///
     /// `index` number of address that has to be
     ///
-    /// For additional check bip39 spec https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki (note: for practical purposes in this library we are calling "account" to a master seed and "subaccount" to an bip39 account)
+    /// For additional check bip39 spec https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki (note: for practical purposes in this library we are calling "account" a master seed and "subaccount" a bip39 account)
     ///
     /// # Example
     /// ```no_run
@@ -444,9 +445,9 @@ impl Stronghold {
     ///
     /// Given a `signature` you can verify if a `message` belongs to an identity (`address`)
     ///
-    /// `address` the address which is supposed to the signature belong
+    /// `address` the address to which the signature is supposed to belong
     ///
-    /// `message` the message which is supposed to the signature belong
+    /// `message` the message to which the signature is supposed to belong
     ///
     /// `signature` the signature to verify
     ///
@@ -482,13 +483,13 @@ impl Stronghold {
             .expect("Error verifying signature")
     }
 
-    /// Saves custom data in as a new record from the snapshot
+    /// Saves custom data as a new record from the snapshot
     ///
     /// `label`: a name for handling and anecdotal purposes
     ///
     /// `data`: data that will contain the record
     ///
-    /// `snapshot_password` password required for decrypt/encrypt the snapshot file
+    /// `snapshot_password` password required to decrypt/encrypt the snapshot file
     ///
     /// # Example
     /// ```no_run
@@ -507,7 +508,7 @@ impl Stronghold {
     ///
     /// `record_id` id of the record to read
     ///
-    /// `snapshot_password` required password for decrypt snapshot file
+    /// `snapshot_password` required password to decrypt snapshot file
     ///
     /// # Example
     /// ```no_run
@@ -528,7 +529,7 @@ impl Stronghold {
     ///
     /// `account_id_target` the id of the account to search
     ///
-    /// `snapshot_password` password required for decrypt/encrypt the snapshot file
+    /// `snapshot_password` password required to decrypt/encrypt the snapshot file
     ///
     /// # Example
     /// ```no_run
@@ -552,9 +553,9 @@ impl Stronghold {
 
     /// Removes record from storage by record id
     ///
-    /// `record_id` if of the record to remove
+    /// `record_id` id of the record to remove
     ///
-    /// `snapshot_password` password required for decrypt/encrypt the snapshot file
+    /// `snapshot_password` password required to decrypt/encrypt the snapshot file
     ///
     /// # Example
     /// ```no_run
