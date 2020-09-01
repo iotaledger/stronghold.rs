@@ -452,34 +452,35 @@ impl Stronghold {
     /// `signature` the signature to verify
     ///
     /// # Example
-    /// ```no_run
+    /// ```
     /// use stronghold::Stronghold;
-    /// let address = "iot10ux2jxa9ashasuendazzrutwvyqv7m9emtgmx64wwdtewzqf4exq09lkta";
+    /// let address = "iot1q8knfu2rq8k9tlasfqrh38zmvfqhx5zvm9ehtzmdz3zg7yqv9kllywktkn3";
     /// let message = "With this signed message you can verify my address ownership";
-    /// let signature = "fMBliDcKbb8HAcjnQET24YhNz/88tKxJeyjSF1ZMky6VUxA3WCXzD7Gw296EHWdBx57ROmFqiYAUgdmVP9vVBg==";
+    /// let signature = "nd2oqe4wRhnqsckDZGZQPkpR0nC+jxQQiVjrFvfLfskCk9MItvrommcz5tkhq94Lx+Z1eZleV3pZtChhnWfNAA==";
     /// let is_legit = Stronghold::signature_verify(&address, &message, &signature);
     /// ```
     pub fn signature_verify(address: &str, message: &str, signature: &str) {
         // signature treatment
-        let bytes = base64::decode(message).expect("Error decoding base64");
-        let signature = ed25519::Ed25519Signature::from_bytes(&bytes).expect("Error decoding bytes into signature");
+        let signature_bytes = base64::decode(signature).expect("Error decoding base64");
+        let signature = ed25519::Ed25519Signature::from_bytes(&signature_bytes).expect("Error decoding bytes into signature");
 
         // address treatment
-        let (hrp, data_u5) = bech32::decode(address).expect("Invalid address");
-        let mut data = bech32::convert_bits(data_u5.as_ref(), 5, 8, true).expect("Error decoding bech32");
-        let address_type = data.remove(0);
+        let (hrp, bech32_data_u5) = bech32::decode(address).expect("Invalid address");
+        let mut bech32_data_bytes = bech32::convert_bits(bech32_data_u5.as_ref(), 5, 8, false).expect("Error decoding bech32");
+        let address_type = bech32_data_bytes.remove(0);
         if address_type == 0 {
             panic!("ed25519 version address expected , WOTS version address found");
         };
         if address_type != 1 {
             panic!("ed25519 address expected , unknown version address found");
         };
+        let public_bytes = bech32_data_bytes.as_ref();
         let public_key =
-            ed25519::Ed25519PublicKey::from_bytes(data.as_ref()).expect("Error decoding data into public key");
+            ed25519::Ed25519PublicKey::from_bytes(public_bytes).expect("Error decoding data into public key");
 
         // verification
         public_key
-            .verify(&bytes, &signature)
+            .verify(message.as_bytes(), &signature)
             .expect("Error verifying signature")
     }
 
