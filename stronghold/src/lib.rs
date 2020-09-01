@@ -497,13 +497,29 @@ impl Stronghold {
     /// let label = "colors";
     /// let data = "red,white,violet";
     /// let snapshot_password = "uJsuMnwUIoLkdmw";
-    /// let id = stronghold.record_create(&label, &data, &snapshot_password);
+    /// let record_id = stronghold.record_create(&label, &data, &snapshot_password);
     /// ```
     pub fn record_create(&self, label: &str, data: &str, snapshot_password: &str) -> storage::Id {
         self.storage.encrypt(label, data, snapshot_password)
     }
 
-    // Get record by id
+    /// Get record by record id
+    ///
+    /// `record_id` id of the record to read
+    ///
+    /// `snapshot_password` required password for decrypt snapshot file
+    ///
+    /// # Example
+    /// ```no_run
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let label = "colors";
+    /// let data = "red,white,violet";
+    /// let snapshot_password = "uJsuMnwUIoLkdmw";
+    /// let record_id = stronghold.record_create(&label, &data, &snapshot_password);
+    ///
+    /// let record = stronghold.record_read(&record_id, &snapshot_password);
+    /// ```
     pub fn record_read(&self, record_id: &storage::Id, snapshot_password: &str) -> String {
         self.storage.read(*record_id, snapshot_password)
     }
