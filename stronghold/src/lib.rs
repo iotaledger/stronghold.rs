@@ -26,7 +26,6 @@
 //!
 //! Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out
 //! with any concerns or suggestions you may have.
-//!
 
 #![warn(missing_docs, rust_2018_idioms)]
 #![allow(unused_variables, dead_code)]
