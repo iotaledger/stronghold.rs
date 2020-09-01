@@ -125,9 +125,9 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let index: Vec<String> = stronghold.account_index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
+    /// let index: Vec<String> = stronghold.index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
     /// ```
-    pub fn account_index_get(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<String> {
+    pub fn index_get(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<String> {
         let mut account_ids = Vec::new();
         for (i, (_, account_id)) in self.storage.get_index(snapshot_password).into_iter().enumerate() {
             if i < skip {
@@ -154,7 +154,7 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let index: Vec<String> = stronghold.account_index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
+    /// let index: Vec<String> = stronghold.index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
     /// ```
     pub fn account_list(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<Account> {
         let mut accounts = Vec::new();
