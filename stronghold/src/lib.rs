@@ -11,18 +11,21 @@
 
 //! ## Introduction
 //!
-//! IOTA Stronghold is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidental leaks. It uses versioned snapshots with double-encryption that can be easily backed up and securely shared between devices. Written in stable rust, it has strong guarantees of memory safety and process integrity. The high-level developer-friendly libraries will integrate the IOTA protocol and serve as a reference implementation for anyone looking for inspiration or best-in-class tooling.
+//! IOTA Stronghold is a secure software implementation with the sole purpose of isolating digital secrets from exposure
+//! to hackers and accidental leaks. It uses versioned snapshots with double-encryption that can be easily backed up and
+//! securely shared between devices. Written in stable rust, it has strong guarantees of memory safety and process
+//! integrity. The high-level developer-friendly libraries will integrate the IOTA protocol and serve as a reference
+//! implementation for anyone looking for inspiration or best-in-class tooling.
 //!
 //! ## WARNING
 //!
-//! This library has not yet been audited for security, so use at your own peril. Until a formal third-party security audit has taken place, the IOTA Foundation makes no guarantees to the fitness of this library for any purposes.
+//! This library has not yet been audited for security, so use at your own peril. Until a formal third-party security
+//! audit has taken place, the IOTA Foundation makes no guarantees to the fitness of this library for any purposes.
 //!
 //! As such they are to be seen as experimental and not ready for real-world applications.
 //!
-//! Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out with any concerns or suggestions you may have.
-//!
-//! ## Specification
-//!
+//! Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out
+//! with any concerns or suggestions you may have.
 //!
 
 #![warn(missing_docs, rust_2018_idioms)]
@@ -84,13 +87,17 @@ impl Stronghold {
 
     /// Removes an existing account from the snapshot.
     ///
-    /// Given the `account id` of the account to remove and the `snapshot password` needed for decrypt the snapshot, searches and removes it from the snapshot file.
+    /// Given the `account id` of the account to remove and the `snapshot password` needed for decrypt the snapshot,
+    /// searches and removes it from the snapshot file.
     ///
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// stronghold.account_remove("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "c/7f5cf@faaf$e2c%c588d");
+    /// stronghold.account_remove(
+    ///     "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1",
+    ///     "c/7f5cf@faaf$e2c%c588d",
+    /// );
     /// ```
     pub fn account_remove(&self, account_id: &str, snapshot_password: &str) {
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
@@ -108,7 +115,8 @@ impl Stronghold {
 
     /// Lists ids of accounts.
     ///
-    /// Given the `snapshot password` for decrypt the snapshot, and `skip` and `limit` parameters for efficiently paginate results.
+    /// Given the `snapshot password` for decrypt the snapshot, and `skip` and `limit` parameters for efficiently
+    /// paginate results.
     ///
     /// `skip` is used for avoid retrieving ids from the start.
     ///
@@ -118,7 +126,7 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let index: Vec<String> = stronghold.account_index_get("c/7f5cf@faaf$e2c%c588d",0,30);
+    /// let index: Vec<String> = stronghold.account_index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
     /// ```
     pub fn account_index_get(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<String> {
         let mut account_ids = Vec::new();
@@ -136,7 +144,8 @@ impl Stronghold {
 
     /// Lists accounts
     ///
-    /// Given the `snapshot password` for decrypt the snapshot, and `skip` and `limit` parameters for efficiently paginate results.
+    /// Given the `snapshot password` for decrypt the snapshot, and `skip` and `limit` parameters for efficiently
+    /// paginate results.
     ///
     /// `skip` is used for avoid retrieving ids from the start.
     ///
@@ -146,7 +155,7 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let index: Vec<String> = stronghold.account_index_get("c/7f5cf@faaf$e2c%c588d",0,30);
+    /// let index: Vec<String> = stronghold.account_index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
     /// ```
     pub fn account_list(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<Account> {
         let mut accounts = Vec::new();
@@ -164,7 +173,8 @@ impl Stronghold {
 
     /// Creates new account saving it
     ///
-    /// Given an optional `bip39 passphrase` and a required `snapshot password`, creates a new account saving it in the snapshot file.
+    /// Given an optional `bip39 passphrase` and a required `snapshot password`, creates a new account saving it in the
+    /// snapshot file.
     ///
     /// If you use `bip39 passphrase`, it will salt the generated mnemonic according to BIP39.
     ///
@@ -196,7 +206,8 @@ impl Stronghold {
     ///
     /// `bip39_mnemonic` word list space separated.
     ///
-    /// `bip39_passphrase` used to salt the master seed generation. Optional parameter but essential if you had a passphrase, otherwise you won't be able to correctly access to your wallet.
+    /// `bip39_passphrase` used to salt the master seed generation. Optional parameter but essential if you had a
+    /// passphrase, otherwise you won't be able to correctly access to your wallet.
     ///
     /// `snapshot_password` password required for decrypt/encrypt the snapshot file.
     ///
@@ -211,14 +222,14 @@ impl Stronghold {
     /// let account = stronghold.account_import(1598890069000, 1598890070000, mnemonic, None, &snapshot_password, sub_accounts);
     /// ```
     pub fn account_import(
-        //todo: reorder params , ¿what if try to add an account by second time?
+        // todo: reorder params , ¿what if try to add an account by second time?
         &self,
-        created_at: u128,      //todo: maybe should be optional
-        last_updated_on: u128, //todo: maybe should be optional
+        created_at: u128,      // todo: maybe should be optional
+        last_updated_on: u128, // todo: maybe should be optional
         bip39_mnemonic: String,
         bip39_passphrase: Option<&str>,
         snapshot_password: &str,
-        sub_accounts: Vec<SubAccount>, //todo: maybe should be optional?
+        sub_accounts: Vec<SubAccount>, // todo: maybe should be optional?
     ) -> Account {
         if bip39_mnemonic.is_empty() {
             panic!("Invalid parameters: bip39_mnemonic is missing");
@@ -259,13 +270,13 @@ impl Stronghold {
     /// let account = stronghold.account_export(&account_id, &snapshot_password);
     /// ```
     pub fn account_export(&self, account_id: &str, snapshot_password: &str) -> Account {
-        //todo: maybe should be renamed to account_get(): an export process has a destiny, this function not
+        // todo: maybe should be renamed to account_get(): an export process has a destiny, this function not
         self.account_get_by_id(account_id, snapshot_password)
     }
 
     /// Updates an account
     pub fn account_update(&self, account: &mut Account, snapshot_password: &str) -> storage::Id {
-        //todo: switch to private fn
+        // todo: switch to private fn
         let record_id = self.record_get_by_account_id(&account.id(), &snapshot_password);
         self.record_remove(record_id, &snapshot_password);
         account.last_updated_on(true);
@@ -274,7 +285,8 @@ impl Stronghold {
 
     /// Adds a subaccount to an account
     ///
-    /// Specify the stored account with its id (`account_id`) , `snapshot_password` is required for decrypt/encrypt the snapshot file.
+    /// Specify the stored account with its id (`account_id`) , `snapshot_password` is required for decrypt/encrypt the
+    /// snapshot file.
     ///
     /// `label` the name that you want to call it, only for anecdotal purpose
     ///
@@ -286,10 +298,14 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// stronghold.subaccount_add("savings", "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "suHyeJdnJuJNU34;23");
+    /// stronghold.subaccount_add(
+    ///     "savings",
+    ///     "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1",
+    ///     "suHyeJdnJuJNU34;23",
+    /// );
     /// ```
     pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) -> storage::Id {
-        //todo: remove return
+        // todo: remove return
         let mut account = self.account_get_by_id(&account_id, snapshot_password);
         let subaccount = SubAccount::new(String::from(label));
         account.add_sub_account(subaccount);
@@ -326,13 +342,15 @@ impl Stronghold {
 
     /// Get an address
     ///
-    /// Given a account id (`account_id`) and a derivation path (composed by `sub_account_index` and `internal`) returns an address.
+    /// Given a account id (`account_id`) and a derivation path (composed by `sub_account_index` and `internal`) returns
+    /// an address.
     ///
     /// `account_id` id of the account which the address that has to belong
     ///
     /// `sub_account_index` number of subaccount which the address that has to belong
     ///
-    /// `internal` chain which the address that has to belong (internal:false for receiving address and external:true for change addresses)
+    /// `internal` chain which the address that has to belong (internal:false for receiving address and external:true
+    /// for change addresses)
     ///
     /// `snapshot_password` password required for decrypt/encrypt the snapshot file
     ///
@@ -342,10 +360,16 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let address = stronghold.address_get("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", 1, true, "si/(3jfiudmeiKSie");
+    /// let address = stronghold.address_get(
+    ///     "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1",
+    ///     1,
+    ///     true,
+    ///     "si/(3jfiudmeiKSie",
+    /// );
     /// ```
     pub fn address_get(
-        //todo: rename to address_get_new? //todo: having to indicate the derivation path maybe is a too much low level thing
+        // todo: rename to address_get_new? //todo: having to indicate the derivation path maybe is a too much low
+        // level thing
         &self,
         account_id: &str,
         sub_account_index: usize,
@@ -389,7 +413,14 @@ impl Stronghold {
     /// let internal = false;
     /// let index = 0;
     /// let snapshot_password = "iKuwjMdnwI";
-    /// let signature = stronghold.signature_make(&message, &account_id, sub_account_index, internal, index, snapshot_password);
+    /// let signature = stronghold.signature_make(
+    ///     &message,
+    ///     &account_id,
+    ///     sub_account_index,
+    ///     internal,
+    ///     index,
+    ///     snapshot_password,
+    /// );
     /// ```
     pub fn signature_make(
         &self,
@@ -483,10 +514,13 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let id = stronghold.record_get_by_account_id("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "suEu38kQmsn$eu");
+    /// let id = stronghold.record_get_by_account_id(
+    ///     "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1",
+    ///     "suEu38kQmsn$eu",
+    /// );
     /// ```
     pub fn record_get_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
-        //todo: rename account_id_target to just account_id
+        // todo: rename account_id_target to just account_id
         let index = self.storage.get_index(snapshot_password);
         for (record_id, account_id) in index {
             if format!("{:?}", account_id) == account_id_target {
@@ -517,8 +551,8 @@ impl Stronghold {
         self.storage.garbage_collect_vault(snapshot_password);
     }
 
-    //todo: add fn record_read(enum storage id or label)
-    //todo: add fn record_update()
+    // todo: add fn record_read(enum storage id or label)
+    // todo: add fn record_update()
 
     // pub fn message_decrypt() {
     //
