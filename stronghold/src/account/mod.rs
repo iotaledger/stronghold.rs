@@ -37,7 +37,7 @@ pub(in crate) fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<Str
         seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
     }
     let privkey =
-        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, "M/44H/4218H/0H/0H").expect("Error deriving seed");
+        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, "m/44H/4218H/0H/0H").expect("Error deriving seed");
     let address = dummy_derive_into_address(privkey);
 
     // Account ID generation: 2/2 : Hash generated address in order to get ID
