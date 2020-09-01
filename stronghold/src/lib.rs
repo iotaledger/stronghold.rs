@@ -289,7 +289,7 @@ impl Stronghold {
     ///
     /// `label` the name that you want to call it, only for anecdotal purpose
     ///
-    /// `account_id` id of the account to which a subaccount will be added 
+    /// `account_id` id of the account to which a subaccount will be added
     ///
     /// `snapshot_password` password required for decrypt/encrypt snapshot file
     ///
@@ -341,8 +341,8 @@ impl Stronghold {
 
     /// Get an address
     ///
-    /// Given an account id (`account_id`) and a derivation path (composed by `sub_account_index` and `internal`) returns
-    /// an address.
+    /// Given an account id (`account_id`) and a derivation path (composed by `sub_account_index` and `internal`)
+    /// returns an address.
     ///
     /// `account_id` id of the account to which the address has to belong
     ///
@@ -368,7 +368,7 @@ impl Stronghold {
     /// ```
     pub fn address_get(
         // todo: rename to address_get_new?
-        //todo: having to indicate the derivation path maybe is a much too low
+        // todo: having to indicate the derivation path maybe is a much too low
         // level thing
         &self,
         account_id: &str,
