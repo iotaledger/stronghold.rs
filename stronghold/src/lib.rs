@@ -34,6 +34,7 @@ use storage::Storage;
 pub use storage::{Base64Decodable, Id};
 
 use account::{Account, SubAccount};
+
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use std::{path::Path, str};
 
@@ -51,6 +52,7 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
+    /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
     /// ```
     pub fn new<P: AsRef<Path>>(snapshot_path: P) -> Self {
@@ -86,7 +88,9 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// account_remove("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "c/7f5cf@faaf$e2c%c588d");
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// stronghold.account_remove("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "c/7f5cf@faaf$e2c%c588d");
     /// ```
     pub fn account_remove(&self, account_id: &str, snapshot_password: &str) {
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
@@ -112,7 +116,9 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// let index: Vec<String> = account_index_get("c/7f5cf@faaf$e2c%c588d",0,30);
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let index: Vec<String> = stronghold.account_index_get("c/7f5cf@faaf$e2c%c588d",0,30);
     /// ```
     pub fn account_index_get(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<String> {
         let mut account_ids = Vec::new();
@@ -138,7 +144,9 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// let index: Vec<String> = account_index_get("c/7f5cf@faaf$e2c%c588d",0,30);
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let index: Vec<String> = stronghold.account_index_get("c/7f5cf@faaf$e2c%c588d",0,30);
     /// ```
     pub fn account_list(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<Account> {
         let mut accounts = Vec::new();
@@ -163,8 +171,11 @@ impl Stronghold {
     /// `snapshot password` will be used for decrypt/encrypt the data in the snapshot file.
     /// # Example
     /// ```no_run
-    /// let bip39_passphrase = String::from("ieu73jdumf");
-    /// let account: Account = account_index_get(Some(bip39_passphrase),"c/7f5cf@faaf$e2c%c588d");
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let bip39_passphrase = Some(String::from("ieu73jdumf"));
+    /// let snapshot_password = "c/7f5cf@faaf$e2c%c588d";
+    /// let account = stronghold.account_create(bip39_passphrase, &snapshot_password);
     /// ```
     pub fn account_create(&self, bip39_passphrase: Option<String>, snapshot_password: &str) -> Account {
         if snapshot_password.is_empty() {
@@ -191,17 +202,13 @@ impl Stronghold {
     ///
     /// `sub_accounts` set of SubAccounts belonging to the account
     /// # Example
-    ///  ```no_run
+    /// ```no_run
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
     /// let mnemonic = String::from("gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding");
-    /// let snapshot_password = String::from("i:wj38siqo378e54e$");
-    /// let mut sub_accounts = Vec::new();
-    /// sub_accounts.push(SubAccount {
-    ///    label: String,
-    ///    receive_addresses_counter: usize,
-    ///    change_addresses_counter: usize,
-    ///    visible: bool
-    /// });
-    /// let account: Account = account_import(1598890069000, 1598890070000, mnemonic, None, snapshot_password, sub_accounts);
+    /// let snapshot_password = "i:wj38siqo378e54e$";
+    /// let sub_accounts = Vec::new();
+    /// let account = stronghold.account_import(1598890069000, 1598890070000, mnemonic, None, &snapshot_password, sub_accounts);
     /// ```
     pub fn account_import(
         //todo: reorder params , ¿what if try to add an account by second time?
@@ -245,7 +252,11 @@ impl Stronghold {
     /// `snapshot_password` required for decrypt the snapshot file
     /// # Example
     /// ```no_run
-    /// let account: Account = account_export("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "su3jA8kdD4nf:83");
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let account_id = "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1";
+    /// let snapshot_password = "su3jA8kdD4nf:83";
+    /// let account = stronghold.account_export(&account_id, &snapshot_password);
     /// ```
     pub fn account_export(&self, account_id: &str, snapshot_password: &str) -> Account {
         //todo: maybe should be renamed to account_get(): an export process has a destiny, this function not
@@ -273,7 +284,9 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// subaccount_add("savings", "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "suHyeJdnJuJNU34;23");
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// stronghold.subaccount_add("savings", "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "suHyeJdnJuJNU34;23");
     /// ```
     pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) -> storage::Id {
         //todo: remove return
@@ -296,7 +309,14 @@ impl Stronghold {
     /// `snapshot_password` password required for decrypt/encrypt the snapshot file
     /// # Example
     /// ```no_run
-    /// subaccount_hide("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1")
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let account_id = "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1";
+    /// let sub_account_index = 1;
+    /// let visible = false;
+    /// let snapshot_password = "duajwYh442875";
+    /// stronghold.subaccount_hide(&account_id, sub_account_index, visible, &snapshot_password);
+    /// ```
     pub fn subaccount_hide(&self, account_id: &str, sub_account_index: usize, visible: bool, snapshot_password: &str) {
         let mut account = self.account_get_by_id(&account_id, snapshot_password);
         let sub_account = &mut account.get_sub_account(sub_account_index);
@@ -320,7 +340,9 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// let address = address_get("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", 1, true, "si/(3jfiudmeiKSie");
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let address = stronghold.address_get("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", 1, true, "si/(3jfiudmeiKSie");
     /// ```
     pub fn address_get(
         //todo: rename to address_get_new? //todo: having to indicate the derivation path maybe is a too much low level thing
@@ -359,8 +381,15 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
     /// let message = "With this signed message you can verify my address ownership".as_bytes();
-    /// let signature = signature_make(&message, "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", 0, false, 0);
+    /// let account_id = "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1";
+    /// let sub_account_index = 0;
+    /// let internal = false;
+    /// let index = 0;
+    /// let snapshot_password = "iKuwjMdnwI";
+    /// let signature = stronghold.signature_make(&message, &account_id, sub_account_index, internal, index, snapshot_password);
     /// ```
     pub fn signature_make(
         &self,
@@ -393,9 +422,13 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// signature_verify("iot10ux2jxa9ashasuendazzrutwvyqv7m9emtgmx64wwdtewzqf4exq09lkta", "With this signed message you can verify my address ownership", "fMBliDcKbb8HAcjnQET24YhNz/88tKxJeyjSF1ZMky6VUxA3WCXzD7Gw296EHWdBx57ROmFqiYAUgdmVP9vVBg==")
+    /// use stronghold::Stronghold;
+    /// let address = "iot10ux2jxa9ashasuendazzrutwvyqv7m9emtgmx64wwdtewzqf4exq09lkta";
+    /// let message = "With this signed message you can verify my address ownership";
+    /// let signature = "fMBliDcKbb8HAcjnQET24YhNz/88tKxJeyjSF1ZMky6VUxA3WCXzD7Gw296EHWdBx57ROmFqiYAUgdmVP9vVBg==";
+    /// let is_legit = Stronghold::signature_verify(&address, &message, &signature);
     /// ```
-    pub fn signature_verify(&self, address: &str, message: &str, signature: &str) {
+    pub fn signature_verify(address: &str, message: &str, signature: &str) {
         // signature treatment
         let bytes = base64::decode(message).expect("Error decoding base64");
         let signature = ed25519::Ed25519Signature::from_bytes(&bytes).expect("Error decoding bytes into signature");
@@ -429,7 +462,12 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// let id:storage::Id = record_create("colors", "red,white,violet");
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let label = "colors";
+    /// let data = "red,white,violet";
+    /// let snapshot_password = "uJsuMnwUIoLkdmw";
+    /// let id = stronghold.record_create(&label, &data, &snapshot_password);
     /// ```
     pub fn record_create(&self, label: &str, data: &str, snapshot_password: &str) -> storage::Id {
         self.storage.encrypt(label, data, snapshot_password)
@@ -443,9 +481,11 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// let id: storage::Id = record_get_by_account_id("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "suEu38kQmsn$eu");
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let id = stronghold.record_get_by_account_id("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", "suEu38kQmsn$eu");
     /// ```
-    fn record_get_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
+    pub fn record_get_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
         //todo: rename account_id_target to just account_id
         let index = self.storage.get_index(snapshot_password);
         for (record_id, account_id) in index {
@@ -464,8 +504,13 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// let id:storage::Id = record_create("colors", "red,white,violet");
-    /// record_remove(id,"15ejdwur$%&yrh");
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let label = "colors";
+    /// let data = "red,white,violet";
+    /// let snapshot_password = "uJsuMnwUIoLkdmw";
+    /// let id = stronghold.record_create(&label, &data, &snapshot_password);
+    /// stronghold.record_remove(id, &snapshot_password);
     /// ```
     pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
         self.storage.revoke(record_id, snapshot_password);
