@@ -32,6 +32,7 @@
 mod account;
 
 mod storage;
+use engine::vault::Base64Encodable;
 use storage::Storage;
 pub use storage::{Base64Decodable, Id};
 
@@ -542,6 +543,7 @@ impl Stronghold {
     /// );
     /// ```
     pub fn record_get_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
+        let account_id_target = account_id_target.as_bytes().base64();
         // todo: rename account_id_target to just account_id
         let index = self.storage.get_index(snapshot_password);
         for (record_id, account_id) in index {
