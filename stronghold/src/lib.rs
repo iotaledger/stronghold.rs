@@ -343,7 +343,7 @@ impl Stronghold {
     /// Get an address
     ///
     /// Given an account id (`account_id`) and a derivation path (composed by `sub_account_index` and `internal`)
-    /// returns an address.
+    /// returns an address and its index.
     ///
     /// `account_id` id of the account to which the address has to belong
     ///
@@ -376,7 +376,7 @@ impl Stronghold {
         sub_account_index: usize,
         internal: bool,
         snapshot_password: &str,
-    ) -> String {
+    ) -> (usize, String) {
         let mut account = self.account_get_by_id(account_id, snapshot_password);
         let sub_account = &mut account.get_sub_account(sub_account_index);
         let index = sub_account.addresses_increase_counter(internal);
@@ -385,7 +385,7 @@ impl Stronghold {
             sub_account_index, !internal as u32, index
         ));
         self.account_update(&mut account, snapshot_password);
-        address
+        (index, address)
     }
 
     /// Signs a message
@@ -463,11 +463,13 @@ impl Stronghold {
     pub fn signature_verify(address: &str, message: &str, signature: &str) {
         // signature treatment
         let signature_bytes = base64::decode(signature).expect("Error decoding base64");
-        let signature = ed25519::Ed25519Signature::from_bytes(&signature_bytes).expect("Error decoding bytes into signature");
+        let signature =
+            ed25519::Ed25519Signature::from_bytes(&signature_bytes).expect("Error decoding bytes into signature");
 
         // address treatment
         let (hrp, bech32_data_u5) = bech32::decode(address).expect("Invalid address");
-        let mut bech32_data_bytes = bech32::convert_bits(bech32_data_u5.as_ref(), 5, 8, false).expect("Error decoding bech32");
+        let mut bech32_data_bytes =
+            bech32::convert_bits(bech32_data_u5.as_ref(), 5, 8, false).expect("Error decoding bech32");
         let address_type = bech32_data_bytes.remove(0);
         if address_type == 0 {
             panic!("ed25519 version address expected , WOTS version address found");
