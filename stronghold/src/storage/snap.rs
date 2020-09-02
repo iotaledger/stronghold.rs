@@ -14,7 +14,10 @@ use engine::snapshot;
 pub use snapshot::snapshot_dir;
 use snapshot::{decrypt_snapshot, encrypt_snapshot};
 
-use std::{fs::OpenOptions, path::PathBuf};
+use std::{
+    fs::{create_dir_all, OpenOptions},
+    path::PathBuf,
+};
 
 use super::{
     client::{Client, Snapshot},
@@ -41,6 +44,9 @@ pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Cl
 
 // serialize the snapshot data into the snapshot file.
 pub(in crate) fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: Client<Provider>) {
+    if let Some(parent) = snapshot.parent() {
+        create_dir_all(parent).expect("failed to create snapshot folder");
+    }
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
