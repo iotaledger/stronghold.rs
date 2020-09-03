@@ -147,7 +147,7 @@ impl Stronghold {
         let index_record_id = if let Some(record_id) = index_record_id {
             record_id
         }else{
-            panic!("Cannot find srtonghold index record");
+            panic!("Cannot find stronghold index record");
         };
 
         let index_json = self.storage.read(index_record_id, snapshot_password);
