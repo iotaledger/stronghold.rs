@@ -43,6 +43,7 @@ use std::{path::Path, str};
 
 use serde::{Deserialize, Serialize};
 use regex::Regex;
+use std::collections::BTreeMap;
 
 /// Stronghold struct: Instantiation is required.
 #[derive(Default)]
@@ -50,20 +51,21 @@ pub struct Stronghold {
     storage: Storage,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug)]
+#[derive(Default,Serialize, Deserialize, Debug)]
 /// Stronghold index;
-pub struct Index(Vec<(String, RecordId)>);
+pub struct Index(BTreeMap<String, String>);
 
 impl Index {
     pub(in crate) fn new() -> Self {
         Default::default()
     }
 
-    pub(in crate) fn includes(&self, name_target: &str) -> bool {
-        if let Some(result) = self.0.clone().into_iter().find(|(name, record_id)| name.eq(name_target)) {
-            true
+    pub(in crate) fn includes(&self, name_target: &str) -> Result<usize, ()> {
+        let regex = Regex::new("^account:[A-Fa-f0-9]{64}$").unwrap();
+        if let Some(result) = self.0.clone().into_iter().position(|(name, record_id)| regex.is_match(name_target)) {
+            Ok(result)
         }else{
-            false
+            Err(())
         }
     }
 }
@@ -265,7 +267,7 @@ impl Stronghold {
         let index_accounts = self.index_get(snapshot_password, None, None, Some("account")).expect("Index not initialized in snapshot file");
         loop {
             let account = Account::new(bip39_passphrase.clone());
-            if !index_accounts.includes(account.id()) {//not likely but neither impossible
+            if let Ok(_) = index_accounts.includes(account.id()) {//not likely but neither impossible
                 self.account_save(&account, snapshot_password);
                 break account
             }
