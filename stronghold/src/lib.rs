@@ -34,18 +34,24 @@ mod account;
 mod storage;
 use engine::vault::Base64Encodable;
 use storage::Storage;
-pub use storage::{Base64Decodable, Id};
+pub use storage::{Base64Decodable, RecordHint, Id as RecordId};
 
 use account::{Account, SubAccount};
 
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use std::{path::Path, str};
 
+use serde::{Deserialize, Serialize};
+
 /// Stronghold struct: Instantiation is required.
 #[derive(Default)]
 pub struct Stronghold {
     storage: Storage,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+/// Stronghold index;
+pub struct Index(Vec<(String, RecordId)>);
 
 /// Main stronghold implementation
 impl Stronghold {
@@ -113,7 +119,7 @@ impl Stronghold {
             .encrypt(&account.id(), &account_serialized, snapshot_password)
     }
 
-    /// Lists ids of accounts.
+    /// Lists ids of accounts.TODO: Update it
     ///
     /// Given the `snapshot password` to decrypt the snapshot, and `skip` and `limit` parameters to efficiently
     /// paginate results.
@@ -128,18 +134,32 @@ impl Stronghold {
     /// let stronghold = Stronghold::new("savings.snapshot");
     /// let index: Vec<String> = stronghold.index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
     /// ```
-    pub fn index_get(&self, snapshot_password: &str, skip: usize, limit: usize) -> Vec<String> {
-        let mut account_ids = Vec::new();
-        for (i, (_, account_id)) in self.storage.get_index(snapshot_password).into_iter().enumerate() {
-            if i < skip {
-                continue;
-            }
-            if i >= limit {
+    pub fn index_get(&self, snapshot_password: &str, skip: usize, limit: usize, record_type: Option<String>) -> Index {
+        let mut index_record_id: Option<RecordId> = None;
+        for (record_id, record_hint) in self.storage.get_index(snapshot_password).into_iter() {
+            let record_hint_str = std::str::from_utf8(record_hint.as_ref()).expect("Error decoding hint");
+            if record_hint_str == "index" {
+                index_record_id = Some(record_id);
                 break;
             }
-            account_ids.push(format!("{:?}", account_id));
         }
-        account_ids
+
+        let index_record_id = if let Some(record_id) = index_record_id {
+            record_id
+        }else{
+            panic!("Cannot find srtonghold index record");
+        };
+
+        let index_json = self.storage.read(index_record_id, snapshot_password);
+        let mut index: Index = serde_json::from_str(&index_json).expect("Error decoding stronghold index");
+
+        if let Some(record_type) = record_type {
+            index.0 = index.0.into_iter().filter(|(r#type, _)| r#type.eq(&record_type)).collect();
+        }
+
+        index.0 = index.0[skip..(index.0.len()-limit)].to_vec();
+
+        index
     }
 
     /// Lists accounts

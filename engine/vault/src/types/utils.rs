@@ -26,7 +26,7 @@ pub struct Id([u8; 24]);
 
 /// a record hint
 #[repr(transparent)]
-#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RecordHint([u8; 24]);
 
 /// a big endian encoded number
