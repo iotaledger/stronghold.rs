@@ -154,9 +154,9 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// use stronghold::Stronghold;
+    /// use stronghold::{Stronghold, Index};
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let index: Vec<String> = stronghold.index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
+    /// let index: Index = stronghold.index_get("c/7f5cf@faaf$e2c%c588d", Some(0), Some(30), None).expect("failed to get index");
     /// ```
     pub fn index_get(
         &self,
@@ -242,7 +242,7 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let index: Vec<String> = stronghold.index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
+    /// let accounts = stronghold.account_list("c/7f5cf@faaf$e2c%c588d", Some(0), Some(30));
     /// ```
     pub fn account_list(
         &self,
