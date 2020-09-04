@@ -125,6 +125,10 @@ impl Account {
         &self.id
     }
 
+    pub fn mnemonic(&self) -> &String {
+        &self.bip39_mnemonic
+    }
+
     pub fn add_sub_account(&mut self, sub_account: SubAccount) {
         self.sub_accounts.push(sub_account);
     }
