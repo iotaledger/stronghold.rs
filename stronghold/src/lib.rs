@@ -636,16 +636,13 @@ impl Stronghold {
     ///     "suEu38kQmsn$eu",
     /// );
     /// ```
-    pub fn record_get_by_account_id(&self, account_id_target: &str, snapshot_password: &str) -> storage::Id {
-        let account_id_target = account_id_target.as_bytes().base64();
-        // todo: rename account_id_target to just account_id
-        let index = self.storage.get_index(snapshot_password);
-        for (record_id, account_id) in index {
-            if format!("{:?}", account_id) == account_id_target {
-                return record_id;
-            }
+    pub fn record_get_by_account_id(&self, account_id: &str, snapshot_password: &str) -> RecordId {
+        let (_, index) = self.index_get(snapshot_password, None, None).expect("Error getting index");
+        if let Some(record_id) = index.0.get(account_id) {
+            *record_id
+        }else{
+            panic!("Unable to find record id with specified account id");
         }
-        panic!("Unable to find record id with specified account id");
     }
 
     /// Removes record from storage by record id
