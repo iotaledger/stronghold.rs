@@ -34,15 +34,16 @@ mod account;
 mod storage;
 use engine::vault::Base64Encodable;
 use storage::Storage;
-pub use storage::{Base64Decodable, RecordHint, Id as RecordId};
+pub use storage::{Base64Decodable, Id as RecordId, RecordHint};
 
 use account::{Account, SubAccount};
 
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
+use std::collections::BTreeMap;
 use std::{path::Path, str};
 
-use serde::{Deserialize, Serialize};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 /// Stronghold struct: Instantiation is required.
 #[derive(Default)]
@@ -52,7 +53,7 @@ pub struct Stronghold {
 
 #[derive(Default, Serialize, Deserialize, Debug)]
 /// Stronghold index;
-pub struct Index(Vec<(String, RecordId)>);
+pub struct Index(BTreeMap<String, RecordId>);
 
 impl Index {
     pub(in crate) fn new() -> Self {
@@ -60,11 +61,7 @@ impl Index {
     }
 
     pub(in crate) fn includes(&self, name_target: &str) -> bool {
-        if let Some(result) = self.0.clone().into_iter().find(|(name, record_id)| name.eq(name_target)) {
-            true
-        }else{
-            false
-        }
+        self.0.contains_key(name_target)
     }
 }
 
@@ -86,13 +83,13 @@ impl Stronghold {
     }
 
     /// Initializes data index in the snapshot file
-    /// 
+    ///
     /// Required for use new stronghold snapshots
-    /// 
+    ///
     pub fn index_init(&self, snapshot_password: &str) -> Result<(), &str> {
         if let Ok(index) = self.index_get(snapshot_password, None, None, None) {
             Err("Index is already initialized in the snapshot file")
-        }else{
+        } else {
             Ok(())
         }
     }
@@ -161,55 +158,73 @@ impl Stronghold {
     /// let stronghold = Stronghold::new("savings.snapshot");
     /// let index: Vec<String> = stronghold.index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
     /// ```
-    pub fn index_get(&self, snapshot_password: &str, skip: Option<usize>, limit: Option<usize>, record_type: Option<&str>) -> Result<Index, ()> {
-        let mut index_record_id: Option<RecordId> = None;
-        for (record_id, record_hint) in self.storage.get_index(snapshot_password).into_iter() {
-            let record_hint_str = std::str::from_utf8(record_hint.as_ref()).expect("Error decoding hint");
-            if record_hint_str == "index" {
-                index_record_id = Some(record_id);
-                break;
-            }
-        }
+    pub fn index_get(
+        &self,
+        snapshot_password: &str,
+        skip: Option<usize>,
+        limit: Option<usize>,
+        record_type: Option<&str>,
+    ) -> Result<Index, ()> {
+        let storage_index = self.storage.get_index(snapshot_password);
+        let index_record_id: &RecordId = storage_index
+            .iter()
+            .find(|(record_id, record_hint)| {
+                let record_hint_str = std::str::from_utf8(record_hint.as_ref()).expect("Error decoding hint");
+                record_hint_str == "index"
+            })
+            .map(|(record_id, record_hint)| record_id)
+            .ok_or(())?;
 
-        let index_record_id = if let Some(record_id) = index_record_id {
-            record_id
-        }else{
-            return Err(());
-        };
-
-        let index_json = self.storage.read(index_record_id, snapshot_password);
+        let index_json = self.storage.read(*index_record_id, snapshot_password);
         let mut index: Index = serde_json::from_str(&index_json).expect("Cannot decode stronghold index");
 
         if let Some(record_type) = record_type {
             if record_type.eq("account") {
                 let regex = Regex::new("^account:[A-Fa-f0-9]{64}$").unwrap();
-                index.0 = index.0.into_iter().filter(|(r#type, _)| regex.is_match(r#type)).collect();
-            }else{
-                index.0 = index.0.into_iter().filter(|(r#type, _)| r#type.eq(&record_type)).collect();
+                index.0 = index
+                    .0
+                    .into_iter()
+                    .filter(|(r#type, _)| regex.is_match(r#type))
+                    .collect();
+            } else {
+                index.0 = index
+                    .0
+                    .into_iter()
+                    .filter(|(r#type, _)| r#type.eq(&record_type))
+                    .collect();
             }
         }
 
         let skip = if let Some(skip) = skip {
             if skip > index.0.len() - 1 {
                 index.0.len() - 1
-            }else{
+            } else {
                 skip
             }
-        }else{
+        } else {
             0
         };
 
         let limit = if let Some(limit) = limit {
             if limit > index.0.len() - skip {
                 index.0.len()
-            }else {
+            } else {
                 limit
             }
-        }else{
+        } else {
             index.0.len()
         };
 
-        index.0 = index.0[skip..limit+skip].to_vec();
+        let collection: Vec<(String, RecordId)> = index
+            .0
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, e)| if i >= skip && i <= limit + skip { Some(e) } else { None })
+            .collect();
+        index.0 = BTreeMap::new();
+        for (key, value) in collection {
+            index.0.insert(key, value);
+        }
 
         Ok(index)
     }
@@ -229,7 +244,12 @@ impl Stronghold {
     /// let stronghold = Stronghold::new("savings.snapshot");
     /// let index: Vec<String> = stronghold.index_get("c/7f5cf@faaf$e2c%c588d", 0, 30);
     /// ```
-    pub fn account_list(&self, snapshot_password: &str, skip: Option<usize>, limit: Option<usize>) -> Result<Vec<Account>, &str> {
+    pub fn account_list(
+        &self,
+        snapshot_password: &str,
+        skip: Option<usize>,
+        limit: Option<usize>,
+    ) -> Result<Vec<Account>, &str> {
         let index = self.index_get(snapshot_password, skip, limit, Some("account"));
         if let Ok(index) = index {
             let mut accounts = Vec::new();
@@ -237,7 +257,7 @@ impl Stronghold {
                 accounts.push(self.account_get_by_record_id(&record_id, snapshot_password));
             }
             Ok(accounts)
-        }else{
+        } else {
             Err("Snapshot file isnt initialized")
         }
     }
@@ -262,12 +282,15 @@ impl Stronghold {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: Password is missing");
         };
-        let index_accounts = self.index_get(snapshot_password, None, None, Some("account")).expect("Index not initialized in snapshot file");
+        let index_accounts = self
+            .index_get(snapshot_password, None, None, Some("account"))
+            .expect("Index not initialized in snapshot file");
         loop {
             let account = Account::new(bip39_passphrase.clone());
-            if !index_accounts.includes(account.id()) {//not likely but neither impossible
+            if !index_accounts.includes(account.id()) {
+                //not likely but neither impossible
                 self.account_save(&account, snapshot_password);
-                break account
+                break account;
             }
         }
     }
