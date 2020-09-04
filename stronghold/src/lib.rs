@@ -51,7 +51,7 @@ pub struct Stronghold {
     storage: Storage,
 }
 
-#[derive(Default,Serialize, Deserialize, Debug)]
+#[derive(Default, Serialize, Deserialize, Debug)]
 /// Stronghold index;
 pub struct Index(BTreeMap<String, RecordId>);
 
@@ -62,14 +62,19 @@ impl Index {
 
     pub(in crate) fn includes(&self, name_target: &str) -> Result<usize, ()> {
         let regex = Regex::new("^account:[A-Fa-f0-9]{64}$").unwrap();
-        if let Some(result) = self.0.clone().into_iter().position(|(name, record_id)| regex.is_match(name_target)) {
+        if let Some(result) = self
+            .0
+            .clone()
+            .into_iter()
+            .position(|(name, record_id)| regex.is_match(name_target))
+        {
             Ok(result)
-        }else{
+        } else {
             Err(())
         }
-    /*
-    pub(in crate) fn includes(&self, name_target: &str) -> bool {
-        self.0.contains_key(name_target)*/
+        /*
+        pub(in crate) fn includes(&self, name_target: &str) -> bool {
+            self.0.contains_key(name_target)*/
     }
 }
 
@@ -223,16 +228,12 @@ impl Stronghold {
             index.0.len()
         };
 
-        let collection: Vec<(String, RecordId)> = index
+        index.0 = index
             .0
             .into_iter()
             .enumerate()
             .filter_map(|(i, e)| if i >= skip && i <= limit + skip { Some(e) } else { None })
             .collect();
-        index.0 = BTreeMap::new();
-        for (key, value) in collection {
-            index.0.insert(key, value);
-        }
 
         Ok(index)
     }
@@ -295,7 +296,8 @@ impl Stronghold {
             .expect("Index not initialized in snapshot file");
         loop {
             let account = Account::new(bip39_passphrase.clone());
-            if let Ok(_) = index_accounts.includes(account.id()) {//not likely but neither impossible
+            if let Ok(_) = index_accounts.includes(account.id()) {
+                //not likely but neither impossible
                 self.account_save(&account, snapshot_password);
                 break account;
             }
