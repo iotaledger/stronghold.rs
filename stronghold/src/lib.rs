@@ -81,17 +81,6 @@ impl Stronghold {
         }
     }
 
-    /// Imports accounts from a separate snapshot file to this instance's snapshot
-    pub fn import_from_snapshot<P: AsRef<Path>>(&self, snapshot_path: P, snapshot_password: &str) {
-        let snapshot_stronghold = Self::new(&snapshot_path);
-        let snapshot_accounts = snapshot_stronghold
-            .account_list(snapshot_password, None, None)
-            .expect("failed to list accounts");
-        for snapshot_account in snapshot_accounts {
-            self.account_save(&snapshot_account, snapshot_password);
-        }
-    }
-
     /// Initializes data index in the snapshot file
     ///
     /// Required for use new stronghold snapshots
@@ -704,24 +693,6 @@ mod tests {
 
             let read = stronghold.record_read(&id, "password");
             assert_eq!(read, value);
-        });
-    }
-
-    #[test]
-    fn import_from_snapshot() {
-        super::test_utils::with_snapshot(|snapshot_path| {
-            let stronghold = Stronghold::new(snapshot_path);
-            let account = stronghold.account_create(None, "password");
-
-            super::test_utils::with_snapshot(|path| {
-                let stronghold = Stronghold::new(path);
-                stronghold.import_from_snapshot(snapshot_path, "password");
-                let imported_account = stronghold.account_export(account.id(), "password");
-                assert_eq!(
-                    serde_json::to_string(&account).unwrap(),
-                    serde_json::to_string(&imported_account).unwrap()
-                );
-            });
         });
     }
 }
