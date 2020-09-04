@@ -32,7 +32,6 @@
 mod account;
 
 mod storage;
-use engine::vault::Base64Encodable;
 use storage::Storage;
 pub use storage::{Base64Decodable, Id as RecordId};
 
@@ -79,22 +78,26 @@ impl Stronghold {
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
     /// ```
-    pub fn new<P: AsRef<Path>>(snapshot_path: P) -> Self {//todo: check if we should use stronghold::new() and stronghold::open()
-        Self {
-            storage: Storage::new(snapshot_path),
-        }
+    pub fn new<P: AsRef<Path>>(snapshot_path: P, snapshot_password: &str) -> Self {//todo: check if we should use stronghold::new() and stronghold::open()
+        let s = Self {
+            storage: Storage::new(snapshot_path)
+        };
+        if !s.storage.exists() {
+            s.index_init(snapshot_password);
+        };
+        s
     }
 
     /// Initializes data index in the snapshot file
     ///
     /// Required for use new stronghold snapshots
     ///
-    pub fn index_init(&self, snapshot_password: &str) -> Result<RecordId, &str> {
-        if let Ok(index) = self.index_get(snapshot_password, None, None) {
-            Err("Index is already initialized in the snapshot file")
+    fn index_init(&self, snapshot_password: &str) {
+        if self.index_get(snapshot_password, None, None).is_ok() {
+            panic!("Index is already initialized in the snapshot file");
         } else {
             let index = Index::new();
-            Ok(self.index_save(index, snapshot_password))
+            self.index_save(index, snapshot_password);
         }
     }
 
@@ -697,7 +700,7 @@ mod tests {
     #[test]
     fn create_record() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path);
+            let stronghold = Stronghold::new(path, "test");
             let value = "value_to_encrypt";
             let id = stronghold.record_create(value, "password");
 
