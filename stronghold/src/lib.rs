@@ -42,7 +42,6 @@ use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use std::collections::BTreeMap;
 use std::{path::Path, str};
 
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 /// Stronghold struct: Instantiation is required.
@@ -60,21 +59,8 @@ impl Index {
         Default::default()
     }
 
-    pub(in crate) fn includes(&self, name_target: &str) -> Result<usize, ()> {
-        let regex = Regex::new("^account:[A-Fa-f0-9]{64}$").unwrap();
-        if let Some(result) = self
-            .0
-            .clone()
-            .into_iter()
-            .position(|(name, record_id)| regex.is_match(name_target))
-        {
-            Ok(result)
-        } else {
-            Err(())
-        }
-        /*
-        pub(in crate) fn includes(&self, name_target: &str) -> bool {
-            self.0.contains_key(name_target)*/
+    pub(in crate) fn includes(&self, name_target: &str) -> bool {
+            self.0.contains_key(name_target)
     }
 }
 
@@ -163,8 +149,8 @@ impl Stronghold {
     // Save account in a new record
     fn account_save(&self, account: &Account, snapshot_password: &str) -> storage::Id {
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
-        self.storage
-            .encrypt(&account.id(), &account_serialized, snapshot_password)
+        let record_id = self.storage.encrypt(&account_serialized, snapshot_password);
+        record_id
     }
 
     /// Lists ids of accounts.TODO: Update it
@@ -201,23 +187,6 @@ impl Stronghold {
 
         let index_json = self.storage.read(*index_record_id, snapshot_password);
         let mut index: Index = serde_json::from_str(&index_json).expect("Cannot decode stronghold index");
-
-        if let Some(record_type) = record_type {
-            if record_type.eq("account") {
-                let regex = Regex::new("^account:[A-Fa-f0-9]{64}$").unwrap();
-                index.0 = index
-                    .0
-                    .into_iter()
-                    .filter(|(r#type, _)| regex.is_match(r#type))
-                    .collect();
-            } else {
-                index.0 = index
-                    .0
-                    .into_iter()
-                    .filter(|(r#type, _)| r#type.eq(&record_type))
-                    .collect();
-            }
-        }
 
         let skip = if let Some(skip) = skip {
             if skip > index.0.len() - 1 {
@@ -309,9 +278,10 @@ impl Stronghold {
             Default::default()
         };
         let account = Account::new(bip39_passphrase.clone());
-        match index_accounts.includes(account.id()) {
-            Ok(_) => panic!("account already exists"),
-            Err(_) => self.account_save(&account, snapshot_password),
+        if index_accounts.includes(account.id()) {
+            panic!("account already exists")
+        }else{
+            self.account_save(&account, snapshot_password)
         };
         account
     }
@@ -624,8 +594,8 @@ impl Stronghold {
     /// let snapshot_password = "uJsuMnwUIoLkdmw";
     /// let record_id = stronghold.record_create(&label, &data, &snapshot_password);
     /// ```
-    pub fn record_create(&self, label: &str, data: &str, snapshot_password: &str) -> storage::Id {
-        self.storage.encrypt(label, data, snapshot_password)
+    pub fn record_create(&self, data: &str, snapshot_password: &str) -> storage::Id {
+        self.storage.encrypt(data, snapshot_password)
     }
 
     /// Get record by record id
@@ -730,7 +700,7 @@ mod tests {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path);
             let value = "value_to_encrypt";
-            let id = stronghold.record_create("", value, "password");
+            let id = stronghold.record_create(value, "password");
 
             let read = stronghold.record_read(&id, "password");
             assert_eq!(read, value);
