@@ -66,6 +66,10 @@ impl Index {
     pub(in crate) fn add_account(&mut self, account_id: &str, record_id: RecordId) {
         self.0.insert(account_id.to_string(), record_id);
     }
+
+    pub(in crate) fn remove_account(&mut self, account_id: &str) {
+        self.0.remove(account_id);
+    }
 }
 
 /// Main stronghold implementation
@@ -136,6 +140,11 @@ impl Stronghold {
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
         let account = self.account_get_by_record_id(&record_id, snapshot_password);
         self.storage.revoke(record_id, snapshot_password);
+        let (index_record_id, mut index) = self
+            .index_get(snapshot_password, None, None)
+            .expect("failed to get index");
+        index.remove_account(account_id);
+        self.index_update(index_record_id, index, snapshot_password);
         self.storage.garbage_collect_vault(snapshot_password);
     }
 
