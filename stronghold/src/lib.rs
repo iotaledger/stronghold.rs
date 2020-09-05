@@ -32,16 +32,17 @@
 mod account;
 
 mod storage;
-use storage::Storage;
 pub use storage::{Base64Decodable, Id as RecordId};
+use storage::{RecordHint, Storage};
 
 use account::{Account, SubAccount};
 
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
-use std::collections::BTreeMap;
-use std::{path::Path, str};
+use std::{collections::BTreeMap, path::Path, str};
 
 use serde::{Deserialize, Serialize};
+
+static INDEX_HINT: &str = "index";
 
 /// Stronghold struct: Instantiation is required.
 #[derive(Default)]
@@ -59,7 +60,7 @@ impl Index {
     }
 
     pub(in crate) fn includes(&self, name_target: &str) -> bool {
-            self.0.contains_key(name_target)
+        self.0.contains_key(name_target)
     }
 
     pub(in crate) fn add_account(&mut self, account_id: &str, record_id: RecordId) {
@@ -78,37 +79,22 @@ impl Stronghold {
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
     /// ```
-    pub fn new<P: AsRef<Path>>(snapshot_path: P, snapshot_password: &str) -> Self {//todo: check if we should use stronghold::new() and stronghold::open()
-        let s = Self {
-            storage: Storage::new(snapshot_path)
-        };
-        if !s.storage.exists() {
-            s.index_init(snapshot_password);
-        };
-        s
-    }
-
-    /// Initializes data index in the snapshot file
-    ///
-    /// Required for use new stronghold snapshots
-    ///
-    fn index_init(&self, snapshot_password: &str) {
-        if self.index_get(snapshot_password, None, None).is_ok() {
-            panic!("Index is already initialized in the snapshot file");
-        } else {
-            let index = Index::new();
-            self.index_save(index, snapshot_password);
+    pub fn new<P: AsRef<Path>>(snapshot_path: P) -> Self {
+        // todo: check if we should use stronghold::new() and stronghold::open()
+        Self {
+            storage: Storage::new(snapshot_path),
         }
     }
 
-    fn index_save(&self, index: Index, snapshot_password: &str) -> RecordId {
+    fn index_save(&self, index: &Index, snapshot_password: &str) -> RecordId {
         let index_serialized = serde_json::to_string(&index).unwrap();
-        self.storage.encrypt(&index_serialized, None, snapshot_password)
+        self.storage
+            .encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), snapshot_password)
     }
 
     pub(in crate) fn index_update(&self, old_index_record_id: RecordId, new_index: Index, snapshot_password: &str) {
         self.record_remove(old_index_record_id, snapshot_password);
-        self.index_save(new_index, snapshot_password);
+        self.index_save(&new_index, snapshot_password);
     }
 
     // Decode record into account
@@ -155,15 +141,16 @@ impl Stronghold {
 
     // Save account in a new record
     fn account_save(&self, account: &Account, snapshot_password: &str) -> storage::Id {
-        let (index_record_id, mut index) = self.index_get(snapshot_password, None, None).expect("Error getting stronghold index");
+        let (index_record_id, mut index) = self
+            .index_get(snapshot_password, None, None)
+            .expect("Error getting stronghold index");
         if index.includes(account.id()) {
             panic!("Account is already stored")
         };
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
         let record_id = self.storage.encrypt(&account_serialized, None, snapshot_password);
         index.add_account(account.id(), record_id);
-        self.record_remove(index_record_id, snapshot_password);
-        
+        self.index_update(index_record_id, index, snapshot_password);
         record_id
     }
 
@@ -178,57 +165,68 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// use stronghold::{Stronghold, Index};
+    /// use stronghold::{Index, RecordId, Stronghold};
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let index: Index = stronghold.index_get("c/7f5cf@faaf$e2c%c588d", Some(0), Some(30), None).expect("failed to get index");
+    /// let (index_record_id, index): (RecordId, Index) = stronghold
+    ///     .index_get("c/7f5cf@faaf$e2c%c588d", Some(0), Some(30))
+    ///     .expect("failed to get index");
     /// ```
     pub fn index_get(
         &self,
         snapshot_password: &str,
         skip: Option<usize>,
-        limit: Option<usize>
+        limit: Option<usize>,
     ) -> Result<(RecordId, Index), ()> {
-        let storage_index = self.storage.get_index(snapshot_password);
-        let index_record_id: &RecordId = storage_index
-            .iter()
-            .find(|(record_id, record_hint)| {
-                let record_hint_str = std::str::from_utf8(record_hint.as_ref()).expect("Error decoding hint");
-                record_hint_str == "index"
-            })
-            .map(|(record_id, record_hint)| record_id)
-            .ok_or(())?;
+        if self.storage.exists() {
+            let storage_index = self.storage.get_index(snapshot_password);
+            let index_hint = RecordHint::new(INDEX_HINT).expect("invalid INDEX_HINT");
+            let (index_record_id, mut index): (RecordId, Index) = storage_index
+                .iter()
+                .find(|(record_id, record_hint)| record_hint == &index_hint)
+                .map(|(record_id, record_hint)| {
+                    let index_json = self.storage.read(*record_id, snapshot_password);
+                    let index: Index = serde_json::from_str(&index_json).expect("Cannot decode stronghold index");
+                    (*record_id, index)
+                })
+                .unwrap_or_else(|| {
+                    let index = Index::default();
+                    let record_id = self.index_save(&index, snapshot_password);
+                    (record_id, index)
+                });
 
-        let index_json = self.storage.read(*index_record_id, snapshot_password);
-        let mut index: Index = serde_json::from_str(&index_json).expect("Cannot decode stronghold index");
-
-        let skip = if let Some(skip) = skip {
-            if skip > index.0.len() - 1 {
-                index.0.len() - 1
+            let skip = if let Some(skip) = skip {
+                if skip > index.0.len() - 1 {
+                    index.0.len() - 1
+                } else {
+                    skip
+                }
             } else {
-                skip
-            }
-        } else {
-            0
-        };
+                0
+            };
 
-        let limit = if let Some(limit) = limit {
-            if limit > index.0.len() - skip {
+            let limit = if let Some(limit) = limit {
+                if limit > index.0.len() - skip {
+                    index.0.len()
+                } else {
+                    limit
+                }
+            } else {
                 index.0.len()
-            } else {
-                limit
-            }
+            };
+
+            index.0 = index
+                .0
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, e)| if i >= skip && i <= limit + skip { Some(e) } else { None })
+                .collect();
+
+            Ok((index_record_id, index))
         } else {
-            index.0.len()
-        };
-
-        index.0 = index
-            .0
-            .into_iter()
-            .enumerate()
-            .filter_map(|(i, e)| if i >= skip && i <= limit + skip { Some(e) } else { None })
-            .collect();
-
-        Ok((*index_record_id, index))
+            let index = Index::default();
+            let record_id = self.index_save(&index, snapshot_password);
+            Ok((record_id, index))
+        }
     }
 
     /// Lists accounts
@@ -284,8 +282,9 @@ impl Stronghold {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: Password is missing");
         };
-        let (index_record_id, index) = 
-            self.index_get(snapshot_password, None, None).expect("Index not initialized in snapshot file");
+        let (index_record_id, index) = self
+            .index_get(snapshot_password, None, None)
+            .expect("Index not initialized in snapshot file");
         let account = Account::new(bip39_passphrase.clone());
         self.account_save(&account, snapshot_password);
         account
@@ -594,10 +593,9 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let label = "colors";
     /// let data = "red,white,violet";
     /// let snapshot_password = "uJsuMnwUIoLkdmw";
-    /// let record_id = stronghold.record_create(&label, &data, &snapshot_password);
+    /// let record_id = stronghold.record_create(&data, &snapshot_password);
     /// ```
     pub fn record_create(&self, data: &str, snapshot_password: &str) -> storage::Id {
         self.storage.encrypt(data, None, snapshot_password)
@@ -613,10 +611,9 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let label = "colors";
     /// let data = "red,white,violet";
     /// let snapshot_password = "uJsuMnwUIoLkdmw";
-    /// let record_id = stronghold.record_create(&label, &data, &snapshot_password);
+    /// let record_id = stronghold.record_create(&data, &snapshot_password);
     ///
     /// let record = stronghold.record_read(&record_id, &snapshot_password);
     /// ```
@@ -640,10 +637,12 @@ impl Stronghold {
     /// );
     /// ```
     pub fn record_get_by_account_id(&self, account_id: &str, snapshot_password: &str) -> RecordId {
-        let (_, index) = self.index_get(snapshot_password, None, None).expect("Error getting index");
+        let (_, index) = self
+            .index_get(snapshot_password, None, None)
+            .expect("Error getting index");
         if let Some(record_id) = index.0.get(account_id) {
             *record_id
-        }else{
+        } else {
             panic!("Unable to find record id with specified account id");
         }
     }
@@ -658,10 +657,9 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let label = "colors";
     /// let data = "red,white,violet";
     /// let snapshot_password = "uJsuMnwUIoLkdmw";
-    /// let id = stronghold.record_create(&label, &data, &snapshot_password);
+    /// let id = stronghold.record_create(&data, &snapshot_password);
     /// stronghold.record_remove(id, &snapshot_password);
     /// ```
     pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
@@ -700,7 +698,7 @@ mod tests {
     #[test]
     fn create_record() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, "test");
+            let stronghold = Stronghold::new(path);
             let value = "value_to_encrypt";
             let id = stronghold.record_create(value, "password");
 

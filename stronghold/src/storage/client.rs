@@ -67,11 +67,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
 
     // create a record in the vault.
     pub fn create_record(&self, payload: Vec<u8>, hint: Option<&[u8]>) -> Id {
-        let hint = if let Some(hint) = hint {
-            hint
-        }else{
-            b""
-        };
+        let hint = if let Some(hint) = hint { hint } else { b"" };
         self.db.take(|db| {
             let (record_id, req) = db
                 .writer(self.id)
