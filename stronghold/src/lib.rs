@@ -67,6 +67,12 @@ impl Index {
         self.0.insert(account_id.to_string(), record_id);
     }
 
+    pub(in crate) fn update_account(&mut self, account_id: &str, new_record_id: RecordId) {
+        if let Some(account_id) = self.0.get_mut(account_id) {
+            *account_id = new_record_id;
+        };
+    }
+
     pub(in crate) fn remove_account(&mut self, account_id: &str) {
         self.0.remove(account_id);
     }
@@ -154,7 +160,7 @@ impl Stronghold {
             .index_get(snapshot_password, None, None)
             .expect("Error getting stronghold index");
         if index.includes(account.id()) {
-            panic!("Account is already stored")
+            
         };
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
         let record_id = self.storage.encrypt(&account_serialized, None, snapshot_password);
@@ -383,7 +389,10 @@ impl Stronghold {
         let record_id = self.record_get_by_account_id(&account.id(), &snapshot_password);
         self.record_remove(record_id, &snapshot_password);
         account.last_updated_on(true);
-        self.account_save(&account, &snapshot_password)
+        let record_id = self.account_save(&account, &snapshot_password);
+        let (record_id, mut index) = self.index_get(snapshot_password, None, None).expect("Error getting account index");
+        index.update_account(account.id(),record_id);
+        record_id
     }
 
     /// Adds a subaccount to an account
