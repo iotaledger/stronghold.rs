@@ -189,7 +189,7 @@ impl Stronghold {
     ///     .index_get("c/7f5cf@faaf$e2c%c588d", Some(0), Some(30))
     ///     .expect("failed to get index");
     /// ```
-    pub fn index_get(
+    pub(in crate) fn index_get(
         &self,
         snapshot_password: &str,
         skip: Option<usize>,
