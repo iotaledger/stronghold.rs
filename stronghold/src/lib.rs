@@ -67,6 +67,7 @@ impl Index {
         self.0.insert(account_id.to_string(), record_id);
     }
 
+    // Changes the record_id of a given account id in the index
     pub(in crate) fn update_account(&mut self, account_id: &str, new_record_id: RecordId) {
         if let Some(account_id) = self.0.get_mut(account_id) {
             *account_id = new_record_id;
@@ -96,13 +97,14 @@ impl Stronghold {
         }
     }
 
+    // Saves an index in the snapshot
     fn index_save(&self, index: &Index, snapshot_password: &str) -> RecordId {
         let index_serialized = serde_json::to_string(&index).unwrap();
         self.storage
             .encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), snapshot_password)
     }
 
-    pub(in crate) fn index_update(&self, old_index_record_id: RecordId, new_index: Index, snapshot_password: &str) {
+    // In the snapshot, removes the old index and saves the newest one
         self.record_remove(old_index_record_id, snapshot_password);
         self.index_save(&new_index, snapshot_password);
     }
