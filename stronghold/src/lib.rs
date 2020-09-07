@@ -393,8 +393,9 @@ impl Stronghold {
         self.record_remove(record_id, &snapshot_password);
         account.last_updated_on(true);
         let record_id = self.account_save(&account, &snapshot_password);
-        let (record_id, mut index) = self.index_get(snapshot_password, None, None).expect("Error getting account index");
+        let (index_record_id, mut index) = self.index_get(snapshot_password, None, None).expect("Error getting account index");
         index.update_account(account.id(),record_id);
+        self.index_update(index_record_id, index, snapshot_password);
         record_id
     }
 
