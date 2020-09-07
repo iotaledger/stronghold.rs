@@ -157,7 +157,7 @@ impl Stronghold {
         self.storage.garbage_collect_vault(snapshot_password);
     }
 
-    // Save account in a new record
+    // Save a new account in a new record
     fn account_save(&self, account: &Account, snapshot_password: &str) -> storage::Id {
         let (index_record_id, mut index) = self
             .index_get(snapshot_password, None, None)
