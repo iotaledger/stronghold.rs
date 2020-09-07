@@ -105,8 +105,9 @@ impl Stronghold {
     }
 
     // In the snapshot, removes the old index and saves the newest one
+    pub(in crate) fn index_update(&self, old_index_record_id: RecordId, new_index: Index, snapshot_password: &str) -> RecordId {
         self.record_remove(old_index_record_id, snapshot_password);
-        self.index_save(&new_index, snapshot_password);
+        self.index_save(&new_index, snapshot_password)
     }
 
     // Decode record into account
