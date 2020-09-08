@@ -815,22 +815,21 @@ mod tests {
         });
     }
 
+    #[test]
     fn import_account() {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path);
-            let (record_id, account) = &mut stronghold._account_create(None, "password");
+            let (record_id, account) = &mut stronghold._account_import(
+                1599580138000,
+                1599580138000,
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                None,
+                "password",
+                Vec::new()
+            );
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
             let account_record_id_from_index = index.0.get(account.id()).unwrap();
             assert_eq!(record_id, account_record_id_from_index);
-
-            let last_updated_on = account.last_updated_on(true);
-            let new_record_id = stronghold._account_update(account, "password");
-            let (_, index) = stronghold.index_get("password", None, None).unwrap();
-            let account_record_id_from_index = index.0.get(account.id()).unwrap();
-            assert_eq!(&new_record_id, account_record_id_from_index);
-
-            let _account = stronghold.account_get_by_id(account.id(), "password");
-            assert_eq!(serde_json::to_string(account).unwrap(), serde_json::to_string(&_account).unwrap());
         });
     }
 
