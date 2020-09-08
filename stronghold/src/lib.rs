@@ -172,7 +172,7 @@ impl Stronghold {
         record_id
     }
 
-    /// Lists ids of accounts.TODO: Update it
+    /// Lists ids of accounts.
     ///
     /// Given the `snapshot password` to decrypt the snapshot, and `skip` and `limit` parameters to efficiently
     /// paginate results.
@@ -183,12 +183,19 @@ impl Stronghold {
     ///
     /// # Example
     /// ```no_run
-    /// use stronghold::{Index, RecordId, Stronghold};
+    /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let (index_record_id, index): (RecordId, Index) = stronghold
-    ///     .index_get("c/7f5cf@faaf$e2c%c588d", Some(0), Some(30))
-    ///     .expect("failed to get index");
+    /// stronghold.account_list_ids(
+    ///     "c/7f5cf@faaf$e2c%c588d",
+    ///     None,
+    ///     None
+    /// );
     /// ```
+    pub fn account_list_ids(&self, snapshot_password: &str, skip: Option<usize>, limit: Option<usize>) -> Vec<String> {
+        let (record_id, index) = self.index_get(snapshot_password, skip, limit).expect("Error getting stronghold index");
+        index.0.keys().map(|k| { k.to_string() }).collect()
+    }
+    
     pub(in crate) fn index_get(
         &self,
         snapshot_password: &str,
@@ -297,6 +304,10 @@ impl Stronghold {
     /// let account = stronghold.account_create(bip39_passphrase, &snapshot_password);
     /// ```
     pub fn account_create(&self, bip39_passphrase: Option<String>, snapshot_password: &str) -> Account {
+        self._account_create(bip39_passphrase, snapshot_password).1
+    }
+
+    fn _account_create(&self, bip39_passphrase: Option<String>, snapshot_password: &str) -> (RecordId, Account) {
         if snapshot_password.is_empty() {
             panic!("Invalid parameters: Password is missing");
         };
@@ -304,8 +315,8 @@ impl Stronghold {
             .index_get(snapshot_password, None, None)
             .expect("Index not initialized in snapshot file");
         let account = Account::new(bip39_passphrase.clone());
-        self.account_save(&account, snapshot_password);
-        account
+        let record_id = self.account_save(&account, snapshot_password);
+        (record_id, account)
     }
 
     /// Imports an existing external account to the snapshot file
@@ -387,7 +398,11 @@ impl Stronghold {
     }
 
     /// Updates an account
-    pub fn account_update(&self, account: &mut Account, snapshot_password: &str) -> storage::Id {
+    pub fn account_update(&self, account: &mut Account, snapshot_password: &str) {
+        self._account_update(account, snapshot_password);
+    }
+
+    fn _account_update(&self, account: &mut Account, snapshot_password: &str) -> storage::Id {
         // todo: switch to private fn
         let record_id = self.record_get_by_account_id(&account.id(), &snapshot_password);
         self.record_remove(record_id, &snapshot_password);
@@ -420,7 +435,7 @@ impl Stronghold {
     ///     "suHyeJdnJuJNU34;23",
     /// );
     /// ```
-    pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) -> storage::Id {
+    pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) {
         // todo: remove return
         let mut account = self.account_get_by_id(&account_id, snapshot_password);
         let subaccount = SubAccount::new(String::from(label));
@@ -783,6 +798,29 @@ mod tests {
             let _account = stronghold.account_get_by_id(account.id(), "password");
             assert_eq!(serde_json::to_string(account).unwrap(), serde_json::to_string(&_account).unwrap());
         });
+    }
+
+    fn import_account() {
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path);
+            let (record_id, account) = &mut stronghold._account_create(None, "password");
+            let (_, index) = stronghold.index_get("password", None, None).unwrap();
+            let account_record_id_from_index = index.0.get(account.id()).unwrap();
+            assert_eq!(record_id, account_record_id_from_index);
+
+            let last_updated_on = account.last_updated_on(true);
+            let new_record_id = stronghold._account_update(account, "password");
+            let (_, index) = stronghold.index_get("password", None, None).unwrap();
+            let account_record_id_from_index = index.0.get(account.id()).unwrap();
+            assert_eq!(&new_record_id, account_record_id_from_index);
+
+            let _account = stronghold.account_get_by_id(account.id(), "password");
+            assert_eq!(serde_json::to_string(account).unwrap(), serde_json::to_string(&_account).unwrap());
+        });
+    }
+
+    fn list_accounts_ids() {
+
     }
 
 }
