@@ -683,22 +683,8 @@ impl Stronghold {
         self.storage.read(*record_id, snapshot_password)
     }
 
-    /// Searches record id by account id
-    ///
-    /// `account_id_target` the id of the account to search
-    ///
-    /// `snapshot_password` password required to decrypt/encrypt the snapshot file
-    ///
-    /// # Example
-    /// ```no_run
-    /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password");
-    /// let id = stronghold.record_get_by_account_id(
-    ///     "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1",
-    ///     "suEu38kQmsn$eu",
-    /// );
-    /// ```
-    pub fn record_get_by_account_id(&self, account_id: &str, snapshot_password: &str) -> RecordId {
+    // Searches record id by account id
+    fn record_get_by_account_id(&self, account_id: &str, snapshot_password: &str) -> RecordId {
         let (_, index) = self
             .index_get(snapshot_password, None, None)
             .expect("Error getting index");
