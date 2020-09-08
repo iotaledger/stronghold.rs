@@ -693,6 +693,15 @@ impl Stronghold {
         }
     }
 
+    /// List records stored in snapshot
+    /// 
+    /// It will include index record and account records
+    /// 
+    /// TODO: complete it
+    pub fn record_list(&self, snapshot_password: &str) -> Vec<(RecordId, RecordHint)> {
+        self.storage.get_index(snapshot_password)
+    }
+
     /// Removes record from storage by record id
     ///
     /// `record_id` id of the record to remove
