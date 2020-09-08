@@ -92,13 +92,17 @@ impl Stronghold {
     /// ```
     pub fn new<P: AsRef<Path>>(snapshot_path: P, create: bool, snapshot_password: &str) -> Self {
         let storage = Storage::new(snapshot_path);
-        if create && storage.exists() {
-            panic!("Cannot create a new snapshot: There is an existing one")
+        if create {
+            if storage.exists() {
+                panic!("Cannot create a new snapshot: There is an existing one")
+            }else{
+                let index = Index::default();
+                let index_serialized = serde_json::to_string(&index).unwrap();
+                storage
+                    .encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), snapshot_password);
+            }
         }else{
-            let index = Index::default();
-            let index_serialized = serde_json::to_string(&index).unwrap();
-            storage
-                .encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), snapshot_password)
+            storage.get_index(snapshot_password);
         };
         Self {
             storage
