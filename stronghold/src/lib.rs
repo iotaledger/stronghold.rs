@@ -820,6 +820,7 @@ mod tests {
         });
     }
 
+    #[test]
     fn list_accounts_ids() {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path);
