@@ -116,13 +116,30 @@ impl Stronghold {
         x
     }
 
-    // Get account by account id
-    fn account_get_by_id(&self, account_id: &str, snapshot_password: &str) -> Account {
+    /// Returns an account by its id
+    ///
+    /// `account_id` account id to export
+    ///
+    /// `snapshot_password` required to decrypt the snapshot file
+    /// # Example
+    /// ```no_run
+    /// use stronghold::Stronghold;
+    /// let stronghold = Stronghold::new("savings.snapshot");
+    /// let account_id = "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1";
+    /// let snapshot_password = "su3jA8kdD4nf:83";
+    /// let account = stronghold.account_get_by_id(&account_id, &snapshot_password);
+    /// ```
+    pub fn account_get_by_id(&self, account_id: &str, snapshot_password: &str) -> Account {
+        let (record_id, account) = self._account_get_by_id(account_id, snapshot_password);
+        account
+    }
+
+    pub(in crate) fn _account_get_by_id(&self, account_id: &str, snapshot_password: &str) -> (RecordId, Account) {
         let index = self.storage.get_index(snapshot_password);
         let account: Option<Account>;
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
         let decrypted = self.storage.read(record_id, snapshot_password);
-        self.account_from_json(&decrypted)
+        (record_id, self.account_from_json(&decrypted))
     }
 
     // Get account by record id
@@ -391,24 +408,6 @@ impl Stronghold {
         let record_id = self.account_save(&account, snapshot_password);
 
         (record_id, account)
-    }
-
-    /// Returns an account by its id
-    ///
-    /// `account_id` account id to export
-    ///
-    /// `snapshot_password` required to decrypt the snapshot file
-    /// # Example
-    /// ```no_run
-    /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot");
-    /// let account_id = "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1";
-    /// let snapshot_password = "su3jA8kdD4nf:83";
-    /// let account = stronghold.account_export(&account_id, &snapshot_password);
-    /// ```
-    pub fn account_export(&self, account_id: &str, snapshot_password: &str) -> Account {
-        // todo: maybe should be renamed to account_get(): an export process has a destiny, this function not
-        self.account_get_by_id(account_id, snapshot_password)
     }
 
     /// Updates an account
