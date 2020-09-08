@@ -821,7 +821,15 @@ mod tests {
     }
 
     fn list_accounts_ids() {
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path);
+            let (record_id, account) = &mut stronghold._account_create(None, "password");
+            let (record_id, account) = &mut stronghold._account_create(None, "password");
+            let (record_id, account) = &mut stronghold._account_create(None, "password");
 
+            let ids = stronghold.account_list_ids("password", None, None);
+            assert_eq!(ids.len(),3);
+        });
     }
 
 }
