@@ -34,13 +34,11 @@ mod account;
 mod storage;
 pub use storage::{Base64Decodable, Id as RecordId};
 use storage::{RecordHint, Storage};
-
 use account::{Account, SubAccount};
-
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use std::{collections::BTreeMap, path::Path, str};
-
 use serde::{Deserialize, Serialize};
+use std::panic;
 
 static INDEX_HINT: &str = "index";
 
@@ -711,6 +709,9 @@ impl Stronghold {
     /// stronghold.record_remove(id, &snapshot_password);
     /// ```
     pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
+        panic::catch_unwind(|| {
+            self.account_get_by_record_id(&record_id, snapshot_password);
+        }).expect("Error reading record, if you are trying to remove an account record please use account_remove()");
         self.storage.revoke(record_id, snapshot_password);
         self.storage.garbage_collect_vault(snapshot_password);
     }
@@ -750,7 +751,7 @@ mod tests {
             let value = "value_to_encrypt";
             let id = stronghold.record_create(value, "password");
 
-            let read = stronghold.record_read(&id, "password");
+            let read = stronghold.storage.read(id, "password");
             assert_eq!(read, value);
         });
     }
