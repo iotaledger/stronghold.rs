@@ -116,7 +116,7 @@ impl Stronghold {
 
     // In the snapshot, removes the old index and saves the newest one
     fn index_update(&self, old_index_record_id: RecordId, new_index: Index, snapshot_password: &str) -> RecordId {
-        self.record_remove(old_index_record_id, snapshot_password);
+        self._record_remove(old_index_record_id, snapshot_password);
         self.index_save(&new_index, snapshot_password)
     }
 
@@ -428,7 +428,7 @@ impl Stronghold {
     fn _account_update(&self, account: &mut Account, snapshot_password: &str) -> storage::Id {
         // todo: switch to private fn
         let record_id = self.record_get_by_account_id(&account.id(), &snapshot_password);
-        self.record_remove(record_id, &snapshot_password);
+        self._record_remove(record_id, &snapshot_password);
         account.last_updated_on(true);
         let record_id = self.account_save(&account, &snapshot_password);
         let (index_record_id, mut index) = self.index_get(snapshot_password, None, None).expect("Error getting account index");
@@ -711,7 +711,11 @@ impl Stronghold {
     pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
         panic::catch_unwind(|| {
             self.account_get_by_record_id(&record_id, snapshot_password);
-        }).expect("Error reading record, if you are trying to remove an account record please use account_remove()");
+        }).expect("Error removing record, if you are trying to remove an account record please use account_remove()");
+        self._record_remove(record_id, snapshot_password)
+    }
+
+    fn _record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
         self.storage.revoke(record_id, snapshot_password);
         self.storage.garbage_collect_vault(snapshot_password);
     }
@@ -841,6 +845,17 @@ mod tests {
 
             let ids = stronghold.account_list_ids("password", None, None);
             assert_eq!(ids.len(),3);
+        });
+    }
+
+    #[test]
+    fn save_and_read_custom_data() {
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path, true, "password");
+            let data_to_save = "testing text";
+            let record_id = stronghold.record_create(data_to_save, "password");
+            let data_read = stronghold.record_read(&record_id, "password");
+            assert_eq!(data_read,data_to_save);
         });
     }
 
