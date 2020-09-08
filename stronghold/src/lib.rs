@@ -718,15 +718,13 @@ impl Stronghold {
     /// stronghold.record_remove(id, &snapshot_password);
     /// ```
     pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
-        panic::catch_unwind(|| {
-            let (index_record_id, _) = self.index_get(snapshot_password, None, None).unwrap();
-            if record_id == index_record_id {
-                panic!("Error removing record: you can't remove index record")
-            }
-        }).expect("Error removing record, if you are trying to remove an account record please use account_remove()");
+        let (index_record_id, _) = self.index_get(snapshot_password, None, None).unwrap();
+        if record_id == index_record_id {
+            panic!("Error removing record: you can't remove index record")
+        };
         panic::catch_unwind(|| {
             self.account_get_by_record_id(&record_id, snapshot_password);
-        }).expect("Error removing record: if you are trying to remove an account record please use account_remove()");
+        }).expect_err("Error removing record: if you are trying to remove an account record please use account_remove()");
         self._record_remove(record_id, snapshot_password)
     }
 
@@ -871,6 +869,25 @@ mod tests {
             let record_id = stronghold.record_create(data_to_save, "password");
             let data_read = stronghold.record_read(&record_id, "password");
             assert_eq!(data_read,data_to_save);
+        });
+    }
+
+    #[test]
+    fn save_and_remove_custom_data() {
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path, true, "password");
+            let data_to_save = "testing text";
+            let record_id = stronghold.record_create(data_to_save, "password");
+            let data_read = stronghold.record_read(&record_id, "password");
+            println!("{}",data_read);
+            assert_eq!(data_read,data_to_save);
+
+            let record_list = stronghold.record_list("password");//todo: add skip limit and filter in order to avoid index and account records
+            assert_eq!(record_list.len(),2);
+
+            stronghold.record_remove(record_id, "password");
+            let record_list = stronghold.record_list("password");
+            assert_eq!(record_list.len(),1);
         });
     }
 
