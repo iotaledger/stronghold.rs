@@ -781,6 +781,7 @@ mod tests {
         });
     }
 
+    #[test]
     fn update_account() {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path);
