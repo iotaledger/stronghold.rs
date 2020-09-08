@@ -28,7 +28,7 @@ pub struct Account {
     sub_accounts: Vec<SubAccount>,
 }
 
-pub(in crate) fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
+fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
     // Account ID generation: 1/2 : Derive seed into the first address
     let seed;
     if let Some(bip39_passphrase) = bip39_passphrase {

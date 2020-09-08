@@ -55,26 +55,26 @@ pub struct Stronghold {
 pub struct Index(BTreeMap<String, RecordId>);
 
 impl Index {
-    pub(in crate) fn new() -> Self {
+    fn new() -> Self {
         Default::default()
     }
 
-    pub(in crate) fn includes(&self, name_target: &str) -> bool {
+    fn includes(&self, name_target: &str) -> bool {
         self.0.contains_key(name_target)
     }
 
-    pub(in crate) fn add_account(&mut self, account_id: &str, record_id: RecordId) {
+    fn add_account(&mut self, account_id: &str, record_id: RecordId) {
         self.0.insert(account_id.to_string(), record_id);
     }
 
     // Changes the record_id of a given account id in the index
-    pub(in crate) fn update_account(&mut self, account_id: &str, new_record_id: RecordId) {
+    fn update_account(&mut self, account_id: &str, new_record_id: RecordId) {
         if let Some(account_id) = self.0.get_mut(account_id) {
             *account_id = new_record_id;
         };
     }
 
-    pub(in crate) fn remove_account(&mut self, account_id: &str) {
+    fn remove_account(&mut self, account_id: &str) {
         self.0.remove(account_id);
     }
 }
@@ -117,7 +117,7 @@ impl Stronghold {
     }
 
     // In the snapshot, removes the old index and saves the newest one
-    pub(in crate) fn index_update(&self, old_index_record_id: RecordId, new_index: Index, snapshot_password: &str) -> RecordId {
+    fn index_update(&self, old_index_record_id: RecordId, new_index: Index, snapshot_password: &str) -> RecordId {
         self.record_remove(old_index_record_id, snapshot_password);
         self.index_save(&new_index, snapshot_password)
     }
@@ -146,7 +146,7 @@ impl Stronghold {
         account
     }
 
-    pub(in crate) fn _account_get_by_id(&self, account_id: &str, snapshot_password: &str) -> (RecordId, Account) {
+    fn _account_get_by_id(&self, account_id: &str, snapshot_password: &str) -> (RecordId, Account) {
         let index = self.storage.get_index(snapshot_password);
         let account: Option<Account>;
         let record_id = self.record_get_by_account_id(account_id, snapshot_password);
@@ -225,7 +225,7 @@ impl Stronghold {
         index.0.keys().map(|k| { k.to_string() }).collect()
     }
     
-    pub(in crate) fn index_get(
+    fn index_get(
         &self,
         snapshot_password: &str,
         skip: Option<usize>,
@@ -387,7 +387,7 @@ impl Stronghold {
         account
     }
 
-    pub(in crate) fn _account_import(
+    fn _account_import(
         // todo: reorder params , ¿what if try to add an account by second time?
         &self,
         created_at: u128,      // todo: maybe should be optional
