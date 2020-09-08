@@ -80,7 +80,7 @@ impl Account {
         bip39_passphrase: Option<String>,
         sub_accounts: Vec<SubAccount>,
     ) -> Account {
-        bip39::Mnemonic::from_phrase(&bip39_mnemonic, bip39::Language::Spanish).expect("Invalid mnemonic");
+        bip39::Mnemonic::from_phrase(&bip39_mnemonic, bip39::Language::English).expect("Invalid mnemonic");
         // ID generation
         let id = generate_id(&bip39_mnemonic, &bip39_passphrase);
         Account {
