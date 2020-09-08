@@ -354,6 +354,20 @@ impl Stronghold {
         snapshot_password: &str,
         sub_accounts: Vec<SubAccount>, // todo: maybe should be optional?
     ) -> Account {
+        let (record_id, account) = self._account_import(created_at, last_updated_on, bip39_mnemonic, bip39_passphrase, snapshot_password, sub_accounts);
+        account
+    }
+
+    pub(in crate) fn _account_import(
+        // todo: reorder params , ¿what if try to add an account by second time?
+        &self,
+        created_at: u128,      // todo: maybe should be optional
+        last_updated_on: u128, // todo: maybe should be optional
+        bip39_mnemonic: String,
+        bip39_passphrase: Option<&str>,
+        snapshot_password: &str,
+        sub_accounts: Vec<SubAccount>, // todo: maybe should be optional?
+    ) -> (RecordId, Account) {
         if bip39_mnemonic.is_empty() {
             panic!("Invalid parameters: bip39_mnemonic is missing");
         }
@@ -374,9 +388,9 @@ impl Stronghold {
             sub_accounts,
         );
 
-        self.account_save(&account, snapshot_password);
+        let record_id = self.account_save(&account, snapshot_password);
 
-        account
+        (record_id, account)
     }
 
     /// Returns an account by its id
