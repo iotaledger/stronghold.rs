@@ -710,8 +710,14 @@ impl Stronghold {
     /// ```
     pub fn record_remove(&self, record_id: storage::Id, snapshot_password: &str) {
         panic::catch_unwind(|| {
-            self.account_get_by_record_id(&record_id, snapshot_password);
+            let (index_record_id, _) = self.index_get(snapshot_password, None, None).unwrap();
+            if record_id == index_record_id {
+                panic!("Error removing record: you can't remove index record")
+            }
         }).expect("Error removing record, if you are trying to remove an account record please use account_remove()");
+        panic::catch_unwind(|| {
+            self.account_get_by_record_id(&record_id, snapshot_password);
+        }).expect("Error removing record: if you are trying to remove an account record please use account_remove()");
         self._record_remove(record_id, snapshot_password)
     }
 
