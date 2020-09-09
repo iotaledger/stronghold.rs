@@ -954,6 +954,7 @@ mod tests {
         });
     }
 
+    #[test]
     fn verify_signature() {
         super::test_utils::with_snapshot(|path| {
             let address = "iot1q8knfu2rq8k9tlasfqrh38zmvfqhx5zvm9ehtzmdz3zg7yqv9kllywktkn3";
@@ -965,6 +966,6 @@ mod tests {
         });
     }
 
-
+    
 
 }
