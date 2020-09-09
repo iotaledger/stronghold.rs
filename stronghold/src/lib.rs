@@ -897,4 +897,28 @@ mod tests {
         });
     }
 
+    #[test]
+    fn get_address() {
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path, true, "password");
+            let (record_id, account) = &mut stronghold._account_import(
+                1599580138000,
+                1599580138000,
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                None,
+                "password",
+                Vec::new()
+            );
+            let (_, index) = stronghold.index_get("password", None, None).unwrap();
+            let account_record_id_from_index = index.0.get(account.id()).unwrap();
+            assert_eq!(record_id, account_record_id_from_index);
+
+            let (index, address) = stronghold.address_get(account.id(), 3, false, "password");
+            assert_eq!(address,"iota1q8lw65sy786ph446s6yt3vjptjz2mh74qspegzt2cl8dk3cl7r67yewtlp8");
+
+            let account = stronghold.account_get_by_id(account.id(), "password");
+            assert_eq!(account.get_sub_account_len(), 4);
+        });
+    }
+
 }
