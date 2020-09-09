@@ -921,4 +921,39 @@ mod tests {
         });
     }
 
+    #[test]
+    fn sign() {
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path, true, "password");
+            let (record_id, account) = &mut stronghold._account_import(
+                1599580138000,
+                1599580138000,
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                None,
+                "password",
+                Vec::new()
+            );
+
+            stronghold.subaccount_add("signing", account.id(), "password");
+
+            let message = "With this signed message you can verify my address ownership".as_bytes();
+            let sub_account_index = 0;
+            let internal = false;
+            let index = 0;
+            let snapshot_password = "password";
+            let signature = stronghold.signature_make(
+                &message,
+                &account.id(),
+                sub_account_index,
+                internal,
+                index,
+                snapshot_password,
+            );
+
+            assert_eq!(signature,"w2NnP8rZuyOBW5rR3/NjteGuOse6ZwyQ2za66ebyL7+opgDzXV/X1i9IzXBTgmvYJMY+Aoq+mdGRmj2Dni4VBA==");
+        });
+    }
+
+
+
 }
