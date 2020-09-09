@@ -535,7 +535,7 @@ impl Stronghold {
         let sub_account = &mut account.get_sub_account(sub_account_index);
         let index = sub_account.addresses_increase_counter(internal);
         let address = account.get_address(format!(
-            "m/44'/4218'/{}'/{}'/{}'",
+            "m/44H/4218H/{}H/{}H/{}H",
             sub_account_index, !internal as u32, index
         ));
         self.account_update(&mut account, snapshot_password);
