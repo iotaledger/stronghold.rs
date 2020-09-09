@@ -137,6 +137,10 @@ impl Account {
         &mut self.sub_accounts[index]
     }
 
+    pub fn get_sub_account_len(&self) -> usize {
+        self.sub_accounts.len()
+    }
+
     pub fn last_updated_on(&mut self, update: bool) -> &u128 {
         if update {
             self.last_updated_on = SystemTime::now()

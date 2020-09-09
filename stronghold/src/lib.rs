@@ -532,6 +532,12 @@ impl Stronghold {
         snapshot_password: &str,
     ) -> (usize, String) {
         let mut account = self.account_get_by_id(account_id, snapshot_password);
+        let accounts_count = account.get_sub_account_len();
+        if sub_account_index >= accounts_count {
+            for sub_account_index_to_create in accounts_count..sub_account_index+1 {
+                account.add_sub_account(SubAccount::new(format!("SubAccount {}",sub_account_index_to_create)));
+            }
+        };
         let sub_account = &mut account.get_sub_account(sub_account_index);
         let index = sub_account.addresses_increase_counter(internal);
         let address = account.get_address(format!(
