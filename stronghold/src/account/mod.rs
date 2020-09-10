@@ -137,6 +137,34 @@ impl Account {
         &mut self.sub_accounts[index]
     }
 
+    pub fn list_sub_accounts(self, skip: Option<usize>, limit: Option<usize>) -> Vec<SubAccount> {
+        let skip = if let Some(skip) = skip {
+            if skip > self.sub_accounts.len() - 1 {
+                self.sub_accounts.len() - 1
+            } else {
+                skip
+            }
+        } else {
+            0
+        };
+
+        let limit = if let Some(limit) = limit {
+            if limit > self.sub_accounts.len() - skip {
+                self.sub_accounts.len()
+            } else {
+                limit
+            }
+        } else {
+            self.sub_accounts.len()
+        };
+
+        self.sub_accounts
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, e)| if i >= skip && i <= limit + skip { Some(e) } else { None })
+        .collect()
+    }
+
     pub fn get_sub_account_len(&self) -> usize {
         self.sub_accounts.len()
     }
