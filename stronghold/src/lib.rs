@@ -458,12 +458,13 @@ impl Stronghold {
     ///     "suHyeJdnJuJNU34;23",
     /// );
     /// ```
-    pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) {
+    pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) -> Account {
         // todo: remove return
         let mut account = self.account_get_by_id(&account_id, snapshot_password);
         let subaccount = SubAccount::new(String::from(label));
         account.add_sub_account(subaccount);
-        self.account_update(&mut account, snapshot_password)
+        self.account_update(&mut account, snapshot_password);
+        account
     }
 
     /// Switches the visibility of a subaccount
