@@ -193,9 +193,9 @@ impl Stronghold {
             let (_, index) = self
                 .index_get(snapshot_password, None, None)
                 .expect("Error getting stronghold index");
-        if index.includes(account.id()) {
+            if index.includes(account.id()) {
                 panic!("Account already imported");
-        };
+            };
         }
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
         let record_id = self.storage.encrypt(&account_serialized, None, snapshot_password);
@@ -863,6 +863,30 @@ mod tests {
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
             let account_record_id_from_index = index.0.get(account.id()).unwrap();
             assert_eq!(record_id, account_record_id_from_index);
+        });
+    }
+
+    #[test]
+    #[should_panic]
+    fn import_account_twice() {
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path, true, "password");
+            let (record_id, account) = &mut stronghold._account_import(
+                1599580138000,
+                1599580138000,
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                None,
+                "password",
+                Vec::new()
+            );
+            let (record_id, account) = &mut stronghold._account_import(
+                1599580138000,
+                1599580138000,
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                None,
+                "password",
+                Vec::new()
+            );
         });
     }
 
