@@ -35,8 +35,7 @@ mod storage;
 use account::Account;
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use serde::{Deserialize, Serialize};
-use std::panic;
-use std::{collections::BTreeMap, path::Path, str};
+use std::{collections::BTreeMap, panic, path::Path, str};
 pub use storage::{Base64Decodable, Id as RecordId};
 use storage::{RecordHint, Storage};
 
@@ -219,11 +218,7 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot", true, "password");
-    /// stronghold.account_list_ids(
-    ///     "c/7f5cf@faaf$e2c%c588d",
-    ///     None,
-    ///     None
-    /// );
+    /// stronghold.account_list_ids("c/7f5cf@faaf$e2c%c588d", None, None);
     /// ```
     pub fn account_list_ids(&self, snapshot_password: &str, skip: Option<usize>, limit: Option<usize>) -> Vec<String> {
         let (record_id, index) = self
@@ -517,13 +512,7 @@ impl Stronghold {
     /// let internal = false;
     /// let index = 0;
     /// let snapshot_password = "iKuwjMdnwI";
-    /// let signature = stronghold.signature_make(
-    ///     &message,
-    ///     &account_id,
-    ///     internal,
-    ///     index,
-    ///     snapshot_password,
-    /// );
+    /// let signature = stronghold.signature_make(&message, &account_id, internal, index, snapshot_password);
     /// ```
     pub fn signature_make(
         &self,
@@ -739,8 +728,8 @@ mod tests {
             assert_eq!(record_id, account_record_id_from_index);
 
             let accounts = stronghold.account_list("password", None, None).unwrap();
-            //println!("{}",serde_json::to_string(&accounts[0]).unwrap());
-            //todo: add more controls
+            // println!("{}",serde_json::to_string(&accounts[0]).unwrap());
+            // todo: add more controls
             assert_eq!(accounts.len(), 1);
             let (record_id, index) = stronghold.index_get("password", None, None).unwrap();
             assert_eq!(index.account_ids.len(), 1);
@@ -840,7 +829,7 @@ mod tests {
             println!("{}", data_read);
             assert_eq!(data_read, data_to_save);
 
-            let record_list = stronghold.record_list("password"); //todo: add skip limit and filter in order to avoid index and account records
+            let record_list = stronghold.record_list("password"); // todo: add skip limit and filter in order to avoid index and account records
             assert_eq!(record_list.len(), 2);
 
             stronghold.record_remove(record_id, "password");
