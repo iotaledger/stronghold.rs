@@ -495,6 +495,12 @@ impl Stronghold {
         self.account_update(&mut account, snapshot_password);
     }
 
+    /// List subaccounts of an account
+    pub fn subaccount_list(&self, account_id: &str, sub_account_index: usize, skip: Option<usize>, limit: Option<usize>, snapshot_password: &str) -> Vec<SubAccount> {
+        let account = self.account_get_by_id(&account_id, snapshot_password);
+        account.list_sub_accounts(skip, limit)
+    }
+
     /// Get an address
     ///
     /// Given an account id (`account_id`) and a derivation path (composed by `sub_account_index` and `internal`)
