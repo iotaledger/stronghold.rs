@@ -23,6 +23,7 @@ use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
     id: String,
+    index: usize,
     external: bool,
     created_at: u128,
     last_updated_on: u128,
@@ -49,7 +50,7 @@ fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> Strin
 }
 
 impl Account {
-    pub fn new(bip39_passphrase: Option<String>) -> Account {
+    pub fn new(bip39_passphrase: Option<String>, index: usize) -> Account {
         // Mnemonic generation
         let bip39_mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
 
@@ -58,6 +59,7 @@ impl Account {
 
         Account {
             id,
+            index,
             external: false,
             created_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -75,6 +77,7 @@ impl Account {
     }
 
     pub fn import(
+        index: usize,
         created_at: u128,
         last_updated_on: u128,
         bip39_mnemonic: String,
@@ -85,6 +88,7 @@ impl Account {
         let id = generate_id(&bip39_mnemonic, &bip39_passphrase);
         Account {
             id,
+            index,
             external: true,
             created_at,
             last_updated_on,
@@ -122,6 +126,10 @@ impl Account {
 
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    pub fn index(&self) -> &usize {
+        &self.index
     }
 
     pub fn mnemonic(&self) -> &String {

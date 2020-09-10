@@ -49,10 +49,7 @@ pub struct Stronghold {
 
 #[derive(Default, Serialize, Deserialize, Debug)]
 /// Stronghold index;
-pub struct Index {
-    account_ids: BTreeMap<String, RecordId>,
-    account_indexes: BTreeMap<String, usize>,
-}
+pub struct Index(BTreeMap<String, RecordId>);
 
 impl Index {
     fn new() -> Self {
@@ -60,31 +57,22 @@ impl Index {
     }
 
     fn includes(&self, name_target: &str) -> bool {
-        self.account_ids.contains_key(name_target)
+        self.0.contains_key(name_target)
     }
 
     fn add_account(&mut self, account_id: &str, record_id: RecordId) {
-        self.account_ids.insert(account_id.to_string(), record_id);
-        let max_index = self
-            .account_indexes
-            .iter()
-            .max_by(|a, b| a.1.cmp(&b.1))
-            .map(|(_, index)| index)
-            .cloned();
-        self.account_indexes
-            .insert(account_id.to_string(), max_index.map(|i| i + 1).unwrap_or(0));
+        self.0.insert(account_id.to_string(), record_id);
     }
 
     // Changes the record_id of a given account id in the index
     fn update_account(&mut self, account_id: &str, new_record_id: RecordId) {
-        if let Some(account_id) = self.account_ids.get_mut(account_id) {
+        if let Some(account_id) = self.0.get_mut(account_id) {
             *account_id = new_record_id;
         };
     }
 
     fn remove_account(&mut self, account_id: &str) {
-        self.account_ids.remove(account_id);
-        self.account_indexes.remove(account_id);
+        self.0.remove(account_id);
     }
 }
 
@@ -224,7 +212,7 @@ impl Stronghold {
         let (record_id, index) = self
             .index_get(snapshot_password, skip, limit)
             .expect("Error getting stronghold index");
-        index.account_ids.keys().map(|k| k.to_string()).collect()
+        index.0.keys().map(|k| k.to_string()).collect()
     }
     fn index_get(
         &self,
@@ -250,8 +238,8 @@ impl Stronghold {
                 });
 
             let skip = if let Some(skip) = skip {
-                if skip > index.account_ids.len() - 1 {
-                    index.account_ids.len() - 1
+                if skip > index.0.len() - 1 {
+                    index.0.len() - 1
                 } else {
                     skip
                 }
@@ -260,17 +248,17 @@ impl Stronghold {
             };
 
             let limit = if let Some(limit) = limit {
-                if limit > index.account_ids.len() - skip {
-                    index.account_ids.len()
+                if limit > index.0.len() - skip {
+                    index.0.len()
                 } else {
                     limit
                 }
             } else {
-                index.account_ids.len()
+                index.0.len()
             };
 
-            index.account_ids = index
-                .account_ids
+            index.0 = index
+                .0
                 .into_iter()
                 .enumerate()
                 .filter_map(|(i, e)| if i >= skip && i <= limit + skip { Some(e) } else { None })
@@ -308,7 +296,7 @@ impl Stronghold {
         let index = self.index_get(snapshot_password, skip, limit);
         if let Ok((index_record_id, index)) = index {
             let mut accounts = Vec::new();
-            for (i, (_, record_id)) in index.account_ids.into_iter().enumerate() {
+            for (i, (_, record_id)) in index.0.into_iter().enumerate() {
                 accounts.push(self.account_get_by_record_id(&record_id, snapshot_password));
             }
             Ok(accounts)
@@ -344,7 +332,17 @@ impl Stronghold {
         let (index_record_id, index) = self
             .index_get(snapshot_password, None, None)
             .expect("Index not initialized in snapshot file");
-        let account = Account::new(bip39_passphrase);
+
+        let all_accounts = self
+            .account_list(snapshot_password, None, None)
+            .expect("failed to list accounts");
+        let index = all_accounts
+            .iter()
+            .max_by(|a, b| a.index().cmp(b.index()))
+            .map(|a| a.index())
+            .cloned()
+            .unwrap_or(0);
+        let account = Account::new(bip39_passphrase, index);
         let record_id = self.account_save(&account, snapshot_password);
         (record_id, account)
     }
@@ -370,11 +368,12 @@ impl Stronghold {
     /// let stronghold = Stronghold::new("savings.snapshot", true, "password");
     /// let mnemonic = String::from("gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding");
     /// let snapshot_password = "i:wj38siqo378e54e$";
-    /// let account = stronghold.account_import(1598890069000, 1598890070000, mnemonic, None, &snapshot_password);
+    /// let account = stronghold.account_import(0, 1598890069000, 1598890070000, mnemonic, None, &snapshot_password);
     /// ```
     pub fn account_import(
         // todo: reorder params , ¿what if try to add an account by second time?
         &self,
+        index: usize,
         created_at: u128,      // todo: maybe should be optional
         last_updated_on: u128, // todo: maybe should be optional
         bip39_mnemonic: String,
@@ -382,6 +381,7 @@ impl Stronghold {
         snapshot_password: &str,
     ) -> Account {
         let (record_id, account) = self._account_import(
+            index,
             created_at,
             last_updated_on,
             bip39_mnemonic,
@@ -394,6 +394,7 @@ impl Stronghold {
     fn _account_import(
         // todo: reorder params , ¿what if try to add an account by second time?
         &self,
+        index: usize,
         created_at: u128,      // todo: maybe should be optional
         last_updated_on: u128, // todo: maybe should be optional
         bip39_mnemonic: String,
@@ -412,7 +413,7 @@ impl Stronghold {
             None => None,
         };
 
-        let account = Account::import(created_at, last_updated_on, bip39_mnemonic, bip39_passphrase);
+        let account = Account::import(index, created_at, last_updated_on, bip39_mnemonic, bip39_passphrase);
 
         let record_id = self.account_save(&account, snapshot_password);
 
@@ -476,16 +477,11 @@ impl Stronghold {
         snapshot_password: &str,
     ) -> String {
         let account = self.account_get_by_id(account_id, snapshot_password);
-        let (_, index) = self
-            .index_get(snapshot_password, None, None)
-            .expect("failed to get index");
-        let account_index = index
-            .account_indexes
-            .get(account.id())
-            .expect("failed to get account index");
         account.get_address(format!(
             "m/44H/4218H/{}H/{}H/{}H",
-            account_index, !internal as u32, address_index
+            account.index(),
+            !internal as u32,
+            address_index
         ))
     }
 
@@ -523,18 +519,11 @@ impl Stronghold {
         snapshot_password: &str,
     ) -> String {
         let account = self.account_get_by_id(account_id, snapshot_password);
-        let (_, snapshot_index) = self
-            .index_get(snapshot_password, None, None)
-            .expect("failed to get index");
-        let account_index = snapshot_index
-            .account_indexes
-            .get(account.id())
-            .expect("failed to get account index");
 
         let signature: Vec<u8> = account
             .sign_message(
                 message,
-                format!("m/44'/4218'/{}'/{}'/{}'", account_index, !internal as u32, index),
+                format!("m/44'/4218'/{}'/{}'/{}'", account.index(), !internal as u32, index),
             )
             .to_vec();
         base64::encode(signature)
@@ -630,7 +619,7 @@ impl Stronghold {
         let (_, index) = self
             .index_get(snapshot_password, None, None)
             .expect("Error getting index");
-        if let Some(record_id) = index.account_ids.get(account_id) {
+        if let Some(record_id) = index.0.get(account_id) {
             *record_id
         } else {
             panic!("Unable to find record id with specified account id");
@@ -724,7 +713,7 @@ mod tests {
             let stronghold = Stronghold::new(path, true, "password");
             let (record_id, account) = &mut stronghold._account_create(None, "password");
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
-            let account_record_id_from_index = index.account_ids.get(account.id()).unwrap();
+            let account_record_id_from_index = index.0.get(account.id()).unwrap();
             assert_eq!(record_id, account_record_id_from_index);
 
             let accounts = stronghold.account_list("password", None, None).unwrap();
@@ -732,7 +721,7 @@ mod tests {
             // todo: add more controls
             assert_eq!(accounts.len(), 1);
             let (record_id, index) = stronghold.index_get("password", None, None).unwrap();
-            assert_eq!(index.account_ids.len(), 1);
+            assert_eq!(index.0.len(), 1);
         });
     }
 
@@ -742,7 +731,7 @@ mod tests {
             let stronghold = Stronghold::new(path, true, "password");
             let (record_id, account) = &mut stronghold._account_create(None, "password");
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
-            let account_record_id_from_index = index.account_ids.get(account.id()).unwrap();
+            let account_record_id_from_index = index.0.get(account.id()).unwrap();
             assert_eq!(record_id, account_record_id_from_index);
 
             stronghold.account_remove(&account.id(), "password");
@@ -750,7 +739,7 @@ mod tests {
             assert_eq!(accounts.len(), 0);
 
             let (record_id, index) = stronghold.index_get("password", None, None).unwrap();
-            assert_eq!(index.account_ids.len(), 0);
+            assert_eq!(index.0.len(), 0);
         });
     }
 
@@ -760,13 +749,13 @@ mod tests {
             let stronghold = Stronghold::new(path, true, "password");
             let (record_id, account) = &mut stronghold._account_create(None, "password");
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
-            let account_record_id_from_index = index.account_ids.get(account.id()).unwrap();
+            let account_record_id_from_index = index.0.get(account.id()).unwrap();
             assert_eq!(record_id, account_record_id_from_index);
 
             let last_updated_on = account.last_updated_on(true);
             let new_record_id = stronghold._account_update(account, "password");
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
-            let account_record_id_from_index = index.account_ids.get(account.id()).unwrap();
+            let account_record_id_from_index = index.0.get(account.id()).unwrap();
             assert_eq!(&new_record_id, account_record_id_from_index);
 
             let _account = stronghold.account_get_by_id(account.id(), "password");
@@ -782,6 +771,7 @@ mod tests {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path, true, "password");
             let (record_id, account) = &mut stronghold._account_import(
+                0,
                 1599580138000,
                 1599580138000,
                 "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
@@ -790,7 +780,7 @@ mod tests {
                 "password",
             );
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
-            let account_record_id_from_index = index.account_ids.get(account.id()).unwrap();
+            let account_record_id_from_index = index.0.get(account.id()).unwrap();
             assert_eq!(record_id, account_record_id_from_index);
         });
     }
@@ -843,6 +833,7 @@ mod tests {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path, true, "password");
             let (record_id, account) = &mut stronghold._account_import(
+                0,
                 1599580138000,
                 1599580138000,
                 "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
@@ -851,7 +842,7 @@ mod tests {
                 "password",
             );
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
-            let account_record_id_from_index = index.account_ids.get(account.id()).unwrap();
+            let account_record_id_from_index = index.0.get(account.id()).unwrap();
             assert_eq!(record_id, account_record_id_from_index);
 
             let address = stronghold.address_get(account.id(), 0, false, "password");
@@ -869,6 +860,7 @@ mod tests {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path, true, "password");
             let (record_id, account) = &mut stronghold._account_import(
+                0,
                 1599580138000,
                 1599580138000,
                 "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
