@@ -973,6 +973,26 @@ mod tests {
         });
     }
 
+    #[test]
+    fn handle_subaccounts() {
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path, true, "password");
+            let (record_id, account) = &mut stronghold._account_import(
+                1599580138000,
+                1599580138000,
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                None,
+                "password",
+                Vec::new()
+            );
+            assert_eq!(stronghold.subaccount_list(account.id(), 0, None, None, "password").len(), 0);
+
+            stronghold.subaccount_add("daily expenses", account.id(), "password");
+            assert_eq!(stronghold.subaccount_list(account.id(), 0, None, None, "password").len(), 1);
     
+            stronghold.subaccount_add("life savings", account.id(), "password");
+            assert_eq!(stronghold.subaccount_list(account.id(), 0, None, None, "password").len(), 2);
+        });
+    }
 
 }
