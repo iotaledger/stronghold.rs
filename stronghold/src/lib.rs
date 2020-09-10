@@ -425,7 +425,7 @@ impl Stronghold {
         self._account_update(account, snapshot_password);
     }
 
-    fn _account_update(&self, account: &mut Account, snapshot_password: &str) -> storage::Id {
+    fn _account_update(&self, account: &mut Account, snapshot_password: &str) -> RecordId {
         // todo: switch to private fn
         let record_id = self.record_get_by_account_id(&account.id(), &snapshot_password);
         self._record_remove(record_id, &snapshot_password);
