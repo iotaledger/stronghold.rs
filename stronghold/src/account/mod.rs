@@ -152,7 +152,7 @@ impl Account {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct SubAccount {
     label: String,
     receive_addresses_counter: usize,
