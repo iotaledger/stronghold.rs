@@ -185,13 +185,18 @@ impl Stronghold {
     }
 
     // Save a new account in a new record
-    fn account_save(&self, account: &Account, snapshot_password: &str) -> storage::Id {
+    fn account_save(&self, account: &Account, rewrite: bool, snapshot_password: &str) -> storage::Id {
         let (index_record_id, mut index) = self
             .index_get(snapshot_password, None, None)
             .expect("Error getting stronghold index");
+        if rewrite == false {
+            let (_, index) = self
+                .index_get(snapshot_password, None, None)
+                .expect("Error getting stronghold index");
         if index.includes(account.id()) {
-            
+                panic!("Account already imported");
         };
+        }
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
         let record_id = self.storage.encrypt(&account_serialized, None, snapshot_password);
         index.add_account(account.id(), record_id);
@@ -342,7 +347,7 @@ impl Stronghold {
             .index_get(snapshot_password, None, None)
             .expect("Index not initialized in snapshot file");
         let account = Account::new(bip39_passphrase.clone());
-        let record_id = self.account_save(&account, snapshot_password);
+        let record_id = self.account_save(&account, false, snapshot_password);
         (record_id, account)
     }
 
@@ -415,7 +420,7 @@ impl Stronghold {
             sub_accounts,
         );
 
-        let record_id = self.account_save(&account, snapshot_password);
+        let record_id = self.account_save(&account, false, snapshot_password);
 
         (record_id, account)
     }
@@ -430,7 +435,7 @@ impl Stronghold {
         let record_id = self.record_get_by_account_id(&account.id(), &snapshot_password);
         self._record_remove(record_id, &snapshot_password);
         account.last_updated_on(true);
-        let record_id = self.account_save(&account, &snapshot_password);
+        let record_id = self.account_save(&account, true, &snapshot_password);
         let (index_record_id, mut index) = self.index_get(snapshot_password, None, None).expect("Error getting account index");
         index.update_account(account.id(),record_id);
         self.index_update(index_record_id, index, snapshot_password);
