@@ -344,7 +344,7 @@ impl Stronghold {
         let (index_record_id, index) = self
             .index_get(snapshot_password, None, None)
             .expect("Index not initialized in snapshot file");
-        let account = Account::new(bip39_passphrase.clone());
+        let account = Account::new(bip39_passphrase);
         let record_id = self.account_save(&account, snapshot_password);
         (record_id, account)
     }
