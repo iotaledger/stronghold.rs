@@ -14,7 +14,10 @@ use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod dummybip39;
-use bee_signing_ext::{binary::ed25519, Signer};
+use bee_signing_ext::{
+    binary::{ed25519, BIP32Path},
+    Signer,
+};
 use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -36,8 +39,8 @@ fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> Strin
     } else {
         seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
     }
-    let privkey =
-        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, "m/44H/4218H/0H/0H").expect("Error deriving seed");
+    let privkey = ed25519::Ed25519PrivateKey::generate_from_seed(&seed, BIP32Path::from("m/44H/4218H/0H/0H").unwrap())
+        .expect("Error deriving seed");
     let address = dummy_derive_into_address(privkey);
 
     // Account ID generation: 2/2 : Hash generated address in order to get ID
@@ -108,7 +111,11 @@ impl Account {
 
     fn get_privkey(&self, derivation_path: String) -> ed25519::Ed25519PrivateKey {
         let seed = self.get_seed();
-        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, &derivation_path).expect("Error deriving seed")
+        ed25519::Ed25519PrivateKey::generate_from_seed(
+            &seed,
+            BIP32Path::from(&derivation_path).expect("invalid bip32path"),
+        )
+        .expect("Error deriving seed")
     }
 
     pub fn get_address(&self, derivation_path: String) -> String {
