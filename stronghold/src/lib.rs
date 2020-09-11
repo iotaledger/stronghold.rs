@@ -32,13 +32,12 @@
 mod account;
 
 mod storage;
+use account::Account;
+use bee_signing_ext::{binary::ed25519, Signature, Verifier};
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, panic, path::Path, str};
 pub use storage::{Base64Decodable, Id as RecordId};
 use storage::{RecordHint, Storage};
-use account::{Account, SubAccount};
-use bee_signing_ext::{binary::ed25519, Signature, Verifier};
-use std::{collections::BTreeMap, path::Path, str};
-use serde::{Deserialize, Serialize};
-use std::panic;
 
 static INDEX_HINT: &str = "index";
 
@@ -93,18 +92,15 @@ impl Stronghold {
         if create {
             if storage.exists() {
                 panic!("Cannot create a new snapshot: There is an existing one")
-            }else{
+            } else {
                 let index = Index::default();
                 let index_serialized = serde_json::to_string(&index).unwrap();
-                storage
-                    .encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), snapshot_password);
+                storage.encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), snapshot_password);
             }
-        }else{
+        } else {
             storage.get_index(snapshot_password);
         };
-        Self {
-            storage
-        }
+        Self { storage }
     }
 
     // Saves an index in the snapshot
@@ -217,17 +213,14 @@ impl Stronghold {
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot", true, "password");
-    /// stronghold.account_list_ids(
-    ///     "c/7f5cf@faaf$e2c%c588d",
-    ///     None,
-    ///     None
-    /// );
+    /// stronghold.account_list_ids("c/7f5cf@faaf$e2c%c588d", None, None);
     /// ```
     pub fn account_list_ids(&self, snapshot_password: &str, skip: Option<usize>, limit: Option<usize>) -> Vec<String> {
-        let (record_id, index) = self.index_get(snapshot_password, skip, limit).expect("Error getting stronghold index");
-        index.0.keys().map(|k| { k.to_string() }).collect()
+        let (record_id, index) = self
+            .index_get(snapshot_password, skip, limit)
+            .expect("Error getting stronghold index");
+        index.0.keys().map(|k| k.to_string()).collect()
     }
-    
     fn index_get(
         &self,
         snapshot_password: &str,
@@ -346,8 +339,18 @@ impl Stronghold {
         let (index_record_id, index) = self
             .index_get(snapshot_password, None, None)
             .expect("Index not initialized in snapshot file");
-        let account = Account::new(bip39_passphrase.clone());
-        let record_id = self.account_save(&account, false, snapshot_password);
+
+        let all_accounts = self
+            .account_list(snapshot_password, None, None)
+            .expect("failed to list accounts");
+        let index = all_accounts
+            .iter()
+            .max_by(|a, b| a.index().cmp(b.index()))
+            .map(|a| a.index())
+            .cloned()
+            .unwrap_or(0);
+        let account = Account::new(bip39_passphrase, index);
+        let record_id = self.account_save(&account, snapshot_password);
         (record_id, account)
     }
 
@@ -366,39 +369,44 @@ impl Stronghold {
     ///
     /// `snapshot_password` password required for decrypt/encrypt the snapshot file.
     ///
-    /// `sub_accounts` set of SubAccounts belonging to the account
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot", true, "password");
     /// let mnemonic = String::from("gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding");
     /// let snapshot_password = "i:wj38siqo378e54e$";
-    /// let sub_accounts = Vec::new();
-    /// let account = stronghold.account_import(1598890069000, 1598890070000, mnemonic, None, &snapshot_password, sub_accounts);
+    /// let account = stronghold.account_import(0, 1598890069000, 1598890070000, mnemonic, None, &snapshot_password);
     /// ```
     pub fn account_import(
         // todo: reorder params , ¿what if try to add an account by second time?
         &self,
+        index: usize,
         created_at: u128,      // todo: maybe should be optional
         last_updated_on: u128, // todo: maybe should be optional
         bip39_mnemonic: String,
         bip39_passphrase: Option<&str>,
         snapshot_password: &str,
-        sub_accounts: Vec<SubAccount>, // todo: maybe should be optional?
     ) -> Account {
-        let (record_id, account) = self._account_import(created_at, last_updated_on, bip39_mnemonic, bip39_passphrase, snapshot_password, sub_accounts);
+        let (record_id, account) = self._account_import(
+            index,
+            created_at,
+            last_updated_on,
+            bip39_mnemonic,
+            bip39_passphrase,
+            snapshot_password,
+        );
         account
     }
 
     fn _account_import(
         // todo: reorder params , ¿what if try to add an account by second time?
         &self,
+        index: usize,
         created_at: u128,      // todo: maybe should be optional
         last_updated_on: u128, // todo: maybe should be optional
         bip39_mnemonic: String,
         bip39_passphrase: Option<&str>,
         snapshot_password: &str,
-        sub_accounts: Vec<SubAccount>, // todo: maybe should be optional?
     ) -> (RecordId, Account) {
         if bip39_mnemonic.is_empty() {
             panic!("Invalid parameters: bip39_mnemonic is missing");
@@ -412,13 +420,7 @@ impl Stronghold {
             None => None,
         };
 
-        let account = Account::import(
-            created_at,
-            last_updated_on,
-            bip39_mnemonic,
-            bip39_passphrase,
-            sub_accounts,
-        );
+        let account = Account::import(index, created_at, last_updated_on, bip39_mnemonic, bip39_passphrase);
 
         let record_id = self.account_save(&account, false, snapshot_password);
 
@@ -435,85 +437,23 @@ impl Stronghold {
         let record_id = self.record_get_by_account_id(&account.id(), &snapshot_password);
         self._record_remove(record_id, &snapshot_password);
         account.last_updated_on(true);
-        let record_id = self.account_save(&account, true, &snapshot_password);
-        let (index_record_id, mut index) = self.index_get(snapshot_password, None, None).expect("Error getting account index");
-        index.update_account(account.id(),record_id);
+        let record_id = self.account_save(&account, &snapshot_password);
+        let (index_record_id, mut index) = self
+            .index_get(snapshot_password, None, None)
+            .expect("Error getting account index");
+        index.update_account(account.id(), record_id);
         self.index_update(index_record_id, index, snapshot_password);
         record_id
     }
 
-    /// Adds a subaccount to an account
-    ///
-    /// Specify the stored account with its id (`account_id`) , `snapshot_password` is required to decrypt/encrypt the
-    /// snapshot file.
-    ///
-    /// `label` the name that you want to call it, only for anecdotal purpose
-    ///
-    /// `account_id` id of the account to which a subaccount will be added
-    ///
-    /// `snapshot_password` password required for decrypt/encrypt snapshot file
-    ///
-    /// # Example
-    /// ```no_run
-    /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password");
-    /// stronghold.subaccount_add(
-    ///     "savings",
-    ///     "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1",
-    ///     "suHyeJdnJuJNU34;23",
-    /// );
-    /// ```
-    pub fn subaccount_add(&self, label: &str, account_id: &str, snapshot_password: &str) -> Account {
-        // todo: remove return
-        let mut account = self.account_get_by_id(&account_id, snapshot_password);
-        let subaccount = SubAccount::new(String::from(label));
-        account.add_sub_account(subaccount);
-        self.account_update(&mut account, snapshot_password);
-        account
-    }
-
-    /// Switches the visibility of a subaccount
-    ///
-    /// The subaccount won't be erased.
-    ///
-    /// `account_id` id of the account, is required to identify the stored account.
-    ///
-    /// `sub_account_index` subaccount number, required in order to identify which subaccount
-    ///
-    /// `visible` if the subaccount should be visible or not
-    ///
-    /// `snapshot_password` password required to decrypt/encrypt the snapshot file
-    /// # Example
-    /// ```no_run
-    /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password");
-    /// let account_id = "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1";
-    /// let sub_account_index = 1;
-    /// let visible = false;
-    /// let snapshot_password = "duajwYh442875";
-    /// stronghold.subaccount_hide(&account_id, sub_account_index, visible, &snapshot_password);
-    /// ```
-    pub fn subaccount_hide(&self, account_id: &str, sub_account_index: usize, visible: bool, snapshot_password: &str) {
-        let mut account = self.account_get_by_id(&account_id, snapshot_password);
-        let sub_account = &mut account.get_sub_account(sub_account_index);
-        sub_account.set_display(visible);
-        self.account_update(&mut account, snapshot_password);
-    }
-
-    /// List subaccounts of an account
-    pub fn subaccount_list(&self, account_id: &str, sub_account_index: usize, skip: Option<usize>, limit: Option<usize>, snapshot_password: &str) -> Vec<SubAccount> {
-        let account = self.account_get_by_id(&account_id, snapshot_password);
-        account.list_sub_accounts(skip, limit)
-    }
-
     /// Get an address
     ///
-    /// Given an account id (`account_id`) and a derivation path (composed by `sub_account_index` and `internal`)
-    /// returns an address and its index.
+    /// Given an account id (`account_id`) and a derivation path (composed by `address_index` and `internal`)
+    /// returns an address.
     ///
     /// `account_id` id of the account to which the address has to belong
     ///
-    /// `sub_account_index` number of subaccount to which the address has to belong
+    /// `address_index` index of the address to generate
     ///
     /// `internal` chain to which the address has to belong (internal:false for receiving address and external:true
     /// to change addresses)
@@ -539,25 +479,17 @@ impl Stronghold {
         // level thing
         &self,
         account_id: &str,
-        sub_account_index: usize,
+        address_index: usize,
         internal: bool,
         snapshot_password: &str,
-    ) -> (usize, String) {
-        let mut account = self.account_get_by_id(account_id, snapshot_password);
-        let accounts_count = account.get_sub_account_len();
-        if sub_account_index >= accounts_count {
-            for sub_account_index_to_create in accounts_count..sub_account_index+1 {
-                account.add_sub_account(SubAccount::new(format!("SubAccount {}",sub_account_index_to_create)));
-            }
-        };
-        let sub_account = &mut account.get_sub_account(sub_account_index);
-        let index = sub_account.addresses_increase_counter(internal);
-        let address = account.get_address(format!(
+    ) -> String {
+        let account = self.account_get_by_id(account_id, snapshot_password);
+        account.get_address(format!(
             "m/44H/4218H/{}H/{}H/{}H",
-            sub_account_index, !internal as u32, index
-        ));
-        self.account_update(&mut account, snapshot_password);
-        (index, address)
+            account.index(),
+            !internal as u32,
+            address_index
+        ))
     }
 
     /// Signs a message
@@ -567,8 +499,6 @@ impl Stronghold {
     /// `message` message to sign
     ///
     /// `account_id` id of the account which the private key that has to belong
-    ///
-    /// `sub_account_index` number of subaccount to which the private key has to belong
     ///
     /// `internal` chain to which the private key has to belong
     ///
@@ -582,33 +512,25 @@ impl Stronghold {
     /// let stronghold = Stronghold::new("savings.snapshot", true, "password");
     /// let message = "With this signed message you can verify my address ownership".as_bytes();
     /// let account_id = "7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1";
-    /// let sub_account_index = 0;
     /// let internal = false;
     /// let index = 0;
     /// let snapshot_password = "iKuwjMdnwI";
-    /// let signature = stronghold.signature_make(
-    ///     &message,
-    ///     &account_id,
-    ///     sub_account_index,
-    ///     internal,
-    ///     index,
-    ///     snapshot_password,
-    /// );
+    /// let signature = stronghold.signature_make(&message, &account_id, internal, index, snapshot_password);
     /// ```
     pub fn signature_make(
         &self,
         message: &[u8],
         account_id: &str,
-        sub_account_index: usize,
         internal: bool,
         index: usize,
         snapshot_password: &str,
     ) -> String {
         let account = self.account_get_by_id(account_id, snapshot_password);
+
         let signature: Vec<u8> = account
             .sign_message(
                 message,
-                format!("m/44'/4218'/{}'/{}'/{}'", sub_account_index, !internal as u32, index),
+                format!("m/44'/4218'/{}'/{}'/{}'", account.index(), !internal as u32, index),
             )
             .to_vec();
         base64::encode(signature)
@@ -712,9 +634,9 @@ impl Stronghold {
     }
 
     /// List records stored in snapshot
-    /// 
+    ///
     /// It will include index record and account records
-    /// 
+    ///
     /// TODO: complete it
     pub fn record_list(&self, snapshot_password: &str) -> Vec<(RecordId, RecordHint)> {
         self.storage.get_index(snapshot_password)
@@ -742,7 +664,8 @@ impl Stronghold {
         };
         panic::catch_unwind(|| {
             self.account_get_by_record_id(&record_id, snapshot_password);
-        }).expect_err("Error removing record: if you are trying to remove an account record please use account_remove()");
+        })
+        .expect_err("Error removing record: if you are trying to remove an account record please use account_remove()");
         self._record_remove(record_id, snapshot_password)
     }
 
@@ -801,10 +724,9 @@ mod tests {
             assert_eq!(record_id, account_record_id_from_index);
 
             let accounts = stronghold.account_list("password", None, None).unwrap();
-            //println!("{}",serde_json::to_string(&accounts[0]).unwrap());
-            //todo: add more controls
+            // println!("{}",serde_json::to_string(&accounts[0]).unwrap());
+            // todo: add more controls
             assert_eq!(accounts.len(), 1);
-            
             let (record_id, index) = stronghold.index_get("password", None, None).unwrap();
             assert_eq!(index.0.len(), 1);
         });
@@ -844,7 +766,10 @@ mod tests {
             assert_eq!(&new_record_id, account_record_id_from_index);
 
             let _account = stronghold.account_get_by_id(account.id(), "password");
-            assert_eq!(serde_json::to_string(account).unwrap(), serde_json::to_string(&_account).unwrap());
+            assert_eq!(
+                serde_json::to_string(account).unwrap(),
+                serde_json::to_string(&_account).unwrap()
+            );
         });
     }
 
@@ -853,12 +778,13 @@ mod tests {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path, true, "password");
             let (record_id, account) = &mut stronghold._account_import(
+                0,
                 1599580138000,
                 1599580138000,
-                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
+                    .to_string(),
                 None,
                 "password",
-                Vec::new()
             );
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
             let account_record_id_from_index = index.0.get(account.id()).unwrap();
@@ -899,7 +825,7 @@ mod tests {
             let (record_id, account) = &mut stronghold._account_create(None, "password");
 
             let ids = stronghold.account_list_ids("password", None, None);
-            assert_eq!(ids.len(),3);
+            assert_eq!(ids.len(), 3);
         });
     }
 
@@ -910,7 +836,7 @@ mod tests {
             let data_to_save = "testing text";
             let record_id = stronghold.record_create(data_to_save, "password");
             let data_read = stronghold.record_read(&record_id, "password");
-            assert_eq!(data_read,data_to_save);
+            assert_eq!(data_read, data_to_save);
         });
     }
 
@@ -921,15 +847,15 @@ mod tests {
             let data_to_save = "testing text";
             let record_id = stronghold.record_create(data_to_save, "password");
             let data_read = stronghold.record_read(&record_id, "password");
-            println!("{}",data_read);
-            assert_eq!(data_read,data_to_save);
+            println!("{}", data_read);
+            assert_eq!(data_read, data_to_save);
 
-            let record_list = stronghold.record_list("password");//todo: add skip limit and filter in order to avoid index and account records
-            assert_eq!(record_list.len(),2);
+            let record_list = stronghold.record_list("password"); // todo: add skip limit and filter in order to avoid index and account records
+            assert_eq!(record_list.len(), 2);
 
             stronghold.record_remove(record_id, "password");
             let record_list = stronghold.record_list("password");
-            assert_eq!(record_list.len(),1);
+            assert_eq!(record_list.len(), 1);
         });
     }
 
@@ -938,22 +864,25 @@ mod tests {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path, true, "password");
             let (record_id, account) = &mut stronghold._account_import(
+                0,
                 1599580138000,
                 1599580138000,
-                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
+                    .to_string(),
                 None,
                 "password",
-                Vec::new()
             );
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
             let account_record_id_from_index = index.0.get(account.id()).unwrap();
             assert_eq!(record_id, account_record_id_from_index);
 
-            let (index, address) = stronghold.address_get(account.id(), 3, false, "password");
-            assert_eq!(address,"iota1q8lw65sy786ph446s6yt3vjptjz2mh74qspegzt2cl8dk3cl7r67yewtlp8");
+            let address = stronghold.address_get(account.id(), 0, false, "password");
+            assert_eq!(
+                address,
+                "iota1qye70q4wmhx8ys5rgsaw80g32cqlaa9ec50a8lpt88f5g033sw98s2ee8ve"
+            );
 
             let account = stronghold.account_get_by_id(account.id(), "password");
-            assert_eq!(account.get_sub_account_len(), 4);
         });
     }
 
@@ -962,31 +891,25 @@ mod tests {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path, true, "password");
             let (record_id, account) = &mut stronghold._account_import(
+                0,
                 1599580138000,
                 1599580138000,
-                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
+                    .to_string(),
                 None,
                 "password",
-                Vec::new()
             );
 
-            stronghold.subaccount_add("signing", account.id(), "password");
-
             let message = "With this signed message you can verify my address ownership".as_bytes();
-            let sub_account_index = 0;
             let internal = false;
             let index = 0;
             let snapshot_password = "password";
-            let signature = stronghold.signature_make(
-                &message,
-                &account.id(),
-                sub_account_index,
-                internal,
-                index,
-                snapshot_password,
-            );
+            let signature = stronghold.signature_make(&message, &account.id(), internal, index, snapshot_password);
 
-            assert_eq!(signature,"w2NnP8rZuyOBW5rR3/NjteGuOse6ZwyQ2za66ebyL7+opgDzXV/X1i9IzXBTgmvYJMY+Aoq+mdGRmj2Dni4VBA==");
+            assert_eq!(
+                signature,
+                "w2NnP8rZuyOBW5rR3/NjteGuOse6ZwyQ2za66ebyL7+opgDzXV/X1i9IzXBTgmvYJMY+Aoq+mdGRmj2Dni4VBA=="
+            );
         });
     }
 
@@ -1001,27 +924,4 @@ mod tests {
             assert_eq!(is_legit, ());
         });
     }
-
-    #[test]
-    fn handle_subaccounts() {
-        super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, "password");
-            let (record_id, account) = &mut stronghold._account_import(
-                1599580138000,
-                1599580138000,
-                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
-                None,
-                "password",
-                Vec::new()
-            );
-            assert_eq!(stronghold.subaccount_list(account.id(), 0, None, None, "password").len(), 0);
-
-            stronghold.subaccount_add("daily expenses", account.id(), "password");
-            assert_eq!(stronghold.subaccount_list(account.id(), 0, None, None, "password").len(), 1);
-    
-            stronghold.subaccount_add("life savings", account.id(), "password");
-            assert_eq!(stronghold.subaccount_list(account.id(), 0, None, None, "password").len(), 2);
-        });
-    }
-
 }

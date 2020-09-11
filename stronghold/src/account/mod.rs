@@ -23,12 +23,12 @@ use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
     id: String,
+    index: usize,
     external: bool,
     created_at: u128,
     last_updated_on: u128,
     bip39_mnemonic: String,
     bip39_passphrase: Option<String>,
-    sub_accounts: Vec<SubAccount>,
 }
 
 fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
@@ -50,7 +50,7 @@ fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> Strin
 }
 
 impl Account {
-    pub fn new(bip39_passphrase: Option<String>) -> Account {
+    pub fn new(bip39_passphrase: Option<String>, index: usize) -> Account {
         // Mnemonic generation
         let bip39_mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
 
@@ -59,6 +59,7 @@ impl Account {
 
         Account {
             id,
+            index,
             external: false,
             created_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -72,28 +73,27 @@ impl Account {
                 bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase(),
             ),
             bip39_passphrase,
-            sub_accounts: Vec::new(),
         }
     }
 
     pub fn import(
+        index: usize,
         created_at: u128,
         last_updated_on: u128,
         bip39_mnemonic: String,
         bip39_passphrase: Option<String>,
-        sub_accounts: Vec<SubAccount>,
     ) -> Account {
         bip39::Mnemonic::from_phrase(&bip39_mnemonic, bip39::Language::English).expect("Invalid mnemonic");
         // ID generation
         let id = generate_id(&bip39_mnemonic, &bip39_passphrase);
         Account {
             id,
+            index,
             external: true,
             created_at,
             last_updated_on,
             bip39_mnemonic,
             bip39_passphrase,
-            sub_accounts,
         }
     }
 
@@ -103,10 +103,6 @@ impl Account {
             None => "",
         };
         dummy_mnemonic_to_ed25_seed(&self.bip39_mnemonic, &bip39_passphrase)
-    }
-
-    pub fn add_subaccount(&mut self, label: String) {
-        self.sub_accounts.push(SubAccount::new(label))
     }
 
     fn get_privkey(&self, derivation_path: String) -> ed25519::Ed25519PrivateKey {
@@ -132,48 +128,12 @@ impl Account {
         &self.id
     }
 
+    pub fn index(&self) -> &usize {
+        &self.index
+    }
+
     pub fn mnemonic(&self) -> &String {
         &self.bip39_mnemonic
-    }
-
-    pub fn add_sub_account(&mut self, sub_account: SubAccount) {
-        self.sub_accounts.push(sub_account);
-    }
-
-    pub fn get_sub_account(&mut self, index: usize) -> &mut SubAccount {
-        &mut self.sub_accounts[index]
-    }
-
-    pub fn list_sub_accounts(self, skip: Option<usize>, limit: Option<usize>) -> Vec<SubAccount> {
-        let skip = if let Some(skip) = skip {
-            if skip > self.sub_accounts.len() - 1 {
-                self.sub_accounts.len() - 1
-            } else {
-                skip
-            }
-        } else {
-            0
-        };
-
-        let limit = if let Some(limit) = limit {
-            if limit > self.sub_accounts.len() - skip {
-                self.sub_accounts.len()
-            } else {
-                limit
-            }
-        } else {
-            self.sub_accounts.len()
-        };
-
-        self.sub_accounts
-        .into_iter()
-        .enumerate()
-        .filter_map(|(i, e)| if i >= skip && i <= limit + skip { Some(e) } else { None })
-        .collect()
-    }
-
-    pub fn get_sub_account_len(&self) -> usize {
-        self.sub_accounts.len()
     }
 
     pub fn last_updated_on(&mut self, update: bool) -> &u128 {
@@ -184,38 +144,5 @@ impl Account {
                 .as_millis()
         };
         &self.last_updated_on
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct SubAccount {
-    label: String,
-    receive_addresses_counter: usize,
-    change_addresses_counter: usize,
-    visible: bool,
-}
-
-impl SubAccount {
-    pub fn new(label: String) -> Self {
-        Self {
-            label,
-            receive_addresses_counter: 0,
-            change_addresses_counter: 0,
-            visible: true,
-        }
-    }
-
-    pub fn addresses_increase_counter(&mut self, internal: bool) -> usize {
-        if internal {
-            self.change_addresses_counter += 1;
-            self.change_addresses_counter
-        } else {
-            self.receive_addresses_counter += 1;
-            self.receive_addresses_counter
-        }
-    }
-
-    pub fn set_display(&mut self, visible: bool) {
-        self.visible = visible;
     }
 }
