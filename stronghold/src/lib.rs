@@ -673,13 +673,7 @@ impl Stronghold {
         self.storage.revoke(record_id, snapshot_password);
         self.storage.garbage_collect_vault(snapshot_password);
     }
-
-    // todo: add fn record_read(enum storage id or label)
-    // todo: add fn record_update()
-
-    // pub fn message_decrypt() {
-    //
-    // }
+    
 }
 
 #[cfg(test)]
