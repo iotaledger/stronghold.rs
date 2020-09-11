@@ -181,11 +181,18 @@ impl Stronghold {
     }
 
     // Save a new account in a new record
-    fn account_save(&self, account: &Account, snapshot_password: &str) -> storage::Id {
+    fn account_save(&self, account: &Account, rewrite: bool, snapshot_password: &str) -> storage::Id {
         let (index_record_id, mut index) = self
             .index_get(snapshot_password, None, None)
             .expect("Error getting stronghold index");
-        if index.includes(account.id()) {};
+        if rewrite == false {
+            let (_, index) = self
+                .index_get(snapshot_password, None, None)
+                .expect("Error getting stronghold index");
+            if index.includes(account.id()) {
+                panic!("Account already imported");
+            };
+        }
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
         let record_id = self.storage.encrypt(&account_serialized, None, snapshot_password);
         index.add_account(account.id(), record_id);
@@ -415,7 +422,7 @@ impl Stronghold {
 
         let account = Account::import(index, created_at, last_updated_on, bip39_mnemonic, bip39_passphrase);
 
-        let record_id = self.account_save(&account, snapshot_password);
+        let record_id = self.account_save(&account, false, snapshot_password);
 
         (record_id, account)
     }
@@ -782,6 +789,30 @@ mod tests {
             let (_, index) = stronghold.index_get("password", None, None).unwrap();
             let account_record_id_from_index = index.0.get(account.id()).unwrap();
             assert_eq!(record_id, account_record_id_from_index);
+        });
+    }
+
+    #[test]
+    #[should_panic]
+    fn import_account_twice() {
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path, true, "password");
+            let (record_id, account) = &mut stronghold._account_import(
+                1599580138000,
+                1599580138000,
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                None,
+                "password",
+                Vec::new()
+            );
+            let (record_id, account) = &mut stronghold._account_import(
+                1599580138000,
+                1599580138000,
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                None,
+                "password",
+                Vec::new()
+            );
         });
     }
 
