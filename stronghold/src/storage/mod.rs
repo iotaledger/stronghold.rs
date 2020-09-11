@@ -63,12 +63,12 @@ impl Storage {
         self.snapshot_path.exists()
     }
 
-    pub fn encrypt(&self, hint: &str, plain: &str, pass: &str) -> Id {
+    pub fn encrypt(&self, plain: &str, hint: Option<&[u8]>, pass: &str) -> Id {
         let record_id: Id;
         if self.exists() {
             let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass);
 
-            record_id = client.create_record(plain.as_bytes().to_vec(), hint.as_bytes());
+            record_id = client.create_record(plain.as_bytes().to_vec(), hint);
 
             serialize_to_snapshot(&self.snapshot_path, pass, client);
         } else {
@@ -76,7 +76,7 @@ impl Storage {
             let id = Id::random::<Provider>().expect("Unable to generate a new id");
             let client = Client::create_chain(key, id);
 
-            record_id = client.create_record(plain.as_bytes().to_vec(), hint.as_bytes());
+            record_id = client.create_record(plain.as_bytes().to_vec(), hint);
 
             serialize_to_snapshot(&self.snapshot_path, pass, client);
         }
@@ -144,7 +144,7 @@ mod tests {
         crate::test_utils::with_snapshot(|path| {
             let storage = Storage::new(path);
             let value = "value_to_encrypt";
-            let id = storage.encrypt("", value, "password");
+            let id = storage.encrypt(value, None, "password");
 
             let read = storage.read(id, "password");
             assert_eq!(read, value);

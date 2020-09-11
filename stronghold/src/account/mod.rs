@@ -14,21 +14,24 @@ use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod dummybip39;
-use bee_signing_ext::{binary::ed25519, Signer};
+use bee_signing_ext::{
+    binary::{ed25519, BIP32Path},
+    Signer,
+};
 use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
     id: String,
+    index: usize,
     external: bool,
     created_at: u128,
     last_updated_on: u128,
     bip39_mnemonic: String,
     bip39_passphrase: Option<String>,
-    sub_accounts: Vec<SubAccount>,
 }
 
-pub(in crate) fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
+fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
     // Account ID generation: 1/2 : Derive seed into the first address
     let seed;
     if let Some(bip39_passphrase) = bip39_passphrase {
@@ -36,8 +39,8 @@ pub(in crate) fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<Str
     } else {
         seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
     }
-    let privkey =
-        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, "m/44H/4218H/0H/0H").expect("Error deriving seed");
+    let privkey = ed25519::Ed25519PrivateKey::generate_from_seed(&seed, BIP32Path::from("m/44H/4218H/0H/0H").unwrap())
+        .expect("Error deriving seed");
     let address = dummy_derive_into_address(privkey);
 
     // Account ID generation: 2/2 : Hash generated address in order to get ID
@@ -47,7 +50,7 @@ pub(in crate) fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<Str
 }
 
 impl Account {
-    pub fn new(bip39_passphrase: Option<String>) -> Account {
+    pub fn new(bip39_passphrase: Option<String>, index: usize) -> Account {
         // Mnemonic generation
         let bip39_mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
 
@@ -56,6 +59,7 @@ impl Account {
 
         Account {
             id,
+            index,
             external: false,
             created_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -69,28 +73,27 @@ impl Account {
                 bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase(),
             ),
             bip39_passphrase,
-            sub_accounts: Vec::new(),
         }
     }
 
     pub fn import(
+        index: usize,
         created_at: u128,
         last_updated_on: u128,
         bip39_mnemonic: String,
         bip39_passphrase: Option<String>,
-        sub_accounts: Vec<SubAccount>,
     ) -> Account {
-        bip39::Mnemonic::from_phrase(&bip39_mnemonic, bip39::Language::Spanish).expect("Invalid mnemonic");
+        bip39::Mnemonic::from_phrase(&bip39_mnemonic, bip39::Language::English).expect("Invalid mnemonic");
         // ID generation
         let id = generate_id(&bip39_mnemonic, &bip39_passphrase);
         Account {
             id,
+            index,
             external: true,
             created_at,
             last_updated_on,
             bip39_mnemonic,
             bip39_passphrase,
-            sub_accounts,
         }
     }
 
@@ -102,13 +105,13 @@ impl Account {
         dummy_mnemonic_to_ed25_seed(&self.bip39_mnemonic, &bip39_passphrase)
     }
 
-    pub fn add_subaccount(&mut self, label: String) {
-        self.sub_accounts.push(SubAccount::new(label))
-    }
-
     fn get_privkey(&self, derivation_path: String) -> ed25519::Ed25519PrivateKey {
         let seed = self.get_seed();
-        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, &derivation_path).expect("Error deriving seed")
+        ed25519::Ed25519PrivateKey::generate_from_seed(
+            &seed,
+            BIP32Path::from(&derivation_path).expect("invalid bip32path"),
+        )
+        .expect("Error deriving seed")
     }
 
     pub fn get_address(&self, derivation_path: String) -> String {
@@ -125,12 +128,12 @@ impl Account {
         &self.id
     }
 
-    pub fn add_sub_account(&mut self, sub_account: SubAccount) {
-        self.sub_accounts.push(sub_account);
+    pub fn index(&self) -> &usize {
+        &self.index
     }
 
-    pub fn get_sub_account(&mut self, index: usize) -> &mut SubAccount {
-        &mut self.sub_accounts[index]
+    pub fn mnemonic(&self) -> &String {
+        &self.bip39_mnemonic
     }
 
     pub fn last_updated_on(&mut self, update: bool) -> &u128 {
@@ -141,38 +144,5 @@ impl Account {
                 .as_millis()
         };
         &self.last_updated_on
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SubAccount {
-    label: String,
-    receive_addresses_counter: usize,
-    change_addresses_counter: usize,
-    visible: bool,
-}
-
-impl SubAccount {
-    pub fn new(label: String) -> Self {
-        Self {
-            label,
-            receive_addresses_counter: 0,
-            change_addresses_counter: 0,
-            visible: true,
-        }
-    }
-
-    pub fn addresses_increase_counter(&mut self, internal: bool) -> usize {
-        if internal {
-            self.change_addresses_counter += 1;
-            self.change_addresses_counter
-        } else {
-            self.receive_addresses_counter += 1;
-            self.receive_addresses_counter
-        }
-    }
-
-    pub fn set_display(&mut self, visible: bool) {
-        self.visible = visible;
     }
 }
