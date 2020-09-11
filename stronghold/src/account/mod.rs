@@ -22,7 +22,7 @@ use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
-    id: String,
+    id: [u8; 32],
     index: usize,
     external: bool,
     created_at: u128,
@@ -31,7 +31,7 @@ pub struct Account {
     bip39_passphrase: Option<String>,
 }
 
-fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> String {
+fn generate_id<'a>(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> [u8; 32] {
     // Account ID generation: 1/2 : Derive seed into the first address
     let seed;
     if let Some(bip39_passphrase) = bip39_passphrase {
@@ -46,7 +46,7 @@ fn generate_id(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> Strin
     // Account ID generation: 2/2 : Hash generated address in order to get ID
     let mut hasher = Sha256::new();
     hasher.input(address);
-    hex::encode(&hasher.result())
+    hasher.result().into()
 }
 
 impl Account {
@@ -124,7 +124,7 @@ impl Account {
         privkey.sign(message).to_bytes()
     }
 
-    pub fn id(&self) -> &str {
+    pub fn id(&self) -> &[u8; 32] {
         &self.id
     }
 
