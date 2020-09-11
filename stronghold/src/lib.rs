@@ -350,7 +350,7 @@ impl Stronghold {
             .cloned()
             .unwrap_or(0);
         let account = Account::new(bip39_passphrase, index);
-        let record_id = self.account_save(&account, snapshot_password);
+        let record_id = self.account_save(&account, false, snapshot_password);
         (record_id, account)
     }
 
@@ -437,7 +437,7 @@ impl Stronghold {
         let record_id = self.record_get_by_account_id(&account.id(), &snapshot_password);
         self._record_remove(record_id, &snapshot_password);
         account.last_updated_on(true);
-        let record_id = self.account_save(&account, &snapshot_password);
+        let record_id = self.account_save(&account, true, &snapshot_password);
         let (index_record_id, mut index) = self
             .index_get(snapshot_password, None, None)
             .expect("Error getting account index");
@@ -798,20 +798,20 @@ mod tests {
         super::test_utils::with_snapshot(|path| {
             let stronghold = Stronghold::new(path, true, "password");
             let (record_id, account) = &mut stronghold._account_import(
+                0,
                 1599580138000,
                 1599580138000,
                 "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
                 None,
-                "password",
-                Vec::new()
+                "password"
             );
             let (record_id, account) = &mut stronghold._account_import(
+                0,
                 1599580138000,
                 1599580138000,
                 "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
                 None,
-                "password",
-                Vec::new()
+                "password"
             );
         });
     }
