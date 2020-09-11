@@ -12,7 +12,7 @@
 use crate::{
     types::{
         transactions::{DataTransaction, InitTransaction, RevocationTransaction},
-        utils::Id,
+        utils::{TransactionId, ChainId},
     },
     vault::results::Record,
 };
@@ -21,20 +21,27 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+// /// A record identifier
+//#[repr(transparent)]
+//#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+//pub struct RecordId(ChainId);
+
+//impl Debug for RecordId {
+    //fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        //write!(f, "Record({})", (self.0).0.base64())
+    //}
+//}
+
 /// List over all records by an owner and ordered by the counter
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ChainRecord(HashMap<Id, Vec<Record>>);
-
-/// List of all valid records.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ValidRecord(HashMap<Id, Record>);
+pub struct ChainRecord(HashMap<ChainId, Vec<Record>>);
 
 impl ChainRecord {
     /// create a new chain of records
     pub fn new(i: impl Iterator<Item = Record>) -> crate::Result<Self> {
         // sort records by owner
         let mut chains: HashMap<_, Vec<Record>> = HashMap::new();
-        i.for_each(|e| chains.entry(e.owner()).or_default().push(e));
+        i.for_each(|e| chains.entry(e.chain()).or_default().push(e));
 
         // order chains and remove all non-referenced transactions
         for (_, chain) in chains.iter_mut() {
@@ -65,24 +72,24 @@ impl ChainRecord {
         Ok(ChainRecord(chains))
     }
 
-    /// get chains by owner id
-    pub fn owners(&self) -> impl Iterator<Item = (&Id, &[Record])> {
+    /// get chains
+    pub fn chains(&self) -> impl Iterator<Item = (&ChainId, &[Record])> {
         self.0.iter().map(|(id, chain)| (id, chain.as_slice()))
     }
 
-    /// get a record in the chain by owner id
-    pub fn get(&self, owner: &Id) -> Option<&[Record]> {
-        self.0.get(owner).map(|e| e.as_slice())
+    /// get a record in the chain by chain identifier
+    pub fn get(&self, chain: &ChainId) -> Option<&[Record]> {
+        self.0.get(chain).map(|e| e.as_slice())
     }
 
-    /// get all records owned by the owner id or panic
-    pub fn force_get(&self, owner: &Id) -> &[Record] {
-        self.get(owner).expect("There is no chain for this owner")
+    /// get all records owned by the chain identifier or panic
+    pub fn force_get(&self, chain: &ChainId) -> &[Record] {
+        self.get(chain).expect("There is no chain for this owner")
     }
 
-    /// get the last record of a chain by owner id
-    pub fn force_last(&self, owner: &Id) -> &Record {
-        self.force_get(owner)
+    /// get the last record of a chain by chain identifier
+    pub fn force_last(&self, chain: &ChainId) -> &Record {
+        self.force_get(chain)
             .last()
             .expect("The chain is empty and thus has no last record")
     }
@@ -92,25 +99,29 @@ impl ChainRecord {
         self.0.values().flatten()
     }
 
-    /// get all revoked transactions in the chain by owner id
-    pub fn own_revoked(&self, owner: &Id) -> impl Iterator<Item = (Id, &Record)> {
-        let chain = self.force_get(owner);
+    /// get all revoked transactions in the chain by chain identifier
+    pub fn own_revoked(&self, chain: &ChainId) -> impl Iterator<Item = (TransactionId, &Record)> {
+        let chain = self.force_get(chain);
         chain
             .iter()
             .filter_map(|e| Some((e.typed::<RevocationTransaction>()?.id, e)))
     }
 
     /// get all foreign data not owned by the owner id
-    pub fn foreign_data(&self, except: &Id) -> impl Iterator<Item = &Record> {
+    pub fn foreign_data(&self, except: &ChainId) -> impl Iterator<Item = &Record> {
         let except = *except;
         self.0
             .iter()
-            .filter(move |(owner, _)| **owner != except)
+            .filter(move |(id, _)| **id != except)
             .map(|(_, chain)| chain)
             .flatten()
             .filter(|e| e.typed::<DataTransaction>().is_some())
     }
 }
+
+/// List of all valid records.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ValidRecord(HashMap<ChainId, Record>);
 
 impl ValidRecord {
     /// create a new valid record chain
@@ -118,13 +129,13 @@ impl ValidRecord {
         // collect the data and remove revoked ones
         let mut valid: HashMap<_, _> = chains
             .all()
-            .filter_map(|e| Some((e.typed::<DataTransaction>()?.id, e.clone())))
+            .filter_map(|e| Some((e.typed::<DataTransaction>()?.chain, e.clone())))
             .collect();
         chains
             .all()
             .filter_map(|e| e.typed::<RevocationTransaction>())
             .for_each(|r| {
-                valid.remove(&r.id);
+                valid.remove(&r.chain);
             });
 
         // shrink the map
@@ -133,7 +144,7 @@ impl ValidRecord {
     }
 
     /// get chain by id
-    pub fn get(&self, id: &Id) -> Option<&Record> {
+    pub fn get(&self, id: &ChainId) -> Option<&Record> {
         self.0.get(id)
     }
 
@@ -142,9 +153,10 @@ impl ValidRecord {
         self.0.values()
     }
 
-    /// get all valid for owner id
-    pub fn all_for_owner(&self, owner: &Id) -> impl Iterator<Item = &Record> {
-        let owner = *owner;
-        self.all().filter(move |e| e.owner() == owner)
+    /// get all valid for chain identifier
+    // TODO: does this still make sense? i.e. can there be more than one valid record per chain?
+    pub fn all_for_chain(&self, chain: &ChainId) -> impl Iterator<Item = &Record> {
+        let chain = *chain;
+        self.all().filter(move |e| e.chain() == chain)
     }
 }

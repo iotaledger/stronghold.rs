@@ -13,7 +13,7 @@ use crate::{
     crypto_box::{BoxProvider, Key},
     types::{
         transactions::{DataTransaction, InitTransaction, RevocationTransaction},
-        utils::{Id, RecordHint, Val},
+        utils::{TransactionId, ChainId, RecordHint, Val},
     },
     vault::record::{ChainRecord, ValidRecord},
 };
@@ -28,7 +28,7 @@ mod results;
 pub use crate::vault::results::{DeleteRequest, ListResult, ReadRequest, ReadResult, Record, WriteRequest};
 
 /// A view over the vault.  `key` is the Key used to lock the data. `chain` is a `ChainRecord` that contains all of the
-/// associated records in the vault.  `valid` is a ValidRecord which contains only valid records.   
+/// associated records in the vault.  `valid` is a ValidRecord which contains only valid records.
 #[derive(Serialize, Deserialize)]
 pub struct DBView<P: BoxProvider> {
     key: Key<P>,
@@ -44,11 +44,11 @@ pub struct DBReader<'a, P: BoxProvider> {
 /// A writer for the `DBView`
 pub struct DBWriter<P: BoxProvider> {
     view: DBView<P>,
-    owner: Id,
+    chain: ChainId, // TODO: change to RecordId
 }
 
 impl<P: BoxProvider> DBView<P> {
-    /// Opens a vault using a key. Accepts the `ids` of the records that you want to load.  
+    /// Opens a vault using a key. Accepts the `ids` of the records that you want to load.
     pub fn load(key: Key<P>, ids: ListResult) -> crate::Result<Self> {
         // get records based on the Ids and open them with the key.
         let records = ids.into_iter().filter_map(|id| Record::open(&key, &id));
@@ -61,11 +61,11 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     /// Creates an iterator over all valid records. Iterates over ids and record hints
-    pub fn records<'a>(&'a self) -> impl Iterator<Item = (Id, RecordHint)> + ExactSizeIterator + 'a {
+    pub fn records<'a>(&'a self) -> impl Iterator<Item = (ChainId, RecordHint)> + ExactSizeIterator + 'a {
         self.valid
             .all()
             .map(|e| e.force_typed::<DataTransaction>())
-            .map(|d| (d.id, d.record_hint))
+            .map(|d| (d.chain, d.record_hint))
     }
 
     /// Check the balance of valid records compared to total records
@@ -73,17 +73,18 @@ impl<P: BoxProvider> DBView<P> {
         (self.valid.all().count(), self.chain.all().count())
     }
 
-    /// Get highest counter from the vault.
-    pub fn chain_ctrs(&self) -> HashMap<Id, u64> {
+    /// Get highest counter from the vault for known records
+    // TODO: should these really be exposed
+    pub fn chain_ctrs(&self) -> HashMap<ChainId, u64> {
         self.chain
-            .owners()
-            .map(|(owner, _)| (*owner, self.chain.force_last(owner).ctr().u64()))
+            .chains()
+            .map(|(id, _)| (*id, self.chain.force_last(id).ctr().u64()))
             .collect()
     }
 
     /// Check the age of the chains. Fills the `chain_ctr` with a HashMap of the chain's owner
     /// ids their counter size.
-    pub fn not_older_than(&self, chain_ctrs: &HashMap<Id, u64>) -> crate::Result<()> {
+    pub fn not_older_than(&self, chain_ctrs: &HashMap<ChainId, u64>) -> crate::Result<()> {
         let this_ctrs = self.chain_ctrs();
         chain_ctrs.iter().try_for_each(|(chain, other_ctr)| {
             let this_ctr = this_ctrs.get(chain).ok_or_else(|| {
@@ -106,20 +107,19 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     /// Converts the `DBView` into a `DBWriter`.  Requires the owner's id as the `owned_chain`.
-    pub fn writer(self, owned_chain: Id) -> DBWriter<P> {
-        DBWriter {
-            view: self,
-            owner: owned_chain,
-        }
+    pub fn writer(self, chain: ChainId) -> DBWriter<P> {
+        DBWriter { view: self, chain }
     }
 }
 
 impl<'a, P: BoxProvider> DBReader<'a, P> {
+    // TODO: ChainId:s => RecordId:s
+
     /// Prepare a record for reading. Create a `ReadRequest` to read the record with inputted `id`. Returns `None` if
     /// there was no record for that ID
-    pub fn prepare_read(&self, id: Id) -> crate::Result<ReadRequest> {
+    pub fn prepare_read(&self, id: ChainId) -> crate::Result<ReadRequest> {
         match self.view.valid.get(&id) {
-            Some(_) => Ok(ReadRequest::payload::<P>(id)),
+            Some(r) => Ok(ReadRequest::payload::<P>(r.id())),
             _ => Err(crate::Error::InterfaceError),
         }
     }
@@ -127,7 +127,7 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
     /// Open a record given a `ReadResult`.  Returns a vector of bytes.
     pub fn read(&self, res: ReadResult) -> crate::Result<Vec<u8>> {
         // reverse lookup
-        let id = Id::load(res.id()).map_err(|_| crate::Error::InterfaceError)?;
+        let id = ChainId::load(res.id()).map_err(|_| crate::Error::InterfaceError)?;
         match self.view.valid.get(&id) {
             Some(e) => e.open_payload(&self.view.key, res.data()),
             _ => Err(crate::Error::InterfaceError),
@@ -138,48 +138,48 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
 impl<P: BoxProvider> DBWriter<P> {
     /// create a new chain owned by owner.  Takes a secret `key` and the owner's `id` and creates a new
     /// `InitTransaction`.
-    pub fn create_chain(key: &Key<P>, owner: Id) -> WriteRequest {
-        let transaction = InitTransaction::new(owner, Val::from(0u64));
-        Record::new(key, transaction).write()
+    pub fn create_chain(key: &Key<P>, chain: ChainId) -> crate::Result<WriteRequest> {
+        let id = TransactionId::random::<P>()?;
+        let transaction = InitTransaction::new(chain, id, Val::from(0u64));
+        Ok(Record::new(key, transaction).write())
     }
 
     /// Check the balance of the amount of valid records compared to amount of total records in this chain
     pub fn relative_balance(&self) -> (usize, usize) {
-        let valid = self.view.valid.all_for_owner(&self.owner).count();
-        let all = self.view.chain.force_get(&self.owner).len();
+        let valid = self.view.valid.all_for_chain(&self.chain).count();
+        let all = self.view.chain.force_get(&self.chain).len();
         (valid, all)
     }
 
     /// Write the `data` to the chain. Generate a `DataTransaction` and return the record's `Id` along with a
     /// `WriteRequest`.
-    pub fn write(self, data: &[u8], hint: RecordHint) -> crate::Result<(Id, Vec<WriteRequest>)> {
-        // generate id
-        let id = Id::random::<P>()?;
-        // get counter
-        let ctr = self.view.chain.force_last(&self.owner).ctr() + 1;
+    pub fn write(self, data: &[u8], hint: RecordHint) -> crate::Result<(TransactionId, Vec<WriteRequest>)> {
+        let id = TransactionId::random::<P>()?;
+        let ctr = self.view.chain.force_last(&self.chain).ctr() + 1;
 
-        // create transaction
-        let transaction = DataTransaction::new(self.owner, ctr, id, hint);
-        // create record
+        let transaction = DataTransaction::new(self.chain, ctr, id, hint);
         let record = Record::new(&self.view.key, transaction);
         Ok((id, record.write_payload(&self.view.key, data)?))
     }
 
     /// Revoke a record. Creates a revocation transaction for the given `id`.  Returns a `WriteRequest` and
     /// a `DeleteRequest`
-    pub fn revoke(self, id: Id) -> crate::Result<(WriteRequest, DeleteRequest)> {
-        // check if id is still valid and get counter
-        let start_ctr = match self.view.valid.get(&id) {
-            Some(_) => self.view.chain.force_last(&self.owner).ctr() + 1,
+    pub fn revoke(self) -> crate::Result<(WriteRequest, DeleteRequest)> {
+        // check if id is still valid and get counter and transaction id
+        let (start_ctr, id) = match self.view.valid.get(&self.chain) {
+            Some(r) => (self.view.chain.force_last(&self.chain).ctr() + 1, r.id()),
             _ => return Err(crate::Error::InterfaceError),
         };
 
         // generate transaction
-        let transaction = RevocationTransaction::new(self.owner, start_ctr, id);
+        let rid = TransactionId::random::<P>()?;
+        let transaction = RevocationTransaction::new(self.chain, start_ctr, rid);
         // generate record
         let to_write = Record::new(&self.view.key, transaction).write();
+
         // create delete request
         let to_delete = DeleteRequest::uid(id);
+
         Ok((to_write, to_delete))
     }
 
@@ -187,14 +187,15 @@ impl<P: BoxProvider> DBWriter<P> {
     /// `WriteRequests` and `DeleteRequests` of that chain.
     pub fn gc(self) -> crate::Result<(Vec<WriteRequest>, Vec<DeleteRequest>)> {
         // create InitTransaction
-        let start_ctr = self.view.chain.force_last(&self.owner).ctr() + 1;
-        let start = InitTransaction::new(self.owner, start_ctr);
+        let start_id = TransactionId::random::<P>()?;
+        let start_ctr = self.view.chain.force_last(&self.chain).ctr() + 1;
+        let start = InitTransaction::new(self.chain, start_id, start_ctr);
         let mut to_write = vec![Record::new(&self.view.key, start).write()];
 
         // locate revocation transactions
-        let revoked: HashMap<_, _> = self.view.chain.own_revoked(&self.owner).collect();
-        for data in self.view.chain.foreign_data(&self.owner) {
-            if let Some(record) = revoked.get(&data.force_uid()) {
+        let revoked: HashMap<_, _> = self.view.chain.own_revoked(&self.chain).collect();
+        for data in self.view.chain.foreign_data(&self.chain) {
+            if let Some(record) = revoked.get(&data.id()) {
                 // clone and get view of transaction
                 let mut transaction = record.transaction().clone();
                 let view = transaction.force_typed_mut::<RevocationTransaction>();
@@ -206,7 +207,7 @@ impl<P: BoxProvider> DBWriter<P> {
         }
 
         // rebuild transactions and records data
-        for record in self.view.valid.all_for_owner(&self.owner) {
+        for record in self.view.valid.all_for_chain(&self.chain) {
             // create updated transaction
             let mut transaction = record.transaction().clone();
             let view = transaction.force_typed_mut::<DataTransaction>();
@@ -220,16 +221,16 @@ impl<P: BoxProvider> DBWriter<P> {
 
         // create a delete transction to delete all old and non-valid transactions
         let mut to_delete = Vec::new();
-        for record in self.view.chain.force_get(&self.owner) {
+        for record in self.view.chain.force_get(&self.chain) {
             to_delete.push(DeleteRequest::transaction(record.sealed()));
         }
         Ok((to_write, to_delete))
     }
 
     /// take ownership of a chain with the owner id of `other`
-    pub fn take_ownership(self, other: &Id) -> crate::Result<(Vec<WriteRequest>, Vec<DeleteRequest>)> {
+    pub fn take_ownership(self, other: &ChainId) -> crate::Result<(Vec<WriteRequest>, Vec<DeleteRequest>)> {
         // get counters
-        let this_ctr = self.view.chain.force_last(&self.owner).ctr() + 1;
+        let this_ctr = self.view.chain.force_last(&self.chain).ctr() + 1;
         let other_ctr = self
             .view
             .chain
@@ -241,23 +242,24 @@ impl<P: BoxProvider> DBWriter<P> {
         // locate Revocation transaction
         let revoked: HashMap<_, _> = self.view.chain.own_revoked(other).collect();
         for data in self.view.chain.foreign_data(other) {
-            if let Some(record) = revoked.get(&data.force_uid()) {
+            if let Some(record) = revoked.get(&data.id()) {
                 let this_ctr = this_ctr + to_write.len() as u64;
-                let transaction = RevocationTransaction::new(self.owner, this_ctr, record.force_uid());
+                let transaction = RevocationTransaction::new(self.chain, this_ctr, record.id());
                 to_write.push(Record::new(&self.view.key, transaction).write())
             }
         }
 
         // copy all valid transactions
-        for record in self.view.valid.all_for_owner(other) {
+        for record in self.view.valid.all_for_chain(other) {
             let this_ctr = this_ctr + to_write.len() as u64;
             let record = record.force_typed::<DataTransaction>();
-            let transaction = DataTransaction::new(self.owner, this_ctr, record.id, record.record_hint);
+            let transaction = DataTransaction::new(self.chain, this_ctr, record.id, record.record_hint);
             to_write.push(Record::new(&self.view.key, transaction).write());
         }
 
         // create an InitTransaction
-        let other_start_transaction = InitTransaction::new(*other, other_ctr);
+        let other_start_id = TransactionId::random::<P>()?;
+        let other_start_transaction = InitTransaction::new(*other, other_start_id, other_ctr);
         to_write.push(Record::new(&self.view.key, other_start_transaction).write());
 
         // delete the old transactions

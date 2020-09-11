@@ -15,7 +15,7 @@
 use crate::{
     crypto_box::{Decrypt, Encrypt},
     types::{
-        utils::{Id, RecordHint, Val},
+        utils::{ChainId, TransactionId, RecordHint, Val},
         AsView, AsViewMut,
     },
 };
@@ -50,8 +50,13 @@ pub struct Transaction(Vec<u8>);
 pub struct UntypedTransaction {
     /// transaction type
     pub type_id: Val,
-    /// owner id
-    pub owner: Id,
+
+    /// unique identifer for this transaction
+    pub id: TransactionId,
+
+    /// chain identifer
+    pub chain: ChainId,
+
     /// counter value
     pub ctr: Val,
 }
@@ -63,14 +68,18 @@ pub struct DataTransaction {
     /// transaction type
     #[allow(unused)]
     pub type_id: Val,
-    #[allow(unused)]
-    /// owner id
-    pub owner: Id,
-    #[allow(unused)]
-    /// counter
-    pub ctr: Val,
+
     /// unique id for this transaction
-    pub id: Id,
+    pub id: TransactionId,
+    #[allow(unused)]
+
+    /// chain identifer
+    pub chain: ChainId,
+    #[allow(unused)]
+
+    /// counter value
+    pub ctr: Val,
+
     /// a record hint
     pub record_hint: RecordHint,
 }
@@ -87,14 +96,16 @@ pub struct RevocationTransaction {
     /// transaction type
     #[allow(unused)]
     pub type_id: Val,
-    /// owner id
-    #[allow(unused)]
-    pub owner: Id,
+
+    /// unique identifer for this transaction
+    pub id: TransactionId,
+
+    /// chain identifer
+    pub chain: ChainId,
+
     /// counter
     #[allow(unused)]
     pub ctr: Val,
-    /// unique id for transaction
-    pub id: Id,
 }
 
 /// transaction that initializes a new chain
@@ -104,9 +115,13 @@ pub struct InitTransaction {
     /// transaction type
     #[allow(unused)]
     pub type_id: Val,
-    /// owner id
-    #[allow(unused)]
-    pub owner: Id,
+
+    /// unique identifer for this transaction
+    pub id: TransactionId,
+
+    /// chain identifer
+    pub chain: ChainId,
+
     /// counter value
     pub ctr: Val,
 }
@@ -124,12 +139,12 @@ impl TransactionType {
 
 impl DataTransaction {
     /// create a new data transaction.
-    pub fn new(owner: Id, ctr: Val, id: Id, record_hint: RecordHint) -> Transaction {
+    pub fn new(chain: ChainId, ctr: Val, id: TransactionId, record_hint: RecordHint) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
 
         view.type_id = (TransactionType::Data as u64).into();
-        view.owner = owner;
+        view.chain = chain;
         view.ctr = ctr;
         view.id = id;
         view.record_hint = record_hint;
@@ -145,12 +160,12 @@ impl TypedTransaction for DataTransaction {
 
 impl RevocationTransaction {
     /// create a new revocation transaction.
-    pub fn new(owner: Id, ctr: Val, id: Id) -> Transaction {
+    pub fn new(chain: ChainId, ctr: Val, id: TransactionId) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
 
         view.type_id = (TransactionType::Revocation as u64).into();
-        view.owner = owner;
+        view.chain = chain;
         view.ctr = ctr;
         view.id = id;
         transaction
@@ -204,12 +219,13 @@ impl Transaction {
 
 impl InitTransaction {
     /// create a new init transaction.
-    pub fn new(owner: Id, ctr: Val) -> Transaction {
+    pub fn new(chain: ChainId, id: TransactionId, ctr: Val) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
 
         view.type_id = (TransactionType::Init as u64).into();
-        view.owner = owner;
+        view.id = id;
+        view.chain = chain;
         view.ctr = ctr;
         transaction
     }
