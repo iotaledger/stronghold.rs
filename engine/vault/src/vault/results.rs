@@ -11,7 +11,7 @@
 
 use crate::{
     base64::Base64Encodable,
-    crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
+    crypto_box::{BoxProvider, Decrypt, Key},
     types::{
         transactions::{
             DataTransaction, InitTransaction, RevocationTransaction, SealedPayload, SealedTransaction, Transaction,
@@ -104,15 +104,15 @@ impl ReadResult {
 
 impl WriteRequest {
     /// create a new write request
-    pub(in crate) fn transaction(transaction: &SealedTransaction) -> Self {
+    pub(in crate) fn transaction(id: &TransactionId, stx: &SealedTransaction) -> Self {
         Self {
-            id: transaction.as_ref().to_vec(),
-            data: Vec::new(),
+            id: id.as_ref().to_vec(),
+            data: stx.as_ref().to_vec(),
         }
     }
 
     /// creates a new request to write
-    pub(in crate) fn payload(id: TransactionId, payload: SealedPayload) -> Self {
+    pub(in crate) fn payload(id: &TransactionId, payload: SealedPayload) -> Self {
         Self {
             id: id.as_ref().to_vec(),
             data: payload.as_ref().to_vec(),
@@ -131,15 +131,8 @@ impl WriteRequest {
 }
 
 impl DeleteRequest {
-    /// create new delete request
-    pub(in crate) fn transaction(transaction: &SealedTransaction) -> Self {
-        Self {
-            id: transaction.as_ref().to_vec(),
-        }
-    }
-
     /// create delete request by id
-    pub(in crate) fn uid(id: TransactionId) -> Self {
+    pub(in crate) fn new(id: TransactionId) -> Self {
         Self {
             id: id.as_ref().to_vec(),
         }
@@ -192,31 +185,17 @@ impl Into<Vec<u8>> for DeleteRequest {
 
 /// A record in the vault
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Record((Transaction, SealedTransaction));
+pub struct Record(Transaction);
 
 impl Record {
-    /// open a transaction from record by id
-    pub fn open<P: BoxProvider>(key: &Key<P>, id: &[u8]) -> Option<Self> {
-        // get fields and create transaction
-        let sealed = SealedTransaction::from(id.to_vec());
-        let packed = sealed.decrypt(key, b"").ok()?;
-        Some(Self((packed, sealed)))
-    }
-
     /// create a new record
-    pub fn new<P: BoxProvider>(key: &Key<P>, transaction: Transaction) -> Self {
-        let sealed = transaction.encrypt(key, b"").expect("Failed to encrypt transaction");
-        Self((transaction, sealed))
-    }
-
-    /// create a sealed transaction
-    pub fn sealed(&self) -> &SealedTransaction {
-        &(self.0).1
+    pub fn new(transaction: Transaction) -> Self {
+        Self(transaction)
     }
 
     /// the transaction for this record
     pub fn transaction(&self) -> &Transaction {
-        &(self.0).0
+        &self.0
     }
 
     /// get a typed transaction view
@@ -250,24 +229,6 @@ impl Record {
         self.transaction().untyped().id
     }
 
-    /// create a write request
-    pub fn write(&self) -> WriteRequest {
-        WriteRequest::transaction(self.sealed())
-    }
-
-    /// create a set of write requests
-    pub fn write_payload<P: BoxProvider>(&self, key: &Key<P>, data: &[u8]) -> crate::Result<Vec<WriteRequest>> {
-        let id = self.force_typed::<DataTransaction>().id;
-        let payload: SealedPayload = data
-            .to_vec()
-            .encrypt(key, id.as_ref())
-            .expect("Failed to encrypt payload");
-        Ok(vec![
-            WriteRequest::payload(id, payload),
-            WriteRequest::transaction(self.sealed()),
-        ])
-    }
-
     /// open the payload given a key and the cipher.
     pub fn open_payload<P: BoxProvider>(&self, key: &Key<P>, data: &[u8]) -> crate::Result<Vec<u8>> {
         let id = self.force_typed::<DataTransaction>().id;
@@ -279,7 +240,6 @@ impl Record {
 impl Debug for Record {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.debug_struct("Record")
-            .field("sealed", &self.sealed().base64())
             .field("transaction", &self.transaction().base64())
             .field("data", &self.typed::<DataTransaction>())
             .field("revocation", &self.typed::<RevocationTransaction>())

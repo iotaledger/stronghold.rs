@@ -38,6 +38,7 @@ enum TransactionType {
 
 /// a sealed transaction
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+// TODO: should this know its transaction id?
 pub struct SealedTransaction(Vec<u8>);
 
 /// a generic transaction (untyped)
