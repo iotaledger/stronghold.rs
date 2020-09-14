@@ -69,9 +69,7 @@ impl Account {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis(),
-            bip39_mnemonic: String::from(
-                bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English).phrase(),
-            ),
+            bip39_mnemonic: bip39_mnemonic.into_phrase(),
             bip39_passphrase,
         }
     }
