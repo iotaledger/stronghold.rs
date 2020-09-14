@@ -32,7 +32,7 @@
 mod account;
 
 mod storage;
-use account::Account;
+pub use account::Account;
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, panic, path::Path, str};
@@ -679,7 +679,6 @@ impl Stronghold {
         self.storage.revoke(record_id, snapshot_password);
         self.storage.garbage_collect_vault(snapshot_password);
     }
-
 }
 
 #[cfg(test)]
@@ -801,17 +800,19 @@ mod tests {
                 0,
                 1599580138000,
                 1599580138000,
-                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
+                    .to_string(),
                 None,
-                "password"
+                "password",
             );
             let (record_id, account) = &mut stronghold._account_import(
                 0,
                 1599580138000,
                 1599580138000,
-                "slight during hamster song old retire flock mosquito people mirror fruit among name common know".to_string(),
+                "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
+                    .to_string(),
                 None,
-                "password"
+                "password",
             );
         });
     }
