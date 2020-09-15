@@ -39,8 +39,9 @@ fn generate_id<'a>(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> [
     } else {
         seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
     }
-    let privkey = ed25519::Ed25519PrivateKey::generate_from_seed(&seed, BIP32Path::from("m/44H/4218H/0H/0H").unwrap())
-        .expect("Error deriving seed");
+    let privkey =
+        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("m/44H/4218H/0H/0H").unwrap())
+            .expect("Error deriving seed");
     let address = dummy_derive_into_address(privkey);
 
     // Account ID generation: 2/2 : Hash generated address in order to get ID
@@ -107,7 +108,7 @@ impl Account {
         let seed = self.get_seed();
         ed25519::Ed25519PrivateKey::generate_from_seed(
             &seed,
-            BIP32Path::from(&derivation_path).expect("invalid bip32path"),
+            &BIP32Path::from_str(&derivation_path).expect("invalid bip32path"),
         )
         .expect("Error deriving seed")
     }
