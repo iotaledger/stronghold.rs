@@ -19,6 +19,7 @@ use bee_signing_ext::{
     Signer,
 };
 use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
+use iota::transaction::prelude::{Seed, SignedTransaction, SignedTransactionBuilder};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
@@ -143,5 +144,11 @@ impl Account {
                 .as_millis()
         };
         &self.last_updated_on
+    }
+
+    /// Gets a SignedTransaction builder with the account seed.
+    pub fn get_signed_transaction_builder(&self) -> SignedTransactionBuilder<'_> {
+        let seed = Seed::from_ed25519_bytes(self.get_seed().as_bytes()).expect("failed to construct seed");
+        SignedTransaction::builder(seed)
     }
 }
