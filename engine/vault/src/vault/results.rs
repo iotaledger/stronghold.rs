@@ -11,13 +11,13 @@
 
 use crate::{
     base64::Base64Encodable,
-    crypto_box::{BoxProvider, Decrypt, Key},
     types::{
         transactions::{
-            DataTransaction, InitTransaction, RevocationTransaction, SealedPayload, SealedTransaction, Transaction,
-            TypedTransaction,
+            DataTransaction, InitTransaction, RevocationTransaction,
+            Transaction, TypedTransaction,
+            SealedBlob, SealedTransaction,
         },
-        utils::{ChainId, TransactionId, Val},
+        utils::{ChainId, TransactionId, BlobId, Val},
         AsView,
     },
 };
@@ -27,7 +27,11 @@ use std::{
     vec::IntoIter,
 };
 
-use serde::{Deserialize, Serialize};
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum Kind {
+    Transaction = 1,
+    Blob = 2,
+}
 
 /// result of a list call
 #[derive(Clone)]
@@ -38,12 +42,14 @@ pub struct ListResult {
 /// a read call
 #[derive(Clone)]
 pub struct ReadRequest {
+    kind: Kind,
     id: Vec<u8>,
 }
 
 /// a read result
 #[derive(Clone)]
 pub struct ReadResult {
+    kind: Kind,
     id: Vec<u8>,
     data: Vec<u8>,
 }
@@ -51,6 +57,7 @@ pub struct ReadResult {
 /// a write call
 #[derive(Clone)]
 pub struct WriteRequest {
+    kind: Kind,
     id: Vec<u8>,
     data: Vec<u8>,
 }
@@ -73,27 +80,45 @@ impl ListResult {
 }
 
 impl ReadRequest {
-    /// create a new read request
-    pub fn payload<P: BoxProvider>(id: TransactionId) -> Self {
+    /// create a read request for a transaction
+    pub fn transaction(id: TransactionId) -> Self {
         Self {
+            kind: Kind::Transaction,
             id: id.as_ref().to_vec(),
         }
     }
+
+    /// create a read request for a transaction
+    pub fn blob(id: BlobId) -> Self {
+        Self {
+            kind: Kind::Blob,
+            id: id.into(),
+        }
+    }
+
     /// id of a record
     pub fn id(&self) -> &[u8] {
         &self.id
     }
+
+    pub fn result(&self, data: Vec<u8>) -> ReadResult {
+        ReadResult {
+            kind: self.kind,
+            id: self.id.clone(),
+            data,
+        }
+    }
 }
 
 impl ReadResult {
-    /// new read result
-    pub fn new(id: Vec<u8>, data: Vec<u8>) -> Self {
-        Self { id, data }
-    }
-
     /// id of read result
     pub fn id(&self) -> &[u8] {
         &self.id
+    }
+
+    /// kind of data
+    pub fn kind(&self) -> Kind {
+        self.kind
     }
 
     /// data from record
@@ -103,19 +128,22 @@ impl ReadResult {
 }
 
 impl WriteRequest {
-    /// create a new write request
+    /// create a write request for a transaction
+    // TODO: a SealedTransaction should remember its id
     pub(in crate) fn transaction(id: &TransactionId, stx: &SealedTransaction) -> Self {
         Self {
-            id: id.as_ref().to_vec(),
+            kind: Kind::Transaction,
+            id: id.into(),
             data: stx.as_ref().to_vec(),
         }
     }
 
-    /// creates a new request to write
-    pub(in crate) fn payload(id: &TransactionId, payload: SealedPayload) -> Self {
+    /// creates a new request to write a blob
+    pub(in crate) fn blob(id: &BlobId, sb: &SealedBlob) -> Self {
         Self {
-            id: id.as_ref().to_vec(),
-            data: payload.as_ref().to_vec(),
+            kind: Kind::Blob,
+            id: id.into(),
+            data: sb.as_ref().to_vec(),
         }
     }
 
@@ -184,7 +212,7 @@ impl Into<Vec<u8>> for DeleteRequest {
 }
 
 /// A record in the vault
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct Record(Transaction);
 
 impl Record {
@@ -227,13 +255,6 @@ impl Record {
     /// Get the id if the record's Transaction is of type data or revoke
     pub fn id(&self) -> TransactionId {
         self.transaction().untyped().id
-    }
-
-    /// open the payload given a key and the cipher.
-    pub fn open_payload<P: BoxProvider>(&self, key: &Key<P>, data: &[u8]) -> crate::Result<Vec<u8>> {
-        let id = self.force_typed::<DataTransaction>().id;
-        let payload = SealedPayload::from(data.to_vec()).decrypt(key, id.as_ref())?;
-        Ok(payload)
     }
 }
 

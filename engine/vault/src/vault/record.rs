@@ -19,8 +19,6 @@ use crate::{
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
-
 // /// A record identifier
 //#[repr(transparent)]
 //#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
@@ -33,15 +31,17 @@ use serde::{Deserialize, Serialize};
 //}
 
 /// List over all records by an owner and ordered by the counter
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct ChainRecord(HashMap<ChainId, Vec<Record>>);
 
 impl ChainRecord {
     /// create a new chain of records
-    pub fn new(i: impl Iterator<Item = Record>) -> crate::Result<Self> {
+    pub fn new<'a>(i: impl Iterator<Item = &'a Record>) -> crate::Result<Self> {
+        // TODO: review this in light of the new changes => is this equivalent to a gc/prune
+
         // sort records by owner
         let mut chains: HashMap<_, Vec<Record>> = HashMap::new();
-        i.for_each(|e| chains.entry(e.chain()).or_default().push(e));
+        i.for_each(|e| chains.entry(e.chain()).or_default().push(e.clone()));
 
         // order chains and remove all non-referenced transactions
         for (_, chain) in chains.iter_mut() {
@@ -119,9 +119,9 @@ impl ChainRecord {
     }
 }
 
-/// List of all valid records.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ValidRecord(HashMap<ChainId, Record>);
+/// List of all valid data transactions
+#[derive(Debug)]
+pub struct ValidRecord(HashMap<ChainId, DataTransaction>);
 
 impl ValidRecord {
     /// create a new valid record chain
@@ -129,7 +129,8 @@ impl ValidRecord {
         // collect the data and remove revoked ones
         let mut valid: HashMap<_, _> = chains
             .all()
-            .filter_map(|e| Some((e.typed::<DataTransaction>()?.chain, e.clone())))
+            .filter_map(|e| e.typed::<DataTransaction>())
+            .map(|dtx| (dtx.chain, dtx))
             .collect();
         chains
             .all()
@@ -140,23 +141,23 @@ impl ValidRecord {
 
         // shrink the map
         valid.shrink_to_fit();
-        Self(valid)
+        unimplemented!("TODO: remove")
     }
 
     /// get chain by id
-    pub fn get(&self, id: &ChainId) -> Option<&Record> {
+    pub fn get(&self, id: &ChainId) -> Option<&DataTransaction> {
         self.0.get(id)
     }
 
     /// get all valid records
-    pub fn all(&self) -> impl Iterator<Item = &Record> + ExactSizeIterator {
+    pub fn all(&self) -> impl Iterator<Item = &DataTransaction> + ExactSizeIterator {
         self.0.values()
     }
 
     /// get all valid for chain identifier
     // TODO: does this still make sense? i.e. can there be more than one valid record per chain?
-    pub fn all_for_chain(&self, chain: &ChainId) -> impl Iterator<Item = &Record> {
+    pub fn all_for_chain(&self, chain: &ChainId) -> impl Iterator<Item = &DataTransaction> {
         let chain = *chain;
-        self.all().filter(move |e| e.chain() == chain)
+        self.all().filter(move |e| e.chain == chain)
     }
 }

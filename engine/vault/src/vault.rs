@@ -12,28 +12,29 @@
 use crate::{
     crypto_box::{BoxProvider, Key, Encrypt, Decrypt},
     types::{
-        transactions::{Transaction, DataTransaction, InitTransaction, RevocationTransaction, SealedTransaction},
-        utils::{TransactionId, ChainId, RecordHint, Val},
+        transactions::{Transaction, DataTransaction, InitTransaction, RevocationTransaction, SealedTransaction, SealedBlob},
+        utils::{BlobId, TransactionId, ChainId, RecordHint, Val},
     },
-    vault::record::{ChainRecord, ValidRecord},
+    vault::record::{ChainRecord},
 };
 
-use std::collections::HashMap;
-
-use serde::{Deserialize, Serialize};
+use std::{
+    convert::TryFrom,
+    collections::HashMap,
+};
 
 mod record;
 mod results;
 
-pub use crate::vault::results::{DeleteRequest, ListResult, ReadRequest, ReadResult, Record, WriteRequest};
+pub use crate::vault::results::{Kind, DeleteRequest, ListResult, ReadRequest, ReadResult, Record, WriteRequest};
 
 /// A view over the vault.  `key` is the Key used to lock the data. `chain` is a `ChainRecord` that contains all of the
 /// associated records in the vault.  `valid` is a ValidRecord which contains only valid records.
-#[derive(Serialize, Deserialize)]
 pub struct DBView<P: BoxProvider> {
     key: Key<P>,
     chain: ChainRecord,
-    valid: ValidRecord,
+    valid: HashMap<ChainId, TransactionId>,
+    cache: HashMap<BlobId, SealedBlob>,
 }
 
 /// A reader for the `DBView`
@@ -49,34 +50,68 @@ pub struct DBWriter<P: BoxProvider> {
 
 impl<P: BoxProvider> DBView<P> {
     /// Opens a vault using a key. Accepts the `ids` of the records that you want to load.
-    pub fn load(key: Key<P>, ids: ListResult) -> crate::Result<Self> {
-        // get records based on the Ids and open them with the key.
-        let records = ids.into_iter()
-            .filter_map(|bs| SealedTransaction::from(bs).decrypt(&key, b"").ok())
-            .map(Record::new);
+    pub fn load(key: Key<P>, reads: impl Iterator<Item = ReadResult>) -> crate::Result<Self> {
+        let mut txs: Vec<Record> = vec![];
+        let mut cache = HashMap::new();
 
-        // build indices
-        let chain = ChainRecord::new(records)?;
-        let valid = ValidRecord::new(&chain);
+        for r in reads {
+            match r.kind() {
+                Kind::Transaction => {
+                    let id = TransactionId::try_from(r.id())?;
+                    let tx = SealedTransaction::from(r.data()).decrypt(&key, r.id())?;
+                    if id != tx.untyped().id {
+                        // TODO: more precise error w/ the failing transaction id
+                        return Err(crate::Error::InterfaceError)
+                    }
+                    txs.push(Record::new(tx));
+                },
+                Kind::Blob => {
+                    let id = BlobId::try_from(r.id())?;
+                    cache.insert(id, SealedBlob::from(r.data()));
+                },
+            }
+        }
 
-        Ok(Self { key, chain, valid })
+        let chain = ChainRecord::new(txs.iter())?;
+
+        let mut valid = HashMap::new();
+        for tx in chain.all() {
+            if let Some(dtx) = tx.typed::<DataTransaction>() {
+                valid.insert(dtx.chain, dtx.id);
+            }
+        }
+        for tx in chain.all() {
+            if let Some(rtx) = tx.typed::<RevocationTransaction>() {
+                valid.remove(&rtx.chain);
+            }
+        }
+
+        Ok(Self { key, chain, valid, cache })
+    }
+
+    fn lookup(&self, c_id: &ChainId, tx_id: &TransactionId) -> Option<&DataTransaction> {
+        // TODO: keep a HashMap<TransactionId, Transaction> and let chain be a
+        // Map<ChainId, Vec<TransactionId>>?
+        self.chain.get(c_id).and_then(|txs| {
+            txs.iter().find(|tx| tx.id() == *tx_id)
+                .and_then(|tx| tx.typed::<DataTransaction>())
+        })
     }
 
     /// Creates an iterator over all valid records. Iterates over ids and record hints
-    pub fn records<'a>(&'a self) -> impl Iterator<Item = (ChainId, RecordHint)> + ExactSizeIterator + 'a {
-        self.valid
-            .all()
-            .map(|e| e.force_typed::<DataTransaction>())
-            .map(|d| (d.chain, d.record_hint))
+    pub fn records<'a>(&'a self) -> impl Iterator<Item = (ChainId, RecordHint)> +  'a {
+        self.valid.iter().filter_map(move |(c_id, tx_id)| {
+            self.lookup(c_id, tx_id).map(|tx| (tx.chain, tx.record_hint))
+        })
     }
 
     /// Check the balance of valid records compared to total records
     pub fn absolute_balance(&self) -> (usize, usize) {
-        (self.valid.all().count(), self.chain.all().count())
+        (self.valid.len(), self.chain.all().count())
     }
 
     /// Get highest counter from the vault for known records
-    // TODO: should these really be exposed
+    // TODO: should these really be exposed?
     pub fn chain_ctrs(&self) -> HashMap<ChainId, u64> {
         self.chain
             .chains()
@@ -119,56 +154,52 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
 
     /// Prepare a record for reading. Create a `ReadRequest` to read the record with inputted `id`. Returns `None` if
     /// there was no record for that ID
-    pub fn prepare_read(&self, id: ChainId) -> crate::Result<ReadRequest> {
-        match self.view.valid.get(&id) {
-            Some(r) => Ok(ReadRequest::payload::<P>(r.id())),
+    pub fn prepare_read(&self, c_id: &ChainId) -> crate::Result<ReadRequest> {
+        match self.view.valid.get(&c_id).and_then(|tx_id| self.view.lookup(c_id, tx_id)) {
+            Some(dtx) => Ok(ReadRequest::blob(dtx.blob)),
             _ => Err(crate::Error::InterfaceError),
         }
     }
 
     /// Open a record given a `ReadResult`.  Returns a vector of bytes.
     pub fn read(&self, res: ReadResult) -> crate::Result<Vec<u8>> {
-        // reverse lookup
-        let id = ChainId::load(res.id()).map_err(|_| crate::Error::InterfaceError)?;
-        match self.view.valid.get(&id) {
-            Some(e) => e.open_payload(&self.view.key, res.data()),
-            _ => Err(crate::Error::InterfaceError),
-        }
+        let b = BlobId::try_from(res.id())?;
+        // TODO: reverse lookup blob id to chain id, compare with the valid transaction's blob id
+        SealedBlob::from(res.data()).decrypt(&self.view.key, b)
     }
 }
 
 fn seal_and_make_request<P: BoxProvider>(key: &Key<P>, tx: &Transaction) -> crate::Result<WriteRequest> {
-    let ad = b""; // TODO: use the transaction id as an ad? is this already the case? results.rs:235?
-    Ok(WriteRequest::transaction(&tx.untyped().id, &tx.encrypt(key, ad)?))
+    let id = tx.untyped().id;
+    Ok(WriteRequest::transaction(&id, &tx.encrypt(key, id)?))
 }
 
 impl<P: BoxProvider> DBWriter<P> {
-
     /// create a new chain owned by owner.  Takes a secret `key` and the owner's `id` and creates a new
     /// `InitTransaction`.
     pub fn create_chain(key: &Key<P>, chain: ChainId) -> crate::Result<WriteRequest> {
         let id = TransactionId::random::<P>()?;
-        let transaction = InitTransaction::new(chain, id, Val::from(0u64));
-        seal_and_make_request(key, &transaction)
+        let tx = InitTransaction::new(chain, id, Val::from(0u64));
+        Ok(WriteRequest::transaction(&id, &tx.encrypt(key, id)?))
     }
 
     /// Check the balance of the amount of valid records compared to amount of total records in this chain
     pub fn relative_balance(&self) -> (usize, usize) {
-        let valid = self.view.valid.all_for_chain(&self.chain).count();
-        let all = self.view.chain.force_get(&self.chain).len();
-        (valid, all)
+        unimplemented!("TODO: what does this mean?")
     }
 
     /// Write the `data` to the chain. Generate a `DataTransaction` and return the record's `Id` along with a
     /// `WriteRequest`.
-    pub fn write(self, data: &[u8], hint: RecordHint) -> crate::Result<(TransactionId, WriteRequest)> {
-        let id = TransactionId::random::<P>()?;
+    pub fn write(self, data: &[u8], hint: RecordHint) -> crate::Result<Vec<WriteRequest>> {
+        let tx_id = TransactionId::random::<P>()?;
+        let blob_id = BlobId::random::<P>()?;
         let ctr = self.view.chain.force_last(&self.chain).ctr() + 1;
+        let transaction = DataTransaction::new(self.chain, ctr, tx_id, blob_id, hint);
 
-        let transaction = DataTransaction::new(self.chain, ctr, id, hint);
-        let req = seal_and_make_request(&self.view.key, &transaction)?;
-        // TODO: handle the data
-        Ok((id, req))
+        let req = WriteRequest::transaction(&tx_id, &transaction.encrypt(&self.view.key, tx_id)?);
+        let blob = WriteRequest::blob(&blob_id, &data.encrypt(&self.view.key, blob_id)?);
+
+        Ok(vec![req, blob])
     }
 
     /// Revoke a record. Creates a revocation transaction for the given `id`.  Returns a `WriteRequest` and
@@ -176,20 +207,22 @@ impl<P: BoxProvider> DBWriter<P> {
     pub fn revoke(self) -> crate::Result<(WriteRequest, DeleteRequest)> {
         // check if id is still valid and get counter and transaction id
         let (start_ctr, id) = match self.view.valid.get(&self.chain) {
-            Some(r) => (self.view.chain.force_last(&self.chain).ctr() + 1, r.id()),
+            Some(id) => (self.view.chain.force_last(&self.chain).ctr() + 1, id),
             _ => return Err(crate::Error::InterfaceError),
         };
 
         let rid = TransactionId::random::<P>()?;
         let transaction = RevocationTransaction::new(self.chain, start_ctr, rid);
         let to_write = seal_and_make_request(&self.view.key, &transaction)?;
-        let to_delete = DeleteRequest::new(id);
+        let to_delete = DeleteRequest::new(*id);
         Ok((to_write, to_delete))
     }
 
     /// Garbage Collect the records of a chain. create a new `InitTransaction` for an owned chain.  Returns
     /// `WriteRequests` and `DeleteRequests` of that chain.
     pub fn gc(self) -> crate::Result<(Vec<WriteRequest>, Vec<DeleteRequest>)> {
+        // TODO: review and cover with unit tests
+
         // create InitTransaction
         let start_id = TransactionId::random::<P>()?;
         let start_ctr = self.view.chain.force_last(&self.chain).ctr() + 1;
@@ -211,14 +244,15 @@ impl<P: BoxProvider> DBWriter<P> {
         }
 
         // rebuild transactions and records data
-        for record in self.view.valid.all_for_chain(&self.chain) {
-            // create updated transaction
-            let mut transaction = record.transaction().clone();
-            let view = transaction.force_typed_mut::<DataTransaction>();
-            view.ctr = start_ctr + to_write.len() as u64;
-
-            // create the transaction
-            to_write.push(seal_and_make_request(&self.view.key, &transaction)?);
+        for (c_id, tx_id) in self.view.valid.iter() {
+            if let Some(tx) = self.view.lookup(c_id, tx_id) {
+                let ctr = start_ctr + to_write.len() as u64;
+                // TODO: better/clearer way of serializing the transaction
+                let id = tx.id;
+                let tx = DataTransaction::new(tx.chain, ctr, id, tx.blob, tx.record_hint);
+                let ct = tx.encrypt(&self.view.key, id)?;
+                to_write.push(WriteRequest::transaction(&id, &ct));
+            }
         }
         // move init transaction to end.  Keeps the old chain valid until the new InitTransaction is written.
         to_write.rotate_left(1);
@@ -254,11 +288,16 @@ impl<P: BoxProvider> DBWriter<P> {
         }
 
         // copy all valid transactions
-        for record in self.view.valid.all_for_chain(other) {
-            let this_ctr = this_ctr + to_write.len() as u64;
-            let record = record.force_typed::<DataTransaction>();
-            let transaction = DataTransaction::new(self.chain, this_ctr, record.id, record.record_hint);
-            to_write.push(seal_and_make_request(&self.view.key, &transaction)?);
+        for (c_id, tx_id) in self.view.valid.iter() {
+            if let Some(tx) = self.view.lookup(c_id, tx_id) {
+                let this_ctr = this_ctr + to_write.len() as u64;
+
+                // TODO: better/clearer way of serializing the transaction
+                let id = tx.id;
+                let tx = DataTransaction::new(tx.chain, this_ctr, id, tx.blob, tx.record_hint);
+                let ct = tx.encrypt(&self.view.key, id)?;
+                to_write.push(WriteRequest::transaction(&id, &ct));
+            }
         }
 
         // create an InitTransaction

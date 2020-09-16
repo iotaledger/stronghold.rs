@@ -15,6 +15,7 @@ use std::{
     fmt::{self, Debug, Formatter},
     hash::Hash,
     ops::{Add, AddAssign},
+    convert::TryFrom,
 };
 
 use serde::{Deserialize, Serialize};
@@ -157,6 +158,12 @@ impl Debug for TransactionId {
     }
 }
 
+impl From<&TransactionId> for Vec<u8> {
+    fn from(id: &TransactionId) -> Self {
+        id.0.to_vec()
+    }
+}
+
 impl TransactionId {
     pub fn random<P: BoxProvider>() -> crate::Result<Self> {
         let mut buf = [0; 24];
@@ -172,5 +179,70 @@ impl TransactionId {
         };
         id.copy_from_slice(data);
         Ok(Self(id))
+    }
+}
+
+impl TryFrom<&[u8]> for TransactionId {
+    type Error = crate::Error;
+
+    fn try_from(bs: &[u8]) -> Result<Self, Self::Error> {
+        if bs.len() != 24 {
+            return Err(crate::Error::InterfaceError);
+        }
+
+        let mut tmp = [0; 24];
+        tmp.copy_from_slice(bs);
+        Ok(Self(tmp))
+    }
+}
+
+/// A blob identifier
+#[repr(transparent)]
+#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BlobId([u8; 24]);
+
+impl AsRef<[u8]> for BlobId {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<BlobId> for Vec<u8> {
+    fn from(id: BlobId) -> Self {
+        id.0.to_vec()
+    }
+}
+
+impl From<&BlobId> for Vec<u8> {
+    fn from(id: &BlobId) -> Self {
+        id.0.to_vec()
+    }
+}
+
+impl Debug for BlobId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "Blob({})", self.0.base64())
+    }
+}
+
+impl TryFrom<&[u8]> for BlobId {
+    type Error = crate::Error;
+
+    fn try_from(bs: &[u8]) -> Result<Self, Self::Error> {
+        if bs.len() != 24 {
+            return Err(crate::Error::InterfaceError);
+        }
+
+        let mut tmp = [0; 24];
+        tmp.copy_from_slice(bs);
+        Ok(Self(tmp))
+    }
+}
+
+impl BlobId {
+    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
+        let mut buf = [0; 24];
+        P::random_buf(&mut buf)?;
+        Ok(Self(buf))
     }
 }

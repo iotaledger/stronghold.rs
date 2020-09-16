@@ -15,7 +15,7 @@
 use crate::{
     crypto_box::{Decrypt, Encrypt},
     types::{
-        utils::{ChainId, TransactionId, RecordHint, Val},
+        utils::{ChainId, TransactionId, BlobId, RecordHint, Val},
         AsView, AsViewMut,
     },
 };
@@ -35,11 +35,6 @@ enum TransactionType {
     Revocation = 2,
     Init = 10,
 }
-
-/// a sealed transaction
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
-// TODO: should this know its transaction id?
-pub struct SealedTransaction(Vec<u8>);
 
 /// a generic transaction (untyped)
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -81,8 +76,12 @@ pub struct DataTransaction {
     /// counter value
     pub ctr: Val,
 
+    /// the blob identifier for the data referred to by this transaction
+    pub blob: BlobId,
+
     /// a record hint
     pub record_hint: RecordHint,
+
 }
 
 /// a typed transaction
@@ -127,10 +126,6 @@ pub struct InitTransaction {
     pub ctr: Val,
 }
 
-/// some sealed payload data
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct SealedPayload(Vec<u8>);
-
 impl TransactionType {
     /// convert transaction type into its associated number value.
     pub fn val(&self) -> Val {
@@ -140,7 +135,7 @@ impl TransactionType {
 
 impl DataTransaction {
     /// create a new data transaction.
-    pub fn new(chain: ChainId, ctr: Val, id: TransactionId, record_hint: RecordHint) -> Transaction {
+    pub fn new(chain: ChainId, ctr: Val, id: TransactionId, blob: BlobId, record_hint: RecordHint) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
 
@@ -148,6 +143,7 @@ impl DataTransaction {
         view.chain = chain;
         view.ctr = ctr;
         view.id = id;
+        view.blob = blob;
         view.record_hint = record_hint;
         transaction
     }
@@ -238,21 +234,6 @@ impl TypedTransaction for InitTransaction {
     }
 }
 
-impl From<Vec<u8>> for SealedTransaction {
-    fn from(vec: Vec<u8>) -> Self {
-        Self(vec)
-    }
-}
-impl AsRef<[u8]> for SealedTransaction {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-impl AsMut<[u8]> for SealedTransaction {
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
 
 impl Default for Transaction {
     fn default() -> Self {
@@ -279,25 +260,7 @@ impl AsMut<[u8]> for Transaction {
     }
 }
 
-impl From<Vec<u8>> for SealedPayload {
-    fn from(vec: Vec<u8>) -> Self {
-        Self(vec)
-    }
-}
-impl AsRef<[u8]> for SealedPayload {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-impl AsMut<[u8]> for SealedPayload {
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
-
 /// implemented traits.
-impl Encrypt<SealedTransaction> for Transaction {}
-impl Decrypt<(), Transaction> for SealedTransaction {}
 impl AsView<UntypedTransaction> for Transaction {}
 impl AsView<DataTransaction> for Transaction {}
 impl AsViewMut<DataTransaction> for Transaction {}
@@ -305,5 +268,66 @@ impl AsView<RevocationTransaction> for Transaction {}
 impl AsViewMut<RevocationTransaction> for Transaction {}
 impl AsView<InitTransaction> for Transaction {}
 impl AsViewMut<InitTransaction> for Transaction {}
-impl Decrypt<Infallible, Vec<u8>> for SealedPayload {}
-impl Encrypt<SealedPayload> for Vec<u8> {}
+
+/// a sealed transaction
+pub struct SealedTransaction(Vec<u8>);
+
+impl From<Vec<u8>> for SealedTransaction {
+    fn from(vec: Vec<u8>) -> Self {
+        Self(vec)
+    }
+}
+
+impl From<&[u8]> for SealedTransaction {
+    fn from(bs: &[u8]) -> Self {
+        Self(bs.to_vec())
+    }
+}
+
+impl AsRef<[u8]> for SealedTransaction {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for SealedTransaction {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl Encrypt<SealedTransaction> for Transaction {}
+impl Decrypt<(), Transaction> for SealedTransaction {}
+
+
+
+/// a sealed blob
+pub struct SealedBlob(Vec<u8>);
+
+impl From<Vec<u8>> for SealedBlob {
+    fn from(vec: Vec<u8>) -> Self {
+        Self(vec)
+    }
+}
+
+impl From<&[u8]> for SealedBlob {
+    fn from(bs: &[u8]) -> Self {
+        Self(bs.to_vec())
+    }
+}
+
+impl AsRef<[u8]> for SealedBlob {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for SealedBlob {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl Decrypt<Infallible, Vec<u8>> for SealedBlob {}
+impl Encrypt<SealedBlob> for Vec<u8> {}
+impl Encrypt<SealedBlob> for &[u8] {}

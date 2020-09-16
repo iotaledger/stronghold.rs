@@ -11,7 +11,7 @@
 
 use std::mem;
 
-pub use transactions::{DataTransaction, SealedPayload, SealedTransaction};
+pub use transactions::{DataTransaction, SealedBlob, SealedTransaction};
 
 pub mod transactions;
 pub mod utils;
