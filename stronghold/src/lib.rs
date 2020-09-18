@@ -900,7 +900,7 @@ mod tests {
     #[test]
     fn verify_signature() {
         super::test_utils::with_snapshot(|path| {
-            let address = "iot1q8knfu2rq8k9tlasfqrh38zmvfqhx5zvm9ehtzmdz3zg7yqv9kllywktkn3";
+            let address = "iota1q8knfu2rq8k9tlasfqrh38zmvfqhx5zvm9ehtzmdz3zg7yqv9klly26fhca";
             let message = "With this signed message you can verify my address ownership";
             let signature = "nd2oqe4wRhnqsckDZGZQPkpR0nC+jxQQiVjrFvfLfskCk9MItvrommcz5tkhq94Lx+Z1eZleV3pZtChhnWfNAA==";
             let is_legit = Stronghold::signature_verify(&address, &message, &signature);
