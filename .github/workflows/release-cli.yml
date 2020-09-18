@@ -105,11 +105,18 @@ jobs:
       # Run even if previous steps fail
       if: ${{ matrix.os == 'macos-latest' && always() }}
 
-    - name: Upload artifacts
+    - name: Upload artifacts (Windows/Linux)
       uses: actions/upload-artifact@v2
       with:
         name: stronghold-cli-${{ matrix.os }}
         path: |
           engine/examples/commandline/target/release/stronghold
           engine/examples/commandline/target/release/stronghold.exe
-          engine/examples/commandline/target/release/stronghold.zip
+      if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-latest'
+    
+    - name: Upload artifacts (macOS)
+      uses: actions/upload-artifact@v2
+      with:
+        name: stronghold-cli-${{ matrix.os }}
+        path: engine/examples/commandline/stronghold.zip
+      if: matrix.os == 'macos-latest'
