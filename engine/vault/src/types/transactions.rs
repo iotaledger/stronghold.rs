@@ -20,7 +20,7 @@ use crate::{
     },
 };
 use std::{
-    convert::{Infallible, TryFrom},
+    convert::{Infallible, TryFrom, TryInto},
     fmt::Debug,
     hash::Hash,
 };
@@ -30,10 +30,30 @@ use serde::{Deserialize, Serialize};
 /// generic transaction type enum
 #[repr(u64)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
-enum TransactionType {
+pub enum TransactionType {
     Data = 1,
     Revocation = 2,
     Init = 10,
+}
+
+impl TryFrom<Val> for TransactionType {
+    type Error = crate::Error;
+
+    fn try_from(v: Val) -> Result<Self, Self::Error> {
+        match v.u64() {
+            1 => Ok(TransactionType::Data),
+            2 => Ok(TransactionType::Revocation),
+            10 => Ok(TransactionType::Init),
+            _ => Err(crate::Error::ValueError(format!("{:?} is not a valid transaction type", v))),
+        }
+    }
+}
+
+impl TransactionType {
+    /// convert transaction type into its associated number value.
+    pub fn val(&self) -> Val {
+        Val::from(*self as u64)
+    }
 }
 
 /// a generic transaction (untyped)
@@ -55,6 +75,12 @@ pub struct UntypedTransaction {
 
     /// counter value
     pub ctr: Val,
+}
+
+impl UntypedTransaction {
+    pub fn r#type(&self) -> crate::Result<TransactionType> {
+        self.type_id.try_into()
+    }
 }
 
 /// a data transaction
@@ -124,13 +150,6 @@ pub struct InitTransaction {
 
     /// counter value
     pub ctr: Val,
-}
-
-impl TransactionType {
-    /// convert transaction type into its associated number value.
-    pub fn val(&self) -> Val {
-        Val::from(*self as u64)
-    }
 }
 
 impl DataTransaction {

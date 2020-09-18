@@ -69,6 +69,8 @@ pub enum Error {
     OtherError(String),
     #[error("Crypto Error: `{0}`")]
     CryptoError(String),
+    #[error("Value Error: `{0}`")]
+    ValueError(String),
 }
 
 // Crate result type
