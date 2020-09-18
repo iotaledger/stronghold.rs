@@ -94,6 +94,7 @@ jobs:
     
     - name: Delete keychain (macOS)
       run: security delete-keychain signing.keychain
+      # Run even if previous steps fail
       if: ${{ matrix.os == 'macos-latest' && always() }}
 
     - name: Upload artifacts (Windows/Linux)
