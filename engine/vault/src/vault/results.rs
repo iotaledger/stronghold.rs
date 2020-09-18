@@ -10,20 +10,13 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 use crate::{
-    base64::Base64Encodable,
     types::{
-        transactions::{
-            DataTransaction, InitTransaction, RevocationTransaction,
-            Transaction, TypedTransaction,
-            SealedBlob, SealedTransaction,
-        },
-        utils::{ChainId, TransactionId, BlobId, Val},
-        AsView,
+        transactions::{SealedBlob, SealedTransaction},
+        utils::{TransactionId, BlobId},
     },
 };
 
 use std::{
-    fmt::{self, Debug, Formatter},
     vec::IntoIter,
 };
 
@@ -208,63 +201,5 @@ impl Into<(Vec<u8>, Vec<u8>)> for WriteRequest {
 impl Into<Vec<u8>> for DeleteRequest {
     fn into(self) -> Vec<u8> {
         self.id
-    }
-}
-
-/// A record in the vault
-#[derive(Clone)]
-pub struct Record(Transaction);
-
-impl Record {
-    /// create a new record
-    pub fn new(transaction: Transaction) -> Self {
-        Self(transaction)
-    }
-
-    /// the transaction for this record
-    pub fn transaction(&self) -> &Transaction {
-        &self.0
-    }
-
-    /// get a typed transaction view
-    pub fn typed<T: TypedTransaction>(&self) -> Option<&T>
-    where
-        Transaction: AsView<T>,
-    {
-        self.transaction().typed()
-    }
-
-    /// get a typed transaction view
-    pub fn force_typed<T: TypedTransaction>(&self) -> &T
-    where
-        Transaction: AsView<T>,
-    {
-        self.transaction().force_typed()
-    }
-
-    /// get transaction's chain identifer
-    pub fn chain(&self) -> ChainId {
-        self.transaction().untyped().chain
-    }
-
-    /// get transaction counter
-    pub fn ctr(&self) -> Val {
-        self.transaction().untyped().ctr
-    }
-
-    /// Get the id if the record's Transaction is of type data or revoke
-    pub fn id(&self) -> TransactionId {
-        self.transaction().untyped().id
-    }
-}
-
-impl Debug for Record {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.debug_struct("Record")
-            .field("transaction", &self.transaction().base64())
-            .field("data", &self.typed::<DataTransaction>())
-            .field("revocation", &self.typed::<RevocationTransaction>())
-            .field("init", &self.typed::<InitTransaction>())
-            .finish()
     }
 }

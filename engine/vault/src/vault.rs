@@ -27,15 +27,14 @@ use std::{
 mod chain;
 mod results;
 
-pub use crate::vault::results::{Kind, DeleteRequest, ListResult, ReadRequest, ReadResult, Record, WriteRequest};
+pub use crate::vault::results::{Kind, DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
 
-/// A chain identifier
+/// A record identifier
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RecordId(ChainId);
 
-/// A view over the vault.  `key` is the Key used to lock the data. `chain` is a `ChainRecord` that contains all of the
-/// associated records in the vault.  `valid` is a ValidRecord which contains only valid records.
+/// A view over the records in a vault
 pub struct DBView<P: BoxProvider> {
     key: Key<P>,
     txs: HashMap<TransactionId, Transaction>,
@@ -77,7 +76,7 @@ impl<P: BoxProvider> DBView<P> {
         Ok(Self { key, txs, chains, cache })
     }
 
-    /// Creates an iterator over all valid records. Iterates over ids and record hints
+    /// Creates an iterator over all valid record identifiers and their corresponding record hints
     pub fn records<'a>(&'a self) -> impl Iterator<Item = (RecordId, RecordHint)> +  'a {
         self.chains.values().filter_map(move |r| {
             r.data()
@@ -106,9 +105,9 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     /// Check the age of the records. Fills the `record_ctrs` with the records' oldest counter.
-    pub fn not_older_than(&self, chain_ctrs: &HashMap<RecordId, u64>) -> crate::Result<()> {
+    pub fn not_older_than(&self, record_ctrs: &HashMap<RecordId, u64>) -> crate::Result<()> {
         let this_ctrs = self.chain_ctrs();
-        chain_ctrs.iter().try_for_each(|(chain, other_ctr)| {
+        record_ctrs.iter().try_for_each(|(chain, other_ctr)| {
             let this_ctr = this_ctrs.get(&chain.0).ok_or_else(|| {
                 crate::Error::VersionError(String::from("This database is older than the reference database"))
             })?;
@@ -128,7 +127,7 @@ impl<P: BoxProvider> DBView<P> {
         DBReader { view: self }
     }
 
-    /// Converts the `DBView` into a `DBWriter`.
+    /// Converts the `DBView` into a `DBWriter` for a specific record.
     pub fn writer(&self, record: RecordId) -> DBWriter<P> {
         DBWriter { view: self, chain: record.0 }
     }

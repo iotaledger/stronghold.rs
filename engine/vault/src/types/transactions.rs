@@ -207,30 +207,6 @@ impl Transaction {
             _ => None,
         }
     }
-
-    pub fn typed_mut<T: TypedTransaction>(&mut self) -> Option<&mut T>
-    where
-        Self: AsViewMut<T>,
-    {
-        match self.untyped().type_id {
-            type_id if type_id == T::type_id() => Some(self.view_mut()),
-            _ => None,
-        }
-    }
-
-    pub fn force_typed<T: TypedTransaction>(&self) -> &T
-    where
-        Self: AsView<T>,
-    {
-        self.typed().expect("This transaction cannot be viewed as `T`")
-    }
-
-    pub fn force_typed_mut<T: TypedTransaction>(&mut self) -> &mut T
-    where
-        Self: AsViewMut<T>,
-    {
-        self.typed_mut().expect("This transaction cannot be viewed as `T`")
-    }
 }
 
 impl InitTransaction {

@@ -57,15 +57,8 @@ impl Debug for RecordHint {
 pub struct Val([u8; 8]);
 
 impl Val {
-    /// the val as u64
     pub fn u64(self) -> u64 {
         u64::from_be_bytes(self.0)
-    }
-    /// returns current val and increments it by one after
-    pub fn postfix_increment(&mut self) -> Self {
-        let old = *self;
-        *self += 1;
-        old
     }
 }
 
