@@ -81,20 +81,20 @@ jobs:
         security create-keychain -p $KEYCHAIN_PASSWORD signing.keychain
         security set-keychain-settings -lut 3600 signing.keychain
         security unlock-keychain -p $KEYCHAIN_PASSWORD signing.keychain
-        echo $DISTRIBUTION_CERT_BASE64 | base64 -D -o signing.p12
-        security import signing.p12 -k signing.keychain -f pkcs12 -T "/usr/bin/codesign" -T "/usr/bin/security" -P $DISTRIBUTION_CERT_PASSWORD
+        echo $MAC_CERT_BASE64 | base64 -D -o signing.p12
+        security import signing.p12 -k signing.keychain -f pkcs12 -T "/usr/bin/codesign" -T "/usr/bin/security" -P $MAC_CERT_PASSWORD
         rm signing.p12
         security -q set-key-partition-list -S apple-tool:,apple: -k $KEYCHAIN_PASSWORD signing.keychain > /dev/null
         security find-identity -v signing.keychain
       env:
         KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        DISTRIBUTION_CERT_BASE64: ${{ secrets.APPLE_DISTRIBUTION_CERT_BASE64 }}
-        DISTRIBUTION_CERT_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_CERT_PASSWORD }}
+        MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
+        MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
       if: matrix.os == 'macos-latest'
     
     - name: Delete keychain (macOS)
       run: security delete-keychain signing.keychain
-      if: matrix.os == 'macos-latest'
+      if: ${{ matrix.os == 'macos-latest' && always() }}
 
     - name: Upload artifacts (Windows/Linux)
       uses: actions/upload-artifact@v2

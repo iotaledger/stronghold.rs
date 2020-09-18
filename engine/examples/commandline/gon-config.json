@@ -1,0 +1,13 @@
+{
+  "source": ["./target/release/stronghold"],
+  "bundle_id": "org.iota.stronghold",
+  "apple_id": {
+    "password": "@env:AC_PASSWORD"
+  },
+  "sign": {
+    "application_identity": "Developer ID Application: IOTA Stiftung (UG77RJKZHH)"
+  },
+  "zip": {
+    "output_path": "stronghold.zip"
+  }
+}
