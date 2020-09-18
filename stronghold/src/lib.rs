@@ -36,6 +36,8 @@ pub use account::Account;
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, panic, path::Path, str};
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
 pub use storage::{Base64Decodable, Id as RecordId};
 use storage::{RecordHint, Storage};
 
@@ -45,7 +47,7 @@ static INDEX_HINT: &str = "index";
 #[derive(Default)]
 pub struct Stronghold {
     storage: Storage,
-    snapshot_password: String
+    snapshot_password: Lazy<Mutex<String>>
 }
 
 #[derive(Default, Serialize, Deserialize, Debug)]
@@ -88,8 +90,8 @@ impl Stronghold {
     /// use stronghold::Stronghold;
     /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
     /// ```
-    pub fn new<P: AsRef<Path>>(snapshot_path: P, create: bool, snapshot_password: String) -> Self {
-        if snapshot_password.is_empty() {
+    pub fn new<P: AsRef<Path>>(snapshot_path: P, create: bool, _snapshot_password: String) -> Self {
+        if _snapshot_password.is_empty() {
             panic!("Invalid parameters: password is missing");
         }
         let storage = Storage::new(snapshot_path);
@@ -99,11 +101,13 @@ impl Stronghold {
             } else {
                 let index = Index::default();
                 let index_serialized = serde_json::to_string(&index).unwrap();
-                storage.encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), &snapshot_password);
+                storage.encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), &_snapshot_password);
             }
         } else {
-            storage.get_index(&snapshot_password);
+            storage.get_index(&_snapshot_password);
         };
+        let snapshot_password: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::from("")));
+        snapshot_password.lock().unwrap().push_str(&_snapshot_password);
         Self { storage, snapshot_password }
     }
 
@@ -111,7 +115,7 @@ impl Stronghold {
     fn index_save(&self, index: &Index) -> RecordId {
         let index_serialized = serde_json::to_string(&index).unwrap();
         self.storage
-            .encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), &self.snapshot_password)
+            .encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), &self.snapshot_password.lock().unwrap())
     }
 
     // In the snapshot, removes the old index and saves the newest one
@@ -145,16 +149,16 @@ impl Stronghold {
     }
 
     fn _account_get_by_id(&self, account_id: &[u8; 32]) -> (RecordId, Account) {
-        let index = self.storage.get_index(&self.snapshot_password);
+        let index = self.storage.get_index(&self.snapshot_password.lock().unwrap());
         let account: Option<Account>;
         let record_id = self.record_get_by_account_id(account_id);
-        let decrypted = self.storage.read(record_id, &self.snapshot_password);
+        let decrypted = self.storage.read(record_id, &self.snapshot_password.lock().unwrap());
         (record_id, self.account_from_json(&decrypted))
     }
 
     // Get account by record id
     fn account_get_by_record_id(&self, record_id: &storage::Id) -> Account {
-        let decrypted = self.storage.read(*record_id, &self.snapshot_password);
+        let decrypted = self.storage.read(*record_id, &self.snapshot_password.lock().unwrap());
         self.account_from_json(&decrypted)
     }
 
@@ -176,13 +180,13 @@ impl Stronghold {
     pub fn account_remove(&self, account_id: &[u8; 32]) {
         let record_id = self.record_get_by_account_id(account_id);
         let account = self.account_get_by_record_id(&record_id);
-        self.storage.revoke(record_id, &self.snapshot_password);
+        self.storage.revoke(record_id, &self.snapshot_password.lock().unwrap());
         let (index_record_id, mut index) = self
             .index_get(None, None)
             .expect("failed to get index");
         index.remove_account(account_id);
         self.index_update(index_record_id, index);
-        self.storage.garbage_collect_vault(&self.snapshot_password);
+        self.storage.garbage_collect_vault(&self.snapshot_password.lock().unwrap());
     }
 
     // Save a new account in a new record
@@ -199,7 +203,7 @@ impl Stronghold {
             };
         }
         let account_serialized = serde_json::to_string(account).expect("Error saving account in snapshot");
-        let record_id = self.storage.encrypt(&account_serialized, None, &self.snapshot_password);
+        let record_id = self.storage.encrypt(&account_serialized, None, &self.snapshot_password.lock().unwrap());
         index.add_account(account.id(), record_id);
         self.index_update(index_record_id, index);
         record_id
@@ -233,13 +237,13 @@ impl Stronghold {
         limit: Option<usize>,
     ) -> Result<(RecordId, Index), ()> {
         if self.storage.exists() {
-            let storage_index = self.storage.get_index(&self.snapshot_password);
+            let storage_index = self.storage.get_index(&self.snapshot_password.lock().unwrap());
             let index_hint = RecordHint::new(INDEX_HINT).expect("invalid INDEX_HINT");
             let (index_record_id, mut index): (RecordId, Index) = storage_index
                 .iter()
                 .find(|(record_id, record_hint)| record_hint == &index_hint)
                 .map(|(record_id, record_hint)| {
-                    let index_json = self.storage.read(*record_id, &self.snapshot_password);
+                    let index_json = self.storage.read(*record_id, &self.snapshot_password.lock().unwrap());
                     let index: Index = serde_json::from_str(&index_json).expect("Cannot decode stronghold index");
                     (*record_id, index)
                 })
@@ -590,7 +594,7 @@ impl Stronghold {
     /// let record_id = stronghold.record_create(&data);
     /// ```
     pub fn record_create(&self, data: &str) -> storage::Id {
-        self.storage.encrypt(data, None, &self.snapshot_password)
+        self.storage.encrypt(data, None, &self.snapshot_password.lock().unwrap())
     }
 
     /// Get record by record id
@@ -610,7 +614,7 @@ impl Stronghold {
     /// let record = stronghold.record_read(&record_id);
     /// ```
     pub fn record_read(&self, record_id: &storage::Id) -> String {
-        self.storage.read(*record_id, &self.snapshot_password)
+        self.storage.read(*record_id, &self.snapshot_password.lock().unwrap())
     }
 
     // Searches record id by account id
@@ -631,7 +635,7 @@ impl Stronghold {
     ///
     /// TODO: complete it
     pub fn record_list(&self) -> Vec<(RecordId, RecordHint)> {
-        self.storage.get_index(&self.snapshot_password)
+        self.storage.get_index(&self.snapshot_password.lock().unwrap())
     }
 
     /// Removes record from storage by record id
@@ -662,8 +666,8 @@ impl Stronghold {
     }
 
     fn _record_remove(&self, record_id: storage::Id) {
-        self.storage.revoke(record_id, &self.snapshot_password);
-        self.storage.garbage_collect_vault(&self.snapshot_password);
+        self.storage.revoke(record_id, &self.snapshot_password.lock().unwrap());
+        self.storage.garbage_collect_vault(&self.snapshot_password.lock().unwrap());
     }
 }
 
