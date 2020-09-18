@@ -17,6 +17,8 @@ use crate::{
     },
 };
 
+use serde::{Deserialize, Serialize};
+
 use std::{
     convert::TryFrom,
     collections::HashMap,
@@ -27,7 +29,10 @@ mod results;
 
 pub use crate::vault::results::{Kind, DeleteRequest, ListResult, ReadRequest, ReadResult, Record, WriteRequest};
 
-// TODO: ChainId:s => RecordId:s
+/// A chain identifier
+#[repr(transparent)]
+#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RecordId(ChainId);
 
 /// A view over the vault.  `key` is the Key used to lock the data. `chain` is a `ChainRecord` that contains all of the
 /// associated records in the vault.  `valid` is a ValidRecord which contains only valid records.
@@ -73,13 +78,13 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     /// Creates an iterator over all valid records. Iterates over ids and record hints
-    pub fn records<'a>(&'a self) -> impl Iterator<Item = (ChainId, RecordHint)> +  'a {
+    pub fn records<'a>(&'a self) -> impl Iterator<Item = (RecordId, RecordHint)> +  'a {
         self.chains.values().filter_map(move |r| {
             r.data()
                 .as_ref()
                 .and_then(|tx_id| self.txs.get(tx_id))
                 .and_then(|tx| tx.typed::<DataTransaction>())
-                .map(|tx| (tx.chain, tx.record_hint))
+                .map(|tx| (RecordId(tx.chain), tx.record_hint))
         })
     }
 
@@ -100,12 +105,11 @@ impl<P: BoxProvider> DBView<P> {
             .collect()
     }
 
-    /// Check the age of the chains. Fills the `chain_ctr` with a HashMap of the chain's owner
-    /// ids their counter size.
-    pub fn not_older_than(&self, chain_ctrs: &HashMap<ChainId, u64>) -> crate::Result<()> {
+    /// Check the age of the records. Fills the `record_ctrs` with the records' oldest counter.
+    pub fn not_older_than(&self, chain_ctrs: &HashMap<RecordId, u64>) -> crate::Result<()> {
         let this_ctrs = self.chain_ctrs();
         chain_ctrs.iter().try_for_each(|(chain, other_ctr)| {
-            let this_ctr = this_ctrs.get(chain).ok_or_else(|| {
+            let this_ctr = this_ctrs.get(&chain.0).ok_or_else(|| {
                 crate::Error::VersionError(String::from("This database is older than the reference database"))
             })?;
 
@@ -125,8 +129,8 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     /// Converts the `DBView` into a `DBWriter`.
-    pub fn writer(&self, chain: ChainId) -> DBWriter<P> {
-        DBWriter { view: self, chain }
+    pub fn writer(&self, record: RecordId) -> DBWriter<P> {
+        DBWriter { view: self, chain: record.0 }
     }
 }
 
@@ -145,8 +149,8 @@ pub enum PreparedRead {
 impl<'a, P: BoxProvider> DBReader<'a, P> {
     /// Prepare a record for reading. Create a `ReadRequest` to read the record with inputted `id`. Returns `None` if
     /// there was no record for that ID
-    pub fn prepare_read(&self, c_id: &ChainId) -> crate::Result<PreparedRead> {
-        match self.view.chains.get(c_id).map(|r| r.data()) {
+    pub fn prepare_read(&self, record: &RecordId) -> crate::Result<PreparedRead> {
+        match self.view.chains.get(&record.0).map(|r| r.data()) {
             None => Ok(PreparedRead::NoSuchRecord),
             Some(None) => Ok(PreparedRead::RecordIsEmpty),
             Some(Some(tx_id)) => {
