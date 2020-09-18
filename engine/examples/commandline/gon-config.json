@@ -8,6 +8,6 @@
     "application_identity": "Developer ID Application: IOTA Stiftung (UG77RJKZHH)"
   },
   "zip": {
-    "output_path": "stronghold.zip"
+    "output_path": "./target/release/stronghold.zip"
   }
 }

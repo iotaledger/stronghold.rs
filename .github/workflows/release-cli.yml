@@ -91,17 +91,24 @@ jobs:
         MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
         MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
       if: matrix.os == 'macos-latest'
+
+    - name: Sign and notarize Stronghold CLI binary
+      run: gon gon-config.json
+      env:
+        AC_USERNAME: ${{ secrets.ASC_APPLE_ID }}
+        AC_PASSWORD: ${{ secrets.ASC_PASSWORD }}
+      if: matrix.os == 'macos-latest'
     
     - name: Delete keychain (macOS)
       run: security delete-keychain signing.keychain
       # Run even if previous steps fail
       if: ${{ matrix.os == 'macos-latest' && always() }}
 
-    - name: Upload artifacts (Windows/Linux)
+    - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
         name: stronghold-cli-${{ matrix.os }}
         path: |
           engine/examples/commandline/target/release/stronghold
           engine/examples/commandline/target/release/stronghold.exe
-      if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-latest'
+          engine/examples/commandline/target/release/stronghold.zip
