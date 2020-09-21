@@ -9,7 +9,7 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use engine::vault::{BoxProvider, DBView, DBWriter, Id, Key, ListResult, RecordHint};
+use engine::vault::{BoxProvider, DBView, RecordId, Key, RecordHint, PreparedRead, Kind};
 
 use crate::{
     connection::{send_until_success, CRequest, CResult},
@@ -21,129 +21,17 @@ use std::{cell::RefCell, collections::HashMap};
 
 use serde::{Deserialize, Serialize};
 
-// structure of the client
-#[derive(Serialize, Deserialize)]
-pub struct Client<P: BoxProvider> {
-    pub id: Id,
-    pub db: Vault<P>,
-}
-
 // structure for the vault.
-#[derive(Serialize, Deserialize)]
 pub struct Vault<P: BoxProvider> {
     pub key: Key<P>,
     db: RefCell<Option<DBView<P>>>,
 }
 
-// structure for the snapshot
-#[derive(Serialize, Deserialize)]
-pub struct Snapshot<P: BoxProvider> {
-    pub id: Id,
-    pub key: Key<P>,
-    state: HashMap<Vec<u8>, Vec<u8>>,
-}
-
-impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
-    // create a new client
-    pub fn new(key: Key<P>, id: Id) -> Self {
-        Self {
-            id,
-            db: Vault::<P>::new(key),
-        }
-    }
-
-    // create a chain for the user
-    pub fn create_chain(key: Key<P>, id: Id) -> Client<P> {
-        let req = DBWriter::<P>::create_chain(&key, id);
-        // send to the connection interface.
-        send_until_success(CRequest::Write(req));
-
-        Self {
-            id,
-            db: Vault::<P>::new(key),
-        }
-    }
-
-    // create a record in the vault.
-    pub fn create_record(&self, payload: Vec<u8>) {
-        self.db.take(|db| {
-            let (_, req) = db
-                .writer(self.id)
-                .write(&payload, RecordHint::new(b"").expect(line_error!()))
-                .expect(line_error!());
-
-            req.into_iter().for_each(|req| {
-                send_until_success(CRequest::Write(req));
-            });
-        });
-    }
-
-    // list the ids and hints of all of the records in the Vault.
-    pub fn list_ids(&self) {
-        self.db.take(|db| {
-            db.records()
-                .for_each(|(id, hint)| println!("Id: {:?}, Hint: {:?}", id, hint));
-        });
-    }
-
-    // read a record by its ID into plaintext.
-    pub fn read_record_by_id(&self, id: Id) {
-        self.db.take(|db| {
-            let read = db.reader().prepare_read(id).expect("unable to read id");
-
-            if let CResult::Read(read) = send_until_success(CRequest::Read(read)) {
-                let record = db.reader().read(read).expect(line_error!());
-
-                println!("Plain: {:?}", String::from_utf8(record).unwrap());
-            }
-        });
-    }
-
-    // Garbage collect the chain and build a new one.
-    pub fn perform_gc(&self) {
-        self.db.take(|db| {
-            let (to_write, to_delete) = db.writer(self.id).gc().expect(line_error!());
-            to_write.into_iter().for_each(|req| {
-                send_until_success(CRequest::Write(req));
-            });
-            to_delete.into_iter().for_each(|req| {
-                send_until_success(CRequest::Delete(req));
-            });
-        });
-    }
-
-    // Take ownership of an existing chain.  Requires that the new owner knows the old key to unlock the data.
-    pub fn take_ownership(&self, old: Id) {
-        // load all of the data from the storage vault.
-        let ids = send_until_success(CRequest::List).list();
-        // use the key to unlock the data.
-        let db = DBView::load(self.db.key.clone(), ListResult::new(ids.into())).expect(line_error!());
-
-        let (to_write, to_delete) = db.writer(self.id).take_ownership(&old).expect(line_error!());
-        to_write.into_iter().for_each(|req| {
-            send_until_success(CRequest::Write(req));
-        });
-        to_delete.into_iter().for_each(|req| {
-            send_until_success(CRequest::Delete(req));
-        });
-    }
-
-    // create a revoke transaction in the chain.
-    pub fn revoke_record_by_id(&self, id: Id) {
-        self.db.take(|db| {
-            let (to_write, to_delete) = db.writer(self.id).revoke(id).expect(line_error!());
-
-            send_until_success(CRequest::Write(to_write));
-            send_until_success(CRequest::Delete(to_delete));
-        });
-    }
-}
-
 impl<P: BoxProvider> Vault<P> {
     // create a new vault for the key.
     pub fn new(key: Key<P>) -> Self {
-        let req = send_until_success(CRequest::List).list();
-        let db = engine::vault::DBView::load(key.clone(), req).expect(line_error!());
+        let reads = send_until_success(CRequest::List).list();
+        let db = engine::vault::DBView::load(key.clone(), reads.iter()).expect(line_error!());
         Self {
             key,
             db: RefCell::new(Some(db)),
@@ -156,24 +44,106 @@ impl<P: BoxProvider> Vault<P> {
         let db = _db.take().expect(line_error!());
         let retval = f(db);
 
-        let req = send_until_success(CRequest::List).list();
-        *_db = Some(DBView::load(self.key.clone(), req).expect(line_error!()));
+        let reads = send_until_success(CRequest::List).list();
+        *_db = Some(DBView::load(self.key.clone(), reads.iter()).expect(line_error!()));
         retval
     }
 }
 
+// structure of the client
+pub struct Client<P: BoxProvider> {
+    pub db: Vault<P>,
+}
+
+impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
+    // create a new client
+    pub fn new(key: Key<P>) -> Self {
+        Self {
+            db: Vault::<P>::new(key),
+        }
+    }
+
+    pub fn write(&self, id: RecordId, payload: Vec<u8>) {
+        self.db.take(|db| {
+            let mut reqs = vec![];
+            let w = db.writer(id);
+
+            if ! db.reader().exists(id) {
+                reqs.push(w.truncate().expect(line_error!()));
+            }
+
+            reqs.append(&mut w
+                .write(&payload, RecordHint::new(b"").expect(line_error!()))
+                .expect(line_error!()));
+
+            reqs.into_iter().for_each(|req| {
+                send_until_success(CRequest::Write(req));
+            });
+        });
+    }
+
+    // list the ids and hints of all of the records in the Vault.
+    pub fn list_ids(&self) {
+        self.db.take(|db| {
+            db.records().for_each(|(id, hint)| println!("Id: {:?}, Hint: {:?}", id, hint));
+        });
+    }
+
+    // read a record by its ID into plaintext.
+    pub fn read_record_by_id(&self, id: RecordId) {
+        self.db.take(|db| {
+            let plain = match db.reader().prepare_read(&id).expect("unable to read id") {
+                PreparedRead::CacheHit(bs) => bs,
+                PreparedRead::CacheMiss(req) => {
+                    if let CResult::Read(res) = send_until_success(CRequest::Read(req)) {
+                        db.reader().read(res).expect(line_error!())
+                    } else {
+                        panic!("unable to read")
+                    }
+                }
+                PreparedRead::NoSuchRecord => panic!("no such record"),
+                PreparedRead::RecordIsEmpty => vec![],
+            };
+
+            println!("Plain: {:?}", String::from_utf8(plain).unwrap());
+        });
+    }
+
+    // Garbage collect the chain and build a new one.
+    pub fn perform_gc(&self) {
+        self.db.take(|db| {
+            db.gc().into_iter().for_each(|req| {
+                send_until_success(CRequest::Delete(req));
+            });
+        });
+    }
+
+    // create a revoke transaction in the chain.
+    pub fn revoke_record(&self, id: RecordId) {
+        self.db.take(|db| {
+            let to_write = db.writer(id).revoke().expect(line_error!());
+            send_until_success(CRequest::Write(to_write));
+        });
+    }
+}
+
+// structure for the snapshot
+#[derive(Serialize, Deserialize)]
+pub struct Snapshot<P: BoxProvider> {
+    pub key: Key<P>,
+    state: HashMap<(Kind, Vec<u8>), Vec<u8>>,
+}
+
 impl<P: BoxProvider> Snapshot<P> {
     // create a new snapshot.
-    pub fn new(id: Id, key: Key<P>) -> Self {
+    pub fn new(key: Key<P>) -> Self {
         let map = State::offload_data();
-
-        Self { id, key, state: map }
+        Self { key, state: map }
     }
 
     // offload the snapshot data to the state map.
-    pub fn offload(self) -> (Id, Key<P>) {
+    pub fn offload(self) -> Key<P> {
         State::upload_data(self.state);
-
-        (self.id, self.key)
+        self.key
     }
 }

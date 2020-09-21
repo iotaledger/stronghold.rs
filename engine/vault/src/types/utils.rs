@@ -15,7 +15,7 @@ use std::{
     fmt::{self, Debug, Formatter},
     hash::Hash,
     ops::{Add, AddAssign},
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
 };
 
 use serde::{Deserialize, Serialize};
@@ -125,14 +125,32 @@ impl ChainId {
     }
 
     pub fn load(data: &[u8]) -> crate::Result<Self> {
-        let mut id = match data.len() {
-            len if len == 24 => [0; 24],
-            _ => return Err(crate::Error::InterfaceError),
-        };
-        id.copy_from_slice(data);
-        Ok(Self(id))
+        data.try_into()
     }
 }
+
+impl TryFrom<&[u8]> for ChainId {
+    type Error = crate::Error;
+
+    fn try_from(bs: &[u8]) -> Result<Self, Self::Error> {
+        if bs.len() != 24 {
+            return Err(crate::Error::InterfaceError);
+        }
+
+        let mut tmp = [0; 24];
+        tmp.copy_from_slice(bs);
+        Ok(Self(tmp))
+    }
+}
+
+impl TryFrom<Vec<u8>> for ChainId {
+    type Error = crate::Error;
+
+    fn try_from(bs: Vec<u8>) -> Result<Self, Self::Error> {
+        Self::try_from(bs.as_slice())
+    }
+}
+
 
 /// A transaction identifier
 #[repr(transparent)]
@@ -166,12 +184,7 @@ impl TransactionId {
     }
 
     pub fn load(data: &[u8]) -> crate::Result<Self> {
-        let mut id = match data.len() {
-            len if len == 24 => [0; 24],
-            _ => return Err(crate::Error::InterfaceError),
-        };
-        id.copy_from_slice(data);
-        Ok(Self(id))
+        data.try_into()
     }
 }
 

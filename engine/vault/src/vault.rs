@@ -10,6 +10,7 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 use crate::{
+    base64::Base64Encodable,
     crypto_box::{BoxProvider, Key, Encrypt, Decrypt},
     types::{
         transactions::{Transaction, DataTransaction, InitTransaction, RevocationTransaction, SealedTransaction, SealedBlob},
@@ -20,19 +21,48 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 use std::{
-    convert::TryFrom,
+    fmt::{self, Debug, Formatter},
+    convert::{TryFrom, TryInto},
     collections::HashMap,
 };
 
 mod chain;
 mod results;
 
-pub use crate::vault::results::{Kind, DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
+pub use crate::vault::results::{Kind, DeleteRequest, ReadRequest, ReadResult, WriteRequest};
 
 /// A record identifier
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RecordId(ChainId);
+
+impl Debug for RecordId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "Record({})", self.0.as_ref().base64())
+    }
+}
+
+impl TryFrom<Vec<u8>> for RecordId {
+    type Error = crate::Error;
+
+    fn try_from(bs: Vec<u8>) -> Result<Self, Self::Error> {
+        Ok(RecordId(bs.try_into()?))
+    }
+}
+
+impl TryFrom<&[u8]> for RecordId {
+    type Error = crate::Error;
+
+    fn try_from(bs: &[u8]) -> Result<Self, Self::Error> {
+        Ok(RecordId(bs.try_into()?))
+    }
+}
+
+impl RecordId {
+    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
+        Ok(RecordId(ChainId::random::<P>()?))
+    }
+}
 
 /// A view over the records in a vault
 pub struct DBView<P: BoxProvider> {
@@ -44,7 +74,7 @@ pub struct DBView<P: BoxProvider> {
 
 impl<P: BoxProvider> DBView<P> {
     /// Opens a vault using a key. Accepts the `ReadResult`:s of the vault transactions you want to load.
-    pub fn load(key: Key<P>, reads: impl Iterator<Item = ReadResult>) -> crate::Result<Self> {
+    pub fn load<'a>(key: Key<P>, reads: impl Iterator<Item = &'a ReadResult>) -> crate::Result<Self> {
         let mut txs = HashMap::new();
         let mut raw_chains: HashMap<_, Vec<TransactionId>> = HashMap::new();
         let mut cache = HashMap::new();
@@ -131,6 +161,14 @@ impl<P: BoxProvider> DBView<P> {
     pub fn writer(&self, record: RecordId) -> DBWriter<P> {
         DBWriter { view: self, chain: record.0 }
     }
+
+    /// Garbage collect the records.
+    pub fn gc(&self) -> Vec<DeleteRequest> {
+        // TODO: iterate through the blobs and check if any can be removed
+        self.chains.values()
+            .map(|r| r.garbage().iter().cloned().map(DeleteRequest::transaction))
+            .flatten().collect()
+    }
 }
 
 /// A reader for the `DBView`
@@ -171,6 +209,14 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
         // TODO: reverse lookup blob id to chain id, compare with the valid transaction's blob id
         SealedBlob::from(res.data()).decrypt(&self.view.key, b)
     }
+
+    pub fn exists(&self, id: RecordId) -> bool {
+        match self.view.chains.get(&id.0).map(|r| r.init()) {
+            None => false,
+            Some(None) => false,
+            Some(Some(_)) => true,
+        }
+    }
 }
 
 /// A writer for the `DBView`
@@ -186,7 +232,7 @@ impl<'a, P: BoxProvider> DBWriter<'a, P> {
             .map(|ctr| ctr + 1).unwrap_or(0u64.into())
     }
 
-    /// Create a new record or truncate an existing one
+    /// Create a new empty record or truncate an existing one
     pub fn truncate(&self) -> crate::Result<WriteRequest> {
         let id = TransactionId::random::<P>()?;
         let tx = InitTransaction::new(self.chain, id, self.next_ctr());
@@ -218,13 +264,5 @@ impl<'a, P: BoxProvider> DBWriter<'a, P> {
         let id = TransactionId::random::<P>()?;
         let tx = RevocationTransaction::new(self.chain, self.next_ctr(), id);
         Ok(WriteRequest::transaction(&id, &tx.encrypt(&self.view.key, id)?))
-    }
-
-    /// Garbage collect the records.
-    pub fn gc(&self) -> Vec<DeleteRequest> {
-        // TODO: iterate through the blobs and check if any can be removed
-        self.view.chains.values()
-            .map(|r| r.garbage().iter().cloned().map(DeleteRequest::new))
-            .flatten().collect()
     }
 }

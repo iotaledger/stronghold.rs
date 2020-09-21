@@ -16,20 +16,12 @@ use crate::{
     },
 };
 
-use std::{
-    vec::IntoIter,
-};
+use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Kind {
     Transaction = 1,
     Blob = 2,
-}
-
-/// result of a list call
-#[derive(Clone)]
-pub struct ListResult {
-    ids: Vec<Vec<u8>>,
 }
 
 /// a read call
@@ -37,39 +29,6 @@ pub struct ListResult {
 pub struct ReadRequest {
     kind: Kind,
     id: Vec<u8>,
-}
-
-/// a read result
-#[derive(Clone)]
-pub struct ReadResult {
-    kind: Kind,
-    id: Vec<u8>,
-    data: Vec<u8>,
-}
-
-/// a write call
-#[derive(Clone)]
-pub struct WriteRequest {
-    kind: Kind,
-    id: Vec<u8>,
-    data: Vec<u8>,
-}
-
-/// a delete call
-#[derive(Clone)]
-pub struct DeleteRequest {
-    id: Vec<u8>,
-}
-
-impl ListResult {
-    /// create new `ListResult` from a Vector of a Vector of Bytes.
-    pub fn new(ids: Vec<Vec<u8>>) -> Self {
-        Self { ids }
-    }
-    /// get the ids of the records
-    pub fn ids(&self) -> &Vec<Vec<u8>> {
-        &self.ids
-    }
 }
 
 impl ReadRequest {
@@ -94,6 +53,11 @@ impl ReadRequest {
         &self.id
     }
 
+    /// kind of data
+    pub fn kind(&self) -> Kind {
+        self.kind
+    }
+
     pub fn result(&self, data: Vec<u8>) -> ReadResult {
         ReadResult {
             kind: self.kind,
@@ -103,7 +67,21 @@ impl ReadRequest {
     }
 }
 
+
+/// a read result
+#[derive(Clone)]
+pub struct ReadResult {
+    kind: Kind,
+    id: Vec<u8>,
+    data: Vec<u8>,
+}
+
 impl ReadResult {
+
+    pub fn new(kind: Kind, id: &[u8], data: &[u8]) -> Self {
+        Self { kind, id: id.to_vec(), data: data.to_vec() }
+    }
+
     /// id of read result
     pub fn id(&self) -> &[u8] {
         &self.id
@@ -120,9 +98,17 @@ impl ReadResult {
     }
 }
 
+
+/// a write call
+#[derive(Clone)]
+pub struct WriteRequest {
+    kind: Kind,
+    id: Vec<u8>,
+    data: Vec<u8>,
+}
+
 impl WriteRequest {
     /// create a write request for a transaction
-    // TODO: a SealedTransaction should remember its id
     pub(in crate) fn transaction(id: &TransactionId, stx: &SealedTransaction) -> Self {
         Self {
             kind: Kind::Transaction,
@@ -140,9 +126,14 @@ impl WriteRequest {
         }
     }
 
-    /// id of record
+    /// id of entity
     pub fn id(&self) -> &[u8] {
         &self.id
+    }
+
+    /// kind of data
+    pub fn kind(&self) -> Kind {
+        self.kind
     }
 
     /// data of record
@@ -151,10 +142,19 @@ impl WriteRequest {
     }
 }
 
+
+/// a delete call
+#[derive(Clone)]
+pub struct DeleteRequest {
+    kind: Kind,
+    id: Vec<u8>,
+}
+
 impl DeleteRequest {
-    /// create delete request by id
-    pub(in crate) fn new(id: TransactionId) -> Self {
+    /// create delete request by transaction id
+    pub(in crate) fn transaction(id: TransactionId) -> Self {
         Self {
+            kind: Kind::Transaction,
             id: id.as_ref().to_vec(),
         }
     }
@@ -163,43 +163,9 @@ impl DeleteRequest {
     pub fn id(&self) -> &[u8] {
         &self.id
     }
-}
 
-impl Into<Vec<Vec<u8>>> for ListResult {
-    fn into(self) -> Vec<Vec<u8>> {
-        self.ids
-    }
-}
-
-impl IntoIterator for ListResult {
-    type Item = Vec<u8>;
-    type IntoIter = IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.ids.into_iter()
-    }
-}
-
-impl Into<Vec<u8>> for ReadRequest {
-    fn into(self) -> Vec<u8> {
-        self.id
-    }
-}
-
-impl Into<(Vec<u8>, Vec<u8>)> for ReadResult {
-    fn into(self) -> (Vec<u8>, Vec<u8>) {
-        (self.id, self.data)
-    }
-}
-
-impl Into<(Vec<u8>, Vec<u8>)> for WriteRequest {
-    fn into(self) -> (Vec<u8>, Vec<u8>) {
-        (self.id, self.data)
-    }
-}
-
-impl Into<Vec<u8>> for DeleteRequest {
-    fn into(self) -> Vec<u8> {
-        self.id
+    /// kind of data
+    pub fn kind(&self) -> Kind {
+        self.kind
     }
 }

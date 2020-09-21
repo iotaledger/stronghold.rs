@@ -30,6 +30,10 @@ impl Chain {
         self.data
     }
 
+    pub fn init(&self) -> Option<TransactionId> {
+        self.init
+    }
+
     pub fn highest_ctr(&self) -> Option<Val> {
         self.highest_ctr
     }
