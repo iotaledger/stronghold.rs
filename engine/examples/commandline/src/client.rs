@@ -79,13 +79,20 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
             reqs.into_iter().for_each(|req| {
                 send_until_success(CRequest::Write(req));
             });
-        });
+        })
     }
 
-    // list the ids and hints of all of the records in the Vault.
+    // list the ids and hints of all of valid records in the Vault.
     pub fn list_ids(&self) {
         self.db.take(|db| {
             db.records().for_each(|(id, hint)| println!("Id: {:?}, Hint: {:?}", id, hint));
+        });
+    }
+
+    // list the ids of all of the records in the Vault.
+    pub fn list_all_ids(&self) {
+        self.db.take(|db| {
+            db.all().for_each(|id| println!("Id: {:?}", id));
         });
     }
 

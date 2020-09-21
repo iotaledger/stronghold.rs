@@ -117,6 +117,11 @@ impl<P: BoxProvider> DBView<P> {
         })
     }
 
+    /// Creates an iterator over all valid records ids.
+    pub fn all<'a>(&'a self) -> impl Iterator<Item = RecordId> + 'a {
+        self.chains.iter().filter(|(_, r)| r.init().is_some()).map(|(k, _)| RecordId(*k))
+    }
+
     /// Check the balance of valid records compared to total records
     pub fn absolute_balance(&self) -> (usize, usize) {
         let mut balance = (0, 0);
