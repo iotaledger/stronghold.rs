@@ -26,7 +26,7 @@ pub struct Chain {
 
 impl Chain {
     pub fn data(&self) -> Option<TransactionId> {
-        assert!(self.data.is_some() && self.init.is_some());
+        assert!(self.data.is_some() <= self.init.is_some());
         self.data
     }
 
