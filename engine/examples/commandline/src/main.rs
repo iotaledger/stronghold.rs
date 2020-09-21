@@ -63,7 +63,7 @@ fn encrypt_command(matches: &ArgMatches) {
 
                 let snapshot = get_snapshot_path();
                 serialize_to_snapshot(&snapshot, pass, client);
-                println!("{:?}", id);
+                println!("{}", id);
             };
         };
     }

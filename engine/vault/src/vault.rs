@@ -21,7 +21,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 use std::{
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     convert::{TryFrom, TryInto},
     collections::HashMap,
 };
@@ -39,6 +39,12 @@ pub struct RecordId(ChainId);
 impl Debug for RecordId {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "Record({})", self.0.as_ref().base64())
+    }
+}
+
+impl Display for RecordId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self.0.as_ref().base64())
     }
 }
 
