@@ -229,17 +229,18 @@ impl TypedTransaction for InitTransaction {
     }
 }
 
+const TRANSACTION_MAX_BYTES: usize = 112;
 
 impl Default for Transaction {
     fn default() -> Self {
-        Self(vec![0; 88])
+        Self(vec![0; TRANSACTION_MAX_BYTES])
     }
 }
 impl TryFrom<Vec<u8>> for Transaction {
     type Error = ();
     fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
         match vec.len() {
-            88 => Ok(Self(vec)),
+            TRANSACTION_MAX_BYTES => Ok(Self(vec)),
             _ => Err(()),
         }
     }
