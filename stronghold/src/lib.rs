@@ -37,9 +37,11 @@ use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, panic, path::Path, str};
 use once_cell::sync::Lazy;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 pub use storage::{Base64Decodable, Id as RecordId};
 use storage::{RecordHint, Storage};
+use std::thread;
+use std::time::Duration;
 
 static INDEX_HINT: &str = "index";
 
@@ -47,7 +49,7 @@ static INDEX_HINT: &str = "index";
 #[derive(Default)]
 pub struct Stronghold {
     storage: Storage,
-    snapshot_password: Lazy<Mutex<String>>
+    snapshot_password: Arc<Lazy<Mutex<String>>>
 }
 
 #[derive(Default, Serialize, Deserialize, Debug)]
@@ -88,10 +90,14 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// ```
-    pub fn new<P: AsRef<Path>>(snapshot_path: P, create: bool, _snapshot_password: String) -> Self {
-        if _snapshot_password.is_empty() {
+    pub fn new<P: AsRef<Path>>(
+        snapshot_path: P, create: bool,
+        snapshot_password: String,
+        snapshot_password_timeout: Option<u64>
+    ) -> Self {
+        if snapshot_password.is_empty() {
             panic!("Invalid parameters: password is missing");
         }
         let storage = Storage::new(snapshot_path);
@@ -101,14 +107,23 @@ impl Stronghold {
             } else {
                 let index = Index::default();
                 let index_serialized = serde_json::to_string(&index).unwrap();
-                storage.encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), &_snapshot_password);
+                storage.encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), &snapshot_password);
             }
         } else {
-            storage.get_index(&_snapshot_password);
+            storage.get_index(&snapshot_password);
         };
-        let snapshot_password: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::from("")));
-        snapshot_password.lock().unwrap().push_str(&_snapshot_password);
-        Self { storage, snapshot_password }
+        let _snapshot_password: Arc<Lazy<Mutex<String>>> = Arc::new(Lazy::new(|| Mutex::new(String::from(""))));
+        _snapshot_password.lock().unwrap().push_str(&snapshot_password);
+        if let Some(timeout) = snapshot_password_timeout {
+            let t: u64 = timeout;
+            let _snapshot_password = Arc::clone(&_snapshot_password);
+            let handle = thread::spawn(move || {
+                thread::sleep(Duration::from_secs(timeout));
+                let mut password = _snapshot_password.lock().unwrap();
+                (*password).clear();
+            });
+        };
+        Self { storage, snapshot_password: Arc::clone(&_snapshot_password) }
     }
 
     // Saves an index in the snapshot
@@ -138,7 +153,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// let account_id = &mut [0u8; 32];
     /// hex::decode_to_slice("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", account_id).unwrap();
     /// let account = stronghold.account_get_by_id(&account_id);
@@ -170,7 +185,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// let account_id = &mut [0u8; 32];
     /// hex::decode_to_slice("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", account_id).unwrap();
     /// stronghold.account_remove(
@@ -221,7 +236,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// stronghold.account_list_ids(None, None);
     /// ```
     pub fn account_list_ids(&self, skip: Option<usize>, limit: Option<usize>) -> Vec<String> {
@@ -300,7 +315,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// let accounts = stronghold.account_list(Some(0), Some(30));
     /// ```
     pub fn account_list(
@@ -331,7 +346,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// let bip39_passphrase = Some(String::from("ieu73jdumf"));
     /// let account = stronghold.account_create(bip39_passphrase);
     /// ```
@@ -376,7 +391,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// let mnemonic = String::from("gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding");
     /// let account = stronghold.account_import(0, 1598890069000, 1598890070000, mnemonic, None);
     /// ```
@@ -462,7 +477,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// let account_id = &mut [0u8; 32];
     /// hex::decode_to_slice("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", account_id).unwrap();
     /// let address = stronghold.address_get(
@@ -506,7 +521,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// let message = "With this signed message you can verify my address ownership".as_bytes();
     /// let account_id = &mut [0u8; 32];
     /// hex::decode_to_slice("7c1a5ce9cc8f57f8739634aefbafda9eba6a02f82e3a4ab825ed296274e3aca1", account_id).unwrap();
@@ -589,7 +604,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// let data = "red,white,violet";
     /// let record_id = stronghold.record_create(&data);
     /// ```
@@ -606,7 +621,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// let data = "red,white,violet";
     /// let snapshot_password = "uJsuMnwUIoLkdmw";
     /// let record_id = stronghold.record_create(&data);
@@ -647,7 +662,7 @@ impl Stronghold {
     /// # Example
     /// ```no_run
     /// use stronghold::Stronghold;
-    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string());
+    /// let stronghold = Stronghold::new("savings.snapshot", true, "password".to_string(), None);
     /// let data = "red,white,violet";
     /// let snapshot_password = "uJsuMnwUIoLkdmw";
     /// let id = stronghold.record_create(&data);
@@ -697,7 +712,7 @@ mod tests {
     #[test]
     fn create_record() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let value = "value_to_encrypt";
             let id = stronghold.record_create(value);
 
@@ -709,7 +724,7 @@ mod tests {
     #[test]
     fn create_account() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let (record_id, account) = &mut stronghold._account_create(None);
             let (_, index) = stronghold.index_get(None, None).unwrap();
             let account_record_id_from_index = index.0.get(&hex::encode(account.id())).unwrap();
@@ -727,7 +742,7 @@ mod tests {
     #[test]
     fn remove_account() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let (record_id, account) = &mut stronghold._account_create(None);
             let (_, index) = stronghold.index_get(None, None).unwrap();
             let account_record_id_from_index = index.0.get(&hex::encode(account.id())).unwrap();
@@ -745,7 +760,7 @@ mod tests {
     #[test]
     fn update_account() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let (record_id, account) = &mut stronghold._account_create(None);
             let (_, index) = stronghold.index_get(None, None).unwrap();
             let account_record_id_from_index = index.0.get(&hex::encode(account.id())).unwrap();
@@ -768,7 +783,7 @@ mod tests {
     #[test]
     fn import_account() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let (record_id, account) = &mut stronghold._account_import(
                 0,
                 1599580138000,
@@ -787,7 +802,7 @@ mod tests {
     #[should_panic]
     fn import_account_twice() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let (record_id, account) = &mut stronghold._account_import(
                 0,
                 1599580138000,
@@ -810,7 +825,7 @@ mod tests {
     #[test]
     fn list_accounts_ids() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let (record_id, account) = &mut stronghold._account_create(None);
             let (record_id, account) = &mut stronghold._account_create(None);
             let (record_id, account) = &mut stronghold._account_create(None);
@@ -823,7 +838,7 @@ mod tests {
     #[test]
     fn save_and_read_custom_data() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let data_to_save = "testing text";
             let record_id = stronghold.record_create(data_to_save);
             let data_read = stronghold.record_read(&record_id);
@@ -834,7 +849,7 @@ mod tests {
     #[test]
     fn save_and_remove_custom_data() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let data_to_save = "testing text";
             let record_id = stronghold.record_create(data_to_save);
             let data_read = stronghold.record_read(&record_id);
@@ -853,7 +868,7 @@ mod tests {
     #[test]
     fn get_address() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let (record_id, account) = &mut stronghold._account_import(
                 0,
                 1599580138000,
@@ -879,7 +894,7 @@ mod tests {
     #[test]
     fn sign() {
         super::test_utils::with_snapshot(|path| {
-            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string());
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), None);
             let (record_id, account) = &mut stronghold._account_import(
                 0,
                 1599580138000,
@@ -910,6 +925,29 @@ mod tests {
             let is_legit = Stronghold::signature_verify(&address, &message, &signature);
 
             assert_eq!(is_legit, ());
+        });
+    }
+
+    #[test]
+    fn snapshot_password_timeout() {
+        use std::thread;
+        use std::time::Duration;
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), Some(10));
+            thread::sleep(Duration::from_secs(5));
+            stronghold.account_create(None);
+        });
+    }
+
+    #[test]
+    #[should_panic]
+    fn snapshot_password_timeout3() {
+        use std::thread;
+        use std::time::Duration;
+        super::test_utils::with_snapshot(|path| {
+            let stronghold = Stronghold::new(path, true, SNAPSHOT_PASSWORD.to_string(), Some(1));
+            thread::sleep(Duration::from_secs(2));
+            stronghold.account_create(None);
         });
     }
 }
