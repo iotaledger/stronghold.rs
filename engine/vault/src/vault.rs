@@ -125,7 +125,7 @@ impl<P: BoxProvider> DBView<P> {
 
     /// Creates an iterator over all valid records ids.
     pub fn all<'a>(&'a self) -> impl Iterator<Item = RecordId> + 'a {
-        self.chains.iter().filter(|(_, r)| r.init().is_some()).map(|(k, _)| RecordId(*k))
+        self.chains.keys().map(|k| RecordId(*k))
     }
 
     /// Check the balance of valid records compared to total records
@@ -170,7 +170,10 @@ impl<P: BoxProvider> DBView<P> {
 
     /// Converts the `DBView` into a `DBWriter` for a specific record.
     pub fn writer(&self, record: RecordId) -> DBWriter<P> {
-        DBWriter { view: self, chain: record.0 }
+        let ctr = self.chains.get(&record.0)
+            .and_then(|r| r.highest_ctr()).unwrap_or(0u64.into());
+
+        DBWriter { view: self, chain: record.0, ctr }
     }
 
     /// Garbage collect the records.
@@ -234,17 +237,18 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
 pub struct DBWriter<'a, P: BoxProvider> {
     view: &'a DBView<P>,
     chain: ChainId,
+    ctr: Val,
 }
 
 impl<'a, P: BoxProvider> DBWriter<'a, P> {
-    fn next_ctr(&self) -> Val {
-        self.view.chains.get(&self.chain)
-            .and_then(|r| r.highest_ctr())
-            .map(|ctr| ctr + 1).unwrap_or(0u64.into())
+    fn next_ctr(&mut self) -> Val {
+        let c = self.ctr;
+        self.ctr += 1;
+        c
     }
 
     /// Create a new empty record or truncate an existing one
-    pub fn truncate(&self) -> crate::Result<WriteRequest> {
+    pub fn truncate(&mut self) -> crate::Result<WriteRequest> {
         let id = TransactionId::random::<P>()?;
         let tx = InitTransaction::new(self.chain, id, self.next_ctr());
         Ok(WriteRequest::transaction(&id, &tx.encrypt(&self.view.key, id)?))
@@ -259,7 +263,7 @@ impl<'a, P: BoxProvider> DBWriter<'a, P> {
     }
 
     /// Write the `data` to the record, replaces existing data and undoes uncommitted revokes.
-    pub fn write(&self, data: &[u8], hint: RecordHint) -> crate::Result<Vec<WriteRequest>> {
+    pub fn write(&mut self, data: &[u8], hint: RecordHint) -> crate::Result<Vec<WriteRequest>> {
         let tx_id = TransactionId::random::<P>()?;
         let blob_id = BlobId::random::<P>()?;
         let transaction = DataTransaction::new(self.chain, self.next_ctr(), tx_id, blob_id, hint);
@@ -271,7 +275,7 @@ impl<'a, P: BoxProvider> DBWriter<'a, P> {
     }
 
     /// Revoke a record.
-    pub fn revoke(self) -> crate::Result<WriteRequest> {
+    pub fn revoke(&mut self) -> crate::Result<WriteRequest> {
         let id = TransactionId::random::<P>()?;
         let tx = RevocationTransaction::new(self.chain, self.next_ctr(), id);
         Ok(WriteRequest::transaction(&id, &tx.encrypt(&self.view.key, id)?))

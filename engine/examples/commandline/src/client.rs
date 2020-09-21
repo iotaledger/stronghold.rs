@@ -66,7 +66,7 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     pub fn write(&self, id: RecordId, payload: Vec<u8>) {
         self.db.take(|db| {
             let mut reqs = vec![];
-            let w = db.writer(id);
+            let mut w = db.writer(id);
 
             if ! db.reader().exists(id) {
                 reqs.push(w.truncate().expect(line_error!()));
