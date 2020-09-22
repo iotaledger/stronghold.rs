@@ -166,12 +166,12 @@ fn purge_command(matches: &ArgMatches) {
                 let id = RecordId::try_from(id).expect("Couldn't build a new Id");
 
                 client.revoke_record(id);
+                serialize_to_snapshot(&get_snapshot_path(), pass, client);
+
+                let client = deserialize_from_snapshot(&snapshot, pass);
                 client.perform_gc();
-
                 assert!(client.db.take(|db| db.all().find(|i| i == &id).is_none()));
-
-                let snapshot = get_snapshot_path();
-                serialize_to_snapshot(&snapshot, pass, client);
+                serialize_to_snapshot(&get_snapshot_path(), pass, client);
             }
         }
     }

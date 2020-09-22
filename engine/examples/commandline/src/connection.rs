@@ -75,7 +75,7 @@ pub fn send(req: CRequest) -> Option<CResult> {
             State::storage_map()
                 .write()
                 .expect(line_error!())
-                .retain(|id, _| id.0 != del.kind() && id.1 != del.id());
+                .retain(|id, _| id.0 != del.kind() || id.1 != del.id());
 
             CResult::Delete
         }

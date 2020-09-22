@@ -170,10 +170,10 @@ impl<P: BoxProvider> DBView<P> {
 
     /// Converts the `DBView` into a `DBWriter` for a specific record.
     pub fn writer(&self, record: RecordId) -> DBWriter<P> {
-        let ctr = self.chains.get(&record.0)
-            .and_then(|r| r.highest_ctr()).unwrap_or(0u64.into());
+        let next_ctr = self.chains.get(&record.0)
+            .and_then(|r| r.highest_ctr()).map(|v| v + 1).unwrap_or(0u64.into());
 
-        DBWriter { view: self, chain: record.0, ctr }
+        DBWriter { view: self, chain: record.0, next_ctr }
     }
 
     /// Garbage collect the records.
@@ -250,13 +250,13 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
 pub struct DBWriter<'a, P: BoxProvider> {
     view: &'a DBView<P>,
     chain: ChainId,
-    ctr: Val,
+    next_ctr: Val,
 }
 
 impl<'a, P: BoxProvider> DBWriter<'a, P> {
     fn next_ctr(&mut self) -> Val {
-        let c = self.ctr;
-        self.ctr += 1;
+        let c = self.next_ctr;
+        self.next_ctr += 1;
         c
     }
 
