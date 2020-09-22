@@ -42,6 +42,10 @@ impl Chain {
         &self.garbage
     }
 
+    pub fn subchain(&self) -> &Vec<TransactionId> {
+        &self.subchain
+    }
+
     pub fn len(&self) -> usize {
         self.subchain.len()
     }

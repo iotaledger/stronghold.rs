@@ -185,6 +185,19 @@ impl<P: BoxProvider> DBView<P> {
     }
 }
 
+impl<P: BoxProvider> Debug for DBView<P> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let cs: HashMap<_, Vec<_>> = self.chains.iter().map(|(cid, c)|
+            (cid, c.subchain().iter().filter_map(|tx| self.txs.get(tx)).collect())).collect();
+        let garbage: Vec<_> = self.chains.values().map(|c|
+            c.garbage().iter().filter_map(|tx| self.txs.get(tx))).flatten().collect();
+        f.debug_struct("DBView")
+            .field("chains", &cs)
+            .field("garbage", &garbage)
+            .finish()
+    }
+}
+
 /// A reader for the `DBView`
 pub struct DBReader<'a, P: BoxProvider> {
     view: &'a DBView<P>,

@@ -21,7 +21,7 @@ use crate::{
 };
 use std::{
     convert::{Infallible, TryFrom, TryInto},
-    fmt::Debug,
+    fmt::{self, Debug, Formatter},
     hash::Hash,
 };
 
@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 /// generic transaction type enum
 #[repr(u64)]
-#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub enum TransactionType {
     Data = 1,
     Revocation = 2,
@@ -57,8 +57,19 @@ impl TransactionType {
 }
 
 /// a generic transaction (untyped)
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Transaction(Vec<u8>);
+
+impl Debug for Transaction {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let t = self.untyped();
+        f.debug_struct("Transaction")
+            .field("type", &TransactionType::try_from(t.type_id).map_err(|_| fmt::Error {})?)
+            .field("id", &t.id)
+            .field("ctr", &t.ctr)
+            .finish()
+    }
+}
 
 /// untyped transaction view
 #[repr(packed)]
