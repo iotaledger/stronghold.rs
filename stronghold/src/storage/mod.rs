@@ -36,6 +36,8 @@ pub use vault::{Base64Decodable, Id, Key, RecordHint};
 
 use std::path::{Path, PathBuf};
 
+use anyhow::{Context, Result};
+
 pub struct Storage {
     snapshot_path: PathBuf,
 }
@@ -63,75 +65,80 @@ impl Storage {
         self.snapshot_path.exists()
     }
 
-    pub fn encrypt(&self, plain: &str, hint: Option<&[u8]>, pass: &str) -> Id {
+    pub fn encrypt(&self, plain: &str, hint: Option<&[u8]>, pass: &str) -> Result<Id> {
         let record_id: Id;
         if self.exists() {
-            let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass);
+            let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass)?;
 
             record_id = client.create_record(plain.as_bytes().to_vec(), hint);
 
             serialize_to_snapshot(&self.snapshot_path, pass, client);
         } else {
-            let key = Key::<Provider>::random().expect("Unable to generate a new key");
-            let id = Id::random::<Provider>().expect("Unable to generate a new id");
+            let key = Key::<Provider>::random().context("Unable to generate a new key")?;
+            let id = Id::random::<Provider>().context("Unable to generate a new id")?;
             let client = Client::create_chain(key, id);
 
             record_id = client.create_record(plain.as_bytes().to_vec(), hint);
 
             serialize_to_snapshot(&self.snapshot_path, pass, client);
         }
-        record_id
+        Ok(record_id)
     }
 
     // handle the snapshot command.
-    pub fn snapshot(&self, path: &str, pass: &str) {
+    pub fn snapshot(&self, path: &str, pass: &str) -> Result<()> {
         let path = Path::new(path);
 
-        let client: Client<Provider> = deserialize_from_snapshot(&path.to_path_buf(), pass);
+        let client: Client<Provider> = deserialize_from_snapshot(&path.to_path_buf(), pass)?;
 
         let new_path = path.parent().unwrap().join("recomputed.snapshot");
         serialize_to_snapshot(&new_path, pass, client);
+        Ok(())
     }
 
     // handle the list command.
-    pub fn get_index(&self, pass: &str) -> Vec<(Id, RecordHint)> {
-        let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass);
+    pub fn get_index(&self, pass: &str) -> Result<Vec<(Id, RecordHint)>> {
+        let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass)?;
 
         let index = client.get_index();
 
         serialize_to_snapshot(&self.snapshot_path, pass, client);
 
-        index
+        Ok(index)
     }
 
     // handle the read command.
-    pub fn read(&self, id: Id, pass: &str) -> String {
-        let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass);
+    pub fn read(&self, id: Id, pass: &str) -> Result<String> {
+        let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass)?;
 
         let record = client.read_record_by_id(id);
 
         serialize_to_snapshot(&self.snapshot_path, pass, client);
 
-        record
+        Ok(record)
     }
 
     // create a record with a revoke transaction.  Data isn't actually deleted until it is garbage collected.
-    pub fn revoke(&self, id: Id, pass: &str) {
-        let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass);
+    pub fn revoke(&self, id: Id, pass: &str) -> Result<()> {
+        let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass)?;
 
         client.revoke_record_by_id(id);
 
         serialize_to_snapshot(&self.snapshot_path, pass, client);
+
+        Ok(())
     }
 
     // garbage collect the chain.  Remove any revoked data from the chain.
-    pub fn garbage_collect_vault(&self, pass: &str) {
-        let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass);
+    pub fn garbage_collect_vault(&self, pass: &str) -> Result<()> {
+        let client: Client<Provider> = deserialize_from_snapshot(&self.snapshot_path, pass)?;
 
         client.perform_gc();
         client.get_index();
 
         serialize_to_snapshot(&self.snapshot_path, pass, client);
+
+        Ok(())
     }
 }
 
@@ -144,9 +151,9 @@ mod tests {
         crate::test_utils::with_snapshot(|path| {
             let storage = Storage::new(path);
             let value = "value_to_encrypt";
-            let id = storage.encrypt(value, None, "password");
+            let id = storage.encrypt(value, None, "password").unwrap();
 
-            let read = storage.read(id, "password");
+            let read = storage.read(id, "password").unwrap();
             assert_eq!(read, value);
         });
     }

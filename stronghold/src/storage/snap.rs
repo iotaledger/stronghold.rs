@@ -24,22 +24,24 @@ use super::{
     provider::Provider,
 };
 
+use anyhow::{Context, Result};
+
 // deserialize the snapshot data from the snapshot file.
-pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Client<Provider> {
+pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Result<Client<Provider>> {
     let mut buffer = Vec::new();
 
     let mut file = OpenOptions::new()
         .read(true)
         .open(snapshot)
-        .expect("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.");
+        .context("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.")?;
 
-    decrypt_snapshot(&mut file, &mut buffer, pass.as_bytes()).expect("unable to decrypt the snapshot");
+    decrypt_snapshot(&mut file, &mut buffer, pass.as_bytes()).context("unable to decrypt the snapshot")?;
 
-    let snap: Snapshot<Provider> = bincode::deserialize(&buffer[..]).expect("Unable to deserialize data");
+    let snap: Snapshot<Provider> = bincode::deserialize(&buffer[..]).context("Unable to deserialize data")?;
 
     let (id, key) = snap.offload();
 
-    Client::<Provider>::new(id, key)
+    Ok(Client::<Provider>::new(id, key))
 }
 
 // serialize the snapshot data into the snapshot file.

@@ -20,6 +20,7 @@ use bee_signing_ext::{
 };
 use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
 use iota::transaction::prelude::{Seed, SignedTransaction, SignedTransactionBuilder};
+use anyhow::{Context, Result, anyhow};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
@@ -32,7 +33,7 @@ pub struct Account {
     bip39_passphrase: Option<String>,
 }
 
-fn generate_id<'a>(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> [u8; 32] {
+fn generate_id<'a>(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> Result<[u8; 32]> {
     // Account ID generation: 1/2 : Derive seed into the first address
     let seed;
     if let Some(bip39_passphrase) = bip39_passphrase {
@@ -40,40 +41,33 @@ fn generate_id<'a>(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> [
     } else {
         seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
     }
-    let privkey =
-        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("m/44H/4218H/0H/0H").unwrap())
-            .expect("Error deriving seed");
+    let privkey = ed25519::Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("m/44H/4218H/0H/0H").unwrap()).context("Error deriving seed")?;
     let address = dummy_derive_into_address(privkey);
 
     // Account ID generation: 2/2 : Hash generated address in order to get ID
     let mut hasher = Sha256::new();
     hasher.input(address);
-    hasher.result().into()
+    Ok(hasher.result().into())
 }
 
 impl Account {
-    pub fn new(bip39_passphrase: Option<String>, index: usize) -> Account {
+    pub fn new(bip39_passphrase: Option<String>, index: usize) -> Result<Account> {
         // Mnemonic generation
         let bip39_mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
 
         // ID generation
-        let id = generate_id(&bip39_mnemonic.phrase(), &bip39_passphrase);
-
-        Account {
+        let id = generate_id(&bip39_mnemonic.phrase(), &bip39_passphrase)?;
+        let created_at = SystemTime::now().duration_since(UNIX_EPOCH).context("Time went backwards")?.as_millis();
+        let last_updated_on = created_at;
+        Ok(Account {
             id,
             index,
             external: false,
-            created_at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards")
-                .as_millis(),
-            last_updated_on: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards")
-                .as_millis(),
+            created_at,
+            last_updated_on,
             bip39_mnemonic: bip39_mnemonic.into_phrase(),
             bip39_passphrase,
-        }
+        })
     }
 
     pub fn import(
@@ -82,11 +76,13 @@ impl Account {
         last_updated_on: u128,
         bip39_mnemonic: String,
         bip39_passphrase: Option<String>,
-    ) -> Account {
-        bip39::Mnemonic::from_phrase(&bip39_mnemonic, bip39::Language::English).expect("Invalid mnemonic");
+    ) -> Result<Account> {
+        if bip39::Mnemonic::from_phrase(&bip39_mnemonic, bip39::Language::English).is_err() {
+            return Err(anyhow!("Invalid mnemonic"));
+        };
         // ID generation
-        let id = generate_id(&bip39_mnemonic, &bip39_passphrase);
-        Account {
+        let id = generate_id(&bip39_mnemonic, &bip39_passphrase)?;
+        Ok(Account {
             id,
             index,
             external: true,
@@ -94,7 +90,7 @@ impl Account {
             last_updated_on,
             bip39_mnemonic,
             bip39_passphrase,
-        }
+        })
     }
 
     fn get_seed(&self) -> ed25519::Ed25519Seed {
@@ -105,23 +101,23 @@ impl Account {
         dummy_mnemonic_to_ed25_seed(&self.bip39_mnemonic, &bip39_passphrase)
     }
 
-    fn get_privkey(&self, derivation_path: String) -> ed25519::Ed25519PrivateKey {
+    fn get_privkey(&self, derivation_path: String) -> Result<ed25519::Ed25519PrivateKey> {
         let seed = self.get_seed();
-        ed25519::Ed25519PrivateKey::generate_from_seed(
+        Ok(ed25519::Ed25519PrivateKey::generate_from_seed(
             &seed,
-            &BIP32Path::from_str(&derivation_path).expect("invalid bip32path"),
+            &BIP32Path::from_str(&derivation_path).context("invalid bip32path")?,
         )
-        .expect("Error deriving seed")
+        .context("Error deriving seed")?)
     }
 
-    pub fn get_address(&self, derivation_path: String) -> String {
-        let privkey = self.get_privkey(derivation_path);
-        dummy_derive_into_address(privkey)
+    pub fn get_address(&self, derivation_path: String) -> Result<String> {
+        let privkey = self.get_privkey(derivation_path)?;
+        Ok(dummy_derive_into_address(privkey))
     }
 
-    pub fn sign_message(&self, message: &[u8], derivation_path: String) -> [u8; 64] {
-        let privkey = self.get_privkey(derivation_path);
-        privkey.sign(message).to_bytes()
+    pub fn sign_message(&self, message: &[u8], derivation_path: String) -> Result<[u8; 64]> {
+        let privkey = self.get_privkey(derivation_path)?;
+        Ok(privkey.sign(message).to_bytes())
     }
 
     pub fn id(&self) -> &[u8; 32] {
