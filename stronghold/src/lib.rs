@@ -35,7 +35,7 @@ mod storage;
 pub use account::Account;
 use bee_signing_ext::{binary::ed25519, Signature, Verifier};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, panic, path::Path, str};
+use std::{collections::BTreeMap, path::Path, str};
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
 pub use storage::{Base64Decodable, Id as RecordId};
@@ -218,7 +218,7 @@ impl Stronghold {
                 .index_get(None, None)
                 .context("Error getting stronghold index")?;
             if index.includes(account.id()) {
-                panic!("Account already imported");
+                return Err(anyhow!("Account already imported"));
             };
         }
         let account_serialized = serde_json::to_string(account).context("Error saving account in snapshot")?;
@@ -423,7 +423,7 @@ impl Stronghold {
         bip39_passphrase: Option<&str>
     ) -> Result<(RecordId, Account)> {
         if bip39_mnemonic.is_empty() {
-            panic!("Invalid parameters: bip39_mnemonic is missing");
+            return Err(anyhow!("Invalid parameters: bip39_mnemonic is missing"));
         }
 
         let bip39_passphrase = match bip39_passphrase {
