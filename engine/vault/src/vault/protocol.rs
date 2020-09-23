@@ -25,7 +25,7 @@ pub enum Kind {
 }
 
 /// a read call
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ReadRequest {
     kind: Kind,
     id: Vec<u8>,
@@ -95,6 +95,12 @@ impl ReadResult {
     /// data from record
     pub fn data(&self) -> &[u8] {
         &self.data
+    }
+}
+
+impl AsRef<ReadResult> for ReadResult {
+    fn as_ref(&self) -> &Self {
+        &self
     }
 }
 

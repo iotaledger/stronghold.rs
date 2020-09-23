@@ -75,17 +75,20 @@ pub struct DBView<P: BoxProvider> {
     key: Key<P>,
     txs: HashMap<TransactionId, Transaction>,
     chains: HashMap<ChainId, chain::Chain>,
+    blobs: HashMap<BlobId, Vec<TransactionId>>,
     cache: HashMap<BlobId, SealedBlob>,
 }
 
 impl<P: BoxProvider> DBView<P> {
     /// Opens a vault using a key. Accepts the `ReadResult`:s of the vault transactions you want to load.
-    pub fn load<'a>(key: Key<P>, reads: impl Iterator<Item = &'a ReadResult>) -> crate::Result<Self> {
+    pub fn load<R: AsRef<ReadResult>>(key: Key<P>, reads: impl Iterator<Item = R>) -> crate::Result<Self> {
         let mut txs = HashMap::new();
         let mut raw_chains: HashMap<_, Vec<TransactionId>> = HashMap::new();
         let mut cache = HashMap::new();
+        let mut blobs: HashMap<_, Vec<_>> = HashMap::new();
 
         for r in reads {
+            let r = r.as_ref();
             match r.kind() {
                 Kind::Transaction => {
                     let id = TransactionId::try_from(r.id())?;
@@ -94,12 +97,18 @@ impl<P: BoxProvider> DBView<P> {
                         // TODO: more precise error w/ the failing transaction id
                         return Err(crate::Error::InterfaceError)
                     }
+
+                    if let Some(dtx) = tx.typed::<DataTransaction>() {
+                        blobs.entry(dtx.blob).or_default().push(id);
+                    }
+
                     raw_chains.entry(tx.untyped().chain).or_default().push(id);
                     txs.insert(id, tx);
                 },
                 Kind::Blob => {
                     let id = BlobId::try_from(r.id())?;
                     cache.insert(id, SealedBlob::from(r.data()));
+                    blobs.entry(id).or_default();
                 },
             }
         }
@@ -109,11 +118,11 @@ impl<P: BoxProvider> DBView<P> {
             chains.insert(*cid, chain::Chain::prune(chain.iter().filter_map(|t| txs.get(t)))?);
         }
 
-        Ok(Self { key, txs, chains, cache })
+        Ok(Self { key, txs, chains, blobs, cache })
     }
 
     /// Creates an iterator over all valid record identifiers and their corresponding record hints
-    pub fn records<'a>(&'a self) -> impl Iterator<Item = (RecordId, RecordHint)> +  'a {
+    pub fn records<'a>(&'a self) -> impl Iterator<Item = (RecordId, RecordHint)> + 'a {
         self.chains.values().filter_map(move |r| {
             r.data()
                 .as_ref()
@@ -124,7 +133,7 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     /// Creates an iterator over all valid records ids.
-    pub fn all<'a>(&'a self) -> impl Iterator<Item = RecordId> + 'a {
+    pub fn all<'a>(&'a self) -> impl ExactSizeIterator<Item = RecordId> + 'a {
         self.chains.keys().map(|k| RecordId(*k))
     }
 
@@ -139,9 +148,9 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     /// Get highest counter from the vault for known records
-    pub fn chain_ctrs(&self) -> HashMap<ChainId, u64> {
+    pub fn chain_ctrs(&self) -> HashMap<RecordId, u64> {
         self.chains.iter()
-            .filter_map(|(id, r)| r.highest_ctr().map(|ctr| (*id, ctr.u64())))
+            .filter_map(|(id, r)| r.highest_ctr().map(|ctr| (RecordId(*id), ctr.u64())))
             .collect()
     }
 
@@ -149,7 +158,7 @@ impl<P: BoxProvider> DBView<P> {
     pub fn not_older_than(&self, record_ctrs: &HashMap<RecordId, u64>) -> crate::Result<()> {
         let this_ctrs = self.chain_ctrs();
         record_ctrs.iter().try_for_each(|(chain, other_ctr)| {
-            let this_ctr = this_ctrs.get(&chain.0).ok_or_else(|| {
+            let this_ctr = this_ctrs.get(chain).ok_or_else(|| {
                 crate::Error::VersionError(String::from("This database is older than the reference database"))
             })?;
 
@@ -203,11 +212,23 @@ pub struct DBReader<'a, P: BoxProvider> {
     view: &'a DBView<P>,
 }
 
+#[derive(Eq, PartialEq)]
 pub enum PreparedRead {
     CacheHit(Vec<u8>),
     CacheMiss(ReadRequest),
     RecordIsEmpty,
     NoSuchRecord,
+}
+
+impl Debug for PreparedRead {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            PreparedRead::CacheHit(_) => f.write_str("PreparedRead::CacheHit"),
+            PreparedRead::CacheMiss(_) => f.write_str("PreparedRead::CacheMiss"),
+            PreparedRead::RecordIsEmpty => f.write_str("PreparedRead::RecordIsEmpty"),
+            PreparedRead::NoSuchRecord => f.write_str("PreparedRead::NoSuchRecord"),
+        }
+    }
 }
 
 impl<'a, P: BoxProvider> DBReader<'a, P> {
@@ -233,6 +254,10 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
     pub fn read(&self, res: ReadResult) -> crate::Result<Vec<u8>> {
         // TODO: add parameter to allow the vault to cache the result
         let b = BlobId::try_from(res.id())?;
+        match self.view.blobs.get(&b) {
+            Some(_txs) => (),
+            None => (),
+        };
         // TODO: reverse lookup blob id to chain id, compare with the valid transaction's blob id
         SealedBlob::from(res.data()).decrypt(&self.view.key, b)
     }

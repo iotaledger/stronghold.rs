@@ -51,6 +51,12 @@ impl Debug for RecordHint {
     }
 }
 
+impl From<[u8; 24]> for RecordHint {
+    fn from(bs: [u8; 24]) -> Self {
+        Self(bs)
+    }
+}
+
 /// a big endian encoded number
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
