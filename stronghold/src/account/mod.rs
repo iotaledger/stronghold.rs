@@ -14,13 +14,13 @@ use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod dummybip39;
+use anyhow::{anyhow, Context, Result};
 use bee_signing_ext::{
     binary::{ed25519, BIP32Path},
     Signer,
 };
 use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
 use iota::transaction::prelude::{Seed, SignedTransaction, SignedTransactionBuilder};
-use anyhow::{Context, Result, anyhow};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
@@ -41,7 +41,9 @@ fn generate_id<'a>(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> R
     } else {
         seed = dummy_mnemonic_to_ed25_seed(bip39_mnemonic, "");
     }
-    let privkey = ed25519::Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("m/44H/4218H/0H/0H").unwrap()).context("Error deriving seed")?;
+    let privkey =
+        ed25519::Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("m/44H/4218H/0H/0H").unwrap())
+            .context("Error deriving seed")?;
     let address = dummy_derive_into_address(privkey);
 
     // Account ID generation: 2/2 : Hash generated address in order to get ID
@@ -57,7 +59,10 @@ impl Account {
 
         // ID generation
         let id = generate_id(&bip39_mnemonic.phrase(), &bip39_passphrase)?;
-        let created_at = SystemTime::now().duration_since(UNIX_EPOCH).context("Time went backwards")?.as_millis();
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("Time went backwards")?
+            .as_millis();
         let last_updated_on = created_at;
         Ok(Account {
             id,
@@ -143,8 +148,12 @@ impl Account {
     }
 
     /// Gets a SignedTransaction builder with the account seed.
-    pub fn get_signed_transaction_builder(&self) -> SignedTransactionBuilder<'_> {
+    pub fn with_signed_transaction_builder<F: FnOnce(SignedTransactionBuilder<'_>) -> SignedTransaction>(
+        &self,
+        cb: F,
+    ) -> SignedTransaction {
         let seed = Seed::from_ed25519_bytes(self.get_seed().as_bytes()).expect("failed to construct seed");
-        SignedTransaction::builder(&seed)
+        let builder = SignedTransaction::builder(&seed);
+        cb(builder)
     }
 }
