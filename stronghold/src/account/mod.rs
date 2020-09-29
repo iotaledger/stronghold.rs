@@ -110,7 +110,7 @@ impl Account {
         let seed = self.get_seed();
         Ok(ed25519::Ed25519PrivateKey::generate_from_seed(
             &seed,
-            &BIP32Path::from_str(&derivation_path).context("invalid bip32path")?,
+            &BIP32Path::from_str(&derivation_path).map_err(|e| anyhow::anyhow!(e.to_string()))?,
         )
         .context("Error deriving seed")?)
     }
