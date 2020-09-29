@@ -145,6 +145,6 @@ impl Account {
     /// Gets a SignedTransaction builder with the account seed.
     pub fn get_signed_transaction_builder(&self) -> SignedTransactionBuilder<'_> {
         let seed = Seed::from_ed25519_bytes(self.get_seed().as_bytes()).expect("failed to construct seed");
-        SignedTransaction::builder(seed)
+        SignedTransaction::builder(&seed)
     }
 }
