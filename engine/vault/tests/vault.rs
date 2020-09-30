@@ -14,7 +14,7 @@ use utils::provider::Provider;
 
 mod fresh;
 
-use vault::{DBView, Key, Result, RecordId, ReadResult, WriteRequest, PreparedRead};
+use vault::{DBView, Key, Result, RecordId, ReadResult, WriteRequest, PreparedRead, Kind};
 
 use std::{
     iter::empty,
@@ -98,9 +98,44 @@ fn test_write_cache_hit() -> Result<()> {
 }
 
 #[test]
-#[ignore = "not yet implemented"]
 fn test_write_cache_miss() -> Result<()> {
-    unimplemented!()
+    let k: Key<Provider> = Key::random()?;
+    let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
+
+    let mut writes = vec![];
+
+    let id = RecordId::random::<Provider>()?;
+    let mut w = v0.writer(id);
+    writes.push(w.truncate()?);
+    let data = fresh::data();
+    let hint = fresh::record_hint();
+    let blob = match w.write(&data, hint)?.as_slice() {
+        [w0, w1] => {
+            assert_eq!(w0.kind(), Kind::Transaction);
+            writes.push(w0.clone());
+
+            assert_eq!(w1.kind(), Kind::Blob);
+            w1.data().to_vec()
+        },
+        ws => panic!("{} unexpected writes", ws.len()),
+    };
+
+    let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
+
+    assert_eq!(v1.all().len(), 1);
+    assert_eq!(v1.absolute_balance(), (2, 2));
+    assert_eq!(v1.chain_ctrs(), vec![(id, 1u64)].into_iter().collect());
+    assert_eq!(v1.gc().len(), 0);
+
+    let r = v1.reader();
+    let res = match r.prepare_read(&id)? {
+        PreparedRead::CacheMiss(req) => req.result(blob),
+        x => panic!("unexpected value: {:?}", x),
+    };
+
+    assert_eq!(r.read(res)?, data);
+
+    Ok(())
 }
 
 #[test]
@@ -112,5 +147,11 @@ fn test_rekove() -> Result<()> {
 #[test]
 #[ignore = "not yet implemented"]
 fn test_rekove_then_write() -> Result<()> {
+    unimplemented!()
+}
+
+#[test]
+#[ignore = "not yet implemented"]
+fn test_ensure_authenticty_of_blob() -> Result<()> {
     unimplemented!()
 }

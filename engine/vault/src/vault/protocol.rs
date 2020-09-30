@@ -18,7 +18,7 @@ use crate::{
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Kind {
     Transaction = 1,
     Blob = 2,
