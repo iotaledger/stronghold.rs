@@ -209,8 +209,55 @@ fn test_ensure_authenticty_of_blob() -> Result<()> {
     };
 
     match r.read(res) {
-        Ok(_) => panic!("unexpected result"),
-        Err(e) => panic!("YES: {:?}", e),
+        Err(vault::Error::ProtocolError(_)) => (),
+        Err(_) | Ok(_) => panic!("unexpected result"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_storage_returns_stale_blob() -> Result<()> {
+    let k: Key<Provider> = Key::random()?;
+    let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
+
+    let mut writes = vec![];
+
+    let id = RecordId::random::<Provider>()?;
+    let mut w = v0.writer(id);
+    writes.push(w.truncate()?);
+    let hint = fresh::record_hint();
+
+    let (bid, blob) = match w.write(&fresh::data(), hint)?.as_slice() {
+        [w0, w1] => {
+            assert_eq!(w0.kind(), Kind::Transaction);
+            assert_eq!(w1.kind(), Kind::Blob);
+            (w1.id().to_vec(), w1.data().to_vec())
+        },
+        ws => panic!("{} unexpected writes", ws.len()),
+    };
+
+    match w.write(&fresh::data(), hint)?.as_slice() {
+        [w0, w1] => {
+            assert_eq!(w0.kind(), Kind::Transaction);
+            writes.push(w0.clone());
+
+            assert_eq!(w1.kind(), Kind::Blob);
+        },
+        ws => panic!("{} unexpected writes", ws.len()),
+    };
+
+    let v1 = DBView::load(k.clone(), writes.iter().map(write_to_read))?;
+
+    let r = v1.reader();
+    let res = match r.prepare_read(&id)? {
+        PreparedRead::CacheMiss(_) => ReadResult::new(Kind::Blob, &bid, &blob),
+        x => panic!("unexpected value: {:?}", x),
+    };
+
+    match r.read(res) {
+        Err(vault::Error::ProtocolError(_)) => (),
+        Err(_) | Ok(_) => panic!("unexpected result"),
     }
 
     Ok(())

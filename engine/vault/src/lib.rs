@@ -71,6 +71,8 @@ pub enum Error {
     CryptoError(String),
     #[error("Value Error: `{0}`")]
     ValueError(String),
+    #[error("Protocol Error: `{0}`")]
+    ProtocolError(String),
 }
 
 // Crate result type

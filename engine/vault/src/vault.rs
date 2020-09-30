@@ -254,12 +254,24 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
     pub fn read(&self, res: ReadResult) -> crate::Result<Vec<u8>> {
         // TODO: add parameter to allow the vault to cache the result
         let b = BlobId::try_from(res.id())?;
-        match self.view.blobs.get(&b) {
-            Some(_txs) => (),
-            None => (),
-        };
-        // TODO: reverse lookup blob id to chain id, compare with the valid transaction's blob id
-        SealedBlob::from(res.data()).decrypt(&self.view.key, b)
+
+        if self.is_active_blob(&b) {
+            SealedBlob::from(res.data()).decrypt(&self.view.key, b)
+        } else {
+            Err(crate::Error::ProtocolError("invalid blob".to_string()))
+        }
+    }
+
+    fn is_active_blob(&self, bid: &BlobId) -> bool {
+        self.view.blobs.get(bid).map(|txs| txs.iter().any(|t0| {
+            self.view.txs.get(t0)
+                .and_then(|tx| tx.typed::<DataTransaction>())
+                .and_then(|tx| if tx.blob == *bid { Some(tx.chain) } else { None })
+                .and_then(|cid| self.view.chains.get(&cid))
+                .and_then(|c| c.data())
+                .map(|t1| *t0 == t1)
+                .unwrap_or(false)
+        })).unwrap_or(false)
     }
 
     pub fn exists(&self, id: RecordId) -> bool {
