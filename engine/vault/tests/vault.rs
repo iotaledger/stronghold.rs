@@ -14,7 +14,7 @@ use utils::provider::Provider;
 
 mod fresh;
 
-use vault::{DBView, Key, Result, RecordId, ReadResult, WriteRequest, PreparedRead, Kind};
+use vault::{DBView, Key, Result, RecordId, ReadResult, WriteRequest, PreparedRead, Kind, Encrypt};
 
 use std::{
     iter::empty,
@@ -109,27 +109,25 @@ fn test_write_cache_miss() -> Result<()> {
     writes.push(w.truncate()?);
     let data = fresh::data();
     let hint = fresh::record_hint();
-    let blob = match w.write(&data, hint)?.as_slice() {
+    let (bid, blob) = match w.write(&data, hint)?.as_slice() {
         [w0, w1] => {
             assert_eq!(w0.kind(), Kind::Transaction);
             writes.push(w0.clone());
 
             assert_eq!(w1.kind(), Kind::Blob);
-            w1.data().to_vec()
+            (w1.id().to_vec(), w1.data().to_vec())
         },
         ws => panic!("{} unexpected writes", ws.len()),
     };
 
     let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
 
-    assert_eq!(v1.all().len(), 1);
-    assert_eq!(v1.absolute_balance(), (2, 2));
-    assert_eq!(v1.chain_ctrs(), vec![(id, 1u64)].into_iter().collect());
-    assert_eq!(v1.gc().len(), 0);
-
     let r = v1.reader();
     let res = match r.prepare_read(&id)? {
-        PreparedRead::CacheMiss(req) => req.result(blob),
+        PreparedRead::CacheMiss(req) => {
+            assert_eq!(req.id(), bid.as_slice());
+            req.result(blob)
+        },
         x => panic!("unexpected value: {:?}", x),
     };
 
@@ -151,7 +149,41 @@ fn test_rekove_then_write() -> Result<()> {
 }
 
 #[test]
-#[ignore = "not yet implemented"]
+#[ignore = "not yet implemented: we need some kind of checksum in the data transaction to protect against this case: when the users key is compromised"]
 fn test_ensure_authenticty_of_blob() -> Result<()> {
-    unimplemented!()
+    let k: Key<Provider> = Key::random()?;
+    let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
+
+    let mut writes = vec![];
+
+    let id = RecordId::random::<Provider>()?;
+    let mut w = v0.writer(id);
+    writes.push(w.truncate()?);
+    let hint = fresh::record_hint();
+    let bid = match w.write(&fresh::data(), hint)?.as_slice() {
+        [w0, w1] => {
+            assert_eq!(w0.kind(), Kind::Transaction);
+            writes.push(w0.clone());
+
+            assert_eq!(w1.kind(), Kind::Blob);
+            w1.id().to_vec()
+        },
+        ws => panic!("{} unexpected writes", ws.len()),
+    };
+
+    let v1 = DBView::load(k.clone(), writes.iter().map(write_to_read))?;
+
+    let r = v1.reader();
+    let res = match r.prepare_read(&id)? {
+        PreparedRead::CacheMiss(req) => req.result(
+            fresh::data().encrypt(&k, bid)?.as_ref().to_vec()),
+        x => panic!("unexpected value: {:?}", x),
+    };
+
+    match r.read(res) {
+        Ok(_) => panic!("unexpected result"),
+        Err(e) => panic!("YES: {:?}", e),
+    }
+
+    Ok(())
 }
