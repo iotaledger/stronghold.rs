@@ -43,7 +43,7 @@ fn generate_id<'a>(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> R
     }
     let privkey =
         ed25519::Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("m/44H/4218H/0H/0H").unwrap())
-            .context("Error deriving seed")?;
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let address = dummy_derive_into_address(privkey);
 
     // Account ID generation: 2/2 : Hash generated address in order to get ID
@@ -112,7 +112,7 @@ impl Account {
             &seed,
             &BIP32Path::from_str(&derivation_path).map_err(|e| anyhow::anyhow!(e.to_string()))?,
         )
-        .context("Error deriving seed")?)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?)
     }
 
     pub fn get_address(&self, derivation_path: String) -> Result<String> {
