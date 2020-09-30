@@ -42,8 +42,8 @@ use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::BTreeMap, path::Path, str};
-pub use storage::{Base64Decodable, Id as RecordId};
-use storage::{RecordHint, Storage};
+use storage::Storage;
+pub use storage::{Base64Decodable, Id as RecordId, RecordHint};
 
 static INDEX_HINT: &str = "index";
 
