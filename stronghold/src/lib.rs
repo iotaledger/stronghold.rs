@@ -641,6 +641,12 @@ impl Stronghold {
             .encrypt(data, None, &self.snapshot_password.lock().unwrap().0)
     }
 
+    /// Saves custom data as a new record with hint
+    pub fn record_create_with_hint(&self, data: &str, hint: &[u8]) -> Result<storage::Id> {
+        self.storage
+            .encrypt(data, Some(hint), &self.snapshot_password.lock().unwrap().0)
+    }
+
     /// Get record by record id
     ///
     /// `record_id` id of the record to read
