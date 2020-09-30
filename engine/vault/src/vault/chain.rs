@@ -83,6 +83,7 @@ impl Chain {
                     TransactionType::Data => {
                         if let Some(previous) = res.data {
                             res.garbage.push(previous);
+                            res.subchain.retain(|i| i != &previous);
                         }
                         res.data = Some(tx.id);
 

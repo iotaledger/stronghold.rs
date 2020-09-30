@@ -137,6 +137,34 @@ fn test_write_cache_miss() -> Result<()> {
 }
 
 #[test]
+fn test_write_twice() -> Result<()> {
+    let k: Key<Provider> = Key::random()?;
+    let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
+
+    let mut writes = vec![];
+
+    let id = RecordId::random::<Provider>()?;
+    let mut w = v0.writer(id);
+    writes.push(w.truncate()?);
+    let data0 = fresh::data();
+    let data1 = fresh::data();
+    let hint = fresh::record_hint();
+    writes.append(&mut w.write(&data0, hint)?);
+    writes.append(&mut w.write(&data1, hint)?);
+
+    let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
+
+    assert_eq!(v1.all().len(), 1);
+    assert_eq!(v1.absolute_balance(), (2, 3));
+    assert_eq!(v1.chain_ctrs(), vec![(id, 2u64)].into_iter().collect());
+    assert_eq!(v1.gc().len(), 1);
+
+    assert_eq!(v1.reader().prepare_read(&id)?, PreparedRead::CacheHit(data1));
+
+    Ok(())
+}
+
+#[test]
 #[ignore = "not yet implemented"]
 fn test_rekove() -> Result<()> {
     unimplemented!()
