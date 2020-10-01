@@ -150,7 +150,11 @@ impl Stronghold {
             .context("Time went backwards")?
             .as_secs();
         if let Some(timeout) = snapshot_password_timeout {
-            *data = (snapshot_password, Some(time_now + timeout));
+            if timeout == 0 {
+                *data = ("".to_string(), Some(time_now+timeout));
+            }else{
+                *data = (snapshot_password, Some(time_now+timeout));
+            }
         } else {
             *data = (snapshot_password, None);
         };
@@ -163,11 +167,9 @@ impl Stronghold {
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards")
                     .as_secs();
-                if time_now > timeout {
-                    (*data).0.clear();
-                    (*data).1 = None;
-                    println!("erased");
-                }
+                    if time_now > timeout {
+                        (*data).0.clear();//todo: zeroise this
+                    }
             }
         });
 
