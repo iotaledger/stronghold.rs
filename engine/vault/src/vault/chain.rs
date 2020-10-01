@@ -67,6 +67,7 @@ impl Chain {
         chain.sort_by_key(|tx| tx.ctr);
 
         let mut revocation_score = 0;
+        let mut revokes = vec![];
         for tx in chain {
             res.highest_ctr = Some(tx.ctr); // NB assumed to sorted ascending
 
@@ -98,6 +99,7 @@ impl Chain {
                         revocation_score = 0;
                     }
                     TransactionType::Revocation => {
+                        revokes.push(tx.id);
                         revocation_score += 1;
                     }
                     //TransactionType::Unrevocation => {
@@ -118,8 +120,10 @@ impl Chain {
             res.init = None;
             res.data = None;
         } else {
-            // TODO: track revokes and unrevokes and consider them as garbage if the chain
-            // survives
+            for tid in revokes {
+                res.subchain.retain(|i| i != &tid);
+                res.garbage.push(tid);
+            }
         }
 
         Ok(res)

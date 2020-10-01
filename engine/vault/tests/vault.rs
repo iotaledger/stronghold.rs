@@ -193,9 +193,54 @@ fn test_rekove() -> Result<()> {
 }
 
 #[test]
-#[ignore = "not yet implemented"]
+fn test_rekove_without_reload() -> Result<()> {
+    let k: Key<Provider> = Key::random()?;
+    let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
+
+    let mut writes = vec![];
+
+    let id = RecordId::random::<Provider>()?;
+    let mut w = v0.writer(id);
+    writes.push(w.truncate()?);
+    writes.push(w.revoke()?);
+
+    let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
+    assert_eq!(v1.reader().prepare_read(&id)?, PreparedRead::NoSuchRecord);
+
+    assert_eq!(v1.all().len(), 1);
+    assert_eq!(v1.records().collect::<Vec<_>>().len(), 0);
+    assert_eq!(v1.absolute_balance(), (0, 2));
+    assert_eq!(v1.chain_ctrs(), vec![(id, 1u64)].into_iter().collect());
+    assert_eq!(v1.gc().len(), 2);
+
+    Ok(())
+}
+
+#[test]
 fn test_rekove_then_write() -> Result<()> {
-    unimplemented!()
+    let k: Key<Provider> = Key::random()?;
+    let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
+
+    let mut writes = vec![];
+
+    let id = RecordId::random::<Provider>()?;
+    let mut w = v0.writer(id);
+    writes.push(w.truncate()?);
+    writes.push(w.revoke()?);
+    let data = fresh::data();
+    let hint = fresh::record_hint();
+    writes.append(&mut w.write(&data, hint)?);
+
+    let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
+    assert_eq!(v1.reader().prepare_read(&id)?, PreparedRead::CacheHit(data));
+
+    assert_eq!(v1.all().len(), 1);
+    assert_eq!(v1.records().collect::<Vec<_>>().len(), 1);
+    assert_eq!(v1.absolute_balance(), (2, 3));
+    assert_eq!(v1.chain_ctrs(), vec![(id, 2u64)].into_iter().collect());
+    assert_eq!(v1.gc().len(), 1);
+
+    Ok(())
 }
 
 #[test]
