@@ -235,10 +235,10 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
     /// Prepare a record for reading. Create a `ReadRequest` to read the record with inputted `id`. Returns `None` if
     /// there was no record for that ID
     pub fn prepare_read(&self, record: &RecordId) -> crate::Result<PreparedRead> {
-        match self.view.chains.get(&record.0).map(|r| r.data()) {
-            None => Ok(PreparedRead::NoSuchRecord),
-            Some(None) => Ok(PreparedRead::RecordIsEmpty),
-            Some(Some(tx_id)) => {
+        match self.view.chains.get(&record.0).map(|r| (r.init(), r.data())) {
+            None | Some((None, _)) => Ok(PreparedRead::NoSuchRecord),
+            Some((_, None)) => Ok(PreparedRead::RecordIsEmpty),
+            Some((_, Some(tx_id))) => {
                 // TODO: if we use references/boxes instead of ids then these never-failing lookups
                 // can be removed
                 let tx = self.view.txs.get(&tx_id).unwrap().typed::<DataTransaction>().unwrap();
