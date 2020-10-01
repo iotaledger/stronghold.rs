@@ -21,11 +21,14 @@ use crate::{
     snap::{deserialize_from_snapshot, get_snapshot_path, serialize_to_snapshot},
 };
 
-use engine::vault::{Base64Decodable, Id, Key};
+use engine::vault::{Base64Decodable, RecordId, Key};
 
 use clap::{load_yaml, App, ArgMatches};
 
-use std::path::Path;
+use std::{
+    path::Path,
+    convert::TryFrom,
+};
 
 // create a line error with the file and the line number
 #[macro_export]
@@ -45,23 +48,22 @@ fn encrypt_command(matches: &ArgMatches) {
     if let Some(matches) = matches.subcommand_matches("encrypt") {
         if let Some(ref pass) = matches.value_of("password") {
             if let Some(plain) = matches.value_of("plain") {
-                if snapshot.exists() {
+                let client: Client<Provider> = if snapshot.exists() {
                     let snapshot = get_snapshot_path();
-                    let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
-
-                    client.create_record(plain.as_bytes().to_vec());
-
-                    let snapshot = get_snapshot_path();
-                    serialize_to_snapshot(&snapshot, pass, client);
+                    deserialize_from_snapshot(&snapshot, pass)
                 } else {
                     let key = Key::<Provider>::random().expect("Unable to generate a new key");
-                    let id = Id::random::<Provider>().expect("Unable to generate a new id");
-                    let client = Client::create_chain(key, id);
-                    client.create_record(plain.as_bytes().to_vec());
+                    Client::new(key)
+                };
 
-                    let snapshot = get_snapshot_path();
-                    serialize_to_snapshot(&snapshot, pass, client);
-                }
+                // TODO: optionally get from argument
+                let id = RecordId::random::<Provider>().expect("Unable to generate a new id");
+
+                client.write(id, plain.as_bytes().to_vec());
+
+                let snapshot = get_snapshot_path();
+                serialize_to_snapshot(&snapshot, pass, client);
+                println!("{}", id);
             };
         };
     }
@@ -90,10 +92,11 @@ fn list_command(matches: &ArgMatches) {
             let snapshot = get_snapshot_path();
             let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-            client.list_ids();
-
-            let snapshot = get_snapshot_path();
-            serialize_to_snapshot(&snapshot, pass, client);
+            if matches.is_present("all") {
+                client.list_all_ids();
+            } else {
+                client.list_ids();
+            }
         }
     }
 }
@@ -107,12 +110,9 @@ fn read_command(matches: &ArgMatches) {
                 let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
                 let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
-                let id = Id::load(&id).expect("Couldn't build a new Id");
+                let id = RecordId::try_from(id).expect("Couldn't build a new Id");
 
                 client.read_record_by_id(id);
-
-                let snapshot = get_snapshot_path();
-                serialize_to_snapshot(&snapshot, pass, client);
             }
         }
     }
@@ -127,9 +127,9 @@ fn revoke_command(matches: &ArgMatches) {
                 let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
                 let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
-                let id = Id::load(&id).expect("Couldn't build a new Id");
+                let id = RecordId::try_from(id).expect("Couldn't build a new Id");
 
-                client.revoke_record_by_id(id);
+                client.revoke_record(id);
 
                 let snapshot = get_snapshot_path();
                 serialize_to_snapshot(&snapshot, pass, client);
@@ -154,22 +154,25 @@ fn garbage_collect_vault_command(matches: &ArgMatches) {
     }
 }
 
-// Take ownership of an existing chain. Requires that the new chain owner knows the old key to unlock the data.
-fn take_ownership_command(matches: &ArgMatches) {
-    if let Some(matches) = matches.subcommand_matches("take_ownership") {
+// Purge a record from the chain: revoke and then garbage collect.
+fn purge_command(matches: &ArgMatches) {
+    if let Some(matches) = matches.subcommand_matches("purge") {
         if let Some(ref pass) = matches.value_of("password") {
-            let new_id = Id::random::<Provider>().expect("Unable to generate a new id");
+            if let Some(ref id) = matches.value_of("id") {
+                let snapshot = get_snapshot_path();
+                let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
 
-            let snapshot = get_snapshot_path();
-            let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
-            let new_client: Client<Provider> = Client::create_chain(client.db.key, new_id);
+                let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
+                let id = RecordId::try_from(id).expect("Couldn't build a new Id");
 
-            new_client.take_ownership(client.id);
+                client.revoke_record(id);
+                serialize_to_snapshot(&get_snapshot_path(), pass, client);
 
-            println!("Old owner id: {:?}\nNew owner id: {:?}", client.id, new_client.id);
-
-            let snapshot = get_snapshot_path();
-            serialize_to_snapshot(&snapshot, pass, new_client);
+                let client = deserialize_from_snapshot(&snapshot, pass);
+                client.perform_gc();
+                assert!(client.db.take(|db| db.all().find(|i| i == &id).is_none()));
+                serialize_to_snapshot(&get_snapshot_path(), pass, client);
+            }
         }
     }
 }
@@ -184,5 +187,5 @@ fn main() {
     list_command(&matches);
     revoke_command(&matches);
     garbage_collect_vault_command(&matches);
-    take_ownership_command(&matches);
+    purge_command(&matches);
 }

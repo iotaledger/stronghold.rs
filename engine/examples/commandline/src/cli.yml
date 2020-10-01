@@ -44,6 +44,12 @@ subcommands:
             about: the password for the snapshot.
             required: true
             takes_value: true
+        - all:
+            short: A
+            long: all
+            value_name: all
+            about: include revoked records
+            takes_value: false
   - read:
       about: read an associated record by id
       args:
@@ -58,7 +64,7 @@ subcommands:
             short: i
             long: id
             value_name: id
-            about: the id of the record you want to revoke.
+            about: the id of the record you want to read.
             required: true
             takes_value: true
   - revoke:
@@ -86,6 +92,23 @@ subcommands:
             long: pass
             value_name: password
             about: the password for the snapshot.
+            required: true
+            takes_value: true
+  - purge:
+      about: Revoke a record by id and perform a gargbage collect
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password for the snapshot.
+            required: true
+            takes_value: true
+        - id:
+            short: i
+            long: id
+            value_name: id
+            about: the id of the entry
             required: true
             takes_value: true
   - take_ownership:

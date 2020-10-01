@@ -46,8 +46,8 @@ mod vault;
 pub use crate::{
     base64::{Base64Decodable, Base64Encodable},
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
-    types::utils::{Id, RecordHint},
-    vault::{DBReader, DBView, DBWriter, DeleteRequest, ListResult, ReadRequest, ReadResult, Record, WriteRequest},
+    types::utils::{ChainId, RecordHint},
+    vault::{RecordId, DBReader, DBView, DBWriter, PreparedRead, DeleteRequest, ReadRequest, ReadResult, WriteRequest, Kind},
 };
 
 /// Errors for the Vault Crate
@@ -69,6 +69,10 @@ pub enum Error {
     OtherError(String),
     #[error("Crypto Error: `{0}`")]
     CryptoError(String),
+    #[error("Value Error: `{0}`")]
+    ValueError(String),
+    #[error("Protocol Error: `{0}`")]
+    ProtocolError(String),
 }
 
 // Crate result type

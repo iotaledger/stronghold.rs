@@ -16,7 +16,10 @@ use std::{
 
 /// get the home directory of the user's device
 pub fn home_dir() -> crate::Result<PathBuf> {
-    let home = dirs::home_dir().unwrap();
+    let home = match std::env::var("STRONGHOLD") {
+        Ok(h) => h.into(),
+        Err(_) => dirs::home_dir().unwrap(),
+    };
     let home_dir = home.join(format!(".{}", "engine"));
 
     verify_or_create(&home_dir)?;
