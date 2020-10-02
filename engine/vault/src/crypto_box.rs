@@ -103,8 +103,8 @@ impl<T: BoxProvider> Drop for Key<T> {
 /// trait for encryptable data
 pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
     /// encrypts a raw data and creates a type T from the ciphertext
-    fn encrypt<B: BoxProvider>(&self, key: &Key<B>, ad: &[u8]) -> crate::Result<T> {
-        let sealed = B::box_seal(key, ad, self.as_ref())?;
+    fn encrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> crate::Result<T> {
+        let sealed = B::box_seal(key, ad.as_ref(), self.as_ref())?;
         Ok(T::from(sealed))
     }
 }
@@ -112,8 +112,8 @@ pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
 /// Trait for decryptable data
 pub trait Decrypt<E, T: TryFrom<Vec<u8>, Error = E>>: AsRef<[u8]> {
     /// decrypts raw data and creates a new type T from the plaintext
-    fn decrypt<B: BoxProvider>(&self, key: &Key<B>, ad: &[u8]) -> crate::Result<T> {
-        let opened = B::box_open(key, ad, self.as_ref())?;
+    fn decrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> crate::Result<T> {
+        let opened = B::box_open(key, ad.as_ref(), self.as_ref())?;
         Ok(T::try_from(opened).map_err(|_| crate::Error::DatabaseError(String::from("Invalid Entry")))?)
     }
 }

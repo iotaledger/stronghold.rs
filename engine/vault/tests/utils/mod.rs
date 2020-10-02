@@ -17,4 +17,3 @@ macro_rules! error_line {
 }
 
 pub mod provider;
-pub mod test_vault;
