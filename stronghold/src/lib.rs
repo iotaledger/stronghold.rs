@@ -518,15 +518,8 @@ impl Stronghold {
         let (index_record_id, index) = self
             .index_get(None, None)
             .context("Index maybe not initialized in snapshot file")?;
-
         let all_accounts = self.account_list(None, None).context("failed to list accounts")?;
-        let index = all_accounts
-            .iter()
-            .max_by(|a, b| a.index().cmp(b.index()))
-            .map(|a| a.index())
-            .cloned()
-            .unwrap_or(0);
-        let account = Account::new(bip39_passphrase, index)?;
+        let account = Account::new(bip39_passphrase)?;
         let record_id = self.account_save(&account, false)?;
         Ok((record_id, account))
     }
@@ -556,8 +549,9 @@ impl Stronghold {
     /// # let snapshot_path = snapshot_dir().unwrap().join(snapshot_filename);
     /// let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
     /// let mnemonic = String::from("gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding");
-    /// 
-    /// let account = stronghold.account_import(0, 1598890069000, 1598890070000, mnemonic, None);
+    /// let created_at = Some(1598890069000);
+    /// let last_updated_on = Some(1598890070000); 
+    /// let account = stronghold.account_import(0, created_at, last_updated_on, mnemonic, None);
     /// 
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
@@ -565,8 +559,8 @@ impl Stronghold {
         // todo: reorder params , ¿what if try to add an account by second time?
         &self,
         index: usize,
-        created_at: u128,      // todo: maybe should be optional
-        last_updated_on: u128, // todo: maybe should be optional
+        created_at: Option<u128>,
+        last_updated_on: Option<u128>,
         bip39_mnemonic: String,
         bip39_passphrase: Option<&str>,
     ) -> Result<Account> {
@@ -579,11 +573,28 @@ impl Stronghold {
         // todo: reorder params , ¿what if try to add an account by second time?
         &self,
         index: usize,
-        created_at: u128,      // todo: maybe should be optional
-        last_updated_on: u128, // todo: maybe should be optional
+        created_at: Option<u128>,      // todo: maybe should be optional
+        last_updated_on: Option<u128>, // todo: maybe should be optional
         bip39_mnemonic: String,
         bip39_passphrase: Option<&str>,
     ) -> Result<(RecordId, Account)> {
+        let created_at = if let Some(created_at) = created_at {
+            created_at
+        }else{
+            SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("Time went backwards")?
+            .as_millis()
+        };
+        let last_updated_on = if let Some(last_updated_on) = last_updated_on {
+            last_updated_on
+        }else{
+            SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("Time went backwards")?
+            .as_millis()
+        };
+
         if bip39_mnemonic.is_empty() {
             return Err(anyhow!("Invalid parameters: bip39_mnemonic is missing"));
         }
@@ -593,7 +604,7 @@ impl Stronghold {
             None => None,
         };
 
-        let account = Account::import(index, created_at, last_updated_on, bip39_mnemonic, bip39_passphrase)?;
+        let account = Account::import(created_at, last_updated_on, bip39_mnemonic, bip39_passphrase)?;
 
         let record_id = self.account_save(&account, false)?;
 
@@ -619,7 +630,9 @@ impl Stronghold {
     /// # let snapshot_path = snapshot_dir().unwrap().join(snapshot_filename);
     /// let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
     /// let mnemonic = String::from("gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding");
-    /// let mut account = stronghold.account_import(0, 1598890069000, 1598890070000, mnemonic, None).unwrap();
+    /// let created_at = Some(1598890069000);
+    /// let last_updated_on = Some(1598890070000);
+    /// let mut account = stronghold.account_import(0, created_at, last_updated_on, mnemonic, None).unwrap();
     /// account.last_updated_on(true);
     /// 
     /// stronghold.account_update(&mut account);
@@ -649,6 +662,8 @@ impl Stronghold {
     /// # Parameters:
     /// 
     /// `account_id`: id of the account to which the address has to belong
+    /// 
+    /// `subaccount`: bip39 account which the private key has to belong (if None, bip39 account 0 will be used)
     ///
     /// `address_index`: index of the address to generate
     ///
@@ -668,12 +683,17 @@ impl Stronghold {
     /// let snapshot_path = "example.snapshot";
     /// # let snapshot_filename: String = thread_rng().sample_iter(&Alphanumeric).take(15).collect();
     /// # let snapshot_path = snapshot_dir().unwrap().join(snapshot_filename);
-    /// # let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
+    /// let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
     /// let mnemonic = String::from("gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding");
-    /// let account = stronghold.account_import(0, 1598890069000, 1598890070000, mnemonic, None).unwrap();
+    /// let created_at = Some(1598890069000);
+    /// let last_updated_on = Some(1598890070000);
+    /// let account = stronghold.account_import(0, created_at, last_updated_on, mnemonic, None).unwrap();
+    /// let subaccount = None;
+    /// 
     /// 
     /// let address = stronghold.address_get(
     ///     account.id(),
+    ///     subaccount,
     ///     1,
     ///     true
     /// );
@@ -686,13 +706,19 @@ impl Stronghold {
         // level thing
         &self,
         account_id: &[u8; 32],
+        subaccount: Option<usize>,
         address_index: usize,
         internal: bool,
     ) -> Result<String> {
+        let subaccount = if let Some(subaccount) = subaccount {
+            subaccount
+        }else{
+            0
+        };
         let account = self.account_get_by_id(&account_id)?;
         Ok(account.get_address(format!(
             "m/44H/4218H/{}H/{}H/{}H",
-            account.index(),
+            subaccount,
             !internal as u32,
             address_index
         ))?)
@@ -704,7 +730,9 @@ impl Stronghold {
     ///
     /// `message` message to sign
     ///
-    /// `account_id` id of the account which the private key that has to belong
+    /// `account_id` identifier of the account which the private key that has to belong
+    /// 
+    /// `subaccount`: bip39 account which the private key has to belong (if None, bip39 account 0 will be used)
     ///
     /// `internal` chain to which the private key has to belong
     ///
@@ -721,14 +749,18 @@ impl Stronghold {
     /// let snapshot_path = "example.snapshot";
     /// # let snapshot_filename: String = thread_rng().sample_iter(&Alphanumeric).take(15).collect();
     /// # let snapshot_path = snapshot_dir().unwrap().join(snapshot_filename);
-    /// # let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
+    /// let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
     /// let mnemonic = String::from("gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding");
-    /// let account = stronghold.account_import(0, 1598890069000, 1598890070000, mnemonic, None).unwrap();
+    /// let created_at = Some(1598890069000);
+    /// let last_updated_on = Some(1598890070000);
+    /// let account = stronghold.account_import(0, created_at, last_updated_on, mnemonic, None).unwrap();
     /// 
     /// let message = "With this signed message you can verify my address ownership".as_bytes();
     /// let internal = false;
     /// let index = 0;
-    /// let signature = stronghold.signature_make(&message, account.id(), internal, index);
+    /// let subaccount = None;
+    /// 
+    /// let signature = stronghold.signature_make(&message, account.id(), subaccount, internal, index);
     /// 
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
@@ -736,15 +768,20 @@ impl Stronghold {
         &self,
         message: &[u8],
         account_id: &[u8; 32],
+        subaccount: Option<usize>,
         internal: bool,
         index: usize,
     ) -> Result<String> {
         let account = self.account_get_by_id(account_id)?;
-
+        let subaccount = if let Some(subaccount) = subaccount {
+            subaccount
+        }else{
+            0
+        };
         let signature: Vec<u8> = account
             .sign_message(
                 message,
-                format!("m/44'/4218'/{}'/{}'/{}'", account.index(), !internal as u32, index),
+                format!("m/44'/4218'/{}'/{}'/{}'", subaccount, !internal as u32, index),
             )?
             .to_vec();
         Ok(base64::encode(signature))
@@ -1037,8 +1074,8 @@ mod tests {
             let (record_id, account) = &mut stronghold
                 ._account_import(
                     0,
-                    1599580138000,
-                    1599580138000,
+                    Some(1599580138000),
+                    Some(1599580138000),
                     "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
                         .to_string(),
                     None,
@@ -1058,8 +1095,8 @@ mod tests {
             let (record_id, account) = &mut stronghold
                 ._account_import(
                     0,
-                    1599580138000,
-                    1599580138000,
+                    Some(1599580138000),
+                    Some(1599580138000),
                     "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
                         .to_string(),
                     None,
@@ -1068,8 +1105,8 @@ mod tests {
             let (record_id, account) = &mut stronghold
                 ._account_import(
                     0,
-                    1599580138000,
-                    1599580138000,
+                    Some(1599580138000),
+                    Some(1599580138000),
                     "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
                         .to_string(),
                     None,
@@ -1128,8 +1165,8 @@ mod tests {
             let (record_id, account) = &mut stronghold
                 ._account_import(
                     0,
-                    1599580138000,
-                    1599580138000,
+                    Some(1599580138000),
+                    Some(1599580138000),
                     "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
                         .to_string(),
                     None,
@@ -1139,7 +1176,7 @@ mod tests {
             let account_record_id_from_index = index.0.get(&hex::encode(account.id())).unwrap();
             assert_eq!(record_id, account_record_id_from_index);
 
-            let address = stronghold.address_get(account.id(), 0, false).unwrap();
+            let address = stronghold.address_get(account.id(), None, 0, false).unwrap();
             assert_eq!(
                 address,
                 "iota1qye70q4wmhx8ys5rgsaw80g32cqlaa9ec50a8lpt88f5g033sw98s2ee8ve"
@@ -1156,8 +1193,8 @@ mod tests {
             let (record_id, account) = &mut stronghold
                 ._account_import(
                     0,
-                    1599580138000,
-                    1599580138000,
+                    Some(1599580138000),
+                    Some(1599580138000),
                     "slight during hamster song old retire flock mosquito people mirror fruit among name common know"
                         .to_string(),
                     None,
@@ -1168,7 +1205,7 @@ mod tests {
             let internal = false;
             let index = 0;
             let signature = stronghold
-                .signature_make(&message, &account.id(), internal, index)
+                .signature_make(&message, &account.id(), None, internal, index)
                 .unwrap();
 
             assert_eq!(

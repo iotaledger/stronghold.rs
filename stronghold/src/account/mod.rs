@@ -25,7 +25,6 @@ use iota::transaction::prelude::{Seed, SignedTransaction, SignedTransactionBuild
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Account {
     id: [u8; 32],
-    index: usize,
     external: bool,
     created_at: u128,
     last_updated_on: u128,
@@ -129,12 +128,12 @@ impl Account {
         &self.id
     }
 
-    pub fn index(&self) -> &usize {
-        &self.index
-    }
-
     pub fn mnemonic(&self) -> &String {
         &self.bip39_mnemonic
+    }
+
+    pub fn passphrase(&self) -> &Option<String> {
+        &self.bip39_passphrase
     }
 
     pub fn last_updated_on(&mut self, update: bool) -> &u128 {
