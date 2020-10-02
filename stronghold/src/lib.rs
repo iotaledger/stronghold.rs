@@ -684,9 +684,6 @@ impl Stronghold {
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn address_get(
-        // todo: rename to address_get_new?
-        // todo: having to indicate the derivation path maybe is a much too low
-        // level thing
         &self,
         account_id: &[u8; 32],
         subaccount: Option<usize>,
