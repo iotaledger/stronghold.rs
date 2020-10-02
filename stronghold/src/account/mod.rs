@@ -65,7 +65,6 @@ impl Account {
         let last_updated_on = created_at;
         Ok(Account {
             id,
-            index,
             external: false,
             created_at,
             last_updated_on,
@@ -75,9 +74,8 @@ impl Account {
     }
 
     pub fn import(
-        index: usize,
-        created_at: u128,
-        last_updated_on: u128,
+        created_at: Option<u128>,
+        last_updated_on: Option<u128>,
         bip39_mnemonic: String,
         bip39_passphrase: Option<String>,
     ) -> Result<Account> {
@@ -88,7 +86,6 @@ impl Account {
         let id = generate_id(&bip39_mnemonic, &bip39_passphrase)?;
         Ok(Account {
             id,
-            index,
             external: true,
             created_at,
             last_updated_on,
