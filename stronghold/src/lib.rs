@@ -573,28 +573,11 @@ impl Stronghold {
         // todo: reorder params , ¿what if try to add an account by second time?
         &self,
         index: usize,
-        created_at: Option<u128>,      // todo: maybe should be optional
-        last_updated_on: Option<u128>, // todo: maybe should be optional
+        created_at: Option<u128>,
+        last_updated_on: Option<u128>,
         bip39_mnemonic: String,
         bip39_passphrase: Option<&str>,
     ) -> Result<(RecordId, Account)> {
-        let created_at = if let Some(created_at) = created_at {
-            created_at
-        }else{
-            SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .context("Time went backwards")?
-            .as_millis()
-        };
-        let last_updated_on = if let Some(last_updated_on) = last_updated_on {
-            last_updated_on
-        }else{
-            SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .context("Time went backwards")?
-            .as_millis()
-        };
-
         if bip39_mnemonic.is_empty() {
             return Err(anyhow!("Invalid parameters: bip39_mnemonic is missing"));
         }
