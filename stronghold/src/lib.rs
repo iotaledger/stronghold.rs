@@ -284,7 +284,7 @@ impl Stronghold {
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn account_get_by_id(&self, account_id: &[u8; 32]) -> Result<Account> {
-        let (record_id, account) = self._account_get_by_id(account_id)?;
+        let (record_id, account) = self._account_get_by_id(account_id).context("Cannot find specified account")?;
         Ok(account)
     }
 
