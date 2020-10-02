@@ -459,14 +459,15 @@ impl Stronghold {
     /// let signature = "fMBliDcKbb8HAcjnQET24YhNz/88tKxJeyjSF1ZMky6VUxA3WCXzD7Gw296EHWdBx57ROmFqiYAUgdmVP9vVBg==";
     /// let is_legit = Stronghold::signature_verify(&address, &message, &signature);
     /// ```
-    pub fn signature_verify(address: &str, message: &str, signature: &str) {
+    pub fn signature_verify(address: &str, message: &str, signature: &str) -> bool {
         // signature treatment
-        let bytes = base64::decode(message).expect("Error decoding base64");
-        let signature = ed25519::Ed25519Signature::from_bytes(&bytes).expect("Error decoding bytes into signature");
+        let signature_bytes = base64::decode(signature).expect("Error decoding base64");
+        let signature =
+            ed25519::Ed25519Signature::from_bytes(&signature_bytes).expect("Error decoding bytes into signature");
 
         // address treatment
         let (hrp, data_u5) = bech32::decode(address).expect("Invalid address");
-        let mut data = bech32::convert_bits(data_u5.as_ref(), 5, 8, true).expect("Error decoding bech32");
+        let mut data = bech32::convert_bits(&data_u5, 5, 8, true).expect("Error decoding bech32");
         let address_type = data.remove(0);
         if address_type == 0 {
             panic!("ed25519 version address expected , WOTS version address found");
@@ -474,13 +475,14 @@ impl Stronghold {
         if address_type != 1 {
             panic!("ed25519 address expected , unknown version address found");
         };
-        let public_key =
-            ed25519::Ed25519PublicKey::from_bytes(data.as_ref()).expect("Error decoding data into public key");
+        let public_key = ed25519::Ed25519PublicKey::from_bytes(&data).expect("Error decoding data into public key");
 
         // verification
         public_key
-            .verify(&bytes, &signature)
-            .expect("Error verifying signature")
+            .verify(message.as_bytes(), &signature)
+            .expect("Error verifying signature");
+
+        true
     }
 
     /// Saves custom data as a new record from the snapshot
