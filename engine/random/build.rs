@@ -55,9 +55,19 @@ fn main() {
         println!("cargo:rustc-link-lib=bcrypt");
         secure_random = Some("USE_CRYPTGENRANDOM")
     }
+    #[cfg(target_os = "android")]
+    {
+        secure_random = Some("USE_DEV_RANDOM")
+    }
     #[cfg(target_os = "linux")]
     {
-        secure_random = linux_check_getrandom()
+        // somehow when compiling to `i686-linux-android` the target_os is still pointing to `linux`
+        let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+        secure_random = match target_os.as_str() {
+            "linux" => linux_check_getrandom(),
+            "android" => Some("USE_DEV_RANDOM"),
+            _ => None,
+        }
     }
 
     // check to see if there is a specified RNG
