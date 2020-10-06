@@ -43,7 +43,7 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::BTreeMap, path::Path, str};
 use storage::Storage;
-pub use storage::{Base64Decodable, Id as RecordId, RecordHint};
+pub use storage::{Base64Decodable, RecordHint, RecordId};
 
 static INDEX_HINT: &str = "index";
 
@@ -88,21 +88,21 @@ impl Stronghold {
     /// Instantiates Stronghold
     ///
     /// Use `snapshot_path` to set the snapshot file path
-    /// 
+    ///
     /// # Parameters
-    /// 
+    ///
     /// `snapshot_path`: Location in the file system.
-    /// 
+    ///
     /// `snapshot_create`: Should be true if want to create a new empty snapshot or false if you are opening an existing one.
-    /// 
+    ///
     /// `snapshot_password`: Password to use for encrypt/decrypt the snapshot file.
-    /// 
+    ///
     /// `snapshot_password_timeout`: How much time (in seconds) should be the password persisted in memory.
-    /// 
+    ///
     /// `None` will make persist the password without timeout.
-    /// 
+    ///
     /// With `Some(0)` password will erase the password instantly.
-    /// 
+    ///
     /// # Example
     /// ```
     /// # use engine::snapshot::snapshot_dir;
@@ -115,9 +115,9 @@ impl Stronghold {
     /// let create = true;
     /// let snapshot_password = "8V(#!2_%AHD]j%53";
     /// let snapshot_password_timeout = None;
-    /// 
+    ///
     /// let stronghold = Stronghold::new(&snapshot_path, create, snapshot_password.to_string(), snapshot_password_timeout).unwrap();
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn new<P: AsRef<Path>>(
@@ -137,7 +137,11 @@ impl Stronghold {
                 let index = Index::default();
                 let index_serialized = serde_json::to_string(&index).unwrap();
                 storage
-                    .encrypt(&index_serialized, Some(INDEX_HINT.as_bytes()), &snapshot_password)
+                    .encrypt(
+                        &index_serialized,
+                        Some(RecordHint::new(INDEX_HINT).unwrap()),
+                        &snapshot_password,
+                    )
                     .unwrap();
             }
         } else {
@@ -151,9 +155,9 @@ impl Stronghold {
             .as_secs();
         if let Some(timeout) = snapshot_password_timeout {
             if timeout == 0 {
-                *data = ("".to_string(), Some(time_now+timeout));
-            }else{
-                *data = (snapshot_password, Some(time_now+timeout));
+                *data = ("".to_string(), Some(time_now + timeout));
+            } else {
+                *data = (snapshot_password, Some(time_now + timeout));
             }
         } else {
             *data = (snapshot_password, None);
@@ -167,9 +171,9 @@ impl Stronghold {
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards")
                     .as_secs();
-                    if time_now > timeout {
-                        (*data).0.clear();//todo: zeroise this
-                    }
+                if time_now > timeout {
+                    (*data).0.clear(); //todo: zeroise this
+                }
             }
         });
 
@@ -179,19 +183,19 @@ impl Stronghold {
         })
     }
     /// Loads the snapshot password and its timeout
-    /// 
+    ///
     /// When the password expires you can use this for renew it
-    /// 
+    ///
     /// # Parameters
-    /// 
+    ///
     /// `snapshot_password`: Password to use for encrypt/decrypt the snapshot file.
-    /// 
+    ///
     /// `snapshot_password_timeout`: How much time (in seconds) should be the password persisted in memory.
-    /// 
+    ///
     /// `None` value will make persist the password without timeout.
-    /// 
+    ///
     /// With `Some(0)` password will erase the password instantly.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use engine::snapshot::snapshot_dir;
@@ -203,7 +207,7 @@ impl Stronghold {
     /// # let snapshot_path = snapshot_dir().unwrap().join(snapshot_filename);
     /// let snapshot_password = "8V(#!2_%AHD]j%53";
     /// let snapshot_password_timeout = Some(0); // The password will be erased instantly
-    /// 
+    ///
     /// let stronghold = Stronghold::new(&snapshot_path, true, snapshot_password.to_string(), snapshot_password_timeout).unwrap();
     /// stronghold.snapshot_password(snapshot_password.to_string(), snapshot_password_timeout);// We put the password again in memory
     /// stronghold.account_create(None).unwrap();
@@ -243,7 +247,7 @@ impl Stronghold {
         let index_serialized = serde_json::to_string(&index).unwrap();
         self.storage.encrypt(
             &index_serialized,
-            Some(INDEX_HINT.as_bytes()),
+            Some(RecordHint::new(INDEX_HINT).unwrap()),
             &self.snapshot_password.lock().unwrap().0,
         )
     }
@@ -261,11 +265,11 @@ impl Stronghold {
     }
 
     /// Returns an account by its identifier
-    /// 
+    ///
     /// # Parameters
-    /// 
+    ///
     /// `account_id`: each account has an unique and deterministic generated identifier, use it for reference the account that you need.
-    /// 
+    ///
     /// # Example
     /// ```
     /// # use engine::snapshot::snapshot_dir;
@@ -278,13 +282,15 @@ impl Stronghold {
     /// let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
     /// let account = stronghold.account_create(None).unwrap();// We create an account
     /// let account_id = &account.id();// We get its identifier
-    /// 
+    ///
     /// let account = stronghold.account_get_by_id(account_id).unwrap();// We re-get the account using its identifier
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn account_get_by_id(&self, account_id: &[u8; 32]) -> Result<Account> {
-        let (record_id, account) = self._account_get_by_id(account_id).context("Cannot find specified account")?;
+        let (record_id, account) = self
+            ._account_get_by_id(account_id)
+            .context("Cannot find specified account")?;
         Ok(account)
     }
 
@@ -298,7 +304,7 @@ impl Stronghold {
     }
 
     // Get account by record id
-    fn account_get_by_record_id(&self, record_id: &storage::Id) -> Result<Account> {
+    fn account_get_by_record_id(&self, record_id: &RecordId) -> Result<Account> {
         let decrypted = self
             .storage
             .read(*record_id, &self.snapshot_password.lock().unwrap().0)?;
@@ -308,9 +314,9 @@ impl Stronghold {
     /// Removes an existing account from the snapshot.
     ///
     /// Given an account identifier removes the account from the snapshot.
-    /// 
+    ///
     /// # Parameters
-    /// 
+    ///
     /// `account_id`: each account has an unique and deterministic generated identifier, use it for reference the account that you need remove.
     ///
     /// # Example
@@ -344,7 +350,7 @@ impl Stronghold {
     }
 
     // Save a new account in a new record
-    fn account_save(&self, account: &Account, rewrite: bool) -> Result<storage::Id> {
+    fn account_save(&self, account: &Account, rewrite: bool) -> Result<RecordId> {
         let (index_record_id, mut index) = self.index_get(None, None).context("Error getting stronghold index")?;
         if rewrite == false {
             let (_, index) = self.index_get(None, None).context("Error getting stronghold index")?;
@@ -366,7 +372,7 @@ impl Stronghold {
     /// Can get all the account identifiers in the snapshot.
     ///
     /// # Parameters
-    /// 
+    ///
     /// `skip`: should be used for prune the results in its start.
     ///
     /// `limit`: should be used to set the results total.
@@ -383,9 +389,9 @@ impl Stronghold {
     /// let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
     /// let account = stronghold.account_create(None).unwrap();
     /// let account = stronghold.account_create(None).unwrap();
-    /// 
+    ///
     /// let list = stronghold.account_list_ids(None, None);
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn account_list_ids(&self, skip: Option<usize>, limit: Option<usize>) -> Result<Vec<String>> {
@@ -452,7 +458,7 @@ impl Stronghold {
     /// Lists accounts
     ///
     /// # Parameters
-    /// 
+    ///
     /// `skip`: should be used for prune the results in its start.
     ///
     /// `limit`: should be used to set the results total.
@@ -469,9 +475,9 @@ impl Stronghold {
     /// let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
     /// let account = stronghold.account_create(None).unwrap();
     /// let account = stronghold.account_create(None).unwrap();
-    /// 
+    ///
     /// let list = stronghold.account_list(Some(0), Some(30));
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn account_list(&self, skip: Option<usize>, limit: Option<usize>) -> Result<Vec<Account>> {
@@ -488,7 +494,7 @@ impl Stronghold {
     /// Creates a new account saving it in the snapshot file.
     ///
     /// # Parameters
-    /// 
+    ///
     /// `bip39_passphrase`: Optional bip39 passphrase
     /// If you use `bip39_passphrase`, it will salt the generated mnemonic according to bip39 spec.
     ///
@@ -503,11 +509,11 @@ impl Stronghold {
     /// # let snapshot_path = snapshot_dir().unwrap().join(snapshot_filename);
     /// let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
     /// let bip39_passphrase = Some(String::from("ieu73jdumf"));
-    /// 
+    ///
     /// let account = stronghold.account_create(bip39_passphrase);
-    /// 
+    ///
     /// /// For additional info check bip39 spec https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki (note: for practical purposes in this library we are calling "account" to the master seed and "subaccount" to a bip39 account)
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn account_create(&self, bip39_passphrase: Option<String>) -> Result<Account> {
@@ -535,7 +541,7 @@ impl Stronghold {
     /// `bip39_mnemonic`: word list that is space separated.
     ///
     /// `bip39_passphrase`: used to salt the master seed generation. Optional parameter but essential if you had a passphrase, otherwise you won't be able to correctly access your wallet.
-    /// 
+    ///
     /// For additional info check bip39 spec https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki (note: for practical purposes in this library we are calling "account" to the master seed and "subaccount" to a bip39 account)
     ///
     /// # Example
@@ -550,9 +556,9 @@ impl Stronghold {
     /// let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
     /// let mnemonic = String::from("gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding");
     /// let created_at = Some(1598890069000);
-    /// let last_updated_on = Some(1598890070000); 
+    /// let last_updated_on = Some(1598890070000);
     /// let account = stronghold.account_import(0, created_at, last_updated_on, mnemonic, None);
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn account_import(
@@ -595,13 +601,13 @@ impl Stronghold {
     }
 
     /// Updates an account
-    /// 
+    ///
     /// Given an account automatically find and replace it in the snapshot file.
-    /// 
+    ///
     /// # Parameters:
-    /// 
+    ///
     /// `account`: Updated Account instance that will replace the already stored.
-    /// 
+    ///
     /// # Example
     /// ```
     /// # use engine::snapshot::snapshot_dir;
@@ -617,9 +623,9 @@ impl Stronghold {
     /// let last_updated_on = Some(1598890070000);
     /// let mut account = stronghold.account_import(0, created_at, last_updated_on, mnemonic, None).unwrap();
     /// account.last_updated_on(true);
-    /// 
+    ///
     /// stronghold.account_update(&mut account);
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn account_update(&self, account: &mut Account) {
@@ -643,9 +649,9 @@ impl Stronghold {
     /// Given an account id (`account_id`) and a derivation path (composed by `address_index` and `internal`) returns an address.
     ///
     /// # Parameters:
-    /// 
+    ///
     /// `account_id`: id of the account to which the address has to belong
-    /// 
+    ///
     /// `subaccount`: bip39 account which the private key has to belong (if None, bip39 account 0 will be used)
     ///
     /// `address_index`: index of the address to generate
@@ -672,15 +678,15 @@ impl Stronghold {
     /// let last_updated_on = Some(1598890070000);
     /// let account = stronghold.account_import(0, created_at, last_updated_on, mnemonic, None).unwrap();
     /// let subaccount = None;
-    /// 
-    /// 
+    ///
+    ///
     /// let address = stronghold.address_get(
     ///     account.id(),
     ///     subaccount,
     ///     1,
     ///     true
     /// );
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn address_get(
@@ -692,15 +698,13 @@ impl Stronghold {
     ) -> Result<String> {
         let subaccount = if let Some(subaccount) = subaccount {
             subaccount
-        }else{
+        } else {
             0
         };
         let account = self.account_get_by_id(&account_id)?;
         Ok(account.get_address(format!(
             "m/44H/4218H/{}H/{}H/{}H",
-            subaccount,
-            !internal as u32,
-            address_index
+            subaccount, !internal as u32, address_index
         ))?)
     }
 
@@ -711,7 +715,7 @@ impl Stronghold {
     /// `message` message to sign
     ///
     /// `account_id` identifier of the account which the private key that has to belong
-    /// 
+    ///
     /// `subaccount`: bip39 account which the private key has to belong (if None, bip39 account 0 will be used)
     ///
     /// `internal` chain to which the private key has to belong
@@ -734,14 +738,14 @@ impl Stronghold {
     /// let created_at = Some(1598890069000);
     /// let last_updated_on = Some(1598890070000);
     /// let account = stronghold.account_import(0, created_at, last_updated_on, mnemonic, None).unwrap();
-    /// 
+    ///
     /// let message = "With this signed message you can verify my address ownership".as_bytes();
     /// let internal = false;
     /// let index = 0;
     /// let subaccount = None;
-    /// 
+    ///
     /// let signature = stronghold.signature_make(&message, account.id(), subaccount, internal, index);
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn signature_make(
@@ -755,7 +759,7 @@ impl Stronghold {
         let account = self.account_get_by_id(account_id)?;
         let subaccount = if let Some(subaccount) = subaccount {
             subaccount
-        }else{
+        } else {
             0
         };
         let signature: Vec<u8> = account
@@ -770,7 +774,7 @@ impl Stronghold {
     /// Verifies a signature
     ///
     /// Given a `signature` you can verify if a `message` belongs to an identity (`address`)
-    /// 
+    ///
     /// # Parameters
     ///
     /// `address` the address to which the signature is supposed to belong
@@ -815,7 +819,7 @@ impl Stronghold {
     }
 
     /// Saves custom data as a new record from the snapshot
-    /// 
+    ///
     /// # Parameters
     ///
     /// `label`: a name for handling and anecdotal purposes
@@ -832,25 +836,25 @@ impl Stronghold {
     /// # let snapshot_filename: String = thread_rng().sample_iter(&Alphanumeric).take(15).collect();
     /// # let snapshot_path = snapshot_dir().unwrap().join(snapshot_filename);
     /// # let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
-    /// 
+    ///
     /// let data = "my deepest secrets";
     /// let record_id = stronghold.record_create(&data);
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
-    pub fn record_create(&self, data: &str) -> Result<storage::Id> {
+    pub fn record_create(&self, data: &str) -> Result<RecordId> {
         self.storage
             .encrypt(data, None, &self.snapshot_password.lock().unwrap().0)
     }
 
     /// Saves custom data as a new record with hint
-    pub fn record_create_with_hint(&self, data: &str, hint: &[u8]) -> Result<storage::Id> {
+    pub fn record_create_with_hint(&self, data: &str, hint: RecordHint) -> Result<RecordId> {
         self.storage
             .encrypt(data, Some(hint), &self.snapshot_password.lock().unwrap().0)
     }
 
     /// Get record by record id
-    /// 
+    ///
     /// # Parameters
     ///
     /// `record_id` id of the record to read
@@ -868,10 +872,10 @@ impl Stronghold {
     /// let data = "my deepest secrets";
     /// let record_id = stronghold.record_create(&data).unwrap();
     /// let record = stronghold.record_read(&record_id).unwrap();
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
-    pub fn record_read(&self, record_id: &storage::Id) -> Result<String> {
+    pub fn record_read(&self, record_id: &RecordId) -> Result<String> {
         self.storage.read(*record_id, &self.snapshot_password.lock().unwrap().0)
     }
 
@@ -901,7 +905,7 @@ impl Stronghold {
     /// # let stronghold = Stronghold::new(&snapshot_path, true, "password".to_string(), None).unwrap();
     /// let data = "my deepest secrets";
     /// let record_list = stronghold.record_list();
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
     pub fn record_list(&self) -> Result<Vec<(RecordId, RecordHint)>> {
@@ -909,7 +913,7 @@ impl Stronghold {
     }
 
     /// Removes record from storage by record id
-    /// 
+    ///
     /// # Parameters
     ///
     /// `record_id`: identifier of the record to remove
@@ -927,10 +931,10 @@ impl Stronghold {
     /// let data = "my deepest secrets";
     /// let record_id = stronghold.record_create(&data).unwrap();
     /// stronghold.record_remove(record_id).unwrap();
-    /// 
+    ///
     /// # let _ = std::fs::remove_file(snapshot_path);
     /// ```
-    pub fn record_remove(&self, record_id: storage::Id) -> Result<()> {
+    pub fn record_remove(&self, record_id: RecordId) -> Result<()> {
         let (index_record_id, _) = self.index_get(None, None).unwrap();
         if record_id == index_record_id {
             return Err(anyhow!("Error removing record: you can't remove index record"));
@@ -945,7 +949,7 @@ impl Stronghold {
         self._record_remove(record_id)
     }
 
-    fn _record_remove(&self, record_id: storage::Id) -> Result<()> {
+    fn _record_remove(&self, record_id: RecordId) -> Result<()> {
         self.storage
             .revoke(record_id, &self.snapshot_password.lock().unwrap().0)?;
         self.storage
@@ -961,7 +965,7 @@ pub mod test_utils {
     use std::path::PathBuf;
 
     pub fn with_snapshot<F: FnOnce(&PathBuf)>(cb: F) {
-        let snapshot_filename: String = thread_rng().sample_iter(&Alphanumeric).take(15).collect();
+        let snapshot_filename: String = thread_rng().sample_iter(&Alphanumeric).take(30).collect();
         let snapshot_path = snapshot_dir()
             .expect("failed to get snapshot dir")
             .join(snapshot_filename);
@@ -973,8 +977,8 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-    use super::Stronghold;
     use super::test_utils::{with_snapshot, SNAPSHOT_PASSWORD};
+    use super::Stronghold;
 
     #[test]
     fn create_record() {

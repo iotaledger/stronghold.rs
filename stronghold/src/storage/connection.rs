@@ -9,11 +9,11 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use engine::vault;
+use engine::vault::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
 
-use vault::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
+use std::{thread, time::Duration};
 
-use super::state::State;
+use crate::{line_error, storage::state::State};
 
 // requests to the vault.
 #[derive(Clone)]
@@ -27,7 +27,7 @@ pub enum CRequest {
 // results from the vault.
 #[derive(Clone)]
 pub enum CResult {
-    List(ListResult),
+    List(Vec<ReadResult>),
     Write,
     Delete,
     Read(ReadResult),
@@ -35,7 +35,7 @@ pub enum CResult {
 
 impl CResult {
     // get a list result back.
-    pub fn list(self) -> ListResult {
+    pub fn list(self) -> Vec<ReadResult> {
         match self {
             CResult::List(list) => list,
             _ => panic!(line_error!()),
@@ -44,25 +44,30 @@ impl CResult {
 }
 
 // resolve the requests into responses.
-pub fn send(req: CRequest) -> CResult {
-    match req {
+pub fn send(req: CRequest) -> Option<CResult> {
+    let result = match req {
         // if the request is a list, get the keys from the map and put them into a ListResult.
         CRequest::List => {
             let entries = State::storage_map()
                 .read()
                 .expect(line_error!())
-                .keys()
-                .cloned()
+                .iter()
+                .filter_map(|((k, id), bs)| {
+                    if *k == Kind::Transaction {
+                        Some(ReadResult::new(*k, id, bs))
+                    } else {
+                        None
+                    }
+                })
                 .collect();
-
-            CResult::List(ListResult::new(entries))
+            CResult::List(entries)
         }
         // on write, write data to the map and send back a Write result.
         CRequest::Write(write) => {
             State::storage_map()
                 .write()
                 .expect(line_error!())
-                .insert(write.id().to_vec(), write.data().to_vec());
+                .insert((write.kind(), write.id().to_vec()), write.data().to_vec());
 
             CResult::Write
         }
@@ -71,20 +76,34 @@ pub fn send(req: CRequest) -> CResult {
             State::storage_map()
                 .write()
                 .expect(line_error!())
-                .retain(|id, _| *id != del.id());
+                .retain(|id, _| id.0 != del.kind() || id.1 != del.id());
 
             CResult::Delete
         }
         // on read, read the data from the map and send it back in a Read Result.
         CRequest::Read(read) => {
-            let state = State::storage_map()
+            let bs = State::storage_map()
                 .read()
                 .expect(line_error!())
-                .get(read.id())
+                .get(&(read.kind(), read.id().to_vec()))
                 .cloned()
                 .expect(line_error!());
 
-            CResult::Read(ReadResult::new(read.into(), state))
+            CResult::Read(read.result(bs))
+        }
+    };
+
+    Some(result)
+}
+
+// Loop until there is a Result.
+pub fn send_until_success(req: CRequest) -> CResult {
+    loop {
+        match send(req.clone()) {
+            Some(result) => {
+                break result;
+            }
+            None => thread::sleep(Duration::from_millis(50)),
         }
     }
 }
