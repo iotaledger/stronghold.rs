@@ -564,21 +564,19 @@ impl Stronghold {
     pub fn account_import(
         // todo: reorder params , ¿what if try to add an account by second time?
         &self,
-        index: usize,
         created_at: Option<u128>,
         last_updated_on: Option<u128>,
         bip39_mnemonic: String,
         bip39_passphrase: Option<&str>,
     ) -> Result<Account> {
         Ok(self
-            ._account_import(index, created_at, last_updated_on, bip39_mnemonic, bip39_passphrase)?
+            ._account_import(created_at, last_updated_on, bip39_mnemonic, bip39_passphrase)?
             .1)
     }
 
     fn _account_import(
         // todo: reorder params , ¿what if try to add an account by second time?
         &self,
-        index: usize,
         created_at: Option<u128>,
         last_updated_on: Option<u128>,
         bip39_mnemonic: String,
