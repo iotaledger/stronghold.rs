@@ -20,31 +20,31 @@ use bee_signing_ext::{
     Signer,
 };
 use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
-use iota::transaction::prelude::{Seed, SignedTransaction, SignedTransactionBuilder};
+use iota::transaction::prelude::{Seed, Transaction, TransactionBuilder};
 
 #[derive(Serialize, Deserialize, Debug)]
 /// Account
-/// 
+///
 /// Contains a bip39 master seed: https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki
-/// 
+///
 /// # Properties
-/// 
-/// `id`: identifier deterministically generated hashing with sha256 the first receiving address of its first sub account (bip39 account)
-/// 
+///
+/// `id`: identifier deterministically generated hashing with sha256 the first receiving address of its first sub
+/// account (bip39 account)
+///
 /// `external`: true if the account was imported from outside or false if was created in stronghold
-/// 
+///
 /// `created_at`: timestamp in unix epoch in ms when the account was created
-/// 
+///
 /// `last_updated_on`: timestamp in unix epoch in ms of when the account was updated for last time
-/// 
+///
 /// `bip39_mnemonic`: human readable bip39 mnemonic phrase. Critical data to have, don't forget it.
-/// 
+///
 /// `bip39_passphrase`: passphrase used to salt the menmonic phrase, optional but critical if is used. Don't forget it.
-/// 
+///
 /// # Considerations
-/// 
+///
 /// This struct doesn't handle data in the snapshot. Be careful when you use it.
-/// 
 pub struct Account {
     id: [u8; 32],
     external: bool,
@@ -74,15 +74,15 @@ fn generate_id<'a>(bip39_mnemonic: &str, bip39_passphrase: &Option<String>) -> R
 }
 
 impl Account {
-    ///
     /// Instanciates a new Account{}
-    /// 
+    ///
     /// The new account will have internally a random mnemonic and the current date
-    /// 
+    ///
     /// # Parameters
-    /// 
-    /// `bip39_passphrase`: passphrase used to salt the menmonic phrase, optional but critical if is used. Don't forget it.
-    /// 
+    ///
+    /// `bip39_passphrase`: passphrase used to salt the menmonic phrase, optional but critical if is used. Don't forget
+    /// it.
+    ///
     /// # Examples
     /// ```
     /// use stronghold::Account;
@@ -93,7 +93,6 @@ impl Account {
     /// let bip39_passphrase = Some("banana".to_string());
     /// let account = Account::new(bip39_passphrase).unwrap();
     /// ```
-    /// 
     pub fn new(bip39_passphrase: Option<String>) -> Result<Account> {
         // Mnemonic generation
         let bip39_mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words24, bip39::Language::English);
@@ -115,21 +114,23 @@ impl Account {
         })
     }
 
-    ///
     /// Instanciates a new Account{} from given data
-    /// 
+    ///
     /// The account will have the given data
-    /// 
+    ///
     /// # Parameters
-    /// 
-    /// `created_at`: timestamp in unix epoch in ms when the account was created (optional, None will internally set current timestamp)
-    /// 
-    /// `last_updated_on`: timestamp in unix epoch in ms of when the account was updated for last time (optional, None will internally set current timestamp)
-    /// 
+    ///
+    /// `created_at`: timestamp in unix epoch in ms when the account was created (optional, None will internally set
+    /// current timestamp)
+    ///
+    /// `last_updated_on`: timestamp in unix epoch in ms of when the account was updated for last time (optional, None
+    /// will internally set current timestamp)
+    ///
     /// `bip39_mnemonic`: human readable bip39 mnemonic phrase. Critical data to have, don't forget it.
-    /// 
-    /// `bip39_passphrase`: passphrase used to salt the menmonic phrase, optional but critical if is used. Don't forget it.
-    /// 
+    ///
+    /// `bip39_passphrase`: passphrase used to salt the menmonic phrase, optional but critical if is used. Don't forget
+    /// it.
+    ///
     /// # Example
     /// ```
     /// use stronghold::Account;
@@ -139,7 +140,6 @@ impl Account {
     ///
     /// let account = Account::import(created_at, last_updated_on, mnemonic.to_string(), None).unwrap();
     /// ```
-    /// 
     pub fn import(
         created_at: Option<u128>,
         last_updated_on: Option<u128>,
@@ -154,19 +154,19 @@ impl Account {
 
         let created_at = if let Some(created_at) = created_at {
             created_at
-        }else{
+        } else {
             SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .context("Time went backwards")?
-            .as_millis()
+                .duration_since(UNIX_EPOCH)
+                .context("Time went backwards")?
+                .as_millis()
         };
         let last_updated_on = if let Some(last_updated_on) = last_updated_on {
             last_updated_on
-        }else{
+        } else {
             SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .context("Time went backwards")?
-            .as_millis()
+                .duration_since(UNIX_EPOCH)
+                .context("Time went backwards")?
+                .as_millis()
         };
 
         Ok(Account {
@@ -196,41 +196,38 @@ impl Account {
         .map_err(|e| anyhow::anyhow!(e.to_string()))?)
     }
 
-    ///
     /// Derives the account seed returning an address
-    /// 
+    ///
     /// # Parameters
-    /// 
+    ///
     /// `derivation_path`: path required that will be used for derive the seed.
-    /// 
+    ///
     /// # Returns
     /// string with bech32 encoded public key
-    /// 
+    ///
     /// # Example
     /// ```
     /// use stronghold::Account;
     /// let mnemonic = "gossip region recall forest clip confirm agent grant border spread under lyrics diesel hint mind patch oppose large street panther duty robust city wedding";
     /// let account = Account::import(None, None, mnemonic.to_string(), None).unwrap();
     /// let derivation_path = "m/44H/4218H/0H/0H/0H".to_string();
-    /// 
+    ///
     /// let address = account.get_address(derivation_path);
     /// ```
-    /// 
     pub fn get_address(&self, derivation_path: String) -> Result<String> {
         let privkey = self.get_privkey(derivation_path)?;
         Ok(dummy_derive_into_address(privkey))
     }
 
-    ///
     /// Signs a message with a derived private key from the account seed
-    /// 
+    ///
     /// # Parameters
-    /// 
+    ///
     /// `derivation_path`: path required that will be used for derive the seed.
-    /// 
+    ///
     /// # Returns
     /// signature as an u8 slice
-    /// 
+    ///
     /// # Example
     /// ```
     /// use stronghold::Account;
@@ -238,18 +235,16 @@ impl Account {
     /// let account = Account::import(None, None, mnemonic.to_string(), None).unwrap();
     /// let message = "banana".as_bytes();
     /// let derivation_path = "m/44H/4218H/0H/0H/0H".to_string();
-    /// 
+    ///
     /// let signature = account.sign_message(message,derivation_path);
     /// ```
-    /// 
     pub fn sign_message(&self, message: &[u8], derivation_path: String) -> Result<[u8; 64]> {
         let privkey = self.get_privkey(derivation_path)?;
         Ok(privkey.sign(message).to_bytes())
     }
 
-    ///
     /// Returns the account identifier
-    /// 
+    ///
     /// # Example
     /// ```
     /// use stronghold::Account;
@@ -257,53 +252,46 @@ impl Account {
     /// let account = Account::import(None, None, mnemonic.to_string(), None).unwrap();
     /// let account_id = account.id();
     /// ```
-    /// 
     pub fn id(&self) -> &[u8; 32] {
         &self.id
     }
 
-    ///
     /// Returns the account identifier
-    /// 
+    ///
     /// # Example
     /// ```
     /// use stronghold::Account;
     /// let account = Account::new(None).unwrap();
     /// let account_id = account.id();
     /// ```
-    /// 
     pub fn mnemonic(&self) -> &String {
         &self.bip39_mnemonic
     }
 
-    ///
     /// Returns the bip39 passphrase of the account
-    /// 
+    ///
     /// # Example
     /// ```
     /// use stronghold::Account;
     /// let account = Account::new(Some("banana".to_string())).unwrap();
     /// let account_passphrase = account.passphrase();
     /// ```
-    /// 
     pub fn passphrase(&self) -> &Option<String> {
         &self.bip39_passphrase
     }
 
-    ///
     /// Returns the last time the account was updated (timestamp unix epoch)
-    /// 
+    ///
     /// # Parameters:
-    /// 
+    ///
     /// `update`: If is true, the property will be updated with the current timestamp (and this will be returned)
-    /// 
+    ///
     /// # Example
     /// ```
     /// use stronghold::Account;
     /// let mut account = Account::new(Some("banana".to_string())).unwrap();
     /// let last_updated_on = account.last_updated_on(false);
     /// ```
-    /// 
     pub fn last_updated_on(&mut self, update: bool) -> &u128 {
         if update {
             self.last_updated_on = SystemTime::now()
@@ -314,31 +302,28 @@ impl Account {
         &self.last_updated_on
     }
 
-
-    //todo: complete example
-    /// Gets a SignedTransaction builder with the account seed
-    /// 
+    // todo: complete example
+    /// Gets a Transaction builder with the account seed
+    ///
     /// # Parameters:
-    /// 
-    /// `callback`: callback with the `SignedTransactionBuilder`
-    /// 
+    ///
+    /// `callback`: callback with the `TransactionBuilder`
+    ///
     /// # Example
     /// ```ignore
     /// use stronghold::Account;
     /// let account = Account::new(Some("banana".to_string())).unwrap();
-    /// 
-    /// account.with_signed_transaction_builder(|builder| {
+    ///
+    /// account.with_transaction_builder(|builder| {
     ///     builder
     ///     .set_outputs(utxo_outputs)
     ///     .set_inputs(indexed_utxo_inputs)
     ///     .build()
     /// });
-    /// 
     /// ```
-    /// 
-    pub fn with_signed_transaction_builder<T, F: FnOnce(SignedTransactionBuilder<'_>) -> T>(&self, cb: F) -> T {
+    pub fn with_transaction_builder<T, F: FnOnce(TransactionBuilder<'_>) -> T>(&self, cb: F) -> T {
         let seed = Seed::from_ed25519_bytes(self.get_seed().as_bytes()).expect("failed to construct seed");
-        let builder = SignedTransaction::builder(&seed);
+        let builder = Transaction::builder(&seed);
         cb(builder)
     }
 }
