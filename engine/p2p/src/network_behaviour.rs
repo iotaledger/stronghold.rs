@@ -36,6 +36,44 @@ pub struct P2PNetworkBehaviour {
     pub(crate) msg_proto: RequestResponse<MailboxCodec>,
 }
 
+impl P2PNetworkBehaviour {
+    fn handle_request_msg(&mut self, request: MailboxRequest, channel: ResponseChannel<MailboxResponse>) {
+        match request {
+            Ping => {
+                println!("Received Ping, we will send a Pong back.");
+                self.msg_proto.send_response(channel, Pong);
+            }
+            PubReq(r) => {
+                let duration = if r.timeout_sec > 0 { r.timeout_sec } else { 9000u64 };
+                let record = Record {
+                    key: Key::new(&r.key),
+                    value: r.value.into_bytes(),
+                    publisher: None,
+                    expires: Some(Instant::now() + Duration::new(duration, 0)),
+                };
+                let put_record = self.kademlia.put_record(record, Quorum::One);
+                if put_record.is_ok() {
+                    println!("Successfully stored record.");
+                    self.msg_proto.send_response(channel, PubRes(MailboxResult::Success));
+                } else {
+                    println!("Error storing record: {:?}", put_record.err());
+                }
+            }
+        }
+    }
+
+    fn handle_response_msg(&mut self, request_id: RequestId, response: MailboxResponse) {
+        match response {
+            Pong => {
+                println!("Received Pong for request {:?}.", request_id);
+            }
+            PubRes(result) => {
+                println!("Received Result for publish request {:?}: {:?}.", request_id, result);
+            }
+        }
+    }
+}
+
 impl NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour {
     // Called when `mdns` produces an event.
     fn inject_event(&mut self, event: MdnsEvent) {
@@ -102,44 +140,6 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<MailboxRequest, MailboxRe
                 "Inbound Failure for request {:?} to peer: {:?}: {:?}.",
                 request_id, peer, error
             ),
-        }
-    }
-}
-
-impl P2PNetworkBehaviour {
-    fn handle_request_msg(&mut self, request: MailboxRequest, channel: ResponseChannel<MailboxResponse>) {
-        match request {
-            Ping => {
-                println!("Received Ping, we will send a Pong back.");
-                self.msg_proto.send_response(channel, Pong);
-            }
-            PubReq(r) => {
-                let duration = if r.timeout_sec > 0 { r.timeout_sec } else { 9000u64 };
-                let record = Record {
-                    key: Key::new(&r.key),
-                    value: r.value.into_bytes(),
-                    publisher: None,
-                    expires: Some(Instant::now() + Duration::new(duration, 0)),
-                };
-                let put_record = self.kademlia.put_record(record, Quorum::One);
-                if put_record.is_ok() {
-                    println!("Successfully stored record.");
-                    self.msg_proto.send_response(channel, PubRes(MailboxResult::Success));
-                } else {
-                    println!("Error storing record: {:?}", put_record.err());
-                }
-            }
-        }
-    }
-
-    fn handle_response_msg(&mut self, request_id: RequestId, response: MailboxResponse) {
-        match response {
-            Pong => {
-                println!("Received Pong for request {:?}.", request_id);
-            }
-            PubRes(result) => {
-                println!("Received Result for publish request {:?}: {:?}.", request_id, result);
-            }
         }
     }
 }
