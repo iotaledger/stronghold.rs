@@ -14,7 +14,7 @@ use crate::mailboxes::{Mailbox, Mailboxes};
 use crate::network_behaviour::P2PNetworkBehaviour;
 use libp2p::{
     build_development_transport,
-    core::Multiaddr,
+    core::{connection, Multiaddr},
     identity::Keypair,
     kad::{record::store::MemoryStore, record::Key, Kademlia, Quorum, Record},
     mdns::Mdns,
@@ -123,8 +123,25 @@ impl P2P {
         self.peer_id.clone()
     }
 
+    pub fn dial_remote(&mut self, peer_addr: Multiaddr) -> Result<(), connection::ConnectionLimit> {
+        Swarm::dial_addr(&mut self.swarm, peer_addr)
+    }
+
+    pub fn print_kad_buckets(&mut self) {
+        for bucket in self.swarm.kademlia.kbuckets() {
+            for entry in bucket.iter() {
+                println!("key: {:?}, values: {:?}", entry.node.key.preimage(), entry.node.value);
+            }
+        }
+    }
+
+    pub fn ping(&mut self, peer_id: PeerId) {
+        let ping = MailboxRequest::Ping;
+        self.swarm.msg_proto.send_request(&peer_id, ping);
+    }
+
     pub fn add_mailbox(&mut self, mailbox_peer: PeerId, mailbox_addr: Multiaddr, is_default: bool) {
-        if Swarm::dial_addr(&mut self.swarm, mailbox_addr.clone()).is_ok() {
+        if self.dial_remote(mailbox_addr.clone()).is_ok() {
             let mailbox = Mailbox::new(mailbox_peer, mailbox_addr);
             if let Some(mailboxes) = self.mailboxes.as_mut() {
                 mailboxes.add_mailbox(mailbox, is_default);
