@@ -27,3 +27,4 @@ pub use primitives;
 pub use random;
 pub use snapshot;
 pub use vault;
+pub use p2p;

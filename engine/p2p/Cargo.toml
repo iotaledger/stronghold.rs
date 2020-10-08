@@ -1,0 +1,25 @@
+[package]
+name = "p2p"
+version = "0.1.0"
+authors = ["Elena Frank <elena.frank@iota.org>"]
+edition = "2018"
+license = "Apache-2.0 OR MIT"
+readme = "README.md"
+build = "build.rs"
+
+[dependencies]
+async-std = "1.6.2"
+async-trait = "0.1.40"
+bytes = "0.5.6"
+futures = "0.3.1"
+libp2p = "0.28.1"
+prost = "0.6.1"
+regex = "1.3.9"
+
+[features]
+default = []
+
+local = []
+
+[build-dependencies]
+prost-build = "0.6.1"
