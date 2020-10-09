@@ -11,12 +11,14 @@
 
 use crate::mailbox_protocol::{
     MailboxCodec,
-    MailboxRequest::{self, Ping, Publish as PubReq},
-    MailboxResponse::{self, Pong, Publish as PubRes},
-    MailboxResult,
+    MailboxRequest::{self, Ping},
+    MailboxResponse::{self, Pong},
 };
+#[cfg(feature="kademlia")]
+use crate::mailbox_protocol::{MailboxResult, MailboxRequest::Publish as PubReq, MailboxResponse::Publish as PubRes};
+#[cfg(feature="kademlia")]
+use core::time::Duration;
 use libp2p::{
-    kad::{record::Key, store::MemoryStore, Kademlia, KademliaEvent, PeerRecord, QueryResult, Quorum, Record},
     mdns::{Mdns, MdnsEvent},
     request_response::{
         RequestId, RequestResponse,
@@ -27,10 +29,15 @@ use libp2p::{
     swarm::NetworkBehaviourEventProcess,
     NetworkBehaviour,
 };
-use std::time::{Duration, Instant};
+#[cfg(feature="kademlia")]
+use libp2p::kad::{record::Key, store::MemoryStore, Kademlia, KademliaEvent, PeerRecord, QueryResult, Quorum, Record};
+#[cfg(feature="kademlia")]
+// TODO: support no_std
+use std::time::Instant;
 
 #[derive(NetworkBehaviour)]
 pub struct P2PNetworkBehaviour {
+    #[cfg(feature="kademlia")]
     pub(crate) kademlia: Kademlia<MemoryStore>,
     pub(crate) mdns: Mdns,
     pub(crate) msg_proto: RequestResponse<MailboxCodec>,
@@ -43,6 +50,7 @@ impl P2PNetworkBehaviour {
                 println!("Received Ping, we will send a Pong back.");
                 self.msg_proto.send_response(channel, Pong);
             }
+            #[cfg(feature="kademlia")]
             PubReq(r) => {
                 let duration = if r.timeout_sec > 0 { r.timeout_sec } else { 9000u64 };
                 let record = Record {
@@ -67,6 +75,7 @@ impl P2PNetworkBehaviour {
             Pong => {
                 println!("Received Pong for request {:?}.", request_id);
             }
+            #[cfg(feature="kademlia")]
             PubRes(result) => {
                 println!("Received Result for publish request {:?}: {:?}.", request_id, result);
             }
@@ -76,8 +85,9 @@ impl P2PNetworkBehaviour {
 
 impl NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour {
     // Called when `mdns` produces an event.
-    fn inject_event(&mut self, event: MdnsEvent) {
-        if let MdnsEvent::Discovered(list) = event {
+    fn inject_event(&mut self, _event: MdnsEvent) {
+        #[cfg(feature="kademlia")]
+        if let MdnsEvent::Discovered(list) = _event {
             for (peer_id, multiaddr) in list {
                 self.kademlia.add_address(&peer_id, multiaddr);
             }
@@ -85,6 +95,7 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour {
     }
 }
 
+#[cfg(feature="kademlia")]
 impl NetworkBehaviourEventProcess<KademliaEvent> for P2PNetworkBehaviour {
     // Called when `kademlia` produces an event.
     fn inject_event(&mut self, message: KademliaEvent) {

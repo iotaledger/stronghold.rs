@@ -1,3 +1,4 @@
+use crate::error::{P2PError, P2PResult};
 use libp2p::core::{Multiaddr, PeerId};
 
 #[derive(Debug, Clone)]
@@ -41,12 +42,11 @@ impl Mailboxes {
         self.default.clone()
     }
 
-    pub fn set_default(&mut self, mailbox_peer: PeerId) {
-        if self.find_mailbox(&mailbox_peer).is_some() {
-            self.default = mailbox_peer;
-        } else {
-            eprintln!("Error: no peer with this");
-        }
+    pub fn set_default(&mut self, mailbox_peer: PeerId) -> P2PResult<PeerId> {
+        self.find_mailbox(&mailbox_peer)
+            .ok_or_else(|| P2PError::Mailbox(format!("No know Mailbox for{}", mailbox_peer)))?;
+        self.default = mailbox_peer.clone();
+        Ok(mailbox_peer)
     }
 
     pub fn find_mailbox(&self, mailbox_peer: &PeerId) -> Option<Mailbox> {

@@ -20,7 +20,8 @@ use libp2p::{
     request_response::RequestResponseCodec,
 };
 use prost::Message;
-use std::io;
+// TODO: support no_std
+use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind, Result as IOResult};
 
 #[derive(Debug, Clone)]
 pub struct MailboxProtocol();
@@ -30,6 +31,7 @@ pub struct MailboxCodec();
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MailboxRequest {
     Ping,
+    #[cfg(feature="kademlia")]
     Publish(MailboxRecord),
 }
 
@@ -43,9 +45,11 @@ pub struct MailboxRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MailboxResponse {
     Pong,
+    #[cfg(feature="kademlia")]
     Publish(MailboxResult),
 }
 
+#[cfg(feature="kademlia")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MailboxResult {
     Success,
@@ -64,37 +68,37 @@ impl RequestResponseCodec for MailboxCodec {
     type Request = MailboxRequest;
     type Response = MailboxResponse;
 
-    async fn read_request<T>(&mut self, _: &MailboxProtocol, io: &mut T) -> io::Result<Self::Request>
+    async fn read_request<T>(&mut self, _: &MailboxProtocol, io: &mut T) -> IOResult<Self::Request>
     where
         T: AsyncRead + Unpin + Send,
     {
         read_one(io, 1024)
             .map(|req| match req {
                 Ok(bytes) => {
-                    let request = proto::Message::decode(io::Cursor::new(bytes))?;
+                    let request = proto::Message::decode(IOCursor::new(bytes))?;
                     proto_msg_to_req(request)
                 }
-                Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e)),
+                Err(e) => Err(IOError::new(IOErrorKind::InvalidData, e)),
             })
             .await
     }
 
-    async fn read_response<T>(&mut self, _: &MailboxProtocol, io: &mut T) -> io::Result<Self::Response>
+    async fn read_response<T>(&mut self, _: &MailboxProtocol, io: &mut T) -> IOResult<Self::Response>
     where
         T: AsyncRead + Unpin + Send,
     {
         read_one(io, 1024)
             .map(|res| match res {
                 Ok(bytes) => {
-                    let response = proto::Message::decode(io::Cursor::new(bytes))?;
+                    let response = proto::Message::decode(IOCursor::new(bytes))?;
                     proto_msg_to_res(response)
                 }
-                Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e)),
+                Err(e) => Err(IOError::new(IOErrorKind::InvalidData, e)),
             })
             .await
     }
 
-    async fn write_request<T>(&mut self, _: &MailboxProtocol, io: &mut T, req: MailboxRequest) -> io::Result<()>
+    async fn write_request<T>(&mut self, _: &MailboxProtocol, io: &mut T, req: MailboxRequest) -> IOResult<()>
     where
         T: AsyncWrite + Unpin + Send,
     {
@@ -106,7 +110,7 @@ impl RequestResponseCodec for MailboxCodec {
         write_one(io, buf).await
     }
 
-    async fn write_response<T>(&mut self, _: &MailboxProtocol, io: &mut T, res: MailboxResponse) -> io::Result<()>
+    async fn write_response<T>(&mut self, _: &MailboxProtocol, io: &mut T, res: MailboxResponse) -> IOResult<()>
     where
         T: AsyncWrite + Unpin + Send,
     {
@@ -119,29 +123,31 @@ impl RequestResponseCodec for MailboxCodec {
     }
 }
 
-fn proto_msg_to_req(msg: proto::Message) -> Result<MailboxRequest, io::Error> {
+fn proto_msg_to_req(msg: proto::Message) -> Result<MailboxRequest, IOError> {
     let msg_type = proto::message::MessageType::from_i32(msg.r#type)
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
     match msg_type {
         proto::message::MessageType::Ping => Ok(MailboxRequest::Ping),
+        #[cfg(feature="kademlia")]
         proto::message::MessageType::Publish => {
             let proto_record = msg.record.unwrap_or_default();
             let record = MailboxRecord {
-                key: String::from_utf8(proto_record.key).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
-                value: String::from_utf8(proto_record.value)
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+                key: String::from_utf8(proto_record.key).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
+                value: String::from_utf8(proto_record.value).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
                 timeout_sec: proto_record.timeout,
             };
             Ok(MailboxRequest::Publish(record))
         }
+        _ => unreachable!()
     }
 }
 
-fn proto_msg_to_res(msg: proto::Message) -> Result<MailboxResponse, io::Error> {
+fn proto_msg_to_res(msg: proto::Message) -> Result<MailboxResponse, IOError> {
     let msg_type = proto::message::MessageType::from_i32(msg.r#type)
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
     match msg_type {
         proto::message::MessageType::Ping => Ok(MailboxResponse::Pong),
+        #[cfg(feature="kademlia")]
         proto::message::MessageType::Publish => {
             match proto::message::Result::from_i32(msg.r#result)
                 .ok_or_else(|| invalid_data(format!("unknown message result: {}", msg.r#result)))?
@@ -150,6 +156,7 @@ fn proto_msg_to_res(msg: proto::Message) -> Result<MailboxResponse, io::Error> {
                 proto::message::Result::Error => Ok(MailboxResponse::Publish(MailboxResult::Error)),
             }
         }
+        _ => unreachable!()
     }
 }
 
@@ -159,6 +166,7 @@ fn req_to_proto_msg(req: MailboxRequest) -> proto::Message {
             r#type: proto::message::MessageType::Ping as i32,
             ..proto::Message::default()
         },
+        #[cfg(feature="kademlia")]
         MailboxRequest::Publish(record) => {
             let proto_record = proto::Record {
                 key: record.key.into_bytes(),
@@ -180,6 +188,7 @@ fn res_to_proto_msg(res: MailboxResponse) -> proto::Message {
             r#type: proto::message::MessageType::Ping as i32,
             ..proto::Message::default()
         },
+        #[cfg(feature="kademlia")]
         MailboxResponse::Publish(r) => {
             let result = match r {
                 MailboxResult::Success => proto::message::Result::Success,
@@ -194,10 +203,10 @@ fn res_to_proto_msg(res: MailboxResponse) -> proto::Message {
     }
 }
 
-/// Creates an `io::Error` with `io::ErrorKind::InvalidData`.
-fn invalid_data<E>(e: E) -> io::Error
+/// Creates an `IOError` with `IOErrorKind::InvalidData`.
+fn invalid_data<E>(e: E) -> IOError
 where
     E: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
-    io::Error::new(io::ErrorKind::InvalidData, e)
+    IOError::new(IOErrorKind::InvalidData, e)
 }
