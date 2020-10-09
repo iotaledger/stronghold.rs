@@ -10,10 +10,10 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 use crate::error::{P2PError, P2PResult};
-use crate::mailbox_protocol::{MailboxCodec, MailboxProtocol, MailboxRequest};
-#[cfg(feature="kademlia")]
+#[cfg(feature = "kademlia")]
 use crate::mailbox_protocol::MailboxRecord;
-#[cfg(feature="kademlia")]
+use crate::mailbox_protocol::{MailboxCodec, MailboxProtocol, MailboxRequest};
+#[cfg(feature = "kademlia")]
 use crate::mailboxes::{Mailbox, Mailboxes};
 use crate::network_behaviour::P2PNetworkBehaviour;
 use core::{iter, time::Duration};
@@ -27,21 +27,22 @@ use libp2p::{
     PeerId, Swarm,
 };
 
-#[cfg(feature="kademlia")]
+#[cfg(feature = "kademlia")]
 use libp2p::request_response::RequestId;
 
-#[cfg(feature="kademlia")]
+#[cfg(feature = "kademlia")]
 use libp2p::kad::{record::store::MemoryStore, record::Key, Kademlia, QueryId, Quorum, Record};
-#[cfg(feature="kademlia")]
+#[cfg(feature = "kademlia")]
 // TODO: support no_std
 use std::time::Instant;
 
 mod structs_proto {
     include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
 }
+pub mod codec;
 mod error;
 mod mailbox_protocol;
-#[cfg(feature="kademlia")]
+#[cfg(feature = "kademlia")]
 mod mailboxes;
 mod network_behaviour;
 
@@ -73,7 +74,7 @@ pub struct P2P {
     #[allow(dead_code)]
     config: P2PConfig,
     swarm: P2PNetworkSwarm,
-    #[cfg(feature="kademlia")]
+    #[cfg(feature = "kademlia")]
     mailboxes: Option<Mailboxes>,
 }
 
@@ -81,14 +82,14 @@ impl P2P {
     pub fn new(local_keys: Keypair, config: P2PConfig, _mailbox: Option<(PeerId, Multiaddr)>) -> P2PResult<Self> {
         let peer_id = PeerId::from(local_keys.public());
 
-        let mut swarm: P2PNetworkSwarm = P2P::create_swarm(local_keys, peer_id.clone())?;
+        let mut swarm = P2P::create_swarm(local_keys, peer_id.clone())?;
 
         let addr = format!("/ip4/0.0.0.0/tcp/{}", config.port)
             .parse()
             .map_err(|e| P2PError::ConnectionError(format!("Invalid Port {}: {}", config.port, e)))?;
         Swarm::listen_on(&mut swarm, addr).map_err(|e| P2PError::ConnectionError(format!("{}", e)))?;
 
-        #[cfg(feature="kademlia")]
+        #[cfg(feature = "kademlia")]
         let mailboxes = _mailbox.and_then(|(mailbox_id, mailbox_addr)| {
             Swarm::dial_addr(&mut swarm, mailbox_addr.clone())
                 .ok()
@@ -102,7 +103,7 @@ impl P2P {
         Ok(P2P {
             peer_id,
             config,
-            #[cfg(feature="kademlia")]
+            #[cfg(feature = "kademlia")]
             mailboxes,
             swarm,
         })
@@ -111,7 +112,7 @@ impl P2P {
     fn create_swarm(local_keys: Keypair, peer_id: PeerId) -> P2PResult<P2PNetworkSwarm> {
         let transport = build_development_transport(local_keys)
             .map_err(|_| P2PError::ConnectionError("Could not build transport layer".to_string()))?;
-        #[cfg(feature="kademlia")]
+        #[cfg(feature = "kademlia")]
         let kademlia = {
             let store = MemoryStore::new(peer_id.clone());
             Kademlia::new(peer_id.clone(), store)
@@ -126,7 +127,7 @@ impl P2P {
         };
 
         let behaviour = P2PNetworkBehaviour {
-            #[cfg(feature="kademlia")]
+            #[cfg(feature = "kademlia")]
             kademlia,
             mdns,
             msg_proto,
@@ -144,13 +145,13 @@ impl P2P {
     }
 
     pub fn print_known_peer(&mut self) {
-        #[cfg(feature="kademlia")]
+        #[cfg(feature = "kademlia")]
         for bucket in self.swarm.kademlia.kbuckets() {
             for entry in bucket.iter() {
                 println!("key: {:?}, values: {:?}", entry.node.key.preimage(), entry.node.value);
             }
         }
-        #[cfg(not(feature="kademlia"))]
+        #[cfg(not(feature = "kademlia"))]
         for peer_id in self.swarm.mdns.discovered_nodes() {
             println!("{:?}", peer_id);
         }
@@ -161,7 +162,7 @@ impl P2P {
         self.swarm.msg_proto.send_request(&peer_id, ping);
     }
 
-    #[cfg(feature="kademlia")]
+    #[cfg(feature = "kademlia")]
     pub fn add_mailbox(&mut self, mailbox_peer: PeerId, mailbox_addr: Multiaddr, is_default: bool) -> P2PResult<()> {
         self.dial_remote(mailbox_addr.clone())?;
         let mailbox = Mailbox::new(mailbox_peer, mailbox_addr);
@@ -173,7 +174,7 @@ impl P2P {
         Ok(())
     }
 
-    #[cfg(feature="kademlia")]
+    #[cfg(feature = "kademlia")]
     pub fn set_default_mailbox(&mut self, mailbox_peer: PeerId) -> P2PResult<PeerId> {
         let mut mailboxes = self
             .mailboxes
@@ -182,13 +183,13 @@ impl P2P {
         mailboxes.set_default(mailbox_peer)
     }
 
-    #[cfg(feature="kademlia")]
+    #[cfg(feature = "kademlia")]
     pub fn get_record(&mut self, key_str: String) {
         let key = Key::new(&key_str);
         self.swarm.kademlia.get_record(&key, Quorum::One);
     }
 
-    #[cfg(feature="kademlia")]
+    #[cfg(feature = "kademlia")]
     pub fn put_record_local(
         &mut self,
         key_str: String,
@@ -208,7 +209,7 @@ impl P2P {
             .map_err(|_| P2PError::KademliaError("Can not store record".to_string()))
     }
 
-    #[cfg(feature="kademlia")]
+    #[cfg(feature = "kademlia")]
     pub fn put_record_mailbox(
         &mut self,
         key: String,

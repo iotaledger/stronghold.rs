@@ -9,33 +9,10 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-syntax = "proto3";
-package structs.pb;
+use crate::mailbox_protocol::{MailboxRequest, MailboxResponse};
+use libp2p::request_response::{RequestId, ResponseChannel};
 
-message Record {
-	bytes key = 1;
-	bytes value = 2;
-	fixed64 timeout = 3;
-}
-
-message Message {
-	enum MessageType {
-		PING = 0;
-		PUBLISH = 1;
-		MSG = 2;
-	}
-
-	enum Result {
-		SUCCESS = 0;
-		ERROR = 1;
-	}
-
-	MessageType type = 1;
-
-	Record record = 2;
-
-	Result result = 3;
-
-	bytes message = 4;
-
+pub trait P2PCodec {
+    fn handle_request_msg(&mut self, request: MailboxRequest, channel: ResponseChannel<MailboxResponse>);
+    fn handle_response_msg(&mut self, response: MailboxResponse, request_id: RequestId);
 }

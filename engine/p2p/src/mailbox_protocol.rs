@@ -31,8 +31,9 @@ pub struct MailboxCodec();
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MailboxRequest {
     Ping,
-    #[cfg(feature="kademlia")]
+    #[cfg(feature = "kademlia")]
     Publish(MailboxRecord),
+    Message(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,11 +46,11 @@ pub struct MailboxRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MailboxResponse {
     Pong,
-    #[cfg(feature="kademlia")]
+    #[cfg(feature = "kademlia")]
     Publish(MailboxResult),
 }
 
-#[cfg(feature="kademlia")]
+#[cfg(feature = "kademlia")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MailboxResult {
     Success,
@@ -128,7 +129,7 @@ fn proto_msg_to_req(msg: proto::Message) -> Result<MailboxRequest, IOError> {
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
     match msg_type {
         proto::message::MessageType::Ping => Ok(MailboxRequest::Ping),
-        #[cfg(feature="kademlia")]
+        #[cfg(feature = "kademlia")]
         proto::message::MessageType::Publish => {
             let proto_record = msg.record.unwrap_or_default();
             let record = MailboxRecord {
@@ -138,7 +139,12 @@ fn proto_msg_to_req(msg: proto::Message) -> Result<MailboxRequest, IOError> {
             };
             Ok(MailboxRequest::Publish(record))
         }
-        _ => unreachable!()
+        proto::message::MessageType::Msg => {
+            let message = String::from_utf8(msg.message).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?;
+            Ok(MailboxRequest::Message(message))
+        }
+        #[cfg(not(feature = "kademlia"))]
+        _ => unreachable!(),
     }
 }
 
@@ -147,7 +153,7 @@ fn proto_msg_to_res(msg: proto::Message) -> Result<MailboxResponse, IOError> {
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
     match msg_type {
         proto::message::MessageType::Ping => Ok(MailboxResponse::Pong),
-        #[cfg(feature="kademlia")]
+        #[cfg(feature = "kademlia")]
         proto::message::MessageType::Publish => {
             match proto::message::Result::from_i32(msg.r#result)
                 .ok_or_else(|| invalid_data(format!("unknown message result: {}", msg.r#result)))?
@@ -156,7 +162,7 @@ fn proto_msg_to_res(msg: proto::Message) -> Result<MailboxResponse, IOError> {
                 proto::message::Result::Error => Ok(MailboxResponse::Publish(MailboxResult::Error)),
             }
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
 
@@ -166,7 +172,7 @@ fn req_to_proto_msg(req: MailboxRequest) -> proto::Message {
             r#type: proto::message::MessageType::Ping as i32,
             ..proto::Message::default()
         },
-        #[cfg(feature="kademlia")]
+        #[cfg(feature = "kademlia")]
         MailboxRequest::Publish(record) => {
             let proto_record = proto::Record {
                 key: record.key.into_bytes(),
@@ -179,6 +185,11 @@ fn req_to_proto_msg(req: MailboxRequest) -> proto::Message {
                 ..proto::Message::default()
             }
         }
+        MailboxRequest::Message(msg) => proto::Message {
+            r#type: proto::message::MessageType::Msg as i32,
+            message: msg.into_bytes(),
+            ..proto::Message::default()
+        },
     }
 }
 
@@ -188,7 +199,7 @@ fn res_to_proto_msg(res: MailboxResponse) -> proto::Message {
             r#type: proto::message::MessageType::Ping as i32,
             ..proto::Message::default()
         },
-        #[cfg(feature="kademlia")]
+        #[cfg(feature = "kademlia")]
         MailboxResponse::Publish(r) => {
             let result = match r {
                 MailboxResult::Success => proto::message::Result::Success,

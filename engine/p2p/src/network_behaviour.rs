@@ -11,33 +11,33 @@
 
 use crate::mailbox_protocol::{
     MailboxCodec,
-    MailboxRequest::{self, Ping},
+    MailboxRequest::{self, Message as ReqMessage, Ping},
     MailboxResponse::{self, Pong},
 };
-#[cfg(feature="kademlia")]
-use crate::mailbox_protocol::{MailboxResult, MailboxRequest::Publish as PubReq, MailboxResponse::Publish as PubRes};
-#[cfg(feature="kademlia")]
+#[cfg(feature = "kademlia")]
+use crate::mailbox_protocol::{MailboxRequest::Publish as PubReq, MailboxResponse::Publish as PubRes, MailboxResult};
+#[cfg(feature = "kademlia")]
 use core::time::Duration;
+#[cfg(feature = "kademlia")]
+use libp2p::kad::{record::Key, store::MemoryStore, Kademlia, KademliaEvent, PeerRecord, QueryResult, Quorum, Record};
 use libp2p::{
     mdns::{Mdns, MdnsEvent},
     request_response::{
         RequestId, RequestResponse,
-        RequestResponseEvent::{self, InboundFailure, Message, OutboundFailure},
+        RequestResponseEvent::{self, InboundFailure, Message as MessageEvent, OutboundFailure},
         RequestResponseMessage::{Request, Response},
         ResponseChannel,
     },
     swarm::NetworkBehaviourEventProcess,
     NetworkBehaviour,
 };
-#[cfg(feature="kademlia")]
-use libp2p::kad::{record::Key, store::MemoryStore, Kademlia, KademliaEvent, PeerRecord, QueryResult, Quorum, Record};
-#[cfg(feature="kademlia")]
+#[cfg(feature = "kademlia")]
 // TODO: support no_std
 use std::time::Instant;
 
 #[derive(NetworkBehaviour)]
 pub struct P2PNetworkBehaviour {
-    #[cfg(feature="kademlia")]
+    #[cfg(feature = "kademlia")]
     pub(crate) kademlia: Kademlia<MemoryStore>,
     pub(crate) mdns: Mdns,
     pub(crate) msg_proto: RequestResponse<MailboxCodec>,
@@ -50,7 +50,7 @@ impl P2PNetworkBehaviour {
                 println!("Received Ping, we will send a Pong back.");
                 self.msg_proto.send_response(channel, Pong);
             }
-            #[cfg(feature="kademlia")]
+            #[cfg(feature = "kademlia")]
             PubReq(r) => {
                 let duration = if r.timeout_sec > 0 { r.timeout_sec } else { 9000u64 };
                 let record = Record {
@@ -67,15 +67,18 @@ impl P2PNetworkBehaviour {
                     println!("Error storing record: {:?}", put_record.err());
                 }
             }
+            ReqMessage(msg) => {
+                println!("Received Message {:?}.", msg);
+            }
         }
     }
 
-    fn handle_response_msg(&mut self, request_id: RequestId, response: MailboxResponse) {
+    fn handle_response_msg(&mut self, response: MailboxResponse, request_id: RequestId) {
         match response {
             Pong => {
                 println!("Received Pong for request {:?}.", request_id);
             }
-            #[cfg(feature="kademlia")]
+            #[cfg(feature = "kademlia")]
             PubRes(result) => {
                 println!("Received Result for publish request {:?}: {:?}.", request_id, result);
             }
@@ -86,7 +89,7 @@ impl P2PNetworkBehaviour {
 impl NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour {
     // Called when `mdns` produces an event.
     fn inject_event(&mut self, _event: MdnsEvent) {
-        #[cfg(feature="kademlia")]
+        #[cfg(feature = "kademlia")]
         if let MdnsEvent::Discovered(list) = _event {
             for (peer_id, multiaddr) in list {
                 self.kademlia.add_address(&peer_id, multiaddr);
@@ -95,7 +98,7 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour {
     }
 }
 
-#[cfg(feature="kademlia")]
+#[cfg(feature = "kademlia")]
 impl NetworkBehaviourEventProcess<KademliaEvent> for P2PNetworkBehaviour {
     // Called when `kademlia` produces an event.
     fn inject_event(&mut self, message: KademliaEvent) {
@@ -127,13 +130,13 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<MailboxRequest, MailboxRe
     // Called when the mailbox_protocol produces an event.
     fn inject_event(&mut self, event: RequestResponseEvent<MailboxRequest, MailboxResponse>) {
         match event {
-            Message { peer: _, message } => match message {
+            MessageEvent { peer: _, message } => match message {
                 Request {
                     request_id: _,
                     request,
                     channel,
                 } => self.handle_request_msg(request, channel),
-                Response { request_id, response } => self.handle_response_msg(request_id, response),
+                Response { request_id, response } => self.handle_response_msg(response, request_id),
             },
             OutboundFailure {
                 peer,
