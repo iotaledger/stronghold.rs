@@ -6,7 +6,8 @@ members = [
     "engine/primitives",
     "engine/random",
     "engine/crypto",
-    "engine/snapshot"
+    "engine/snapshot",
+    "runtime",
 ]
 exclude = [
   "engine/examples/commandline",
