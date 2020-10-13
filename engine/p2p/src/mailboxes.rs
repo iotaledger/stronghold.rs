@@ -2,7 +2,7 @@ use crate::error::{P2PError, P2PResult};
 use libp2p::core::{Multiaddr, PeerId};
 
 #[derive(Debug, Clone)]
-pub struct Mailbox {
+pub(crate) struct Mailbox {
     pub peer_id: PeerId,
     pub addr: Multiaddr,
 }
@@ -14,7 +14,7 @@ impl Mailbox {
 }
 
 #[derive(Debug, Clone)]
-pub struct Mailboxes {
+pub(crate) struct Mailboxes {
     mailboxes: Vec<Mailbox>,
     default: PeerId,
 }

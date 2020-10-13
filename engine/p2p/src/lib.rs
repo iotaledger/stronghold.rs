@@ -9,20 +9,19 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
+use crate::codec::Codec;
 use crate::error::{P2PError, P2PResult};
 #[cfg(feature = "kademlia")]
-use crate::mailbox_protocol::MailboxRecord;
-use crate::mailbox_protocol::{MailboxCodec, MailboxProtocol, MailboxRequest};
+use crate::protocol::MailboxRecord;
+use crate::protocol::MailboxRequest;
 #[cfg(feature = "kademlia")]
 use crate::mailboxes::{Mailbox, Mailboxes};
-use crate::network_behaviour::P2PNetworkBehaviour;
-use core::{iter, time::Duration};
+use crate::behaviour::P2PNetworkBehaviour;
+use core::time::Duration;
 use libp2p::{
     build_development_transport,
     core::Multiaddr,
     identity::Keypair,
-    mdns::Mdns,
-    request_response::{ProtocolSupport, RequestResponse, RequestResponseConfig},
     swarm::{ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler},
     PeerId, Swarm,
 };
@@ -30,27 +29,21 @@ use libp2p::{
 #[cfg(feature = "kademlia")]
 use libp2p::request_response::RequestId;
 
-#[cfg(feature = "kademlia")]
-use libp2p::kad::{record::store::MemoryStore, record::Key, Kademlia, QueryId, Quorum, Record};
-#[cfg(feature = "kademlia")]
-// TODO: support no_std
-use std::time::Instant;
-
 mod structs_proto {
     include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
 }
 pub mod codec;
-mod error;
-mod mailbox_protocol;
+pub mod error;
+mod protocol;
 #[cfg(feature = "kademlia")]
 mod mailboxes;
-mod network_behaviour;
+pub mod behaviour;
 
-type P2PNetworkSwarm = ExpandedSwarm<
-    P2PNetworkBehaviour,
-    <<<P2PNetworkBehaviour as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
-    <<<P2PNetworkBehaviour as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
-    <P2PNetworkBehaviour as NetworkBehaviour>::ProtocolsHandler,
+type P2PNetworkSwarm<C>= ExpandedSwarm<
+    P2PNetworkBehaviour<C>,
+    <<<P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
+    <<<P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
+    <P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler,
     PeerId,
 >;
 
@@ -69,20 +62,26 @@ impl Default for P2PConfig {
     }
 }
 
-pub struct P2P {
+pub struct P2P<C: Codec + Send + 'static> {
     peer_id: PeerId,
     #[allow(dead_code)]
     config: P2PConfig,
-    swarm: P2PNetworkSwarm,
+    pub swarm: P2PNetworkSwarm<C>,
     #[cfg(feature = "kademlia")]
     mailboxes: Option<Mailboxes>,
 }
 
-impl P2P {
-    pub fn new(local_keys: Keypair, config: P2PConfig, _mailbox: Option<(PeerId, Multiaddr)>) -> P2PResult<Self> {
+impl<C: Codec + Send + 'static> P2P<C> {
+    pub fn new(
+        behaviour: P2PNetworkBehaviour<C>,
+        local_keys: Keypair,
+        config: P2PConfig,
+        _mailbox: Option<(PeerId, Multiaddr)>,
+    ) -> P2PResult<Self> {
         let peer_id = PeerId::from(local_keys.public());
-
-        let mut swarm = P2P::create_swarm(local_keys, peer_id.clone())?;
+        let transport = build_development_transport(local_keys)
+            .map_err(|_| P2PError::ConnectionError("Could not build transport layer".to_string()))?;
+        let mut swarm = Swarm::new(transport, behaviour, peer_id.clone());
 
         let addr = format!("/ip4/0.0.0.0/tcp/{}", config.port)
             .parse()
@@ -100,39 +99,13 @@ impl P2P {
                 .map(|_| Mailboxes::new(Mailbox::new(mailbox_id, mailbox_addr)))
         });
 
-        Ok(P2P {
+        Ok(P2P::<C> {
             peer_id,
             config,
             #[cfg(feature = "kademlia")]
             mailboxes,
             swarm,
         })
-    }
-
-    fn create_swarm(local_keys: Keypair, peer_id: PeerId) -> P2PResult<P2PNetworkSwarm> {
-        let transport = build_development_transport(local_keys)
-            .map_err(|_| P2PError::ConnectionError("Could not build transport layer".to_string()))?;
-        #[cfg(feature = "kademlia")]
-        let kademlia = {
-            let store = MemoryStore::new(peer_id.clone());
-            Kademlia::new(peer_id.clone(), store)
-        };
-        let mdns = Mdns::new().map_err(|_| P2PError::ConnectionError("Could not build mdns behaviour".to_string()))?;
-
-        // Create RequestResponse behaviour with MailboxProtocol
-        let msg_proto = {
-            let cfg = RequestResponseConfig::default();
-            let protocols = iter::once((MailboxProtocol(), ProtocolSupport::Full));
-            RequestResponse::new(MailboxCodec(), protocols, cfg)
-        };
-
-        let behaviour = P2PNetworkBehaviour {
-            #[cfg(feature = "kademlia")]
-            kademlia,
-            mdns,
-            msg_proto,
-        };
-        Ok(Swarm::new(transport, behaviour, peer_id))
     }
 
     pub fn get_local_peer_id(&self) -> PeerId {
@@ -142,24 +115,6 @@ impl P2P {
     pub fn dial_remote(&mut self, peer_addr: Multiaddr) -> P2PResult<()> {
         Swarm::dial_addr(&mut self.swarm, peer_addr.clone())
             .map_err(|_| P2PError::ConnectionError(format!("Could not dial addr {}", peer_addr)))
-    }
-
-    pub fn print_known_peer(&mut self) {
-        #[cfg(feature = "kademlia")]
-        for bucket in self.swarm.kademlia.kbuckets() {
-            for entry in bucket.iter() {
-                println!("key: {:?}, values: {:?}", entry.node.key.preimage(), entry.node.value);
-            }
-        }
-        #[cfg(not(feature = "kademlia"))]
-        for peer_id in self.swarm.mdns.discovered_nodes() {
-            println!("{:?}", peer_id);
-        }
-    }
-
-    pub fn ping(&mut self, peer_id: PeerId) {
-        let ping = MailboxRequest::Ping;
-        self.swarm.msg_proto.send_request(&peer_id, ping);
     }
 
     #[cfg(feature = "kademlia")]
@@ -181,32 +136,6 @@ impl P2P {
             .clone()
             .ok_or_else(|| P2PError::Mailbox("No known mailboxes".to_string()))?;
         mailboxes.set_default(mailbox_peer)
-    }
-
-    #[cfg(feature = "kademlia")]
-    pub fn get_record(&mut self, key_str: String) {
-        let key = Key::new(&key_str);
-        self.swarm.kademlia.get_record(&key, Quorum::One);
-    }
-
-    #[cfg(feature = "kademlia")]
-    pub fn put_record_local(
-        &mut self,
-        key_str: String,
-        value_str: String,
-        timeout_sec: Option<Duration>,
-    ) -> P2PResult<QueryId> {
-        let duration = timeout_sec.unwrap_or(self.config.record_timeout);
-        let record = Record {
-            key: Key::new(&key_str),
-            value: value_str.into_bytes(),
-            publisher: None,
-            expires: Some(Instant::now() + duration),
-        };
-        self.swarm
-            .kademlia
-            .put_record(record, Quorum::One)
-            .map_err(|_| P2PError::KademliaError("Can not store record".to_string()))
     }
 
     #[cfg(feature = "kademlia")]
@@ -240,3 +169,4 @@ impl P2P {
             .send_request(&peer, MailboxRequest::Publish(record)))
     }
 }
+

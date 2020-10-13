@@ -9,10 +9,40 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use crate::mailbox_protocol::{MailboxRequest, MailboxResponse};
-use libp2p::request_response::{RequestId, ResponseChannel};
+use crate::error::P2PResult;
+use crate::protocol::{MailboxRequest, MailboxResponse};
+#[cfg(feature = "kademlia")]
+use core::time::Duration;
+#[cfg(feature = "kademlia")]
+use libp2p::kad::QueryId;
+use libp2p::{
+    core::PeerId,
+    request_response::{RequestId, ResponseChannel},
+};
 
-pub trait P2PCodec {
-    fn handle_request_msg(&mut self, request: MailboxRequest, channel: ResponseChannel<MailboxResponse>);
+pub trait CodecContext {
+    fn send_request(&mut self, peer_id: PeerId, request: MailboxRequest);
+
+    fn send_response(&mut self, response: MailboxResponse, channel: ResponseChannel<MailboxResponse>);
+
+    #[cfg(feature = "kademlia")]
+    fn get_record(&mut self, key_str: String);
+
+    #[cfg(feature = "kademlia")]
+    fn put_record_local(
+        &mut self,
+        key_str: String,
+        value_str: String,
+        timeout_sec: Option<Duration>,
+    ) -> P2PResult<QueryId>;
+
+    fn print_known_peer(&mut self);
+}
+
+pub trait Codec {
+    fn handle_request_msg(&mut self,
+        request: MailboxRequest,
+        channel: ResponseChannel<MailboxResponse>,
+    );
     fn handle_response_msg(&mut self, response: MailboxResponse, request_id: RequestId);
 }
