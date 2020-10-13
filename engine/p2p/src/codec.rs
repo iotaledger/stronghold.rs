@@ -14,14 +14,14 @@ use crate::protocol::{MailboxRequest, MailboxResponse};
 #[cfg(feature = "kademlia")]
 use core::time::Duration;
 #[cfg(feature = "kademlia")]
-use libp2p::kad::QueryId;
+use libp2p::{core::Multiaddr, kad::QueryId};
 use libp2p::{
     core::PeerId,
     request_response::{RequestId, ResponseChannel},
 };
 
 pub trait CodecContext {
-    fn send_request(&mut self, peer_id: PeerId, request: MailboxRequest);
+    fn send_request(&mut self, peer_id: PeerId, request: MailboxRequest) -> RequestId;
 
     fn send_response(&mut self, response: MailboxResponse, channel: ResponseChannel<MailboxResponse>);
 
@@ -36,13 +36,25 @@ pub trait CodecContext {
         timeout_sec: Option<Duration>,
     ) -> P2PResult<QueryId>;
 
+    #[cfg(feature = "kademlia")]
+    fn send_record( 
+        &mut self,
+        peer_id: PeerId,
+        key_str: String,
+        value_str: String,
+        timeout_sec: Option<u64>
+    ) -> RequestId;
+
     fn print_known_peer(&mut self);
+
+    #[cfg(feature = "kademlia")]
+    fn kad_add_address(&mut self, peer_id: &PeerId, addr: Multiaddr);
+
+    #[cfg(feature = "kademlia")]
+    fn kad_bootstrap(&mut self) -> P2PResult<QueryId>;
 }
 
 pub trait Codec {
-    fn handle_request_msg(&mut self,
-        request: MailboxRequest,
-        channel: ResponseChannel<MailboxResponse>,
-    );
+    fn handle_request_msg(&mut self, request: MailboxRequest, channel: ResponseChannel<MailboxResponse>);
     fn handle_response_msg(&mut self, response: MailboxResponse, request_id: RequestId);
 }

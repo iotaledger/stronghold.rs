@@ -121,3 +121,65 @@ subcommands:
             about: the password for the snapshot.
             required: true
             takes_value: true
+  - put_mail:
+      about: Put record into the mailbox
+      args:
+        - mailbox_id:
+            short: mi
+            long: mail_id
+            value_name: mailbox_id
+            about: the peer id of the mailbox
+            required: true
+            takes_value: true
+        - mailbox_addr:
+            short: ma
+            long: mail_addr
+            value_name: mailbox_addr
+            about: the multiaddr of the mailbox
+            required: true
+            takes_value: true
+        - key:
+            short: k
+            long: key
+            value_name: key
+            about: the key for the record
+            required: true
+            takes_value: true
+        - value:
+            short: v
+            long: value
+            value_name: value
+            about: the value for the record
+            required: true
+            takes_value: true
+        - timeout:
+            short: t
+            long: timeout
+            value_name: timeout
+            about: the timeout for the record in sec
+            required: false
+            takes_value: true
+  - get_mail:
+      about: Get record from local or the mailbox
+      args:
+        - mailbox_id:
+            short: mi
+            long: mail_id
+            value_name: mailbox_id
+            about: the peer id of the mailbox
+            required: true
+            takes_value: true
+        - mailbox_addr:
+            short: ma
+            long: mail_addr
+            value_name: mailbox_addr
+            about: the multiaddr of the mailbox
+            required: false
+            takes_value: true
+        - key:
+            short: k
+            long: key
+            value_name: key
+            about: the key for the record
+            required: false
+            takes_value: true

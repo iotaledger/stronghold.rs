@@ -9,15 +9,11 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use crate::codec::Codec;
+use crate::behaviour::P2PNetworkBehaviour;
+use crate::codec::{Codec, CodecContext};
 use crate::error::{P2PError, P2PResult};
 #[cfg(feature = "kademlia")]
-use crate::protocol::MailboxRecord;
-use crate::protocol::MailboxRequest;
-#[cfg(feature = "kademlia")]
 use crate::mailboxes::{Mailbox, Mailboxes};
-use crate::behaviour::P2PNetworkBehaviour;
-use core::time::Duration;
 use libp2p::{
     build_development_transport,
     core::Multiaddr,
@@ -32,12 +28,12 @@ use libp2p::request_response::RequestId;
 mod structs_proto {
     include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
 }
+pub mod behaviour;
 pub mod codec;
 pub mod error;
-mod protocol;
 #[cfg(feature = "kademlia")]
 mod mailboxes;
-pub mod behaviour;
+mod protocol;
 
 type P2PNetworkSwarm<C>= ExpandedSwarm<
     P2PNetworkBehaviour<C>,
@@ -47,25 +43,9 @@ type P2PNetworkSwarm<C>= ExpandedSwarm<
     PeerId,
 >;
 
-pub struct P2PConfig {
-    #[allow(dead_code)]
-    record_timeout: Duration,
-    port: u32,
-}
-
-impl Default for P2PConfig {
-    fn default() -> Self {
-        Self {
-            record_timeout: Duration::from_secs(9000),
-            port: 16384u32,
-        }
-    }
-}
-
 pub struct P2P<C: Codec + Send + 'static> {
     peer_id: PeerId,
     #[allow(dead_code)]
-    config: P2PConfig,
     pub swarm: P2PNetworkSwarm<C>,
     #[cfg(feature = "kademlia")]
     mailboxes: Option<Mailboxes>,
@@ -75,17 +55,16 @@ impl<C: Codec + Send + 'static> P2P<C> {
     pub fn new(
         behaviour: P2PNetworkBehaviour<C>,
         local_keys: Keypair,
-        config: P2PConfig,
+        port: Option<u32>,
         _mailbox: Option<(PeerId, Multiaddr)>,
     ) -> P2PResult<Self> {
         let peer_id = PeerId::from(local_keys.public());
         let transport = build_development_transport(local_keys)
             .map_err(|_| P2PError::ConnectionError("Could not build transport layer".to_string()))?;
         let mut swarm = Swarm::new(transport, behaviour, peer_id.clone());
-
-        let addr = format!("/ip4/0.0.0.0/tcp/{}", config.port)
+        let addr = format!("/ip4/0.0.0.0/tcp/{}", port.unwrap_or(16384u32))
             .parse()
-            .map_err(|e| P2PError::ConnectionError(format!("Invalid Port {}: {}", config.port, e)))?;
+            .map_err(|e| P2PError::ConnectionError(format!("Invalid Port {:?}: {}", port, e)))?;
         Swarm::listen_on(&mut swarm, addr).map_err(|e| P2PError::ConnectionError(format!("{}", e)))?;
 
         #[cfg(feature = "kademlia")]
@@ -93,15 +72,14 @@ impl<C: Codec + Send + 'static> P2P<C> {
             Swarm::dial_addr(&mut swarm, mailbox_addr.clone())
                 .ok()
                 .and_then(|()| {
-                    swarm.kademlia.add_address(&mailbox_id, mailbox_addr.clone());
-                    swarm.kademlia.bootstrap().ok()
+                    swarm.kad_add_address(&mailbox_id, mailbox_addr.clone());
+                    swarm.kad_bootstrap().ok()
                 })
                 .map(|_| Mailboxes::new(Mailbox::new(mailbox_id, mailbox_addr)))
         });
 
         Ok(P2P::<C> {
             peer_id,
-            config,
             #[cfg(feature = "kademlia")]
             mailboxes,
             swarm,
@@ -158,15 +136,6 @@ impl<C: Codec + Send + 'static> P2P<C> {
         } else {
             Ok(mailboxes.get_default())
         }?;
-        let record = MailboxRecord {
-            key,
-            value,
-            timeout_sec: timeout_sec.unwrap_or_else(|| self.config.record_timeout.as_secs()),
-        };
-        Ok(self
-            .swarm
-            .msg_proto
-            .send_request(&peer, MailboxRequest::Publish(record)))
+        Ok(self.swarm.send_record(peer, key, value, timeout_sec))
     }
 }
-
