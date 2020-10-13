@@ -3,12 +3,10 @@
 
 mod client;
 mod connection;
-mod msg_handler;
 mod provider;
 mod snap;
 mod state;
 
-use crate::msg_handler::Handler;
 use crate::{
     client::Client,
     provider::Provider,
@@ -169,37 +167,6 @@ fn purge_command(matches: &ArgMatches) {
             }
         }
     }
-}
-
-// Put a record into the mailbox
-fn put_record(matches: &ArgMatches) {
-    if let Some(matches) = matches.subcommand_matches("put_mailbox") {
-        if let Some(mail_id) = matches
-            .value_of("mailbox_id")
-            .and_then(|id_arg| PeerId::from_str(id_arg.as_str()).ok())
-        {
-            if let Some(mail_addr) = matches
-                .value_of("mailbox_addr")
-                .and_then(|addr_arg| Multiaddr::from_str(&*addr_arg).ok())
-            {
-                if let Some(key) = matches.value_of("key") {
-                    if let Some(value) = matches.value_of("value") {
-                        let local_keys = Keypair::generate_ed25519();
-                        let local_peer_id = PeerId::from(local_keys.public());
-                        let timeout = matches.value_of("timeout").map(|timeout| timeout.parse::<u64>());
-                        let behaviour = P2PNetworkBehaviour::new(local_peer_id, timeout, Handler);
-                        let p2p = P2P::new(behaviour, local_keys, None, (mail_id, mail_addr));
-                        let request_id = p2p.put_record_mailbox(key, value, None, None);
-                        if request_id.is_ok() {
-                            println("Successfully send record to mailbox");
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    eprintln("Could not send record to mailbox");
 }
 
 fn main() {

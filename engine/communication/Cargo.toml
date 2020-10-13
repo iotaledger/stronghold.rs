@@ -1,5 +1,5 @@
 [package]
-name = "p2p"
+name = "communication"
 version = "0.1.0"
 authors = ["Elena Frank <elena.frank@iota.org>"]
 edition = "2018"
@@ -11,6 +11,7 @@ build = "build.rs"
 async-std = "1.6.2"
 async-trait = "0.1.40"
 bytes = "0.5.6"
+clap = { version = "3.0.0-beta.1", features = ["yaml"] }
 futures = "0.3.1"
 libp2p = "0.28.1"
 prost = {version = "0.6.1", default-features = false, features = ["prost-derive"] }

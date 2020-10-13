@@ -9,24 +9,6 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use thiserror::Error as DeriveError;
-
-#[derive(Debug, DeriveError)]
-pub enum P2PError {
-    #[error("Mailbox Error: `{0}`")]
-    Mailbox(String),
-
-    #[error("Connection Error: `{0}`")]
-    ConnectionError(String),
-
-    #[error("Kademlia Error: `{0}`")]
-    KademliaError(String),
-
-    #[error("Proto-buf Error: `{0}`")]
-    ProtoBufError(String),
-
-    #[error("IO Error: `{0}`")]
-    IOError(String),
+fn main() {
+    prost_build::compile_protos(&["src/protocol/structs.proto"], &["src"]).unwrap();
 }
-
-pub type P2PResult<T> = std::result::Result<T, P2PError>;

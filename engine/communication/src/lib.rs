@@ -9,9 +9,11 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use crate::behaviour::P2PNetworkBehaviour;
-use crate::codec::{Codec, CodecContext};
-use crate::error::{P2PError, P2PResult};
+use crate::behaviour::{
+    codec::{Codec, CodecContext},
+    P2PNetworkBehaviour,
+};
+use crate::error::{QueryError, QueryResult};
 #[cfg(feature = "kademlia")]
 use crate::mailboxes::{Mailbox, Mailboxes};
 use libp2p::{
@@ -25,11 +27,7 @@ use libp2p::{
 #[cfg(feature = "kademlia")]
 use libp2p::request_response::RequestId;
 
-mod structs_proto {
-    include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
-}
 pub mod behaviour;
-pub mod codec;
 pub mod error;
 #[cfg(feature = "kademlia")]
 mod mailboxes;
@@ -57,15 +55,15 @@ impl<C: Codec + Send + 'static> P2P<C> {
         local_keys: Keypair,
         port: Option<u32>,
         _mailbox: Option<(PeerId, Multiaddr)>,
-    ) -> P2PResult<Self> {
+    ) -> QueryResult<Self> {
         let peer_id = PeerId::from(local_keys.public());
         let transport = build_development_transport(local_keys)
-            .map_err(|_| P2PError::ConnectionError("Could not build transport layer".to_string()))?;
+            .map_err(|_| QueryError::ConnectionError("Could not build transport layer".to_string()))?;
         let mut swarm = Swarm::new(transport, behaviour, peer_id.clone());
         let addr = format!("/ip4/0.0.0.0/tcp/{}", port.unwrap_or(16384u32))
             .parse()
-            .map_err(|e| P2PError::ConnectionError(format!("Invalid Port {:?}: {}", port, e)))?;
-        Swarm::listen_on(&mut swarm, addr).map_err(|e| P2PError::ConnectionError(format!("{}", e)))?;
+            .map_err(|e| QueryError::ConnectionError(format!("Invalid Port {:?}: {}", port, e)))?;
+        Swarm::listen_on(&mut swarm, addr).map_err(|e| QueryError::ConnectionError(format!("{}", e)))?;
 
         #[cfg(feature = "kademlia")]
         let mailboxes = _mailbox.and_then(|(mailbox_id, mailbox_addr)| {
@@ -90,13 +88,13 @@ impl<C: Codec + Send + 'static> P2P<C> {
         self.peer_id.clone()
     }
 
-    pub fn dial_remote(&mut self, peer_addr: Multiaddr) -> P2PResult<()> {
+    pub fn dial_remote(&mut self, peer_addr: Multiaddr) -> QueryResult<()> {
         Swarm::dial_addr(&mut self.swarm, peer_addr.clone())
-            .map_err(|_| P2PError::ConnectionError(format!("Could not dial addr {}", peer_addr)))
+            .map_err(|_| QueryError::ConnectionError(format!("Could not dial addr {}", peer_addr)))
     }
 
     #[cfg(feature = "kademlia")]
-    pub fn add_mailbox(&mut self, mailbox_peer: PeerId, mailbox_addr: Multiaddr, is_default: bool) -> P2PResult<()> {
+    pub fn add_mailbox(&mut self, mailbox_peer: PeerId, mailbox_addr: Multiaddr, is_default: bool) -> QueryResult<()> {
         self.dial_remote(mailbox_addr.clone())?;
         let mailbox = Mailbox::new(mailbox_peer, mailbox_addr);
         if let Some(mailboxes) = self.mailboxes.as_mut() {
@@ -108,11 +106,11 @@ impl<C: Codec + Send + 'static> P2P<C> {
     }
 
     #[cfg(feature = "kademlia")]
-    pub fn set_default_mailbox(&mut self, mailbox_peer: PeerId) -> P2PResult<PeerId> {
+    pub fn set_default_mailbox(&mut self, mailbox_peer: PeerId) -> QueryResult<PeerId> {
         let mut mailboxes = self
             .mailboxes
             .clone()
-            .ok_or_else(|| P2PError::Mailbox("No known mailboxes".to_string()))?;
+            .ok_or_else(|| QueryError::Mailbox("No known mailboxes".to_string()))?;
         mailboxes.set_default(mailbox_peer)
     }
 
@@ -123,16 +121,16 @@ impl<C: Codec + Send + 'static> P2P<C> {
         value: String,
         timeout_sec: Option<u64>,
         mailbox_peer_id: Option<PeerId>,
-    ) -> P2PResult<RequestId> {
+    ) -> QueryResult<RequestId> {
         let mailboxes = self
             .mailboxes
             .clone()
-            .ok_or_else(|| P2PError::Mailbox("No known mailboxes".to_string()))?;
+            .ok_or_else(|| QueryError::Mailbox("No known mailboxes".to_string()))?;
         let peer = if let Some(peer_id) = mailbox_peer_id {
             mailboxes
                 .find_mailbox(&peer_id)
                 .map(|mailbox| mailbox.peer_id)
-                .ok_or_else(|| P2PError::Mailbox(format!("No know mailbox for {}", peer_id)))
+                .ok_or_else(|| QueryError::Mailbox(format!("No know mailbox for {}", peer_id)))
         } else {
             Ok(mailboxes.get_default())
         }?;

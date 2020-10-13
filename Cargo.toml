@@ -6,7 +6,7 @@ members = [
     "engine/random",
     "engine/crypto",
     "engine/snapshot",
-    "engine/p2p"
+    "engine/communication"
 ]
 exclude = [
   "products/commandline",

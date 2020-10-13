@@ -1,4 +1,4 @@
-# iota-p2p-poc
+# communication
 Basic Mailbox that enables different peers to communicate with each other.
 
 In order to provide a message / record for a remote peer, a local peer adds this information to a key-value-store mailbox that runs on a server. The mailbox publishes this record in their kademlia DHT, from which the remote peer can then read the value if they know the key.

@@ -13,8 +13,8 @@
 FROM rust:latest as build
 
 # create a new empty shell project
-RUN USER=root cargo new --bin iota-p2p-poc
-WORKDIR /iota-p2p-poc
+RUN USER=root cargo new --bin stronghold-communication
+WORKDIR /stronghold-communication
 
 # copy over manifests
 # COPY ./Cargo.lock ./Cargo.lock
@@ -40,7 +40,7 @@ FROM rust:latest
 WORKDIR /app
 
 # copy the build artifact from the build stage
-COPY --from=build /iota-p2p-poc/target/release/iota-p2p-poc .
+COPY --from=build /stronghold-communication/target/release/communication .
 
 # command for starting the container
-ENTRYPOINT ["/app/iota-p2p-poc"]
+ENTRYPOINT ["/app/stronghold-communication"]

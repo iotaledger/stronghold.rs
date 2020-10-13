@@ -9,43 +9,43 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use engine::p2p::protocol::{MailboxRequest, MailboxResponse};
-use engine::p2p::Codec;
+use engine::communication::protocol::{Request, Response};
+use engine::communication::Codec;
 use libp2p::request_response::{RequestId, ResponseChannel};
 
 pub(crate) struct Handler();
 
 impl Codec for Handler {
-    fn handle_request_msg(&mut self, request: MailboxRequest, channel: ResponseChannel<MailboxResponse>) {
+    fn handle_request_msg(&mut self, request: Request, channel: ResponseChannel<Response>) {
         match request {
-            MailboxRequest::Ping => {
+            Request::Ping => {
                 println!("Received Ping, we will send a Pong back.");
-                ctx.send_response(MailboxResponse::Pong, channel);
+                ctx.send_response(Response::Pong, channel);
             }
             #[cfg(feature = "kademlia")]
-            MailboxRequest::Publish(r) => {
+            Request::Publish(r) => {
                 let duration = Some(Duration::from_secs(r.timeout_sec));
                 let query_id = ctx.put_record_local(r.key, r.value, duration);
                 if query_id.is_ok() {
                     println!("Successfully stored record.");
-                    ctx.send_response(MailboxResponse::Publish(MailboxResult::Success), channel);
+                    ctx.send_response(Response::Publish(MessageResult::Success), channel);
                 } else {
                     println!("Error storing record: {:?}", query_id.err());
                 }
             }
-            MailboxRequest::Message(msg) => {
+            Request::Message(msg) => {
                 println!("Received Message {:?}.", msg);
             }
         }
     }
 
-    fn handle_response_msg(&mut self, response: MailboxResponse, request_id: RequestId) {
+    fn handle_response_msg(&mut self, response: Response, request_id: RequestId) {
         match response {
-            MailboxResponse::Pong => {
+            Response::Pong => {
                 println!("Received Pong for request {:?}.", request_id);
             }
             #[cfg(feature = "kademlia")]
-            MailboxResponse::Publish(result) => {
+            Response::Publish(result) => {
                 println!("Received Result for publish request {:?}: {:?}.", request_id, result);
             }
         }

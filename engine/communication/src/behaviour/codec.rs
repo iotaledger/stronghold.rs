@@ -9,8 +9,8 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use crate::error::P2PResult;
-use crate::protocol::{MailboxRequest, MailboxResponse};
+use crate::error::QueryResult;
+use crate::protocol::{Request, Response};
 #[cfg(feature = "kademlia")]
 use core::time::Duration;
 #[cfg(feature = "kademlia")]
@@ -21,9 +21,9 @@ use libp2p::{
 };
 
 pub trait CodecContext {
-    fn send_request(&mut self, peer_id: PeerId, request: MailboxRequest) -> RequestId;
+    fn send_request(&mut self, peer_id: PeerId, request: Request) -> RequestId;
 
-    fn send_response(&mut self, response: MailboxResponse, channel: ResponseChannel<MailboxResponse>);
+    fn send_response(&mut self, response: Response, channel: ResponseChannel<Response>);
 
     #[cfg(feature = "kademlia")]
     fn get_record(&mut self, key_str: String);
@@ -34,15 +34,15 @@ pub trait CodecContext {
         key_str: String,
         value_str: String,
         timeout_sec: Option<Duration>,
-    ) -> P2PResult<QueryId>;
+    ) -> QueryResult<QueryId>;
 
     #[cfg(feature = "kademlia")]
-    fn send_record( 
+    fn send_record(
         &mut self,
         peer_id: PeerId,
         key_str: String,
         value_str: String,
-        timeout_sec: Option<u64>
+        timeout_sec: Option<u64>,
     ) -> RequestId;
 
     fn print_known_peer(&mut self);
@@ -51,10 +51,10 @@ pub trait CodecContext {
     fn kad_add_address(&mut self, peer_id: &PeerId, addr: Multiaddr);
 
     #[cfg(feature = "kademlia")]
-    fn kad_bootstrap(&mut self) -> P2PResult<QueryId>;
+    fn kad_bootstrap(&mut self) -> QueryResult<QueryId>;
 }
 
 pub trait Codec {
-    fn handle_request_msg(&mut self, request: MailboxRequest, channel: ResponseChannel<MailboxResponse>);
-    fn handle_response_msg(&mut self, response: MailboxResponse, request_id: RequestId);
+    fn handle_request_msg(&mut self, request: Request, channel: ResponseChannel<Response>);
+    fn handle_response_msg(&mut self, response: Response, request_id: RequestId);
 }

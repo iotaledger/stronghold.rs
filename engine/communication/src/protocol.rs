@@ -9,7 +9,9 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use crate::structs_proto as proto;
+mod structs_proto {
+    include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
+}
 use async_trait::async_trait;
 use futures::{prelude::*, AsyncRead, AsyncWrite};
 use libp2p::{
@@ -20,16 +22,17 @@ use libp2p::{
     request_response::RequestResponseCodec,
 };
 use prost::Message;
+use structs_proto as proto;
 // TODO: support no_std
 use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind, Result as IOResult};
 
 #[derive(Debug, Clone)]
-pub struct MailboxProtocol();
+pub struct MessageProtocol();
 #[derive(Clone)]
-pub struct MailboxCodec();
+pub struct MessageCodec();
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MailboxRequest {
+pub enum Request {
     Ping,
     #[cfg(feature = "kademlia")]
     Publish(MailboxRecord),
@@ -44,32 +47,32 @@ pub struct MailboxRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MailboxResponse {
+pub enum Response {
     Pong,
     #[cfg(feature = "kademlia")]
-    Publish(MailboxResult),
+    Publish(MessageResult),
 }
 
 #[cfg(feature = "kademlia")]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MailboxResult {
+pub enum MessageResult {
     Success,
     Error,
 }
 
-impl ProtocolName for MailboxProtocol {
+impl ProtocolName for MessageProtocol {
     fn protocol_name(&self) -> &[u8] {
-        b"/p2p-mailbox/1.0.0"
+        b"/communication-mailbox/1.0.0"
     }
 }
 
 #[async_trait]
-impl RequestResponseCodec for MailboxCodec {
-    type Protocol = MailboxProtocol;
-    type Request = MailboxRequest;
-    type Response = MailboxResponse;
+impl RequestResponseCodec for MessageCodec {
+    type Protocol = MessageProtocol;
+    type Request = Request;
+    type Response = Response;
 
-    async fn read_request<T>(&mut self, _: &MailboxProtocol, io: &mut T) -> IOResult<Self::Request>
+    async fn read_request<T>(&mut self, _: &MessageProtocol, io: &mut T) -> IOResult<Self::Request>
     where
         T: AsyncRead + Unpin + Send,
     {
@@ -84,7 +87,7 @@ impl RequestResponseCodec for MailboxCodec {
             .await
     }
 
-    async fn read_response<T>(&mut self, _: &MailboxProtocol, io: &mut T) -> IOResult<Self::Response>
+    async fn read_response<T>(&mut self, _: &MessageProtocol, io: &mut T) -> IOResult<Self::Response>
     where
         T: AsyncRead + Unpin + Send,
     {
@@ -99,7 +102,7 @@ impl RequestResponseCodec for MailboxCodec {
             .await
     }
 
-    async fn write_request<T>(&mut self, _: &MailboxProtocol, io: &mut T, req: MailboxRequest) -> IOResult<()>
+    async fn write_request<T>(&mut self, _: &MessageProtocol, io: &mut T, req: Request) -> IOResult<()>
     where
         T: AsyncWrite + Unpin + Send,
     {
@@ -111,7 +114,7 @@ impl RequestResponseCodec for MailboxCodec {
         write_one(io, buf).await
     }
 
-    async fn write_response<T>(&mut self, _: &MailboxProtocol, io: &mut T, res: MailboxResponse) -> IOResult<()>
+    async fn write_response<T>(&mut self, _: &MessageProtocol, io: &mut T, res: Response) -> IOResult<()>
     where
         T: AsyncWrite + Unpin + Send,
     {
@@ -124,11 +127,11 @@ impl RequestResponseCodec for MailboxCodec {
     }
 }
 
-fn proto_msg_to_req(msg: proto::Message) -> Result<MailboxRequest, IOError> {
+fn proto_msg_to_req(msg: proto::Message) -> Result<Request, IOError> {
     let msg_type = proto::message::MessageType::from_i32(msg.r#type)
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
     match msg_type {
-        proto::message::MessageType::Ping => Ok(MailboxRequest::Ping),
+        proto::message::MessageType::Ping => Ok(Request::Ping),
         #[cfg(feature = "kademlia")]
         proto::message::MessageType::Publish => {
             let proto_record = msg.record.unwrap_or_default();
@@ -137,43 +140,43 @@ fn proto_msg_to_req(msg: proto::Message) -> Result<MailboxRequest, IOError> {
                 value: String::from_utf8(proto_record.value).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
                 timeout_sec: proto_record.timeout,
             };
-            Ok(MailboxRequest::Publish(record))
+            Ok(Request::Publish(record))
         }
         proto::message::MessageType::Msg => {
             let message = String::from_utf8(msg.message).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?;
-            Ok(MailboxRequest::Message(message))
+            Ok(Request::Message(message))
         }
         #[cfg(not(feature = "kademlia"))]
         _ => unreachable!(),
     }
 }
 
-fn proto_msg_to_res(msg: proto::Message) -> Result<MailboxResponse, IOError> {
+fn proto_msg_to_res(msg: proto::Message) -> Result<Response, IOError> {
     let msg_type = proto::message::MessageType::from_i32(msg.r#type)
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
     match msg_type {
-        proto::message::MessageType::Ping => Ok(MailboxResponse::Pong),
+        proto::message::MessageType::Ping => Ok(Response::Pong),
         #[cfg(feature = "kademlia")]
         proto::message::MessageType::Publish => {
             match proto::message::Result::from_i32(msg.r#result)
                 .ok_or_else(|| invalid_data(format!("unknown message result: {}", msg.r#result)))?
             {
-                proto::message::Result::Success => Ok(MailboxResponse::Publish(MailboxResult::Success)),
-                proto::message::Result::Error => Ok(MailboxResponse::Publish(MailboxResult::Error)),
+                proto::message::Result::Success => Ok(Response::Publish(MessageResult::Success)),
+                proto::message::Result::Error => Ok(Response::Publish(MessageResult::Error)),
             }
         }
         _ => unreachable!(),
     }
 }
 
-fn req_to_proto_msg(req: MailboxRequest) -> proto::Message {
+fn req_to_proto_msg(req: Request) -> proto::Message {
     match req {
-        MailboxRequest::Ping => proto::Message {
+        Request::Ping => proto::Message {
             r#type: proto::message::MessageType::Ping as i32,
             ..proto::Message::default()
         },
         #[cfg(feature = "kademlia")]
-        MailboxRequest::Publish(record) => {
+        Request::Publish(record) => {
             let proto_record = proto::Record {
                 key: record.key.into_bytes(),
                 value: record.value.into_bytes(),
@@ -185,7 +188,7 @@ fn req_to_proto_msg(req: MailboxRequest) -> proto::Message {
                 ..proto::Message::default()
             }
         }
-        MailboxRequest::Message(msg) => proto::Message {
+        Request::Message(msg) => proto::Message {
             r#type: proto::message::MessageType::Msg as i32,
             message: msg.into_bytes(),
             ..proto::Message::default()
@@ -193,17 +196,17 @@ fn req_to_proto_msg(req: MailboxRequest) -> proto::Message {
     }
 }
 
-fn res_to_proto_msg(res: MailboxResponse) -> proto::Message {
+fn res_to_proto_msg(res: Response) -> proto::Message {
     match res {
-        MailboxResponse::Pong => proto::Message {
+        Response::Pong => proto::Message {
             r#type: proto::message::MessageType::Ping as i32,
             ..proto::Message::default()
         },
         #[cfg(feature = "kademlia")]
-        MailboxResponse::Publish(r) => {
+        Response::Publish(r) => {
             let result = match r {
-                MailboxResult::Success => proto::message::Result::Success,
-                MailboxResult::Error => proto::message::Result::Error,
+                MessageResult::Success => proto::message::Result::Success,
+                MessageResult::Error => proto::message::Result::Error,
             };
             proto::Message {
                 r#type: proto::message::MessageType::Publish as i32,

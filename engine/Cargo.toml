@@ -18,7 +18,7 @@ name = "engine"
 crypto = { version = "0.1", path = "crypto" }
 vault = { version = "0.1", path = "vault" }
 primitives = { version = "0.1", path = "primitives" }
-p2p = {version = "0.1", path = "p2p"}
+communication = {version = "0.1", path = "communication"}
 random = { version = "0.1", path = "random" }
 snapshot = { version = "0.1", path = "snapshot" }
 
