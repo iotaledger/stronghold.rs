@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "stronghold",
     "engine",
     "engine/vault",
     "engine/primitives",
