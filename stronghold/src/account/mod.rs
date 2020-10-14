@@ -20,7 +20,7 @@ use bee_signing_ext::{
     Signer,
 };
 use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
-use iota::transaction::prelude::{Seed, Transaction, TransactionBuilder};
+use iota::message::prelude::{Seed, Transaction, TransactionBuilder};
 
 #[derive(Serialize, Deserialize, Debug)]
 /// Account
