@@ -55,6 +55,6 @@ pub trait CodecContext {
 }
 
 pub trait Codec {
-    fn handle_request_msg(&mut self, request: Request, channel: ResponseChannel<Response>);
-    fn handle_response_msg(&mut self, response: Response, request_id: RequestId);
+    fn handle_request_msg(ctx: &mut impl CodecContext, request: Request, channel: ResponseChannel<Response>);
+    fn handle_response_msg(ctx: &mut impl CodecContext, response: Response, request_id: RequestId);
 }

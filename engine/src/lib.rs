@@ -22,9 +22,9 @@
 //! Until a formal third-party security audit has taken place, the IOTA Foundation
 //! makes no guarantees to the fitness of this library for any purposes.
 
+pub use communication;
 pub use crypto;
 pub use primitives;
 pub use random;
 pub use snapshot;
 pub use vault;
-pub use communication;

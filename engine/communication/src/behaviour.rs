@@ -49,6 +49,7 @@ pub struct P2PNetworkBehaviour<C: Codec + Send + 'static> {
     #[behaviour(ignore)]
     timeout: Duration,
     #[behaviour(ignore)]
+    #[allow(dead_code)]
     inner: C,
 }
 
@@ -113,11 +114,7 @@ impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
 
     #[cfg(feature = "kademlia")]
     fn send_record(&mut self, peer_id: PeerId, key: String, value: String, timeout_sec: Option<u64>) -> RequestId {
-        let record = MailboxRecord {
-            key,
-            value,
-            timeout_sec: timeout_sec.unwrap_or_else(|| self.timeout.as_secs()),
-        };
+        let record = MailboxRecord::new(key, value, timeout_sec.unwrap_or_else(|| self.timeout.as_secs()));
         self.send_request(peer_id, Request::Publish(record))
     }
 }
@@ -203,9 +200,9 @@ impl<C: Codec + Send + 'static> NetworkBehaviourEventProcess<RequestResponseEven
                     request_id: _,
                     request,
                     channel,
-                } => self.inner.handle_request_msg(request, channel),
+                } => C::handle_request_msg(self, request, channel),
                 RequestResponseMessage::Response { request_id, response } => {
-                    self.inner.handle_response_msg(response, request_id)
+                    C::handle_response_msg(self, response, request_id)
                 }
             },
             OutboundFailure {

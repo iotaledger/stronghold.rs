@@ -41,9 +41,29 @@ pub enum Request {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MailboxRecord {
-    pub(crate) key: String,
-    pub(crate) value: String,
-    pub(crate) timeout_sec: u64,
+    key: String,
+    value: String,
+    timeout_sec: u64,
+}
+
+impl MailboxRecord {
+    pub fn new(key: String, value: String, timeout_sec: u64) -> Self {
+        MailboxRecord {
+            key,
+            value,
+            timeout_sec,
+        }
+    }
+
+    pub fn key(&self) -> String {
+        self.key.clone()
+    }
+    pub fn value(&self) -> String {
+        self.value.clone()
+    }
+    pub fn timeout_sec(&self) -> u64 {
+        self.timeout_sec
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,7 +82,7 @@ pub enum MessageResult {
 
 impl ProtocolName for MessageProtocol {
     fn protocol_name(&self) -> &[u8] {
-        b"/communication-mailbox/1.0.0"
+        b"/p2p-mailbox/1.0.0"
     }
 }
 

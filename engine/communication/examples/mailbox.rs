@@ -9,35 +9,99 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-mod msg_handler;
-use msg_handler::Handler;
-
-use communication::{behaviour::P2PNetworkBehaviour, P2P};
+use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
-use libp2p::core::{identity::Keypair, Multiaddr, PeerId};
+use communication::{
+    behaviour::{
+        codec::{Codec, CodecContext},
+        P2PNetworkBehaviour,
+    },
+    protocol::{MessageResult, Request, Response},
+    P2PNetwork,
+};
+use core::{str::FromStr, time::Duration};
+use libp2p::{
+    core::{identity::Keypair, Multiaddr, PeerId},
+    request_response::{RequestId, ResponseChannel},
+    swarm::SwarmEvent,
+};
+
+struct Handler();
+
+impl Codec for Handler {
+    fn handle_request_msg(ctx: &mut impl CodecContext, request: Request, channel: ResponseChannel<Response>) {
+        match request {
+            Request::Ping => {
+                println!("Received Ping, we will send a Pong back.");
+                ctx.send_response(Response::Pong, channel);
+            }
+            #[cfg(feature = "kademlia")]
+            Request::Publish(r) => {
+                let duration = Some(Duration::from_secs(r.timeout_sec()));
+                let query_id = ctx.put_record_local(r.key(), r.value(), duration);
+                if query_id.is_ok() {
+                    println!("Successfully stored record.");
+                    ctx.send_response(Response::Publish(MessageResult::Success), channel);
+                } else {
+                    println!("Error storing record: {:?}", query_id.err());
+                }
+            }
+            Request::Message(msg) => {
+                println!("Received Message {:?}.", msg);
+            }
+        }
+    }
+
+    fn handle_response_msg(_ctx: &mut impl CodecContext, response: Response, request_id: RequestId) {
+        match response {
+            Response::Pong => {
+                println!("Received Pong for request {:?}.", request_id);
+            }
+            #[cfg(feature = "kademlia")]
+            Response::Publish(result) => {
+                println!("Received Result for publish request {:?}: {:?}.", request_id, result);
+            }
+        }
+    }
+}
 
 // Put a record into the mailbox
 fn put_record(matches: &ArgMatches) {
     if let Some(matches) = matches.subcommand_matches("put_mailbox") {
         if let Some(mail_id) = matches
             .value_of("mailbox_id")
-            .and_then(|id_arg| PeerId::from_str(id_arg.as_str()).ok())
+            .and_then(|id_arg| PeerId::from_str(id_arg).ok())
         {
             if let Some(mail_addr) = matches
                 .value_of("mailbox_addr")
-                .and_then(|addr_arg| Multiaddr::from_str(&*addr_arg).ok())
+                .and_then(|addr_arg| Multiaddr::from_str(addr_arg).ok())
             {
                 if let Some(key) = matches.value_of("key") {
                     if let Some(value) = matches.value_of("value") {
                         let local_keys = Keypair::generate_ed25519();
                         let local_peer_id = PeerId::from(local_keys.public());
-                        let timeout = matches.value_of("timeout").map(|timeout| timeout.parse::<u64>());
-                        let behaviour = P2PNetworkBehaviour::new(local_peer_id, timeout, Handler);
-                        let communication = P2P::new(behaviour, local_keys, None, (mail_id, mail_addr));
-                        let request_id = communication.put_record_mailbox(key, value, None, None);
-                        if request_id.is_ok() {
-                            println!("Successfully send record to mailbox");
-                            return;
+                        let timeout = matches
+                            .value_of("timeout")
+                            .and_then(|timeout| timeout.parse::<u64>().ok())
+                            .map(Duration::from_secs);
+                        let new_network =
+                            P2PNetworkBehaviour::new(local_peer_id, timeout, Handler()).and_then(|behaviour| {
+                                P2PNetwork::new(behaviour, local_keys, None, Some((mail_id, mail_addr)))
+                            });
+                        if let Ok(mut network) = new_network {
+                            let request_id = network.put_record_mailbox(key.to_string(), value.to_string(), None, None);
+                            if request_id.is_ok() {
+                                task::block_on(async move {
+                                    loop {
+                                        if let SwarmEvent::ConnectionClosed { .. } = network.swarm.next_event().await {
+                                            break;
+                                        }
+                                    }
+                                });
+                                return;
+                            }
+                        } else if let Err(e) = new_network {
+                            eprintln!("Error creating Behaviour: {:?}", e);
                         }
                     }
                 }

@@ -31,7 +31,7 @@ pub mod behaviour;
 pub mod error;
 #[cfg(feature = "kademlia")]
 mod mailboxes;
-mod protocol;
+pub mod protocol;
 
 type P2PNetworkSwarm<C>= ExpandedSwarm<
     P2PNetworkBehaviour<C>,
@@ -41,7 +41,7 @@ type P2PNetworkSwarm<C>= ExpandedSwarm<
     PeerId,
 >;
 
-pub struct P2P<C: Codec + Send + 'static> {
+pub struct P2PNetwork<C: Codec + Send + 'static> {
     peer_id: PeerId,
     #[allow(dead_code)]
     pub swarm: P2PNetworkSwarm<C>,
@@ -49,7 +49,7 @@ pub struct P2P<C: Codec + Send + 'static> {
     mailboxes: Option<Mailboxes>,
 }
 
-impl<C: Codec + Send + 'static> P2P<C> {
+impl<C: Codec + Send + 'static> P2PNetwork<C> {
     pub fn new(
         behaviour: P2PNetworkBehaviour<C>,
         local_keys: Keypair,
@@ -76,7 +76,7 @@ impl<C: Codec + Send + 'static> P2P<C> {
                 .map(|_| Mailboxes::new(Mailbox::new(mailbox_id, mailbox_addr)))
         });
 
-        Ok(P2P::<C> {
+        Ok(P2PNetwork::<C> {
             peer_id,
             #[cfg(feature = "kademlia")]
             mailboxes,

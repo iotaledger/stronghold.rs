@@ -3,18 +3,18 @@ version: '1.0'
 author: Elena Frank <elena.frank@iota.org>
 about: Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
 subcommands:
-  - put_mail:
+  - put_mailbox:
       about: Put record into the mailbox
       args:
         - mailbox_id:
-            short: mi
+            short: i
             long: mail_id
             value_name: mailbox_id
             about: the peer id of the mailbox
             required: true
             takes_value: true
         - mailbox_addr:
-            short: ma
+            short: a
             long: mail_addr
             value_name: mailbox_addr
             about: the multiaddr of the mailbox
@@ -41,18 +41,18 @@ subcommands:
             about: the timeout for the record in sec
             required: false
             takes_value: true
-  - get_mail:
+  - get_mailbox:
       about: Get record from local or the mailbox
       args:
         - mailbox_id:
-            short: mi
+            short: i
             long: mail_id
             value_name: mailbox_id
             about: the peer id of the mailbox
             required: true
             takes_value: true
         - mailbox_addr:
-            short: ma
+            short: a
             long: mail_addr
             value_name: mailbox_addr
             about: the multiaddr of the mailbox
