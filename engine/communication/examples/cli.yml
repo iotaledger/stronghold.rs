@@ -41,7 +41,7 @@ subcommands:
             about: the timeout for the record in sec
             required: false
             takes_value: true
-  - get_mailbox:
+  - get_record:
       about: Get record from local or the mailbox
       args:
         - mailbox_id:

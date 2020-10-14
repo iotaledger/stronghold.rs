@@ -26,7 +26,7 @@ pub trait CodecContext {
     fn send_response(&mut self, response: Response, channel: ResponseChannel<Response>);
 
     #[cfg(feature = "kademlia")]
-    fn get_record(&mut self, key_str: String);
+    fn get_record(&mut self, key_str: String) -> QueryId;
 
     #[cfg(feature = "kademlia")]
     fn put_record_local(

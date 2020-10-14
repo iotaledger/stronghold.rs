@@ -63,9 +63,9 @@ impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
     }
 
     #[cfg(feature = "kademlia")]
-    fn get_record(&mut self, key_str: String) {
+    fn get_record(&mut self, key_str: String) -> QueryId {
         let key = Key::new(&key_str);
-        self.kademlia.get_record(&key, Quorum::One);
+        self.kademlia.get_record(&key, Quorum::One)
     }
 
     #[cfg(feature = "kademlia")]

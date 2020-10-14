@@ -107,12 +107,51 @@ fn put_record(matches: &ArgMatches) {
                 }
             }
         }
+        eprintln!("Could not send record to mailbox");
     }
-    eprintln!("Could not send record to mailbox");
+}
+
+#[cfg(feature = "kademlia")]
+// Get a record
+fn get_record(matches: &ArgMatches) {
+    if let Some(matches) = matches.subcommand_matches("get_record") {
+        if let Some(mail_id) = matches
+            .value_of("mailbox_id")
+            .and_then(|id_arg| PeerId::from_str(id_arg).ok())
+        {
+            if let Some(mail_addr) = matches
+                .value_of("mailbox_addr")
+                .and_then(|addr_arg| Multiaddr::from_str(addr_arg).ok())
+            {
+                if let Some(key) = matches.value_of("key") {
+                    let local_keys = Keypair::generate_ed25519();
+                    let local_peer_id = PeerId::from(local_keys.public());
+                    let new_network = P2PNetworkBehaviour::new(local_peer_id, None, Handler())
+                        .and_then(|behaviour| P2PNetwork::new(behaviour, local_keys, None, Some((mail_id, mail_addr))));
+                    if let Ok(mut network) = new_network {
+                        network.swarm.get_record(key.to_string());
+                        task::block_on(async move {
+                            loop {
+                                if let SwarmEvent::ConnectionClosed { .. } = network.swarm.next_event().await {
+                                    break;
+                                }
+                            }
+                        });
+                        return;
+                    } else if let Err(e) = new_network {
+                        eprintln!("Error creating Behaviour: {:?}", e);
+                    }
+                }
+            }
+        }
+        eprintln!("Could not send record to mailbox");
+    }
 }
 
 fn main() {
     let yaml = load_yaml!("cli.yml");
     let matches = App::from(yaml).get_matches();
     put_record(&matches);
+    #[cfg(feature = "kademlia")]
+    get_record(&matches);
 }
