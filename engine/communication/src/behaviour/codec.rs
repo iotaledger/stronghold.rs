@@ -19,6 +19,8 @@ use libp2p::{
     core::PeerId,
     request_response::{RequestId, ResponseChannel},
 };
+#[cfg(feature = "kademlia")]
+use libp2p::kad::KademliaEvent;
 
 pub trait CodecContext {
     fn send_request(&mut self, peer_id: PeerId, request: Request) -> RequestId;
@@ -57,4 +59,6 @@ pub trait CodecContext {
 pub trait Codec {
     fn handle_request_msg(ctx: &mut impl CodecContext, request: Request, channel: ResponseChannel<Response>);
     fn handle_response_msg(ctx: &mut impl CodecContext, response: Response, request_id: RequestId);
+    #[cfg(feature = "kademlia")]
+    fn handle_kademlia_event(ctx: &mut impl CodecContext, result: KademliaEvent);
 }

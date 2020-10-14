@@ -26,6 +26,9 @@ use libp2p::{
     swarm::SwarmEvent,
 };
 
+#[cfg(feature = "kademlia")]
+use libp2p::kad::{KademliaEvent, PeerRecord, QueryResult as KadQueryResult, Record as KadRecord};
+
 struct Handler();
 
 impl Codec for Handler {
@@ -60,6 +63,31 @@ impl Codec for Handler {
             #[cfg(feature = "kademlia")]
             Response::Publish(result) => {
                 println!("Received Result for publish request {:?}: {:?}.", request_id, result);
+            }
+        }
+    }
+
+    #[cfg(feature = "kademlia")]
+    fn handle_kademlia_event(_ctx: &mut impl CodecContext, event: KademliaEvent){
+        if let KademliaEvent::QueryResult { result, .. } = event {
+            match result {
+                KadQueryResult::GetRecord(Ok(ok)) => {
+                    for PeerRecord {
+                        record: KadRecord { key, value, .. },
+                        ..
+                    } in ok.records
+                    {
+                        println!(
+                            "Got record {:?} {:?}.",
+                            std::str::from_utf8(key.as_ref()).unwrap(),
+                            std::str::from_utf8(&value).unwrap(),
+                        );
+                    }
+                }
+                KadQueryResult::GetRecord(Err(err)) => {
+                    eprintln!("Failed to get record: {:?}.", err);
+                }
+                _ => {}
             }
         }
     }

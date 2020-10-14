@@ -20,7 +20,7 @@ use core::time::Duration;
 use libp2p::{
     core::Multiaddr,
     kad::{
-        record::Key, store::MemoryStore, Kademlia, KademliaEvent, PeerRecord, QueryId, QueryResult as KadQueryResult,
+        record::Key, store::MemoryStore, Kademlia, KademliaEvent, QueryId, 
         Quorum, Record as KadRecord,
     },
 };
@@ -165,27 +165,7 @@ impl<C: Codec + Send + 'static> NetworkBehaviourEventProcess<MdnsEvent> for P2PN
 impl<C: Codec + Send + 'static> NetworkBehaviourEventProcess<KademliaEvent> for P2PNetworkBehaviour<C> {
     // Called when `kademlia` produces an event.
     fn inject_event(&mut self, message: KademliaEvent) {
-        if let KademliaEvent::QueryResult { result, .. } = message {
-            match result {
-                KadQueryResult::GetRecord(Ok(ok)) => {
-                    for PeerRecord {
-                        record: KadRecord { key, value, .. },
-                        ..
-                    } in ok.records
-                    {
-                        println!(
-                            "Got record {:?} {:?}.",
-                            std::str::from_utf8(key.as_ref()).unwrap(),
-                            std::str::from_utf8(&value).unwrap(),
-                        );
-                    }
-                }
-                KadQueryResult::GetRecord(Err(err)) => {
-                    eprintln!("Failed to get record: {:?}.", err);
-                }
-                _ => {}
-            }
-        }
+        C::handle_kademlia_event(self, message);
     }
 }
 
