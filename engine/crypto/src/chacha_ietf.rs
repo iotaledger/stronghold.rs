@@ -20,6 +20,11 @@ use std::{cmp::min, error::Error};
 #[cfg(target_pointer_width = "64")]
 pub const CHACHA20_MAX: usize = 4_294_967_296 * 64;
 #[cfg(target_pointer_width = "32")]
+
+/// max bytes that can be processed with a key/nonce combo
+#[cfg(target_pointer_width = "64")]
+pub const CHACHA20_MAX: usize = 4_294_967_296 * 64;
+#[cfg(target_pointer_width = "32")]
 pub const CHACHA20_MAX: usize = usize::max_value();
 /// Size of Key
 pub const CHACHA20_KEY: usize = 32;
