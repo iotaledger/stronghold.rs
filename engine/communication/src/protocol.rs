@@ -70,7 +70,7 @@ impl MailboxRecord {
 pub enum Response {
     Pong,
     #[cfg(feature = "kademlia")]
-    Publish(MessageResult),
+    Result(MessageResult),
 }
 
 #[cfg(feature = "kademlia")]
@@ -181,8 +181,8 @@ fn proto_msg_to_res(msg: proto::Message) -> Result<Response, IOError> {
             match proto::message::Result::from_i32(msg.r#result)
                 .ok_or_else(|| invalid_data(format!("unknown message result: {}", msg.r#result)))?
             {
-                proto::message::Result::Success => Ok(Response::Publish(MessageResult::Success)),
-                proto::message::Result::Error => Ok(Response::Publish(MessageResult::Error)),
+                proto::message::Result::Success => Ok(Response::Result(MessageResult::Success)),
+                proto::message::Result::Error => Ok(Response::Result(MessageResult::Error)),
             }
         }
         _ => unreachable!(),
@@ -223,7 +223,7 @@ fn res_to_proto_msg(res: Response) -> proto::Message {
             ..proto::Message::default()
         },
         #[cfg(feature = "kademlia")]
-        Response::Publish(r) => {
+        Response::Result(r) => {
             let result = match r {
                 MessageResult::Success => proto::message::Result::Success,
                 MessageResult::Error => proto::message::Result::Error,

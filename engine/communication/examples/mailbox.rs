@@ -44,7 +44,7 @@ impl Codec for Handler {
                 let query_id = ctx.put_record_local(r.key(), r.value(), duration);
                 if query_id.is_ok() {
                     println!("Successfully stored record.");
-                    ctx.send_response(Response::Publish(MessageResult::Success), channel);
+                    ctx.send_response(Response::Result(MessageResult::Success), channel);
                 } else {
                     println!("Error storing record: {:?}", query_id.err());
                 }
@@ -61,7 +61,7 @@ impl Codec for Handler {
                 println!("Received Pong for request {:?}.", request_id);
             }
             #[cfg(feature = "kademlia")]
-            Response::Publish(result) => {
+            Response::Result(result) => {
                 println!("Received Result for publish request {:?}: {:?}.", request_id, result);
             }
         }
