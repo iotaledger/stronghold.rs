@@ -8,9 +8,12 @@ use core::fmt;
 #[macro_use]
 extern crate memoffset;
 
+#[macro_use]
+extern crate lazy_static;
+
 pub mod mem;
 pub mod zone;
-mod seccomp;
+pub mod seccomp;
 
 #[derive(PartialEq)]
 pub enum Error {

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::mem;
-use core::fmt::Debug;
 
 #[allow(dead_code)]
 mod bindings {
@@ -50,6 +49,11 @@ impl Program {
         p.jmp(bindings::BPF_JEQ | bindings::BPF_K, 0, 1,
             libc::SYS_exit_group as bindings::__u32);
         p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_ALLOW);
+
+        p.jmp(bindings::BPF_JEQ | bindings::BPF_K, 0, 1,
+            libc::SYS_munmap as bindings::__u32);
+        p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_ALLOW);
+
         p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_KILL_PROCESS);
 
         p
@@ -93,6 +97,7 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::fmt::Debug;
 
     fn harness<T: PartialEq + Debug, F: FnOnce() -> T>(f: F) -> crate::Result<T> {
         crate::zone::soft(f)
