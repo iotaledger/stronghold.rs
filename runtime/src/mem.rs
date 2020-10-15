@@ -20,18 +20,23 @@ pub enum Error {
 }
 
 #[cfg(unix)]
-fn page_size() -> usize {
-    unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }
+lazy_static! {
+    static ref PAGE_SIZE: usize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize };
 }
+#[cfg(unix)]
+fn page_size() -> usize { *PAGE_SIZE }
 
-pub struct GuardedAllocator {
-    page_size: usize,
-}
+pub struct GuardedAllocator { }
 
 impl GuardedAllocator {
-    pub fn new() -> Self {
-        Self {
-            page_size: page_size(),
+    pub const fn new() -> Self { Self { } }
+
+    fn align_with_guards(n: usize) -> (usize, usize) {
+        let (q, r) = num::integer::div_rem(n, page_size());
+        if r == 0 {
+            ((2 + q)*page_size(), page_size())
+        } else {
+            ((2 + 1 + q)*page_size(), page_size() + (page_size() - r))
         }
     }
 
@@ -40,18 +45,13 @@ impl GuardedAllocator {
             return Err(crate::Error::MemError(Error::ZeroAllocation));
         }
 
-        let (size, offset) = if n % self.page_size == 0 {
-            (2*self.page_size + n, self.page_size)
-        } else {
-            let (q, r) = num::integer::div_rem(n, self.page_size);
-            ((2 + q)*self.page_size, self.page_size + r)
-        };
+        let (size, offset) = Self::align_with_guards(n);
 
         unsafe {
             let base = libc::mmap(
                 ptr::null_mut::<u8>() as *mut libc::c_void,
                 size,
-                libc::PROT_NONE,
+                libc::PROT_READ | libc::PROT_WRITE,
                 libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
                 -1, 0);
             if base == libc::MAP_FAILED {
@@ -69,32 +69,78 @@ impl GuardedAllocator {
         }
     }
 
-    pub fn dealloc(&self, _p: *mut u8) -> crate::Result<()> {
+    pub fn dealloc(&self, p: *mut u8, n: usize) -> crate::Result<()> {
         // TODO: verify the canary
         // TODO: zero the data pages
-        // TODO: munmap
-        todo!()
+
+        let (size, offset) = Self::align_with_guards(n);
+        
+        unsafe {
+            let base = p.offset(-(offset as isize));
+            let r = libc::munmap(base as *mut libc::c_void, size);
+            if r != 0 {
+                return Err(crate::Error::os("mmap"));
+            }
+        }
+
+        Ok(())
     }
 }
 
 unsafe impl GlobalAlloc for GuardedAllocator {
-    unsafe fn alloc(&self, _: Layout) -> *mut u8 { todo!() }
-    unsafe fn dealloc(&self, _: *mut u8, _: Layout) { todo!() }
+    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+        self.alloc(l.pad_to_align().size()).unwrap()
+    }
+
+    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+        self.dealloc(p, l.pad_to_align().size()).unwrap()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    #[global_allocator]
+    static ALLOC: GuardedAllocator = GuardedAllocator::new();
 
-    #[test]
-    fn allocate_whole_page() -> crate::Result<()> {
-        let _ = GuardedAllocator::new().alloc(page_size())?;
+    use super::*;
+    use rand::{random, thread_rng, Rng};
+
+    fn do_sized_alloc_test(n: usize) -> crate::Result<()> {
+        let a = GuardedAllocator::new();
+        let p = a.alloc(n)?;
+
+        let bs = unsafe { core::slice::from_raw_parts_mut(p, n) };
+        for i in 0..n {
+            assert_eq!(bs[i], 0);
+        }
+
+        thread_rng().fill(bs);
+
+        a.dealloc(p, n)?;
+
         Ok(())
     }
 
     #[test]
+    fn allocate_whole_page() -> crate::Result<()> {
+        do_sized_alloc_test(page_size())
+    }
+
+    #[test]
     fn allocate_less_than_a_whole_page() -> crate::Result<()> {
-        let _ = GuardedAllocator::new().alloc(1)?;
+        do_sized_alloc_test(1)
+    }
+
+    #[test]
+    fn allocate_little_more_than_a_whole_page() -> crate::Result<()> {
+        do_sized_alloc_test(page_size() + 1)
+    }
+
+    #[test]
+    fn allocate_random_sizes() -> crate::Result<()> {
+        for _ in 1..10 {
+            do_sized_alloc_test(random::<usize>() % 1024*1024)?
+        }
         Ok(())
     }
 
@@ -104,6 +150,19 @@ mod tests {
             GuardedAllocator::new().alloc(0),
             Err(crate::Error::MemError(Error::ZeroAllocation)),
         );
+        Ok(())
+    }
+
+    #[test]
+    fn vectors() -> crate::Result<()> {
+        extern crate alloc;
+        use alloc::vec::Vec;
+
+        let mut bs: Vec<u8> = Vec::with_capacity(10);
+        for _ in 1..100 {
+            bs.push(random());
+        }
+
         Ok(())
     }
 }

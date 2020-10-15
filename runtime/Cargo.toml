@@ -17,9 +17,16 @@ name = "runtime"
 libc = "0.2.79"
 memoffset = "0.5.6"
 
+[dependencies.lazy_static]
+version = "1.4.0"
+features = ["spin_no_std"]
+
 [dependencies.num]
 version = "0.3.0"
 default-features = false
 
 [build-dependencies]
 bindgen = "0.55.1"
+
+[dev-dependencies]
+rand = "0.7.3"
