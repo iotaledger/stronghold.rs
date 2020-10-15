@@ -70,16 +70,19 @@ impl<C: Codec + Send + 'static> P2PNetwork<C> {
         self.peer_id.clone()
     }
 
-    pub fn dial_remote(&mut self, peer_addr: Multiaddr) -> QueryResult<()> {
+    pub fn connect_remote(&mut self,  peer_id: PeerId, peer_addr: Multiaddr) -> QueryResult<()> {
         Swarm::dial_addr(&mut self.swarm, peer_addr.clone())
-            .map_err(|_| QueryError::ConnectionError(format!("Could not dial addr {}", peer_addr)))
+            .map_err(|_| QueryError::ConnectionError(format!("Could not dial addr {}", peer_addr)))?;
+        #[cfg(feature = "kademlia")] {
+            self.swarm.kad_add_address(&peer_id, peer_addr);
+            self.swarm.kad_bootstrap().map_err(|_| QueryError::KademliaError(format!("Could not bootstrap {}", peer_id)))?;
+        }
+        Ok(())
     }
 
     #[cfg(feature = "kademlia")]
     pub fn add_mailbox(&mut self, mailbox_peer: PeerId, mailbox_addr: Multiaddr) -> QueryResult<()> {
-        self.dial_remote(mailbox_addr.clone())?;
-        self.swarm.kad_add_address(&mailbox_peer, mailbox_addr.clone());
-        self.swarm.kad_bootstrap().map_err(|_| QueryError::KademliaError(format!("Could not bootstrap {}", mailbox_peer)))?;
+        self.connect_remote(mailbox_peer.clone(), mailbox_addr.clone())?;
         if let Some(mailboxes) = self.mailboxes.as_mut() {
             mailboxes.add_mailbox(mailbox_peer, mailbox_addr);
         } else {
