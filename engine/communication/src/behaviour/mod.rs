@@ -10,8 +10,9 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 pub mod codec;
+mod protocol;
 use crate::error::{QueryError, QueryResult};
-use crate::protocol::{MailboxRecord, MessageCodec, MessageProtocol, Request, Response};
+use crate::message::{MailboxRecord, Request, Response};
 use codec::{Codec, CodecContext};
 use core::iter;
 #[cfg(feature = "kademlia")]
@@ -19,10 +20,7 @@ use core::time::Duration;
 #[cfg(feature = "kademlia")]
 use libp2p::{
     core::Multiaddr,
-    kad::{
-        record::Key, store::MemoryStore, Kademlia, KademliaEvent, QueryId, 
-        Quorum, Record as KadRecord,
-    },
+    kad::{record::Key, store::MemoryStore, Kademlia, KademliaEvent, QueryId, Quorum, Record as KadRecord},
 };
 use libp2p::{
     core::PeerId,
@@ -35,6 +33,7 @@ use libp2p::{
     swarm::NetworkBehaviourEventProcess,
     NetworkBehaviour,
 };
+use protocol::{MessageCodec, MessageProtocol};
 // TODO: support no_std
 use std::marker::Send;
 #[cfg(feature = "kademlia")]
@@ -47,15 +46,13 @@ pub struct P2PNetworkBehaviour<C: Codec + Send + 'static> {
     mdns: Mdns,
     msg_proto: RequestResponse<MessageCodec>,
     #[behaviour(ignore)]
-    timeout: Duration,
-    #[behaviour(ignore)]
     #[allow(dead_code)]
     inner: C,
 }
 
 impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
-    fn send_request(&mut self, peer_id: PeerId, request: Request) -> RequestId {
-        self.msg_proto.send_request(&peer_id, request)
+    fn send_request(&mut self, peer_id: &PeerId, request: Request) -> RequestId {
+        self.msg_proto.send_request(peer_id, request)
     }
 
     fn send_response(&mut self, response: Response, channel: ResponseChannel<Response>) {
@@ -69,18 +66,12 @@ impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
     }
 
     #[cfg(feature = "kademlia")]
-    fn put_record_local(
-        &mut self,
-        key_str: String,
-        value_str: String,
-        timeout_sec: Option<Duration>,
-    ) -> QueryResult<QueryId> {
-        let duration = timeout_sec.filter(|s| s.as_secs() > 0).unwrap_or(self.timeout);
+    fn put_record_local(&mut self, record: MailboxRecord) -> QueryResult<QueryId> {
         let record = KadRecord {
-            key: Key::new(&key_str),
-            value: value_str.into_bytes(),
+            key: Key::new(&record.key()),
+            value: record.value().into_bytes(),
             publisher: None,
-            expires: Some(Instant::now() + duration),
+            expires: Some(Instant::now() + Duration::from_secs(record.timeout_sec())),
         };
         self.kademlia
             .put_record(record, Quorum::One)
@@ -88,6 +79,7 @@ impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
     }
 
     fn print_known_peer(&mut self) {
+        println!("Known peers:");
         #[cfg(feature = "kademlia")]
         for bucket in self.kademlia.kbuckets() {
             for entry in bucket.iter() {
@@ -111,16 +103,10 @@ impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
             .bootstrap()
             .map_err(|e| QueryError::KademliaError(format!("Could not bootstrap:{:?}", e.to_string())))
     }
-
-    #[cfg(feature = "kademlia")]
-    fn send_record(&mut self, peer_id: PeerId, key: String, value: String, timeout_sec: Option<u64>) -> RequestId {
-        let record = MailboxRecord::new(key, value, timeout_sec.unwrap_or_else(|| self.timeout.as_secs()));
-        self.send_request(peer_id, Request::Publish(record))
-    }
 }
 
 impl<C: Codec + Send + 'static> P2PNetworkBehaviour<C> {
-    pub fn new(peer_id: PeerId, timeout_sec: Option<Duration>, inner: C) -> QueryResult<Self> {
+    pub fn new(peer_id: PeerId, inner: C) -> QueryResult<Self> {
         #[cfg(feature = "kademlia")]
         let kademlia = {
             let store = MemoryStore::new(peer_id.clone());
@@ -136,14 +122,11 @@ impl<C: Codec + Send + 'static> P2PNetworkBehaviour<C> {
             RequestResponse::new(MessageCodec(), protocols, cfg)
         };
 
-        let timeout = timeout_sec.unwrap_or_else(|| Duration::from_secs(9000u64));
-
         Ok(P2PNetworkBehaviour::<C> {
             #[cfg(feature = "kademlia")]
             kademlia,
             mdns,
             msg_proto,
-            timeout,
             inner,
         })
     }

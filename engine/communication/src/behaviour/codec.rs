@@ -10,20 +10,18 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 use crate::error::QueryResult;
-use crate::protocol::{Request, Response};
+use crate::message::{MailboxRecord, Request, Response};
 #[cfg(feature = "kademlia")]
-use core::time::Duration;
+use libp2p::kad::KademliaEvent;
 #[cfg(feature = "kademlia")]
 use libp2p::{core::Multiaddr, kad::QueryId};
 use libp2p::{
     core::PeerId,
     request_response::{RequestId, ResponseChannel},
 };
-#[cfg(feature = "kademlia")]
-use libp2p::kad::KademliaEvent;
 
 pub trait CodecContext {
-    fn send_request(&mut self, peer_id: PeerId, request: Request) -> RequestId;
+    fn send_request(&mut self, peer_id: &PeerId, request: Request) -> RequestId;
 
     fn send_response(&mut self, response: Response, channel: ResponseChannel<Response>);
 
@@ -31,21 +29,7 @@ pub trait CodecContext {
     fn get_record(&mut self, key_str: String) -> QueryId;
 
     #[cfg(feature = "kademlia")]
-    fn put_record_local(
-        &mut self,
-        key_str: String,
-        value_str: String,
-        timeout_sec: Option<Duration>,
-    ) -> QueryResult<QueryId>;
-
-    #[cfg(feature = "kademlia")]
-    fn send_record(
-        &mut self,
-        peer_id: PeerId,
-        key_str: String,
-        value_str: String,
-        timeout_sec: Option<u64>,
-    ) -> RequestId;
+    fn put_record_local(&mut self, record: MailboxRecord) -> QueryResult<QueryId>;
 
     fn print_known_peer(&mut self);
 

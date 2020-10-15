@@ -9,9 +9,8 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-mod structs_proto {
-    include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
-}
+use crate::message::{MailboxRecord, MessageResult, Request, Response};
+use crate::structs_proto as proto;
 use async_trait::async_trait;
 use futures::{prelude::*, AsyncRead, AsyncWrite};
 use libp2p::{
@@ -22,7 +21,6 @@ use libp2p::{
     request_response::RequestResponseCodec,
 };
 use prost::Message;
-use structs_proto as proto;
 // TODO: support no_std
 use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind, Result as IOResult};
 
@@ -30,55 +28,6 @@ use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind, Re
 pub struct MessageProtocol();
 #[derive(Clone)]
 pub struct MessageCodec();
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Request {
-    Ping,
-    #[cfg(feature = "kademlia")]
-    Publish(MailboxRecord),
-    Message(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MailboxRecord {
-    key: String,
-    value: String,
-    timeout_sec: u64,
-}
-
-impl MailboxRecord {
-    pub fn new(key: String, value: String, timeout_sec: u64) -> Self {
-        MailboxRecord {
-            key,
-            value,
-            timeout_sec,
-        }
-    }
-
-    pub fn key(&self) -> String {
-        self.key.clone()
-    }
-    pub fn value(&self) -> String {
-        self.value.clone()
-    }
-    pub fn timeout_sec(&self) -> u64 {
-        self.timeout_sec
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Response {
-    Pong,
-    #[cfg(feature = "kademlia")]
-    Result(MessageResult),
-}
-
-#[cfg(feature = "kademlia")]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MessageResult {
-    Success,
-    Error,
-}
 
 impl ProtocolName for MessageProtocol {
     fn protocol_name(&self) -> &[u8] {
@@ -155,11 +104,11 @@ fn proto_msg_to_req(msg: proto::Message) -> Result<Request, IOError> {
         #[cfg(feature = "kademlia")]
         proto::message::MessageType::Publish => {
             let proto_record = msg.record.unwrap_or_default();
-            let record = MailboxRecord {
-                key: String::from_utf8(proto_record.key).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
-                value: String::from_utf8(proto_record.value).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
-                timeout_sec: proto_record.timeout,
-            };
+            let record = MailboxRecord::new(
+                String::from_utf8(proto_record.key).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
+                String::from_utf8(proto_record.value).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
+                proto_record.timeout,
+            );
             Ok(Request::Publish(record))
         }
         proto::message::MessageType::Msg => {
@@ -198,9 +147,9 @@ fn req_to_proto_msg(req: Request) -> proto::Message {
         #[cfg(feature = "kademlia")]
         Request::Publish(record) => {
             let proto_record = proto::Record {
-                key: record.key.into_bytes(),
-                value: record.value.into_bytes(),
-                timeout: record.timeout_sec,
+                key: record.key().into_bytes(),
+                value: record.value().into_bytes(),
+                timeout: record.timeout_sec(),
             };
             proto::Message {
                 r#type: proto::message::MessageType::Publish as i32,
