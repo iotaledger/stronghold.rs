@@ -65,3 +65,22 @@ subcommands:
             about: the key for the record
             required: false
             takes_value: true
+  - message:
+      about: Send a message directly to a peer within the same local network
+      args:
+        - peer_id:
+            short: i
+            long: peer_id
+            value_name: peer_id
+            about: the receivers peer id
+            required: false
+            takes_value: true
+        - msg:
+            short: i
+            long: msg
+            value_name: msg
+            about: the message string
+            required: false
+            takes_value: false
+  - listen:
+      about: listen for messages from other peers

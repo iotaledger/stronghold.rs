@@ -9,8 +9,11 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
+#[cfg(feature = "kademlia")]
 use crate::error::QueryResult;
-use crate::message::{MailboxRecord, Request, Response};
+#[cfg(feature = "kademlia")]
+use crate::message::MailboxRecord;
+use crate::message::{Request, Response};
 #[cfg(feature = "kademlia")]
 use libp2p::kad::KademliaEvent;
 #[cfg(feature = "kademlia")]
@@ -31,7 +34,7 @@ pub trait CodecContext {
     #[cfg(feature = "kademlia")]
     fn put_record_local(&mut self, record: MailboxRecord) -> QueryResult<QueryId>;
 
-    fn print_known_peer(&mut self);
+    fn print_known_peers(&mut self);
 
     #[cfg(feature = "kademlia")]
     fn kad_add_address(&mut self, peer_id: &PeerId, addr: Multiaddr);

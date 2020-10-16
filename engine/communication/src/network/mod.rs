@@ -8,12 +8,11 @@
 // Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
-
-use crate::behaviour::{
-    codec::{Codec, CodecContext},
-    P2PNetworkBehaviour,
-};
+#[cfg(feature = "kademlia")]
+use crate::behaviour::codec::CodecContext;
+use crate::behaviour::{codec::Codec, P2PNetworkBehaviour};
 use crate::error::{QueryError, QueryResult};
+#[cfg(feature = "kademlia")]
 use crate::message::{MailboxRecord, Request};
 use libp2p::{
     build_development_transport,
@@ -70,14 +69,24 @@ impl<C: Codec + Send + 'static> P2PNetwork<C> {
         self.peer_id.clone()
     }
 
-    pub fn connect_remote(&mut self,  peer_id: PeerId, peer_addr: Multiaddr) -> QueryResult<()> {
+    pub fn connect_remote(&mut self, _peer_id: PeerId, peer_addr: Multiaddr) -> QueryResult<()> {
         Swarm::dial_addr(&mut self.swarm, peer_addr.clone())
             .map_err(|_| QueryError::ConnectionError(format!("Could not dial addr {}", peer_addr)))?;
-        #[cfg(feature = "kademlia")] {
-            self.swarm.kad_add_address(&peer_id, peer_addr);
-            self.swarm.kad_bootstrap().map_err(|_| QueryError::KademliaError(format!("Could not bootstrap {}", peer_id)))?;
+        #[cfg(feature = "kademlia")]
+        {
+            self.swarm.kad_add_address(&_peer_id, peer_addr);
+            self.swarm
+                .kad_bootstrap()
+                .map_err(|_| QueryError::KademliaError(format!("Could not bootstrap {}", _peer_id)))?;
         }
         Ok(())
+    }
+
+    pub fn print_listeners(&self) {
+        println!("Listening on:");
+        for a in Swarm::listeners(&self.swarm) {
+            println!("{:?}", a);
+        }
     }
 
     #[cfg(feature = "kademlia")]

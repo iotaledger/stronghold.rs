@@ -65,6 +65,9 @@ impl Codec for Handler {
             Response::Result(result) => {
                 println!("Received Result for publish request {:?}: {:?}.", request_id, result);
             }
+            Response::Message(msg) => {
+                println!("Received response message for request {:?}: {:?}.", request_id, msg);
+            }
         }
     }
 
@@ -98,7 +101,7 @@ struct Matches {
     mail_addr: Multiaddr,
     key: String,
     value: Option<String>,
-    timeout: Option<u64>
+    timeout: Option<u64>,
 }
 
 fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
@@ -115,7 +118,13 @@ fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
                 let timeout = matches
                     .value_of("timeout")
                     .and_then(|timeout| timeout.parse::<u64>().ok());
-                return Some(Matches {mail_id, mail_addr, key, value, timeout});
+                return Some(Matches {
+                    mail_id,
+                    mail_addr,
+                    key,
+                    value,
+                    timeout,
+                });
             }
         }
     }
@@ -125,14 +134,21 @@ fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
 // Put a record into the mailbox
 fn put_record(matches: &ArgMatches) -> QueryResult<()> {
     if let Some(matches) = matches.subcommand_matches("put_mailbox") {
-        if let Some(Matches {mail_id, mail_addr, key, value: Some(value), timeout}) = eval_arg_matches(matches) {
+        if let Some(Matches {
+            mail_id,
+            mail_addr,
+            key,
+            value: Some(value),
+            timeout,
+        }) = eval_arg_matches(matches)
+        {
             let local_keys = Keypair::generate_ed25519();
             let local_peer_id = PeerId::from(local_keys.public());
             let new_network = P2PNetworkBehaviour::new(local_peer_id, Handler())
                 .and_then(|behaviour| P2PNetwork::new(behaviour, local_keys, None));
             if let Ok(mut network) = new_network {
                 network.add_mailbox(mail_id.clone(), mail_addr)?;
-                network.swarm.print_known_peer();
+                network.swarm.print_known_peers();
                 let record = MailboxRecord::new(key, value, timeout.unwrap_or(9000u64));
                 let request_id = network.put_record_mailbox(record, Some(mail_id));
                 if request_id.is_ok() {
@@ -158,7 +174,13 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
 // Get a record
 fn get_record(matches: &ArgMatches) -> QueryResult<()> {
     if let Some(matches) = matches.subcommand_matches("get_record") {
-        if let Some(Matches{mail_id, mail_addr, key, ..}) = eval_arg_matches(matches) {
+        if let Some(Matches {
+            mail_id,
+            mail_addr,
+            key,
+            ..
+        }) = eval_arg_matches(matches)
+        {
             let local_keys = Keypair::generate_ed25519();
             let local_peer_id = PeerId::from(local_keys.public());
             let new_network = P2PNetworkBehaviour::new(local_peer_id, Handler())

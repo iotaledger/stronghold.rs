@@ -49,6 +49,7 @@ pub enum Response {
     Pong,
     #[cfg(feature = "kademlia")]
     Result(MessageResult),
+    Message(String),
 }
 
 #[cfg(feature = "kademlia")]

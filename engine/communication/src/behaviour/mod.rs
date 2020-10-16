@@ -12,7 +12,9 @@
 pub mod codec;
 mod protocol;
 use crate::error::{QueryError, QueryResult};
-use crate::message::{MailboxRecord, Request, Response};
+#[cfg(feature = "kademlia")]
+use crate::message::MailboxRecord;
+use crate::message::{Request, Response};
 use codec::{Codec, CodecContext};
 use core::iter;
 #[cfg(feature = "kademlia")]
@@ -78,7 +80,7 @@ impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
             .map_err(|_| QueryError::KademliaError("Can not store record".to_string()))
     }
 
-    fn print_known_peer(&mut self) {
+    fn print_known_peers(&mut self) {
         println!("Known peers:");
         #[cfg(feature = "kademlia")]
         for bucket in self.kademlia.kbuckets() {
@@ -87,7 +89,7 @@ impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
             }
         }
         #[cfg(not(feature = "kademlia"))]
-        for peer_id in self.swarm.mdns.discovered_nodes() {
+        for peer_id in self.mdns.discovered_nodes() {
             println!("{:?}", peer_id);
         }
     }
@@ -106,8 +108,23 @@ impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
 }
 
 impl<C: Codec + Send + 'static> P2PNetworkBehaviour<C> {
+    #[cfg(not(feature = "kademlia"))]
+    pub fn new(_peer_id: PeerId, inner: C) -> QueryResult<Self> {
+        let mdns =
+            Mdns::new().map_err(|_| QueryError::ConnectionError("Could not build mdns behaviour".to_string()))?;
+
+        // Create RequestResponse behaviour with MessageProtocol
+        let msg_proto = {
+            let cfg = RequestResponseConfig::default();
+            let protocols = iter::once((MessageProtocol(), ProtocolSupport::Full));
+            RequestResponse::new(MessageCodec(), protocols, cfg)
+        };
+
+        Ok(P2PNetworkBehaviour::<C> { mdns, msg_proto, inner })
+    }
+
+    #[cfg(feature = "kademlia")]
     pub fn new(peer_id: PeerId, inner: C) -> QueryResult<Self> {
-        #[cfg(feature = "kademlia")]
         let kademlia = {
             let store = MemoryStore::new(peer_id.clone());
             Kademlia::new(peer_id, store)
@@ -123,7 +140,6 @@ impl<C: Codec + Send + 'static> P2PNetworkBehaviour<C> {
         };
 
         Ok(P2PNetworkBehaviour::<C> {
-            #[cfg(feature = "kademlia")]
             kademlia,
             mdns,
             msg_proto,

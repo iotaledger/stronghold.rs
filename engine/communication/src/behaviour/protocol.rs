@@ -9,7 +9,9 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use crate::message::{MailboxRecord, MessageResult, Request, Response};
+#[cfg(feature = "kademlia")]
+use crate::message::{MailboxRecord, MessageResult};
+use crate::message::{Request, Response};
 use crate::structs_proto as proto;
 use async_trait::async_trait;
 use futures::{prelude::*, AsyncRead, AsyncWrite};
@@ -134,6 +136,11 @@ fn proto_msg_to_res(msg: proto::Message) -> Result<Response, IOError> {
                 proto::message::Result::Error => Ok(Response::Result(MessageResult::Error)),
             }
         }
+        proto::message::MessageType::Msg => {
+            let message = String::from_utf8(msg.message).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?;
+            Ok(Response::Message(message))
+        }
+        #[cfg(not(feature = "kademlia"))]
         _ => unreachable!(),
     }
 }
@@ -183,6 +190,11 @@ fn res_to_proto_msg(res: Response) -> proto::Message {
                 ..proto::Message::default()
             }
         }
+        Response::Message(msg) => proto::Message {
+            r#type: proto::message::MessageType::Msg as i32,
+            message: msg.into_bytes(),
+            ..proto::Message::default()
+        },
     }
 }
 
