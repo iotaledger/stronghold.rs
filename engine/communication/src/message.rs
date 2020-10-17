@@ -12,7 +12,6 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
     Ping,
-    #[cfg(feature = "kademlia")]
     Publish(MailboxRecord),
     Message(String),
 }
@@ -47,12 +46,10 @@ impl MailboxRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Response {
     Pong,
-    #[cfg(feature = "kademlia")]
     Result(MessageResult),
     Message(String),
 }
 
-#[cfg(feature = "kademlia")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MessageResult {
     Success,

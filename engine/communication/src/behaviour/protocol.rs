@@ -103,7 +103,6 @@ fn proto_msg_to_req(msg: proto::Message) -> Result<Request, IOError> {
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
     match msg_type {
         proto::message::MessageType::Ping => Ok(Request::Ping),
-        #[cfg(feature = "kademlia")]
         proto::message::MessageType::Publish => {
             let proto_record = msg.record.unwrap_or_default();
             let record = MailboxRecord::new(
@@ -117,8 +116,6 @@ fn proto_msg_to_req(msg: proto::Message) -> Result<Request, IOError> {
             let message = String::from_utf8(msg.message).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?;
             Ok(Request::Message(message))
         }
-        #[cfg(not(feature = "kademlia"))]
-        _ => unreachable!(),
     }
 }
 
@@ -127,7 +124,6 @@ fn proto_msg_to_res(msg: proto::Message) -> Result<Response, IOError> {
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
     match msg_type {
         proto::message::MessageType::Ping => Ok(Response::Pong),
-        #[cfg(feature = "kademlia")]
         proto::message::MessageType::Publish => {
             match proto::message::Result::from_i32(msg.r#result)
                 .ok_or_else(|| invalid_data(format!("unknown message result: {}", msg.r#result)))?
@@ -140,8 +136,6 @@ fn proto_msg_to_res(msg: proto::Message) -> Result<Response, IOError> {
             let message = String::from_utf8(msg.message).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?;
             Ok(Response::Message(message))
         }
-        #[cfg(not(feature = "kademlia"))]
-        _ => unreachable!(),
     }
 }
 
@@ -151,7 +145,6 @@ fn req_to_proto_msg(req: Request) -> proto::Message {
             r#type: proto::message::MessageType::Ping as i32,
             ..proto::Message::default()
         },
-        #[cfg(feature = "kademlia")]
         Request::Publish(record) => {
             let proto_record = proto::Record {
                 key: record.key().into_bytes(),
@@ -178,7 +171,6 @@ fn res_to_proto_msg(res: Response) -> proto::Message {
             r#type: proto::message::MessageType::Ping as i32,
             ..proto::Message::default()
         },
-        #[cfg(feature = "kademlia")]
         Response::Result(r) => {
             let result = match r {
                 MessageResult::Success => proto::message::Result::Success,

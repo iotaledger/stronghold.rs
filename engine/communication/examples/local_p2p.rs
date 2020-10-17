@@ -19,7 +19,7 @@ use communication::{
         P2PNetworkBehaviour,
     },
     error::QueryResult,
-    message::{Request, Response},
+    message::{Request, Response, MessageResult},
     network::P2PNetwork,
 };
 use std::{
@@ -60,9 +60,10 @@ impl Codec for Handler {
                 ctx.send_response(Response::Pong, channel);
             }
             Request::Message(msg) => {
-                println!("Received Message {:?}.\nType a response or enter for no response", msg);
+                println!("Received Message {:?}", msg);
+                ctx.send_response(Response::Result(MessageResult::Success), channel);
             }
-            _ => {}
+            Request::Publish(_) => {}
         }
     }
 
@@ -71,13 +72,15 @@ impl Codec for Handler {
             Response::Pong => {
                 println!("Received Pong for request {:?}.", request_id);
             }
-            #[cfg(feature = "kademlia")]
             Response::Result(result) => {
-                println!("Received Result for publish request {:?}: {:?}.", request_id, result);
+                println!("Received Result for request {:?}: {:?}.", request_id, result);
             }
-            _ => {}
+            Response::Message(msg) => {
+                println!("Received Response for message {:?}: {:?}.", request_id, msg);
+            }
         }
     }
+
     #[cfg(feature = "kademlia")]
     fn handle_kademlia_event(_ctx: &mut impl CodecContext, _result: KademliaEvent) {}
 }
