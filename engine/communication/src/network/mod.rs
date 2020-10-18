@@ -16,10 +16,9 @@ use crate::error::{QueryError, QueryResult};
 use crate::message::{MailboxRecord, Request};
 use libp2p::{
     build_development_transport,
-    core::Multiaddr,
+    core::{Multiaddr, PeerId},
     identity::Keypair,
-    swarm::{ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler},
-    PeerId, Swarm,
+    swarm::{Swarm, ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler},
 };
 #[cfg(feature = "kademlia")]
 use mailboxes::Mailboxes;
@@ -52,7 +51,7 @@ impl<C: Codec + Send + 'static> P2PNetwork<C> {
         let transport = build_development_transport(local_keys)
             .map_err(|_| QueryError::ConnectionError("Could not build transport layer".to_string()))?;
         let mut swarm: P2PNetworkSwarm<C> = Swarm::new(transport, behaviour, peer_id.clone());
-        let addr = format!("/ip4/0.0.0.0/tcp/{}", port.unwrap_or(16384u32))
+        let addr = format!("/ip4/0.0.0.0/tcp/{}", port.unwrap_or(0u32))
             .parse()
             .map_err(|e| QueryError::ConnectionError(format!("Invalid Port {:?}: {}", port, e)))?;
         Swarm::listen_on(&mut swarm, addr).map_err(|e| QueryError::ConnectionError(format!("{}", e)))?;
@@ -65,27 +64,33 @@ impl<C: Codec + Send + 'static> P2PNetwork<C> {
         })
     }
 
-    pub fn get_local_peer_id(&self) -> PeerId {
+    pub fn local_peer_id(&self) -> PeerId {
         self.peer_id.clone()
     }
 
+    #[cfg(feature = "kademlia")]
     pub fn connect_remote(&mut self, _peer_id: PeerId, peer_addr: Multiaddr) -> QueryResult<()> {
-        Swarm::dial_addr(&mut self.swarm, peer_addr.clone())
-            .map_err(|_| QueryError::ConnectionError(format!("Could not dial addr {}", peer_addr)))?;
-        #[cfg(feature = "kademlia")]
-        {
-            self.swarm.kad_add_address(&_peer_id, peer_addr);
-            self.swarm
-                .kad_bootstrap()
-                .map_err(|_| QueryError::KademliaError(format!("Could not bootstrap {}", _peer_id)))?;
-        }
+        self.swarm.kad_add_address(&_peer_id, peer_addr);
+        self.swarm
+            .kad_bootstrap()
+            .map_err(|_| QueryError::KademliaError(format!("Could not bootstrap {}", _peer_id)))?;
         Ok(())
     }
 
+    pub fn dial_addr(&mut self, peer_addr: Multiaddr) -> QueryResult<()> {
+        Swarm::dial_addr(&mut self.swarm, peer_addr.clone())
+            .map_err(|_| QueryError::ConnectionError(format!("Could not dial addr {}", peer_addr)))
+    }
+
     pub fn print_listeners(&self) {
-        println!("Listening on:");
-        for a in Swarm::listeners(&self.swarm) {
-            println!("{:?}", a);
+        let mut listeners = Swarm::listeners(&self.swarm).peekable();
+        if listeners.peek() == None {
+            println!("No listeners. The port may already be occupied.")
+        } else {
+            println!("Listening on:");
+            for a in listeners {
+                println!("{:?}", a);
+            }
         }
     }
 

@@ -44,8 +44,8 @@ pub trait CodecContext {
 }
 
 pub trait Codec {
-    fn handle_request_msg(ctx: &mut impl CodecContext, request: Request, channel: ResponseChannel<Response>);
-    fn handle_response_msg(ctx: &mut impl CodecContext, response: Response, request_id: RequestId);
+    fn handle_request_msg(ctx: &mut impl CodecContext, request: Request, channel: ResponseChannel<Response>, peer: PeerId);
+    fn handle_response_msg(ctx: &mut impl CodecContext, response: Response, request_id: RequestId, peer: PeerId);
     #[cfg(feature = "kademlia")]
     fn handle_kademlia_event(ctx: &mut impl CodecContext, result: KademliaEvent);
 }

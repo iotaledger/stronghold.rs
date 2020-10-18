@@ -16,9 +16,9 @@ use crate::error::{QueryError, QueryResult};
 use crate::message::MailboxRecord;
 use crate::message::{Request, Response};
 use codec::{Codec, CodecContext};
-use core::iter;
 #[cfg(feature = "kademlia")]
 use core::time::Duration;
+use core::{iter, marker::PhantomData};
 #[cfg(feature = "kademlia")]
 use libp2p::{
     core::Multiaddr,
@@ -26,6 +26,7 @@ use libp2p::{
 };
 use libp2p::{
     core::PeerId,
+    identity::PublicKey,
     mdns::{Mdns, MdnsEvent},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig,
@@ -48,8 +49,7 @@ pub struct P2PNetworkBehaviour<C: Codec + Send + 'static> {
     mdns: Mdns,
     msg_proto: RequestResponse<MessageCodec>,
     #[behaviour(ignore)]
-    #[allow(dead_code)]
-    inner: C,
+    inner: PhantomData<C>,
 }
 
 impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
@@ -109,7 +109,7 @@ impl<C: Codec + Send + 'static> CodecContext for P2PNetworkBehaviour<C> {
 
 impl<C: Codec + Send + 'static> P2PNetworkBehaviour<C> {
     #[cfg(not(feature = "kademlia"))]
-    pub fn new(_peer_id: PeerId, inner: C) -> QueryResult<Self> {
+    pub fn new(_local_keys: Keypair) -> QueryResult<Self> {
         let mdns =
             Mdns::new().map_err(|_| QueryError::ConnectionError("Could not build mdns behaviour".to_string()))?;
 
@@ -120,11 +120,12 @@ impl<C: Codec + Send + 'static> P2PNetworkBehaviour<C> {
             RequestResponse::new(MessageCodec(), protocols, cfg)
         };
 
-        Ok(P2PNetworkBehaviour::<C> { mdns, msg_proto, inner })
+        Ok(P2PNetworkBehaviour::<C> { mdns, msg_proto })
     }
 
     #[cfg(feature = "kademlia")]
-    pub fn new(peer_id: PeerId, inner: C) -> QueryResult<Self> {
+    pub fn new(public_key: PublicKey) -> QueryResult<Self> {
+        let peer_id = PeerId::from(public_key);
         let kademlia = {
             let store = MemoryStore::new(peer_id.clone());
             Kademlia::new(peer_id, store)
@@ -143,7 +144,7 @@ impl<C: Codec + Send + 'static> P2PNetworkBehaviour<C> {
             kademlia,
             mdns,
             msg_proto,
-            inner,
+            inner: PhantomData,
         })
     }
 }
@@ -174,14 +175,14 @@ impl<C: Codec + Send + 'static> NetworkBehaviourEventProcess<RequestResponseEven
     // Called when the protocol produces an event.
     fn inject_event(&mut self, event: RequestResponseEvent<Request, Response>) {
         match event {
-            MessageEvent { peer: _, message } => match message {
+            MessageEvent { peer, message } => match message {
                 RequestResponseMessage::Request {
                     request_id: _,
                     request,
                     channel,
-                } => C::handle_request_msg(self, request, channel),
+                } => C::handle_request_msg(self, request, channel, peer),
                 RequestResponseMessage::Response { request_id, response } => {
-                    C::handle_response_msg(self, response, request_id)
+                    C::handle_response_msg(self, response, request_id, peer)
                 }
             },
             OutboundFailure {

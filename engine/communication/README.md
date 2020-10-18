@@ -8,7 +8,7 @@ In order to provide a message / record for a remote peer, a local peer adds this
 ` cargo run`
 
 optional arguments: 
-- `--port <port>` to set a port that this peer listens to within the same network, default is 16384
+- `--port <port>` to set a port that this peer listens to within the same network, default is randomly assigned by the OS
 - `--mailbox <mailbox-multiaddress> <mailbox-peerid>` to connect to a mailbox, the arguments should be entered within string quotes.
 
 ## command line interface

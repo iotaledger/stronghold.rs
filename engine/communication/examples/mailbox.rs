@@ -23,58 +23,41 @@ use communication::{
 use core::str::FromStr;
 use libp2p::{
     core::{identity::Keypair, Multiaddr, PeerId},
+    kad::{KademliaEvent, PeerRecord, QueryResult as KadQueryResult, Record as KadRecord},
     request_response::{RequestId, ResponseChannel},
     swarm::SwarmEvent,
 };
 
-#[cfg(feature = "kademlia")]
-use libp2p::kad::{KademliaEvent, PeerRecord, QueryResult as KadQueryResult, Record as KadRecord};
-
 struct Handler();
 
+
+// Implement a Handler to determine the networks behaviour upon receiving messages and kademlia events. 
 impl Codec for Handler {
-    fn handle_request_msg(ctx: &mut impl CodecContext, request: Request, channel: ResponseChannel<Response>) {
-        match request {
-            Request::Ping => {
-                println!("Received Ping, we will send a Pong back.");
-                ctx.send_response(Response::Pong, channel);
-            }
-            #[cfg(feature = "kademlia")]
-            Request::Publish(r) => {
-                let record = MailboxRecord::new(r.key(), r.value(), r.timeout_sec());
-                let query_id = ctx.put_record_local(record);
-                if query_id.is_ok() {
-                    println!("Successfully stored record.");
-                    ctx.send_response(Response::Result(MessageResult::Success), channel);
-                } else {
-                    println!("Error storing record: {:?}", query_id.err());
-                }
-            }
-            Request::Message(msg) => {
-                println!("Received MessaNone,ge {:?}.", msg);
+    
+    // Implements the mailbox behaviour by publishing records for others peers in kademlia. 
+    fn handle_request_msg(ctx: &mut impl CodecContext, request: Request, channel: ResponseChannel<Response>, _peer: PeerId) {
+        if let Request::Publish(r) = request {
+            let record = MailboxRecord::new(r.key(), r.value(), r.timeout_sec());
+            let query_id = ctx.put_record_local(record);
+            if query_id.is_ok() {
+                println!("Successfully stored record.");
+                ctx.send_response(Response::Result(MessageResult::Success), channel);
+            } else {
+                println!("Error storing record: {:?}", query_id.err());
             }
         }
     }
 
-    fn handle_response_msg(_ctx: &mut impl CodecContext, response: Response, request_id: RequestId) {
-        match response {
-            Response::Pong => {
-                println!("Received Pong for request {:?}.", request_id);
-            }
-            #[cfg(feature = "kademlia")]
-            Response::Result(result) => {
-                println!("Received Result for publish request {:?}: {:?}.", request_id, result);
-            }
-            Response::Message(msg) => {
-                println!("Received response message for request {:?}: {:?}.", request_id, msg);
-            }
+    fn handle_response_msg(_ctx: &mut impl CodecContext, response: Response, request_id: RequestId, _peer: PeerId) {
+        if let Response::Result(result) = response {
+            println!("Received Result for publish request {:?}: {:?}.", request_id, result);
         }
     }
 
-    #[cfg(feature = "kademlia")]
     fn handle_kademlia_event(_ctx: &mut impl CodecContext, event: KademliaEvent) {
         if let KademliaEvent::QueryResult { result, .. } = event {
             match result {
+                // Triggers if the search for a record in kademlia was successful.
                 KadQueryResult::GetRecord(Ok(ok)) => {
                     for PeerRecord {
                         record: KadRecord { key, value, .. },
@@ -104,6 +87,7 @@ struct Matches {
     timeout: Option<u64>,
 }
 
+// Match and parse the arguments from the CLI
 fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
     if let Some(mail_id) = matches
         .value_of("mailbox_id")
@@ -143,26 +127,33 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
         }) = eval_arg_matches(matches)
         {
             let local_keys = Keypair::generate_ed25519();
-            let local_peer_id = PeerId::from(local_keys.public());
-            let new_network = P2PNetworkBehaviour::new(local_peer_id, Handler())
-                .and_then(|behaviour| P2PNetwork::new(behaviour, local_keys, None));
-            if let Ok(mut network) = new_network {
-                network.add_mailbox(mail_id.clone(), mail_addr)?;
-                network.swarm.print_known_peers();
-                let record = MailboxRecord::new(key, value, timeout.unwrap_or(9000u64));
-                let request_id = network.put_record_mailbox(record, Some(mail_id));
-                if request_id.is_ok() {
-                    task::block_on(async move {
-                        loop {
-                            if let SwarmEvent::ConnectionClosed { .. } = network.swarm.next_event().await {
-                                break;
-                            }
+
+            // Create behaviour that uses the custom handler to describe how peers should react to events 
+            // The P2PNetworkBehaviour implements the CodecContext trait for sending request and response messages and using the kademlia DHT
+            let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
+            // Create a network that implements the behaviour in it's swarm, and manages mailboxes and connections.
+            let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
+            println!("Local PeerId: {:?}", network.local_peer_id());
+            
+            // Connect to a remote mailbox on the server.
+            network.add_mailbox(mail_id.clone(), mail_addr)?;
+            
+            // Deposit a record on the mailbox
+            // Triggers the Handler's handle_request_msg() Request::Publish(r) on the mailbox side.
+            let record = MailboxRecord::new(key, value, timeout.unwrap_or(9000u64));
+            let request_id = network.put_record_mailbox(record, Some(mail_id));
+
+            if request_id.is_ok() {
+                // Block until the connection is closed again due to timeout.
+                task::block_on(async move {
+                    loop {
+                        if let SwarmEvent::ConnectionClosed { .. } = network.swarm.next_event().await {
+                            break;
                         }
-                    });
-                }
-            } else if let Err(e) = new_network {
-                eprintln!("Error creating network: {:?}", e);
+                    }
+                });
             }
+            
         } else {
             eprintln!("Invalid or missing arguments");
         }
@@ -170,7 +161,6 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
     Ok(())
 }
 
-#[cfg(feature = "kademlia")]
 // Get a record
 fn get_record(matches: &ArgMatches) -> QueryResult<()> {
     if let Some(matches) = matches.subcommand_matches("get_record") {
@@ -182,22 +172,29 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
         }) = eval_arg_matches(matches)
         {
             let local_keys = Keypair::generate_ed25519();
-            let local_peer_id = PeerId::from(local_keys.public());
-            let new_network = P2PNetworkBehaviour::new(local_peer_id, Handler())
-                .and_then(|behaviour| P2PNetwork::new(behaviour, local_keys, None));
-            if let Ok(mut network) = new_network {
-                network.add_mailbox(mail_id, mail_addr)?;
-                network.swarm.get_record(key);
-                task::block_on(async move {
-                    loop {
-                        if let SwarmEvent::ConnectionClosed { .. } = network.swarm.next_event().await {
-                            break;
-                        }
+
+            // Create behaviour that uses the custom handler to describe how peers should react to events 
+            // The P2PNetworkBehaviour implements the CodecContext trait for sending request and response messages and using the kademlia DHT
+            let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
+            // Create a network that implements the behaviour in it's swarm, and manages mailboxes and connections.
+            let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
+            println!("Local PeerId: {:?}", network.local_peer_id());
+            
+            // Connect to a remote mailbox on the server.
+            network.add_mailbox(mail_id.clone(), mail_addr)?;
+                
+            // Search for a record in the kademlia DHT. 
+            // The search is successful if known peer has published a record and it is not expired.
+            // Triggers the Handler's handle_kademlia_event() function.
+            network.swarm.get_record(key);
+            // Block until the connection is closed again due to timeout.
+            task::block_on(async move {
+                loop {
+                    if let SwarmEvent::ConnectionClosed { .. } = network.swarm.next_event().await {
+                        break;
                     }
-                });
-            } else if let Err(e) = new_network {
-                eprintln!("Error creating network: {:?}", e);
-            }
+                }
+            });
         } else {
             eprintln!("Invalid or missing arguments");
         }
