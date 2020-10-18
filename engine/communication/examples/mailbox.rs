@@ -9,6 +9,67 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
+//! This example implements the mailbox behaviour. It can be used to communicate with remote peers in different networks
+//! that can not be dialed directly, e.g. because they are not listening to a public IP address.
+//! Records for remote peers are sent to the mailbox that publishes it in it's kademlia DHT. 
+//! The remote peer can then connect to the same mailbox and query kademlia for the record.
+//!
+//! In order for this example to work, the peer that serves as a mailbox has to obtain a public IP e.g. by running on
+//! a server or by configuring port forwarding. For testing and dev purposes, IOTA currently maintains a server with
+//! mailbox peer with `PeerId("12D3KooWHL8P9dFNRa7jEGfFz2BGw6RVwBQ3Gqdqy4UJCUG8d3p4)` in a docker container at the
+//! address `"/dns/wrtc-star01.iota.cafe/tcp/16384"`.
+//! 
+//! # Deposit a record in the mailbox
+//! 
+//! ```sh
+//! mailbox-put-mailbox 
+//! Put record into the mailbox
+//! 
+//! USAGE:
+//!     mailbox put_mailbox [OPTIONS] --mail-id <mailbox-peer-id> --mail-addr <mailbox-multi-addr> --key <record-key> --value <record-value>
+//! 
+//! OPTIONS:
+//!     -e, --expires <expires-sec>             the expire seconds for the record
+//!     -k, --key <record-key>                  the key for the record
+//!     -a, --mail-addr <mailbox-multi-addr>    the multiaddr of the mailbox
+//!     -i, --mail-id <mailbox-peer-id>         the peer id of the mailbox
+//!     -v, --value <record-value>              the value for the record
+//! ```
+//! 
+//! Using the above mailbox, a record can be deposited this mailbox could be done by running:
+//! 
+//! ```sh
+//! $ cargo run --example mailbox -- put-mailbox  -i "12D3KooWHL8P9dFNRa7jEGfFz2BGw6RVwBQ3Gqdqy4UJCUG8d3p4" -a "/dns/wrtc-star01.iota.cafe/tcp/16384" -k "foo" -v "bar"
+//! Local PeerId: PeerId("12D3KooWLVFib1KbfjY4Qv3phtc8hafD8HVJm9QygeSmH28Jw2HG")
+//! Received Result for publish request RequestId(1): Success.
+//! 
+//! ```
+//! 
+//! Without the `--expires` argument, the record-expire default to 9000s.
+//! 
+//! # Reading a record
+//! 
+//! ```sh
+//! mailbox-get-record 
+//! Get record from local or the mailbox
+//! 
+//! USAGE:
+//!     mailbox get-record --mail-id <mailbox-peer-id> --mail-addr <mailbox-multi-addr> --key <record-key>
+//! 
+//! OPTIONS:
+//!     -k, --key <record-key>                  the key for the record
+//!     -a, --mail-addr <mailbox-multi-addr>    the multi-address of the mailbox
+//!     -i, --mail-id <mailbox-peer-id>         the peer id of the mailbox
+//! ```
+//! 
+//! Using the above mailbox, a record is read from the mailbox by running
+//! 
+//! ```sh
+//! $ cargo run --example mailbox -- get-record  -i "12D3KooWHL8P9dFNRa7jEGfFz2BGw6RVwBQ3Gqdqy4UJCUG8d3p4" -a "/dns/wrtc-star01.iota.cafe/tcp/16384" -k "foo"
+//! Local PeerId: PeerId("12D3KooWJjtPjcMMa19WTnYvsmgpagPnDjSjeTgZS7j3YhwZX7Gn")
+//! Got record "foo" "bar".
+//! ```
+
 use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
 use communication::{
@@ -37,7 +98,8 @@ impl InboundEventHandler for Handler {
         _peer: PeerId,
     ) {
         if let Request::Publish(r) = request {
-            let record = MailboxRecord::new(r.key(), r.value(), r.timeout_sec());
+            let record = MailboxRecord::new(r.key(), r.value(), r.expires_sec());
+            // store the record in the mailboxes kademlia dht
             let query_id = swarm.put_record_local(record);
             if query_id.is_ok() {
                 println!("Successfully stored record.");
@@ -79,15 +141,17 @@ impl InboundEventHandler for Handler {
         }
     }
 }
+
+// only used for this CLI
 struct Matches {
     mail_id: PeerId,
     mail_addr: Multiaddr,
     key: String,
     value: Option<String>,
-    timeout: Option<u64>,
+    expires: Option<u64>,
 }
 
-// Match and parse the arguments from the CLI
+// Match and parse the arguments from the command line
 fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
     if let Some(mail_id) = matches
         .value_of("mailbox_id")
@@ -99,15 +163,15 @@ fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
         {
             if let Some(key) = matches.value_of("key").map(|k| k.to_string()) {
                 let value = matches.value_of("value").map(|v| v.to_string());
-                let timeout = matches
-                    .value_of("timeout")
-                    .and_then(|timeout| timeout.parse::<u64>().ok());
+                let expires = matches
+                    .value_of("expires")
+                    .and_then(|expires| expires.parse::<u64>().ok());
                 return Some(Matches {
                     mail_id,
                     mail_addr,
                     key,
                     value,
-                    timeout,
+                    expires,
                 });
             }
         }
@@ -115,20 +179,20 @@ fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
     None
 }
 
-// Put a record into the mailbox
+// Deposit a record in the mailbox
 fn put_record(matches: &ArgMatches) -> QueryResult<()> {
-    if let Some(matches) = matches.subcommand_matches("put_mailbox") {
+    if let Some(matches) = matches.subcommand_matches("put-mailbox") {
         if let Some(Matches {
             mail_id,
             mail_addr,
             key,
             value: Some(value),
-            timeout,
+            expires,
         }) = eval_arg_matches(matches)
         {
             let local_keys = Keypair::generate_ed25519();
 
-            // Create behaviour that uses the custom handler to describe how peers should react to events
+            // Create behaviour that uses the custom Handler to describe how peers should react to events
             // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
             let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
             // Create a network that implements the behaviour in it's swarm, and manages mailboxes and connections.
@@ -140,11 +204,11 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
 
             // Deposit a record on the mailbox
             // Triggers the Handler's handle_request_msg() Request::Publish(r) on the mailbox side.
-            let record = MailboxRecord::new(key, value, timeout.unwrap_or(9000u64));
+            let record = MailboxRecord::new(key, value, expires.unwrap_or(9000u64));
             let request_id = network.put_record_mailbox(record, Some(mail_id));
 
             if request_id.is_ok() {
-                // Block until the connection is closed again due to timeout.
+                // Block until the connection is closed again due to expires.
                 task::block_on(async move {
                     loop {
                         if let SwarmEvent::ConnectionClosed { .. } = network.swarm.next_event().await {
@@ -160,9 +224,9 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
     Ok(())
 }
 
-// Get a record
+// Get a record from the kademlia DHT
 fn get_record(matches: &ArgMatches) -> QueryResult<()> {
-    if let Some(matches) = matches.subcommand_matches("get_record") {
+    if let Some(matches) = matches.subcommand_matches("get-record") {
         if let Some(Matches {
             mail_id,
             mail_addr,
@@ -172,7 +236,7 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
         {
             let local_keys = Keypair::generate_ed25519();
 
-            // Create behaviour that uses the custom handler to describe how peers should react to events
+            // Create behaviour that uses the custom Handler to describe how peers should react to events
             // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
             let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
             // Create a network that implements the behaviour in it's swarm, and manages mailboxes and connections.
@@ -183,10 +247,10 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
             network.add_mailbox(mail_id, mail_addr)?;
 
             // Search for a record in the kademlia DHT.
-            // The search is successful if known peer has published a record and it is not expired.
+            // The search is successful if a known peer has published a record and it is not expired.
             // Triggers the Handler's handle_kademlia_event() function.
             network.swarm.get_record(key);
-            // Block until the connection is closed again due to timeout.
+            // Block until the connection is closed again due to expires.
             task::block_on(async move {
                 loop {
                     if let SwarmEvent::ConnectionClosed { .. } = network.swarm.next_event().await {

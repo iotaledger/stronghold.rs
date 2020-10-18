@@ -3,84 +3,65 @@ version: '1.0'
 author: Elena Frank <elena.frank@iota.org>
 about: Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
 subcommands:
-  - put_mailbox:
+  - put-mailbox:
       about: Put record into the mailbox
       args:
         - mailbox_id:
             short: i
-            long: mail_id
-            value_name: mailbox_id
+            long: mail-id
+            value_name: mailbox-peer-id
             about: the peer id of the mailbox
             required: true
             takes_value: true
         - mailbox_addr:
             short: a
-            long: mail_addr
-            value_name: mailbox_addr
+            long: mail-addr
+            value_name: mailbox-multi-addr
             about: the multiaddr of the mailbox
             required: true
             takes_value: true
         - key:
             short: k
             long: key
-            value_name: key
+            value_name: record-key
             about: the key for the record
             required: true
             takes_value: true
         - value:
             short: v
             long: value
-            value_name: value
+            value_name: record-value
             about: the value for the record
             required: true
             takes_value: true
-        - timeout:
-            short: t
-            long: timeout
-            value_name: timeout
-            about: the timeout for the record in sec
+        - expires:
+            short: e
+            long: expires
+            value_name: expire-sec
+            about: the expire seconds for the record
             required: false
             takes_value: true
-  - get_record:
+  - get-record:
       about: Get record from local or the mailbox
       args:
         - mailbox_id:
             short: i
-            long: mail_id
-            value_name: mailbox_id
+            long: mail-id
+            value_name: mailbox-peer-id
             about: the peer id of the mailbox
             required: true
             takes_value: true
         - mailbox_addr:
             short: a
-            long: mail_addr
-            value_name: mailbox_addr
-            about: the multiaddr of the mailbox
-            required: false
+            long: mail-addr
+            value_name: mailbox-multi-addr
+            about: the multi-address of the mailbox
+            required: true
             takes_value: true
         - key:
             short: k
             long: key
-            value_name: key
+            value_name: record-key
             about: the key for the record
-            required: false
+            required: true
             takes_value: true
-  - message:
-      about: Send a message directly to a peer within the same local network
-      args:
-        - peer_id:
-            short: i
-            long: peer_id
-            value_name: peer_id
-            about: the receivers peer id
-            required: false
-            takes_value: true
-        - msg:
-            short: i
-            long: msg
-            value_name: msg
-            about: the message string
-            required: false
-            takes_value: false
-  - listen:
-      about: listen for messages from other peers

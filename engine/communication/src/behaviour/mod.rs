@@ -103,7 +103,7 @@ impl<H: InboundEventHandler + Send + 'static> SwarmContext for P2PNetworkBehavio
             key: Key::new(&record.key()),
             value: record.value().into_bytes(),
             publisher: None,
-            expires: Some(Instant::now() + Duration::from_secs(record.timeout_sec())),
+            expires: Some(Instant::now() + Duration::from_secs(record.expires_sec())),
         };
         self.kademlia
             .put_record(record, Quorum::One)

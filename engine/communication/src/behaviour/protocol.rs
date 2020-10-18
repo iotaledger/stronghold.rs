@@ -108,7 +108,7 @@ fn proto_msg_to_req(msg: proto::Message) -> Result<Request, IOError> {
             let record = MailboxRecord::new(
                 String::from_utf8(proto_record.key).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
                 String::from_utf8(proto_record.value).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
-                proto_record.timeout,
+                proto_record.expires,
             );
             Ok(Request::Publish(record))
         }
@@ -149,7 +149,7 @@ fn req_to_proto_msg(req: Request) -> proto::Message {
             let proto_record = proto::Record {
                 key: record.key().into_bytes(),
                 value: record.value().into_bytes(),
-                timeout: record.timeout_sec(),
+                expires: record.expires_sec(),
             };
             proto::Message {
                 r#type: proto::message::MessageType::Publish as i32,

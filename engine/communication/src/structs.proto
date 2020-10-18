@@ -15,7 +15,7 @@ package structs.pb;
 message Record {
 	bytes key = 1;
 	bytes value = 2;
-	fixed64 timeout = 3;
+	fixed64 expires = 3;
 }
 
 message Message {

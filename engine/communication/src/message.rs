@@ -20,15 +20,15 @@ pub enum Request {
 pub struct MailboxRecord {
     key: String,
     value: String,
-    timeout_sec: u64,
+    expires_sec: u64,
 }
 
 impl MailboxRecord {
-    pub fn new(key: String, value: String, timeout_sec: u64) -> Self {
+    pub fn new(key: String, value: String, expires_sec: u64) -> Self {
         MailboxRecord {
             key,
             value,
-            timeout_sec,
+            expires_sec,
         }
     }
 
@@ -38,8 +38,8 @@ impl MailboxRecord {
     pub fn value(&self) -> String {
         self.value.clone()
     }
-    pub fn timeout_sec(&self) -> u64 {
-        self.timeout_sec
+    pub fn expires_sec(&self) -> u64 {
+        self.expires_sec
     }
 }
 
