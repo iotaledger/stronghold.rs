@@ -9,8 +9,8 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 #[cfg(feature = "kademlia")]
-use crate::behaviour::codec::CodecContext;
-use crate::behaviour::{codec::Codec, P2PNetworkBehaviour};
+use crate::behaviour::SwarmContext;
+use crate::behaviour::{InboundEventHandler, P2PNetworkBehaviour};
 use crate::error::{QueryError, QueryResult};
 #[cfg(feature = "kademlia")]
 use crate::message::{MailboxRecord, Request};
@@ -18,7 +18,7 @@ use libp2p::{
     build_development_transport,
     core::{Multiaddr, PeerId},
     identity::Keypair,
-    swarm::{Swarm, ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler},
+    swarm::{ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler, Swarm},
 };
 #[cfg(feature = "kademlia")]
 use mailboxes::Mailboxes;
@@ -29,34 +29,34 @@ use libp2p::request_response::RequestId;
 #[cfg(feature = "kademlia")]
 mod mailboxes;
 
-type P2PNetworkSwarm<C>= ExpandedSwarm<
-    P2PNetworkBehaviour<C>,
-    <<<P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
-    <<<P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
-    <P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler,
+type P2PNetworkSwarm<H>= ExpandedSwarm<
+    P2PNetworkBehaviour<H>,
+    <<<P2PNetworkBehaviour<H> as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
+    <<<P2PNetworkBehaviour<H> as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
+    <P2PNetworkBehaviour<H> as NetworkBehaviour>::ProtocolsHandler,
     PeerId,
 >;
 
-pub struct P2PNetwork<C: Codec + Send + 'static> {
+pub struct P2PNetwork<H: InboundEventHandler + Send + 'static> {
     peer_id: PeerId,
     #[allow(dead_code)]
-    pub swarm: P2PNetworkSwarm<C>,
+    pub swarm: P2PNetworkSwarm<H>,
     #[cfg(feature = "kademlia")]
     mailboxes: Option<Mailboxes>,
 }
 
-impl<C: Codec + Send + 'static> P2PNetwork<C> {
-    pub fn new(behaviour: P2PNetworkBehaviour<C>, local_keys: Keypair, port: Option<u32>) -> QueryResult<Self> {
+impl<H: InboundEventHandler + Send + 'static> P2PNetwork<H> {
+    pub fn new(behaviour: P2PNetworkBehaviour<H>, local_keys: Keypair, port: Option<u32>) -> QueryResult<Self> {
         let peer_id = PeerId::from(local_keys.public());
         let transport = build_development_transport(local_keys)
             .map_err(|_| QueryError::ConnectionError("Could not build transport layer".to_string()))?;
-        let mut swarm: P2PNetworkSwarm<C> = Swarm::new(transport, behaviour, peer_id.clone());
+        let mut swarm: P2PNetworkSwarm<H> = Swarm::new(transport, behaviour, peer_id.clone());
         let addr = format!("/ip4/0.0.0.0/tcp/{}", port.unwrap_or(0u32))
             .parse()
             .map_err(|e| QueryError::ConnectionError(format!("Invalid Port {:?}: {}", port, e)))?;
         Swarm::listen_on(&mut swarm, addr).map_err(|e| QueryError::ConnectionError(format!("{}", e)))?;
 
-        Ok(P2PNetwork::<C> {
+        Ok(P2PNetwork::<H> {
             peer_id,
             #[cfg(feature = "kademlia")]
             mailboxes: None,

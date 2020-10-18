@@ -16,7 +16,7 @@
 //! ```sh
 //! cargo run --example local-echo
 //! ```
-//! For each peer it will print it's unique PeerId and the listening addresses within the local network. 
+//! For each peer it will print it's unique PeerId and the listening addresses within the local network.
 //! ```sh
 //! Local PeerId: PeerId("12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA")
 //!Listening on:
@@ -25,24 +25,24 @@
 //!"/ip4/172.17.0.1/tcp/41807"
 //!"/ip6/::1/tcp/41807"
 //! ```
-//! 
+//!
 //! The following commands are available for communication and could be used by another peer to communicate
 //! with the first one by pinging it `PING` or sending a message `MSG`:
-//! 
+//!
 //! ```sh
 //! PING "12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA"
 //! MSG "12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA" "The answer to life, the universe and everything is 42."
 //! ```
-//! 
+//!
 //! Upon receiving a message, the peer will send an echo of the same message back to the original peer.
 //!
 //! # Connecting peers manually
-//! 
+//!
 //! The connected peers can be listed with their listening addr with the command
 //! ```sh
 //! LIST
 //! ```
-//! 
+//!
 //! If the peers are within the same network but other peers is not listed, it can manually added with one
 //! of it's listening address:
 //! ```sh
@@ -55,10 +55,7 @@ use async_std::{
     task,
 };
 use communication::{
-    behaviour::{
-        codec::{Codec, CodecContext},
-        P2PNetworkBehaviour,
-    },
+    behaviour::{InboundEventHandler, P2PNetworkBehaviour, SwarmContext},
     error::QueryResult,
     message::{Request, Response},
     network::P2PNetwork,
@@ -74,31 +71,36 @@ use futures::{future, io::Lines, prelude::*};
 #[cfg(feature = "kademlia")]
 use libp2p::kad::KademliaEvent;
 use libp2p::{
-    core::{identity::Keypair, PeerId, Multiaddr},
+    core::{identity::Keypair, Multiaddr, PeerId},
     request_response::{RequestId, ResponseChannel},
 };
 use regex::Regex;
 
 struct Handler();
 
-// Implement a Handler to determine the networks behaviour upon receiving messages. 
+// Implement a Handler to determine the networks behaviour upon receiving messages.
 // This example does make use of libp2ps Kademlia.
-impl Codec for Handler {
-    fn handle_request_msg(ctx: &mut impl CodecContext, request: Request, channel: ResponseChannel<Response>, peer: PeerId) {
+impl InboundEventHandler for Handler {
+    fn handle_request_msg(
+        swarm: &mut impl SwarmContext,
+        request: Request,
+        channel: ResponseChannel<Response>,
+        peer: PeerId,
+    ) {
         match request {
             Request::Ping => {
                 println!("Received Ping from {:?}. Sending a Pong back.", peer);
-                ctx.send_response(Response::Pong, channel);
+                swarm.send_response(Response::Pong, channel);
             }
             Request::Message(msg) => {
                 println!("Received Message from {:?}:\n{:?}\nSending an echo back.", peer, msg);
-                ctx.send_response(Response::Message("echo: ".to_string() + &msg), channel);
+                swarm.send_response(Response::Message("echo: ".to_string() + &msg), channel);
             }
             Request::Publish(_) => {}
         }
     }
 
-    fn handle_response_msg(_ctx: &mut impl CodecContext, response: Response, request_id: RequestId, peer: PeerId) {
+    fn handle_response_msg(_ctx: &mut impl SwarmContext, response: Response, request_id: RequestId, peer: PeerId) {
         match response {
             Response::Pong => {
                 println!("Received Pong for request {:?}.", request_id);
@@ -113,10 +115,10 @@ impl Codec for Handler {
     }
 
     #[cfg(feature = "kademlia")]
-    fn handle_kademlia_event(_ctx: &mut impl CodecContext, _result: KademliaEvent) {}
+    fn handle_kademlia_event(_ctx: &mut impl SwarmContext, _result: KademliaEvent) {}
 }
 
-// Poll for user input 
+// Poll for user input
 fn poll_stdin(stdin: &mut Lines<BufReader<Stdin>>, cx: &mut Context<'_>) -> Result<Option<String>, Box<dyn Error>> {
     loop {
         match stdin.try_poll_next_unpin(cx)? {
@@ -132,8 +134,8 @@ fn poll_stdin(stdin: &mut Lines<BufReader<Stdin>>, cx: &mut Context<'_>) -> Resu
 fn listen() -> QueryResult<()> {
     let local_keys = Keypair::generate_ed25519();
 
-    // Create behaviour that uses the custom handler to describe how peers should react to events 
-    // The P2PNetworkBehaviour implements the CodecContext trait for sending request and response messages and using the kademlia DHT
+    // Create behaviour that uses the custom handler to describe how peers should react to events
+    // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
     let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
     // Create a network that implements the behaviour in it's swarm, and manages mailboxes and connections.
     let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
@@ -194,8 +196,7 @@ fn handle_input_line(network: &mut P2PNetwork<Handler>, line: String) {
         .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
     {
         network.swarm.send_request(&peer_id, Request::Ping);
-    } 
-    else if line.contains("LIST") {
+    } else if line.contains("LIST") {
         network.swarm.print_known_peers();
     } else if let Some(peer_addr) = Regex::new("DIAL\\s+\"(\\w+)\"")
         .ok()
@@ -203,11 +204,10 @@ fn handle_input_line(network: &mut P2PNetwork<Handler>, line: String) {
         .and_then(|cap| cap.get(1))
         .and_then(|peer_match| Multiaddr::from_str(peer_match.as_str()).ok())
     {
-        if network.dial_addr(peer_addr.clone()).is_ok(){
+        if network.dial_addr(peer_addr.clone()).is_ok() {
             println!("Dialed {:?}", peer_addr);
         };
-    } 
-    else {
+    } else {
         eprintln!("Missing or invalid arguments");
     }
 }
