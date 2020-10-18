@@ -26,16 +26,19 @@ use prost::Message;
 // TODO: support no_std
 use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind, Result as IOResult};
 
+/// Custom protocol that extends libp2p's RequestReponseProtocol
 #[derive(Debug, Clone)]
 pub struct MessageProtocol();
-#[derive(Clone)]
-pub struct MessageCodec();
 
 impl ProtocolName for MessageProtocol {
     fn protocol_name(&self) -> &[u8] {
         b"/p2p-mailbox/1.0.0"
     }
 }
+
+/// Describes how messages are read from and written to the io Socket by implementing the RequestResponseCodec
+#[derive(Clone)]
+pub struct MessageCodec();
 
 #[async_trait]
 impl RequestResponseCodec for MessageCodec {
@@ -98,6 +101,7 @@ impl RequestResponseCodec for MessageCodec {
     }
 }
 
+/// parse the message read from io into a request struct
 fn proto_msg_to_req(msg: proto::Message) -> Result<Request, IOError> {
     let msg_type = proto::message::MessageType::from_i32(msg.r#type)
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
@@ -119,6 +123,7 @@ fn proto_msg_to_req(msg: proto::Message) -> Result<Request, IOError> {
     }
 }
 
+/// parse the message read from io into a response struct
 fn proto_msg_to_res(msg: proto::Message) -> Result<Response, IOError> {
     let msg_type = proto::message::MessageType::from_i32(msg.r#type)
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
@@ -139,6 +144,7 @@ fn proto_msg_to_res(msg: proto::Message) -> Result<Response, IOError> {
     }
 }
 
+/// parse the request struct into a proto::Message that can be send over a socket
 fn req_to_proto_msg(req: Request) -> proto::Message {
     match req {
         Request::Ping => proto::Message {
@@ -165,6 +171,7 @@ fn req_to_proto_msg(req: Request) -> proto::Message {
     }
 }
 
+/// parse the response struct into a proto::Message that can be send over a socket
 fn res_to_proto_msg(res: Response) -> proto::Message {
     match res {
         Response::Pong => proto::Message {

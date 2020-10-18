@@ -60,7 +60,7 @@ pub trait SwarmContext {
     fn kad_bootstrap(&mut self) -> QueryResult<QueryId>;
 }
 
-pub trait InboundEventHandler {
+pub trait InboundEventCodec {
     fn handle_request_msg(
         swarm: &mut impl SwarmContext,
         request: Request,
@@ -73,16 +73,16 @@ pub trait InboundEventHandler {
 }
 
 #[derive(NetworkBehaviour)]
-pub struct P2PNetworkBehaviour<H: InboundEventHandler + Send + 'static> {
+pub struct P2PNetworkBehaviour<C: InboundEventCodec + Send + 'static> {
     #[cfg(feature = "kademlia")]
     kademlia: Kademlia<MemoryStore>,
     mdns: Mdns,
     msg_proto: RequestResponse<MessageCodec>,
     #[behaviour(ignore)]
-    inner: PhantomData<H>,
+    inner: PhantomData<C>,
 }
 
-impl<H: InboundEventHandler + Send + 'static> SwarmContext for P2PNetworkBehaviour<H> {
+impl<C: InboundEventCodec + Send + 'static> SwarmContext for P2PNetworkBehaviour<C> {
     fn send_request(&mut self, peer_id: &PeerId, request: Request) -> RequestId {
         self.msg_proto.send_request(peer_id, request)
     }
@@ -91,12 +91,14 @@ impl<H: InboundEventHandler + Send + 'static> SwarmContext for P2PNetworkBehavio
         self.msg_proto.send_response(channel, response)
     }
 
+    /// Fetch a record from the kademlia DHT of a known peer
     #[cfg(feature = "kademlia")]
     fn get_record(&mut self, key_str: String) -> QueryId {
         let key = Key::new(&key_str);
         self.kademlia.get_record(&key, Quorum::One)
     }
 
+    /// Publish a record in the own Kademlia DHT
     #[cfg(feature = "kademlia")]
     fn put_record_local(&mut self, record: MailboxRecord) -> QueryResult<QueryId> {
         let record = KadRecord {
@@ -110,6 +112,7 @@ impl<H: InboundEventHandler + Send + 'static> SwarmContext for P2PNetworkBehavio
             .map_err(|_| QueryError::KademliaError("Can not store record".to_string()))
     }
 
+    /// Print the peers and their listening address, that are either discovered by mDNS or manually added
     fn print_known_peers(&mut self) {
         println!("Known peers:");
         #[cfg(feature = "kademlia")]
@@ -124,11 +127,32 @@ impl<H: InboundEventHandler + Send + 'static> SwarmContext for P2PNetworkBehavio
         }
     }
 
+    /// Add a remote peer's listening address for their PeerId to the kademlia buckets
+    /// This is necessary for initiating communication with peers that are not known yet.
     #[cfg(feature = "kademlia")]
     fn kad_add_address(&mut self, peer_id: &PeerId, addr: Multiaddr) {
         self.kademlia.add_address(peer_id, addr);
     }
 
+    /// Uses libp2p's Kademlia to bootstrap the local node to join the DHT.
+    ///
+    /// Bootstrapping is a multi-step operation that starts with a lookup of the local node's
+    /// own ID in the DHT. This introduces the local node to the other nodes
+    /// in the DHT and populates its routing table with the closest neighbours.
+    ///
+    /// Subsequently, all buckets farther from the bucket of the closest neighbour are
+    /// refreshed by initiating an additional bootstrapping query for each such
+    /// bucket with random keys.
+    ///
+    /// Returns `Ok` if bootstrapping has been initiated with a self-lookup, providing the
+    /// `QueryId` for the entire bootstrapping process. The progress of bootstrapping is
+    /// reported via [`KademliaEvent::QueryResult{QueryResult::Bootstrap}`] events,
+    /// with one such event per bootstrapping query.
+    ///
+    /// Returns `Err` if bootstrapping is impossible due an empty routing table.
+    ///
+    /// > **Note**: Bootstrapping requires at least one node of the DHT to be known.
+    /// > See libp2p [`Kademlia::add_address`].
     #[cfg(feature = "kademlia")]
     fn kad_bootstrap(&mut self) -> QueryResult<QueryId> {
         self.kademlia
@@ -137,25 +161,52 @@ impl<H: InboundEventHandler + Send + 'static> SwarmContext for P2PNetworkBehavio
     }
 }
 
-impl<H: InboundEventHandler + Send + 'static> P2PNetworkBehaviour<H> {
-    #[cfg(not(feature = "kademlia"))]
-    pub fn new(_local_keys: Keypair) -> QueryResult<Self> {
-        let mdns =
-            Mdns::new().map_err(|_| QueryError::ConnectionError("Could not build mdns behaviour".to_string()))?;
-
-        // Create RequestResponse behaviour with MessageProtocol
-        let msg_proto = {
-            let cfg = RequestResponseConfig::default();
-            let protocols = iter::once((MessageProtocol(), ProtocolSupport::Full));
-            RequestResponse::new(MessageCodec(), protocols, cfg)
-        };
-
-        Ok(P2PNetworkBehaviour::<H> { mdns, msg_proto })
-    }
-
-    #[cfg(feature = "kademlia")]
-    pub fn new(public_key: PublicKey) -> QueryResult<Self> {
-        let peer_id = PeerId::from(public_key);
+impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
+    /// Creates a new P2PNetworkbehaviour that defines the communication with the libp2p swarm.
+    /// It combines the following protocols from libp2p:
+    /// - mDNS for peer discovery within the local network
+    /// - RequestResponse Protocol for sending request and reponse messages. This stronghold-communication library
+    ///   defines a custom version of this protocol that for sending pings, string-messages and key-value-records.
+    /// - kademlia (if the "kademlia"-feature is enabled) for managing peer in kademlia buckets and publishing/ reading records
+    ///
+    /// # Example
+    /// ```no_run
+    /// use communication::behaviour::{InboundEventCodec, P2PNetworkBehaviour, SwarmContext},
+    ///     error::QueryResult,
+    ///     message::{Request, Response},
+    /// };
+    /// use libp2p::{{
+    ///     kad::KademliaEvent;
+    ///     core::{identity::Keypair, Multiaddr, PeerId},
+    /// request_response::{RequestId, ResponseChannel},
+    /// };
+    ///
+    /// let local_keys = Keypair::generate_ed25519();
+    ///
+    /// struct Handler();
+    /// impl InboundEventCodec for Handler {
+    ///    fn handle_request_msg(
+    ///        _swarm: &mut impl SwarmContext,
+    ///        _request: Request,
+    ///        _channel: ResponseChannel<Response>,
+    ///        _peer: PeerId,
+    ///    ) { }
+    ///
+    ///    fn handle_response_msg(
+    ///        _swarm: &mut impl SwarmContext,
+    ///        _response: Response,
+    ///        _request_id: RequestId,
+    ///        _peer: PeerId
+    ///    ) { }
+    ///
+    ///    fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _result: KademliaEvent) {}
+    /// }
+    ///
+    /// let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
+    /// ```
+    pub fn new(_public_key: PublicKey) -> QueryResult<Self> {
+        let peer_id = PeerId::from(_public_key);
+        #[cfg(feature = "kademlia")]
         let kademlia = {
             let store = MemoryStore::new(peer_id.clone());
             Kademlia::new(peer_id, store)
@@ -170,7 +221,8 @@ impl<H: InboundEventHandler + Send + 'static> P2PNetworkBehaviour<H> {
             RequestResponse::new(MessageCodec(), protocols, cfg)
         };
 
-        Ok(P2PNetworkBehaviour::<H> {
+        Ok(P2PNetworkBehaviour::<C> {
+            #[cfg(feature = "kademlia")]
             kademlia,
             mdns,
             msg_proto,
@@ -179,7 +231,7 @@ impl<H: InboundEventHandler + Send + 'static> P2PNetworkBehaviour<H> {
     }
 }
 
-impl<H: InboundEventHandler + Send + 'static> NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour<H> {
+impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour<C> {
     // Called when `mdns` produces an event.
     fn inject_event(&mut self, _event: MdnsEvent) {
         #[cfg(feature = "kademlia")]
@@ -192,15 +244,15 @@ impl<H: InboundEventHandler + Send + 'static> NetworkBehaviourEventProcess<MdnsE
 }
 
 #[cfg(feature = "kademlia")]
-impl<H: InboundEventHandler + Send + 'static> NetworkBehaviourEventProcess<KademliaEvent> for P2PNetworkBehaviour<H> {
+impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<KademliaEvent> for P2PNetworkBehaviour<C> {
     // Called when `kademlia` produces an event.
     fn inject_event(&mut self, message: KademliaEvent) {
-        H::handle_kademlia_event(self, message);
+        C::handle_kademlia_event(self, message);
     }
 }
 
-impl<H: InboundEventHandler + Send + 'static> NetworkBehaviourEventProcess<RequestResponseEvent<Request, Response>>
-    for P2PNetworkBehaviour<H>
+impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<RequestResponseEvent<Request, Response>>
+    for P2PNetworkBehaviour<C>
 {
     // Called when the protocol produces an event.
     fn inject_event(&mut self, event: RequestResponseEvent<Request, Response>) {
@@ -210,9 +262,9 @@ impl<H: InboundEventHandler + Send + 'static> NetworkBehaviourEventProcess<Reque
                     request_id: _,
                     request,
                     channel,
-                } => H::handle_request_msg(self, request, channel, peer),
+                } => C::handle_request_msg(self, request, channel, peer),
                 RequestResponseMessage::Response { request_id, response } => {
-                    H::handle_response_msg(self, response, request_id, peer)
+                    C::handle_response_msg(self, response, request_id, peer)
                 }
             },
             OutboundFailure {

@@ -11,23 +11,23 @@
 
 //! This example implements the mailbox behaviour. It can be used to communicate with remote peers in different networks
 //! that can not be dialed directly, e.g. because they are not listening to a public IP address.
-//! Records for remote peers are sent to the mailbox that publishes it in it's kademlia DHT. 
+//! Records for remote peers are sent to the mailbox that publishes it in it's kademlia DHT.
 //! The remote peer can then connect to the same mailbox and query kademlia for the record.
 //!
 //! In order for this example to work, the peer that serves as a mailbox has to obtain a public IP e.g. by running on
 //! a server or by configuring port forwarding. For testing and dev purposes, IOTA currently maintains a server with
 //! mailbox peer with `PeerId("12D3KooWHL8P9dFNRa7jEGfFz2BGw6RVwBQ3Gqdqy4UJCUG8d3p4)` in a docker container at the
 //! address `"/dns/wrtc-star01.iota.cafe/tcp/16384"`.
-//! 
+//!
 //! # Deposit a record in the mailbox
-//! 
+//!
 //! ```sh
-//! mailbox-put-mailbox 
+//! mailbox-put-mailbox
 //! Put record into the mailbox
-//! 
+//!
 //! USAGE:
 //!     mailbox put_mailbox [OPTIONS] --mail-id <mailbox-peer-id> --mail-addr <mailbox-multi-addr> --key <record-key> --value <record-value>
-//! 
+//!
 //! OPTIONS:
 //!     -e, --expires <expires-sec>             the expire seconds for the record
 //!     -k, --key <record-key>                  the key for the record
@@ -35,35 +35,35 @@
 //!     -i, --mail-id <mailbox-peer-id>         the peer id of the mailbox
 //!     -v, --value <record-value>              the value for the record
 //! ```
-//! 
+//!
 //! Using the above mailbox, a record can be deposited this mailbox could be done by running:
-//! 
+//!
 //! ```sh
 //! $ cargo run --example mailbox -- put-mailbox  -i "12D3KooWHL8P9dFNRa7jEGfFz2BGw6RVwBQ3Gqdqy4UJCUG8d3p4" -a "/dns/wrtc-star01.iota.cafe/tcp/16384" -k "foo" -v "bar"
 //! Local PeerId: PeerId("12D3KooWLVFib1KbfjY4Qv3phtc8hafD8HVJm9QygeSmH28Jw2HG")
 //! Received Result for publish request RequestId(1): Success.
-//! 
+//!
 //! ```
-//! 
+//!
 //! Without the `--expires` argument, the record-expire default to 9000s.
-//! 
+//!
 //! # Reading a record
-//! 
+//!
 //! ```sh
-//! mailbox-get-record 
+//! mailbox-get-record
 //! Get record from local or the mailbox
-//! 
+//!
 //! USAGE:
 //!     mailbox get-record --mail-id <mailbox-peer-id> --mail-addr <mailbox-multi-addr> --key <record-key>
-//! 
+//!
 //! OPTIONS:
 //!     -k, --key <record-key>                  the key for the record
 //!     -a, --mail-addr <mailbox-multi-addr>    the multi-address of the mailbox
 //!     -i, --mail-id <mailbox-peer-id>         the peer id of the mailbox
 //! ```
-//! 
+//!
 //! Using the above mailbox, a record is read from the mailbox by running
-//! 
+//!
 //! ```sh
 //! $ cargo run --example mailbox -- get-record  -i "12D3KooWHL8P9dFNRa7jEGfFz2BGw6RVwBQ3Gqdqy4UJCUG8d3p4" -a "/dns/wrtc-star01.iota.cafe/tcp/16384" -k "foo"
 //! Local PeerId: PeerId("12D3KooWJjtPjcMMa19WTnYvsmgpagPnDjSjeTgZS7j3YhwZX7Gn")
@@ -73,7 +73,7 @@
 use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
 use communication::{
-    behaviour::{InboundEventHandler, P2PNetworkBehaviour, SwarmContext},
+    behaviour::{InboundEventCodec, P2PNetworkBehaviour, SwarmContext},
     error::QueryResult,
     message::{MailboxRecord, MessageResult, Request, Response},
     network::P2PNetwork,
@@ -89,7 +89,7 @@ use libp2p::{
 struct Handler();
 
 // Implement a Handler to determine the networks behaviour upon receiving messages and kademlia events.
-impl InboundEventHandler for Handler {
+impl InboundEventCodec for Handler {
     // Implements the mailbox behaviour by publishing records for others peers in the kademlia dht.
     fn handle_request_msg(
         swarm: &mut impl SwarmContext,
@@ -110,13 +110,13 @@ impl InboundEventHandler for Handler {
         }
     }
 
-    fn handle_response_msg(_ctx: &mut impl SwarmContext, response: Response, request_id: RequestId, _peer: PeerId) {
+    fn handle_response_msg(_swarm: &mut impl SwarmContext, response: Response, request_id: RequestId, _peer: PeerId) {
         if let Response::Result(result) = response {
             println!("Received Result for publish request {:?}: {:?}.", request_id, result);
         }
     }
 
-    fn handle_kademlia_event(_ctx: &mut impl SwarmContext, event: KademliaEvent) {
+    fn handle_kademlia_event(_swarm: &mut impl SwarmContext, event: KademliaEvent) {
         if let KademliaEvent::QueryResult { result, .. } = event {
             match result {
                 // Triggers if the search for a record in kademlia was successful.

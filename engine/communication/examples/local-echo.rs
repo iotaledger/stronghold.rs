@@ -55,7 +55,7 @@ use async_std::{
     task,
 };
 use communication::{
-    behaviour::{InboundEventHandler, P2PNetworkBehaviour, SwarmContext},
+    behaviour::{InboundEventCodec, P2PNetworkBehaviour, SwarmContext},
     error::QueryResult,
     message::{Request, Response},
     network::P2PNetwork,
@@ -80,7 +80,7 @@ struct Handler();
 
 // Implement a Handler to determine the networks behaviour upon receiving messages.
 // This example does make use of libp2ps Kademlia.
-impl InboundEventHandler for Handler {
+impl InboundEventCodec for Handler {
     fn handle_request_msg(
         swarm: &mut impl SwarmContext,
         request: Request,
@@ -100,7 +100,7 @@ impl InboundEventHandler for Handler {
         }
     }
 
-    fn handle_response_msg(_ctx: &mut impl SwarmContext, response: Response, request_id: RequestId, peer: PeerId) {
+    fn handle_response_msg(_swarm: &mut impl SwarmContext, response: Response, request_id: RequestId, peer: PeerId) {
         match response {
             Response::Pong => {
                 println!("Received Pong for request {:?}.", request_id);
@@ -115,7 +115,7 @@ impl InboundEventHandler for Handler {
     }
 
     #[cfg(feature = "kademlia")]
-    fn handle_kademlia_event(_ctx: &mut impl SwarmContext, _result: KademliaEvent) {}
+    fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _result: KademliaEvent) {}
 }
 
 // Poll for user input
