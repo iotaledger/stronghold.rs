@@ -15,8 +15,8 @@
 //! The remote peer can then connect to the same mailbox and query kademlia for the record.
 //!
 //! In order for this example to work, the peer that serves as a mailbox has to obtain a public IP e.g. by running on
-//! a server or by configuring port forwarding. 
-//! 
+//! a server or by configuring port forwarding.
+//!
 //! # Starting the mailbox
 //! ```sh
 //! $ cargo run --example mailbox -- start-mailbox
@@ -94,7 +94,10 @@ use futures::{future, prelude::*};
 use libp2p::{
     core::{identity::Keypair, Multiaddr, PeerId},
     kad::{KademliaEvent, PeerRecord, QueryResult as KadQueryResult, Record as KadRecord},
-    request_response::{RequestId, ResponseChannel},
+    request_response::{
+        RequestResponseEvent::{self, InboundFailure, Message as MessageEvent, OutboundFailure},
+        RequestResponseMessage,
+    },
     swarm::SwarmEvent,
 };
 
@@ -143,31 +146,48 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
         // Implements the mailbox behaviour by publishing records for others peers in the kademlia dht.
         struct MailboxHandler();
         impl InboundEventCodec for MailboxHandler {
-            fn handle_request_msg(
+            fn handle_request_response_event(
                 swarm: &mut impl SwarmContext,
-                request: Request,
-                channel: ResponseChannel<Response>,
-                _peer: PeerId,
+                event: RequestResponseEvent<Request, Response>,
             ) {
-                if let Request::Publish(r) = request {
-                    let record = MailboxRecord::new(r.key(), r.value(), r.expires_sec());
-                    // store the record in the mailboxes kademlia dht
-                    let query_id = swarm.put_record_local(record);
-                    if query_id.is_ok() {
-                        println!("Successfully stored record.");
-                        swarm.send_response(Response::Result(MessageResult::Success), channel);
-                    } else {
-                        println!("Error storing record: {:?}", query_id.err());
+                match event {
+                    MessageEvent { peer: _, message } => {
+                        if let RequestResponseMessage::Request {
+                            request_id: _,
+                            request,
+                            channel,
+                        } = message
+                        {
+                            if let Request::Publish(r) = request {
+                                let record = MailboxRecord::new(r.key(), r.value(), r.expires_sec());
+                                // store the record in the mailboxes kademlia dht
+                                let query_id = swarm.put_record_local(record);
+                                if query_id.is_ok() {
+                                    println!("Successfully stored record.");
+                                    swarm.send_response(Response::Result(MessageResult::Success), channel);
+                                } else {
+                                    println!("Error storing record: {:?}", query_id.err());
+                                }
+                            }
+                        }
                     }
+                    OutboundFailure {
+                        peer,
+                        request_id,
+                        error,
+                    } => println!(
+                        "Outbound Failure for request {:?} to peer: {:?}: {:?}.",
+                        request_id, peer, error
+                    ),
+                    InboundFailure {
+                        peer,
+                        request_id,
+                        error,
+                    } => println!(
+                        "Inbound Failure for request {:?} to peer: {:?}: {:?}.",
+                        request_id, peer, error
+                    ),
                 }
-            }
-
-            fn handle_response_msg(
-                _swarm: &mut impl SwarmContext,
-                _response: Response,
-                _request_id: RequestId,
-                _peer: PeerId,
-            ) {
             }
 
             fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _event: KademliaEvent) {}
@@ -193,7 +213,16 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
                     }
                     Poll::Pending => {
                         if !listening {
-                            network.print_listeners();
+                            let mut listeners = network.get_listeners().peekable();
+                            if listeners.peek() == None {
+                                println!("No listeners. The port may already be occupied.")
+                            } else {
+                                println!("Listening on:");
+                                for a in listeners {
+                                    println!("{:?}", a);
+                                }
+                            }
+
                             listening = true;
                         }
                         break;
@@ -222,23 +251,35 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
             // Implement a Handler to display the response from the mailbox
             struct PutRecordHandler();
             impl InboundEventCodec for PutRecordHandler {
-                fn handle_request_msg(
+                fn handle_request_response_event(
                     _swarm: &mut impl SwarmContext,
-                    _request: Request,
-                    _channel: ResponseChannel<Response>,
-                    _peer: PeerId,
+                    event: RequestResponseEvent<Request, Response>,
                 ) {
-                }
-
-                fn handle_response_msg(
-                    _swarm: &mut impl SwarmContext,
-                    response: Response,
-                    request_id: RequestId,
-                    _peer: PeerId,
-                ) {
-                    // Mailbox response
-                    if let Response::Result(result) = response {
-                        println!("Received Result for publish request {:?}: {:?}.", request_id, result);
+                    match event {
+                        MessageEvent { peer: _, message } => {
+                            if let RequestResponseMessage::Response { request_id, response } = message {
+                                // Mailbox response
+                                if let Response::Result(result) = response {
+                                    println!("Received Result for publish request {:?}: {:?}.", request_id, result);
+                                }
+                            }
+                        }
+                        OutboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                        } => println!(
+                            "Outbound Failure for request {:?} to peer: {:?}: {:?}.",
+                            request_id, peer, error
+                        ),
+                        InboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                        } => println!(
+                            "Inbound Failure for request {:?} to peer: {:?}: {:?}.",
+                            request_id, peer, error
+                        ),
                     }
                 }
 
@@ -293,20 +334,29 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
 
             // Implement a Handler to display the result of querying kademlia
             impl InboundEventCodec for GetRecordHandler {
-                fn handle_request_msg(
+                fn handle_request_response_event(
                     _swarm: &mut impl SwarmContext,
-                    _request: Request,
-                    _channel: ResponseChannel<Response>,
-                    _peer: PeerId,
+                    event: RequestResponseEvent<Request, Response>,
                 ) {
-                }
-
-                fn handle_response_msg(
-                    _swarm: &mut impl SwarmContext,
-                    _response: Response,
-                    _request_id: RequestId,
-                    _peer: PeerId,
-                ) {
+                    match event {
+                        OutboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                        } => println!(
+                            "Outbound Failure for request {:?} to peer: {:?}: {:?}.",
+                            request_id, peer, error
+                        ),
+                        InboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                        } => println!(
+                            "Inbound Failure for request {:?} to peer: {:?}: {:?}.",
+                            request_id, peer, error
+                        ),
+                        _ => {}
+                    }
                 }
 
                 fn handle_kademlia_event(_swarm: &mut impl SwarmContext, event: KademliaEvent) {

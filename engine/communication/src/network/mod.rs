@@ -66,19 +66,10 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
     ///
     /// struct Handler();
     /// impl InboundEventCodec for Handler {
-    ///    fn handle_request_msg(
-    ///        _swarm: &mut impl SwarmContext,
-    ///        _request: Request,
-    ///        _channel: ResponseChannel<Response>,
-    ///        _peer: PeerId,
-    ///    ) { }
-    ///
-    ///    fn handle_response_msg(
-    ///        _swarm: &mut impl SwarmContext,
-    ///        _response: Response,
-    ///        _request_id: RequestId,
-    ///        _peer: PeerId
-    ///    ) { }
+    ///    fn handle_request_response_event(
+    ///       _swarm: &mut impl SwarmContext,
+    ///       _event: RequestResponseEvent<Request, Response>,
+    ///    ) {}
     ///
     ///    fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _result: KademliaEvent) {}
     /// }
@@ -125,16 +116,8 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
     }
 
     /// Prints the multi-addresses that this peer is listening on within the local network.
-    pub fn print_listeners(&self) {
-        let mut listeners = Swarm::listeners(&self.swarm).peekable();
-        if listeners.peek() == None {
-            println!("No listeners. The port may already be occupied.")
-        } else {
-            println!("Listening on:");
-            for a in listeners {
-                println!("{:?}", a);
-            }
-        }
+    pub fn get_listeners(&self) -> impl Iterator<Item = &Multiaddr> {
+        Swarm::listeners(&self.swarm)
     }
 
     #[cfg(feature = "kademlia")]

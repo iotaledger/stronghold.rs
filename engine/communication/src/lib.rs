@@ -12,12 +12,12 @@
 //! ## Introduction
 //!
 //! This library enables strongholds on different devices and in different networks to communicate with each other.
-//! The main basis for it's functionality is the rust-libp2p library, which is a system of protocols, specifications and
+//! The main basis for its functionality is the rust-libp2p library, which is a system of protocols, specifications, and
 //! libraries that enable the development of peer-to-peer network applications (https://libp2p.io/).
 //!
 //! Libp2p was originally the network protocol of IPFS and has evolved into a modular system with implementations in
 //! Node.js, Go and Rust. It is important to note that at the current status, the Rust implementation doesn't have all features
-//! yet and especially peer discovery in different networks, NAT Traversal and Firewalls oppose a problem, that we solved
+//! yet and especially peer discovery in different networks, NAT Traversal and Firewalls pose a problem, that we solved
 //! for stronghold by using a mailbox concept that is described later.
 //!
 //! ## Transport and the Swarm
