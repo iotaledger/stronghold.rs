@@ -9,5 +9,7 @@ members = [
     "engine/snapshot"
 ]
 exclude = [
-  "engine/examples/commandline",
+  "products/commandline",
+  "products/desktop",
+  "products/SHaaS",
 ]
