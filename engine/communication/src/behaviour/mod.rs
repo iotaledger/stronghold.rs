@@ -40,6 +40,7 @@ use std::marker::Send;
 #[cfg(feature = "kademlia")]
 use std::time::Instant;
 
+/// Interface for the communication with the swarm
 pub trait SwarmContext {
     fn send_request(&mut self, peer_id: &PeerId, request: Request) -> RequestId;
 
@@ -60,6 +61,7 @@ pub trait SwarmContext {
     fn kad_bootstrap(&mut self) -> QueryResult<QueryId>;
 }
 
+/// Codec that describes a custom behaviour for inbound events from the swarm.
 pub trait InboundEventCodec {
     fn handle_request_msg(
         swarm: &mut impl SwarmContext,

@@ -50,6 +50,7 @@ pub enum Response {
     Message(String),
 }
 
+/// Indicates if a Request was received and / or the associated operation at the remote peer was successful
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MessageResult {
     Success,

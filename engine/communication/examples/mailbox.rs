@@ -15,9 +15,7 @@
 //! The remote peer can then connect to the same mailbox and query kademlia for the record.
 //!
 //! In order for this example to work, the peer that serves as a mailbox has to obtain a public IP e.g. by running on
-//! a server or by configuring port forwarding. For testing and dev purposes, IOTA currently maintains a server with
-//! mailbox peer with `PeerId("12D3KooWHL8P9dFNRa7jEGfFz2BGw6RVwBQ3Gqdqy4UJCUG8d3p4)` in a docker container at the
-//! address `"/dns/wrtc-star01.iota.cafe/tcp/16384"`.
+//! a server or by configuring port forwarding. .
 //!
 //! # Deposit a record in the mailbox
 //!
@@ -39,7 +37,7 @@
 //! Using the above mailbox, a record can be deposited this mailbox could be done by running:
 //!
 //! ```sh
-//! $ cargo run --example mailbox -- put-mailbox  -i "12D3KooWHL8P9dFNRa7jEGfFz2BGw6RVwBQ3Gqdqy4UJCUG8d3p4" -a "/dns/wrtc-star01.iota.cafe/tcp/16384" -k "foo" -v "bar"
+//! $ cargo run --example mailbox -- put-mailbox  -i "12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA" -a "/dns/<public-dns-address>/tcp/16384" -k "foo" -v "bar"
 //! Local PeerId: PeerId("12D3KooWLVFib1KbfjY4Qv3phtc8hafD8HVJm9QygeSmH28Jw2HG")
 //! Received Result for publish request RequestId(1): Success.
 //!
@@ -65,7 +63,7 @@
 //! Using the above mailbox, a record is read from the mailbox by running
 //!
 //! ```sh
-//! $ cargo run --example mailbox -- get-record  -i "12D3KooWHL8P9dFNRa7jEGfFz2BGw6RVwBQ3Gqdqy4UJCUG8d3p4" -a "/dns/wrtc-star01.iota.cafe/tcp/16384" -k "foo"
+//! $ cargo run --example mailbox -- get-record  -i "12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA" -a "/dns/<public-dns-address>/tcp/16384" -k "foo"
 //! Local PeerId: PeerId("12D3KooWJjtPjcMMa19WTnYvsmgpagPnDjSjeTgZS7j3YhwZX7Gn")
 //! Got record "foo" "bar".
 //! ```
