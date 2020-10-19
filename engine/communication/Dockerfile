@@ -21,13 +21,15 @@ COPY ./src/structs.proto ./src/structs.proto
 RUN cargo build --release
 RUN rm src/*.rs
 COPY ./src ./src
+COPY ./examples ./examples
 RUN cargo clean
 
-# build for release
-RUN cargo build --release
+# build mailbox
+RUN cargo build --example mailbox
 FROM rust:latest
 WORKDIR /app
 
 # copy the build artifact from the build stage
-COPY --from=build /stronghold-communication/target/release/communication .
-ENTRYPOINT ["/app/stronghold-communication"]
+COPY --from=build /stronghold-communication/target/debug/examples/mailbox .
+ENTRYPOINT ["/app/mailbox"]
+CMD ["start-mailbox"]
