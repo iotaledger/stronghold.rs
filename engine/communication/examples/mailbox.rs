@@ -15,8 +15,18 @@
 //! The remote peer can then connect to the same mailbox and query kademlia for the record.
 //!
 //! In order for this example to work, the peer that serves as a mailbox has to obtain a public IP e.g. by running on
-//! a server or by configuring port forwarding. .
-//!
+//! a server or by configuring port forwarding. 
+//! 
+//! # Starting the mailbox
+//! ```sh
+//! $ cargo run --example mailbox -- start-mailbox
+//! Local PeerId: PeerId("12D3KooWLVFib1KbfjY4Qv3phtc8hafD8HVJm9QygeSmH28Jw2HG")
+//! Listening on:
+//! "/ip4/127.0.0.1/tcp/41807"
+//! "/ip4/192.168.178.25/tcp/41807"
+//! "/ip4/172.17.0.1/tcp/41807"
+//! "/ip6/::1/tcp/41807"
+//! ```
 //! # Deposit a record in the mailbox
 //!
 //! ```sh
@@ -37,8 +47,8 @@
 //! Using the above mailbox, a record can be deposited this mailbox could be done by running:
 //!
 //! ```sh
-//! $ cargo run --example mailbox -- put-mailbox  -i "12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA" -a "/dns/<public-dns-address>/tcp/16384" -k "foo" -v "bar"
-//! Local PeerId: PeerId("12D3KooWLVFib1KbfjY4Qv3phtc8hafD8HVJm9QygeSmH28Jw2HG")
+//! $ cargo run --example mailbox -- put-mailbox  -i "12D3KooWLVFib1KbfjY4Qv3phtc8hafD8HVJm9QygeSmH28Jw2HG" -a "/ip4/127.0.0.1/tcp/16384" -k "foo" -v "bar"
+//! Local PeerId: PeerId("12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA")
 //! Received Result for publish request RequestId(1): Success.
 //!
 //! ```
@@ -63,7 +73,7 @@
 //! Using the above mailbox, a record is read from the mailbox by running
 //!
 //! ```sh
-//! $ cargo run --example mailbox -- get-record  -i "12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA" -a "/dns/<public-dns-address>/tcp/16384" -k "foo"
+//! $ cargo run --example mailbox -- get-record  -i "12D3KooWLVFib1KbfjY4Qv3phtc8hafD8HVJm9QygeSmH28Jw2HG" -a "/ip4/127.0.0.1/tcp/16384" -k "foo"
 //! Local PeerId: PeerId("12D3KooWJjtPjcMMa19WTnYvsmgpagPnDjSjeTgZS7j3YhwZX7Gn")
 //! Got record "foo" "bar".
 //! ```
@@ -165,7 +175,10 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
 
         // Create behaviour that uses the custom Handler to describe how peers should react to events
         let behaviour = P2PNetworkBehaviour::<MailboxHandler>::new(local_keys.public())?;
-        let port = matches.value_of("port").and_then(|port_str| port_str.parse::<u32>().ok()).unwrap_or(16384u32);
+        let port = matches
+            .value_of("port")
+            .and_then(|port_str| port_str.parse::<u32>().ok())
+            .unwrap_or(16384u32);
         // Create a network that implements the behaviour in it's swarm
         let mut network = P2PNetwork::new(behaviour, local_keys, Some(port))?;
         println!("Local PeerId: {:?}", network.local_peer_id());
