@@ -100,7 +100,7 @@ impl<C: InboundEventCodec + Send + 'static> SwarmContext for P2PNetworkBehaviour
         self.kademlia.get_record(&key, Quorum::One)
     }
 
-    /// Publish a record in the own Kademlia DHT
+    /// Publish a record in own Kademlia DHT
     #[cfg(feature = "kademlia")]
     fn put_record_local(&mut self, record: MailboxRecord) -> QueryResult<QueryId> {
         let record = KadRecord {

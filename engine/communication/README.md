@@ -1,12 +1,12 @@
 ## Introduction
 
 This library enables strongholds on different devices and in different networks to communicate with each other.
-The main basis for it's functionality is the rust-libp2p library, which is a system of protocols, specifications and 
+The main basis for its functionality is the [rust-libp2p](https://github.com/libp2p/rust-libp2p) library, which is a system of protocols, specifications and 
 libraries that enable the development of peer-to-peer network applications (https://libp2p.io/).
 
 Libp2p was originally the network protocol of IPFS and has evolved into a modular system with implementations in 
 Node.js, Go and Rust. It is important to note that at the current status, the Rust implementation doesn't have all features
-yet and especially peer discovery in different networks, NAT Traversal and Firewalls oppose a problem, that we solved
+yet and especially peer discovery in different networks, NAT Traversal and Firewalls pose a problem that we solved
 for stronghold by using a mailbox concept that is described later.
 
 ## Transport and the Swarm
@@ -16,7 +16,7 @@ The current rust implementation supports tcp and websockets, and apart from that
 connection with protocols for multiplexing and authentication. 
 This stronghold-communication library uses yamux for multiplexing and the noise-protocol for authentication.
 
-The second important concept of libp2p is it's `Swarm` (in newer implementations and documents also called `Switch`).
+The second important concept of libp2p is its `Swarm` (in newer implementations and documents also called `Switch`).
 The swarm is responsible for negotiating protocols, managing transports and sending and receiving messages via different
 protocols. It is possible to combine different protocols into a so called `NetworkBehaviour`, which is what this library is doing.
 Stronghold-communication uses multicast DNS (mDNS) for peer discovery in a local network, libp2p-kademlia as a distributed hash table
@@ -41,7 +41,7 @@ the local /ip4/my-local-address/tcp/12345 Address can be replaced by the public 
 `/tcp/12345` part describes the port.
 
 
-It provides methods for dialing and connection other peers, using the swarm behaviour via it's `swarm` property (that enables using methods
+It provides methods for dialing and connection other peers, using the swarm behaviour via its `swarm` property (that enables using methods
 from the `P2PNetworkBehaviour`) and managing mailboxes if necessary.
 
 ## Mailbox Concept

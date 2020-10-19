@@ -11,7 +11,7 @@
 
 //! This example implements the mailbox behaviour. It can be used to communicate with remote peers in different networks
 //! that can not be dialed directly, e.g. because they are not listening to a public IP address.
-//! Records for remote peers are sent to the mailbox that publishes it in it's kademlia DHT.
+//! Records for remote peers are sent to the mailbox that publishes it in its kademlia DHT.
 //! The remote peer can then connect to the same mailbox and query kademlia for the record.
 //!
 //! In order for this example to work, the peer that serves as a mailbox has to obtain a public IP e.g. by running on
@@ -248,7 +248,7 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
             // Create behaviour that uses the custom Handler to describe how peers should react to events
             // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
             let behaviour = P2PNetworkBehaviour::<PutRecordHandler>::new(local_keys.public())?;
-            // Create a network that implements the behaviour in it's swarm, and manages mailboxes and connections.
+            // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
             let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
             println!("Local PeerId: {:?}", network.local_peer_id());
 
@@ -338,7 +338,7 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
             // Create behaviour that uses the custom Handler to describe how peers should react to events
             // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
             let behaviour = P2PNetworkBehaviour::<GetRecordHandler>::new(local_keys.public())?;
-            // Create a network that implements the behaviour in it's swarm, and manages mailboxes and connections.
+            // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
             let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
             println!("Local PeerId: {:?}", network.local_peer_id());
 

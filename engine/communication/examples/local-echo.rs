@@ -16,7 +16,7 @@
 //! ```sh
 //! cargo run --example local-echo
 //! ```
-//! For each peer it will print it's unique PeerId and the listening addresses within the local network.
+//! For each peer it will print its unique PeerId and the listening addresses within the local network.
 //! ```sh
 //! Local PeerId: PeerId("12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA")
 //!Listening on:
@@ -44,7 +44,7 @@
 //! ```
 //!
 //! If the peers are within the same network but other peers is not listed, it can manually added with one
-//! of it's listening address:
+//! of its listening address:
 //! ```sh
 //! DIAL "/ip4/127.0.0.1/tcp/41807"
 //! ```
@@ -136,7 +136,7 @@ fn listen() -> QueryResult<()> {
     // Create behaviour that uses the custom handler to describe how peers should react to events
     // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
     let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
-    // Create a network that implements the behaviour in it's swarm, and manages mailboxes and connections.
+    // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
     let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
     println!("Local PeerId: {:?}", network.local_peer_id());
 

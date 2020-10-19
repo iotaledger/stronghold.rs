@@ -27,7 +27,7 @@
 //! connection with protocols for multiplexing and authentication.
 //! This stronghold-communication library uses yamux for multiplexing and the noise-protocol for authentication.
 //!
-//! The second important concept of libp2p is it's `Swarm` (in newer implementations and documents also called `Switch`).
+//! The second important concept of libp2p is its `Swarm` (in newer implementations and documents also called `Switch`).
 //! The swarm is responsible for negotiating protocols, managing transports and sending and receiving messages via different
 //! protocols. It is possible to combine different protocols into a so called `NetworkBehaviour`, which is what this library is doing.
 //! Stronghold-communication uses multicast DNS (mDNS) for peer discovery in a local network, libp2p-kademlia as a distributed hash table
@@ -52,7 +52,7 @@
 //! `/tcp/12345` part describes the port.
 //!
 //!
-//! It provides methods for dialing and connection other peers, using the swarm behaviour via it's `swarm` property (that enables using methods
+//! It provides methods for dialing and connection other peers, using the swarm behaviour via its `swarm` property (that enables using methods
 //! from the `P2PNetworkBehaviour`) and managing mailboxes if necessary.
 //!
 //! ## Mailbox Concept
