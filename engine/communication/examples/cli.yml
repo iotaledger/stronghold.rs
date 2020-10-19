@@ -3,6 +3,16 @@ version: '1.0'
 author: Elena Frank <elena.frank@iota.org>
 about: Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
 subcommands:
+  - start-mailbox:
+      about: Start a mailbox that publishes records in kademlia upon receiving them in a request
+      args:
+        - port:
+            short: p
+            long: port
+            value_name: listening-port
+            about: the listening port for the peer, default is 16384
+            required: false
+            takes_value: true
   - put-mailbox:
       about: Put record into the mailbox
       args:

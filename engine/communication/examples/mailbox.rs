@@ -76,69 +76,17 @@ use communication::{
     message::{MailboxRecord, MessageResult, Request, Response},
     network::P2PNetwork,
 };
-use core::str::FromStr;
+use core::{
+    str::FromStr,
+    task::{Context, Poll},
+};
+use futures::{future, prelude::*};
 use libp2p::{
     core::{identity::Keypair, Multiaddr, PeerId},
     kad::{KademliaEvent, PeerRecord, QueryResult as KadQueryResult, Record as KadRecord},
     request_response::{RequestId, ResponseChannel},
     swarm::SwarmEvent,
 };
-
-struct Handler();
-
-// Implement a Handler to determine the networks behaviour upon receiving messages and kademlia events.
-impl InboundEventCodec for Handler {
-    // Implements the mailbox behaviour by publishing records for others peers in the kademlia dht.
-    fn handle_request_msg(
-        swarm: &mut impl SwarmContext,
-        request: Request,
-        channel: ResponseChannel<Response>,
-        _peer: PeerId,
-    ) {
-        if let Request::Publish(r) = request {
-            let record = MailboxRecord::new(r.key(), r.value(), r.expires_sec());
-            // store the record in the mailboxes kademlia dht
-            let query_id = swarm.put_record_local(record);
-            if query_id.is_ok() {
-                println!("Successfully stored record.");
-                swarm.send_response(Response::Result(MessageResult::Success), channel);
-            } else {
-                println!("Error storing record: {:?}", query_id.err());
-            }
-        }
-    }
-
-    fn handle_response_msg(_swarm: &mut impl SwarmContext, response: Response, request_id: RequestId, _peer: PeerId) {
-        if let Response::Result(result) = response {
-            println!("Received Result for publish request {:?}: {:?}.", request_id, result);
-        }
-    }
-
-    fn handle_kademlia_event(_swarm: &mut impl SwarmContext, event: KademliaEvent) {
-        if let KademliaEvent::QueryResult { result, .. } = event {
-            match result {
-                // Triggers if the search for a record in kademlia was successful.
-                KadQueryResult::GetRecord(Ok(ok)) => {
-                    for PeerRecord {
-                        record: KadRecord { key, value, .. },
-                        ..
-                    } in ok.records
-                    {
-                        println!(
-                            "Got record {:?} {:?}.",
-                            std::str::from_utf8(key.as_ref()).unwrap(),
-                            std::str::from_utf8(&value).unwrap(),
-                        );
-                    }
-                }
-                KadQueryResult::GetRecord(Err(err)) => {
-                    eprintln!("Failed to get record: {:?}.", err);
-                }
-                _ => {}
-            }
-        }
-    }
-}
 
 // only used for this CLI
 struct Matches {
@@ -177,6 +125,74 @@ fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
     None
 }
 
+// Start a mailbox that publishes record for other peers
+fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
+    if matches.subcommand_matches("start-mailbox").is_some() {
+        let local_keys = Keypair::generate_ed25519();
+
+        // Implements the mailbox behaviour by publishing records for others peers in the kademlia dht.
+        struct MailboxHandler();
+        impl InboundEventCodec for MailboxHandler {
+            fn handle_request_msg(
+                swarm: &mut impl SwarmContext,
+                request: Request,
+                channel: ResponseChannel<Response>,
+                _peer: PeerId,
+            ) {
+                if let Request::Publish(r) = request {
+                    let record = MailboxRecord::new(r.key(), r.value(), r.expires_sec());
+                    // store the record in the mailboxes kademlia dht
+                    let query_id = swarm.put_record_local(record);
+                    if query_id.is_ok() {
+                        println!("Successfully stored record.");
+                        swarm.send_response(Response::Result(MessageResult::Success), channel);
+                    } else {
+                        println!("Error storing record: {:?}", query_id.err());
+                    }
+                }
+            }
+
+            fn handle_response_msg(
+                _swarm: &mut impl SwarmContext,
+                _response: Response,
+                _request_id: RequestId,
+                _peer: PeerId,
+            ) {
+            }
+
+            fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _event: KademliaEvent) {}
+        }
+
+        // Create behaviour that uses the custom Handler to describe how peers should react to events
+        let behaviour = P2PNetworkBehaviour::<MailboxHandler>::new(local_keys.public())?;
+        let port = matches.value_of("port").and_then(|port_str| port_str.parse::<u32>().ok()).unwrap_or(16384u32);
+        // Create a network that implements the behaviour in it's swarm
+        let mut network = P2PNetwork::new(behaviour, local_keys, Some(port))?;
+        println!("Local PeerId: {:?}", network.local_peer_id());
+        let mut listening = false;
+        task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
+            loop {
+                // poll for events from the swarm
+                match network.swarm.poll_next_unpin(cx) {
+                    Poll::Ready(Some(event)) => println!("{:?}", event),
+                    Poll::Ready(None) => {
+                        return Poll::Ready(());
+                    }
+                    Poll::Pending => {
+                        if !listening {
+                            network.print_listeners();
+                            listening = true;
+                        }
+                        break;
+                    }
+                }
+            }
+            Poll::Pending
+        }));
+    }
+    Ok(())
+}
+
 // Deposit a record in the mailbox
 fn put_record(matches: &ArgMatches) -> QueryResult<()> {
     if let Some(matches) = matches.subcommand_matches("put-mailbox") {
@@ -190,9 +206,35 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
         {
             let local_keys = Keypair::generate_ed25519();
 
+            // Implement a Handler to display the response from the mailbox
+            struct PutRecordHandler();
+            impl InboundEventCodec for PutRecordHandler {
+                fn handle_request_msg(
+                    _swarm: &mut impl SwarmContext,
+                    _request: Request,
+                    _channel: ResponseChannel<Response>,
+                    _peer: PeerId,
+                ) {
+                }
+
+                fn handle_response_msg(
+                    _swarm: &mut impl SwarmContext,
+                    response: Response,
+                    request_id: RequestId,
+                    _peer: PeerId,
+                ) {
+                    // Mailbox response
+                    if let Response::Result(result) = response {
+                        println!("Received Result for publish request {:?}: {:?}.", request_id, result);
+                    }
+                }
+
+                fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _event: KademliaEvent) {}
+            }
+
             // Create behaviour that uses the custom Handler to describe how peers should react to events
             // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
-            let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
+            let behaviour = P2PNetworkBehaviour::<PutRecordHandler>::new(local_keys.public())?;
             // Create a network that implements the behaviour in it's swarm, and manages mailboxes and connections.
             let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
             println!("Local PeerId: {:?}", network.local_peer_id());
@@ -234,9 +276,55 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
         {
             let local_keys = Keypair::generate_ed25519();
 
+            struct GetRecordHandler();
+
+            // Implement a Handler to display the result of querying kademlia
+            impl InboundEventCodec for GetRecordHandler {
+                fn handle_request_msg(
+                    _swarm: &mut impl SwarmContext,
+                    _request: Request,
+                    _channel: ResponseChannel<Response>,
+                    _peer: PeerId,
+                ) {
+                }
+
+                fn handle_response_msg(
+                    _swarm: &mut impl SwarmContext,
+                    _response: Response,
+                    _request_id: RequestId,
+                    _peer: PeerId,
+                ) {
+                }
+
+                fn handle_kademlia_event(_swarm: &mut impl SwarmContext, event: KademliaEvent) {
+                    if let KademliaEvent::QueryResult { result, .. } = event {
+                        match result {
+                            // Triggers if the search for a record in kademlia was successful.
+                            KadQueryResult::GetRecord(Ok(ok)) => {
+                                for PeerRecord {
+                                    record: KadRecord { key, value, .. },
+                                    ..
+                                } in ok.records
+                                {
+                                    println!(
+                                        "Got record {:?} {:?}.",
+                                        std::str::from_utf8(key.as_ref()).unwrap(),
+                                        std::str::from_utf8(&value).unwrap(),
+                                    );
+                                }
+                            }
+                            KadQueryResult::GetRecord(Err(err)) => {
+                                eprintln!("Failed to get record: {:?}.", err);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
             // Create behaviour that uses the custom Handler to describe how peers should react to events
             // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
-            let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
+            let behaviour = P2PNetworkBehaviour::<GetRecordHandler>::new(local_keys.public())?;
             // Create a network that implements the behaviour in it's swarm, and manages mailboxes and connections.
             let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
             println!("Local PeerId: {:?}", network.local_peer_id());
@@ -267,6 +355,7 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
 fn main() -> QueryResult<()> {
     let yaml = load_yaml!("cli.yml");
     let matches = App::from(yaml).get_matches();
+    run_mailbox(&matches)?;
     put_record(&matches)?;
     get_record(&matches)?;
     Ok(())

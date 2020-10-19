@@ -60,12 +60,11 @@ use communication::{
     message::{Request, Response},
     network::P2PNetwork,
 };
-use std::{
-    error::Error,
+use core::{
     str::FromStr,
-    string::String,
     task::{Context, Poll},
 };
+use std::{error::Error, string::String};
 
 use futures::{future, io::Lines, prelude::*};
 #[cfg(feature = "kademlia")]
