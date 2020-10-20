@@ -197,8 +197,8 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
         let behaviour = P2PNetworkBehaviour::<MailboxHandler>::new(local_keys.public())?;
         let port = matches
             .value_of("port")
-            .and_then(|port_str| port_str.parse::<u32>().ok())
-            .unwrap_or(16384u32);
+            .and_then(|port_str| port_str.parse::<u16>().ok())
+            .unwrap_or(16384u16);
         // Create a network that implements the behaviour in it's swarm
         let mut network = P2PNetwork::new(behaviour, local_keys, Some(port))?;
         println!("Local PeerId: {:?}", network.local_peer_id());

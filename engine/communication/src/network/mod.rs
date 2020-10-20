@@ -12,6 +12,8 @@
 use crate::behaviour::SwarmContext;
 use crate::behaviour::{InboundEventCodec, P2PNetworkBehaviour};
 use crate::error::{QueryError, QueryResult};
+#[cfg(test)]
+use crate::message::Response;
 #[cfg(feature = "kademlia")]
 use crate::message::{MailboxRecord, Request};
 use libp2p::{
@@ -20,6 +22,8 @@ use libp2p::{
     identity::Keypair,
     swarm::{ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler, Swarm},
 };
+#[cfg(test)]
+use libp2p::{kad::KademliaEvent, request_response::RequestResponseEvent};
 #[cfg(feature = "kademlia")]
 use mailboxes::Mailboxes;
 
@@ -51,15 +55,16 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
     ///
     /// # Example
     /// ```no_run
-    /// use communication::behaviour::{InboundEventCodec, P2PNetworkBehaviour, SwarmContext},
+    /// use communication::{
+    ///     behaviour::{InboundEventCodec, P2PNetworkBehaviour, SwarmContext},
     ///     error::QueryResult,
     ///     message::{Request, Response},
     ///     network::P2PNetwork,
     /// };
-    /// use libp2p::{{
-    ///     kad::KademliaEvent;
+    /// use libp2p::{
+    ///     kad::KademliaEvent,
     ///     core::{identity::Keypair, Multiaddr, PeerId},
-    /// request_response::{RequestId, ResponseChannel},
+    ///     request_response::{RequestId, ResponseChannel, RequestResponseEvent},
     /// };
     ///
     /// let local_keys = Keypair::generate_ed25519();
@@ -74,15 +79,15 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
     ///    fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _result: KademliaEvent) {}
     /// }
     ///
-    /// let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
-    /// let mut network = P2PNetwork::new(behaviour, local_keys, Some(16384))?;
+    /// let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public()).unwrap();
+    /// let mut network = P2PNetwork::new(behaviour, local_keys, Some(16384)).unwrap();
     /// ```
-    pub fn new(behaviour: P2PNetworkBehaviour<C>, local_keys: Keypair, port: Option<u32>) -> QueryResult<Self> {
+    pub fn new(behaviour: P2PNetworkBehaviour<C>, local_keys: Keypair, port: Option<u16>) -> QueryResult<Self> {
         let peer_id = PeerId::from(local_keys.public());
         let transport = build_development_transport(local_keys)
             .map_err(|_| QueryError::ConnectionError("Could not build transport layer".to_string()))?;
         let mut swarm: P2PNetworkSwarm<C> = Swarm::new(transport, behaviour, peer_id.clone());
-        let addr = format!("/ip4/0.0.0.0/tcp/{}", port.unwrap_or(0u32))
+        let addr = format!("/ip4/0.0.0.0/tcp/{}", port.unwrap_or(0u16))
             .parse()
             .map_err(|e| QueryError::ConnectionError(format!("Invalid Port {:?}: {}", port, e)))?;
         Swarm::listen_on(&mut swarm, addr).map_err(|e| QueryError::ConnectionError(format!("{}", e)))?;
@@ -95,8 +100,8 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
         })
     }
 
-    pub fn local_peer_id(&self) -> PeerId {
-        self.peer_id.clone()
+    pub fn local_peer_id(&self) -> &PeerId {
+        &self.peer_id
     }
 
     /// Add a remote peer to the kademlia bucket
@@ -137,7 +142,28 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
             .mailboxes
             .clone()
             .ok_or_else(|| QueryError::Mailbox("No known mailboxes".to_string()))?;
-        mailboxes.set_default(mailbox_peer)
+        mailboxes.set_default(mailbox_peer)?;
+        self.mailboxes = Some(mailboxes);
+        Ok(())
+    }
+
+    #[cfg(feature = "kademlia")]
+    pub fn get_default_mailbox(&self) -> Option<&PeerId> {
+        self.mailboxes.as_ref().map(|mailboxes| mailboxes.get_default())
+    }
+
+    #[cfg(feature = "kademlia")]
+    pub fn get_mailboxes(&self) -> Option<Vec<PeerId>> {
+        self.mailboxes
+            .clone()
+            .map(|mut m| m.get_mailboxes().keys().cloned().collect())
+    }
+
+    #[cfg(feature = "kademlia")]
+    pub fn find_mailbox(&self, mailbox_peer: PeerId) -> Option<(&PeerId, &Multiaddr)> {
+        self.mailboxes
+            .as_ref()
+            .and_then(|mailboxes| mailboxes.find_mailbox(&mailbox_peer))
     }
 
     /// Send a publish request to the mailbox in order to make information available for a peer that can not
@@ -162,4 +188,22 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
         }?;
         Ok(self.swarm.send_request(peer, Request::Publish(record)))
     }
+}
+
+#[cfg(test)]
+struct DummyHandler();
+#[cfg(test)]
+impl InboundEventCodec for DummyHandler {
+    fn handle_request_response_event(_swarm: &mut impl SwarmContext, _event: RequestResponseEvent<Request, Response>) {}
+
+    fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _result: KademliaEvent) {}
+}
+
+#[test]
+fn test_new_network() {
+    let local_keys = Keypair::generate_ed25519();
+    let behaviour = P2PNetworkBehaviour::<DummyHandler>::new(local_keys.public()).unwrap();
+    let network = P2PNetwork::new(behaviour, local_keys.clone(), None).unwrap();
+    assert_eq!(&PeerId::from_public_key(local_keys.public()), network.local_peer_id());
+    assert!(network.get_mailboxes().is_none());
 }

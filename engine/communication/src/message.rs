@@ -56,3 +56,14 @@ pub enum MessageResult {
     Success,
     Error,
 }
+
+#[test]
+fn test_new_message() {
+    let key = String::from("key1");
+    let value = String::from("value1");
+    let expires = 1000u64;
+    let record = MailboxRecord::new(key.clone(), value.clone(), expires);
+    assert_eq!(record.key(), key);
+    assert_eq!(record.value(), value);
+    assert_eq!(record.expires_sec(), expires);
+}

@@ -20,7 +20,7 @@ use core::{iter, marker::PhantomData};
 #[cfg(feature = "kademlia")]
 use libp2p::{
     core::Multiaddr,
-    kad::{record::Key, store::MemoryStore, Kademlia, KademliaEvent, QueryId, Quorum, Record as KadRecord, Addresses},
+    kad::{record::Key, store::MemoryStore, Addresses, Kademlia, KademliaEvent, QueryId, Quorum, Record as KadRecord},
 };
 use libp2p::{
     core::PeerId,
@@ -113,9 +113,9 @@ impl<C: InboundEventCodec + Send + 'static> SwarmContext for P2PNetworkBehaviour
     /// Get the discovered peers from kademlia buckets. mDNS peers are automatically added to kademlia too.
     fn get_kademlia_peers(&mut self) -> BTreeMap<PeerId, Addresses> {
         let mut map = BTreeMap::new();
-        for bucket in self.kademlia.kbuckets(){
+        for bucket in self.kademlia.kbuckets() {
             for entry in bucket.iter() {
-                map.insert(entry.node.key.preimage().clone() , entry.node.value.clone() );
+                map.insert(entry.node.key.preimage().clone(), entry.node.value.clone());
             }
         }
         map
@@ -174,14 +174,15 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
     ///
     /// # Example
     /// ```no_run
-    /// use communication::behaviour::{InboundEventCodec, P2PNetworkBehaviour, SwarmContext},
+    /// use communication::{
+    ///     behaviour::{InboundEventCodec, P2PNetworkBehaviour, SwarmContext},
     ///     error::QueryResult,
     ///     message::{Request, Response},
     /// };
-    /// use libp2p::{{
-    ///     kad::KademliaEvent;
+    /// use libp2p::{
+    ///     kad::KademliaEvent,
     ///     core::{identity::Keypair, Multiaddr, PeerId},
-    /// request_response::{RequestId, ResponseChannel},
+    ///     request_response::{RequestId, ResponseChannel, RequestResponseEvent},
     /// };
     ///
     /// let local_keys = Keypair::generate_ed25519();
@@ -196,7 +197,7 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
     ///    fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _result: KademliaEvent) {}
     /// }
     ///
-    /// let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
+    /// let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public()).unwrap();
     /// ```
     pub fn new(_public_key: PublicKey) -> QueryResult<Self> {
         let peer_id = PeerId::from(_public_key);
