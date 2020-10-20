@@ -10,13 +10,14 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 use core::{
-    alloc::{GlobalAlloc, Layout},
+    alloc::{GlobalAlloc, Layout, LayoutErr},
     ptr,
 };
 
 #[derive(PartialEq, Debug)]
 pub enum Error {
     ZeroAllocation,
+    Layout(LayoutErr),
 }
 
 #[cfg(unix)]
@@ -31,6 +32,14 @@ pub struct GuardedAllocator { }
 impl GuardedAllocator {
     pub const fn new() -> Self { Self { } }
 
+    pub fn alloc(&self, n: usize) -> crate::Result<*mut u8> {
+        self.alloc_aligned(Layout::from_size_align(n, 1).map_err(|e| Error::Layout(e))?)
+    }
+
+    pub fn dealloc(&self, p: *mut u8, n: usize) -> crate::Result<()> {
+        self.dealloc_aligned(p, Layout::from_size_align(n, 1).map_err(|e| Error::Layout(e))?)
+    }
+
     fn align_with_guards(n: usize) -> (usize, usize) {
         let (q, r) = num::integer::div_rem(n, page_size());
         if r == 0 {
@@ -40,9 +49,11 @@ impl GuardedAllocator {
         }
     }
 
-    pub fn alloc(&self, n: usize) -> crate::Result<*mut u8> {
+    pub fn alloc_aligned(&self, l: Layout) -> crate::Result<*mut u8> {
+        let n = l.pad_to_align().size();
+
         if n == 0 {
-            return Err(crate::Error::MemError(Error::ZeroAllocation));
+            return Err(Error::ZeroAllocation.into());
         }
 
         let (size, offset) = Self::align_with_guards(n);
@@ -69,12 +80,13 @@ impl GuardedAllocator {
         }
     }
 
-    pub fn dealloc(&self, p: *mut u8, n: usize) -> crate::Result<()> {
+    pub fn dealloc_aligned(&self, p: *mut u8, l: Layout) -> crate::Result<()> {
         // TODO: verify the canary
         // TODO: zero the data pages
 
+        let n = l.pad_to_align().size();
         let (size, offset) = Self::align_with_guards(n);
-        
+
         unsafe {
             let base = p.offset(-(offset as isize));
             let r = libc::munmap(base as *mut libc::c_void, size);
@@ -89,11 +101,11 @@ impl GuardedAllocator {
 
 unsafe impl GlobalAlloc for GuardedAllocator {
     unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        self.alloc(l.pad_to_align().size()).unwrap()
+        self.alloc_aligned(l).unwrap()
     }
 
     unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        self.dealloc(p, l.pad_to_align().size()).unwrap()
+        self.dealloc_aligned(p, l).unwrap()
     }
 }
 
@@ -121,6 +133,14 @@ mod tests {
         Ok(())
     }
 
+    fn page_size_exponent() -> u32 {
+        let mut p = 1; let mut k = 0;
+        while p != page_size() {
+            p *= 2; k += 1;
+        }
+        k as u32
+    }
+
     #[test]
     fn allocate_whole_page() -> crate::Result<()> {
         do_sized_alloc_test(page_size())
@@ -145,10 +165,26 @@ mod tests {
     }
 
     #[test]
+    fn alignment() -> crate::Result<()> {
+        for _ in 1..100 {
+            let a = 2usize.pow(random::<u32>() % page_size_exponent() + 3);
+
+            let mut n = 0;
+            while n == 0 { n = random::<usize>() % 3*page_size(); }
+
+            let l = Layout::from_size_align(n, a).unwrap();
+            let p = GuardedAllocator::new().alloc_aligned(l)?;
+            assert_eq!((p as usize) % a, 0);
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn zero_allocation() -> crate::Result<()> {
         assert_eq!(
             GuardedAllocator::new().alloc(0),
-            Err(crate::Error::MemError(Error::ZeroAllocation)),
+            Err(Error::ZeroAllocation.into()),
         );
         Ok(())
     }

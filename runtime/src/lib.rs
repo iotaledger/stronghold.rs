@@ -37,6 +37,10 @@ impl Error {
     }
 }
 
+impl From<mem::Error> for Error {
+    fn from(e: mem::Error) -> Self { Error::MemError(e) }
+}
+
 #[cfg(unix)]
 fn strerror(errno: libc::c_int) -> &'static str {
     static mut BUF: [libc::c_char; 1024] = [0 as libc::c_char; 1024];
