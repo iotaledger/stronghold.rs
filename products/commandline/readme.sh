@@ -72,7 +72,7 @@ commmandline interface directly:
 \`\`\`shell
 $PS cargo run -- --help
 \`\`\`
-That is in the usage examples bellow replace \`$EXECUTABLE\` with \`cargo run --\`
+That is in the usage examples below replace \`$EXECUTABLE\` with \`cargo run --\`
 (note however that by default the snapshots will still be saved under the
 \`$DEFAULT_SNAPSHOT_DIR\` directory).
 

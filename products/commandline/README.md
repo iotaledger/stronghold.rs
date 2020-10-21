@@ -43,7 +43,7 @@ commmandline interface directly:
 ```shell
 > cargo run -- --help
 ```
-That is in the usage examples bellow replace `stronghold` with `cargo run --`
+That is in the usage examples below replace `stronghold` with `cargo run --`
 (note however that by default the snapshots will still be saved under the
 `~/.engine` directory).
 
