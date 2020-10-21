@@ -20,7 +20,6 @@ use bee_signing_ext::{
     Signer,
 };
 use dummybip39::{dummy_derive_into_address, dummy_mnemonic_to_ed25_seed};
-use iota::message::prelude::{Seed, Transaction, TransactionBuilder};
 
 #[derive(Serialize, Deserialize, Debug)]
 /// Account
@@ -300,30 +299,5 @@ impl Account {
                 .as_millis()
         };
         &self.last_updated_on
-    }
-
-    // todo: complete example
-    /// Gets a Transaction builder with the account seed
-    ///
-    /// # Parameters:
-    ///
-    /// `callback`: callback with the `TransactionBuilder`
-    ///
-    /// # Example
-    /// ```ignore
-    /// use stronghold::Account;
-    /// let account = Account::new(Some("banana".to_string())).unwrap();
-    ///
-    /// account.with_transaction_builder(|builder| {
-    ///     builder
-    ///     .set_outputs(utxo_outputs)
-    ///     .set_inputs(indexed_utxo_inputs)
-    ///     .build()
-    /// });
-    /// ```
-    pub fn with_transaction_builder<T, F: FnOnce(TransactionBuilder<'_>) -> T>(&self, cb: F) -> T {
-        let seed = Seed::from_ed25519_bytes(self.get_seed().as_bytes()).expect("failed to construct seed");
-        let builder = Transaction::builder(&seed);
-        cb(builder)
     }
 }
