@@ -92,7 +92,8 @@ use core::{
 };
 use futures::{future, prelude::*};
 use libp2p::{
-    core::{identity::Keypair, Multiaddr, PeerId},
+    core::{identity::Keypair, PeerId},
+    multiaddr::{multiaddr, Multiaddr},
     kad::{KademliaEvent, PeerRecord, QueryResult as KadQueryResult, Record as KadRecord},
     request_response::{
         RequestResponseEvent::{self, InboundFailure, Message as MessageEvent, OutboundFailure},
@@ -200,7 +201,8 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
             .and_then(|port_str| port_str.parse::<u16>().ok())
             .unwrap_or(16384u16);
         // Create a network that implements the behaviour in it's swarm
-        let mut network = P2PNetwork::new(behaviour, local_keys, Some(port))?;
+        let mut network = P2PNetwork::new(behaviour, local_keys)?;
+        network.start_listening(Some(multiaddr!(Ip4([127, 0, 0, 1]), Tcp(port))))?;
         println!("Local PeerId: {:?}", network.local_peer_id());
         let mut listening = false;
         task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
@@ -290,7 +292,7 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
             // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
             let behaviour = P2PNetworkBehaviour::<PutRecordHandler>::new(local_keys.public())?;
             // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
-            let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
+            let mut network = P2PNetwork::new(behaviour, local_keys)?;
             println!("Local PeerId: {:?}", network.local_peer_id());
 
             // Connect to a remote mailbox on the server.
@@ -389,7 +391,7 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
             // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
             let behaviour = P2PNetworkBehaviour::<GetRecordHandler>::new(local_keys.public())?;
             // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
-            let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
+            let mut network = P2PNetwork::new(behaviour, local_keys)?;
             println!("Local PeerId: {:?}", network.local_peer_id());
 
             // Connect to a remote mailbox on the server.

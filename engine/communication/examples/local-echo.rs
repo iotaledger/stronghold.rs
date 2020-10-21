@@ -156,9 +156,9 @@ fn listen() -> QueryResult<()> {
     // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
     let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
     // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
-    let mut network = P2PNetwork::new(behaviour, local_keys, None)?;
+    let mut network = P2PNetwork::new(behaviour, local_keys)?;
+    network.start_listening(None)?;
     println!("Local PeerId: {:?}", network.local_peer_id());
-
     let mut listening = false;
     let mut stdin = BufReader::new(stdin()).lines();
     // Start polling for user input and events in the network

@@ -16,9 +16,10 @@ use crate::error::{QueryError, QueryResult};
 use crate::message::Response;
 #[cfg(feature = "kademlia")]
 use crate::message::{MailboxRecord, Request};
+use core::str::FromStr;
 use libp2p::{
     build_development_transport,
-    core::{Multiaddr, PeerId},
+    core::{Multiaddr, PeerId, connection::ListenerId},
     identity::Keypair,
     swarm::{ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler, Swarm},
 };
@@ -80,18 +81,13 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
     /// }
     ///
     /// let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public()).unwrap();
-    /// let mut network = P2PNetwork::new(behaviour, local_keys, Some(16384)).unwrap();
+    /// let mut network = P2PNetwork::new(behaviour, local_keys).unwrap();
     /// ```
-    pub fn new(behaviour: P2PNetworkBehaviour<C>, local_keys: Keypair, port: Option<u16>) -> QueryResult<Self> {
+    pub fn new(behaviour: P2PNetworkBehaviour<C>, local_keys: Keypair) -> QueryResult<Self> {
         let peer_id = PeerId::from(local_keys.public());
         let transport = build_development_transport(local_keys)
             .map_err(|_| QueryError::ConnectionError("Could not build transport layer".to_string()))?;
-        let mut swarm: P2PNetworkSwarm<C> = Swarm::new(transport, behaviour, peer_id.clone());
-        let addr = format!("/ip4/0.0.0.0/tcp/{}", port.unwrap_or(0u16))
-            .parse()
-            .map_err(|e| QueryError::ConnectionError(format!("Invalid Port {:?}: {}", port, e)))?;
-        Swarm::listen_on(&mut swarm, addr).map_err(|e| QueryError::ConnectionError(format!("{}", e)))?;
-
+        let swarm: P2PNetworkSwarm<C> = Swarm::new(transport, behaviour, peer_id.clone());
         Ok(P2PNetwork::<C> {
             peer_id,
             #[cfg(feature = "kademlia")]
@@ -102,6 +98,13 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
 
     pub fn local_peer_id(&self) -> &PeerId {
         &self.peer_id
+    }
+
+    pub fn start_listening(&mut self, listening_addr: Option<Multiaddr>) -> QueryResult<ListenerId> {
+        let addr = listening_addr
+            .or_else(|| Multiaddr::from_str("/ip4/0.0.0.0/tcp/0").ok())
+            .ok_or_else(|| QueryError::ConnectionError("Invalid Multiaddr".to_string()))?;
+        Swarm::listen_on(&mut self.swarm, addr).map_err(|e| QueryError::ConnectionError(format!("{}", e)))
     }
 
     /// Add a remote peer to the kademlia bucket
@@ -137,6 +140,11 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
     }
 
     #[cfg(feature = "kademlia")]
+    pub fn get_default_mailbox(&self) -> Option<&PeerId> {
+        self.mailboxes.as_ref().map(|mailboxes| mailboxes.get_default())
+    }
+
+    #[cfg(feature = "kademlia")]
     pub fn set_default_mailbox(&mut self, mailbox_peer: PeerId) -> QueryResult<()> {
         let mut mailboxes = self
             .mailboxes
@@ -148,12 +156,7 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
     }
 
     #[cfg(feature = "kademlia")]
-    pub fn get_default_mailbox(&self) -> Option<&PeerId> {
-        self.mailboxes.as_ref().map(|mailboxes| mailboxes.get_default())
-    }
-
-    #[cfg(feature = "kademlia")]
-    pub fn get_mailboxes(&self) -> Option<Vec<PeerId>> {
+    pub fn get_all_mailboxes(&self) -> Option<Vec<PeerId>> {
         self.mailboxes
             .clone()
             .map(|mut m| m.get_mailboxes().keys().cloned().collect())
@@ -195,15 +198,53 @@ struct DummyHandler();
 #[cfg(test)]
 impl InboundEventCodec for DummyHandler {
     fn handle_request_response_event(_swarm: &mut impl SwarmContext, _event: RequestResponseEvent<Request, Response>) {}
-
     fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _result: KademliaEvent) {}
+}
+
+#[cfg(test)]
+fn mock_network() -> P2PNetwork<DummyHandler>{
+    let local_keys = Keypair::generate_ed25519();
+    let behaviour = P2PNetworkBehaviour::<DummyHandler>::new(local_keys.public()).unwrap();
+    P2PNetwork::new(behaviour, local_keys).unwrap()
+}
+    
+#[cfg(test)]
+fn mock_addr() -> Multiaddr {
+    Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap()
 }
 
 #[test]
 fn test_new_network() {
     let local_keys = Keypair::generate_ed25519();
     let behaviour = P2PNetworkBehaviour::<DummyHandler>::new(local_keys.public()).unwrap();
-    let network = P2PNetwork::new(behaviour, local_keys.clone(), None).unwrap();
+    let network = P2PNetwork::new(behaviour, local_keys.clone()).unwrap();
     assert_eq!(&PeerId::from_public_key(local_keys.public()), network.local_peer_id());
-    assert!(network.get_mailboxes().is_none());
+    assert!(network.get_all_mailboxes().is_none());
+}
+
+#[test]
+fn test_add_mailbox() {
+    let mut network = mock_network();
+    let peer_id = PeerId::random();
+    network.add_mailbox(peer_id.clone(), mock_addr()).unwrap();
+    assert!(network.find_mailbox(peer_id.clone()).is_some());
+    assert!(network.get_all_mailboxes().unwrap().contains(&peer_id));
+}
+
+#[test]
+fn test_default_mailbox() {
+    let mut network = mock_network();
+    assert!(network.get_default_mailbox().is_none());
+
+    let peer_id_1 = PeerId::random();
+    assert!(network.set_default_mailbox(peer_id_1.clone()).is_err());
+    network.add_mailbox(peer_id_1.clone(), mock_addr()).unwrap();
+    assert_eq!(network.get_default_mailbox().unwrap(), &peer_id_1);    
+    
+    let peer_id_2 = PeerId::random();
+    assert!(network.set_default_mailbox(peer_id_2.clone()).is_err());
+    network.add_mailbox(peer_id_2.clone(), mock_addr()).unwrap();
+    assert_eq!(network.get_default_mailbox().unwrap(), &peer_id_1);
+    assert!(network.set_default_mailbox(peer_id_2.clone()).is_ok());
+    assert_eq!(network.get_default_mailbox().unwrap(), &peer_id_2);
 }
