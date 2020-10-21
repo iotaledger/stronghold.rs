@@ -47,7 +47,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::BTreeMap, path::Path, str};
 use storage::Storage;
 pub use storage::{Base64Decodable, RecordHint, RecordId};
-use storage::Client;
 
 static INDEX_HINT: &str = "index";
 
@@ -55,7 +54,6 @@ static INDEX_HINT: &str = "index";
 #[derive(Default)]
 pub struct Stronghold {
     storage: Storage,
-    client: Client,
     snapshot_password: Arc<Lazy<Mutex<(String, Option<u64>)>>>,
 }
 
