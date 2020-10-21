@@ -16,7 +16,7 @@ name = "stronghold"
 
 [dependencies]
 bee-signing-ext = { git = "https://github.com/wusyong/bee-p.git", branch = "sign-ext" , version = "^0.1.0-alpha" }
-iota-core = { git = "https://github.com/iotaledger/iota.rs", branch = "chrysalis" }
+iota-core = { git = "https://github.com/iotaledger/iota.rs", branch = "dev" }
 
 #engine
 stronghold-engine = {path = "../engine"}
