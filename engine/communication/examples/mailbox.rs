@@ -93,8 +93,8 @@ use core::{
 use futures::{future, prelude::*};
 use libp2p::{
     core::{identity::Keypair, PeerId},
-    multiaddr::{multiaddr, Multiaddr},
     kad::{KademliaEvent, PeerRecord, QueryResult as KadQueryResult, Record as KadRecord},
+    multiaddr::{multiaddr, Multiaddr},
     request_response::{
         RequestResponseEvent::{self, InboundFailure, Message as MessageEvent, OutboundFailure},
         RequestResponseMessage,

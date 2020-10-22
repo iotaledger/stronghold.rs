@@ -90,4 +90,3 @@ fn test_default_mailbox() {
     assert!(mailboxes.set_default(peer_id.clone()).is_ok());
     assert_eq!(&peer_id, mailboxes.get_default());
 }
-

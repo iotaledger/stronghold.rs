@@ -19,7 +19,7 @@ use crate::message::{MailboxRecord, Request};
 use core::str::FromStr;
 use libp2p::{
     build_development_transport,
-    core::{Multiaddr, PeerId, connection::ListenerId},
+    core::{connection::ListenerId, Multiaddr, PeerId},
     identity::Keypair,
     swarm::{ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler, Swarm},
 };
@@ -202,12 +202,12 @@ impl InboundEventCodec for DummyHandler {
 }
 
 #[cfg(test)]
-fn mock_network() -> P2PNetwork<DummyHandler>{
+fn mock_network() -> P2PNetwork<DummyHandler> {
     let local_keys = Keypair::generate_ed25519();
     let behaviour = P2PNetworkBehaviour::<DummyHandler>::new(local_keys.public()).unwrap();
     P2PNetwork::new(behaviour, local_keys).unwrap()
 }
-    
+
 #[cfg(test)]
 fn mock_addr() -> Multiaddr {
     Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap()
@@ -239,8 +239,8 @@ fn test_default_mailbox() {
     let peer_id_1 = PeerId::random();
     assert!(network.set_default_mailbox(peer_id_1.clone()).is_err());
     network.add_mailbox(peer_id_1.clone(), mock_addr()).unwrap();
-    assert_eq!(network.get_default_mailbox().unwrap(), &peer_id_1);    
-    
+    assert_eq!(network.get_default_mailbox().unwrap(), &peer_id_1);
+
     let peer_id_2 = PeerId::random();
     assert!(network.set_default_mailbox(peer_id_2.clone()).is_err());
     network.add_mailbox(peer_id_2.clone(), mock_addr()).unwrap();
