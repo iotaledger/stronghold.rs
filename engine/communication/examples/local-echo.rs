@@ -19,11 +19,11 @@
 //! For each peer it will print its unique PeerId and the listening addresses within the local network.
 //! ```sh
 //! Local PeerId: PeerId("12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA")
-//!Listening on:
-//!"/ip4/127.0.0.1/tcp/41807"
-//!"/ip4/192.168.178.25/tcp/41807"
-//!"/ip4/172.17.0.1/tcp/41807"
-//!"/ip6/::1/tcp/41807"
+//! Listening on:
+//! "/ip4/127.0.0.1/tcp/41807"
+//! "/ip4/192.168.178.25/tcp/41807"
+//! "/ip4/172.17.0.1/tcp/41807"
+//! "/ip6/::1/tcp/41807"
 //! ```
 //!
 //! The following commands are available for communication and could be used by another peer to communicate
@@ -48,7 +48,6 @@
 //! ```sh
 //! DIAL "/ip4/127.0.0.1/tcp/41807"
 //! ```
-//!
 
 use async_std::{
     io::{stdin, BufReader, Stdin},
@@ -153,7 +152,8 @@ fn listen() -> QueryResult<()> {
     let local_keys = Keypair::generate_ed25519();
 
     // Create behaviour that uses the custom handler to describe how peers should react to events
-    // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
+    // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the
+    // kademlia DHT
     let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public())?;
     // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
     let mut network = P2PNetwork::new(behaviour, local_keys)?;

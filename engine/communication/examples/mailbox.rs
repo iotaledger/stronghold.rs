@@ -50,7 +50,6 @@
 //! $ cargo run --example mailbox -- put-mailbox  -i "12D3KooWLVFib1KbfjY4Qv3phtc8hafD8HVJm9QygeSmH28Jw2HG" -a "/ip4/127.0.0.1/tcp/16384" -k "foo" -v "bar"
 //! Local PeerId: PeerId("12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA")
 //! Received Result for publish request RequestId(1): Success.
-//!
 //! ```
 //!
 //! Without the `--expires` argument, the record-expire default to 9000s.
@@ -289,7 +288,8 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
             }
 
             // Create behaviour that uses the custom Handler to describe how peers should react to events
-            // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
+            // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and
+            // using the kademlia DHT
             let behaviour = P2PNetworkBehaviour::<PutRecordHandler>::new(local_keys.public())?;
             // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
             let mut network = P2PNetwork::new(behaviour, local_keys)?;
@@ -388,7 +388,8 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
             }
 
             // Create behaviour that uses the custom Handler to describe how peers should react to events
-            // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and using the kademlia DHT
+            // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and
+            // using the kademlia DHT
             let behaviour = P2PNetworkBehaviour::<GetRecordHandler>::new(local_keys.public())?;
             // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
             let mut network = P2PNetwork::new(behaviour, local_keys)?;

@@ -10,12 +10,14 @@
 // See the License for the specific language governing permissions and limitations under the License.
 #[cfg(feature = "kademlia")]
 use crate::behaviour::SwarmContext;
-use crate::behaviour::{InboundEventCodec, P2PNetworkBehaviour};
-use crate::error::{QueryError, QueryResult};
 #[cfg(test)]
 use crate::message::Response;
 #[cfg(feature = "kademlia")]
 use crate::message::{MailboxRecord, Request};
+use crate::{
+    behaviour::{InboundEventCodec, P2PNetworkBehaviour},
+    error::{QueryError, QueryResult},
+};
 use core::str::FromStr;
 use libp2p::{
     build_development_transport,
@@ -51,8 +53,8 @@ pub struct P2PNetwork<C: InboundEventCodec + Send + 'static> {
 }
 
 impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
-    /// Creates a new P2PNetwork that manages the all communication and implements the P2PNetworkBehaviour for the Swarm.
-    /// Apart from that, mailboxes can be connected to deposit records there.
+    /// Creates a new P2PNetwork that manages the all communication and implements the P2PNetworkBehaviour for the
+    /// Swarm. Apart from that, mailboxes can be connected to deposit records there.
     ///
     /// # Example
     /// ```no_run
@@ -63,21 +65,22 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
     ///     network::P2PNetwork,
     /// };
     /// use libp2p::{
-    ///     kad::KademliaEvent,
     ///     core::{identity::Keypair, Multiaddr, PeerId},
-    ///     request_response::{RequestId, ResponseChannel, RequestResponseEvent},
+    ///     kad::KademliaEvent,
+    ///     request_response::{RequestId, RequestResponseEvent, ResponseChannel},
     /// };
     ///
     /// let local_keys = Keypair::generate_ed25519();
     ///
     /// struct Handler();
     /// impl InboundEventCodec for Handler {
-    ///    fn handle_request_response_event(
-    ///       _swarm: &mut impl SwarmContext,
-    ///       _event: RequestResponseEvent<Request, Response>,
-    ///    ) {}
+    ///     fn handle_request_response_event(
+    ///         _swarm: &mut impl SwarmContext,
+    ///         _event: RequestResponseEvent<Request, Response>,
+    ///     ) {
+    ///     }
     ///
-    ///    fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _result: KademliaEvent) {}
+    ///     fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _result: KademliaEvent) {}
     /// }
     ///
     /// let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public()).unwrap();

@@ -11,8 +11,10 @@
 
 #[cfg(feature = "kademlia")]
 use crate::message::{MailboxRecord, MessageResult};
-use crate::message::{Request, Response};
-use crate::structs_proto as proto;
+use crate::{
+    message::{Request, Response},
+    structs_proto as proto,
+};
 use async_trait::async_trait;
 use futures::{prelude::*, AsyncRead, AsyncWrite};
 use libp2p::{
