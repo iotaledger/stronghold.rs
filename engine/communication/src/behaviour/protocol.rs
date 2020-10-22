@@ -32,7 +32,7 @@ pub struct MessageProtocol();
 
 impl ProtocolName for MessageProtocol {
     fn protocol_name(&self) -> &[u8] {
-        concat!("/p2p-mailbox/", env!("CARGO_PKG_VERSION")).as_bytes()
+        b"/p2p-mailbox/1.0.0"
     }
 }
 

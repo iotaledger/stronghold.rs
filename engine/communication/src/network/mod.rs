@@ -194,7 +194,7 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetwork<C> {
 }
 
 #[cfg(test)]
-struct DummyHandler();
+struct DummyHandler;
 #[cfg(test)]
 impl InboundEventCodec for DummyHandler {
     fn handle_request_response_event(_swarm: &mut impl SwarmContext, _event: RequestResponseEvent<Request, Response>) {}

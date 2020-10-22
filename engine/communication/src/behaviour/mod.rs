@@ -199,8 +199,8 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
     ///
     /// let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public()).unwrap();
     /// ```
-    pub fn new(_public_key: PublicKey) -> QueryResult<Self> {
-        let peer_id = PeerId::from(_public_key);
+    pub fn new(public_key: PublicKey) -> QueryResult<Self> {
+        let peer_id = PeerId::from(public_key);
         #[cfg(feature = "kademlia")]
         let kademlia = {
             let store = MemoryStore::new(peer_id.clone());
@@ -228,9 +228,9 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
 
 impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour<C> {
     // Called when `mdns` produces an event.
-    fn inject_event(&mut self, _event: MdnsEvent) {
+    fn inject_event(&mut self, event: MdnsEvent) {
         #[cfg(feature = "kademlia")]
-        if let MdnsEvent::Discovered(list) = _event {
+        if let MdnsEvent::Discovered(list) = event {
             for (peer_id, multiaddr) in list {
                 self.kademlia.add_address(&peer_id, multiaddr);
             }
