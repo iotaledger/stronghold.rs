@@ -10,15 +10,19 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 mod protocol;
+#[cfg(any(feature = "kademlia", feature ="mdns"))]
+use crate::error::QueryError;
 #[cfg(feature = "kademlia")]
 use crate::message::MailboxRecord;
 use crate::{
-    error::{QueryError, QueryResult},
+    error::QueryResult,
     message::{Request, Response},
 };
 #[cfg(feature = "kademlia")]
 use core::time::Duration;
 use core::{iter, marker::PhantomData};
+#[cfg(feature = "mdns")]
+use libp2p::mdns::{Mdns, MdnsEvent};
 #[cfg(feature = "kademlia")]
 use libp2p::{
     core::Multiaddr,
@@ -27,7 +31,6 @@ use libp2p::{
 use libp2p::{
     core::PeerId,
     identity::PublicKey,
-    mdns::{Mdns, MdnsEvent},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent, ResponseChannel,
     },
@@ -37,8 +40,10 @@ use libp2p::{
 use protocol::{MessageCodec, MessageProtocol};
 // TODO: support no_std
 #[cfg(feature = "kademlia")]
+use std::collections::BTreeMap;
+use std::marker::Send;
+#[cfg(feature = "kademlia")]
 use std::time::Instant;
-use std::{collections::BTreeMap, marker::Send};
 
 /// Interface for the communication with the swarm
 pub trait SwarmContext {
@@ -55,6 +60,7 @@ pub trait SwarmContext {
     #[cfg(feature = "kademlia")]
     fn get_kademlia_peers(&mut self) -> BTreeMap<PeerId, Addresses>;
 
+    #[cfg(feature = "mdns")]
     fn get_active_mdns_peers(&mut self) -> Vec<PeerId>;
 
     #[cfg(feature = "kademlia")]
@@ -75,6 +81,7 @@ pub trait InboundEventCodec {
 pub struct P2PNetworkBehaviour<C: InboundEventCodec + Send + 'static> {
     #[cfg(feature = "kademlia")]
     kademlia: Kademlia<MemoryStore>,
+    #[cfg(feature = "mdns")]
     mdns: Mdns,
     msg_proto: RequestResponse<MessageCodec>,
     #[behaviour(ignore)]
@@ -123,6 +130,7 @@ impl<C: InboundEventCodec + Send + 'static> SwarmContext for P2PNetworkBehaviour
         map
     }
 
+    #[cfg(feature = "mdns")]
     /// Get the peers discovered by mdns
     fn get_active_mdns_peers(&mut self) -> Vec<PeerId> {
         let mut peers = Vec::new();
@@ -204,12 +212,15 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
     /// let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public()).unwrap();
     /// ```
     pub fn new(public_key: PublicKey) -> QueryResult<Self> {
+        #[allow(unused_variables)]
         let peer_id = PeerId::from(public_key);
         #[cfg(feature = "kademlia")]
         let kademlia = {
             let store = MemoryStore::new(peer_id.clone());
             Kademlia::new(peer_id, store)
         };
+
+        #[cfg(feature = "mdns")]
         let mdns =
             Mdns::new().map_err(|_| QueryError::ConnectionError("Could not build mdns behaviour".to_string()))?;
 
@@ -223,6 +234,7 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
         Ok(P2PNetworkBehaviour::<C> {
             #[cfg(feature = "kademlia")]
             kademlia,
+            #[cfg(feature = "mdns")]
             mdns,
             msg_proto,
             inner: PhantomData,
@@ -230,8 +242,10 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
     }
 }
 
+#[cfg(feature = "mdns")]
 impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour<C> {
     // Called when `mdns` produces an event.
+    #[allow(unused_variables)]
     fn inject_event(&mut self, event: MdnsEvent) {
         #[cfg(feature = "kademlia")]
         if let MdnsEvent::Discovered(list) = event {

@@ -190,7 +190,11 @@ fn listen() -> QueryResult<()> {
                         println!("PING <peer_id>");
                         println!("DIAL <peer_addr>");
                         println!("MSG <peer_id> <message>");
-                        println!("LIST");
+                        if cfg!(feature = "mdns") {
+                            println!("LIST");
+                        } else {
+                            println!("Since mdns is not enabled, peers have to be DIALed first to connect before PING / MSG them");
+                        }
                         listening = true;
                     }
                     break;
@@ -222,12 +226,16 @@ fn handle_input_line(network: &mut P2PNetwork<Handler>, line: String) {
         .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
     {
         network.swarm.send_request(&peer_id, Request::Ping);
-    } else if line.contains("LIST") {
-        let known_peers = network.swarm.get_active_mdns_peers();
-        for peer in &known_peers {
-            println!("{:?}", peer);
+    } else if cfg!(feature = "mdns") && line.contains("LIST") {
+        #[cfg(feature = "mdns")]
+        {
+            let known_peers = network.swarm.get_active_mdns_peers();
+            for peer in &known_peers {
+                println!("{:?}", peer);
+            }
         }
-    } else if let Some(peer_addr) = Regex::new("DIAL\\s+\"(\\w+)\"")
+    }
+    if let Some(peer_addr) = Regex::new("DIAL\\s+\"(/\\w+/.+/tcp/\\d+)\"")
         .ok()
         .and_then(|regex| regex.captures(&line))
         .and_then(|cap| cap.get(1))

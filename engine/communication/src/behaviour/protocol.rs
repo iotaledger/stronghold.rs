@@ -9,10 +9,8 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-#[cfg(feature = "kademlia")]
-use crate::message::{MailboxRecord, MessageResult};
 use crate::{
-    message::{Request, Response},
+    message::{MailboxRecord, MessageResult, Request, Response},
     structs_proto as proto,
 };
 use async_trait::async_trait;
