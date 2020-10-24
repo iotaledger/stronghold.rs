@@ -39,7 +39,7 @@ Proof.
     reflexivity.
 Qed.
 
-Lemma round_left_cancel {N a} b: (aligned a N) -> pad (a + b) N = pad b N.
+Lemma round_left_cancel {N a} b: aligned a N -> pad (a + b) N = pad b N.
 Proof.
   intro H.
   unfold pad.
@@ -49,3 +49,9 @@ Proof.
     rewrite <- (Nat.add_mod_idemp_l a b _ nz), (proj1 aligned_mod H), Nat.add_0_l.
     reflexivity.
 Qed.
+
+Axiom accessible : nat -> Prop.
+Definition accessible_range b n :=
+  forall m, m < n -> accessible (b + m).
+Definition mmap P n :=
+  exists p, aligned p P /\ accessible_range p n.
