@@ -30,7 +30,7 @@ Proof.
         unfold lt.
         rewrite <- (Nat.sub_diag (x mod S N)), <- Nat.sub_succ_l by auto.
         refine (Nat.sub_le_mono_r _ _ _ _).
-        refine (proj2 (Nat.mod_bound_pos _ _ (le_0_n _) (le_n_S 0 N (le_0_n _)))).
+        refine (proj2 (Nat.mod_bound_pos _ _ (le_0_n _) (le_n_S 0 _ (le_0_n _)))).
       }
       destruct (x mod S N).
       ++ reflexivity.
@@ -42,5 +42,13 @@ Proof.
     reflexivity.
 Qed.
 
-Lemma round_left_cancel {N} a b: (aligned a N) -> pad (a + b) N = pad b N.
-Admitted.
+Lemma round_left_cancel {N a} b: (aligned a N) -> pad (a + b) N = pad b N.
+Proof.
+  intro H.
+  unfold pad.
+  case (Nat.eq_dec N 0).
+  - intro z. rewrite z. auto.
+  - intro nz.
+    rewrite <- (Nat.add_mod_idemp_l a b _ nz), (proj1 aligned_mod H), Nat.add_0_l.
+    reflexivity.
+Qed.
