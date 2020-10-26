@@ -24,80 +24,118 @@ pub struct GuardedAllocator { }
 impl GuardedAllocator {
     pub const fn new() -> Self { Self { } }
 
-    pub fn alloc(&self, n: usize) -> crate::Result<*mut u8> {
-        self.alloc_aligned(Layout::from_size_align(n, 1).map_err(|e| Error::Layout(e))?)
+    pub fn alloc(&self, l: Layout) -> crate::Result<*mut u8> {
+        Allocation::new(l).map(|a| a.data)
     }
 
-    pub fn dealloc(&self, p: *mut u8, n: usize) -> crate::Result<()> {
-        self.dealloc_aligned(p, Layout::from_size_align(n, 1).map_err(|e| Error::Layout(e))?)
+    pub fn dealloc(&self, p: *mut u8, l: Layout) -> crate::Result<()> {
+        Allocation::from_ptr(p, l).free()
     }
 
-    fn align_with_guards(n: usize) -> (usize, usize) {
-        let (q, r) = num::integer::div_rem(n, page_size());
-        if r == 0 {
-            ((2 + q)*page_size(), page_size())
-        } else {
-            ((2 + 1 + q)*page_size(), page_size() + (page_size() - r))
-        }
+    pub fn alloc_unaligned(&self, n: usize) -> crate::Result<*mut u8> {
+        self.alloc(Layout::from_size_align(n, 1).map_err(|e| Error::Layout(e))?)
     }
 
-    pub fn alloc_aligned(&self, l: Layout) -> crate::Result<*mut u8> {
-        let n = l.pad_to_align().size();
+    pub fn dealloc_unaligned(&self, p: *mut u8, n: usize) -> crate::Result<()> {
+        self.dealloc(p, Layout::from_size_align(n, 1).map_err(|e| Error::Layout(e))?)
+    }
+}
 
-        if n == 0 {
+unsafe impl GlobalAlloc for GuardedAllocator {
+    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+        Allocation::new(l).map(|a| a.data).unwrap()
+    }
+
+    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+        Allocation::from_ptr(p, l).free().unwrap()
+    }
+}
+
+pub struct Allocation {
+    base: *mut u8,
+    data: *mut u8,
+    total_size: usize, // NB size of the memory mapping (including guard pages)
+}
+
+impl Allocation {
+    pub fn new(l: Layout) -> crate::Result<Self> {
+        if l.size() == 0 {
             return Err(Error::ZeroAllocation.into());
         }
 
-        let (size, offset) = Self::align_with_guards(n);
+        let p = page_size();
+        let (total_size, offset) = if p % l.align() == 0 {
+            let n = l.pad_to_align().size();
+            let (q, r) = num::integer::div_rem(n, p);
+            if r == 0 {
+                ((2 + q)*p, Some(p))
+            } else {
+                ((2 + 1 + q)*p, Some(p + (p - r)))
+            }
+        } else {
+            let i = Layout::from_size_align(l.align(), p).map_err(|e| Error::Layout(e))?
+                .pad_to_align().size();
+            let k = l.align_to(p).map_err(|e| Error::Layout(e))?.pad_to_align().size();
+            (2*p + i + k, None)
+        };
 
-        unsafe {
-            let base = libc::mmap(
+        let base = unsafe {
+            libc::mmap(
                 ptr::null_mut::<u8>() as *mut libc::c_void,
-                size,
+                total_size,
                 libc::PROT_READ | libc::PROT_WRITE,
                 libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
-                -1, 0);
-            if base == libc::MAP_FAILED {
-                return Err(crate::Error::os("mmap"));
-            }
-            let base = base as *mut u8;
-
-            // TODO: write canary for the writable page (NB don't write canaries in the guards,
-            // then at least they don't reserve physical memory, (assuming COW))
-            // TODO: lock the guard pages
-            // TODO: mlock the data pages
-            // TODO: zero the data pages
-
-            Ok(base.offset(offset as isize))
+                -1, 0)
+        };
+        if base == libc::MAP_FAILED {
+            return Err(crate::Error::os("mmap"));
         }
-    }
+        let base = base as *mut u8;
 
-    pub fn dealloc_aligned(&self, p: *mut u8, l: Layout) -> crate::Result<()> {
-        // TODO: verify the canary
+        // TODO: write canary for the writable page (NB don't write canaries in the guards,
+        // then at least they don't reserve physical memory, (assuming COW))
+        // TODO: lock the guard pages
+        // TODO: mlock the data pages
         // TODO: zero the data pages
 
-        let n = l.pad_to_align().size();
-        let (size, offset) = Self::align_with_guards(n);
+        let data = match offset {
+            Some(o) => unsafe { base.offset(o as isize) },
+            None => unsafe {
+                let q = base.offset(p as isize);
+                q.offset(q.align_offset(l.align()) as isize)
+            }
+        };
 
+        Ok(Self { base, data, total_size })
+    }
+
+    pub fn from_ptr(data: *mut u8, l: Layout) -> Self {
+        let p = page_size();
+        let (total_size, offset) = if p % l.align() == 0 {
+            let n = l.pad_to_align().size();
+            let (q, r) = num::integer::div_rem(n, p);
+            if r == 0 {
+                ((2 + q)*p, p)
+            } else {
+                ((2 + 1 + q)*p, p + (p - r))
+            }
+        } else {
+            todo!()
+        };
+
+        let base = unsafe { data.offset(-(offset as isize)) };
+        Self { base, data, total_size }
+    }
+
+    pub fn free(&self) -> crate::Result<()> {
         unsafe {
-            let base = p.offset(-(offset as isize));
-            let r = libc::munmap(base as *mut libc::c_void, size);
+            let r = libc::munmap(self.base as *mut libc::c_void, self.total_size);
             if r != 0 {
                 return Err(crate::Error::os("mmap"));
             }
         }
 
         Ok(())
-    }
-}
-
-unsafe impl GlobalAlloc for GuardedAllocator {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        self.alloc_aligned(l).unwrap()
-    }
-
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        self.dealloc_aligned(p, l).unwrap()
     }
 }
 
@@ -111,7 +149,7 @@ mod tests {
 
     fn do_sized_alloc_test(n: usize) -> crate::Result<()> {
         let a = GuardedAllocator::new();
-        let p = a.alloc(n)?;
+        let p = a.alloc_unaligned(n)?;
 
         let bs = unsafe { core::slice::from_raw_parts_mut(p, n) };
         for i in 0..n {
@@ -120,7 +158,7 @@ mod tests {
 
         thread_rng().fill(bs);
 
-        a.dealloc(p, n)?;
+        a.dealloc_unaligned(p, n)?;
 
         Ok(())
     }
@@ -165,8 +203,10 @@ mod tests {
             while n == 0 { n = random::<usize>() % 3*page_size(); }
 
             let l = Layout::from_size_align(n, a).unwrap();
-            let p = GuardedAllocator::new().alloc_aligned(l)?;
+            let al = GuardedAllocator::new();
+            let p = al.alloc(l)?;
             assert_eq!((p as usize) % a, 0);
+            al.dealloc(p, l)?;
         }
 
         Ok(())
@@ -175,7 +215,7 @@ mod tests {
     #[test]
     fn zero_allocation() -> crate::Result<()> {
         assert_eq!(
-            GuardedAllocator::new().alloc(0),
+            GuardedAllocator::new().alloc_unaligned(0),
             Err(Error::ZeroAllocation.into()),
         );
         Ok(())
