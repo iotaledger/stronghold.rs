@@ -76,7 +76,7 @@ Qed.
 
 Axiom accessible : nat -> Prop.
 Definition accessible_range b n := forall m, m < n -> accessible (b + m).
-Definition mmap P := forall n, {p | aligned p P /\ accessible_range p n}.
+Definition mmap P := forall n, { p | aligned p P /\ accessible_range p n }.
 
 Record Allocation (n A P: nat) := mkAllocation {
   data: nat;
@@ -93,19 +93,51 @@ Record Allocation (n A P: nat) := mkAllocation {
 Lemma naive_allocator {P} (M: mmap P):
   forall n {A}, aligned P A -> Allocation n A P.
 Proof.
-  intros n A.
+  intros n A PA.
+  destruct (M (P + n)) as [x [XP XAcc]].
+  pose (Anz := proj1 PA).
+  pose (Pnz := proj1 XP).
+  refine (mkAllocation _ _ _ (x + P) _ _ _ _ _ _ _).
+  + unfold aligned, pad.
+    split. auto.
+    rewrite <- (Nat.add_mod_idemp_l x P A Anz).
+    destruct (proj1 (Nat.mod_divides x P Pnz) (aligned_mod XP)) as [i I].
+    destruct (proj1 (Nat.mod_divides P A Anz) (aligned_mod PA)) as [j J].
+    rewrite I, J, <- Nat.mul_assoc, Nat.mul_comm, Nat.mod_mul by auto.
+    now rewrite Nat.add_0_l, Nat.mul_comm, Nat.mod_mul by auto.
+  + intros i I.
+    rewrite <- Nat.add_assoc.
+    refine (XAcc _ _).
+    exact (proj1 (Nat.add_lt_mono_l _ _ _) I).
+  + now refine (Nat.add_le_lt_mono _ _ _ _ (Nat.le_0_l _) (proj1 (Nat.neq_0_lt_0 _) _)).
+  + rewrite Nat.sub_0_r.
+    unfold aligned, pad.
+    rewrite <- (Nat.add_mod_idemp_l _ _ _ Pnz).
+    rewrite (aligned_mod XP), Nat.add_0_l.
+    now rewrite Nat.mod_same.
+  + now apply aligned_add_pad.
+Qed.
+
+Definition OptimalAllocation (n A P: nat) :=
+  let A := Allocation n A P in
+  exists a: A, forall a': A, pad_post _ _ _ a <= pad_post _ _ _ a'.
+(* TODO: optimize over pre as well *)
+
+Lemma optimal_allocator_page_aligned {P} (M: mmap P):
+  forall n {A}, aligned P A -> OptimalAllocation n A P.
+Proof.
+  intros n A PA.
+  pose (Anz := proj1 PA).
 
   pose (N := P + n).
+
   destruct (M N) as [x [XP XAcc]].
   pose (Pnz := proj1 XP).
-  pose (k := (pad (x + P) A) / P).
-  pose (p0 := (pad (x + P) A) mod P).
+  pose (k := pad (x + P) A / P).
+  pose (p0 := pad (x + P) A mod P).
   pose (pi i := p0 + i * A).
   pose (di i := x + (1 + k) * P + pi i).
   pose (qi i := pad (di i + n) P).
-
-  intros PA.
-  pose (Anz := proj1 PA).
 
   assert (XA: x mod A = 0). {
     destruct (proj1 (Nat.mod_divides x P Pnz) (aligned_mod XP)) as [i I].
@@ -127,33 +159,20 @@ Proof.
     now apply Nat.mod_0_l.
   }
 
-  assert (K0: k = 0). {
-    unfold k, pad.
-    rewrite XPA.
-    now apply Nat.div_0_l.
-  }
+  destruct (proj1 (Nat.mod_divides P A Anz) (aligned_mod PA)) as [j J].
 
-  refine (mkAllocation n A P (di 0) _ _ (pi 0) _ _ (qi 0) _).
-  all: unfold qi, di, pi.
-  all: rewrite P0, Nat.add_0_l, Nat.mul_0_l, Nat.add_0_r.
-  all: rewrite K0, Nat.add_0_r, Nat.mul_1_l.
-  + split.
-    - exact Anz.
-    - unfold pad. now rewrite XPA.
-  + intros i I.
-    rewrite <- Nat.add_assoc.
-    refine (XAcc _ _).
-    exact (proj1 (Nat.add_lt_mono_l _ _ _) I).
-  + now refine (Nat.add_le_lt_mono _ _ _ _ (Nat.le_0_l _) (proj1 (Nat.neq_0_lt_0 _) _)).
-  + rewrite Nat.sub_0_r.
-    unfold aligned, pad.
-    rewrite <- (Nat.add_mod_idemp_l _ _ _ Pnz).
+  assert (Qi: forall i,
+    qi i = match (A * i + n mod (A * j)) mod (A * j) with 0 => 0 | S n => A * j - S n end
+  ). {
+    intro i. unfold qi, di, pad, pi.
+    rewrite J in *.
+    rewrite <- Nat.add_assoc, <- Nat.add_assoc.
+    rewrite <- (Nat.add_mod_idemp_l x _ _ Pnz).
     rewrite (aligned_mod XP), Nat.add_0_l.
-    now rewrite Nat.mod_same.
-  + now apply aligned_add_pad.
-Qed.
-
-Definition OptimalAllocation (n A P: nat) :=
-  let A := Allocation n A P in
-  let T := {a: A | forall a': A, pad_post _ _ _ a <= pad_post _ _ _ a'} in
-  {a: T | forall a': T, pad_pre _ _ _ (proj1_sig a) <= pad_post _ _ _ (proj1_sig a') }.
+    rewrite P0, Nat.add_0_l.
+    rewrite <- (Nat.add_mod_idemp_l _ _ _ Pnz).
+    rewrite (Nat.mod_mul _ _ Pnz), Nat.add_0_l.
+    rewrite <- (Nat.add_mod_idemp_r _ _ _ Pnz).
+    now rewrite Nat.mul_comm.
+  }
+Admitted.
