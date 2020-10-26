@@ -154,3 +154,8 @@ Proof.
     now rewrite Nat.mod_same.
   + now apply aligned_add_pad.
 Qed.
+
+Definition OptimalAllocation (n A P: nat) :=
+  let A := Allocation n A P in
+  let T := {a: A | forall a': A, pad_post _ _ _ a <= pad_post _ _ _ a'} in
+  {a: T | forall a': T, pad_pre _ _ _ (proj1_sig a) <= pad_post _ _ _ (proj1_sig a') }.
