@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 mod protocol;
-#[cfg(any(feature = "kademlia", feature ="mdns"))]
+#[cfg(any(feature = "kademlia", feature = "mdns"))]
 use crate::error::QueryError;
 #[cfg(feature = "kademlia")]
 use crate::message::MailboxRecord;
