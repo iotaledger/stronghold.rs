@@ -3,7 +3,7 @@ Require Import PeanoNat.
 Definition pad x N :=
   match x mod N with 0 => 0 | r => N - r end.
 
-Definition aligned x N := (N <> 0) /\ pad x N = 0.
+Definition aligned x N := N <> 0 /\ pad x N = 0.
 
 Lemma aligned_zero N: aligned 0 (S N).
 Proof.
@@ -49,7 +49,7 @@ Lemma aligned_add_pad x {A}: A <> 0 -> aligned (x + pad x A) A.
 Proof.
   intro Anz.
   case_eq A.
-  + intro A0. exfalso. now refine (Anz _).
+  + intro. exfalso. now apply Anz.
   + intros n _.
     refine (proj2 aligned_mod_succ _).
     unfold pad.
@@ -84,6 +84,7 @@ Record Allocation (n A P: nat) := mkAllocation {
   data_accessible: accessible_range data n;
 
   pad_pre: nat;
+  pad_pre_prop: pad_pre < data;
   page_alignment_pre: aligned (data - pad_pre) P;
   pad_post: nat;
   page_alignment_post: aligned (data + n + pad_post) P;
@@ -111,29 +112,28 @@ Proof.
     destruct (proj1 (Nat.mod_divides P A Anz) (aligned_mod PA)) as [j J].
     rewrite I, J.
     rewrite <- Nat.mul_assoc, Nat.mul_comm.
-    apply (Nat.mod_mul _ _ Anz).
+    now apply Nat.mod_mul.
   }
 
   assert (XPA: (x + P) mod A = 0). {
-    rewrite <- (Nat.add_mod_idemp_l x P A Anz).
-    rewrite XA.
-    exact (aligned_mod PA).
+    rewrite <- (Nat.add_mod_idemp_l x P A Anz), XA.
+    now apply aligned_mod.
   }
 
   assert (P0: p0 = 0). {
     unfold p0 in *.
     unfold pad.
     rewrite XPA.
-    apply (Nat.mod_0_l _ Pnz).
+    now apply Nat.mod_0_l.
   }
 
   assert (K0: k = 0). {
     unfold k, pad.
     rewrite XPA.
-    exact (Nat.div_0_l _ Pnz).
+    now apply Nat.div_0_l.
   }
 
-  refine (mkAllocation n A P (di 0) _ _ (pi 0) _ (qi 0) _).
+  refine (mkAllocation n A P (di 0) _ _ (pi 0) _ _ (qi 0) _).
   all: unfold qi, di, pi.
   all: rewrite P0, Nat.add_0_l, Nat.mul_0_l, Nat.add_0_r.
   all: rewrite K0, Nat.add_0_r, Nat.mul_1_l.
@@ -144,6 +144,7 @@ Proof.
     rewrite <- Nat.add_assoc.
     refine (XAcc _ _).
     exact (proj1 (Nat.add_lt_mono_l _ _ _) I).
+  + now refine (Nat.add_le_lt_mono _ _ _ _ (Nat.le_0_l _) (proj1 (Nat.neq_0_lt_0 _) _)).
   + rewrite Nat.sub_0_r.
     unfold aligned, pad.
     rewrite <- (Nat.add_mod_idemp_l _ _ _ Pnz).
