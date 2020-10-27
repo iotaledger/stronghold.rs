@@ -74,27 +74,30 @@ Proof.
   now rewrite (aligned_mod A), Nat.add_0_l.
 Qed.
 
-Lemma aligned_add_le x y A: aligned (x + y) A -> pad x A <= y mod A.
+Lemma aligned_add_le x y A: aligned (x + y) A ->
+  pad x A <= y mod A /\ pad y A <= x mod A.
 Proof.
-  intros XYP.
-  pose (Anz := proj1 XYP).
-  unfold pad.
-  case_eq (x mod A).
-  - intro. apply Nat.le_0_l.
-  - intros n XA.
+  assert (H: forall x y, aligned (x + y) A -> pad x A <= y mod A). {
+    intros x' y' XYP.
+    pose (Anz := proj1 XYP).
+    unfold pad.
+    case_eq (x' mod A); [ intro H; apply Nat.le_0_l|].
+    intros n XA.
     pose (H := aligned_mod XYP).
-    rewrite <- (Nat.add_mod_idemp_l x _ _ Anz) in H.
-    rewrite <- (Nat.add_mod_idemp_r _ y _ Anz) in H.
+    rewrite <- (Nat.add_mod_idemp_l x' _ _ Anz) in H.
+    rewrite <- (Nat.add_mod_idemp_r _ y' _ Anz) in H.
     destruct (proj1 (Nat.mod_divides _ _ Anz) H) as [k K].
     refine (proj2 (Nat.le_sub_le_add_r _ _ _) _).
     rewrite Nat.add_comm, <- XA, K.
     rewrite <- (Nat.mul_1_r _) at 1.
     refine (Nat.mul_le_mono_l _ _ _ _).
-    case (Nat.le_gt_cases 1 k).
-    + auto.
-    + intro K1.
-      rewrite (proj1 (Nat.lt_1_r _) K1), Nat.mul_0_r in K.
-      now rewrite (proj1 (proj1 (Nat.eq_add_0 _ _) K)) in XA.
+    case (Nat.le_gt_cases 1 k); [auto|].
+    intro K1.
+    rewrite (proj1 (Nat.lt_1_r _) K1), Nat.mul_0_r in K.
+    now rewrite (proj1 (proj1 (Nat.eq_add_0 _ _) K)) in XA.
+  }
+
+  intro K; split; [| rewrite Nat.add_comm in K]; exact (H _ _ K).
 Qed.
 
 Axiom accessible : nat -> Prop.
