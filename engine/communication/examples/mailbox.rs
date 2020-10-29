@@ -11,8 +11,8 @@
 
 //! This example implements the mailbox behaviour. It can be used to communicate with remote peers in different networks
 //! that can not be dialed directly, e.g. because they are not listening to a public IP address.
-//! Records for remote peers are sent to the mailbox that publishes it in its kademlia DHT.
-//! The remote peer can then connect to the same mailbox and query kademlia for the record.
+//! Records for remote peers are sent to the mailbox that stores them.
+//! The remote peer can then connect to the same mailbox and query it for the record.
 //!
 //! In order for this example to work, the peer that serves as a mailbox has to obtain a public IP e.g. by running on
 //! a server or by configuring port forwarding.
@@ -82,8 +82,7 @@ use clap::{load_yaml, App, ArgMatches};
 use communication::{
     behaviour::{InboundEventCodec, P2PNetworkBehaviour, SwarmContext},
     error::QueryResult,
-    message::{MailboxRecord, MessageResult, Request, Response},
-    network::P2PNetwork,
+    message::{MailboxRecord, Request, RequestOutcome, Response},
 };
 use core::{
     str::FromStr,
@@ -92,13 +91,12 @@ use core::{
 use futures::{future, prelude::*};
 use libp2p::{
     core::{identity::Keypair, PeerId},
-    kad::{KademliaEvent, PeerRecord, QueryResult as KadQueryResult, Record as KadRecord},
     multiaddr::{multiaddr, Multiaddr},
     request_response::{
         RequestResponseEvent::{self, InboundFailure, Message as MessageEvent, OutboundFailure},
         RequestResponseMessage,
     },
-    swarm::SwarmEvent,
+    swarm::{Swarm, SwarmEvent},
 };
 
 // only used for this CLI
@@ -143,7 +141,7 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
     if matches.subcommand_matches("start-mailbox").is_some() {
         let local_keys = Keypair::generate_ed25519();
 
-        // Implements the mailbox behaviour by publishing records for others peers in the kademlia dht.
+        // Implements the mailbox behaviour by storing record locally and return them upon get-requests.
         struct MailboxHandler();
         impl InboundEventCodec for MailboxHandler {
             fn handle_request_response_event(
@@ -158,16 +156,17 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
                             channel,
                         } = message
                         {
-                            if let Request::Publish(r) = request {
-                                let record = MailboxRecord::new(r.key(), r.value(), r.expires_sec());
-                                // store the record in the mailboxes kademlia dht
-                                let query_id = swarm.put_record_local(record);
-                                if query_id.is_ok() {
-                                    println!("Successfully stored record.");
-                                    swarm.send_response(Response::Result(MessageResult::Success), channel);
-                                } else {
-                                    println!("Error storing record: {:?}", query_id.err());
+                            match request {
+                                Request::PutRecord(_) => {
+                                    // TODO: store data
+                                    swarm.send_response(Response::Outcome(RequestOutcome::Success), channel);
                                 }
+                                Request::GetRecord(key) => {
+                                    // TODO: send previously stored record back
+                                    let record = MailboxRecord::new(key, "Mock Value".to_string(), 0);
+                                    swarm.send_response(Response::Record(record), channel);
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -189,32 +188,28 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
                     ),
                 }
             }
-
-            fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _event: KademliaEvent) {}
         }
 
-        // Create behaviour that uses the custom Handler to describe how peers should react to events
-        let behaviour = P2PNetworkBehaviour::<MailboxHandler>::new(local_keys.public())?;
+        // Create swarm for communication
+        let mut swarm = P2PNetworkBehaviour::<MailboxHandler>::new(local_keys)?;
         let port = matches
             .value_of("port")
             .and_then(|port_str| port_str.parse::<u16>().ok())
             .unwrap_or(16384u16);
-        // Create a network that implements the behaviour in it's swarm
-        let mut network = P2PNetwork::new(behaviour, local_keys)?;
-        network.start_listening(Some(multiaddr!(Ip4([127, 0, 0, 1]), Tcp(port))))?;
-        println!("Local PeerId: {:?}", network.local_peer_id());
+        P2PNetworkBehaviour::start_listening(&mut swarm, Some(multiaddr!(Ip4([127, 0, 0, 1]), Tcp(port))))?;
+        println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
         let mut listening = false;
         task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
             loop {
                 // poll for events from the swarm
-                match network.swarm.poll_next_unpin(cx) {
+                match swarm.poll_next_unpin(cx) {
                     Poll::Ready(Some(event)) => println!("{:?}", event),
                     Poll::Ready(None) => {
                         return Poll::Ready(());
                     }
                     Poll::Pending => {
                         if !listening {
-                            let mut listeners = network.get_listeners().peekable();
+                            let mut listeners = P2PNetworkBehaviour::get_listeners(&mut swarm).peekable();
                             if listeners.peek() == None {
                                 println!("No listeners. The port may already be occupied.")
                             } else {
@@ -260,8 +255,8 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
                         MessageEvent { peer: _, message } => {
                             if let RequestResponseMessage::Response { request_id, response } = message {
                                 // Mailbox response
-                                if let Response::Result(result) = response {
-                                    println!("Received Result for publish request {:?}: {:?}.", request_id, result);
+                                if let Response::Outcome(result) = response {
+                                    println!("Received Result for PutRecord request {:?}: {:?}.", request_id, result);
                                 }
                             }
                         }
@@ -283,36 +278,27 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
                         ),
                     }
                 }
-
-                fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _event: KademliaEvent) {}
             }
 
-            // Create behaviour that uses the custom Handler to describe how peers should react to events
-            // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and
-            // using the kademlia DHT
-            let behaviour = P2PNetworkBehaviour::<PutRecordHandler>::new(local_keys.public())?;
-            // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
-            let mut network = P2PNetwork::new(behaviour, local_keys)?;
-            println!("Local PeerId: {:?}", network.local_peer_id());
+            // Create swarm for communication
+            let mut swarm = P2PNetworkBehaviour::<PutRecordHandler>::new(local_keys)?;
+            println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
 
             // Connect to a remote mailbox on the server.
-            network.add_mailbox(mail_id.clone(), mail_addr)?;
+            swarm.add_peer(mail_id.clone(), mail_addr);
 
             // Deposit a record on the mailbox
             // Triggers the Handler's handle_request_msg() Request::Publish(r) on the mailbox side.
             let record = MailboxRecord::new(key, value, expires.unwrap_or(9000u64));
-            let request_id = network.put_record_mailbox(record, Some(mail_id));
-
-            if request_id.is_ok() {
-                // Block until the connection is closed again due to expires.
-                task::block_on(async move {
-                    loop {
-                        if let SwarmEvent::ConnectionClosed { .. } = network.swarm.next_event().await {
-                            break;
-                        }
+            swarm.send_request(&mail_id, Request::PutRecord(record));
+            // Block until the connection is closed again due to expires.
+            task::block_on(async move {
+                loop {
+                    if let SwarmEvent::ConnectionClosed { .. } = swarm.next_event().await {
+                        break;
                     }
-                });
-            }
+                }
+            });
         } else {
             eprintln!("Invalid or missing arguments");
         }
@@ -320,7 +306,7 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
     Ok(())
 }
 
-// Get a record from the kademlia DHT
+// Get a record from the mailbox
 fn get_record(matches: &ArgMatches) -> QueryResult<()> {
     if let Some(matches) = matches.subcommand_matches("get-record") {
         if let Some(Matches {
@@ -334,13 +320,30 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
 
             struct GetRecordHandler();
 
-            // Implement a Handler to display the result of querying kademlia
+            // Implement a Handler to display the result of querying the mailbox
             impl InboundEventCodec for GetRecordHandler {
                 fn handle_request_response_event(
                     _swarm: &mut impl SwarmContext,
                     event: RequestResponseEvent<Request, Response>,
                 ) {
                     match event {
+                        MessageEvent { peer, message } => {
+                            if let RequestResponseMessage::Response {
+                                request_id: _,
+                                response,
+                            } = message
+                            {
+                                // Mailbox response
+                                if let Response::Record(record) = response {
+                                    println!(
+                                        "Received Record from {:?}:\nKey:\n{:?}\nValue:\n{:?}.",
+                                        peer,
+                                        record.key(),
+                                        record.value()
+                                    );
+                                }
+                            }
+                        }
                         OutboundFailure {
                             peer,
                             request_id,
@@ -357,55 +360,23 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
                             "Inbound Failure for request {:?} to peer: {:?}: {:?}.",
                             request_id, peer, error
                         ),
-                        _ => {}
-                    }
-                }
-
-                fn handle_kademlia_event(_swarm: &mut impl SwarmContext, event: KademliaEvent) {
-                    if let KademliaEvent::QueryResult { result, .. } = event {
-                        match result {
-                            // Triggers if the search for a record in kademlia was successful.
-                            KadQueryResult::GetRecord(Ok(ok)) => {
-                                for PeerRecord {
-                                    record: KadRecord { key, value, .. },
-                                    ..
-                                } in ok.records
-                                {
-                                    println!(
-                                        "Got record {:?} {:?}.",
-                                        std::str::from_utf8(key.as_ref()).unwrap(),
-                                        std::str::from_utf8(&value).unwrap(),
-                                    );
-                                }
-                            }
-                            KadQueryResult::GetRecord(Err(err)) => {
-                                eprintln!("Failed to get record: {:?}.", err);
-                            }
-                            _ => {}
-                        }
                     }
                 }
             }
 
-            // Create behaviour that uses the custom Handler to describe how peers should react to events
-            // The P2PNetworkBehaviour implements the SwarmContext trait for sending request and response messages and
-            // using the kademlia DHT
-            let behaviour = P2PNetworkBehaviour::<GetRecordHandler>::new(local_keys.public())?;
-            // Create a network that implements the behaviour in its swarm, and manages mailboxes and connections.
-            let mut network = P2PNetwork::new(behaviour, local_keys)?;
-            println!("Local PeerId: {:?}", network.local_peer_id());
+            // Create swarm for communication
+            let mut swarm = P2PNetworkBehaviour::<GetRecordHandler>::new(local_keys)?;
+            println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
 
             // Connect to a remote mailbox on the server.
-            network.add_mailbox(mail_id, mail_addr)?;
+            swarm.add_peer(mail_id.clone(), mail_addr);
 
-            // Search for a record in the kademlia DHT.
-            // The search is successful if a known peer has published a record and it is not expired.
-            // Triggers the Handler's handle_kademlia_event() function.
-            network.swarm.get_record(key);
+            // Get Record from remote peer
+            swarm.send_request(&mail_id, Request::GetRecord(key));
             // Block until the connection is closed again due to expires.
             task::block_on(async move {
                 loop {
-                    if let SwarmEvent::ConnectionClosed { .. } = network.swarm.next_event().await {
+                    if let SwarmEvent::ConnectionClosed { .. } = swarm.next_event().await {
                         break;
                     }
                 }
@@ -417,7 +388,6 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
     Ok(())
 }
 
-#[cfg(feature = "kademlia")]
 fn main() -> QueryResult<()> {
     let yaml = load_yaml!("cli.yml");
     let matches = App::from(yaml).get_matches();

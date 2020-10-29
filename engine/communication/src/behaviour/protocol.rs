@@ -8,11 +8,8 @@
 // Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
-
-use crate::{
-    message::{MailboxRecord, MessageResult, Request, Response},
-    structs_proto as proto,
-};
+use super::structs_proto as proto;
+use crate::message::{MailboxRecord, Request, RequestOutcome, Response};
 use async_trait::async_trait;
 use futures::{prelude::*, AsyncRead, AsyncWrite};
 use libp2p::{
@@ -107,18 +104,18 @@ fn proto_msg_to_req(msg: proto::Message) -> Result<Request, IOError> {
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
     match msg_type {
         proto::message::MessageType::Ping => Ok(Request::Ping),
-        proto::message::MessageType::Publish => {
+        proto::message::MessageType::PutRecord => {
             let proto_record = msg.record.unwrap_or_default();
             let record = MailboxRecord::new(
                 String::from_utf8(proto_record.key).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
                 String::from_utf8(proto_record.value).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
                 proto_record.expires,
             );
-            Ok(Request::Publish(record))
+            Ok(Request::PutRecord(record))
         }
-        proto::message::MessageType::Msg => {
-            let message = String::from_utf8(msg.message).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?;
-            Ok(Request::Message(message))
+        proto::message::MessageType::GetRecord => {
+            let key = String::from_utf8(msg.key).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?;
+            Ok(Request::GetRecord(key))
         }
     }
 }
@@ -129,17 +126,22 @@ fn proto_msg_to_res(msg: proto::Message) -> Result<Response, IOError> {
         .ok_or_else(|| invalid_data(format!("unknown message type: {}", msg.r#type)))?;
     match msg_type {
         proto::message::MessageType::Ping => Ok(Response::Pong),
-        proto::message::MessageType::Publish => {
-            match proto::message::Result::from_i32(msg.r#result)
-                .ok_or_else(|| invalid_data(format!("unknown message result: {}", msg.r#result)))?
+        proto::message::MessageType::PutRecord => {
+            match proto::message::Outcome::from_i32(msg.r#outcome)
+                .ok_or_else(|| invalid_data(format!("unknown message result: {}", msg.r#outcome)))?
             {
-                proto::message::Result::Success => Ok(Response::Result(MessageResult::Success)),
-                proto::message::Result::Error => Ok(Response::Result(MessageResult::Error)),
+                proto::message::Outcome::Success => Ok(Response::Outcome(RequestOutcome::Success)),
+                proto::message::Outcome::Error => Ok(Response::Outcome(RequestOutcome::Error)),
             }
         }
-        proto::message::MessageType::Msg => {
-            let message = String::from_utf8(msg.message).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?;
-            Ok(Response::Message(message))
+        proto::message::MessageType::GetRecord => {
+            let proto_record = msg.record.unwrap_or_default();
+            let record = MailboxRecord::new(
+                String::from_utf8(proto_record.key).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
+                String::from_utf8(proto_record.value).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
+                proto_record.expires,
+            );
+            Ok(Response::Record(record))
         }
     }
 }
@@ -151,21 +153,21 @@ fn req_to_proto_msg(req: Request) -> proto::Message {
             r#type: proto::message::MessageType::Ping as i32,
             ..proto::Message::default()
         },
-        Request::Publish(record) => {
+        Request::PutRecord(record) => {
             let proto_record = proto::Record {
                 key: record.key().into_bytes(),
                 value: record.value().into_bytes(),
                 expires: record.expires_sec(),
             };
             proto::Message {
-                r#type: proto::message::MessageType::Publish as i32,
+                r#type: proto::message::MessageType::PutRecord as i32,
                 record: Some(proto_record),
                 ..proto::Message::default()
             }
         }
-        Request::Message(msg) => proto::Message {
-            r#type: proto::message::MessageType::Msg as i32,
-            message: msg.into_bytes(),
+        Request::GetRecord(key) => proto::Message {
+            r#type: proto::message::MessageType::GetRecord as i32,
+            key: key.into_bytes(),
             ..proto::Message::default()
         },
     }
@@ -178,22 +180,29 @@ fn res_to_proto_msg(res: Response) -> proto::Message {
             r#type: proto::message::MessageType::Ping as i32,
             ..proto::Message::default()
         },
-        Response::Result(r) => {
-            let result = match r {
-                MessageResult::Success => proto::message::Result::Success,
-                MessageResult::Error => proto::message::Result::Error,
+        Response::Outcome(o) => {
+            let outcome = match o {
+                RequestOutcome::Success => proto::message::Outcome::Success,
+                RequestOutcome::Error => proto::message::Outcome::Error,
             };
             proto::Message {
-                r#type: proto::message::MessageType::Publish as i32,
-                r#result: result as i32,
+                r#type: proto::message::MessageType::PutRecord as i32,
+                r#outcome: outcome as i32,
                 ..proto::Message::default()
             }
         }
-        Response::Message(msg) => proto::Message {
-            r#type: proto::message::MessageType::Msg as i32,
-            message: msg.into_bytes(),
-            ..proto::Message::default()
-        },
+        Response::Record(record) => {
+            let proto_record = proto::Record {
+                key: record.key().into_bytes(),
+                value: record.value().into_bytes(),
+                expires: record.expires_sec(),
+            };
+            proto::Message {
+                r#type: proto::message::MessageType::GetRecord as i32,
+                record: Some(proto_record),
+                ..proto::Message::default()
+            }
+        }
     }
 }
 

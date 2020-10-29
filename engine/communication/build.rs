@@ -10,5 +10,5 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 fn main() {
-    prost_build::compile_protos(&["src/structs.proto"], &["src"]).unwrap();
+    prost_build::compile_protos(&["src/behaviour/structs.proto"], &["src"]).unwrap();
 }

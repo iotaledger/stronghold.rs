@@ -21,11 +21,11 @@ message Record {
 message Message {
 	enum MessageType {
 		PING = 0;
-		PUBLISH = 1;
-		MSG = 2;
+		GET_RECORD = 1;
+		PUT_RECORD = 2;
 	}
 
-	enum Result {
+	enum Outcome {
 		SUCCESS = 0;
 		ERROR = 1;
 	}
@@ -34,8 +34,8 @@ message Message {
 
 	Record record = 2;
 
-	Result result = 3;
+	Outcome outcome = 3;
 
-	bytes message = 4;
+	bytes key = 4;
 
 }

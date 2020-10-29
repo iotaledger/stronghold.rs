@@ -10,40 +10,44 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 mod protocol;
-#[cfg(any(feature = "kademlia", feature = "mdns"))]
+#[cfg(feature = "mdns")]
 use crate::error::QueryError;
-#[cfg(feature = "kademlia")]
-use crate::message::MailboxRecord;
 use crate::{
     error::QueryResult,
     message::{Request, Response},
 };
-#[cfg(feature = "kademlia")]
-use core::time::Duration;
-use core::{iter, marker::PhantomData};
+use core::{iter, marker::PhantomData, str::FromStr};
 #[cfg(feature = "mdns")]
 use libp2p::mdns::{Mdns, MdnsEvent};
-#[cfg(feature = "kademlia")]
 use libp2p::{
-    core::Multiaddr,
-    kad::{record::Key, store::MemoryStore, Addresses, Kademlia, KademliaEvent, QueryId, Quorum, Record as KadRecord},
-};
-use libp2p::{
-    core::PeerId,
-    identity::PublicKey,
+    build_tcp_ws_noise_mplex_yamux,
+    core::{connection::ListenerId, Multiaddr, PeerId},
+    identity::Keypair,
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent, ResponseChannel,
     },
-    swarm::NetworkBehaviourEventProcess,
+    swarm::{
+        ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, NetworkBehaviourEventProcess, ProtocolsHandler, Swarm,
+    },
     NetworkBehaviour,
 };
 use protocol::{MessageCodec, MessageProtocol};
 // TODO: support no_std
-#[cfg(feature = "kademlia")]
-use std::collections::BTreeMap;
-use std::marker::Send;
-#[cfg(feature = "kademlia")]
-use std::time::Instant;
+use std::{
+    collections::btree_map::{BTreeMap, Keys},
+    marker::Send,
+};
+mod structs_proto {
+    include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
+}
+
+pub type P2PNetworkSwarm<C>= ExpandedSwarm<
+     P2PNetworkBehaviour<C>,
+     <<<P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
+     <<<P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
+     <P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler,
+     PeerId,
+>;
 
 /// Interface for the communication with the swarm
 pub trait SwarmContext {
@@ -51,41 +55,24 @@ pub trait SwarmContext {
 
     fn send_response(&mut self, response: Response, channel: ResponseChannel<Response>);
 
-    #[cfg(feature = "kademlia")]
-    fn get_record(&mut self, key_str: String) -> QueryId;
-
-    #[cfg(feature = "kademlia")]
-    fn put_record_local(&mut self, record: MailboxRecord) -> QueryResult<QueryId>;
-
-    #[cfg(feature = "kademlia")]
-    fn get_kademlia_peers(&mut self) -> BTreeMap<PeerId, Addresses>;
-
     #[cfg(feature = "mdns")]
     fn get_active_mdns_peers(&mut self) -> Vec<PeerId>;
-
-    #[cfg(feature = "kademlia")]
-    fn kad_add_address(&mut self, peer_id: &PeerId, addr: Multiaddr);
-
-    #[cfg(feature = "kademlia")]
-    fn kad_bootstrap(&mut self) -> QueryResult<QueryId>;
 }
 
 /// Codec that describes a custom behaviour for inbound events from the swarm.
 pub trait InboundEventCodec {
     fn handle_request_response_event(swarm: &mut impl SwarmContext, event: RequestResponseEvent<Request, Response>);
-    #[cfg(feature = "kademlia")]
-    fn handle_kademlia_event(swarm: &mut impl SwarmContext, result: KademliaEvent);
 }
 
 #[derive(NetworkBehaviour)]
 pub struct P2PNetworkBehaviour<C: InboundEventCodec + Send + 'static> {
-    #[cfg(feature = "kademlia")]
-    kademlia: Kademlia<MemoryStore>,
     #[cfg(feature = "mdns")]
     mdns: Mdns,
     msg_proto: RequestResponse<MessageCodec>,
     #[behaviour(ignore)]
     inner: PhantomData<C>,
+    #[behaviour(ignore)]
+    peers: BTreeMap<PeerId, Multiaddr>,
 }
 
 impl<C: InboundEventCodec + Send + 'static> SwarmContext for P2PNetworkBehaviour<C> {
@@ -96,40 +83,6 @@ impl<C: InboundEventCodec + Send + 'static> SwarmContext for P2PNetworkBehaviour
     fn send_response(&mut self, response: Response, channel: ResponseChannel<Response>) {
         self.msg_proto.send_response(channel, response)
     }
-
-    /// Fetch a record from the kademlia DHT of a known peer
-    #[cfg(feature = "kademlia")]
-    fn get_record(&mut self, key_str: String) -> QueryId {
-        let key = Key::new(&key_str);
-        self.kademlia.get_record(&key, Quorum::One)
-    }
-
-    /// Publish a record in own Kademlia DHT
-    #[cfg(feature = "kademlia")]
-    fn put_record_local(&mut self, record: MailboxRecord) -> QueryResult<QueryId> {
-        let record = KadRecord {
-            key: Key::new(&record.key()),
-            value: record.value().into_bytes(),
-            publisher: None,
-            expires: Some(Instant::now() + Duration::from_secs(record.expires_sec())),
-        };
-        self.kademlia
-            .put_record(record, Quorum::One)
-            .map_err(|_| QueryError::KademliaError("Can not store record".to_string()))
-    }
-
-    #[cfg(feature = "kademlia")]
-    /// Get the discovered peers from kademlia buckets. mDNS peers are automatically added to kademlia too.
-    fn get_kademlia_peers(&mut self) -> BTreeMap<PeerId, Addresses> {
-        let mut map = BTreeMap::new();
-        for bucket in self.kademlia.kbuckets() {
-            for entry in bucket.iter() {
-                map.insert(entry.node.key.preimage().clone(), entry.node.value.clone());
-            }
-        }
-        map
-    }
-
     #[cfg(feature = "mdns")]
     /// Get the peers discovered by mdns
     fn get_active_mdns_peers(&mut self) -> Vec<PeerId> {
@@ -139,39 +92,6 @@ impl<C: InboundEventCodec + Send + 'static> SwarmContext for P2PNetworkBehaviour
         }
         peers
     }
-
-    /// Add a remote peer's listening address for their PeerId to the kademlia buckets
-    /// This is necessary for initiating communication with peers that are not known yet.
-    #[cfg(feature = "kademlia")]
-    fn kad_add_address(&mut self, peer_id: &PeerId, addr: Multiaddr) {
-        self.kademlia.add_address(peer_id, addr);
-    }
-
-    /// Uses libp2p's Kademlia to bootstrap the local node to join the DHT.
-    ///
-    /// Bootstrapping is a multi-step operation that starts with a lookup of the local node's
-    /// own ID in the DHT. This introduces the local node to the other nodes
-    /// in the DHT and populates its routing table with the closest neighbours.
-    ///
-    /// Subsequently, all buckets farther from the bucket of the closest neighbour are
-    /// refreshed by initiating an additional bootstrapping query for each such
-    /// bucket with random keys.
-    ///
-    /// Returns `Ok` if bootstrapping has been initiated with a self-lookup, providing the
-    /// `QueryId` for the entire bootstrapping process. The progress of bootstrapping is
-    /// reported via [`KademliaEvent::QueryResult{QueryResult::Bootstrap}`] events,
-    /// with one such event per bootstrapping query.
-    ///
-    /// Returns `Err` if bootstrapping is impossible due an empty routing table.
-    ///
-    /// > **Note**: Bootstrapping requires at least one node of the DHT to be known.
-    /// > See libp2p [`Kademlia::add_address`].
-    #[cfg(feature = "kademlia")]
-    fn kad_bootstrap(&mut self) -> QueryResult<QueryId> {
-        self.kademlia
-            .bootstrap()
-            .map_err(|e| QueryError::KademliaError(format!("Could not bootstrap:{:?}", e.to_string())))
-    }
 }
 
 impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
@@ -180,8 +100,6 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
     /// - mDNS for peer discovery within the local network
     /// - RequestResponse Protocol for sending request and reponse messages. This stronghold-communication library
     ///   defines a custom version of this protocol that for sending pings, string-messages and key-value-records.
-    /// - kademlia (if the "kademlia"-feature is enabled) for managing peer in kademlia buckets and publishing/ reading
-    ///   records
     ///
     /// # Example
     /// ```no_run
@@ -192,7 +110,6 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
     /// };
     /// use libp2p::{
     ///     core::{identity::Keypair, Multiaddr, PeerId},
-    ///     kad::KademliaEvent,
     ///     request_response::{RequestId, RequestResponseEvent, ResponseChannel},
     /// };
     ///
@@ -205,20 +122,13 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
     ///         _event: RequestResponseEvent<Request, Response>,
     ///     ) {
     ///     }
-    ///
-    ///     fn handle_kademlia_event(_swarm: &mut impl SwarmContext, _result: KademliaEvent) {}
     /// }
     ///
-    /// let behaviour = P2PNetworkBehaviour::<Handler>::new(local_keys.public()).unwrap();
+    /// let mut swarm = P2PNetworkBehaviour::<Handler>::new(local_keys).unwrap();
     /// ```
-    pub fn new(public_key: PublicKey) -> QueryResult<Self> {
+    pub fn new(local_keys: Keypair) -> QueryResult<P2PNetworkSwarm<C>> {
         #[allow(unused_variables)]
-        let peer_id = PeerId::from(public_key);
-        #[cfg(feature = "kademlia")]
-        let kademlia = {
-            let store = MemoryStore::new(peer_id.clone());
-            Kademlia::new(peer_id, store)
-        };
+        let local_peer_id = PeerId::from(local_keys.public());
 
         #[cfg(feature = "mdns")]
         let mdns =
@@ -231,14 +141,49 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
             RequestResponse::new(MessageCodec(), protocols, cfg)
         };
 
-        Ok(P2PNetworkBehaviour::<C> {
-            #[cfg(feature = "kademlia")]
-            kademlia,
+        let behaviour = P2PNetworkBehaviour::<C> {
             #[cfg(feature = "mdns")]
             mdns,
             msg_proto,
             inner: PhantomData,
-        })
+            peers: BTreeMap::new(),
+        };
+        let transport = build_tcp_ws_noise_mplex_yamux(local_keys)
+            .map_err(|_| QueryError::ConnectionError("Could not build transport layer".to_string()))?;
+        Ok(Swarm::new(transport, behaviour, local_peer_id))
+    }
+
+    pub fn start_listening(
+        swarm: &mut P2PNetworkSwarm<C>,
+        listening_addr: Option<Multiaddr>,
+    ) -> QueryResult<ListenerId> {
+        let addr = listening_addr
+            .or_else(|| Multiaddr::from_str("/ip4/0.0.0.0/tcp/0").ok())
+            .ok_or_else(|| QueryError::ConnectionError("Invalid Multiaddr".to_string()))?;
+        Swarm::listen_on(swarm, addr).map_err(|e| QueryError::ConnectionError(format!("{}", e)))
+    }
+
+    /// Dials a peer if it is either in the same network or has a public IP Address
+    pub fn dial_addr(swarm: &mut P2PNetworkSwarm<C>, peer_addr: Multiaddr) -> QueryResult<()> {
+        Swarm::dial_addr(swarm, peer_addr.clone())
+            .map_err(|_| QueryError::ConnectionError(format!("Could not dial addr {}", peer_addr)))
+    }
+
+    /// Prints the multi-addresses that this peer is listening on within the local network.
+    pub fn get_listeners(swarm: &mut P2PNetworkSwarm<C>) -> impl Iterator<Item = &Multiaddr> {
+        Swarm::listeners(swarm)
+    }
+
+    pub fn add_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
+        self.peers.insert(peer_id, addr);
+    }
+
+    pub fn get_peer_addr(&self, peer_id: &PeerId) -> Option<&Multiaddr> {
+        self.peers.get(peer_id)
+    }
+
+    pub fn get_all_peers(&self) -> Keys<PeerId, Multiaddr> {
+        self.peers.keys()
     }
 }
 
@@ -247,20 +192,11 @@ impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<MdnsEve
     // Called when `mdns` produces an event.
     #[allow(unused_variables)]
     fn inject_event(&mut self, event: MdnsEvent) {
-        #[cfg(feature = "kademlia")]
         if let MdnsEvent::Discovered(list) = event {
             for (peer_id, multiaddr) in list {
-                self.kademlia.add_address(&peer_id, multiaddr);
+                self.add_peer(peer_id, multiaddr);
             }
         }
-    }
-}
-
-#[cfg(feature = "kademlia")]
-impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<KademliaEvent> for P2PNetworkBehaviour<C> {
-    // Called when `kademlia` produces an event.
-    fn inject_event(&mut self, message: KademliaEvent) {
-        C::handle_kademlia_event(self, message);
     }
 }
 
@@ -271,4 +207,42 @@ impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<Request
     fn inject_event(&mut self, event: RequestResponseEvent<Request, Response>) {
         C::handle_request_response_event(self, event);
     }
+}
+
+#[cfg(test)]
+struct DummyHandler;
+#[cfg(test)]
+impl InboundEventCodec for DummyHandler {
+    fn handle_request_response_event(_swarm: &mut impl SwarmContext, _event: RequestResponseEvent<Request, Response>) {}
+}
+
+#[cfg(test)]
+fn mock_swarm() -> P2PNetworkSwarm<DummyHandler> {
+    let local_keys = Keypair::generate_ed25519();
+    P2PNetworkBehaviour::<DummyHandler>::new(local_keys).unwrap()
+}
+
+#[cfg(test)]
+fn mock_addr() -> Multiaddr {
+    Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap()
+}
+
+#[test]
+fn test_new_behaviour() {
+    let local_keys = Keypair::generate_ed25519();
+    let swarm = P2PNetworkBehaviour::<DummyHandler>::new(local_keys.clone()).unwrap();
+    assert_eq!(
+        &PeerId::from_public_key(local_keys.public()),
+        Swarm::local_peer_id(&swarm)
+    );
+    assert!(swarm.get_all_peers().next().is_none());
+}
+
+#[test]
+fn test_add_peer() {
+    let mut swarm = mock_swarm();
+    let peer_id = PeerId::random();
+    swarm.add_peer(peer_id.clone(), mock_addr());
+    assert!(swarm.get_peer_addr(&peer_id).is_some());
+    assert!(swarm.get_all_peers().any(|p| p == &peer_id));
 }

@@ -68,7 +68,3 @@
 pub mod behaviour;
 pub mod error;
 pub mod message;
-pub mod network;
-mod structs_proto {
-    include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
-}

@@ -10,13 +10,6 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Request {
-    Ping,
-    Publish(MailboxRecord),
-    Message(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MailboxRecord {
     key: String,
     value: String,
@@ -44,15 +37,22 @@ impl MailboxRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Request {
+    Ping,
+    PutRecord(MailboxRecord),
+    GetRecord(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Response {
     Pong,
-    Result(MessageResult),
-    Message(String),
+    Outcome(RequestOutcome),
+    Record(MailboxRecord),
 }
 
 /// Indicates if a Request was received and / or the associated operation at the remote peer was successful
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MessageResult {
+pub enum RequestOutcome {
     Success,
     Error,
 }
