@@ -69,12 +69,25 @@ Proof.
       apply (Nat.mod_same _ (Nat.neq_succ_0 _)).
 Qed.
 
-Lemma round_left_cancel {N a} b: aligned a (S N) -> pad (a + b) (S N) = pad b (S N).
+Lemma align_left_cancel {N a} b: aligned a N -> pad (a + b) N = pad b N.
 Proof.
   intro A.
   unfold pad.
   rewrite <- (Nat.add_mod_idemp_l a b _ (proj1 A)).
   now rewrite (aligned_mod A), Nat.add_0_l.
+Qed.
+
+Lemma align_weaken {x A B}: aligned A B -> aligned x A -> aligned x B.
+Proof.
+  intros AB XA.
+  destruct (proj1 (Nat.mod_divides _ _ (proj1 AB)) (aligned_mod AB)) as [p P].
+  rewrite P in XA.
+  destruct (proj1 (Nat.mod_divides _ _ (proj1 XA)) (aligned_mod XA)) as [q Q].
+  rewrite Q.
+  split; [exact (proj1 AB)|].
+  unfold pad.
+  rewrite <- Nat.mul_assoc, Nat.mul_comm.
+  now rewrite (Nat.mod_mul (p * q) B (proj1 AB)).
 Qed.
 
 Lemma aligned_add_le x y A: aligned (x + y) A ->
@@ -118,6 +131,16 @@ Record Allocation (n A P: nat) := mkAllocation {
   pad_post: nat;
   page_alignment_post: aligned (data + n + pad_post) P;
 }.
+
+Lemma allocaton_page_aligned_pad_post {n A P} (a: Allocation n A P):
+  aligned P A -> aligned (n + pad_post _ _ _ a) A.
+Proof.
+  intro PA.
+  split; [exact (proj1 (data_alignment _ _ _ a))|].
+  rewrite <- (align_left_cancel _ (data_alignment _ _ _ a)), Nat.add_assoc.
+  unfold pad.
+  now rewrite (aligned_mod (align_weaken PA (page_alignment_post _ _ _ a))).
+Qed.
 
 Lemma naive_allocator {P} (M: mmap P):
   forall n {A}, aligned P A -> Allocation n A P.
