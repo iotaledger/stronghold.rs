@@ -80,9 +80,9 @@
 use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
 use communication::{
-    behaviour::{InboundEventCodec, P2PNetworkBehaviour, SwarmContext},
+    behaviour::{P2PNetworkBehaviour, SwarmContext},
     error::QueryResult,
-    message::{MailboxRecord, Request, RequestOutcome, Response},
+    message::{MailboxRecord, Request},
 };
 use core::{
     str::FromStr,
@@ -92,10 +92,6 @@ use futures::{future, prelude::*};
 use libp2p::{
     core::{identity::Keypair, PeerId},
     multiaddr::{multiaddr, Multiaddr},
-    request_response::{
-        RequestResponseEvent::{self, InboundFailure, Message as MessageEvent, OutboundFailure},
-        RequestResponseMessage,
-    },
     swarm::{Swarm, SwarmEvent},
 };
 
@@ -141,57 +137,8 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
     if matches.subcommand_matches("start-mailbox").is_some() {
         let local_keys = Keypair::generate_ed25519();
 
-        // Implements the mailbox behaviour by storing record locally and return them upon get-requests.
-        struct MailboxHandler();
-        impl InboundEventCodec for MailboxHandler {
-            fn handle_request_response_event(
-                swarm: &mut impl SwarmContext,
-                event: RequestResponseEvent<Request, Response>,
-            ) {
-                match event {
-                    MessageEvent { peer: _, message } => {
-                        if let RequestResponseMessage::Request {
-                            request_id: _,
-                            request,
-                            channel,
-                        } = message
-                        {
-                            match request {
-                                Request::PutRecord(_) => {
-                                    // TODO: store data
-                                    swarm.send_response(Response::Outcome(RequestOutcome::Success), channel);
-                                }
-                                Request::GetRecord(key) => {
-                                    // TODO: send previously stored record back
-                                    let record = MailboxRecord::new(key, "Mock Value".to_string(), 0);
-                                    swarm.send_response(Response::Record(record), channel);
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    OutboundFailure {
-                        peer,
-                        request_id,
-                        error,
-                    } => println!(
-                        "Outbound Failure for request {:?} to peer: {:?}: {:?}.",
-                        request_id, peer, error
-                    ),
-                    InboundFailure {
-                        peer,
-                        request_id,
-                        error,
-                    } => println!(
-                        "Inbound Failure for request {:?} to peer: {:?}: {:?}.",
-                        request_id, peer, error
-                    ),
-                }
-            }
-        }
-
         // Create swarm for communication
-        let mut swarm = P2PNetworkBehaviour::<MailboxHandler>::new(local_keys)?;
+        let mut swarm = P2PNetworkBehaviour::new(local_keys)?;
         let port = matches
             .value_of("port")
             .and_then(|port_str| port_str.parse::<u16>().ok())
@@ -243,45 +190,8 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
         }) = eval_arg_matches(matches)
         {
             let local_keys = Keypair::generate_ed25519();
-
-            // Implement a Handler to display the response from the mailbox
-            struct PutRecordHandler();
-            impl InboundEventCodec for PutRecordHandler {
-                fn handle_request_response_event(
-                    _swarm: &mut impl SwarmContext,
-                    event: RequestResponseEvent<Request, Response>,
-                ) {
-                    match event {
-                        MessageEvent { peer: _, message } => {
-                            if let RequestResponseMessage::Response { request_id, response } = message {
-                                // Mailbox response
-                                if let Response::Outcome(result) = response {
-                                    println!("Received Result for PutRecord request {:?}: {:?}.", request_id, result);
-                                }
-                            }
-                        }
-                        OutboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                        } => println!(
-                            "Outbound Failure for request {:?} to peer: {:?}: {:?}.",
-                            request_id, peer, error
-                        ),
-                        InboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                        } => println!(
-                            "Inbound Failure for request {:?} to peer: {:?}: {:?}.",
-                            request_id, peer, error
-                        ),
-                    }
-                }
-            }
-
             // Create swarm for communication
-            let mut swarm = P2PNetworkBehaviour::<PutRecordHandler>::new(local_keys)?;
+            let mut swarm = P2PNetworkBehaviour::new(local_keys)?;
             println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
 
             // Connect to a remote mailbox on the server.
@@ -318,54 +228,8 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
         {
             let local_keys = Keypair::generate_ed25519();
 
-            struct GetRecordHandler();
-
-            // Implement a Handler to display the result of querying the mailbox
-            impl InboundEventCodec for GetRecordHandler {
-                fn handle_request_response_event(
-                    _swarm: &mut impl SwarmContext,
-                    event: RequestResponseEvent<Request, Response>,
-                ) {
-                    match event {
-                        MessageEvent { peer, message } => {
-                            if let RequestResponseMessage::Response {
-                                request_id: _,
-                                response,
-                            } = message
-                            {
-                                // Mailbox response
-                                if let Response::Record(record) = response {
-                                    println!(
-                                        "Received Record from {:?}:\nKey:\n{:?}\nValue:\n{:?}.",
-                                        peer,
-                                        record.key(),
-                                        record.value()
-                                    );
-                                }
-                            }
-                        }
-                        OutboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                        } => println!(
-                            "Outbound Failure for request {:?} to peer: {:?}: {:?}.",
-                            request_id, peer, error
-                        ),
-                        InboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                        } => println!(
-                            "Inbound Failure for request {:?} to peer: {:?}: {:?}.",
-                            request_id, peer, error
-                        ),
-                    }
-                }
-            }
-
             // Create swarm for communication
-            let mut swarm = P2PNetworkBehaviour::<GetRecordHandler>::new(local_keys)?;
+            let mut swarm = P2PNetworkBehaviour::new(local_keys)?;
             println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
 
             // Connect to a remote mailbox on the server.

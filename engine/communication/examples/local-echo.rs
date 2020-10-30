@@ -54,9 +54,9 @@ use async_std::{
     task,
 };
 use communication::{
-    behaviour::{InboundEventCodec, P2PNetworkBehaviour, P2PNetworkSwarm, SwarmContext},
+    behaviour::{P2PNetworkBehaviour, P2PNetworkSwarm, SwarmContext},
     error::QueryResult,
-    message::{Request, Response},
+    message::{CommunicationEvent, Request},
 };
 use core::{
     str::FromStr,
@@ -67,69 +67,9 @@ use std::{error::Error, string::String};
 use futures::{future, io::Lines, prelude::*};
 use libp2p::{
     core::{identity::Keypair, Multiaddr, PeerId},
-    request_response::{
-        RequestResponseEvent::{self, InboundFailure, Message as MessageEvent, OutboundFailure},
-        RequestResponseMessage,
-    },
     swarm::Swarm,
 };
 use regex::Regex;
-
-struct Handler();
-
-// Implement a Handler to determine the networks behaviour upon receiving messages.
-impl InboundEventCodec for Handler {
-    fn handle_request_response_event(swarm: &mut impl SwarmContext, event: RequestResponseEvent<Request, Response>) {
-        match event {
-            MessageEvent { peer, message } => match message {
-                RequestResponseMessage::Request {
-                    request_id: _,
-                    request,
-                    channel,
-                } => match request {
-                    Request::Ping => {
-                        println!("Received Ping from {:?}. Sending a Pong back.", peer);
-                        swarm.send_response(Response::Pong, channel);
-                    }
-                    Request::PutRecord(_) => {}
-                    Request::GetRecord(_) => {}
-                },
-                RequestResponseMessage::Response { request_id, response } => match response {
-                    Response::Pong => {
-                        println!("Received Pong for request {:?}.", request_id);
-                    }
-                    Response::Outcome(result) => {
-                        println!("Received Result for request {:?}: {:?}.", request_id, result);
-                    }
-                    Response::Record(record) => {
-                        println!(
-                            "Received Record from peer {:?}:\nKey{:?}\nValue{:?}.",
-                            peer,
-                            record.key(),
-                            record.value()
-                        );
-                    }
-                },
-            },
-            OutboundFailure {
-                peer,
-                request_id,
-                error,
-            } => println!(
-                "Outbound Failure for request {:?} to peer: {:?}: {:?}.",
-                request_id, peer, error
-            ),
-            InboundFailure {
-                peer,
-                request_id,
-                error,
-            } => println!(
-                "Inbound Failure for request {:?} to peer: {:?}: {:?}.",
-                request_id, peer, error
-            ),
-        }
-    }
-}
 
 // Poll for user input
 fn poll_stdin(stdin: &mut Lines<BufReader<Stdin>>, cx: &mut Context<'_>) -> Result<Option<String>, Box<dyn Error>> {
@@ -148,7 +88,7 @@ fn listen() -> QueryResult<()> {
     let local_keys = Keypair::generate_ed25519();
 
     // Create a Swarm that implementes the Request-Reponse Protocl and mDNS
-    let mut swarm = P2PNetworkBehaviour::<Handler>::new(local_keys)?;
+    let mut swarm = P2PNetworkBehaviour::new(local_keys)?;
     P2PNetworkBehaviour::start_listening(&mut swarm, None)?;
     println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
     let mut listening = false;
@@ -163,7 +103,16 @@ fn listen() -> QueryResult<()> {
         loop {
             // poll for events from the swarm
             match swarm.poll_next_unpin(cx) {
-                Poll::Ready(Some(event)) => println!("{:?}", event),
+                Poll::Ready(Some(event)) => {
+                    if let CommunicationEvent::RequestMessage {
+                        originating_peer,
+                        id: _,
+                        procedure,
+                    } = event
+                    {
+                        println!("Received message from peer {:?}\n{:?}", originating_peer, procedure);
+                    }
+                }
                 Poll::Ready(None) => {
                     return Poll::Ready(());
                 }
@@ -197,7 +146,7 @@ fn listen() -> QueryResult<()> {
     Ok(())
 }
 
-fn handle_input_line(swarm: &mut P2PNetworkSwarm<Handler>, line: String) {
+fn handle_input_line(swarm: &mut P2PNetworkSwarm, line: String) {
     if let Some(peer_id) = Regex::new("PING\\s+\"(\\w+)\"")
         .ok()
         .and_then(|regex| regex.captures(&line))
@@ -205,6 +154,7 @@ fn handle_input_line(swarm: &mut P2PNetworkSwarm<Handler>, line: String) {
         .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
     {
         swarm.send_request(&peer_id, Request::Ping);
+        println!("Pinged {:?}", peer_id);
     } else if cfg!(feature = "mdns") && line.contains("LIST") {
         #[cfg(feature = "mdns")]
         {

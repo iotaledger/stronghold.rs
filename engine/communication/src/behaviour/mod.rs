@@ -14,9 +14,13 @@ mod protocol;
 use crate::error::QueryError;
 use crate::{
     error::QueryResult,
-    message::{Request, Response},
+    message::{CommunicationEvent, Request, Response},
 };
-use core::{iter, marker::PhantomData, str::FromStr};
+use core::{
+    iter,
+    str::FromStr,
+    task::{Context, Poll},
+};
 #[cfg(feature = "mdns")]
 use libp2p::mdns::{Mdns, MdnsEvent};
 use libp2p::{
@@ -27,25 +31,23 @@ use libp2p::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent, ResponseChannel,
     },
     swarm::{
-        ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, NetworkBehaviourEventProcess, ProtocolsHandler, Swarm,
+        ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess,
+        PollParameters, ProtocolsHandler, Swarm,
     },
     NetworkBehaviour,
 };
 use protocol::{MessageCodec, MessageProtocol};
 // TODO: support no_std
-use std::{
-    collections::btree_map::{BTreeMap, Keys},
-    marker::Send,
-};
+use std::collections::btree_map::{BTreeMap, Keys};
 mod structs_proto {
     include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
 }
 
-pub type P2PNetworkSwarm<C>= ExpandedSwarm<
-     P2PNetworkBehaviour<C>,
-     <<<P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
-     <<<P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
-     <P2PNetworkBehaviour<C> as NetworkBehaviour>::ProtocolsHandler,
+pub type P2PNetworkSwarm= ExpandedSwarm<
+     P2PNetworkBehaviour,
+     <<<P2PNetworkBehaviour as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
+     <<<P2PNetworkBehaviour as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
+     <P2PNetworkBehaviour as NetworkBehaviour>::ProtocolsHandler,
      PeerId,
 >;
 
@@ -59,23 +61,19 @@ pub trait SwarmContext {
     fn get_active_mdns_peers(&mut self) -> Vec<PeerId>;
 }
 
-/// Codec that describes a custom behaviour for inbound events from the swarm.
-pub trait InboundEventCodec {
-    fn handle_request_response_event(swarm: &mut impl SwarmContext, event: RequestResponseEvent<Request, Response>);
-}
-
 #[derive(NetworkBehaviour)]
-pub struct P2PNetworkBehaviour<C: InboundEventCodec + Send + 'static> {
+#[behaviour(out_event = "CommunicationEvent", poll_method = "poll")]
+pub struct P2PNetworkBehaviour {
     #[cfg(feature = "mdns")]
     mdns: Mdns,
     msg_proto: RequestResponse<MessageCodec>,
     #[behaviour(ignore)]
-    inner: PhantomData<C>,
-    #[behaviour(ignore)]
     peers: BTreeMap<PeerId, Multiaddr>,
+    #[behaviour(ignore)]
+    events: Vec<CommunicationEvent>,
 }
 
-impl<C: InboundEventCodec + Send + 'static> SwarmContext for P2PNetworkBehaviour<C> {
+impl SwarmContext for P2PNetworkBehaviour {
     fn send_request(&mut self, peer_id: &PeerId, request: Request) -> RequestId {
         self.msg_proto.send_request(peer_id, request)
     }
@@ -94,17 +92,17 @@ impl<C: InboundEventCodec + Send + 'static> SwarmContext for P2PNetworkBehaviour
     }
 }
 
-impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
+impl P2PNetworkBehaviour {
     /// Creates a new P2PNetworkbehaviour that defines the communication with the libp2p swarm.
     /// It combines the following protocols from libp2p:
     /// - mDNS for peer discovery within the local network
-    /// - RequestResponse Protocol for sending request and reponse messages. This stronghold-communication library
+    /// - RequestResponse Protocol for sending request and Response messages. This stronghold-communication library
     ///   defines a custom version of this protocol that for sending pings, string-messages and key-value-records.
     ///
     /// # Example
     /// ```no_run
     /// use communication::{
-    ///     behaviour::{InboundEventCodec, P2PNetworkBehaviour, SwarmContext},
+    ///     behaviour::{P2PNetworkBehaviour, SwarmContext},
     ///     error::QueryResult,
     ///     message::{Request, Response},
     /// };
@@ -114,19 +112,9 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
     /// };
     ///
     /// let local_keys = Keypair::generate_ed25519();
-    ///
-    /// struct Handler();
-    /// impl InboundEventCodec for Handler {
-    ///     fn handle_request_response_event(
-    ///         _swarm: &mut impl SwarmContext,
-    ///         _event: RequestResponseEvent<Request, Response>,
-    ///     ) {
-    ///     }
-    /// }
-    ///
-    /// let mut swarm = P2PNetworkBehaviour::<Handler>::new(local_keys).unwrap();
+    /// let mut swarm = P2PNetworkBehaviour::new(local_keys).unwrap();
     /// ```
-    pub fn new(local_keys: Keypair) -> QueryResult<P2PNetworkSwarm<C>> {
+    pub fn new(local_keys: Keypair) -> QueryResult<P2PNetworkSwarm> {
         #[allow(unused_variables)]
         let local_peer_id = PeerId::from(local_keys.public());
 
@@ -141,22 +129,30 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
             RequestResponse::new(MessageCodec(), protocols, cfg)
         };
 
-        let behaviour = P2PNetworkBehaviour::<C> {
+        let behaviour = P2PNetworkBehaviour {
             #[cfg(feature = "mdns")]
             mdns,
             msg_proto,
-            inner: PhantomData,
             peers: BTreeMap::new(),
+            events: Vec::new(),
         };
         let transport = build_tcp_ws_noise_mplex_yamux(local_keys)
             .map_err(|_| QueryError::ConnectionError("Could not build transport layer".to_string()))?;
         Ok(Swarm::new(transport, behaviour, local_peer_id))
     }
 
-    pub fn start_listening(
-        swarm: &mut P2PNetworkSwarm<C>,
-        listening_addr: Option<Multiaddr>,
-    ) -> QueryResult<ListenerId> {
+    fn poll<TEv>(
+        &mut self,
+        _cx: &mut Context<'_>,
+        _params: &mut impl PollParameters,
+    ) -> Poll<NetworkBehaviourAction<TEv, CommunicationEvent>> {
+        if !self.events.is_empty() {
+            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)));
+        }
+        Poll::Pending
+    }
+
+    pub fn start_listening(swarm: &mut P2PNetworkSwarm, listening_addr: Option<Multiaddr>) -> QueryResult<ListenerId> {
         let addr = listening_addr
             .or_else(|| Multiaddr::from_str("/ip4/0.0.0.0/tcp/0").ok())
             .ok_or_else(|| QueryError::ConnectionError("Invalid Multiaddr".to_string()))?;
@@ -164,13 +160,13 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
     }
 
     /// Dials a peer if it is either in the same network or has a public IP Address
-    pub fn dial_addr(swarm: &mut P2PNetworkSwarm<C>, peer_addr: Multiaddr) -> QueryResult<()> {
+    pub fn dial_addr(swarm: &mut P2PNetworkSwarm, peer_addr: Multiaddr) -> QueryResult<()> {
         Swarm::dial_addr(swarm, peer_addr.clone())
             .map_err(|_| QueryError::ConnectionError(format!("Could not dial addr {}", peer_addr)))
     }
 
     /// Prints the multi-addresses that this peer is listening on within the local network.
-    pub fn get_listeners(swarm: &mut P2PNetworkSwarm<C>) -> impl Iterator<Item = &Multiaddr> {
+    pub fn get_listeners(swarm: &mut P2PNetworkSwarm) -> impl Iterator<Item = &Multiaddr> {
         Swarm::listeners(swarm)
     }
 
@@ -188,7 +184,7 @@ impl<C: InboundEventCodec + Send + 'static> P2PNetworkBehaviour<C> {
 }
 
 #[cfg(feature = "mdns")]
-impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour<C> {
+impl NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour {
     // Called when `mdns` produces an event.
     #[allow(unused_variables)]
     fn inject_event(&mut self, event: MdnsEvent) {
@@ -200,26 +196,17 @@ impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<MdnsEve
     }
 }
 
-impl<C: InboundEventCodec + Send + 'static> NetworkBehaviourEventProcess<RequestResponseEvent<Request, Response>>
-    for P2PNetworkBehaviour<C>
-{
+impl NetworkBehaviourEventProcess<RequestResponseEvent<Request, Response>> for P2PNetworkBehaviour {
     // Called when the protocol produces an event.
     fn inject_event(&mut self, event: RequestResponseEvent<Request, Response>) {
-        C::handle_request_response_event(self, event);
+        self.events.push(CommunicationEvent::from(event))
     }
 }
 
 #[cfg(test)]
-struct DummyHandler;
-#[cfg(test)]
-impl InboundEventCodec for DummyHandler {
-    fn handle_request_response_event(_swarm: &mut impl SwarmContext, _event: RequestResponseEvent<Request, Response>) {}
-}
-
-#[cfg(test)]
-fn mock_swarm() -> P2PNetworkSwarm<DummyHandler> {
+fn mock_swarm() -> P2PNetworkSwarm {
     let local_keys = Keypair::generate_ed25519();
-    P2PNetworkBehaviour::<DummyHandler>::new(local_keys).unwrap()
+    P2PNetworkBehaviour::new(local_keys).unwrap()
 }
 
 #[cfg(test)]
@@ -230,7 +217,7 @@ fn mock_addr() -> Multiaddr {
 #[test]
 fn test_new_behaviour() {
     let local_keys = Keypair::generate_ed25519();
-    let swarm = P2PNetworkBehaviour::<DummyHandler>::new(local_keys.clone()).unwrap();
+    let swarm = P2PNetworkBehaviour::new(local_keys.clone()).unwrap();
     assert_eq!(
         &PeerId::from_public_key(local_keys.public()),
         Swarm::local_peer_id(&swarm)
