@@ -109,7 +109,6 @@ fn proto_msg_to_req(msg: proto::Message) -> Result<Request, IOError> {
             let record = MailboxRecord::new(
                 String::from_utf8(proto_record.key).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
                 String::from_utf8(proto_record.value).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
-                proto_record.expires,
             );
             Ok(Request::PutRecord(record))
         }
@@ -139,7 +138,6 @@ fn proto_msg_to_res(msg: proto::Message) -> Result<Response, IOError> {
             let record = MailboxRecord::new(
                 String::from_utf8(proto_record.key).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
                 String::from_utf8(proto_record.value).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?,
-                proto_record.expires,
             );
             Ok(Response::Record(record))
         }
@@ -157,7 +155,6 @@ fn req_to_proto_msg(req: Request) -> proto::Message {
             let proto_record = proto::Record {
                 key: record.key().into_bytes(),
                 value: record.value().into_bytes(),
-                expires: record.expires_sec(),
             };
             proto::Message {
                 r#type: proto::message::MessageType::PutRecord as i32,
@@ -195,7 +192,6 @@ fn res_to_proto_msg(res: Response) -> proto::Message {
             let proto_record = proto::Record {
                 key: record.key().into_bytes(),
                 value: record.value().into_bytes(),
-                expires: record.expires_sec(),
             };
             proto::Message {
                 r#type: proto::message::MessageType::GetRecord as i32,

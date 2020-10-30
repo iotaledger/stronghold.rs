@@ -80,7 +80,7 @@
 use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
 use communication::{
-    behaviour::{P2PNetworkBehaviour, SwarmContext},
+    behaviour::P2PNetworkBehaviour,
     error::QueryResult,
     message::{MailboxRecord, Request},
 };
@@ -101,7 +101,6 @@ struct Matches {
     mail_addr: Multiaddr,
     key: String,
     value: Option<String>,
-    expires: Option<u64>,
 }
 
 // Match and parse the arguments from the command line
@@ -116,15 +115,11 @@ fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
         {
             if let Some(key) = matches.value_of("key").map(|k| k.to_string()) {
                 let value = matches.value_of("value").map(|v| v.to_string());
-                let expires = matches
-                    .value_of("expires")
-                    .and_then(|expires| expires.parse::<u64>().ok());
                 return Some(Matches {
                     mail_id,
                     mail_addr,
                     key,
                     value,
-                    expires,
                 });
             }
         }
@@ -186,7 +181,6 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
             mail_addr,
             key,
             value: Some(value),
-            expires,
         }) = eval_arg_matches(matches)
         {
             let local_keys = Keypair::generate_ed25519();
@@ -199,7 +193,7 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
 
             // Deposit a record on the mailbox
             // Triggers the Handler's handle_request_msg() Request::Publish(r) on the mailbox side.
-            let record = MailboxRecord::new(key, value, expires.unwrap_or(9000u64));
+            let record = MailboxRecord::new(key, value);
             swarm.send_request(&mail_id, Request::PutRecord(record));
             // Block until the connection is closed again due to expires.
             task::block_on(async move {

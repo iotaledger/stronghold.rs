@@ -44,13 +44,6 @@ subcommands:
             about: the value for the record
             required: true
             takes_value: true
-        - expires:
-            short: e
-            long: expires
-            value_name: expire-sec
-            about: the expire seconds for the record
-            required: false
-            takes_value: true
   - get-record:
       about: Get record from local or the mailbox
       args:

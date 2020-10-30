@@ -15,30 +15,27 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "mdns")]
 use libp2p::mdns::MdnsEvent;
 
+pub type Key = String;
+pub type Value = String;
+pub type PeerIdS = String;
+pub type ReqId = u64;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MailboxRecord {
     key: String,
     value: String,
-    expires_sec: u64,
 }
 
 impl MailboxRecord {
-    pub fn new(key: String, value: String, expires_sec: u64) -> Self {
-        MailboxRecord {
-            key,
-            value,
-            expires_sec,
-        }
+    pub fn new(key: Key, value: Key) -> Self {
+        MailboxRecord { key, value }
     }
 
-    pub fn key(&self) -> String {
+    pub fn key(&self) -> Key {
         self.key.clone()
     }
-    pub fn value(&self) -> String {
+    pub fn value(&self) -> Value {
         self.value.clone()
-    }
-    pub fn expires_sec(&self) -> u64 {
-        self.expires_sec
     }
 }
 
@@ -63,11 +60,6 @@ pub enum RequestOutcome {
     Error,
 }
 
-pub type PeerString = String;
-pub type RequestString = String;
-pub type Key = String;
-pub type Value = String;
-
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ProcedureError {
     Outbound,
@@ -79,6 +71,12 @@ pub enum ProcedureError {
 pub struct RequestResponseError {
     source: FailureSource,
     error: FailureType,
+}
+
+impl RequestResponseError {
+    pub fn new(source: FailureSource, error: FailureType) -> Self {
+        RequestResponseError { source, error }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -97,49 +95,48 @@ pub enum FailureType {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum CommunicationEvent {
-    Shutdown,
-    MdnsEvent,
+    Mdns,
     RequestMessage {
-        originating_peer: PeerString,
-        id: RequestString,
-        procedure: Request,
+        peer: PeerIdS,
+        id: ReqId,
+        request: Request,
     },
     ResponseMessage {
-        id: RequestString,
-        outcome: Result<Response, ProcedureError>,
+        peer: PeerIdS,
+        id: ReqId,
+        response: Response,
     },
     RequestResponseError {
-        peer: PeerString,
-        request_id: RequestString,
+        peer: PeerIdS,
+        request_id: ReqId,
         error: RequestResponseError,
     },
-    StartListening,
-    StopListening,
 }
 
 #[cfg(feature = "mdns")]
 impl From<MdnsEvent> for CommunicationEvent {
     fn from(_: MdnsEvent) -> CommunicationEvent {
-        CommunicationEvent::MdnsEvent
+        CommunicationEvent::Mdns
     }
 }
 
 impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
-    fn from(other: RequestResponseEvent<Request, Response>) -> CommunicationEvent {
-        match other {
+    fn from(event: RequestResponseEvent<Request, Response>) -> CommunicationEvent {
+        match event {
             RequestResponseEvent::Message { peer, message } => match message {
                 RequestResponseMessage::Request {
                     request_id,
                     request,
                     channel: _,
                 } => CommunicationEvent::RequestMessage {
-                    originating_peer: peer.to_string(),
-                    id: request_id.to_string(),
-                    procedure: request,
+                    peer: peer.to_string(),
+                    id: request_id.to_string().parse::<u64>().unwrap(),
+                    request,
                 },
                 RequestResponseMessage::Response { request_id, response } => CommunicationEvent::ResponseMessage {
-                    id: request_id.to_string(),
-                    outcome: Ok(response),
+                    peer: peer.to_string(),
+                    id: request_id.to_string().parse::<u64>().unwrap(),
+                    response,
                 },
             },
             RequestResponseEvent::OutboundFailure {
@@ -155,7 +152,7 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
                 };
                 CommunicationEvent::RequestResponseError {
                     peer: peer.to_string(),
-                    request_id: request_id.to_string(),
+                    request_id: request_id.to_string().parse::<u64>().unwrap(),
                     error: RequestResponseError {
                         source: FailureSource::Outbound,
                         error,
@@ -174,7 +171,7 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
                 };
                 CommunicationEvent::RequestResponseError {
                     peer: peer.to_string(),
-                    request_id: request_id.to_string(),
+                    request_id: request_id.to_string().parse::<u64>().unwrap(),
                     error: RequestResponseError {
                         source: FailureSource::Inbound,
                         error,
@@ -189,9 +186,7 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
 fn test_new_message() {
     let key = String::from("key1");
     let value = String::from("value1");
-    let expires = 1000u64;
-    let record = MailboxRecord::new(key.clone(), value.clone(), expires);
+    let record = MailboxRecord::new(key.clone(), value.clone());
     assert_eq!(record.key(), key);
     assert_eq!(record.value(), value);
-    assert_eq!(record.expires_sec(), expires);
 }

@@ -27,6 +27,9 @@ pub enum QueryError {
 
     #[error("IO Error: `{0}`")]
     IOError(String),
+
+    #[error("Missing Channel for Request: `{0}`")]
+    MissingChannelError(u64),
 }
 
 pub type QueryResult<T> = std::result::Result<T, QueryError>;

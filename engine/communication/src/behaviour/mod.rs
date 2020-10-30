@@ -10,11 +10,9 @@
 // See the License for the specific language governing permissions and limitations under the License.
 
 mod protocol;
-#[cfg(feature = "mdns")]
-use crate::error::QueryError;
 use crate::{
-    error::QueryResult,
-    message::{CommunicationEvent, Request, Response},
+    error::{QueryError, QueryResult},
+    message::{CommunicationEvent, ReqId, Request, Response},
 };
 use core::{
     iter,
@@ -28,7 +26,8 @@ use libp2p::{
     core::{connection::ListenerId, Multiaddr, PeerId},
     identity::Keypair,
     request_response::{
-        ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent, ResponseChannel,
+        ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
+        RequestResponseMessage, ResponseChannel,
     },
     swarm::{
         ExpandedSwarm, IntoProtocolsHandler, NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess,
@@ -50,17 +49,6 @@ pub type P2PNetworkSwarm= ExpandedSwarm<
      <P2PNetworkBehaviour as NetworkBehaviour>::ProtocolsHandler,
      PeerId,
 >;
-
-/// Interface for the communication with the swarm
-pub trait SwarmContext {
-    fn send_request(&mut self, peer_id: &PeerId, request: Request) -> RequestId;
-
-    fn send_response(&mut self, response: Response, channel: ResponseChannel<Response>);
-
-    #[cfg(feature = "mdns")]
-    fn get_active_mdns_peers(&mut self) -> Vec<PeerId>;
-}
-
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "CommunicationEvent", poll_method = "poll")]
 pub struct P2PNetworkBehaviour {
@@ -71,25 +59,8 @@ pub struct P2PNetworkBehaviour {
     peers: BTreeMap<PeerId, Multiaddr>,
     #[behaviour(ignore)]
     events: Vec<CommunicationEvent>,
-}
-
-impl SwarmContext for P2PNetworkBehaviour {
-    fn send_request(&mut self, peer_id: &PeerId, request: Request) -> RequestId {
-        self.msg_proto.send_request(peer_id, request)
-    }
-
-    fn send_response(&mut self, response: Response, channel: ResponseChannel<Response>) {
-        self.msg_proto.send_response(channel, response)
-    }
-    #[cfg(feature = "mdns")]
-    /// Get the peers discovered by mdns
-    fn get_active_mdns_peers(&mut self) -> Vec<PeerId> {
-        let mut peers = Vec::new();
-        for peer_id in self.mdns.discovered_nodes() {
-            peers.push(peer_id.clone());
-        }
-        peers
-    }
+    #[behaviour(ignore)]
+    response_channels: BTreeMap<ReqId, ResponseChannel<Response>>,
 }
 
 impl P2PNetworkBehaviour {
@@ -102,7 +73,7 @@ impl P2PNetworkBehaviour {
     /// # Example
     /// ```no_run
     /// use communication::{
-    ///     behaviour::{P2PNetworkBehaviour, SwarmContext},
+    ///     behaviour::P2PNetworkBehaviour,
     ///     error::QueryResult,
     ///     message::{Request, Response},
     /// };
@@ -135,6 +106,7 @@ impl P2PNetworkBehaviour {
             msg_proto,
             peers: BTreeMap::new(),
             events: Vec::new(),
+            response_channels: BTreeMap::new(),
         };
         let transport = build_tcp_ws_noise_mplex_yamux(local_keys)
             .map_err(|_| QueryError::ConnectionError("Could not build transport layer".to_string()))?;
@@ -181,6 +153,28 @@ impl P2PNetworkBehaviour {
     pub fn get_all_peers(&self) -> Keys<PeerId, Multiaddr> {
         self.peers.keys()
     }
+
+    pub fn send_request(&mut self, peer_id: &PeerId, request: Request) -> RequestId {
+        self.msg_proto.send_request(peer_id, request)
+    }
+
+    pub fn send_response(&mut self, response: Response, request_id: ReqId) -> QueryResult<()> {
+        let channel = self
+            .response_channels
+            .remove(&request_id)
+            .ok_or_else(|| QueryError::MissingChannelError(request_id))?;
+        self.msg_proto.send_response(channel, response);
+        Ok(())
+    }
+    #[cfg(feature = "mdns")]
+    /// Get the peers discovered by mdns
+    pub fn get_active_mdns_peers(&mut self) -> Vec<PeerId> {
+        let mut peers = Vec::new();
+        for peer_id in self.mdns.discovered_nodes() {
+            peers.push(peer_id.clone());
+        }
+        peers
+    }
 }
 
 #[cfg(feature = "mdns")]
@@ -199,7 +193,27 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour {
 impl NetworkBehaviourEventProcess<RequestResponseEvent<Request, Response>> for P2PNetworkBehaviour {
     // Called when the protocol produces an event.
     fn inject_event(&mut self, event: RequestResponseEvent<Request, Response>) {
-        self.events.push(CommunicationEvent::from(event))
+        let communication_event = if let RequestResponseEvent::Message {
+            peer,
+            message:
+                RequestResponseMessage::Request {
+                    request_id,
+                    request,
+                    channel,
+                },
+        } = event
+        {
+            self.response_channels
+                .insert(request_id.to_string().parse::<u64>().unwrap(), channel);
+            CommunicationEvent::RequestMessage {
+                peer: peer.to_string(),
+                id: request_id.to_string().parse::<u64>().unwrap(),
+                request,
+            }
+        } else {
+            CommunicationEvent::from(event)
+        };
+        self.events.push(communication_event);
     }
 }
 

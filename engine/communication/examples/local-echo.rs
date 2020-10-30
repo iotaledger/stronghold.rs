@@ -54,7 +54,7 @@ use async_std::{
     task,
 };
 use communication::{
-    behaviour::{P2PNetworkBehaviour, P2PNetworkSwarm, SwarmContext},
+    behaviour::{P2PNetworkBehaviour, P2PNetworkSwarm},
     error::QueryResult,
     message::{CommunicationEvent, Request},
 };
@@ -104,13 +104,8 @@ fn listen() -> QueryResult<()> {
             // poll for events from the swarm
             match swarm.poll_next_unpin(cx) {
                 Poll::Ready(Some(event)) => {
-                    if let CommunicationEvent::RequestMessage {
-                        originating_peer,
-                        id: _,
-                        procedure,
-                    } = event
-                    {
-                        println!("Received message from peer {:?}\n{:?}", originating_peer, procedure);
+                    if let CommunicationEvent::RequestMessage { peer, id: _, request } = event {
+                        println!("Received message from peer {:?}\n{:?}", peer, request);
                     }
                 }
                 Poll::Ready(None) => {
