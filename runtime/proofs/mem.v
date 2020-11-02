@@ -6,6 +6,114 @@ Require Import PeanoNat.
 Definition pad x N :=
   match x mod N with 0 => 0 | r => N - r end.
 
+Lemma pad_le {A x y}: A <> 0 ->
+  0 < y mod A <= x mod A -> pad x A <= pad y A.
+Proof.
+  intros Anz [lt le].
+  unfold pad.
+  case_eq (x mod A).
+  + intros. apply Nat.le_0_l.
+  + intros n N.
+    case_eq (y mod A).
+    - intro z.
+      rewrite z in lt.
+      exfalso.
+      exact (Nat.nlt_0_r 0 lt).
+    - intros m M.
+      refine (Nat.sub_le_mono_l _ _ _ _).
+      now rewrite <- N, <- M.
+Qed.
+
+Lemma pad_min a b c: a <> 0 -> c <> 0 ->
+  c mod a = 0 \/ a mod c = 0 ->
+  exists i, forall j, pad (a * i + b) c <= pad (a * j + b) c.
+Proof.
+  intros Anz Cnz.
+  destruct 1.
+  - destruct (proj1 (Nat.mod_divides _ a Anz) H) as [j J].
+    case (Nat.eq_dec (b mod c mod a) 0).
+    + intro R.
+      destruct (proj1 (Nat.mod_divides _ a Anz) R) as [k K].
+      exists (j - k).
+      intro i.
+      unfold pad.
+      rewrite <- (Nat.add_mod_idemp_r _ b c Cnz), K.
+      rewrite <- Nat.mul_add_distr_l.
+      assert (k <= j) as KJ. {
+        refine (Nat.lt_le_incl _ _ _).
+        pose (L := Nat.mod_upper_bound b c Cnz).
+        rewrite K, J in L.
+        exact (proj2 (Nat.mul_lt_mono_pos_l a k j (proj1 (Nat.neq_0_lt_0 _) Anz)) L).
+      }
+      rewrite (Nat.sub_add k j KJ).
+      rewrite <- J.
+      rewrite (Nat.mod_same _ Cnz).
+      apply Nat.le_0_l.
+    + intro R.
+      pose (k := b mod c / a).
+      pose (r := b mod c mod a).
+
+      destruct j; [exfalso; rewrite Nat.mul_0_r in J; now apply Cnz|].
+      exists (j - k).
+      intro i.
+      refine (pad_le Cnz _).
+      rewrite <- (Nat.add_mod_idemp_r _ b c Cnz).
+      rewrite <- (Nat.add_mod_idemp_r _ b c Cnz).
+
+      rewrite (Nat.div_mod (b mod c) a Anz).
+      fold k. fold r.
+
+      rewrite Nat.add_assoc, Nat.add_assoc.
+      rewrite <- Nat.mul_add_distr_l, <- Nat.mul_add_distr_l.
+
+      assert (k <= j) as KJ. {
+        unfold k.
+        refine (proj1 (Nat.lt_succ_r _ _) _).
+        refine (Nat.div_lt_upper_bound _ _ _ Anz _).
+        rewrite <- J.
+        exact (Nat.mod_upper_bound b c Cnz).
+      }
+      rewrite (Nat.sub_add _ _ KJ).
+
+      assert (a * j + r < c) as AJRC. {
+        rewrite J.
+        rewrite Nat.mul_succ_r.
+        refine (proj1 (Nat.add_lt_mono_l _ _ _) _).
+        apply (Nat.mod_upper_bound (b mod c) _ Anz).
+      }
+      rewrite (Nat.mod_small _ _ AJRC).
+
+      rewrite <- (Nat.add_mod_idemp_l _ _ c Cnz), J.
+      rewrite (Nat.mul_mod_distr_l _ _ _ (Nat.neq_succ_0 _) Anz).
+
+      assert (a * ((i + k) mod S j) + r < a * S j) as l. {
+        rewrite Nat.mul_succ_r.
+        refine (Nat.add_le_lt_mono _ _ _ _ _ _).
+        - refine (proj1 (Nat.mul_le_mono_pos_l _ _ _ (proj1 (Nat.neq_0_lt_0 _) Anz)) _).
+          refine (proj2 (Nat.succ_le_mono _ _) _).
+          exact (Nat.mod_upper_bound _ _ (Nat.neq_succ_0 _)).
+        - now apply Nat.mod_upper_bound.
+      }
+      rewrite (Nat.mod_small _ _ l).
+
+      split.
+      ++ rewrite <- (Nat.add_0_l 0).
+         refine (Nat.add_le_lt_mono _ _ _ _ (Nat.le_0_l _) _).
+         now refine (proj1 (Nat.neq_0_lt_0 _) _).
+      ++ refine (proj1 (Nat.add_le_mono_r _ _ _) _).
+         refine (proj1 (Nat.mul_le_mono_pos_l _ _ _ (proj1 (Nat.neq_0_lt_0 _) Anz)) _).
+         refine (proj1 (Nat.lt_succ_r _ _) _).
+         exact (Nat.mod_upper_bound _ _ (Nat.neq_succ_0 _)).
+  - destruct (proj1 (Nat.mod_divides _ _ Cnz) H) as [j J].
+    exists 0.
+    intro i.
+    unfold pad.
+    rewrite J, Nat.mul_0_r, Nat.add_0_l.
+    rewrite <- (Nat.add_mod_idemp_l _ _ _ Cnz).
+    rewrite <- Nat.mul_assoc, Nat.mul_comm.
+    now rewrite (Nat.mod_mul _ _ Cnz), Nat.add_0_l.
+Qed.
+
 Definition aligned x N := N <> 0 /\ pad x N = 0.
 
 Lemma aligned_zero N: aligned 0 (S N).
