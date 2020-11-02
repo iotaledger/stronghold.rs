@@ -17,8 +17,8 @@ use libp2p::mdns::MdnsEvent;
 
 pub type Key = String;
 pub type Value = String;
-pub type PeerIdS = String;
-pub type ReqId = u64;
+pub type ReqId = String;
+pub type PeerStr = String;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MailboxRecord {
@@ -97,17 +97,17 @@ pub enum FailureType {
 pub enum CommunicationEvent {
     Mdns,
     RequestMessage {
-        peer: PeerIdS,
+        peer: PeerStr,
         id: ReqId,
         request: Request,
     },
     ResponseMessage {
-        peer: PeerIdS,
+        peer: PeerStr,
         id: ReqId,
         response: Response,
     },
     RequestResponseError {
-        peer: PeerIdS,
+        peer: PeerStr,
         request_id: ReqId,
         error: RequestResponseError,
     },
@@ -130,12 +130,12 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
                     channel: _,
                 } => CommunicationEvent::RequestMessage {
                     peer: peer.to_string(),
-                    id: request_id.to_string().parse::<u64>().unwrap(),
+                    id: request_id.to_string(),
                     request,
                 },
                 RequestResponseMessage::Response { request_id, response } => CommunicationEvent::ResponseMessage {
                     peer: peer.to_string(),
-                    id: request_id.to_string().parse::<u64>().unwrap(),
+                    id: request_id.to_string(),
                     response,
                 },
             },
@@ -152,7 +152,7 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
                 };
                 CommunicationEvent::RequestResponseError {
                     peer: peer.to_string(),
-                    request_id: request_id.to_string().parse::<u64>().unwrap(),
+                    request_id: request_id.to_string(),
                     error: RequestResponseError {
                         source: FailureSource::Outbound,
                         error,
@@ -171,7 +171,7 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
                 };
                 CommunicationEvent::RequestResponseError {
                     peer: peer.to_string(),
-                    request_id: request_id.to_string().parse::<u64>().unwrap(),
+                    request_id: request_id.to_string(),
                     error: RequestResponseError {
                         source: FailureSource::Inbound,
                         error,

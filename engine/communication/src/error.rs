@@ -9,6 +9,7 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
+use crate::message::ReqId;
 use thiserror::Error as DeriveError;
 
 #[derive(Debug, DeriveError)]
@@ -29,7 +30,7 @@ pub enum QueryError {
     IOError(String),
 
     #[error("Missing Channel for Request: `{0}`")]
-    MissingChannelError(u64),
+    MissingChannelError(ReqId),
 }
 
 pub type QueryResult<T> = std::result::Result<T, QueryError>;

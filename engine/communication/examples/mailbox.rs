@@ -82,7 +82,7 @@ use clap::{load_yaml, App, ArgMatches};
 use communication::{
     behaviour::P2PNetworkBehaviour,
     error::QueryResult,
-    message::{MailboxRecord, Request},
+    message::{CommunicationEvent, MailboxRecord, PeerStr, Request, RequestOutcome, Response},
 };
 use core::{
     str::FromStr,
@@ -90,14 +90,15 @@ use core::{
 };
 use futures::{future, prelude::*};
 use libp2p::{
-    core::{identity::Keypair, PeerId},
+    core::identity::Keypair,
     multiaddr::{multiaddr, Multiaddr},
-    swarm::{Swarm, SwarmEvent},
+    swarm::Swarm,
 };
+use std::collections::BTreeMap;
 
 // only used for this CLI
 struct Matches {
-    mail_id: PeerId,
+    mail_id: PeerStr,
     mail_addr: Multiaddr,
     key: String,
     value: Option<String>,
@@ -105,10 +106,7 @@ struct Matches {
 
 // Match and parse the arguments from the command line
 fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
-    if let Some(mail_id) = matches
-        .value_of("mailbox_id")
-        .and_then(|id_arg| PeerId::from_str(id_arg).ok())
-    {
+    if let Some(mail_id) = matches.value_of("mailbox_id").map(|id_arg| id_arg.to_string()) {
         if let Some(mail_addr) = matches
             .value_of("mailbox_addr")
             .and_then(|addr_arg| Multiaddr::from_str(addr_arg).ok())
@@ -141,29 +139,53 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
         P2PNetworkBehaviour::start_listening(&mut swarm, Some(multiaddr!(Ip4([127, 0, 0, 1]), Tcp(port))))?;
         println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
         let mut listening = false;
+        let mut local_records = BTreeMap::new();
         task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
-            loop {
-                // poll for events from the swarm
-                match swarm.poll_next_unpin(cx) {
-                    Poll::Ready(Some(event)) => println!("{:?}", event),
-                    Poll::Ready(None) => {
-                        return Poll::Ready(());
-                    }
-                    Poll::Pending => {
-                        if !listening {
-                            let mut listeners = P2PNetworkBehaviour::get_listeners(&mut swarm).peekable();
-                            if listeners.peek() == None {
-                                println!("No listeners. The port may already be occupied.")
-                            } else {
-                                println!("Listening on:");
-                                for a in listeners {
-                                    println!("{:?}", a);
+            // poll for events from the swarm, store incoming key-value-records and answer request for
+            // keys
+            match swarm.poll_next_unpin(cx) {
+                Poll::Ready(Some(event)) => {
+                    if let CommunicationEvent::RequestMessage { peer: _, id, request } = event {
+                        println!("Request:{:?}", request);
+                        match request {
+                            Request::Ping => {
+                                swarm.send_response(Response::Pong, id).unwrap();
+                            }
+                            Request::PutRecord(record) => {
+                                local_records.insert(record.key(), record.value());
+                                swarm
+                                    .send_response(Response::Outcome(RequestOutcome::Success), id)
+                                    .unwrap();
+                            }
+                            Request::GetRecord(key) => {
+                                if let Some((key, value)) = local_records.get_key_value(&key) {
+                                    let record = MailboxRecord::new(key.clone(), value.clone());
+                                    swarm.send_response(Response::Record(record), id).unwrap();
+                                } else {
+                                    swarm
+                                        .send_response(Response::Outcome(RequestOutcome::Error), id)
+                                        .unwrap();
                                 }
                             }
-
-                            listening = true;
+                        };
+                    }
+                }
+                Poll::Ready(None) => {
+                    return Poll::Ready(());
+                }
+                Poll::Pending => {
+                    if !listening {
+                        let mut listeners = P2PNetworkBehaviour::get_listeners(&mut swarm).peekable();
+                        if listeners.peek() == None {
+                            println!("No listeners. The port may already be occupied.")
+                        } else {
+                            println!("Listening on:");
+                            for a in listeners {
+                                println!("{:?}", a);
+                            }
                         }
-                        break;
+
+                        listening = true;
                     }
                 }
             }
@@ -189,20 +211,41 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
             println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
 
             // Connect to a remote mailbox on the server.
-            swarm.add_peer(mail_id.clone(), mail_addr);
+            swarm.add_peer(mail_id.clone(), mail_addr.clone());
 
-            // Deposit a record on the mailbox
-            // Triggers the Handler's handle_request_msg() Request::Publish(r) on the mailbox side.
-            let record = MailboxRecord::new(key, value);
-            swarm.send_request(&mail_id, Request::PutRecord(record));
-            // Block until the connection is closed again due to expires.
-            task::block_on(async move {
-                loop {
-                    if let SwarmEvent::ConnectionClosed { .. } = swarm.next_event().await {
-                        break;
+            let mut request_id = None;
+            // Block until the response is received
+            task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
+                // poll for the outcome of the request
+                match swarm.poll_next_unpin(cx) {
+                    Poll::Ready(Some(event)) => {
+                        if let CommunicationEvent::ResponseMessage { peer: _, id, response } = event {
+                            println!("Response:{:?}", response);
+                            if request_id.is_some() && id == request_id.clone().unwrap() {
+                                println!("Response from Mailbox: {:?}", response);
+                                return Poll::Ready(());
+                            }
+                        }
+                        Poll::Pending
+                    }
+                    Poll::Ready(None) => Poll::Ready(()),
+                    Poll::Pending => {
+                        if request_id.is_none() {
+                            if !P2PNetworkBehaviour::is_connected(&mut swarm, mail_id.clone())
+                                && P2PNetworkBehaviour::dial_addr(&mut swarm, mail_addr.clone()).is_err()
+                            {
+                                println!("Could not dial addr");
+                                return Poll::Ready(());
+                            }
+                            // Deposit a record on the mailbox
+                            let record = MailboxRecord::new(key.clone(), value.clone());
+                            request_id = Some(swarm.send_request(mail_id.clone(), Request::PutRecord(record)));
+                            println!("Send Put Record Request {:?}", request_id.clone());
+                        }
+                        Poll::Pending
                     }
                 }
-            });
+            }));
         } else {
             eprintln!("Invalid or missing arguments");
         }
@@ -226,19 +269,45 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
             let mut swarm = P2PNetworkBehaviour::new(local_keys)?;
             println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
 
-            // Connect to a remote mailbox on the server.
-            swarm.add_peer(mail_id.clone(), mail_addr);
+            let mut request_id = None;
+            // Block until the response was received.
+            task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
+                // poll for the outcome of the request
+                match swarm.poll_next_unpin(cx) {
+                    Poll::Ready(Some(event)) => {
+                        if let CommunicationEvent::ResponseMessage { peer: _, id, response } = event {
+                            println!("Response:{:?}", response);
+                            if request_id.is_some() && id == request_id.clone().unwrap() {
+                                if let Response::Record(record) = response {
+                                    println!("Key:\n{:?}, Value:\n{:?}", record.key(), record.value());
+                                } else {
+                                    println!("Response from Mailbox: {:?}", response);
+                                }
+                                return Poll::Ready(());
+                            }
+                        }
+                        Poll::Pending
+                    }
+                    Poll::Ready(None) => Poll::Ready(()),
+                    Poll::Pending => {
+                        if request_id.is_none() {
+                            // Connect to a remote mailbox on the server.
+                            swarm.add_peer(mail_id.clone(), mail_addr.clone());
+                            if !P2PNetworkBehaviour::is_connected(&mut swarm, mail_id.clone())
+                                && P2PNetworkBehaviour::dial_addr(&mut swarm, mail_addr.clone()).is_err()
+                            {
+                                println!("Could not dial addr");
+                                return Poll::Ready(());
+                            }
 
-            // Get Record from remote peer
-            swarm.send_request(&mail_id, Request::GetRecord(key));
-            // Block until the connection is closed again due to expires.
-            task::block_on(async move {
-                loop {
-                    if let SwarmEvent::ConnectionClosed { .. } = swarm.next_event().await {
-                        break;
+                            // Get Record from remote peer
+                            request_id = Some(swarm.send_request(mail_id.clone(), Request::GetRecord(key.clone())));
+                            println!("Send Get Record Request {:?}", request_id);
+                        }
+                        Poll::Pending
                     }
                 }
-            });
+            }));
         } else {
             eprintln!("Invalid or missing arguments");
         }

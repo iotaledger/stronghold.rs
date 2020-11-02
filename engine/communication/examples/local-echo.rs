@@ -26,12 +26,10 @@
 //! "/ip6/::1/tcp/41807"
 //! ```
 //!
-//! The following commands are available for communication and could be used by another peer to communicate
-//! with the first one by pinging it `PING` or sending a message `MSG`:
+//! The ping command is available to test the connection to another peers:
 //!
 //! ```sh
 //! PING "12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA"
-//! MSG "12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA" "The answer to life, the universe and everything is 42."
 //! ```
 //!
 //! Upon receiving a message, the peer will send an echo of the same message back to the original peer.
@@ -56,7 +54,7 @@ use async_std::{
 use communication::{
     behaviour::{P2PNetworkBehaviour, P2PNetworkSwarm},
     error::QueryResult,
-    message::{CommunicationEvent, Request},
+    message::{CommunicationEvent, Request, Response},
 };
 use core::{
     str::FromStr,
@@ -104,8 +102,18 @@ fn listen() -> QueryResult<()> {
             // poll for events from the swarm
             match swarm.poll_next_unpin(cx) {
                 Poll::Ready(Some(event)) => {
-                    if let CommunicationEvent::RequestMessage { peer, id: _, request } = event {
+                    if let CommunicationEvent::RequestMessage { peer, id, request } = event {
                         println!("Received message from peer {:?}\n{:?}", peer, request);
+                        if let Request::Ping = request {
+                            let response = swarm.send_response(Response::Pong, id);
+                            if response.is_ok() {
+                                println!("Send Pong back");
+                            } else {
+                                println!("Error sending pong: {:?}", response.unwrap_err());
+                            }
+                        }
+                    } else if let CommunicationEvent::ResponseMessage { peer, id, response } = event {
+                        println!("Response from peer {:?} for Request {:?}:\n{:?}", peer, id, response)
                     }
                 }
                 Poll::Ready(None) => {
@@ -148,18 +156,15 @@ fn handle_input_line(swarm: &mut P2PNetworkSwarm, line: String) {
         .and_then(|cap| cap.get(1))
         .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
     {
-        swarm.send_request(&peer_id, Request::Ping);
+        swarm.send_request(peer_id.to_string(), Request::Ping);
         println!("Pinged {:?}", peer_id);
-    } else if cfg!(feature = "mdns") && line.contains("LIST") {
-        #[cfg(feature = "mdns")]
-        {
-            let known_peers = swarm.get_active_mdns_peers();
-            for peer in &known_peers {
-                println!("{:?}", peer);
-            }
+    } else if line.contains("LIST") {
+        println!("Known peers:");
+        let known_peers = swarm.get_all_peers();
+        for peer in known_peers {
+            println!("{:?}", peer);
         }
-    }
-    if let Some(peer_addr) = Regex::new("DIAL\\s+\"(/\\w+/.+/tcp/\\d+)\"")
+    } else if let Some(peer_addr) = Regex::new("DIAL\\s+\"(/\\w+/.+/tcp/\\d+)\"")
         .ok()
         .and_then(|regex| regex.captures(&line))
         .and_then(|cap| cap.get(1))
