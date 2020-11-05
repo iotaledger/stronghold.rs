@@ -2,6 +2,13 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 
 Require Import PeanoNat.
+Require Import Psatz.
+
+(* x = mmap N                            *)
+(* |   | p |     n    | q | guard |      *)
+(* P   P   A              P              *)
+(*                                       *)
+(* Question: how can we minimize q?      *)
 
 Definition pad x N :=
   match x mod N with 0 => 0 | r => N - r end.
@@ -9,19 +16,9 @@ Definition pad x N :=
 Lemma pad_le {A x y}: A <> 0 ->
   0 < y mod A <= x mod A -> pad x A <= pad y A.
 Proof.
-  intros Anz [lt le].
+  intros.
   unfold pad.
-  case_eq (x mod A).
-  + intros. apply Nat.le_0_l.
-  + intros n N.
-    case_eq (y mod A).
-    - intro z.
-      rewrite z in lt.
-      exfalso.
-      exact (Nat.nlt_0_r 0 lt).
-    - intros m M.
-      refine (Nat.sub_le_mono_l _ _ _ _).
-      now rewrite <- N, <- M.
+  case_eq (x mod A); case_eq (y mod A); intros; lia.
 Qed.
 
 Definition pad_minimizer a b c :=
@@ -33,7 +30,7 @@ Lemma pad_minimizer_bound a b c:
   pad_minimizer a b c <= c / a.
 Proof.
   unfold pad_minimizer.
-  case ((b mod c mod a) =? 0); [|refine (Nat.le_trans _ (c /a - 1) _ _ _)]; apply Nat.le_sub_l.
+  case (b mod c mod a =? 0); lia.
 Qed.
 
 Lemma pad_min a b c: c mod a = 0 ->
@@ -248,6 +245,8 @@ Record Allocation (n A P: nat) := mkAllocation {
   data_alignment: aligned data A;
   data_accessible: accessible_range data n;
 
+  data_mmapped: exists o N (M: mmap P), data = o + proj1_sig (M N);
+
   pad_pre: nat;
   pad_pre_prop: pad_pre < data;
   page_alignment_pre: aligned (data - pad_pre) P;
@@ -257,33 +256,34 @@ Lemma naive_allocator {P} (M: mmap P):
   forall n {A}, aligned P A -> Allocation n A P.
 Proof.
   intros n A PA.
-  destruct (M (P + n)) as [x [XP XAcc]].
+  case_eq (M (P + n)). intros x [XP XAcc] Mx.
   pose (Anz := proj1 PA).
   pose (Pnz := proj1 XP).
-  refine (mkAllocation _ _ _ (x + P) _ _ _ _ _).
-  + unfold aligned, pad.
-    split. auto.
-    rewrite <- (Nat.add_mod_idemp_l x P A Anz).
+  refine (mkAllocation _ _ _ (x + P) _ _ _ 0 _ _); unfold aligned, pad.
+  + rewrite <- (Nat.add_mod_idemp_l x P A Anz).
     destruct (proj1 (Nat.mod_divides x P Pnz) (aligned_mod XP)) as [i I].
     destruct (proj1 (Nat.mod_divides P A Anz) (aligned_mod PA)) as [j J].
     rewrite I, J, <- Nat.mul_assoc, Nat.mul_comm, Nat.mod_mul by auto.
-    now rewrite Nat.add_0_l, Nat.mul_comm, Nat.mod_mul by auto.
+    now rewrite Nat.add_0_l, Nat.mul_comm, Nat.mod_mul.
   + intros i I.
     rewrite <- Nat.add_assoc.
     refine (XAcc _ _).
-    exact (proj1 (Nat.add_lt_mono_l _ _ _) I).
-  + now refine (Nat.add_le_lt_mono _ _ _ _ (Nat.le_0_l _) (proj1 (Nat.neq_0_lt_0 _) _)).
+    lia.
+  + exists P, (P + n), M.
+    rewrite Mx.
+    simpl.
+    lia.
+  + lia.
   + rewrite Nat.sub_0_r.
-    unfold aligned, pad.
     rewrite <- (Nat.add_mod_idemp_l _ _ _ Pnz).
-    rewrite (aligned_mod XP), Nat.add_0_l.
-    now rewrite Nat.mod_same.
+    now rewrite (aligned_mod XP), Nat.add_0_l, Nat.mod_same.
 Qed.
 
 Definition OptimalAllocation (n A P: nat) :=
   let A := Allocation n A P in
   exists a: A, forall a': A,
   pad (data _ _ _ a + n) P <= pad (data _ _ _ a' + n) P.
+
 (* TODO: optimize over pre and N as well *)
 
 Lemma optimal_allocator_page_aligned {P} (M: mmap P):
@@ -293,7 +293,7 @@ Proof.
   pose (Anz := proj1 PA).
 
   pose (N := P + P + n).
-  destruct (M N) as [x [XP XAcc]].
+  case_eq (M N). intros x [XP XAcc] Mx.
   pose (Pnz := proj1 XP).
 
   pose (k := pad (x + P) A / P).
@@ -385,21 +385,29 @@ Proof.
     now rewrite (Nat.mod_same _ Pnz).
   }
 
-  exists (mkAllocation _ _ _ (di i) da acc (pi i) ppp pre).
-  intro a.
+  eexists (mkAllocation _ _ _ (di i) da acc _ (pi i) ppp pre). {
+    intro a.
+    simpl.
+    unfold qi, di, pi.
+    rewrite K0, P0, Nat.add_0_r, Nat.add_0_l, Nat.mul_1_l.
+    rewrite <- Nat.add_assoc, <- Nat.add_assoc.
+
+    unfold pad at 1.
+    rewrite <- (Nat.add_mod_idemp_l x _ _ Pnz).
+    rewrite (aligned_mod XP), Nat.add_0_l.
+    rewrite <- (Nat.add_mod_idemp_l P _ _ Pnz).
+    rewrite (Nat.mod_same _ Pnz), Nat.add_0_l.
+
+    destruct (proj1 (Nat.mod_divides _ _ Anz) (aligned_mod (data_alignment _ _ _ a))) as [j J].
+    rewrite J, Nat.mul_comm.
+
+    apply (pad_min A _ _ (aligned_mod PA)).
+  }
+
+  Unshelve.
+  exists ((1 + k)*P + p0 + pi i), N, M.
+  unfold di.
+  rewrite Mx.
   simpl.
-  unfold qi, di, pi.
-  rewrite K0, P0, Nat.add_0_r, Nat.add_0_l, Nat.mul_1_l.
-  rewrite <- Nat.add_assoc, <- Nat.add_assoc.
-
-  unfold pad at 1.
-  rewrite <- (Nat.add_mod_idemp_l x _ _ Pnz).
-  rewrite (aligned_mod XP), Nat.add_0_l.
-  rewrite <- (Nat.add_mod_idemp_l P _ _ Pnz).
-  rewrite (Nat.mod_same _ Pnz), Nat.add_0_l.
-
-  destruct (proj1 (Nat.mod_divides _ _ Anz) (aligned_mod (data_alignment _ _ _ a))) as [j J].
-  rewrite J, Nat.mul_comm.
-
-  apply (pad_min A _ _ (aligned_mod PA)).
+  lia.
 Qed.
