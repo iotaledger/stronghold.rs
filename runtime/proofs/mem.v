@@ -49,15 +49,26 @@ Definition pad_minimizer a b c :=
   else c / a - 1 - b mod c / a.
 
 Lemma pad_minimizer_bound a b c:
-  a <> 0 -> c <> 0 -> pad_minimizer a b c < c / a.
+  a <> 0 -> pad_minimizer a b c <= c / a.
 Proof.
-  intros Anz Cnz.
+  intros Anz.
   unfold pad_minimizer.
-Admitted.
+  case (b mod c =? 0); case ((b mod c mod a) =? 0); lia.
+Qed.
 
-Lemma pad_add_small x y A:
-  x < A -> x + pad (x + y) A = pad y A.
-Admitted.
+Lemma pad_add_small x y A: A <> 0 -> x < pad y A -> x + pad (x + y) A = pad y A.
+Proof.
+  intros Anz L.
+  unfold pad in *.
+  case_eq (y mod A).
+  - intro z; rewrite z in L; lia.
+  - intros n N.
+    rewrite N, <- N in L.
+    pose (K := proj1 (Nat.add_lt_mono_r x (A - y mod A) (y mod A)) L).
+    rewrite (Nat.sub_add _ _ (Nat.lt_le_incl _ _ (Nat.mod_upper_bound y _ Anz))) in K.
+    rewrite <- (Nat.add_mod_idemp_r _ _ _ Anz), (Nat.mod_small _ _ K).
+    case_eq (x + y mod A); lia.
+Qed.
 
 Lemma pad_min a b c: c mod a = 0 ->
   let i := pad_minimizer a b c in
@@ -339,13 +350,17 @@ Proof.
 Qed.
 
 Record OptimalAllocation (n A P: nat) := mkOptimalAllocation {
-  a: GuardedAllocation n A P;
+  guarded_allocation: GuardedAllocation n A P;
   post_padding_min: forall a': GuardedAllocation n A P,
-    pad (data' _ _ _ a + n) P <= pad (data' _ _ _ a' + n) P;
+    pad (data' _ _ _ guarded_allocation + n) P <= pad (data' _ _ _ a' + n) P;
   mmapped_size_min: forall a': GuardedAllocation n A P,
-    mmapped_size _ _ _ a <= mmapped_size _ _ _ a';
-  (* TODO: optimize over pre as well *)
+    mmapped_size _ _ _ guarded_allocation <= mmapped_size _ _ _ a';
 }.
+
+Lemma optimal_allocation_min_pad_pre {n A P} (a: OptimalAllocation n A P):
+  forall a': GuardedAllocation n A P,
+  pad_pre _ _ _ (guarded_allocation _ _ _ a) <= pad_pre _ _ _ a'.
+Admitted.
 
 Lemma optimal_allocator_page_aligned {P} (M: mmap P):
   forall n {A}, aligned P A -> OptimalAllocation n A P.
@@ -400,7 +415,7 @@ Proof.
     rewrite <- Nat.add_0_l at 1.
     refine (Nat.add_le_mono _ _ _ _ (Nat.le_0_l _) _).
     refine (Nat.le_trans (i * A) (P / A * A) P _ _).
-    + unfold i; exact (Nat.mul_le_mono_r _ _ A (Nat.lt_le_incl _ _ (pad_minimizer_bound A n P Anz Pnz))).
+    + unfold i; exact (Nat.mul_le_mono_r _ _ A (pad_minimizer_bound A n P Anz)).
     + rewrite Nat.mul_comm; now apply Nat.mul_div_le.
   - rewrite Mx.
     unfold di, pi.
@@ -430,12 +445,8 @@ Proof.
       rewrite <- Nat.add_assoc.
       refine (proj1 (Nat.add_le_mono_l _ _ _) _).
       rewrite Nat.add_comm.
-      rewrite (pad_add_small (i * A) n P); [auto|].
-      refine (Nat.lt_le_trans _ (P / A * A) _ _ _).
-      ++ refine (proj1 (Nat.mul_lt_mono_pos_r A _ _ (proj1 (Nat.neq_0_lt_0 _) Anz)) _).
-         exact (pad_minimizer_bound A n P Anz Pnz).
-      ++ rewrite Nat.mul_comm.
-         apply (Nat.mul_div_le _ _ Anz).
+      rewrite (pad_add_small _ _ _ Pnz); [auto|].
+      admit. (* i * A < pad n P *)
   - intro a'.
     unfold data'.
     simpl.
@@ -473,6 +484,6 @@ Proof.
     refine (Nat.add_le_mono _ _ _ _ (Nat.le_0_l _) _).
     rewrite <- Nat.add_assoc.
     rewrite (pad_add_l _ _ _ Pnz); [|now rewrite Nat.mul_comm, Nat.mod_mul].
-    rewrite (pad_add_small (pad_pre n A P a' mod P) n P); [auto|].
-    apply (Nat.mod_upper_bound _ _ Pnz).
-Qed.
+    rewrite (pad_add_small _ _ _ Pnz); [auto|].
+    admit. (* pad_pre n A P a' mod P < pad n P *)
+Admitted.
