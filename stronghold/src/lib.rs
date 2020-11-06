@@ -34,10 +34,15 @@ mod account;
 mod storage;
 pub use account::Account;
 use anyhow::{anyhow, Context, Result};
-use bee_signing_ext::{binary::ed25519, Signature, Verifier};
+use bee_common_ext::packable::Packable;
+use bee_signing_ext::{
+    binary::{ed25519, BIP32Path},
+    Signature, Signer, Verifier,
+};
 pub use engine::crypto::Error as CryptoError;
 pub use engine::snapshot::Error as SnapshotError;
 pub use engine::vault::Error as VaultError;
+use iota::message::prelude::{Ed25519Signature, ReferenceUnlock, SignatureUnlock, TransactionEssence, UnlockBlock};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -956,6 +961,48 @@ impl Stronghold {
         self.storage
             .garbage_collect_vault(&self.snapshot_password.lock().unwrap().0)?;
         Ok(())
+    }
+
+    /// Gets the unlock blocks for a transaction.
+    pub fn get_transaction_unlock_blocks(
+        &self,
+        account_id: &[u8; 32],
+        essence: &TransactionEssence,
+        paths: &[BIP32Path],
+    ) -> Result<Vec<UnlockBlock>> {
+        let mut serialized_essence = Vec::new();
+        essence
+            .pack(&mut serialized_essence)
+            .map_err(|_| anyhow::anyhow!("invalid parameter: inputs"))?;
+
+        let account = self.account_get_by_id(account_id)?;
+        let seed = account.get_seed();
+        let mut unlock_blocks = vec![];
+        let mut last_index = (None, -1);
+        let seed = account.get_seed();
+        for path in paths.iter() {
+            // Check if current path is same as previous path
+            if last_index.0 == Some(path) {
+                // If so, add a reference unlock block
+                unlock_blocks.push(UnlockBlock::Reference(
+                    ReferenceUnlock::new(last_index.1 as u16).map_err(|e| anyhow::anyhow!(e.to_string()))?,
+                ));
+            } else {
+                // If not, we should create a signature unlock block
+                let private_key = ed25519::Ed25519PrivateKey::generate_from_seed(&seed, path)
+                    .map_err(|_| anyhow::anyhow!("invalid parameter: seed inputs"))?;
+                let public_key = private_key.generate_public_key().to_bytes();
+                // The block should sign the entire transaction essence part of the transaction payload
+                let signature = Box::new(private_key.sign(&serialized_essence).to_bytes());
+                unlock_blocks.push(UnlockBlock::Signature(SignatureUnlock::Ed25519(Ed25519Signature::new(
+                    public_key, signature,
+                ))));
+
+                // Update last signature block path and index
+                last_index = (Some(path), (unlock_blocks.len() - 1) as isize);
+            }
+        }
+        Ok(unlock_blocks)
     }
 }
 

@@ -178,7 +178,7 @@ impl Account {
         })
     }
 
-    fn get_seed(&self) -> ed25519::Ed25519Seed {
+    pub(crate) fn get_seed(&self) -> ed25519::Ed25519Seed {
         let bip39_passphrase = match &self.bip39_passphrase {
             Some(x) => x,
             None => "",
