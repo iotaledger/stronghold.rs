@@ -53,21 +53,70 @@ Lemma pad_minimizer_bound a b c:
 Proof.
   intros Anz.
   unfold pad_minimizer.
-  case (b mod c =? 0); case ((b mod c mod a) =? 0); lia.
+  case (b mod c =? 0); case (b mod c mod a =? 0); lia.
 Qed.
 
-Lemma pad_add_small x y A: A <> 0 -> x < pad y A -> x + pad (x + y) A = pad y A.
+Lemma pad_minimizer_mul_bound a b c:
+  a <> 0 -> pad_minimizer a b c * a <= pad b c.
+Proof.
+  intros Anz.
+  unfold pad_minimizer, pad.
+  case_eq (b mod c =? 0); intro bc; [lia|].
+
+  case_eq (b mod c); [intro H; exfalso; now refine (proj1 (Nat.eqb_neq _ _) bc _)|].
+  intros n N.
+  rewrite <- N.
+  clear n N.
+
+  case_eq (b mod c mod a =? 0).
+  - intro bca.
+    rewrite Nat.mul_sub_distr_r.
+    refine (Nat.le_trans _ (c - b mod c / a * a) _ _ _).
+    + refine (Nat.sub_le_mono_r _ _ _ _).
+      now rewrite Nat.mul_comm, (Nat.mul_div_le c _ Anz).
+    + refine (Nat.sub_le_mono_l _ _ _ _).
+      destruct (proj1 (Nat.mod_divides _ _ Anz) (proj1 (Nat.eqb_eq _ _) bca)) as [j J].
+      now rewrite J, Nat.mul_comm, (Nat.div_mul _ _ Anz).
+  - intro bca.
+    rewrite <- Nat.sub_add_distr.
+    rewrite Nat.mul_sub_distr_r.
+    refine (Nat.le_trans _ (c - (1 + b mod c / a) * a) _ _ _).
+    + refine (Nat.sub_le_mono_r _ _ _ _).
+      now rewrite Nat.mul_comm, (Nat.mul_div_le c _ Anz).
+    + refine (Nat.sub_le_mono_l _ _ _ _).
+      rewrite Nat.mul_add_distr_r.
+      rewrite Nat.add_comm, Nat.mul_1_l.
+
+      rewrite (Nat.div_mod (b mod c) a Anz) at 1.
+      refine (Nat.add_le_mono _ _ _ _ _ _); [lia|].
+      refine (Nat.lt_le_incl _ _ _).
+      now apply Nat.mod_upper_bound.
+Qed.
+
+Lemma pad_add_small x y A: A <> 0 -> x <= pad y A -> x + pad (x + y) A = pad y A.
 Proof.
   intros Anz L.
   unfold pad in *.
   case_eq (y mod A).
-  - intro z; rewrite z in L; lia.
+  - intro z.
+    rewrite z in L.
+    rewrite (proj1 (Nat.le_0_r _) L).
+    repeat rewrite Nat.add_0_l.
+    now rewrite z.
   - intros n N.
     rewrite N, <- N in L.
-    pose (K := proj1 (Nat.add_lt_mono_r x (A - y mod A) (y mod A)) L).
-    rewrite (Nat.sub_add _ _ (Nat.lt_le_incl _ _ (Nat.mod_upper_bound y _ Anz))) in K.
-    rewrite <- (Nat.add_mod_idemp_r _ _ _ Anz), (Nat.mod_small _ _ K).
-    case_eq (x + y mod A); lia.
+    case (Compare_dec.le_lt_eq_dec _ _ L).
+    + intro L'.
+      pose (K := proj1 (Nat.add_lt_mono_r x (A - y mod A) (y mod A)) L').
+      rewrite (Nat.sub_add _ _ (Nat.lt_le_incl _ _ (Nat.mod_upper_bound y _ Anz))) in K.
+      rewrite <- (Nat.add_mod_idemp_r _ _ _ Anz), (Nat.mod_small _ _ K).
+      case_eq (x + y mod A); lia.
+    + intro L'.
+      rewrite L'.
+      rewrite <- (Nat.add_mod_idemp_r _ _ _ Anz).
+      rewrite (Nat.sub_add (y mod A) A (Nat.lt_le_incl _ _ (Nat.mod_upper_bound y _ Anz))).
+      rewrite (Nat.mod_same _ Anz).
+      lia.
 Qed.
 
 Lemma pad_min a b c: c mod a = 0 ->
@@ -446,7 +495,7 @@ Proof.
       refine (proj1 (Nat.add_le_mono_l _ _ _) _).
       rewrite Nat.add_comm.
       rewrite (pad_add_small _ _ _ Pnz); [auto|].
-      admit. (* i * A < pad n P *)
+      exact (pad_minimizer_mul_bound A n P Anz).
   - intro a'.
     unfold data'.
     simpl.
@@ -485,5 +534,5 @@ Proof.
     rewrite <- Nat.add_assoc.
     rewrite (pad_add_l _ _ _ Pnz); [|now rewrite Nat.mul_comm, Nat.mod_mul].
     rewrite (pad_add_small _ _ _ Pnz); [auto|].
-    admit. (* pad_pre n A P a' mod P < pad n P *)
+    admit. (* pad_pre n A P a' mod P <= pad n P *)
 Admitted.
