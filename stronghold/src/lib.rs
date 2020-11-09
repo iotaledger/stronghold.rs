@@ -710,7 +710,7 @@ impl Stronghold {
         let account = self.account_get_by_id(&account_id)?;
         Ok(account.get_address(format!(
             "m/44H/4218H/{}H/{}H/{}H",
-            subaccount, !internal as u32, address_index
+            subaccount, internal as u32, address_index
         ))?)
     }
 
@@ -771,7 +771,7 @@ impl Stronghold {
         let signature: Vec<u8> = account
             .sign_message(
                 message,
-                format!("m/44'/4218'/{}'/{}'/{}'", subaccount, !internal as u32, index),
+                format!("m/44'/4218'/{}'/{}'/{}'", subaccount, internal as u32, index),
             )?
             .to_vec();
         Ok(base64::encode(signature))
