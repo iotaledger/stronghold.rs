@@ -257,7 +257,7 @@ Proof.
   discriminate (proj1 (Nat.le_0_r 1) Q).
 Qed.
 
-Lemma align_weaken {A B} x: aligned A B -> aligned x A -> aligned x B.
+Lemma align_weaken A B x: aligned A B -> aligned x A -> aligned x B.
 Proof.
   intros AB XA.
   destruct (proj1 (Nat.mod_divides _ _ (proj1 AB)) (aligned_mod AB)) as [p P].
@@ -287,7 +287,7 @@ Proof.
   destruct (M n) as [x [XP XAcc]].
   pose (Anz := proj1 PA).
   refine (mkAllocation _ _ x _ _); unfold aligned, pad.
-  + now rewrite (aligned_mod (align_weaken _ PA XP)).
+  + now rewrite (aligned_mod (align_weaken _ _ _ PA XP)).
   + exact XAcc.
 Qed.
 
@@ -317,7 +317,7 @@ Proof.
 
   simple refine (mkGuardedAllocation _ _ _ (mkAllocation _ _ (x + P) _ _) M N 0 0 _ _ _).
   - unfold aligned.
-    now rewrite (pad_add_l _ _ _ Anz (aligned_mod (align_weaken _ PA XP))).
+    now rewrite (pad_add_l _ _ _ Anz (aligned_mod (align_weaken _ _ _ PA XP))).
   - intros i I.
     rewrite <- Nat.add_assoc.
     refine (XAcc _ _).
@@ -350,39 +350,22 @@ Proof.
 
   pose (Anz := proj1 PA).
   pose (Pnz := proj1 XP).
-  pose (XA := aligned_mod (align_weaken x PA XP)).
-
-  pose (k := pad (x + P) A / P).
-  pose (p0 := pad (x + P) A mod P).
-  pose (pi i := p0 + i * A).
-  pose (di i := x + (1 + k) * P + pi i).
-  pose (qi i := pad (di i + n) P).
-
-  assert (P0: p0 = 0). {
-    unfold p0.
-    now rewrite (pad_add_l _ _ _ Anz XA), (proj2 PA), (Nat.mod_0_l _ Pnz).
-  }
-
-  assert (K0: k = 0). {
-    unfold k.
-    rewrite (pad_add_l _ _ _ Anz XA), (proj2 PA).
-    now apply Nat.div_0_l.
-  }
+  pose (XA := aligned_mod (align_weaken _ _ x PA XP)).
 
   pose (i := pad_minimizer A n P).
+  pose (p := i * A).
+  pose (d := x + P + p).
 
-  simple refine (mkOptimalAllocation _ _ _ (mkGuardedAllocation _ _ _ (mkAllocation n A (di i) _ _) M N 0 (pi i) _ _ _) _ _).
+  simple refine (mkOptimalAllocation _ _ _ (mkGuardedAllocation _ _ _ (mkAllocation n A d _ _) M N 0 p _ _ _) _ _).
   - refine (conj Anz _).
-    unfold di, pi.
-    rewrite K0, P0, Nat.add_0_r, Nat.add_0_l, Nat.mul_1_l.
+    unfold d, p.
     repeat rewrite <- Nat.add_assoc.
     rewrite (pad_add_l _ _ _ Anz XA).
     rewrite (pad_add_l _ _ _ Anz (aligned_mod PA)).
     unfold pad.
-    now rewrite (Nat.mod_mul _ _ Anz).
+    now rewrite Nat.mod_mul.
   - intros j J.
-    unfold di, pi.
-    rewrite K0, P0, Nat.add_0_r, Nat.add_0_l, Nat.mul_1_l.
+    unfold d, p.
     repeat rewrite <- Nat.add_assoc.
     refine (XAcc _ _).
     unfold N.
@@ -395,18 +378,10 @@ Proof.
     refine (Nat.le_trans (i * A) (P / A * A) P _ _).
     + unfold i; exact (Nat.mul_le_mono_r _ _ A (pad_minimizer_bound A n P Anz)).
     + rewrite Nat.mul_comm; now apply Nat.mul_div_le.
-  - unfold pi.
-    rewrite P0, Nat.add_0_l.
-    exact (pad_minimizer_mul_bound A n P Anz).
-  - rewrite Mx.
-    unfold di, pi.
-    simpl.
-    repeat rewrite <- Nat.add_assoc.
-    rewrite P0, K0, Nat.mul_0_l.
-    lia.
+  - now apply pad_minimizer_mul_bound.
+  - rewrite Mx; simpl; lia.
   - simpl.
-    unfold di, pi, N.
-    rewrite K0, P0, Nat.add_0_r, Nat.add_0_l, Nat.mul_1_l.
+    unfold d, p, N.
     repeat rewrite <- Nat.add_assoc.
     rewrite (pad_add_l _ _ _ Pnz (aligned_mod XP)).
     rewrite (pad_add_l _ _ _ Pnz (Nat.mod_same _ Pnz)).
@@ -418,15 +393,12 @@ Proof.
     rewrite <- Nat.add_assoc.
     refine (proj1 (Nat.add_le_mono_l _ _ _) _).
     rewrite Nat.add_comm.
-    rewrite pad_add_small.
-    + auto.
-    + exact Pnz.
-    + now apply pad_minimizer_mul_bound.
+    rewrite pad_add_small; [auto|exact Pnz|].
+    now apply pad_minimizer_mul_bound.
   - intro a'.
     unfold data'.
     simpl.
-    unfold di, pi.
-    rewrite K0, P0, Nat.add_0_r, Nat.add_0_l, Nat.mul_1_l.
+    unfold d, p.
     repeat rewrite <- Nat.add_assoc.
     rewrite (pad_add_l _ _ _ Pnz (aligned_mod XP)).
     rewrite (pad_add_l _ _ _ Pnz (Nat.mod_same _ Pnz)).
@@ -440,7 +412,7 @@ Proof.
     rewrite (data_offset _ _ _ a').
     refine (proj1 (Nat.add_le_mono_r _ _ _) _).
     repeat rewrite <- Nat.add_assoc.
-    refine (Nat.add_le_mono _ _ _ _ _ _); [lia|].
+    refine (Nat.add_le_mono _ _ _ _ _ _); [rewrite Nat.mul_add_distr_r; lia|].
     rewrite (Nat.add_comm (pad_pre _ _ _ a') _).
     rewrite <- Nat.add_assoc.
     refine (proj1 (Nat.add_le_mono_l _ _ _) _).
@@ -449,6 +421,105 @@ Proof.
     rewrite (pad_add_l x' _ _ Pnz (aligned_mod X')).
     rewrite (pad_add_l ((1 + offset _ _ _ a') * P) _ _ Pnz (Nat.mod_mul _ _ Pnz)).
     rewrite Nat.add_comm.
-    rewrite (pad_add_small _ _ _ Pnz); [auto|].
+    rewrite pad_add_small; [auto|exact Pnz|].
     exact (pad_pre_prop _ _ _ a').
 Qed.
+
+Lemma optimal_allocator_super_page_aligned {P} (M: mmap P):
+  forall n {A}, A <> 0 -> aligned A P -> OptimalAllocation n A P.
+Proof.
+  intros n A Anz AP.
+  pose (Pnz := proj1 AP).
+
+  pose (N := A + n + pad n P + P).
+  case_eq (M N). intros x [XP XAcc] Mx.
+
+  pose (AP' := Nat.div_mod A P Pnz).
+  rewrite (aligned_mod AP), Nat.add_0_r in AP'.
+  pose (i := A / P).
+
+  assert (Inz: i <> 0) by lia.
+
+  pose (XP' := Nat.div_mod x P Pnz).
+  rewrite (aligned_mod XP), Nat.add_0_r in XP'.
+  pose (j := x / P).
+
+  pose (o := i - 1 - j mod i).
+  pose (d := x + o * P + P).
+
+  simple refine (mkOptimalAllocation _ _ _ (mkGuardedAllocation _ _ _ (mkAllocation n A d _ _) M N o 0 _ _ _) _ _).
+  - refine (conj Anz _).
+    unfold d, o.
+    rewrite XP'.
+    fold j.
+    rewrite (Nat.mul_comm P j).
+    rewrite <- (Nat.mul_1_l P) at 3.
+    repeat rewrite <- Nat.mul_add_distr_r.
+    unfold pad.
+    rewrite (Nat.div_mod j i Inz) at 1.
+    rewrite <- Nat.sub_add_distr.
+    repeat rewrite <- Nat.add_assoc.
+    rewrite Nat.mul_add_distr_r.
+    rewrite <- (Nat.add_mod_idemp_l _ _ _ Anz).
+    rewrite Nat.mul_comm.
+    rewrite Nat.mul_assoc.
+    unfold i at 1.
+    rewrite <- AP'.
+    rewrite Nat.mul_comm at 1.
+    rewrite Nat.mod_mul, Nat.add_0_l, Nat.add_comm, <- Nat.add_assoc.
+    rewrite Nat.sub_add.
+    + rewrite Nat.mul_comm.
+      unfold i.
+      rewrite <- AP'.
+      now rewrite Nat.mod_same.
+    + rewrite Nat.add_1_l.
+      exact (Nat.mod_upper_bound j i Inz).
+    + auto.
+  - intros k K.
+    unfold d.
+    repeat rewrite <- Nat.add_assoc.
+    refine (XAcc _ _).
+    unfold o, N.
+    rewrite (Nat.add_comm P k), Nat.add_assoc.
+    refine (proj1 (Nat.add_lt_mono_r _ _ _) _).
+    rewrite <- Nat.add_assoc.
+    refine (Nat.add_le_lt_mono _ _ _ _ _ _); [|lia].
+    rewrite <- Nat.sub_add_distr, Nat.mul_sub_distr_r, Nat.mul_comm.
+    unfold i.
+    rewrite <- AP'.
+    apply Nat.le_sub_l.
+  - lia.
+  - rewrite Mx. simpl. unfold d. lia.
+  - simpl. unfold N, d.
+    refine (proj1 (Nat.add_le_mono_r _ _ _) _).
+    repeat rewrite <- Nat.add_assoc.
+    rewrite (pad_add_l _ _ _ Pnz (aligned_mod XP)).
+    rewrite (pad_add_l (o * P) _ _ Pnz (Nat.mod_mul _ _ Pnz)).
+    rewrite (pad_add_l _ _ _ Pnz (Nat.mod_same _ Pnz)).
+    repeat rewrite Nat.add_assoc.
+    repeat refine (proj1 (Nat.add_le_mono_r _ _ _) _).
+    rewrite Nat.add_0_r.
+    rewrite AP'.
+    rewrite <- (Nat.mul_1_l P) at 1.
+    rewrite <- Nat.mul_add_distr_r.
+    rewrite Nat.mul_comm.
+    refine (Nat.mul_le_mono_l _ _ _ _).
+    lia.
+  - intro a'.
+    unfold data', d.
+    simpl.
+    repeat rewrite pad_add_l; try auto.
+    + refine (aligned_mod _).
+      refine (align_weaken _ _ _ AP _).
+      exact (data_alignment _ _ (allocation _ _ _ a')).
+    + rewrite <- (Nat.add_mod_idemp_r _ _ _ Pnz).
+      rewrite (Nat.mod_same _ Pnz), Nat.add_0_r.
+      rewrite <- (Nat.add_mod_idemp_r _ _ _ Pnz).
+      rewrite (Nat.mod_mul _ _ Pnz), Nat.add_0_r.
+      apply (aligned_mod XP).
+  - intro a'.
+    simpl.
+    unfold N.
+    refine (Nat.le_trans _ _ _ _ (post_guard _ _ _ a')).
+    admit.
+Admitted.
