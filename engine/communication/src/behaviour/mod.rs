@@ -167,7 +167,6 @@ impl P2PNetworkBehaviour {
 
     pub fn send_request(&mut self, peer_id: PeerStr, request: Request) -> ReqId {
         let peer = PeerId::from_str(&peer_id).unwrap();
-        println!("Target Peer: {:?}", peer);
         self.msg_proto.send_request(&peer, request).to_string()
     }
 
@@ -219,7 +218,7 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<Request, Response>> for P
             self.response_channels.insert(request_id.to_string(), channel);
             CommunicationEvent::RequestMessage {
                 peer: peer.to_string(),
-                id: request_id.to_string(),
+                request_id: request_id.to_string(),
                 request,
             }
         } else {

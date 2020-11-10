@@ -98,12 +98,12 @@ pub enum CommunicationEvent {
     Mdns,
     RequestMessage {
         peer: PeerStr,
-        id: ReqId,
+        request_id: ReqId,
         request: Request,
     },
     ResponseMessage {
         peer: PeerStr,
-        id: ReqId,
+        request_id: ReqId,
         response: Response,
     },
     RequestResponseError {
@@ -130,12 +130,12 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
                     channel: _,
                 } => CommunicationEvent::RequestMessage {
                     peer: peer.to_string(),
-                    id: request_id.to_string(),
+                    request_id: request_id.to_string(),
                     request,
                 },
                 RequestResponseMessage::Response { request_id, response } => CommunicationEvent::ResponseMessage {
                     peer: peer.to_string(),
-                    id: request_id.to_string(),
+                    request_id: request_id.to_string(),
                     response,
                 },
             },

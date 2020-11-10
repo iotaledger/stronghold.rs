@@ -84,7 +84,6 @@ fn poll_stdin(stdin: &mut Lines<BufReader<Stdin>>, cx: &mut Context<'_>) -> Resu
 
 fn listen() -> QueryResult<()> {
     let local_keys = Keypair::generate_ed25519();
-
     // Create a Swarm that implementes the Request-Reponse Protocl and mDNS
     let mut swarm = P2PNetworkBehaviour::new(local_keys)?;
     P2PNetworkBehaviour::start_listening(&mut swarm, None)?;
@@ -102,18 +101,31 @@ fn listen() -> QueryResult<()> {
             // poll for events from the swarm
             match swarm.poll_next_unpin(cx) {
                 Poll::Ready(Some(event)) => {
-                    if let CommunicationEvent::RequestMessage { peer, id, request } = event {
+                    if let CommunicationEvent::RequestMessage {
+                        peer,
+                        request_id,
+                        request,
+                    } = event
+                    {
                         println!("Received message from peer {:?}\n{:?}", peer, request);
                         if let Request::Ping = request {
-                            let response = swarm.send_response(Response::Pong, id);
+                            let response = swarm.send_response(Response::Pong, request_id);
                             if response.is_ok() {
                                 println!("Send Pong back");
                             } else {
                                 println!("Error sending pong: {:?}", response.unwrap_err());
                             }
                         }
-                    } else if let CommunicationEvent::ResponseMessage { peer, id, response } = event {
-                        println!("Response from peer {:?} for Request {:?}:\n{:?}", peer, id, response)
+                    } else if let CommunicationEvent::ResponseMessage {
+                        peer,
+                        request_id,
+                        response,
+                    } = event
+                    {
+                        println!(
+                            "Response from peer {:?} for Request {:?}:\n{:?}",
+                            peer, request_id, response
+                        )
                     }
                 }
                 Poll::Ready(None) => {
