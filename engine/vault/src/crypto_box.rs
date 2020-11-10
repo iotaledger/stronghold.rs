@@ -9,7 +9,11 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use std::{convert::TryFrom, marker::PhantomData};
+use std::{
+    convert::TryFrom,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -99,6 +103,21 @@ impl<T: BoxProvider> Drop for Key<T> {
         }
     }
 }
+
+impl<T: BoxProvider> Hash for Key<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key.hash(state);
+    }
+}
+
+impl<T: BoxProvider> PartialEq for Key<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key && self._box_provider == other._box_provider
+    }
+}
+
+impl<T: BoxProvider> Eq for Key<T> {}
+
 
 /// trait for encryptable data
 pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {

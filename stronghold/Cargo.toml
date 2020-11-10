@@ -29,6 +29,9 @@ tiny-bip39 = "0.7.3"
 bitcoin = "0.23.0"
 hex = "0.4.2"
 
+# concurrent hashmap
+dashmap = "3.11.10"
+
 unicode-normalization = "0.1.13"
 hmac = "0.7.1"
 sha2 = "0.8.1"

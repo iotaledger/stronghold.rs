@@ -29,7 +29,7 @@ pub use crate::vault::results::{DeleteRequest, ListResult, ReadRequest, ReadResu
 
 /// A view over the vault.  `key` is the Key used to lock the data. `chain` is a `ChainRecord` that contains all of the
 /// associated records in the vault.  `valid` is a ValidRecord which contains only valid records.   
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct DBView<P: BoxProvider> {
     key: Key<P>,
     chain: ChainRecord,

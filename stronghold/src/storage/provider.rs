@@ -20,7 +20,7 @@ use random::{
 use serde::{Deserialize, Serialize};
 use vault::{BoxProvider, Key};
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Provider;
 // add Nonce and Tag len to the provider.
 impl Provider {

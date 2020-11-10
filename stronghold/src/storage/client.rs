@@ -9,161 +9,89 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use engine::vault;
+use engine::vault::{BoxProvider, Id, Key};
 
-use vault::{BoxProvider, DBView, DBWriter, Id, Key, RecordHint};
-
-use super::{
-    connection::{send, CRequest, CResult},
-    state::State,
+use std::{
+    collections::{HashMap, HashSet},
+    marker::PhantomData,
 };
-
-use std::{cell::RefCell, collections::HashMap};
 
 use serde::{Deserialize, Serialize};
 
-// structure of the client
+use crate::storage::bucket::{Blob, Bucket};
+
+pub struct Client<P: BoxProvider + Clone + Send + Sync + 'static> {
+    id: Id,
+    blobs: Blob<P>,
+    _provider: PhantomData<P>,
+}
+
 #[derive(Serialize, Deserialize)]
-pub struct Client<P: BoxProvider> {
+pub struct Snapshot<P: BoxProvider + Clone + Send + Sync> {
     pub id: Id,
-    pub db: Vault<P>,
+    pub keys: HashSet<Key<P>>,
+    pub state: HashMap<Vec<u8>, Vec<u8>>,
 }
 
-// structure for the vault.
-#[derive(Serialize, Deserialize)]
-pub struct Vault<P: BoxProvider> {
-    pub key: Key<P>,
-    db: RefCell<Option<DBView<P>>>,
-}
-
-// structure for the snapshot
-#[derive(Serialize, Deserialize)]
-pub struct Snapshot<P: BoxProvider> {
-    pub id: Id,
-    pub key: Key<P>,
-    state: HashMap<Vec<u8>, Vec<u8>>,
-}
-
-impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
-    // create a new client
-    pub fn new(id: Id, key: Key<P>) -> Self {
+impl<P: BoxProvider + Clone + Send + Sync + 'static> Client<P> {
+    pub fn new(id: Id, blobs: Blob<P>) -> Self {
         Self {
             id,
-            db: Vault::<P>::new(key),
+            blobs,
+            _provider: PhantomData,
         }
     }
 
-    // create a chain for the user
-    pub fn create_chain(key: Key<P>, id: Id) -> Client<P> {
-        let req = DBWriter::<P>::create_chain(&key, id);
-        // send to the connection interface.
-        send(CRequest::Write(req));
+    pub fn new_from_snapshot(snapshot: Snapshot<P>) -> Self {
+        let id = snapshot.id;
+        let blobs = Blob::new_from_snapshot(snapshot);
 
         Self {
             id,
-            db: Vault::<P>::new(key),
+            blobs: blobs,
+            _provider: PhantomData,
         }
     }
 
-    // create a record in the vault.
-    pub fn create_record(&self, payload: Vec<u8>, hint: &[u8]) -> Id {
-        self.db.take(|db| {
-            let (record_id, req) = db
-                .writer(self.id)
-                .write(&payload, RecordHint::new(hint).expect(line_error!()))
-                .expect(line_error!());
-
-            req.into_iter().for_each(|req| {
-                send(CRequest::Write(req));
-            });
-
-            record_id
-        })
+    pub fn add_vault(&mut self, key: &Key<P>) {
+        self.blobs.add_vault(key, self.id);
     }
 
-    // list the ids and hints of all of the records in the Vault.
-    pub fn get_index(&self) -> Vec<(Id, RecordHint)> {
-        let mut index = Vec::new();
-        self.db
-            .take(|db| db)
-            .records()
-            .for_each(|(id, hint)| index.push((id, hint)));
-        index
+    pub fn create_record(&mut self, key: Key<P>, payload: Vec<u8>, hint: &[u8]) -> Option<Id> {
+        self.blobs.create_record(self.id, key, payload, hint)
     }
 
-    // read a record by its ID into plaintext.
-    pub fn read_record_by_id(&self, id: Id) -> String {
-        self.db.take(|db| {
-            let read = db.reader().prepare_read(id).expect("unable to read id");
-
-            if let CResult::Read(read) = send(CRequest::Read(read)) {
-                let record = db.reader().read(read).expect(line_error!());
-                String::from_utf8(record).expect("unable to read id")
-            } else {
-                panic!("unable to read id")
-            }
-        })
+    pub fn read_record(&mut self, key: Key<P>, id: Id) {
+        self.blobs.read_record(id, key);
     }
 
-    // Garbage collect the chain and build a new one.
-    pub fn perform_gc(&self) {
-        self.db.take(|db| {
-            let (to_write, to_delete) = db.writer(self.id).gc().expect(line_error!());
-            to_write.into_iter().for_each(|req| {
-                send(CRequest::Write(req));
-            });
-            to_delete.into_iter().for_each(|req| {
-                send(CRequest::Delete(req));
-            });
-        });
+    pub fn preform_gc(&mut self, key: Key<P>) {
+        self.blobs.garbage_collect(self.id, key)
     }
 
-    // create a revoke transaction in the chain.
-    pub fn revoke_record_by_id(&self, id: Id) {
-        self.db.take(|db| {
-            let (to_write, to_delete) = db.writer(self.id).revoke(id).expect(line_error!());
+    pub fn revoke_record_by_id(&mut self, id: Id, key: Key<P>) {
+        self.blobs.revoke_record(self.id, id, key)
+    }
 
-            send(CRequest::Write(to_write));
-            send(CRequest::Delete(to_delete));
-        });
+    pub fn list_valid_ids_for_vault(&mut self, key: Key<P>) {
+        self.blobs.list_all_valid_by_key(key)
     }
 }
 
-impl<P: BoxProvider> Vault<P> {
-    // create a new vault for the key.
-    pub fn new(key: Key<P>) -> Self {
-        let req = send(CRequest::List).list();
-        let db = vault::DBView::load(key.clone(), req).expect(line_error!());
-        Self {
-            key,
-            db: RefCell::new(Some(db)),
-        }
+impl<P: BoxProvider + Clone + Send + Sync> Snapshot<P> {
+    pub fn new(client: &mut Client<P>) -> Self {
+        let id = client.id;
+        let (vkeys, state) = client.blobs.clone().offload_data();
+
+        let mut keys = HashSet::new();
+        vkeys.iter().for_each(|k| {
+            keys.insert(k.clone());
+        });
+
+        Self { id, keys, state }
     }
 
-    // supply the DBView to a function and update it after its been used.
-    pub fn take<T>(&self, f: impl FnOnce(DBView<P>) -> T) -> T {
-        let mut _db = self.db.borrow_mut();
-        let db = _db.take().expect(line_error!());
-        let retval = f(db);
-
-        let req = send(CRequest::List).list();
-        *_db = Some(vault::DBView::load(self.key.clone(), req).expect(line_error!()));
-        retval
-    }
-}
-
-impl<P: BoxProvider> Snapshot<P> {
-    // create a new snapshot.
-    pub fn new(id: Id, key: Key<P>) -> Self {
-        let map = State::offload_data();
-
-        Self { id, key, state: map }
-    }
-
-    // offload the snapshot data to the state map.
-    pub fn offload(self) -> (Id, Key<P>) {
-        State::upload_data(self.state);
-
-        (self.id, self.key)
+    pub fn offload(self) -> (Id, HashSet<Key<P>>, HashMap<Vec<u8>, Vec<u8>>) {
+        (self.id, self.keys, self.state)
     }
 }

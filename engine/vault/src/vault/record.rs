@@ -22,11 +22,11 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 /// List over all records by an owner and ordered by the counter
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChainRecord(HashMap<Id, Vec<Record>>);
 
 /// List of all valid records.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ValidRecord(HashMap<Id, Record>);
 
 impl ChainRecord {
