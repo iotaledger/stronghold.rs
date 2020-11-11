@@ -290,19 +290,22 @@ mod test {
 
         let expected = data.clone();
 
+        let _ = std::fs::copy("test/snapshot.snapshot", "test/temp.snapshot");
         let mut encrypt = OpenOptions::new()
             .write(true)
             .create(true)
-            .open("test/snapshot.snapshot")
+            .open("test/temp.snapshot")
             .unwrap();
 
-        let mut decrypt = OpenOptions::new().read(true).open("test/snapshot.snapshot").unwrap();
+        let mut decrypt = OpenOptions::new().read(true).open("test/temp.snapshot").unwrap();
 
         let mut output: Vec<u8> = Vec::new();
 
         encrypt_snapshot(data, &mut encrypt, password).unwrap();
 
         decrypt_snapshot(&mut decrypt, &mut output, password).unwrap();
+
+        let _ = std::fs::remove_file("test/temp.snapshot");
 
         assert_eq!(expected, output);
     }

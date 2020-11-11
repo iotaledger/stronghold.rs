@@ -1,0 +1,9 @@
+[package]
+name = "iota-stronghold"
+version = "0.1.0"
+authors = ["Daniel Thompson-Yvetot <daniel.yvetot@iota.org>"]
+edition = "2018"
+
+[dependencies]
+
+[workspace]

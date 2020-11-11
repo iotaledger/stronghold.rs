@@ -1,0 +1,123 @@
+name: Engine POC CLI
+version: '1.0'
+author: Tensor Programming <tensordeveloper@gmail.com>
+about: Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
+subcommands:
+  - encrypt:
+      args:
+        - plain:
+            short: p
+            long: plain
+            value_name: plaintext
+            about: a plaintext value that you want to encrypt.
+            required: true
+            takes_value: true
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password you want to use to encrypt/decrypt the snapshot.
+            required: true
+            takes_value: true
+  - snapshot:
+      about: load from an existing snapshot
+      args:
+        - path:
+            short: p
+            long: path
+            value_name: snapshot path
+            required: true
+            takes_value: true
+        - password:
+            short: w
+            long: pass
+            about: the password for the snapshot you want to load.
+            required: true
+            takes_value: true
+  - list:
+      about: Lists the ids of the records inside of your main snapshot
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password for the snapshot.
+            required: true
+            takes_value: true
+        - all:
+            short: A
+            long: all
+            value_name: all
+            about: include revoked records
+            takes_value: false
+  - read:
+      about: read an associated record by id
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password for the snapshot.
+            required: true
+            takes_value: true
+        - id:
+            short: i
+            long: id
+            value_name: id
+            about: the id of the record you want to read.
+            required: true
+            takes_value: true
+  - revoke:
+      about: Revoke a record by id
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password for the snapshot.
+            required: true
+            takes_value: true
+        - id:
+            short: i
+            long: id
+            value_name: id
+            about: the id of the entry
+            required: true
+            takes_value: true
+  - garbage_collect:
+      about: Garbage collect the entire vault and remove revoked records.
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password for the snapshot.
+            required: true
+            takes_value: true
+  - purge:
+      about: Revoke a record by id and perform a gargbage collect
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password for the snapshot.
+            required: true
+            takes_value: true
+        - id:
+            short: i
+            long: id
+            value_name: id
+            about: the id of the entry
+            required: true
+            takes_value: true
+  - take_ownership:
+      about: Take ownership of an existing chain.
+      args:
+        - password:
+            short: w
+            long: pass
+            value_name: password
+            about: the password for the snapshot.
+            required: true
+            takes_value: true

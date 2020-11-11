@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "stronghold",
     "engine",
     "engine/vault",
     "engine/primitives",
@@ -9,5 +8,9 @@ members = [
     "engine/snapshot"
 ]
 exclude = [
-  "engine/examples/commandline",
+  "products/commandline",
+  "products/desktop",
+  "products/SHaaS",
+  "client",
+  "stronghold",
 ]
