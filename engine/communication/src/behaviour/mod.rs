@@ -37,7 +37,7 @@ use libp2p::{
 };
 use protocol::{MessageCodec, MessageProtocol};
 // TODO: support no_std
-use std::collections::btree_map::{BTreeMap, Keys};
+use std::collections::btree_map::BTreeMap;
 mod structs_proto {
     include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
 }
@@ -161,8 +161,8 @@ impl P2PNetworkBehaviour {
         self.peers.get(&peer_id)
     }
 
-    pub fn get_all_peers(&self) -> Keys<PeerStr, Multiaddr> {
-        self.peers.keys()
+    pub fn get_all_peers(&self) -> &BTreeMap<PeerStr, Multiaddr> {
+        &self.peers
     }
 
     pub fn send_request(&mut self, peer_id: PeerStr, request: Request) -> ReqId {
@@ -247,7 +247,7 @@ fn test_new_behaviour() {
         &PeerId::from_public_key(local_keys.public()),
         Swarm::local_peer_id(&swarm)
     );
-    assert!(swarm.get_all_peers().next().is_none());
+    assert!(swarm.get_all_peers().is_empty());
 }
 
 #[test]
@@ -256,5 +256,5 @@ fn test_add_peer() {
     let peer_id = PeerId::random().to_string();
     swarm.add_peer(peer_id.clone(), mock_addr());
     assert!(swarm.get_peer_addr(peer_id.clone()).is_some());
-    assert!(swarm.get_all_peers().any(|p| p == &peer_id));
+    assert!(swarm.get_all_peers().contains_key(&peer_id));
 }

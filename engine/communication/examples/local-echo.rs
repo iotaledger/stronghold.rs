@@ -100,13 +100,12 @@ fn listen() -> QueryResult<()> {
         loop {
             // poll for events from the swarm
             match swarm.poll_next_unpin(cx) {
-                Poll::Ready(Some(event)) => {
-                    if let CommunicationEvent::RequestMessage {
+                Poll::Ready(Some(event)) => match event {
+                    CommunicationEvent::RequestMessage {
                         peer,
                         request_id,
                         request,
-                    } = event
-                    {
+                    } => {
                         println!("Received message from peer {:?}\n{:?}", peer, request);
                         if let Request::Ping = request {
                             let response = swarm.send_response(Response::Pong, request_id);
@@ -116,18 +115,24 @@ fn listen() -> QueryResult<()> {
                                 println!("Error sending pong: {:?}", response.unwrap_err());
                             }
                         }
-                    } else if let CommunicationEvent::ResponseMessage {
+                    }
+                    CommunicationEvent::ResponseMessage {
                         peer,
                         request_id,
                         response,
-                    } = event
-                    {
-                        println!(
-                            "Response from peer {:?} for Request {:?}:\n{:?}",
-                            peer, request_id, response
-                        )
+                    } => println!(
+                        "Response from peer {:?} for Request {:?}:\n{:?}",
+                        peer, request_id, response
+                    ),
+                    CommunicationEvent::RequestResponseError {
+                        peer,
+                        request_id,
+                        error,
+                    } => {
+                        println!("Error for request {:?} to peer {:?}:\n{:?}", request_id, peer, error);
                     }
-                }
+                    _ => {}
+                },
                 Poll::Ready(None) => {
                     return Poll::Ready(());
                 }
@@ -145,9 +150,8 @@ fn listen() -> QueryResult<()> {
                         println!("commands:");
                         println!("PING <peer_id>");
                         println!("DIAL <peer_addr>");
-                        if cfg!(feature = "mdns") {
-                            println!("LIST");
-                        } else {
+                        println!("LIST");
+                        if cfg!(not(feature = "mdns")) {
                             println!("Since mdns is not enabled, peers have to be DIALed first to connect before PING / MSG them");
                         }
                         listening = true;
@@ -173,10 +177,10 @@ fn handle_input_line(swarm: &mut P2PNetworkSwarm, line: String) {
     } else if line.contains("LIST") {
         println!("Known peers:");
         let known_peers = swarm.get_all_peers();
-        for peer in known_peers {
-            println!("{:?}", peer);
+        for (peer, addr) in known_peers {
+            println!("{:?}: {:?}", peer, addr);
         }
-    } else if let Some(peer_addr) = Regex::new("DIAL\\s+\"(/\\w+/.+/tcp/\\d+)\"")
+    } else if let Some(peer_addr) = Regex::new("DIAL\\s+\"(/\\w+/.+/tcp/\\d+(:?/\\w+)*)\"")
         .ok()
         .and_then(|regex| regex.captures(&line))
         .and_then(|cap| cap.get(1))

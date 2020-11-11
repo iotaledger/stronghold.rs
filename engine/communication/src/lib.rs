@@ -65,6 +65,7 @@
 //! it publishes the record in kademlia upon receiving such a message. The remote peer can then connect to the same
 //! mailbox and query kademlia for the record. An example for this implementation is provided in /examples/mailbox.rs.
 
+pub mod actor;
 pub mod behaviour;
 pub mod error;
 pub mod message;

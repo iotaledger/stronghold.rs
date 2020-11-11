@@ -60,14 +60,14 @@ pub enum RequestOutcome {
     Error,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ProcedureError {
     Outbound,
     Inbound,
     Other(String),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RequestResponseError {
     source: FailureSource,
     error: FailureType,
@@ -79,13 +79,13 @@ impl RequestResponseError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum FailureSource {
     Outbound,
     Inbound,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum FailureType {
     DialFailure,
     Timeout,
@@ -93,7 +93,7 @@ pub enum FailureType {
     UnsupportedProtocols,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum CommunicationEvent {
     Mdns,
     RequestMessage {
