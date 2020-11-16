@@ -9,7 +9,7 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use std::{convert::TryFrom, marker::PhantomData};
+use std::{convert::TryFrom, marker::PhantomData, hash::{Hash, Hasher}};
 
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +97,21 @@ impl<T: BoxProvider> Drop for Key<T> {
         if let Some(hook) = self.drop_fn {
             hook(&mut self.key);
         }
+    }
+}
+
+impl<T: BoxProvider> Eq for Key<T> {}
+
+impl<T: BoxProvider> PartialEq for Key<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key && self._box_provider == other._box_provider
+    }
+}
+
+impl<T: BoxProvider> Hash for Key<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key.hash(state);
+        self._box_provider.hash(state);
     }
 }
 
