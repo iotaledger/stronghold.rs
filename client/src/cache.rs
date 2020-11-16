@@ -17,6 +17,10 @@ impl<T> Value<T> {
     pub fn new(val: T) -> Self {
         Self(val)
     }
+
+    pub fn inner(self) -> T {
+        self.0
+    }
 }
 
 pub struct Cache {
@@ -33,7 +37,7 @@ pub enum CRequest {
 
 #[derive(Clone)]
 pub enum CResult {
-    List,
+    List(Vec<ReadResult>),
     Write,
     Delete,
     Read(ReadResult),
@@ -70,7 +74,17 @@ impl Cache {
 
     pub fn send(&mut self, req: CRequest) -> CResult {
         let result = match req {
-            CRequest::List => CResult::List,
+            CRequest::List => {
+                let data: Vec<ReadResult> = self
+                    .table
+                    .clone()
+                    .into_read_only()
+                    .iter()
+                    .map(|(k, v)| ReadResult::new(Kind::Transaction, k, &v.clone().inner().read_secret()))
+                    .collect();
+
+                CResult::List(data.into())
+            }
             CRequest::Write(write) => {
                 self.add_data(write.id().to_vec(), write.data().to_vec());
                 CResult::Write
@@ -89,6 +103,15 @@ impl Cache {
             }
         };
         result
+    }
+}
+
+impl CResult {
+    pub fn list(self) -> Vec<ReadResult> {
+        match self {
+            CResult::List(list) => list,
+            _ => panic!(line_error!()),
+        }
     }
 }
 
