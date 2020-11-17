@@ -12,23 +12,24 @@ use crate::{
     bucket::{Blob, Bucket},
     line_error,
     provider::Provider,
+    ClientId,
 };
 
 pub struct Client<P: BoxProvider + Clone + Send + Sync + 'static> {
-    id: RecordId,
+    id: ClientId,
     blobs: Blob<P>,
     _provider: PhantomData<P>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Snapshot<P: BoxProvider + Clone + Send + Sync> {
-    pub id: RecordId,
+    pub id: ClientId,
     pub keys: HashSet<Key<P>>,
     pub state: HashMap<Vec<u8>, Vec<u8>>,
 }
 
 impl<P: BoxProvider + Clone + Send + Sync + 'static> Client<P> {
-    pub fn new(id: RecordId, blobs: Blob<P>) -> Self {
+    pub fn new(id: ClientId, blobs: Blob<P>) -> Self {
         Self {
             id,
             blobs,
@@ -76,6 +77,7 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Client<P> {
 mod tests {
     use super::*;
 
+    #[test]
     fn test_stuff() {
         let id1 = RecordId::random::<Provider>().expect(line_error!());
         let id2 = RecordId::random::<Provider>().expect(line_error!());

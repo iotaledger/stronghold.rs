@@ -7,7 +7,7 @@ mod ids;
 mod provider;
 mod secret;
 
-pub use ids::ClientId;
+pub use crate::ids::ClientId;
 
 #[macro_export]
 macro_rules! line_error {

@@ -6,7 +6,7 @@ use std::{collections::HashMap, iter::empty};
 use crate::{
     cache::{CRequest, CResult, Cache},
     client::Snapshot,
-    line_error,
+    line_error, ClientId,
 };
 
 pub struct Blob<P: BoxProvider + Send + Sync + Clone + 'static> {
@@ -15,11 +15,11 @@ pub struct Blob<P: BoxProvider + Send + Sync + Clone + 'static> {
 }
 
 pub trait Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
-    fn create_record(&mut self, uid: RecordId, key: Key<P>, payload: Vec<u8>);
-    fn add_vault(&mut self, key: &Key<P>, uid: RecordId);
-    fn read_record(&mut self, uid: RecordId, key: Key<P>);
-    fn garbage_collect(&mut self, uid: RecordId, key: Key<P>);
-    fn revoke_record(&mut self, uid: RecordId, tx_id: RecordId, key: Key<P>);
+    fn create_record(&mut self, uid: ClientId, key: Key<P>, payload: Vec<u8>);
+    fn add_vault(&mut self, key: &Key<P>, uid: ClientId);
+    fn read_record(&mut self, id: RecordId, key: Key<P>);
+    fn garbage_collect(&mut self, uid: ClientId, key: Key<P>);
+    fn revoke_record(&mut self, uid: ClientId, tx_id: RecordId, key: Key<P>);
     fn list_all_valid_by_key(&mut self, key: Key<P>);
     fn offload_data(self) -> (Vec<Key<P>>, HashMap<Vec<u8>, Vec<u8>>);
 }
@@ -57,23 +57,23 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Blob<P> {
 }
 
 impl<P: BoxProvider + Clone + Send + Sync + 'static> Bucket<P> for Blob<P> {
-    fn create_record(&mut self, uid: RecordId, key: Key<P>, payload: Vec<u8>) {
+    fn create_record(&mut self, uid: ClientId, key: Key<P>, payload: Vec<u8>) {
         unimplemented!()
     }
 
-    fn add_vault(&mut self, key: &Key<P>, uid: RecordId) {
+    fn add_vault(&mut self, key: &Key<P>, uid: ClientId) {
         unimplemented!()
     }
 
-    fn read_record(&mut self, uid: RecordId, key: Key<P>) {
+    fn read_record(&mut self, id: RecordId, key: Key<P>) {
         unimplemented!()
     }
 
-    fn garbage_collect(&mut self, uid: RecordId, key: Key<P>) {
+    fn garbage_collect(&mut self, uid: ClientId, key: Key<P>) {
         unimplemented!()
     }
 
-    fn revoke_record(&mut self, uid: RecordId, tx_id: RecordId, key: Key<P>) {
+    fn revoke_record(&mut self, uid: ClientId, tx_id: RecordId, key: Key<P>) {
         unimplemented!()
     }
 

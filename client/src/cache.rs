@@ -1,13 +1,14 @@
 use std::{collections::HashMap, convert::TryFrom, fmt::Debug};
 
 use dashmap::DashMap;
-use engine::vault::{DeleteRequest, Kind, ReadRequest, ReadResult, RecordId, WriteRequest};
+use engine::vault::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
 
 use zeroize_derive::Zeroize;
 
 use crate::{
     line_error,
     secret::{CloneSecret, ReadSecret, Secret},
+    ClientId,
 };
 
 #[derive(Clone, Debug, Zeroize)]
@@ -37,7 +38,7 @@ pub enum CRequest {
 
 #[derive(Clone)]
 pub enum CResult {
-    List(Vec<ReadResult>, Vec<RecordId>),
+    List(Vec<ReadResult>, Vec<ClientId>),
     Write,
     Delete,
     Read(ReadResult),
@@ -93,7 +94,7 @@ impl Cache {
 }
 
 impl CResult {
-    pub fn list(self) -> (Vec<ReadResult>, Vec<RecordId>) {
+    pub fn list(self) -> (Vec<ReadResult>, Vec<ClientId>) {
         match self {
             CResult::List(readreq, ids) => (readreq, ids),
             _ => panic!(line_error!()),
