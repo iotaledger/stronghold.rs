@@ -52,64 +52,21 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Blob<P> {
     }
 
     pub fn reset_view(&mut self, key: Key<P>) {
-        let (req, ids) = self.cache.send(CRequest::List).list();
-
-        ids.into_iter().for_each(|i| println!("{:?}", i));
-
-        self.vaults.insert(
-            key.clone(),
-            Some(DBView::load(key, req.into_iter()).expect(line_error!())),
-        );
+        unimplemented!()
     }
 }
 
 impl<P: BoxProvider + Clone + Send + Sync + 'static> Bucket<P> for Blob<P> {
     fn create_record(&mut self, uid: RecordId, key: Key<P>, payload: Vec<u8>) {
-        let view = self.get_view(&key);
-
-        if let Some(v) = view {
-            let req = v
-                .writer(uid)
-                .write(&payload, RecordHint::new(b"").expect(line_error!()))
-                .expect(line_error!());
-
-            req.into_iter().for_each(|r| {
-                self.cache.send(CRequest::Write(r));
-            });
-
-            v.writer(uid).truncate().expect(line_error!());
-        };
+        unimplemented!()
     }
 
     fn add_vault(&mut self, key: &Key<P>, uid: RecordId) {
-        let view = DBView::load(key.clone(), empty::<ReadResult>()).expect(line_error!());
-
-        let req = view.writer(uid).truncate().expect(line_error!());
-
-        self.cache.send(CRequest::Write(req));
-
-        self.reset_view(key.clone());
+        unimplemented!()
     }
 
     fn read_record(&mut self, uid: RecordId, key: Key<P>) {
-        let view = self.get_view(&key);
-
-        if let Some(v) = view {
-            let read = v.reader().prepare_read(&uid).expect("unable to read id");
-
-            match read {
-                PreparedRead::CacheHit(data) => println!("Plain: {:?}", String::from_utf8(data).unwrap()),
-                PreparedRead::CacheMiss(r) => {
-                    if let CResult::Read(read) = self.cache.send(CRequest::Read(r)) {
-                        let record = v.reader().read(read).expect(line_error!());
-                        println!("Plain: {:?}", String::from_utf8(record).unwrap());
-                    }
-                }
-                _ => println!("unable to read record"),
-            }
-        }
-
-        self.reset_view(key);
+        unimplemented!()
     }
 
     fn garbage_collect(&mut self, uid: RecordId, key: Key<P>) {

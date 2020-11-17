@@ -7,6 +7,8 @@ mod ids;
 mod provider;
 mod secret;
 
+pub use ids::ClientId;
+
 #[macro_export]
 macro_rules! line_error {
     () => {

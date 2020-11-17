@@ -14,7 +14,7 @@ pub struct ClientId(ID);
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
-pub struct VaultId(ID);
+pub(crate) struct VaultId(ID);
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
