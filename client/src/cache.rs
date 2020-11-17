@@ -1,7 +1,7 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, convert::TryFrom, fmt::Debug};
 
 use dashmap::DashMap;
-use engine::vault::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
+use engine::vault::{DeleteRequest, Kind, ReadRequest, ReadResult, RecordId, WriteRequest};
 
 use zeroize_derive::Zeroize;
 
@@ -37,7 +37,7 @@ pub enum CRequest {
 
 #[derive(Clone)]
 pub enum CResult {
-    List(Vec<ReadResult>),
+    List(Vec<ReadResult>, Vec<RecordId>),
     Write,
     Delete,
     Read(ReadResult),
@@ -74,17 +74,7 @@ impl Cache {
 
     pub fn send(&mut self, req: CRequest) -> CResult {
         let result = match req {
-            CRequest::List => {
-                let data: Vec<ReadResult> = self
-                    .table
-                    .clone()
-                    .into_read_only()
-                    .iter()
-                    .map(|(k, v)| ReadResult::new(Kind::Transaction, k, &v.clone().inner().read_secret()))
-                    .collect();
-
-                CResult::List(data.into())
-            }
+            CRequest::List => unimplemented!(),
             CRequest::Write(write) => {
                 self.add_data(write.id().to_vec(), write.data().to_vec());
                 CResult::Write
@@ -95,11 +85,7 @@ impl Cache {
             }
             CRequest::Read(read) => {
                 let state = self.read_data(read.id().to_vec());
-                CResult::Read(ReadResult::new(
-                    Kind::Transaction,
-                    read.id(),
-                    &state.0.read_secret().to_vec(),
-                ))
+                CResult::Read(ReadResult::new(read.kind(), read.id(), &state.0.read_secret().to_vec()))
             }
         };
         result
@@ -107,9 +93,9 @@ impl Cache {
 }
 
 impl CResult {
-    pub fn list(self) -> Vec<ReadResult> {
+    pub fn list(self) -> (Vec<ReadResult>, Vec<RecordId>) {
         match self {
-            CResult::List(list) => list,
+            CResult::List(readreq, ids) => (readreq, ids),
             _ => panic!(line_error!()),
         }
     }

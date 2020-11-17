@@ -1,15 +1,13 @@
 use engine::crypto::XChaChaPoly;
+
 use engine::random::{
     primitives::{cipher::AeadCipher, rng::SecureRng},
     OsRng,
 };
+
 use engine::vault::{BoxProvider, Error, Key, Result};
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Provider;
-
 impl Provider {
     const NONCE_LEN: usize = 24;
     const TAG_LEN: usize = 16;
@@ -25,16 +23,15 @@ impl BoxProvider for Provider {
     }
 
     fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-        let mut bx = vec![0; data.len() + Self::box_overhead()];
-        let (nonce, cipher) = bx.split_at_mut(Self::NONCE_LEN);
+        let mut boxx = vec![0; data.len() + Self::box_overhead()];
+        let (nonce, cipher) = boxx.split_at_mut(Self::NONCE_LEN);
         Self::random_buf(nonce)?;
 
         XChaChaPoly
             .seal_with(cipher, data, ad, key.bytes(), nonce)
             .map_err(|_| Error::CryptoError(String::from("Unable to seal data")))?;
-        Ok(bx)
+        Ok(boxx)
     }
-
     fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>> {
         let mut plain = match data.len() {
             len if len >= Self::box_overhead() => vec![0; len - Self::box_overhead()],

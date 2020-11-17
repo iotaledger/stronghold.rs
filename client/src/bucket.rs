@@ -1,7 +1,7 @@
 use dashmap::DashMap;
-use engine::vault::{BoxProvider, ChainId, DBView, DBWriter, Key, RecordHint, RecordId};
+use engine::vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId};
 
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::empty};
 
 use crate::{
     cache::{CRequest, CResult, Cache},
@@ -16,7 +16,7 @@ pub struct Blob<P: BoxProvider + Send + Sync + Clone + 'static> {
 
 pub trait Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
     fn create_record(&mut self, uid: RecordId, key: Key<P>, payload: Vec<u8>);
-    fn add_vault(&mut self, key: &Key<P>, uid: ChainId);
+    fn add_vault(&mut self, key: &Key<P>, uid: RecordId);
     fn read_record(&mut self, uid: RecordId, key: Key<P>);
     fn garbage_collect(&mut self, uid: RecordId, key: Key<P>);
     fn revoke_record(&mut self, uid: RecordId, tx_id: RecordId, key: Key<P>);
@@ -48,13 +48,13 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Blob<P> {
     }
 
     pub fn get_view(&mut self, key: &Key<P>) -> Option<DBView<P>> {
-        let (_, view) = self.vaults.remove(key).expect(line_error!());
-
-        view
+        unimplemented!()
     }
 
     pub fn reset_view(&mut self, key: Key<P>) {
-        let req = self.cache.send(CRequest::List).list();
+        let (req, ids) = self.cache.send(CRequest::List).list();
+
+        ids.into_iter().for_each(|i| println!("{:?}", i));
 
         self.vaults.insert(
             key.clone(),
@@ -76,15 +76,40 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Bucket<P> for Blob<P> {
             req.into_iter().for_each(|r| {
                 self.cache.send(CRequest::Write(r));
             });
+
+            v.writer(uid).truncate().expect(line_error!());
         };
     }
 
-    fn add_vault(&mut self, key: &Key<P>, uid: ChainId) {
-        unimplemented!()
+    fn add_vault(&mut self, key: &Key<P>, uid: RecordId) {
+        let view = DBView::load(key.clone(), empty::<ReadResult>()).expect(line_error!());
+
+        let req = view.writer(uid).truncate().expect(line_error!());
+
+        self.cache.send(CRequest::Write(req));
+
+        self.reset_view(key.clone());
     }
 
     fn read_record(&mut self, uid: RecordId, key: Key<P>) {
-        unimplemented!()
+        let view = self.get_view(&key);
+
+        if let Some(v) = view {
+            let read = v.reader().prepare_read(&uid).expect("unable to read id");
+
+            match read {
+                PreparedRead::CacheHit(data) => println!("Plain: {:?}", String::from_utf8(data).unwrap()),
+                PreparedRead::CacheMiss(r) => {
+                    if let CResult::Read(read) = self.cache.send(CRequest::Read(r)) {
+                        let record = v.reader().read(read).expect(line_error!());
+                        println!("Plain: {:?}", String::from_utf8(record).unwrap());
+                    }
+                }
+                _ => println!("unable to read record"),
+            }
+        }
+
+        self.reset_view(key);
     }
 
     fn garbage_collect(&mut self, uid: RecordId, key: Key<P>) {
