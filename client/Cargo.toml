@@ -12,6 +12,7 @@ serde = {version = "1.0", features = ["derive"]}
 dashmap = "3.11"
 zeroize = "1.1"
 zeroize_derive = "1.0"
-
+anyhow = "1.0"
+thiserror = "1.0"
 
 [workspace]
