@@ -26,5 +26,3 @@ pub enum Error {
     #[error("Vault Error: {0}")]
     VaultError(#[from] engine::vault::Error),
 }
-
-fn main() {}
