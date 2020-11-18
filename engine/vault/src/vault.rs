@@ -185,7 +185,7 @@ impl<P: BoxProvider> DBView<P> {
             .get(&record.0)
             .and_then(|r| r.highest_ctr())
             .map(|v| v + 1)
-            .unwrap_or(0u64.into());
+            .unwrap_or_else(|| 0u64.into());
 
         DBWriter {
             view: self,
