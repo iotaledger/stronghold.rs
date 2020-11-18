@@ -12,5 +12,4 @@ exclude = [
   "products/desktop",
   "products/SHaaS",
   "client",
-  "stronghold",
 ]

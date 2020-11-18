@@ -3,25 +3,27 @@
 
 use crate::{
     base64::Base64Encodable,
-    crypto_box::{BoxProvider, Key, Encrypt, Decrypt},
+    crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
     types::{
-        transactions::{Transaction, DataTransaction, InitTransaction, RevocationTransaction, SealedTransaction, SealedBlob},
-        utils::{BlobId, TransactionId, ChainId, RecordHint, Val},
+        transactions::{
+            DataTransaction, InitTransaction, RevocationTransaction, SealedBlob, SealedTransaction, Transaction,
+        },
+        utils::{BlobId, ChainId, RecordHint, TransactionId, Val},
     },
 };
 
 use serde::{Deserialize, Serialize};
 
 use std::{
-    fmt::{self, Debug, Display, Formatter},
-    convert::{TryFrom, TryInto},
     collections::HashMap,
+    convert::{TryFrom, TryInto},
+    fmt::{self, Debug, Display, Formatter},
 };
 
 mod chain;
 mod protocol;
 
-pub use crate::vault::protocol::{Kind, DeleteRequest, ReadRequest, ReadResult, WriteRequest};
+pub use crate::vault::protocol::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
 
 /// A record identifier
 #[repr(transparent)]
@@ -87,7 +89,7 @@ impl<P: BoxProvider> DBView<P> {
                     let tx = SealedTransaction::from(r.data()).decrypt(&key, r.id())?;
                     if id != tx.untyped().id {
                         // TODO: more precise error w/ the failing transaction id
-                        return Err(crate::Error::InterfaceError)
+                        return Err(crate::Error::InterfaceError);
                     }
 
                     if let Some(dtx) = tx.typed::<DataTransaction>() {
@@ -96,12 +98,12 @@ impl<P: BoxProvider> DBView<P> {
 
                     raw_chains.entry(tx.untyped().chain).or_default().push(id);
                     txs.insert(id, tx);
-                },
+                }
                 Kind::Blob => {
                     let id = BlobId::try_from(r.id())?;
                     cache.insert(id, SealedBlob::from(r.data()));
                     blobs.entry(id).or_default();
-                },
+                }
             }
         }
 
@@ -110,7 +112,13 @@ impl<P: BoxProvider> DBView<P> {
             chains.insert(*cid, chain::Chain::prune(chain.iter().filter_map(|t| txs.get(t)))?);
         }
 
-        Ok(Self { key, txs, chains, blobs, cache })
+        Ok(Self {
+            key,
+            txs,
+            chains,
+            blobs,
+            cache,
+        })
     }
 
     /// Creates an iterator over all valid record identifiers and their corresponding record hints
@@ -141,7 +149,8 @@ impl<P: BoxProvider> DBView<P> {
 
     /// Get highest counter from the vault for known records
     pub fn chain_ctrs(&self) -> HashMap<RecordId, u64> {
-        self.chains.iter()
+        self.chains
+            .iter()
             .filter_map(|(id, r)| r.highest_ctr().map(|ctr| (RecordId(*id), ctr.u64())))
             .collect()
     }
@@ -171,27 +180,44 @@ impl<P: BoxProvider> DBView<P> {
 
     /// Converts the `DBView` into a `DBWriter` for a specific record.
     pub fn writer(&self, record: RecordId) -> DBWriter<P> {
-        let next_ctr = self.chains.get(&record.0)
-            .and_then(|r| r.highest_ctr()).map(|v| v + 1).unwrap_or(0u64.into());
+        let next_ctr = self
+            .chains
+            .get(&record.0)
+            .and_then(|r| r.highest_ctr())
+            .map(|v| v + 1)
+            .unwrap_or(0u64.into());
 
-        DBWriter { view: self, chain: record.0, next_ctr }
+        DBWriter {
+            view: self,
+            chain: record.0,
+            next_ctr,
+        }
     }
 
     /// Garbage collect the records.
     pub fn gc(&self) -> Vec<DeleteRequest> {
         // TODO: iterate through the blobs and check if any can be removed
-        self.chains.values()
+        self.chains
+            .values()
             .map(|r| r.garbage().iter().cloned().map(DeleteRequest::transaction))
-            .flatten().collect()
+            .flatten()
+            .collect()
     }
 }
 
 impl<P: BoxProvider> Debug for DBView<P> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let cs: HashMap<_, Vec<_>> = self.chains.iter().map(|(cid, c)|
-            (cid, c.subchain().iter().filter_map(|tx| self.txs.get(tx)).collect())).collect();
-        let garbage: Vec<_> = self.chains.values().map(|c|
-            c.garbage().iter().filter_map(|tx| self.txs.get(tx))).flatten().collect();
+        let cs: HashMap<_, Vec<_>> = self
+            .chains
+            .iter()
+            .map(|(cid, c)| (cid, c.subchain().iter().filter_map(|tx| self.txs.get(tx)).collect()))
+            .collect();
+        let garbage: Vec<_> = self
+            .chains
+            .values()
+            .map(|c| c.garbage().iter().filter_map(|tx| self.txs.get(tx)))
+            .flatten()
+            .collect();
         f.debug_struct("DBView")
             .field("chains", &cs)
             .field("garbage", &garbage)
@@ -236,7 +262,7 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
                 let tx = self.view.txs.get(&tx_id).unwrap().typed::<DataTransaction>().unwrap();
                 match self.view.cache.get(&tx.blob) {
                     Some(sb) => Ok(PreparedRead::CacheHit(sb.decrypt(&self.view.key, tx.blob)?)),
-                    None => Ok(PreparedRead::CacheMiss(ReadRequest::blob(tx.blob)))
+                    None => Ok(PreparedRead::CacheMiss(ReadRequest::blob(tx.blob))),
                 }
             }
         }
@@ -255,15 +281,23 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
     }
 
     fn is_active_blob(&self, bid: &BlobId) -> bool {
-        self.view.blobs.get(bid).map(|txs| txs.iter().any(|t0| {
-            self.view.txs.get(t0)
-                .and_then(|tx| tx.typed::<DataTransaction>())
-                .and_then(|tx| if tx.blob == *bid { Some(tx.chain) } else { None })
-                .and_then(|cid| self.view.chains.get(&cid))
-                .and_then(|c| c.data())
-                .map(|t1| *t0 == t1)
-                .unwrap_or(false)
-        })).unwrap_or(false)
+        self.view
+            .blobs
+            .get(bid)
+            .map(|txs| {
+                txs.iter().any(|t0| {
+                    self.view
+                        .txs
+                        .get(t0)
+                        .and_then(|tx| tx.typed::<DataTransaction>())
+                        .and_then(|tx| if tx.blob == *bid { Some(tx.chain) } else { None })
+                        .and_then(|cid| self.view.chains.get(&cid))
+                        .and_then(|c| c.data())
+                        .map(|t1| *t0 == t1)
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false)
     }
 
     pub fn exists(&self, id: RecordId) -> bool {
@@ -300,7 +334,7 @@ impl<'a, P: BoxProvider> DBWriter<'a, P> {
     pub fn relative_balance(&self) -> (usize, usize) {
         match self.view.chains.get(&self.chain) {
             Some(c) => c.balance(),
-            None => (0, 0)
+            None => (0, 0),
         }
     }
 
