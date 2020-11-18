@@ -1,3 +1,5 @@
+/*
+
 // "imports"
 type RecordId = ();
 type RequestId = ();
@@ -159,17 +161,8 @@ struct Response {
 fn handle_sign_request(req: SignRequest) -> SignResponse {
 }
 
+// Client -> Request -> Stronghold -> Data -> Another Stronghold || Client || Self 
+//                       | -> Response -> Client   
+*/
 
-fn foo() -> u8 { 7 }
-
-fn main() {
-    let x = {
-        10,
-    };
-}
-
-///
-/// 
-/// Client -> Request -> Stronghold -> Data -> Another Stronghold || Client || Self 
-///                       | -> Response -> Client   
-///
+fn main () {}
