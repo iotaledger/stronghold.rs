@@ -6,12 +6,9 @@ use utils::provider::Provider;
 
 mod fresh;
 
-use vault::{DBView, Key, Result, RecordId, ReadResult, WriteRequest, PreparedRead, Kind, Encrypt};
+use vault::{DBView, Encrypt, Key, Kind, PreparedRead, ReadResult, RecordId, Result, WriteRequest};
 
-use std::{
-    iter::empty,
-    collections::HashMap,
-};
+use std::{collections::HashMap, iter::empty};
 
 fn write_to_read(wr: &WriteRequest) -> ReadResult {
     ReadResult::new(wr.kind(), wr.id(), wr.data())
@@ -109,7 +106,7 @@ fn test_write_cache_miss() -> Result<()> {
 
             assert_eq!(w1.kind(), Kind::Blob);
             (w1.id().to_vec(), w1.data().to_vec())
-        },
+        }
         ws => panic!("{} unexpected writes", ws.len()),
     };
 
@@ -120,7 +117,7 @@ fn test_write_cache_miss() -> Result<()> {
         PreparedRead::CacheMiss(req) => {
             assert_eq!(req.id(), bid.as_slice());
             req.result(blob)
-        },
+        }
         x => panic!("unexpected value: {:?}", x),
     };
 
@@ -254,7 +251,7 @@ fn test_ensure_authenticty_of_blob() -> Result<()> {
 
             assert_eq!(w1.kind(), Kind::Blob);
             w1.id().to_vec()
-        },
+        }
         ws => panic!("{} unexpected writes", ws.len()),
     };
 
@@ -262,8 +259,7 @@ fn test_ensure_authenticty_of_blob() -> Result<()> {
 
     let r = v1.reader();
     let res = match r.prepare_read(&id)? {
-        PreparedRead::CacheMiss(req) => req.result(
-            fresh::data().encrypt(&k, bid)?.as_ref().to_vec()),
+        PreparedRead::CacheMiss(req) => req.result(fresh::data().encrypt(&k, bid)?.as_ref().to_vec()),
         x => panic!("unexpected value: {:?}", x),
     };
 
@@ -292,7 +288,7 @@ fn test_storage_returns_stale_blob() -> Result<()> {
             assert_eq!(w0.kind(), Kind::Transaction);
             assert_eq!(w1.kind(), Kind::Blob);
             (w1.id().to_vec(), w1.data().to_vec())
-        },
+        }
         ws => panic!("{} unexpected writes", ws.len()),
     };
 
@@ -302,7 +298,7 @@ fn test_storage_returns_stale_blob() -> Result<()> {
             writes.push(w0.clone());
 
             assert_eq!(w1.kind(), Kind::Blob);
-        },
+        }
         ws => panic!("{} unexpected writes", ws.len()),
     };
 

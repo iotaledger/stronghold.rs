@@ -1,11 +1,9 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    types::{
-        transactions::{TransactionType, Transaction},
-        utils::{TransactionId, Val},
-    },
+use crate::types::{
+    transactions::{Transaction, TransactionType},
+    utils::{TransactionId, Val},
 };
 
 pub struct Chain {
@@ -121,4 +119,3 @@ impl Chain {
         Ok(res)
     }
 }
-

@@ -7,7 +7,7 @@
 use crate::{
     crypto_box::{Decrypt, Encrypt},
     types::{
-        utils::{ChainId, TransactionId, BlobId, RecordHint, Val},
+        utils::{BlobId, ChainId, RecordHint, TransactionId, Val},
         AsView, AsViewMut,
     },
 };
@@ -36,7 +36,10 @@ impl TryFrom<Val> for TransactionType {
             1 => Ok(TransactionType::Data),
             2 => Ok(TransactionType::Revocation),
             10 => Ok(TransactionType::Init),
-            _ => Err(crate::Error::ValueError(format!("{:?} is not a valid transaction type", v))),
+            _ => Err(crate::Error::ValueError(format!(
+                "{:?} is not a valid transaction type",
+                v
+            ))),
         }
     }
 }
@@ -56,7 +59,10 @@ impl Debug for Transaction {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let t = self.untyped();
         f.debug_struct("Transaction")
-            .field("type", &TransactionType::try_from(t.type_id).map_err(|_| fmt::Error {})?)
+            .field(
+                "type",
+                &TransactionType::try_from(t.type_id).map_err(|_| fmt::Error {})?,
+            )
             .field("id", &t.id)
             .field("ctr", &t.ctr)
             .finish()
@@ -110,7 +116,6 @@ pub struct DataTransaction {
 
     /// a record hint
     pub record_hint: RecordHint,
-
 }
 
 /// a typed transaction
@@ -297,8 +302,6 @@ impl AsMut<[u8]> for SealedTransaction {
 
 impl Encrypt<SealedTransaction> for Transaction {}
 impl Decrypt<(), Transaction> for SealedTransaction {}
-
-
 
 /// a sealed blob
 pub struct SealedBlob(Vec<u8>);
