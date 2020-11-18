@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [engine, stronghold]
+        project: [engine, client]
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
