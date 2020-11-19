@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     bucket::{Blob, Bucket},
     ids::VaultId,
+    key_store::KeyStore,
     line_error,
     provider::Provider,
     ClientId,
@@ -20,7 +21,6 @@ use crate::{
 
 pub struct Client<P: BoxProvider + Clone + Send + Sync + 'static> {
     id: ClientId,
-    key_ref: HashMap<VaultId, Key<P>>,
     _provider: PhantomData<P>,
 }
 
@@ -34,7 +34,6 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Client<P> {
     pub fn new(id: ClientId) -> Self {
         Self {
             id,
-            key_ref: vec![],
             _provider: PhantomData,
         }
     }
@@ -43,17 +42,29 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Client<P> {
         unimplemented!()
     }
 
-    pub fn add_vault(&mut self, key: &Key<P>) {}
+    pub fn add_vault(&mut self) -> VaultId {
+        unimplemented!()
+    }
 
-    pub fn create_record(&mut self, key: Key<P>, payload: Vec<u8>) {}
+    pub fn create_record_on_vault(&mut self, vault: VaultId, payload: Vec<u8>) -> RecordId {
+        unimplemented!()
+    }
 
-    pub fn read_record(&mut self, key: Key<P>, id: RecordId) {}
+    pub fn read_record(&mut self, vault: VaultId, id: RecordId) {
+        unimplemented!()
+    }
 
-    pub fn preform_gc(&mut self, key: Key<P>) {}
+    pub fn preform_gc(&mut self, vault: VaultId) {
+        unimplemented!()
+    }
 
-    pub fn revoke_record_by_id(&mut self, id: RecordId, key: Key<P>) {}
+    pub fn revoke_record_by_id(&mut self, vault: VaultId, id: RecordId) {
+        unimplemented!()
+    }
 
-    pub fn list_valid_ids_for_vault(&mut self, key: Key<P>) {}
+    pub fn list_valid_ids_for_vault(&mut self, vault: VaultId) {
+        unimplemented!()
+    }
 }
 
 #[cfg(test)]

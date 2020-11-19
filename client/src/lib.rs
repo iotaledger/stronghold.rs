@@ -1,13 +1,15 @@
 use thiserror::Error as DeriveError;
 
+mod actors;
 mod bucket;
 mod cache;
 mod client;
 mod ids;
+mod key_store;
 mod provider;
 mod secret;
 
-pub use crate::ids::ClientId;
+pub use crate::ids::{ClientId, VaultId};
 
 #[macro_export]
 macro_rules! line_error {

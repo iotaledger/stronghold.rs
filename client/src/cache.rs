@@ -2,22 +2,7 @@ use std::{collections::HashMap, fmt::Debug};
 
 use engine::vault::{DeleteRequest, ReadRequest, ReadResult, WriteRequest};
 
-use zeroize_derive::Zeroize;
-
 use crate::{ids::VaultId, line_error, secret::CloneSecret};
-
-#[derive(Clone, Debug, Zeroize)]
-pub struct Value<T>(T);
-
-impl<T> Value<T> {
-    pub fn new(val: T) -> Self {
-        Self(val)
-    }
-
-    pub fn inner(self) -> T {
-        self.0
-    }
-}
 
 pub struct Cache {
     table: HashMap<VaultId, Vec<ReadResult>>,

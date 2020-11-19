@@ -15,4 +15,6 @@ zeroize_derive = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
 
+riker = "0.4"
+
 [workspace]
