@@ -1,4 +1,6 @@
-use engine::vault::{BoxProvider, ChainId, DBView, Key, ReadResult, RecordHint, RecordId, WriteRequest};
+use engine::vault::{
+    Base64Encodable, BoxProvider, ChainId, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest,
+};
 
 use std::{
     collections::{HashMap, HashSet},
@@ -10,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bucket::{Blob, Bucket},
+    ids::VaultId,
     line_error,
     provider::Provider,
     ClientId,
@@ -17,60 +20,40 @@ use crate::{
 
 pub struct Client<P: BoxProvider + Clone + Send + Sync + 'static> {
     id: ClientId,
-    blobs: Blob<P>,
+    key_ref: HashMap<VaultId, Key<P>>,
     _provider: PhantomData<P>,
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct Snapshot<P: BoxProvider + Clone + Send + Sync> {
     pub id: ClientId,
     pub keys: HashSet<Key<P>>,
-    pub state: HashMap<Vec<u8>, Vec<u8>>,
+    pub state: HashMap<Vec<u8>, Vec<ReadResult>>,
 }
 
 impl<P: BoxProvider + Clone + Send + Sync + 'static> Client<P> {
-    pub fn new(id: ClientId, blobs: Blob<P>) -> Self {
+    pub fn new(id: ClientId) -> Self {
         Self {
             id,
-            blobs,
+            key_ref: vec![],
             _provider: PhantomData,
         }
     }
 
     pub fn new_from_snapshot(snapshot: Snapshot<P>) -> Self {
-        let id = snapshot.id;
-        let blobs = Blob::new_from_snapshot(snapshot);
-
-        Self {
-            id,
-            blobs: blobs,
-            _provider: PhantomData,
-        }
+        unimplemented!()
     }
 
-    pub fn add_vault(&mut self, key: &Key<P>) {
-        self.blobs.add_vault(key, self.id);
-    }
+    pub fn add_vault(&mut self, key: &Key<P>) {}
 
-    pub fn create_record(&mut self, key: Key<P>, payload: Vec<u8>) {
-        self.blobs.create_record(self.id, key, payload)
-    }
+    pub fn create_record(&mut self, key: Key<P>, payload: Vec<u8>) {}
 
-    pub fn read_record(&mut self, key: Key<P>, id: RecordId) {
-        self.blobs.read_record(id, key);
-    }
+    pub fn read_record(&mut self, key: Key<P>, id: RecordId) {}
 
-    pub fn preform_gc(&mut self, key: Key<P>) {
-        self.blobs.garbage_collect(self.id, key)
-    }
+    pub fn preform_gc(&mut self, key: Key<P>) {}
 
-    pub fn revoke_record_by_id(&mut self, id: RecordId, key: Key<P>) {
-        self.blobs.revoke_record(self.id, id, key)
-    }
+    pub fn revoke_record_by_id(&mut self, id: RecordId, key: Key<P>) {}
 
-    pub fn list_valid_ids_for_vault(&mut self, key: Key<P>) {
-        self.blobs.list_all_valid_by_key(key)
-    }
+    pub fn list_valid_ids_for_vault(&mut self, key: Key<P>) {}
 }
 
 #[cfg(test)]
@@ -119,6 +102,17 @@ mod tests {
         writes1.push(writer1.truncate().expect(line_error!()));
         let view1 = DBView::load(key1.clone(), writes1.iter().map(write_to_read)).expect(line_error!());
         map.insert(key1.clone(), Some(view1));
+
+        let view1 = DBView::load(key1.clone(), writes1.iter().map(write_to_read)).expect(line_error!());
+
+        let reader = view1.reader();
+
+        let res = reader.prepare_read(&id1).expect(line_error!());
+
+        match res {
+            PreparedRead::CacheHit(v) => println!("{:?}", std::str::from_utf8(&v)),
+            _ => println!("no data"),
+        }
     }
     fn write_to_read(write: &WriteRequest) -> ReadResult {
         ReadResult::new(write.kind(), write.id(), write.data())

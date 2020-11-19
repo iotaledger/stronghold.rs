@@ -1,15 +1,10 @@
-use std::{collections::HashMap, convert::TryFrom, fmt::Debug};
+use std::{collections::HashMap, fmt::Debug};
 
-use dashmap::DashMap;
-use engine::vault::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
+use engine::vault::{DeleteRequest, ReadRequest, ReadResult, WriteRequest};
 
 use zeroize_derive::Zeroize;
 
-use crate::{
-    line_error,
-    secret::{CloneSecret, ReadSecret, Secret},
-    ClientId,
-};
+use crate::{ids::VaultId, line_error, secret::CloneSecret};
 
 #[derive(Clone, Debug, Zeroize)]
 pub struct Value<T>(T);
@@ -25,20 +20,20 @@ impl<T> Value<T> {
 }
 
 pub struct Cache {
-    table: DashMap<Vec<u8>, Value<Secret<Vec<u8>>>>,
+    table: HashMap<VaultId, Vec<ReadResult>>,
 }
 
 #[derive(Clone)]
 pub enum CRequest {
-    List,
-    Write(WriteRequest),
-    Delete(DeleteRequest),
-    Read(ReadRequest),
+    List(VaultId),
+    Write((VaultId, WriteRequest)),
+    Delete((VaultId, DeleteRequest)),
+    Read((VaultId, ReadRequest)),
 }
 
 #[derive(Clone)]
 pub enum CResult {
-    List(Vec<ReadResult>, Vec<ClientId>),
+    List(Vec<ReadResult>),
     Write,
     Delete,
     Read(ReadResult),
@@ -46,60 +41,78 @@ pub enum CResult {
 
 impl Cache {
     pub fn new() -> Self {
-        Cache { table: DashMap::new() }
+        Cache { table: HashMap::new() }
     }
 
-    fn add_data(&mut self, key: Vec<u8>, value: Vec<u8>) {
-        self.table.insert(key, Value::new(Secret::new(value)));
+    fn add_data(&mut self, key: VaultId, value: ReadResult) {
+        let mut vec = self.table.remove(&key).expect(line_error!());
+
+        vec.push(value);
+
+        self.table.insert(key, vec);
     }
 
-    fn read_data(&self, key: Vec<u8>) -> Value<Secret<Vec<u8>>> {
-        self.table.get(&key).expect(line_error!()).clone()
+    fn read_data(&self, key: VaultId, id: Vec<u8>) -> ReadResult {
+        let vec = self.table.get(&key).expect(line_error!());
+
+        let mut res: Vec<ReadResult> = vec.clone().into_iter().filter(|val| val.id().to_vec() == id).collect();
+
+        res.pop().expect(line_error!())
     }
 
-    pub fn offload_data(self) -> HashMap<Vec<u8>, Vec<u8>> {
-        let mut ret: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+    pub fn offload_data(self) -> HashMap<VaultId, Vec<ReadResult>> {
+        let mut ret: HashMap<VaultId, Vec<ReadResult>> = HashMap::new();
 
         self.table.into_iter().for_each(|(k, v)| {
-            ret.insert(k, v.0.read_secret().to_vec());
+            ret.insert(k, v);
         });
 
         ret
     }
 
-    pub fn upload_data(&self, map: HashMap<Vec<u8>, Vec<u8>>) {
+    pub fn upload_data(&mut self, map: HashMap<VaultId, Vec<ReadResult>>) {
         map.into_iter().for_each(|(k, v)| {
-            self.table.insert(k, Value::new(Secret::new(v)));
+            self.table.insert(k, v);
         });
     }
 
     pub fn send(&mut self, req: CRequest) -> CResult {
         let result = match req {
-            CRequest::List => unimplemented!(),
-            CRequest::Write(write) => {
-                self.add_data(write.id().to_vec(), write.data().to_vec());
+            CRequest::List(id) => {
+                let res = self.table.get(&id).expect(line_error!());
+
+                CResult::List(res.to_vec())
+            }
+            CRequest::Write((id, write)) => {
+                self.add_data(id, write_to_read(&write));
                 CResult::Write
             }
-            CRequest::Delete(del) => {
-                self.table.retain(|id, _| *id != del.id());
+            CRequest::Delete((id, delete)) => {
+                let vec = self.table.remove(&id).expect(line_error!());
+
+                let vec = vec.into_iter().filter(|x| x.id() != delete.id()).collect();
+
+                self.table.insert(id, vec);
+
                 CResult::Delete
             }
-            CRequest::Read(read) => {
-                let state = self.read_data(read.id().to_vec());
-                CResult::Read(ReadResult::new(read.kind(), read.id(), &state.0.read_secret().to_vec()))
-            }
+            CRequest::Read(read) => unimplemented!(),
         };
         result
     }
 }
 
 impl CResult {
-    pub fn list(self) -> (Vec<ReadResult>, Vec<ClientId>) {
+    pub fn list(self) -> Vec<ReadResult> {
         match self {
-            CResult::List(readreq, ids) => (readreq, ids),
+            CResult::List(readreq) => readreq,
             _ => panic!(line_error!()),
         }
     }
 }
 
 impl CloneSecret for Vec<u8> {}
+
+fn write_to_read(write: &WriteRequest) -> ReadResult {
+    ReadResult::new(write.kind(), write.id(), write.data())
+}

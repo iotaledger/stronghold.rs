@@ -14,7 +14,7 @@ pub struct ClientId(ID);
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
-pub(crate) struct VaultId(ID);
+pub struct VaultId(ID);
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
@@ -120,5 +120,17 @@ impl TryFrom<&[u8]> for VaultId {
 impl Debug for VaultId {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "Vault({})", self.0.as_ref().base64())
+    }
+}
+
+impl Into<Vec<u8>> for VaultId {
+    fn into(self) -> Vec<u8> {
+        self.0.0.to_vec()
+    }
+}
+
+impl AsRef<[u8]> for VaultId {
+    fn as_ref(&self) -> &[u8] {
+        &self.0.0
     }
 }
