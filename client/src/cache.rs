@@ -29,7 +29,7 @@ impl Cache {
         Cache { table: HashMap::new() }
     }
 
-    fn add_data(&mut self, key: VaultId, value: ReadResult) {
+    pub fn add_data(&mut self, key: VaultId, value: ReadResult) {
         let mut vec = self.table.remove(&key).expect(line_error!());
 
         vec.push(value);
@@ -37,7 +37,7 @@ impl Cache {
         self.table.insert(key, vec);
     }
 
-    fn read_data(&self, key: VaultId, id: Vec<u8>) -> ReadResult {
+    pub fn read_data(&self, key: VaultId, id: Vec<u8>) -> ReadResult {
         let vec = self.table.get(&key).expect(line_error!());
 
         let mut res: Vec<ReadResult> = vec.clone().into_iter().filter(|val| val.id().to_vec() == id).collect();
@@ -64,7 +64,7 @@ impl Cache {
     pub fn send(&mut self, req: CRequest) -> CResult {
         let result = match req {
             CRequest::List(id) => {
-                let res = self.table.get(&id).expect(line_error!());
+                let res = self.table.entry(id).or_insert(vec![]);
 
                 CResult::List(res.to_vec())
             }
@@ -98,6 +98,6 @@ impl CResult {
 
 impl CloneSecret for Vec<u8> {}
 
-fn write_to_read(write: &WriteRequest) -> ReadResult {
+pub fn write_to_read(write: &WriteRequest) -> ReadResult {
     ReadResult::new(write.kind(), write.id(), write.data())
 }

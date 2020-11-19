@@ -4,7 +4,7 @@ use engine::vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHi
 use std::{collections::HashMap, iter::empty};
 
 use crate::{
-    cache::{CRequest, CResult, Cache},
+    cache::{write_to_read, CRequest, CResult, Cache},
     client::Snapshot,
     ids::VaultId,
     line_error, ClientId,
@@ -16,12 +16,12 @@ pub struct Blob<P: BoxProvider + Send + Sync + Clone + 'static> {
 }
 
 pub trait Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
-    fn create_record(&mut self, uid: ClientId, key: Key<P>, payload: Vec<u8>);
-    fn add_vault(&mut self, key: &Key<P>, uid: ClientId) -> VaultId;
-    fn read_record(&mut self, id: RecordId, key: Key<P>);
-    fn garbage_collect(&mut self, uid: ClientId, key: Key<P>);
-    fn revoke_record(&mut self, uid: ClientId, tx_id: RecordId, key: Key<P>);
-    fn list_all_valid_by_key(&mut self, key: Key<P>);
+    fn create_record(&mut self, vid: VaultId, key: Key<P>, payload: Vec<u8>);
+    fn add_vault(&mut self) -> VaultId;
+    fn read_record(&mut self, vid: VaultId, id: RecordId, key: Key<P>);
+    fn garbage_collect(&mut self, vid: VaultId, key: Key<P>);
+    fn revoke_record(&mut self, vid: VaultId, tx_id: RecordId, key: Key<P>);
+    fn list_all_valid_by_key(&mut self, vid: VaultId, key: Key<P>);
     fn offload_data(self) -> (Vec<Key<P>>, HashMap<Vec<u8>, Vec<u8>>);
 }
 
@@ -49,6 +49,12 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Blob<P> {
         //     Self { cache, vaults }
     }
 
+    pub fn create_view(&mut self, key: Key<P>) -> DBView<P> {
+        let reads = empty::<ReadResult>();
+
+        DBView::load(key, reads).expect(line_error!())
+    }
+
     pub fn get_view(&mut self, key: &Key<P>) -> Option<DBView<P>> {
         let (_, view) = self.vaults.remove(&key).expect(line_error!());
 
@@ -64,28 +70,68 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Blob<P> {
 }
 
 impl<P: BoxProvider + Clone + Send + Sync + 'static> Bucket<P> for Blob<P> {
-    fn create_record(&mut self, uid: ClientId, key: Key<P>, payload: Vec<u8>) {
+    fn create_record(&mut self, vid: VaultId, key: Key<P>, payload: Vec<u8>) {
+        if let Some(view) = self.get_view(&key) {
+            let id = RecordId::random::<P>().expect(line_error!());
+
+            let mut writer = view.writer(id);
+
+            writer
+                .write(&payload, RecordHint::new(b"").expect(line_error!()))
+                .expect(line_error!())
+                .into_iter()
+                .for_each(|write| {
+                    self.cache.send(CRequest::Write((vid, write)));
+                });
+
+            self.cache
+                .send(CRequest::Write((vid, writer.truncate().expect(line_error!()))));
+
+            self.reset_view(key, vid);
+        }
+    }
+
+    fn add_vault(&mut self) -> VaultId {
+        let key = Key::<P>::random().expect(line_error!());
+        let vid = VaultId::random::<P>().expect(line_error!());
+        let id = RecordId::random::<P>().expect(line_error!());
+
+        let view = self.create_view(key.clone());
+
+        let mut writer = view.writer(id);
+
+        self.cache
+            .send(CRequest::Write((vid, writer.truncate().expect(line_error!()))));
+
+        self.reset_view(key, vid);
+
+        vid
+    }
+
+    fn read_record(&mut self, vid: VaultId, id: RecordId, key: Key<P>) {
         unimplemented!()
     }
 
-    fn add_vault(&mut self, key: &Key<P>, uid: ClientId) -> VaultId {
+    fn garbage_collect(&mut self, vid: VaultId, key: Key<P>) {
         unimplemented!()
     }
 
-    fn read_record(&mut self, id: RecordId, key: Key<P>) {
-        unimplemented!()
+    fn revoke_record(&mut self, vid: VaultId, tx_id: RecordId, key: Key<P>) {
+        if let Some(view) = self.get_view(&key) {
+            let mut writer = view.writer(tx_id);
+
+            writer.revoke().expect(line_error!());
+        }
+
+        self.reset_view(key.clone(), vid);
     }
 
-    fn garbage_collect(&mut self, uid: ClientId, key: Key<P>) {
-        unimplemented!()
-    }
+    fn list_all_valid_by_key(&mut self, vid: VaultId, key: Key<P>) {
+        if let Some(view) = self.get_view(&key) {
+            view.records().for_each(|(id, hint)| println!("{:?}, {:?}", id, hint));
+        }
 
-    fn revoke_record(&mut self, uid: ClientId, tx_id: RecordId, key: Key<P>) {
-        unimplemented!()
-    }
-
-    fn list_all_valid_by_key(&mut self, key: Key<P>) {
-        unimplemented!()
+        self.reset_view(key, vid);
     }
 
     fn offload_data(self) -> (Vec<Key<P>>, HashMap<Vec<u8>, Vec<u8>>) {
