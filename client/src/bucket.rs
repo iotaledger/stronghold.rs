@@ -21,7 +21,7 @@ pub trait Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
     fn read_record(&mut self, vid: VaultId, id: RecordId, key: Key<P>);
     fn garbage_collect(&mut self, vid: VaultId, key: Key<P>);
     fn revoke_record(&mut self, vid: VaultId, key: Key<P>, tx_id: RecordId);
-    fn list_all_valid_by_key(&mut self, vid: VaultId);
+    fn list_all_valid_by_key(&mut self, vid: VaultId, key: Key<P>);
     fn offload_data(self) -> (Vec<Key<P>>, HashMap<Vec<u8>, Vec<u8>>);
 }
 
@@ -55,14 +55,19 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Blob<P> {
         DBView::load(key, reads).expect(line_error!())
     }
 
-    pub fn get_view(&mut self, vid: VaultId) -> Option<DBView<P>> {
-        let (_, view) = self.vaults.remove(&vid).expect(line_error!());
+    pub fn get_view(&mut self, vid: VaultId, key: Key<P>) -> Option<DBView<P>> {
+        let res = self.cache.send(CRequest::List(vid)).list();
+
+        let view = match self.vaults.remove(&vid) {
+            Some((_, view)) => view,
+            None => Some(DBView::load(key, res.iter()).expect(line_error!())),
+        };
 
         view
     }
 
     pub fn refresh_view(&mut self, vid: VaultId, key: Key<P>) {
-        self.get_view(vid);
+        self.get_view(vid, key.clone());
 
         let res = self.cache.send(CRequest::List(vid)).list();
 
@@ -77,7 +82,7 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Blob<P> {
 impl<P: BoxProvider + Clone + Send + Sync + 'static> Bucket<P> for Blob<P> {
     fn create_record(&mut self, vid: VaultId, key: Key<P>, payload: Vec<u8>) -> RecordId {
         let id = RecordId::random::<P>().expect(line_error!());
-        if let Some(view) = self.get_view(vid) {
+        if let Some(view) = self.get_view(vid, key.clone()) {
             let mut writer = view.writer(id);
 
             writer
@@ -107,6 +112,8 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Bucket<P> for Blob<P> {
         self.cache
             .send(CRequest::Write((vid, writer.truncate().expect(line_error!()))));
 
+        self.reset_view(vid, view);
+
         self.refresh_view(vid, key.clone());
     }
 
@@ -119,7 +126,7 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Bucket<P> for Blob<P> {
     }
 
     fn revoke_record(&mut self, vid: VaultId, key: Key<P>, tx_id: RecordId) {
-        if let Some(view) = self.get_view(vid) {
+        if let Some(view) = self.get_view(vid, key.clone()) {
             let mut writer = view.writer(tx_id);
 
             self.cache
@@ -129,9 +136,11 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> Bucket<P> for Blob<P> {
         }
     }
 
-    fn list_all_valid_by_key(&mut self, vid: VaultId) {
-        if let Some(view) = self.get_view(vid) {
-            view.records().for_each(|(id, hint)| println!("{:?}, {:?}", id, hint));
+    fn list_all_valid_by_key(&mut self, vid: VaultId, key: Key<P>) {
+        if let Some(view) = self.get_view(vid, key) {
+            view.records().for_each(|(id, hint)| {
+                println!("{:?} {:?}", id, hint);
+            });
         }
     }
 

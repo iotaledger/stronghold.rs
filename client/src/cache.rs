@@ -29,12 +29,16 @@ impl Cache {
         Cache { table: HashMap::new() }
     }
 
-    pub fn add_data(&mut self, key: VaultId, value: ReadResult) {
-        let mut vec = self.table.remove(&key).expect(line_error!());
+    pub fn add_data(&mut self, id: VaultId, value: ReadResult) -> Vec<ReadResult> {
+        let mut vec = self.table.entry(id).or_insert(vec![]);
 
         vec.push(value);
 
-        self.table.insert(key, vec);
+        vec.to_vec()
+    }
+
+    pub fn insert_vec(&mut self, vid: VaultId, vec: Vec<ReadResult>) {
+        self.table.insert(vid, vec);
     }
 
     pub fn read_data(&self, key: VaultId, id: Vec<u8>) -> ReadResult {
@@ -69,7 +73,8 @@ impl Cache {
                 CResult::List(res.to_vec())
             }
             CRequest::Write((id, write)) => {
-                self.add_data(id, write_to_read(&write));
+                let vec = self.add_data(id, write_to_read(&write));
+                self.insert_vec(id, vec);
                 CResult::Write
             }
             CRequest::Delete((id, delete)) => {

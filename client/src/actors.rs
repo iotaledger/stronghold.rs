@@ -22,6 +22,7 @@ pub enum CMsg {
     GarbageCollect(VaultId),
     RevokeRecord(VaultId, RecordId),
     ListRecords(VaultId),
+    ReturnRecordId(RecordId),
 }
 
 #[derive(Debug, Clone)]
@@ -31,7 +32,7 @@ pub enum BMsg<P: BoxProvider + Debug> {
     ReadRecord(VaultId, Key<P>, RecordId),
     GarbageCollect(VaultId),
     RevokeRecord(VaultId, Key<P>, RecordId),
-    ListRecords(VaultId),
+    ListRecords(VaultId, Key<P>),
 }
 
 #[derive(Clone, Debug)]
@@ -95,7 +96,14 @@ impl Receive<CMsg> for Client {
                 let keystore = ctx.select("/user/keystore/").expect(line_error!());
                 keystore.try_tell(KMsg::AddVault, None)
             }
-            CMsg::AddVaultReturn(vid) => {}
+            CMsg::AddVaultReturn(vid) => {
+                let keystore = ctx.select("/user/keystore/").expect(line_error!());
+                keystore.try_tell(KMsg::CreateRecord(vid, b"Some data".to_vec()), None);
+
+                std::thread::sleep(std::time::Duration::from_millis(50));
+
+                keystore.try_tell(KMsg::ListRecords(vid), None);
+            }
             CMsg::CreateRecord(vid, payload) => {
                 let keystore = ctx.select("/user/keystore/").expect(line_error!());
                 keystore.try_tell(KMsg::CreateRecord(vid, payload), None)
@@ -117,6 +125,9 @@ impl Receive<CMsg> for Client {
                 let keystore = ctx.select("/user/keystore/").expect(line_error!());
                 keystore.try_tell(KMsg::ListRecords(vid), None)
             }
+            CMsg::ReturnRecordId(id) => {
+                println!("{:?}", id);
+            }
         }
     }
 }
@@ -128,12 +139,25 @@ impl Receive<BMsg<Provider>> for Blob<Provider> {
         match msg {
             BMsg::AddVault(vid, key) => {
                 self.add_vault(vid, key);
+
+                let client = ctx.select("/user/client/").expect(line_error!());
+
+                client.try_tell(CMsg::AddVaultReturn(vid), None);
             }
-            BMsg::CreateRecord(vid, key, payload) => {}
+            BMsg::CreateRecord(vid, key, payload) => {
+                let tx_id = self.create_record(vid, key, payload);
+
+                let client = ctx.select("/user/client/").expect(line_error!());
+                client.try_tell(CMsg::ReturnRecordId(tx_id), None)
+            }
             BMsg::ReadRecord(vid, key, tx_id) => {}
-            BMsg::GarbageCollect(vid) => {}
-            BMsg::RevokeRecord(vid, key, tx_id) => {}
-            BMsg::ListRecords(vid) => {}
+            BMsg::GarbageCollect(vid) => unimplemented!(),
+            BMsg::RevokeRecord(vid, key, tx_id) => {
+                self.revoke_record(vid, key, tx_id);
+            }
+            BMsg::ListRecords(vid, key) => {
+                self.list_all_valid_by_key(vid, key);
+            }
         }
     }
 }
@@ -149,13 +173,61 @@ impl Receive<KMsg> for KeyStore<Provider> {
                 let (vid, key) = self.get_key_and_id(vid);
 
                 let keystore = ctx.select("/user/blob/").expect(line_error!());
-                keystore.try_tell(BMsg::AddVault(vid, key), None)
+                keystore.try_tell(BMsg::AddVault(vid, key.clone()), None);
+
+                self.insert_key(vid, key);
             }
-            KMsg::CreateRecord(vid, payload) => {}
-            KMsg::ReadRecord(vid, tx_id) => {}
-            KMsg::GarbageCollect(vid) => {}
-            KMsg::RevokeRecord(vid, tx_id) => {}
-            KMsg::ListRecords(vid) => {}
+            KMsg::CreateRecord(vid, payload) => {
+                let (vid, key) = self.get_key_and_id(vid);
+
+                let keystore = ctx.select("/user/blob/").expect(line_error!());
+                keystore.try_tell(BMsg::CreateRecord(vid, key.clone(), payload), None);
+
+                self.insert_key(vid, key);
+            }
+            KMsg::ReadRecord(vid, tx_id) => {
+                let (vid, key) = self.get_key_and_id(vid);
+
+                let keystore = ctx.select("/user/blob/").expect(line_error!());
+                keystore.try_tell(BMsg::ReadRecord(vid, key.clone(), tx_id), None);
+
+                self.insert_key(vid, key);
+            }
+            KMsg::GarbageCollect(vid) => {
+                let keystore = ctx.select("/user/blob/").expect(line_error!());
+                keystore.try_tell(BMsg::GarbageCollect::<Provider>(vid), None);
+            }
+            KMsg::RevokeRecord(vid, tx_id) => {
+                let (vid, key) = self.get_key_and_id(vid);
+
+                let keystore = ctx.select("/user/blob/").expect(line_error!());
+                keystore.try_tell(BMsg::RevokeRecord::<Provider>(vid, key.clone(), tx_id), None);
+
+                self.insert_key(vid, key);
+            }
+            KMsg::ListRecords(vid) => {
+                let (vid, key) = self.get_key_and_id(vid);
+
+                let keystore = ctx.select("/user/blob/").expect(line_error!());
+                keystore.try_tell(BMsg::ListRecords::<Provider>(vid, key.clone()), None);
+
+                self.insert_key(vid, key);
+            }
         }
     }
+}
+
+#[test]
+
+fn test_actor_system() {
+    let sys = ActorSystem::new().unwrap();
+
+    let client = sys.actor_of::<Client>("client").unwrap();
+    sys.actor_of::<Blob<Provider>>("blob").unwrap();
+    sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
+
+    client.tell(CMsg::AddVaultSend, None);
+
+    std::thread::sleep(std::time::Duration::from_millis(2000));
+    sys.print_tree();
 }
