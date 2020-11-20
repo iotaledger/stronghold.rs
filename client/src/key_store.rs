@@ -1,6 +1,6 @@
 use zeroize_derive::Zeroize;
 
-use engine::vault::{BoxProvider, Key};
+use engine::vault::{BoxProvider, DBView, Key, ReadResult};
 
 use crate::{ids::VaultId, line_error};
 
@@ -32,11 +32,13 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
         self.store.remove(&id).expect(line_error!())
     }
 
-    pub fn create_key_for_vault(&mut self, id: VaultId) {
+    pub fn create_key_for_vault(&mut self, id: VaultId) -> VaultId {
         self.store.entry(id).or_insert(Key::<P>::random().expect(line_error!()));
+
+        id
     }
 
-    pub fn update_key_and_id(&self, id: VaultId, key: Key<P>) {
+    pub fn insert_key(&self, id: VaultId, key: Key<P>) {
         self.store.entry(id).or_insert(key);
     }
 }
