@@ -7,7 +7,9 @@ use engine::random::{
 
 use engine::vault::{BoxProvider, Error, Key, Result};
 
+#[derive(Debug, Clone)]
 pub struct Provider;
+
 impl Provider {
     const NONCE_LEN: usize = 24;
     const TAG_LEN: usize = 16;

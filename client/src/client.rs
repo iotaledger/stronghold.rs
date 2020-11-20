@@ -19,9 +19,8 @@ use crate::{
     ClientId,
 };
 
-pub struct Client<P: BoxProvider + Clone + Send + Sync + 'static> {
+pub struct Client {
     id: ClientId,
-    _provider: PhantomData<P>,
 }
 
 pub struct Snapshot<P: BoxProvider + Clone + Send + Sync> {
@@ -30,41 +29,38 @@ pub struct Snapshot<P: BoxProvider + Clone + Send + Sync> {
     pub state: HashMap<Vec<u8>, Vec<ReadResult>>,
 }
 
-impl<P: BoxProvider + Clone + Send + Sync + 'static> Client<P> {
+impl Client {
     pub fn new(id: ClientId) -> Self {
-        Self {
-            id,
-            _provider: PhantomData,
-        }
+        Self { id }
     }
 
-    pub fn new_from_snapshot(snapshot: Snapshot<P>) -> Self {
-        unimplemented!()
-    }
+    // pub fn new_from_snapshot<P: BoxProvider + Clone + Send + Sync>(snapshot: Snapshot<P>) -> Self {
+    //     unimplemented!()
+    // }
 
-    pub fn add_vault(&mut self) -> VaultId {
-        unimplemented!()
-    }
+    // pub fn add_vault(&mut self) -> VaultId {
+    //     unimplemented!()
+    // }
 
-    pub fn create_record_on_vault(&mut self, vault: VaultId, payload: Vec<u8>) -> RecordId {
-        unimplemented!()
-    }
+    // pub fn create_record_on_vault(&mut self, vault: VaultId, payload: Vec<u8>) -> RecordId {
+    //     unimplemented!()
+    // }
 
-    pub fn read_record(&mut self, vault: VaultId, id: RecordId) {
-        unimplemented!()
-    }
+    // pub fn read_record(&mut self, vault: VaultId, id: RecordId) {
+    //     unimplemented!()
+    // }
 
-    pub fn preform_gc(&mut self, vault: VaultId) {
-        unimplemented!()
-    }
+    // pub fn preform_gc(&mut self, vault: VaultId) {
+    //     unimplemented!()
+    // }
 
-    pub fn revoke_record_by_id(&mut self, vault: VaultId, id: RecordId) {
-        unimplemented!()
-    }
+    // pub fn revoke_record_by_id(&mut self, vault: VaultId, id: RecordId) {
+    //     unimplemented!()
+    // }
 
-    pub fn list_valid_ids_for_vault(&mut self, vault: VaultId) {
-        unimplemented!()
-    }
+    // pub fn list_valid_ids_for_vault(&mut self, vault: VaultId) {
+    //     unimplemented!()
+    // }
 }
 
 #[cfg(test)]

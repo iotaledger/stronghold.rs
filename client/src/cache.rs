@@ -12,7 +12,7 @@ pub struct Cache {
 pub enum CRequest {
     List(VaultId),
     Write((VaultId, WriteRequest)),
-    Delete((VaultId, DeleteRequest)),
+    Delete((VaultId, WriteRequest)),
     Read((VaultId, ReadRequest)),
 }
 

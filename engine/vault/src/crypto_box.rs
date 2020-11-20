@@ -9,7 +9,12 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use std::{convert::TryFrom, marker::PhantomData, hash::{Hash, Hasher}};
+use std::{
+    convert::TryFrom,
+    fmt::Debug,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -112,6 +117,12 @@ impl<T: BoxProvider> Hash for Key<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.key.hash(state);
         self._box_provider.hash(state);
+    }
+}
+
+impl<T: BoxProvider> Debug for Key<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KeyData")
     }
 }
 
