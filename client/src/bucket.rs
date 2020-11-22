@@ -4,7 +4,6 @@ use std::collections::HashMap;
 
 use crate::line_error;
 
-#[derive(Debug)]
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
     vaults: HashMap<Key<P>, Option<DBView<P>>>,
     cache: HashMap<Key<P>, Vec<ReadResult>>,
@@ -94,6 +93,16 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         });
     }
 
+    pub fn garbage_collect(&mut self, key: Key<P>) {
+        self.take(key, |view, mut reads| {
+            let deletes = view.gc();
+
+            deletes.iter().for_each(|d| reads.retain(|r| r.id() != d.id()));
+
+            reads
+        });
+    }
+
     pub fn list_ids(&mut self, key: Key<P>) -> Vec<(RecordId, RecordHint)> {
         let mut buffer: Vec<(RecordId, RecordHint)> = Vec::new();
 
@@ -119,11 +128,9 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
     }
 
     fn get_view(&mut self, key: Key<P>, reads: Vec<ReadResult>) -> Option<DBView<P>> {
-        match self.vaults.remove(&key.clone()) {
-            Some(Some(_)) => Some(DBView::load(key, reads.iter()).expect(line_error!())),
-            Some(None) => Some(DBView::load(key, reads.iter()).expect(line_error!())),
-            None => Some(DBView::load(key, reads.iter()).expect(line_error!())),
-        }
+        self.vaults.remove(&key.clone());
+
+        Some(DBView::load(key, reads.iter()).expect(line_error!()))
     }
 
     fn insert_view(&mut self, key: Key<P>, view: Option<DBView<P>>) {
@@ -180,7 +187,17 @@ fn test_bucket() {
         reads
     });
 
-    bucket.take(key, |view, reads| {
+    bucket.take(key.clone(), |view, reads| {
+        let data: Vec<(RecordId, RecordHint)> = view.records().collect();
+
+        data.iter().for_each(|(i, h)| {
+            println!("{:?}: {:?}", i, h);
+        });
+
+        reads
+    });
+
+    bucket.take(key.clone(), |view, reads| {
         let reader = view.reader();
 
         let res = reader.prepare_read(&id1).expect(line_error!());
@@ -196,6 +213,34 @@ fn test_bucket() {
                 println!("no data");
             }
         }
+
+        reads
+    });
+
+    bucket.take(key.clone(), |view, mut reads| {
+        let mut writer = view.writer(id1);
+
+        reads.push(write_to_read(&writer.revoke().expect(line_error!())));
+
+        reads
+    });
+
+    bucket.take(key.clone(), |view, mut reads| {
+        let deletes = view.gc();
+
+        deletes.iter().for_each(|d| {
+            reads.retain(|r| r.id() != d.id());
+        });
+
+        reads
+    });
+
+    bucket.take(key, |view, reads| {
+        let data: Vec<(RecordId, RecordHint)> = view.records().collect();
+
+        data.iter().for_each(|(i, h)| {
+            println!("Data {:?}: {:?}", i, h);
+        });
 
         reads
     });
