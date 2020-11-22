@@ -9,11 +9,9 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use crate::{
-    types::{
-        transactions::{SealedBlob, SealedTransaction},
-        utils::{TransactionId, BlobId},
-    },
+use crate::types::{
+    transactions::{SealedBlob, SealedTransaction},
+    utils::{BlobId, TransactionId},
 };
 
 use serde::{Deserialize, Serialize};
@@ -67,7 +65,6 @@ impl ReadRequest {
     }
 }
 
-
 /// a read result
 #[derive(Clone)]
 pub struct ReadResult {
@@ -77,9 +74,12 @@ pub struct ReadResult {
 }
 
 impl ReadResult {
-
     pub fn new(kind: Kind, id: &[u8], data: &[u8]) -> Self {
-        Self { kind, id: id.to_vec(), data: data.to_vec() }
+        Self {
+            kind,
+            id: id.to_vec(),
+            data: data.to_vec(),
+        }
     }
 
     /// id of read result
@@ -103,7 +103,6 @@ impl AsRef<ReadResult> for ReadResult {
         &self
     }
 }
-
 
 /// a write call
 #[derive(Clone)]
@@ -147,7 +146,6 @@ impl WriteRequest {
         &self.data
     }
 }
-
 
 /// a delete call
 #[derive(Clone)]
