@@ -1,150 +1,202 @@
-use dashmap::DashMap;
-use engine::vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId};
+use engine::vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest};
 
-use std::{collections::HashMap, iter::empty};
+use std::collections::HashMap;
 
-use crate::{
-    cache::{CRequest, Cache},
-    client::Snapshot,
-    ids::VaultId,
-    line_error,
-};
+use crate::line_error;
 
-pub struct Blob<P: BoxProvider + Send + Sync + Clone + 'static> {
-    vaults: DashMap<VaultId, Option<DBView<P>>>,
-    cache: Cache,
+#[derive(Debug)]
+pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
+    vaults: HashMap<Key<P>, Option<DBView<P>>>,
+    cache: HashMap<Key<P>, Vec<ReadResult>>,
 }
 
-pub trait Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
-    fn create_record(&mut self, vid: VaultId, key: Key<P>, payload: Vec<u8>) -> RecordId;
-    fn add_vault(&mut self, vid: VaultId, key: Key<P>);
-    fn read_record(&mut self, vid: VaultId, id: RecordId, key: Key<P>);
-    fn garbage_collect(&mut self, vid: VaultId, key: Key<P>);
-    fn revoke_record(&mut self, vid: VaultId, key: Key<P>, tx_id: RecordId);
-    fn list_all_valid_by_key(&mut self, vid: VaultId, key: Key<P>);
-    fn offload_data(self) -> (Vec<Key<P>>, HashMap<Vec<u8>, Vec<u8>>);
-}
-
-impl<P: BoxProvider + Clone + Send + Sync + 'static> Blob<P> {
+impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
     pub fn new() -> Self {
-        let cache = Cache::new();
-        let vaults = DashMap::new();
+        let cache = HashMap::new();
+        let vaults = HashMap::new();
 
         Self { cache, vaults }
     }
 
-    pub fn new_from_snapshot(snapshot: Snapshot<P>) -> Self {
-        unimplemented!()
-        //     let cache = Cache::new();
-        //     let vaults = DashMap::new();
-
-        //     cache.upload_data(snapshot.state);
-
-        //     let keys = snapshot.keys;
-
-        //     keys.iter().for_each(|k| {
-        //         vaults.insert(k.clone(), None);
-        //     });
-
-        //     Self { cache, vaults }
-    }
-
-    pub fn create_view(&mut self, key: Key<P>) -> DBView<P> {
-        let reads = empty::<ReadResult>();
-
-        DBView::load(key, reads).expect(line_error!())
-    }
-
-    pub fn get_view(&mut self, vid: VaultId, key: Key<P>) -> Option<DBView<P>> {
-        let res = self.cache.send(CRequest::List(vid)).list();
-
-        let view = match self.vaults.remove(&vid) {
-            Some((_, view)) => view,
-            None => Some(DBView::load(key, res.iter()).expect(line_error!())),
-        };
-
-        view
-    }
-
-    pub fn refresh_view(&mut self, vid: VaultId, key: Key<P>) {
-        self.get_view(vid, key.clone());
-
-        let res = self.cache.send(CRequest::List(vid)).list();
-
-        self.reset_view(vid, DBView::load(key, res.iter()).expect(line_error!()))
-    }
-
-    fn reset_view(&mut self, vid: VaultId, view: DBView<P>) {
-        self.vaults.insert(vid, Some(view));
-    }
-}
-
-impl<P: BoxProvider + Clone + Send + Sync + 'static> Bucket<P> for Blob<P> {
-    fn create_record(&mut self, vid: VaultId, key: Key<P>, payload: Vec<u8>) -> RecordId {
+    pub fn create_and_init_vault(&mut self, key: Key<P>) -> RecordId {
         let id = RecordId::random::<P>().expect(line_error!());
-        if let Some(view) = self.get_view(vid, key.clone()) {
+
+        self.take(key, |view, mut reads| {
             let mut writer = view.writer(id);
 
-            writer
-                .write(&payload, RecordHint::new(b"").expect(line_error!()))
-                .expect(line_error!())
-                .into_iter()
-                .for_each(|write| {
-                    self.cache.send(CRequest::Write((vid, write)));
-                });
+            let truncate = writer.truncate().expect(line_error!());
 
-            self.cache
-                .send(CRequest::Write((vid, writer.truncate().expect(line_error!()))));
+            reads.push(write_to_read(&truncate));
 
-            self.refresh_view(vid, key);
-        }
+            reads
+        });
 
         id
     }
 
-    fn add_vault(&mut self, vid: VaultId, key: Key<P>) {
-        let id = RecordId::random::<P>().expect(line_error!());
+    pub fn read_data(&mut self, key: Key<P>, id: RecordId) -> Vec<u8> {
+        let mut buffer: Vec<u8> = vec![];
+        self.take(key, |view, reads| {
+            let reader = view.reader();
 
-        let view = self.create_view(key.clone());
+            let res = reader.prepare_read(&id).expect(line_error!());
 
-        let mut writer = view.writer(id);
+            match res {
+                PreparedRead::CacheHit(mut v) => {
+                    buffer.append(&mut v);
+                }
+                _ => {
+                    println!("no data");
+                }
+            }
 
-        self.cache
-            .send(CRequest::Write((vid, writer.truncate().expect(line_error!()))));
+            reads
+        });
 
-        self.reset_view(vid, view);
-
-        self.refresh_view(vid, key.clone());
+        buffer
     }
 
-    fn read_record(&mut self, vid: VaultId, id: RecordId, key: Key<P>) {
-        unimplemented!()
+    pub fn commit_write(&mut self, key: Key<P>, id: RecordId) {
+        self.take(key, |view, mut reads| {
+            let mut writer = view.writer(id);
+
+            let truncate = writer.truncate().expect(line_error!());
+
+            reads.push(write_to_read(&truncate));
+
+            reads
+        });
     }
 
-    fn garbage_collect(&mut self, vid: VaultId, key: Key<P>) {
-        unimplemented!()
+    pub fn write_payload(&mut self, key: Key<P>, id: RecordId, payload: Vec<u8>, hint: RecordHint) {
+        self.take(key, |view, mut reads| {
+            let mut writer = view.writer(id);
+
+            let writes = writer.write(&payload, hint).expect(line_error!());
+
+            let mut results: Vec<ReadResult> = writes.into_iter().map(|w| write_to_read(&w)).collect();
+
+            reads.append(&mut results);
+
+            reads
+        });
     }
 
-    fn revoke_record(&mut self, vid: VaultId, key: Key<P>, tx_id: RecordId) {
-        if let Some(view) = self.get_view(vid, key.clone()) {
-            let mut writer = view.writer(tx_id);
+    pub fn revoke_data(&mut self, key: Key<P>, id: RecordId) {
+        self.take(key, |view, mut reads| {
+            let mut writer = view.writer(id);
 
-            self.cache
-                .send(CRequest::Delete((vid, writer.revoke().expect(line_error!()))));
+            let revoke = writer.revoke().expect(line_error!());
 
-            self.refresh_view(vid, key);
+            reads.push(write_to_read(&revoke));
+
+            reads
+        });
+    }
+
+    pub fn list_ids(&mut self, key: Key<P>) -> Vec<(RecordId, RecordHint)> {
+        let mut buffer: Vec<(RecordId, RecordHint)> = Vec::new();
+
+        self.take(key, |view, reads| {
+            let mut data = view.records().collect();
+
+            buffer.append(&mut data);
+
+            reads
+        });
+
+        buffer
+    }
+
+    fn take(&mut self, key: Key<P>, f: impl FnOnce(DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>) {
+        let mut _reads = self.get_reads(key.clone());
+        let reads = _reads.take().expect(line_error!());
+        let mut _view = self.get_view(key.clone(), reads.clone());
+        let view = _view.take().expect(line_error!());
+        let res = f(view, reads);
+        self.insert_reads(key.clone(), res);
+        self.insert_view(key.clone(), _view);
+    }
+
+    fn get_view(&mut self, key: Key<P>, reads: Vec<ReadResult>) -> Option<DBView<P>> {
+        match self.vaults.remove(&key.clone()) {
+            Some(Some(_)) => Some(DBView::load(key, reads.iter()).expect(line_error!())),
+            Some(None) => Some(DBView::load(key, reads.iter()).expect(line_error!())),
+            None => Some(DBView::load(key, reads.iter()).expect(line_error!())),
         }
     }
 
-    fn list_all_valid_by_key(&mut self, vid: VaultId, key: Key<P>) {
-        if let Some(view) = self.get_view(vid, key) {
-            view.records().for_each(|(id, hint)| {
-                println!("{:?} {:?}", id, hint);
-            });
+    fn insert_view(&mut self, key: Key<P>, view: Option<DBView<P>>) {
+        self.vaults.insert(key, view);
+    }
+
+    fn get_reads(&mut self, key: Key<P>) -> Option<Vec<ReadResult>> {
+        match self.cache.remove(&key) {
+            Some(reads) => Some(reads),
+            None => Some(Vec::<ReadResult>::new()),
         }
     }
 
-    fn offload_data(self) -> (Vec<Key<P>>, HashMap<Vec<u8>, Vec<u8>>) {
-        unimplemented!()
+    fn insert_reads(&mut self, key: Key<P>, reads: Vec<ReadResult>) {
+        self.cache.insert(key, reads);
     }
+}
+
+fn write_to_read(write: &WriteRequest) -> ReadResult {
+    ReadResult::new(write.kind(), write.id(), write.data())
+}
+
+#[test]
+fn test_bucket() {
+    use crate::provider::Provider;
+
+    let key = Key::<Provider>::random().expect(line_error!());
+
+    let mut bucket = Bucket::<Provider>::new();
+    let id1 = RecordId::random::<Provider>().expect(line_error!());
+    let id2 = RecordId::random::<Provider>().expect(line_error!());
+
+    bucket.take(key.clone(), |view, mut reads| -> Vec<ReadResult> {
+        let mut writer = view.writer(id1);
+
+        let wr = writer.truncate().expect(line_error!());
+
+        reads.push(write_to_read(&wr));
+
+        let wr = writer
+            .write(b"some data", RecordHint::new(b"").expect(line_error!()))
+            .expect(line_error!());
+
+        let mut wr: Vec<ReadResult> = wr.into_iter().map(|w| write_to_read(&w)).collect();
+
+        reads.append(&mut wr);
+
+        let mut writer = view.writer(id2);
+
+        let wr = writer.truncate().expect(line_error!());
+
+        reads.push(write_to_read(&wr));
+
+        reads
+    });
+
+    bucket.take(key, |view, reads| {
+        let reader = view.reader();
+
+        let res = reader.prepare_read(&id1).expect(line_error!());
+
+        match res {
+            PreparedRead::CacheHit(v) => {
+                println!("{:?}", std::str::from_utf8(&v));
+            }
+            PreparedRead::CacheMiss(v) => {
+                println!("{:?}", v.id());
+            }
+            _ => {
+                println!("no data");
+            }
+        }
+
+        reads
+    });
 }
