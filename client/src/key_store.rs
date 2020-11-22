@@ -1,44 +1,29 @@
-use zeroize_derive::Zeroize;
+use engine::vault::{BoxProvider, Key};
 
-use engine::vault::{BoxProvider, DBView, Key, ReadResult};
+use std::collections::HashMap;
 
 use crate::{ids::VaultId, line_error};
 
-use dashmap::DashMap;
-
-#[derive(Clone, Debug, Zeroize)]
-pub struct Value<T>(T);
-
-impl<T> Value<T> {
-    pub fn new(val: T) -> Self {
-        Self(val)
-    }
-
-    pub fn inner(self) -> T {
-        self.0
-    }
-}
-
 pub struct KeyStore<P: BoxProvider + Clone + Send + Sync + 'static> {
-    store: DashMap<VaultId, Key<P>>,
+    store: HashMap<VaultId, Key<P>>,
 }
 
 impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
     pub fn new() -> Self {
-        Self { store: DashMap::new() }
+        Self { store: HashMap::new() }
     }
 
-    pub fn get_key_and_id(&self, id: VaultId) -> (VaultId, Key<P>) {
-        self.store.remove(&id).expect(line_error!())
+    pub fn get_key(&mut self, id: VaultId) -> Option<Key<P>> {
+        self.store.remove(&id)
     }
 
-    pub fn create_key_for_vault(&mut self, id: VaultId) -> VaultId {
-        self.store.entry(id).or_insert(Key::<P>::random().expect(line_error!()));
+    pub fn create_key(&mut self, id: VaultId) -> Key<P> {
+        let key = self.store.entry(id).or_insert(Key::<P>::random().expect(line_error!()));
 
-        id
+        key.clone()
     }
 
-    pub fn insert_key(&self, id: VaultId, key: Key<P>) {
+    pub fn insert_key(&mut self, id: VaultId, key: Key<P>) {
         self.store.entry(id).or_insert(key);
     }
 }
