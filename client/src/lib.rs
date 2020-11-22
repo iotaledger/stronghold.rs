@@ -2,7 +2,6 @@ use thiserror::Error as DeriveError;
 
 mod actors;
 mod bucket;
-mod cache;
 mod client;
 mod ids;
 mod key_store;
