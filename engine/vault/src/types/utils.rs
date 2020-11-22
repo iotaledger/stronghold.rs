@@ -12,10 +12,10 @@
 use crate::{base64::Base64Encodable, crypto_box::BoxProvider};
 use std::{
     cmp::Ordering,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Formatter},
     hash::Hash,
     ops::{Add, AddAssign},
-    convert::{TryFrom, TryInto},
 };
 
 use serde::{Deserialize, Serialize};
@@ -156,7 +156,6 @@ impl TryFrom<Vec<u8>> for ChainId {
         Self::try_from(bs.as_slice())
     }
 }
-
 
 /// A transaction identifier
 #[repr(transparent)]

@@ -47,7 +47,9 @@ pub use crate::{
     base64::{Base64Decodable, Base64Encodable},
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
     types::utils::{ChainId, RecordHint},
-    vault::{RecordId, DBReader, DBView, DBWriter, PreparedRead, DeleteRequest, ReadRequest, ReadResult, WriteRequest, Kind},
+    vault::{
+        DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult, RecordId, WriteRequest,
+    },
 };
 
 /// Errors for the Vault Crate

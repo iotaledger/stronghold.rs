@@ -9,11 +9,9 @@
 // an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and limitations under the License.
 
-use crate::{
-    types::{
-        transactions::{TransactionType, Transaction},
-        utils::{TransactionId, Val},
-    },
+use crate::types::{
+    transactions::{Transaction, TransactionType},
+    utils::{TransactionId, Val},
 };
 
 pub struct Chain {
@@ -101,14 +99,13 @@ impl Chain {
                     TransactionType::Revocation => {
                         revokes.push(tx.id);
                         revocation_score += 1;
-                    }
-                    //TransactionType::Unrevocation => {
-                    //    if revocation_score <= 0 {
-                    //        res.garbage.push(tx.id);
-                    //    } else {
-                    //        revocation_score -= 1;
-                    //    }
-                    //}
+                    } //TransactionType::Unrevocation => {
+                      //    if revocation_score <= 0 {
+                      //        res.garbage.push(tx.id);
+                      //    } else {
+                      //        revocation_score -= 1;
+                      //    }
+                      //}
                 }
 
                 res.subchain.push(tx.id);
@@ -129,4 +126,3 @@ impl Chain {
         Ok(res)
     }
 }
-
