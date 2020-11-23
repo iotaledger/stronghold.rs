@@ -1,7 +1,10 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use libp2p::request_response::{InboundFailure, OutboundFailure, RequestResponseEvent, RequestResponseMessage};
+use libp2p::{
+    identify::IdentifyEvent,
+    request_response::{InboundFailure, OutboundFailure, RequestResponseEvent, RequestResponseMessage},
+};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "mdns")]
@@ -103,12 +106,19 @@ pub enum CommunicationEvent {
         request_id: ReqId,
         error: RequestResponseError,
     },
+    Identify,
 }
 
 #[cfg(feature = "mdns")]
 impl From<MdnsEvent> for CommunicationEvent {
     fn from(_: MdnsEvent) -> CommunicationEvent {
         CommunicationEvent::Mdns
+    }
+}
+
+impl From<IdentifyEvent> for CommunicationEvent {
+    fn from(_: IdentifyEvent) -> CommunicationEvent {
+        CommunicationEvent::Identify
     }
 }
 

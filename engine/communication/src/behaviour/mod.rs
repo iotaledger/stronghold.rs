@@ -16,6 +16,7 @@ use libp2p::mdns::{Mdns, MdnsEvent};
 use libp2p::{
     build_tcp_ws_noise_mplex_yamux,
     core::{connection::ListenerId, Multiaddr, PeerId},
+    identify::{Identify, IdentifyEvent},
     identity::Keypair,
     request_response::{
         ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent, RequestResponseMessage,
@@ -33,7 +34,6 @@ use std::collections::btree_map::BTreeMap;
 mod structs_proto {
     include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
 }
-
 pub type P2PNetworkSwarm= ExpandedSwarm<
      P2PNetworkBehaviour,
      <<<P2PNetworkBehaviour as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
@@ -41,11 +41,13 @@ pub type P2PNetworkSwarm= ExpandedSwarm<
      <P2PNetworkBehaviour as NetworkBehaviour>::ProtocolsHandler,
      PeerId,
 >;
+
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "CommunicationEvent", poll_method = "poll")]
 pub struct P2PNetworkBehaviour {
     #[cfg(feature = "mdns")]
     mdns: Mdns,
+    identify: Identify,
     msg_proto: RequestResponse<MessageCodec>,
     #[behaviour(ignore)]
     peers: BTreeMap<PeerStr, Multiaddr>,
@@ -70,7 +72,8 @@ impl P2PNetworkBehaviour {
     ///     message::{Request, Response},
     /// };
     /// use libp2p::{
-    ///     core::{identity::Keypair, Multiaddr, PeerId},
+    ///     core::{Multiaddr, PeerId},
+    ///     identity::Keypair,
     ///     request_response::{RequestId, RequestResponseEvent, ResponseChannel},
     /// };
     ///
@@ -85,6 +88,7 @@ impl P2PNetworkBehaviour {
         let mdns =
             Mdns::new().map_err(|_| QueryError::ConnectionError("Could not build mdns behaviour".to_string()))?;
 
+        let identify = Identify::new("/ipfs/0.1.0".into(), "rust-ipfs-example".into(), local_keys.public());
         // Create RequestResponse behaviour with MessageProtocol
         let msg_proto = {
             let cfg = RequestResponseConfig::default();
@@ -96,6 +100,7 @@ impl P2PNetworkBehaviour {
             #[cfg(feature = "mdns")]
             mdns,
             msg_proto,
+            identify,
             peers: BTreeMap::new(),
             events: Vec::new(),
             response_channels: BTreeMap::new(),
@@ -217,6 +222,13 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<Request, Response>> for P
             CommunicationEvent::from(event)
         };
         self.events.push(communication_event);
+    }
+}
+
+impl NetworkBehaviourEventProcess<IdentifyEvent> for P2PNetworkBehaviour {
+    // Called when `identify` produces an event.
+    fn inject_event(&mut self, event: IdentifyEvent) {
+        self.events.push(CommunicationEvent::from(event));
     }
 }
 

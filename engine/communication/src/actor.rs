@@ -1,26 +1,34 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    behaviour::{P2PNetworkBehaviour, P2PNetworkSwarm},
-    message::CommunicationEvent,
-};
+use crate::{behaviour::P2PNetworkBehaviour, message::CommunicationEvent};
 use async_std::task;
 use core::task::{Context as TaskContext, Poll};
-use futures::{future, prelude::*};
+use futures::{channel::mpsc, future, prelude::*};
 use libp2p::core::identity::Keypair;
 use riker::actors::*;
 
+pub enum CommActorEvent {
+    Message(CommunicationEvent),
+    Shutdown,
+}
+
 #[actor(CommunicationEvent)]
-struct CommunicationActor {
-    swarm: P2PNetworkSwarm,
+pub struct CommunicationActor {
     chan: ChannelRef<CommunicationEvent>,
+    keypair: Keypair,
+    swarm_tx: Option<mpsc::Sender<CommActorEvent>>,
+    poll_swarm_handle: Option<future::RemoteHandle<()>>,
 }
 
 impl ActorFactoryArgs<(Keypair, ChannelRef<CommunicationEvent>)> for CommunicationActor {
     fn create_args((keypair, chan): (Keypair, ChannelRef<CommunicationEvent>)) -> Self {
-        let swarm = P2PNetworkBehaviour::new(keypair).unwrap();
-        Self { swarm, chan }
+        Self {
+            chan,
+            keypair,
+            swarm_tx: None,
+            poll_swarm_handle: None,
+        }
     }
 }
 
@@ -31,30 +39,70 @@ impl Actor for CommunicationActor {
         let topic = Topic::from("swarm_outbound");
         let sub = Box::new(ctx.myself());
         self.chan.tell(Subscribe { actor: sub, topic }, None);
-        P2PNetworkBehaviour::start_listening(&mut self.swarm, None).unwrap();
     }
 
-    fn post_start(&mut self, _ctx: &Context<Self::Msg>) {
+    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        let (swarm_tx, mut swarm_rx) = mpsc::channel(16);
+        self.swarm_tx = Some(swarm_tx);
+        let mut swarm = P2PNetworkBehaviour::new(self.keypair.clone()).unwrap();
+        P2PNetworkBehaviour::start_listening(&mut swarm, None).unwrap();
         let topic = Topic::from("swarm_inbound");
-        task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
-            match self.swarm.poll_next_unpin(tcx) {
-                Poll::Ready(Some(event)) => {
-                    println!("Received event: {:?}", event);
-                    self.chan.tell(
-                        Publish {
-                            msg: event,
-                            topic: topic.clone(),
-                        },
-                        None,
-                    )
+        let chan = self.chan.clone();
+        let handle = ctx.run(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
+            loop {
+                let event = match swarm_rx.poll_next_unpin(tcx) {
+                    Poll::Ready(Some(event)) => event,
+                    Poll::Ready(None) => return Poll::Ready(()),
+                    Poll::Pending => break,
+                };
+                match event {
+                    CommActorEvent::Message(message) => match message {
+                        CommunicationEvent::RequestMessage {
+                            peer,
+                            request_id: _,
+                            request,
+                        } => {
+                            swarm.send_request(peer, request);
+                        }
+                        CommunicationEvent::ResponseMessage {
+                            peer: _,
+                            request_id,
+                            response,
+                        } => {
+                            swarm.send_response(response, request_id).unwrap();
+                        }
+                        _ => {}
+                    },
+                    CommActorEvent::Shutdown => {
+                        return Poll::Ready(());
+                    }
                 }
-                Poll::Ready(None) => {
-                    return Poll::Ready(());
+            }
+            loop {
+                match swarm.poll_next_unpin(tcx) {
+                    Poll::Ready(Some(event)) => {
+                        println!("Received event: {:?}", event);
+                        chan.tell(
+                            Publish {
+                                msg: event,
+                                topic: topic.clone(),
+                            },
+                            None,
+                        )
+                    }
+                    Poll::Ready(None) => return Poll::Ready(()),
+                    Poll::Pending => break,
                 }
-                Poll::Pending => {}
             }
             Poll::Pending
-        }))
+        }));
+        self.poll_swarm_handle = handle.ok();
+    }
+
+    fn post_stop(&mut self) {
+        if let Some(handle) = self.poll_swarm_handle.as_mut() {
+            task::block_on(handle);
+        }
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -65,22 +113,15 @@ impl Actor for CommunicationActor {
 impl Receive<CommunicationEvent> for CommunicationActor {
     type Msg = CommunicationActorMsg;
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: CommunicationEvent, _sender: Sender) {
-        match msg {
-            CommunicationEvent::RequestMessage {
-                peer,
-                request_id: _,
-                request,
-            } => {
-                self.swarm.send_request(peer, request);
-            }
-            CommunicationEvent::ResponseMessage {
-                peer: _,
-                request_id,
-                response,
-            } => {
-                self.swarm.send_response(response, request_id).unwrap();
-            }
-            _ => {}
+        if let Some(tx) = self.swarm_tx.as_mut() {
+            task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
+                match tx.poll_ready(tcx) {
+                    Poll::Ready(Ok(())) => Poll::Ready(tx.start_send(CommActorEvent::Message(msg.clone()))),
+                    Poll::Ready(err) => Poll::Ready(err),
+                    _ => Poll::Pending,
+                }
+            }))
+            .unwrap();
         }
     }
 }

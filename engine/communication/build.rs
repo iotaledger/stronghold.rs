@@ -2,5 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 fn main() {
-    prost_build::compile_protos(&["src/behaviour/structs.proto"], &["src"]).unwrap();
+    prost_build::Config::new()
+        .btree_map(&["."])
+        .compile_protos(&["src/behaviour/structs.proto"], &["src"])
+        .unwrap();
 }
