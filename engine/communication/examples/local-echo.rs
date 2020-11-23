@@ -44,9 +44,9 @@ use async_std::{
     task,
 };
 use communication::{
-    behaviour::{P2PNetworkBehaviour, P2PNetworkSwarm},
+    behaviour::P2PNetworkBehaviour,
     error::QueryResult,
-    message::{CommunicationEvent, Request, Response},
+    message::{CommunicationEvent, ReqResEvent, Request, Response},
 };
 use core::{
     str::FromStr,
@@ -92,45 +92,52 @@ fn listen() -> QueryResult<()> {
         loop {
             // poll for events from the swarm
             match swarm.poll_next_unpin(cx) {
-                Poll::Ready(Some(event)) => match event {
-                    CommunicationEvent::RequestMessage {
-                        peer,
+                Poll::Ready(Some(e)) => {
+                    if let CommunicationEvent::RequestResponse {
+                        peer_id,
                         request_id,
-                        request,
-                    } => {
-                        println!("Received message from peer {:?}\n{:?}", peer, request);
-                        if let Request::Ping = request {
-                            let response = swarm.send_response(Response::Pong, request_id);
-                            if response.is_ok() {
-                                println!("Send Pong back");
-                            } else {
-                                println!("Error sending pong: {:?}", response.unwrap_err());
+                        event,
+                    } = e
+                    {
+                        match event {
+                            ReqResEvent::Req(request) => {
+                                println!("Received message from peer {:?}\n{:?}", peer_id, request);
+                                if let Request::Ping = request {
+                                    let response = swarm.send_response(Response::Pong, request_id);
+                                    if response.is_ok() {
+                                        println!("Send Pong back");
+                                    } else {
+                                        println!("Error sending pong: {:?}", response.unwrap_err());
+                                    }
+                                }
+                            }
+                            ReqResEvent::Res(response) => println!(
+                                "Response from peer {:?} for Request {:?}:\n{:?}",
+                                peer_id, request_id, response
+                            ),
+                            ReqResEvent::ReqResErr(error) => {
+                                println!("Error for request {:?} to peer {:?}:\n{:?}", request_id, peer_id, error)
                             }
                         }
+                    } else if let CommunicationEvent::Identify {
+                        peer_id,
+                        public_key: _,
+                        observed_addr,
+                    } = e
+                    {
+                        println!(
+                            "Received identify event: {:?} observes us at {:?}",
+                            peer_id, observed_addr
+                        );
+                        Swarm::add_external_address(&mut swarm, observed_addr);
                     }
-                    CommunicationEvent::ResponseMessage {
-                        peer,
-                        request_id,
-                        response,
-                    } => println!(
-                        "Response from peer {:?} for Request {:?}:\n{:?}",
-                        peer, request_id, response
-                    ),
-                    CommunicationEvent::RequestResponseError {
-                        peer,
-                        request_id,
-                        error,
-                    } => {
-                        println!("Error for request {:?} to peer {:?}:\n{:?}", request_id, peer, error);
-                    }
-                    _ => {}
-                },
+                }
                 Poll::Ready(None) => {
                     return Poll::Ready(());
                 }
                 Poll::Pending => {
                     if !listening {
-                        let mut listeners = P2PNetworkBehaviour::get_listeners(&mut swarm).peekable();
+                        let mut listeners = Swarm::listeners(&swarm).peekable();
                         if listeners.peek() == None {
                             println!("No listeners. The port may already be occupied.")
                         } else {
@@ -157,14 +164,14 @@ fn listen() -> QueryResult<()> {
     Ok(())
 }
 
-fn handle_input_line(swarm: &mut P2PNetworkSwarm, line: String) {
+fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour>, line: String) {
     if let Some(peer_id) = Regex::new("PING\\s+\"(\\w+)\"")
         .ok()
         .and_then(|regex| regex.captures(&line))
         .and_then(|cap| cap.get(1))
         .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
     {
-        swarm.send_request(peer_id.to_string(), Request::Ping);
+        swarm.send_request(peer_id.clone(), Request::Ping);
         println!("Pinged {:?}", peer_id);
     } else if line.contains("LIST") {
         println!("Known peers:");
@@ -178,7 +185,7 @@ fn handle_input_line(swarm: &mut P2PNetworkSwarm, line: String) {
         .and_then(|cap| cap.get(1))
         .and_then(|peer_match| Multiaddr::from_str(peer_match.as_str()).ok())
     {
-        if P2PNetworkSwarm::dial_addr(swarm, peer_addr.clone()).is_ok() {
+        if Swarm::dial_addr(swarm, peer_addr.clone()).is_ok() {
             println!("Dialed {:?}", peer_addr);
         };
     } else {

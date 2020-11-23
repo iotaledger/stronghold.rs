@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use libp2p::{
+    core::{Multiaddr, PeerId},
     identify::IdentifyEvent,
-    request_response::{InboundFailure, OutboundFailure, RequestResponseEvent, RequestResponseMessage},
+    identity::PublicKey,
+    request_response::{InboundFailure, OutboundFailure, RequestId, RequestResponseEvent, RequestResponseMessage},
 };
 use serde::{Deserialize, Serialize};
 
@@ -12,8 +14,6 @@ use libp2p::mdns::MdnsEvent;
 
 pub type Key = String;
 pub type Value = String;
-pub type ReqId = String;
-pub type PeerStr = String;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MailboxRecord {
@@ -88,37 +88,52 @@ pub enum FailureType {
     UnsupportedProtocols,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
+pub enum ReqResEvent {
+    Req(Request),
+    Res(Response),
+    ReqResErr(RequestResponseError),
+}
+
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum CommunicationEvent {
-    Mdns,
-    RequestMessage {
-        peer: PeerStr,
-        request_id: ReqId,
-        request: Request,
+    SwarmCtrl,
+    Identify {
+        peer_id: PeerId,
+        public_key: PublicKey,
+        observed_addr: Multiaddr,
     },
-    ResponseMessage {
-        peer: PeerStr,
-        request_id: ReqId,
-        response: Response,
+    RequestResponse {
+        peer_id: PeerId,
+        request_id: RequestId,
+        event: ReqResEvent,
     },
-    RequestResponseError {
-        peer: PeerStr,
-        request_id: ReqId,
-        error: RequestResponseError,
-    },
-    Identify,
 }
 
 #[cfg(feature = "mdns")]
 impl From<MdnsEvent> for CommunicationEvent {
-    fn from(_: MdnsEvent) -> CommunicationEvent {
-        CommunicationEvent::Mdns
+    fn from(_event: MdnsEvent) -> CommunicationEvent {
+        CommunicationEvent::SwarmCtrl
     }
 }
 
 impl From<IdentifyEvent> for CommunicationEvent {
-    fn from(_: IdentifyEvent) -> CommunicationEvent {
-        CommunicationEvent::Identify
+    fn from(event: IdentifyEvent) -> CommunicationEvent {
+        if let IdentifyEvent::Received {
+            peer_id,
+            info,
+            observed_addr,
+        } = event
+        {
+            CommunicationEvent::Identify {
+                peer_id,
+                public_key: info.public_key,
+                observed_addr,
+            }
+        } else {
+            CommunicationEvent::SwarmCtrl
+        }
     }
 }
 
@@ -130,15 +145,15 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
                     request_id,
                     request,
                     channel: _,
-                } => CommunicationEvent::RequestMessage {
-                    peer: peer.to_string(),
-                    request_id: request_id.to_string(),
-                    request,
+                } => CommunicationEvent::RequestResponse {
+                    peer_id: peer,
+                    request_id,
+                    event: ReqResEvent::Req(request),
                 },
-                RequestResponseMessage::Response { request_id, response } => CommunicationEvent::ResponseMessage {
-                    peer: peer.to_string(),
-                    request_id: request_id.to_string(),
-                    response,
+                RequestResponseMessage::Response { request_id, response } => CommunicationEvent::RequestResponse {
+                    peer_id: peer,
+                    request_id,
+                    event: ReqResEvent::Res(response),
                 },
             },
             RequestResponseEvent::OutboundFailure {
@@ -152,13 +167,13 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
                     OutboundFailure::ConnectionClosed => FailureType::ConnectionClosed,
                     OutboundFailure::UnsupportedProtocols => FailureType::UnsupportedProtocols,
                 };
-                CommunicationEvent::RequestResponseError {
-                    peer: peer.to_string(),
-                    request_id: request_id.to_string(),
-                    error: RequestResponseError {
+                CommunicationEvent::RequestResponse {
+                    peer_id: peer,
+                    request_id,
+                    event: ReqResEvent::ReqResErr(RequestResponseError {
                         source: FailureSource::Outbound,
                         error,
-                    },
+                    }),
                 }
             }
             RequestResponseEvent::InboundFailure {
@@ -171,13 +186,13 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
                     InboundFailure::ConnectionClosed => FailureType::ConnectionClosed,
                     InboundFailure::UnsupportedProtocols => FailureType::UnsupportedProtocols,
                 };
-                CommunicationEvent::RequestResponseError {
-                    peer: peer.to_string(),
-                    request_id: request_id.to_string(),
-                    error: RequestResponseError {
+                CommunicationEvent::RequestResponse {
+                    peer_id: peer,
+                    request_id,
+                    event: ReqResEvent::ReqResErr(RequestResponseError {
                         source: FailureSource::Inbound,
                         error,
-                    },
+                    }),
                 }
             }
         }

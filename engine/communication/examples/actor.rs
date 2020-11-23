@@ -3,7 +3,7 @@
 
 use communication::{
     actor::CommunicationActor,
-    message::{CommunicationEvent, Request, Response},
+    message::{CommunicationEvent, ReqResEvent, Request, Response},
 };
 use core::time::Duration;
 use libp2p::core::identity::Keypair;
@@ -39,17 +39,16 @@ impl Receive<CommunicationEvent> for TestActor {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: CommunicationEvent, _sender: Sender) {
         println!("{}: -> got msg: {:?}", ctx.myself.name(), msg);
-        if let CommunicationEvent::RequestMessage {
-            peer,
+        if let CommunicationEvent::RequestResponse {
+            peer_id,
             request_id,
-            request: Request::Ping,
+            event: ReqResEvent::Req(Request::Ping),
         } = msg
         {
-            println!("Is Ping");
-            let response = CommunicationEvent::ResponseMessage {
-                peer,
+            let response = CommunicationEvent::RequestResponse {
+                peer_id,
                 request_id,
-                response: Response::Pong,
+                event: ReqResEvent::Res(Response::Pong),
             };
             self.chan.tell(
                 Publish {

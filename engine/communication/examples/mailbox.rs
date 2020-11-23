@@ -74,7 +74,7 @@ use clap::{load_yaml, App, ArgMatches};
 use communication::{
     behaviour::P2PNetworkBehaviour,
     error::QueryResult,
-    message::{CommunicationEvent, MailboxRecord, PeerStr, Request, RequestOutcome, Response},
+    message::{CommunicationEvent, MailboxRecord, ReqResEvent, Request, RequestOutcome, Response},
 };
 use core::{
     str::FromStr,
@@ -82,7 +82,7 @@ use core::{
 };
 use futures::{future, prelude::*};
 use libp2p::{
-    core::identity::Keypair,
+    core::{identity::Keypair, PeerId},
     multiaddr::{multiaddr, Multiaddr},
     swarm::Swarm,
 };
@@ -90,7 +90,7 @@ use std::collections::BTreeMap;
 
 // only used for this CLI
 struct Matches {
-    mail_id: PeerStr,
+    mail_id: PeerId,
     mail_addr: Multiaddr,
     key: String,
     value: Option<String>,
@@ -98,7 +98,10 @@ struct Matches {
 
 // Match and parse the arguments from the command line
 fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
-    if let Some(mail_id) = matches.value_of("mailbox_id").map(|id_arg| id_arg.to_string()) {
+    if let Some(mail_id) = matches
+        .value_of("mailbox_id")
+        .and_then(|id_arg| PeerId::from_str(&id_arg).ok())
+    {
         if let Some(mail_addr) = matches
             .value_of("mailbox_addr")
             .and_then(|addr_arg| Multiaddr::from_str(addr_arg).ok())
@@ -137,10 +140,10 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
             // keys
             match swarm.poll_next_unpin(cx) {
                 Poll::Ready(Some(event)) => {
-                    if let CommunicationEvent::RequestMessage {
-                        peer: _,
+                    if let CommunicationEvent::RequestResponse {
+                        peer_id: _,
                         request_id,
-                        request,
+                        event: ReqResEvent::Req(request),
                     } = event
                     {
                         println!("Request:{:?}", request);
@@ -172,7 +175,7 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
                 }
                 Poll::Pending => {
                     if !listening {
-                        let mut listeners = P2PNetworkBehaviour::get_listeners(&mut swarm).peekable();
+                        let mut listeners = Swarm::listeners(&swarm).peekable();
                         if listeners.peek() == None {
                             println!("No listeners. The port may already be occupied.")
                         } else {
@@ -216,10 +219,10 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
                 // poll for the outcome of the request
                 match swarm.poll_next_unpin(cx) {
                     Poll::Ready(Some(event)) => {
-                        if let CommunicationEvent::ResponseMessage {
-                            peer: _,
+                        if let CommunicationEvent::RequestResponse {
+                            peer_id: _,
                             request_id,
-                            response,
+                            event: ReqResEvent::Res(response),
                         } = event
                         {
                             println!("Response:{:?}", response);
@@ -233,8 +236,8 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
                     Poll::Ready(None) => Poll::Ready(()),
                     Poll::Pending => {
                         if original_id.is_none() {
-                            if !P2PNetworkBehaviour::is_connected(&mut swarm, mail_id.clone())
-                                && P2PNetworkBehaviour::dial_addr(&mut swarm, mail_addr.clone()).is_err()
+                            if Swarm::connection_info(&mut swarm, &mail_id).is_none()
+                                && Swarm::dial_addr(&mut swarm, mail_addr.clone()).is_err()
                             {
                                 println!("Could not dial addr");
                                 return Poll::Ready(());
@@ -277,10 +280,10 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
                 // poll for the outcome of the request
                 match swarm.poll_next_unpin(cx) {
                     Poll::Ready(Some(event)) => {
-                        if let CommunicationEvent::ResponseMessage {
-                            peer: _,
+                        if let CommunicationEvent::RequestResponse {
+                            peer_id: _,
                             request_id,
-                            response,
+                            event: ReqResEvent::Res(response),
                         } = event
                         {
                             println!("Response:{:?}", response);
@@ -300,8 +303,8 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
                         if original_id.is_none() {
                             // Connect to a remote mailbox on the server.
                             swarm.add_peer(mail_id.clone(), mail_addr.clone());
-                            if !P2PNetworkBehaviour::is_connected(&mut swarm, mail_id.clone())
-                                && P2PNetworkBehaviour::dial_addr(&mut swarm, mail_addr.clone()).is_err()
+                            if Swarm::connection_info(&mut swarm, &mail_id).is_none()
+                                && Swarm::dial_addr(&mut swarm, mail_addr.clone()).is_err()
                             {
                                 println!("Could not dial addr");
                                 return Poll::Ready(());

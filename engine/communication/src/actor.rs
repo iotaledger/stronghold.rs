@@ -1,11 +1,14 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{behaviour::P2PNetworkBehaviour, message::CommunicationEvent};
+use crate::{
+    behaviour::P2PNetworkBehaviour,
+    message::{CommunicationEvent, ReqResEvent},
+};
 use async_std::task;
 use core::task::{Context as TaskContext, Poll};
 use futures::{channel::mpsc, future, prelude::*};
-use libp2p::core::identity::Keypair;
+use libp2p::{core::identity::Keypair, swarm::Swarm};
 use riker::actors::*;
 
 pub enum CommActorEvent {
@@ -56,23 +59,31 @@ impl Actor for CommunicationActor {
                     Poll::Pending => break,
                 };
                 match event {
-                    CommActorEvent::Message(message) => match message {
-                        CommunicationEvent::RequestMessage {
-                            peer,
-                            request_id: _,
-                            request,
-                        } => {
-                            swarm.send_request(peer, request);
-                        }
-                        CommunicationEvent::ResponseMessage {
-                            peer: _,
+                    CommActorEvent::Message(message) => {
+                        if let CommunicationEvent::RequestResponse {
+                            peer_id,
                             request_id,
-                            response,
-                        } => {
-                            swarm.send_response(response, request_id).unwrap();
+                            event,
+                        } = message
+                        {
+                            match event {
+                                ReqResEvent::Req(request) => {
+                                    swarm.send_request(peer_id, request);
+                                }
+                                ReqResEvent::Res(response) => {
+                                    swarm.send_response(response, request_id).unwrap();
+                                }
+                                _ => {}
+                            }
+                        } else if let CommunicationEvent::Identify {
+                            peer_id: _,
+                            public_key: _,
+                            observed_addr,
+                        } = message
+                        {
+                            Swarm::add_external_address(&mut swarm, observed_addr);
                         }
-                        _ => {}
-                    },
+                    }
                     CommActorEvent::Shutdown => {
                         return Poll::Ready(());
                     }
