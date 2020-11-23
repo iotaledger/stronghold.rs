@@ -301,7 +301,6 @@ Record GuardedAllocation (n A P: nat) := mkGuardedAllocation {
   data' := data _ _ allocation;
   offset: nat;
   pad_pre: nat;
-  pad_pre_prop: pad_pre <= pad n P; (* TODO: can this be deduced instead of provided? *)
   data_offset: data' = base + (1 + offset) * P + pad_pre;
   post_guard: (1 + offset) * P + pad_pre + n + pad (data' + n) P + P <= mmapped_size;
 }.
@@ -315,18 +314,17 @@ Proof.
   pose (Anz := proj1 PA).
   pose (Pnz := proj1 XP).
 
-  simple refine (mkGuardedAllocation _ _ _ (mkAllocation _ _ (x + P) _ _) M N 0 0 _ _ _).
+  simple refine (mkGuardedAllocation _ _ _ (mkAllocation _ _ (x + P) _ _) M N 0 0 _ _).
   - unfold aligned.
     now rewrite (pad_add_l _ _ _ Anz (aligned_mod (align_weaken _ _ _ PA XP))).
   - intros i I.
     rewrite <- Nat.add_assoc.
     refine (XAcc _ _).
     lia.
-  - lia.
-  - rewrite Mx. simpl.
-    lia.
+  - rewrite Mx. simpl. lia.
   - simpl.
-    rewrite pad_add_l; [lia|exact Pnz|].
+    unfold N.
+    repeat rewrite pad_add_l; try lia.
     rewrite <- (Nat.add_mod_idemp_l _ _ _ Pnz).
     rewrite (aligned_mod XP), Nat.add_0_l.
     now rewrite Nat.mod_same.
@@ -336,8 +334,6 @@ Record OptimalAllocation (n A P: nat) := mkOptimalAllocation {
   guarded_allocation: GuardedAllocation n A P;
   post_padding_min: forall a': GuardedAllocation n A P,
     pad (data' _ _ _ guarded_allocation + n) P <= pad (data' _ _ _ a' + n) P;
-  mmapped_size_min: forall a': GuardedAllocation n A P,
-    mmapped_size _ _ _ guarded_allocation <= mmapped_size _ _ _ a';
 }.
 
 Lemma optimal_allocator_page_aligned {P} (M: mmap P):
@@ -353,19 +349,14 @@ Proof.
   pose (XA := aligned_mod (align_weaken _ _ x PA XP)).
 
   pose (i := pad_minimizer A n P).
-  pose (p := i * A).
-  pose (d := x + P + p).
 
-  simple refine (mkOptimalAllocation _ _ _ (mkGuardedAllocation _ _ _ (mkAllocation n A d _ _) M N 0 p _ _ _) _ _).
+  simple refine (mkOptimalAllocation _ _ _ (mkGuardedAllocation _ _ _ (mkAllocation n A (x + P + i * A) _ _) M N 0 (i * A) _ _) _).
   - refine (conj Anz _).
-    unfold d, p.
     repeat rewrite <- Nat.add_assoc.
-    rewrite (pad_add_l _ _ _ Anz XA).
-    rewrite (pad_add_l _ _ _ Anz (aligned_mod PA)).
-    unfold pad.
-    now rewrite Nat.mod_mul.
+    repeat rewrite pad_add_l; try lia.
+    + unfold pad; now rewrite Nat.mod_mul.
+    + now apply aligned_mod.
   - intros j J.
-    unfold d, p.
     repeat rewrite <- Nat.add_assoc.
     refine (XAcc _ _).
     unfold N.
@@ -378,10 +369,9 @@ Proof.
     refine (Nat.le_trans (i * A) (P / A * A) P _ _).
     + unfold i; exact (Nat.mul_le_mono_r _ _ A (pad_minimizer_bound A n P Anz)).
     + rewrite Nat.mul_comm; now apply Nat.mul_div_le.
-  - now apply pad_minimizer_mul_bound.
-  - rewrite Mx; simpl; lia.
+  - rewrite Mx. simpl; lia.
   - simpl.
-    unfold d, p, N.
+    unfold N.
     repeat rewrite <- Nat.add_assoc.
     rewrite (pad_add_l _ _ _ Pnz (aligned_mod XP)).
     rewrite (pad_add_l _ _ _ Pnz (Nat.mod_same _ Pnz)).
@@ -398,31 +388,12 @@ Proof.
   - intro a'.
     unfold data'.
     simpl.
-    unfold d, p.
     repeat rewrite <- Nat.add_assoc.
     rewrite (pad_add_l _ _ _ Pnz (aligned_mod XP)).
     rewrite (pad_add_l _ _ _ Pnz (Nat.mod_same _ Pnz)).
     destruct (proj1 (Nat.mod_divides _ _ Anz) (aligned_mod (data_alignment _ _ (allocation _ _ _ a')))) as [j J].
     rewrite J, Nat.mul_comm.
     apply (pad_min _ _ _ (aligned_mod PA)).
-  - intro a'.
-    unfold N.
-    simpl.
-    refine (Nat.le_trans _ _ _ _ (post_guard _ _ _ a')).
-    rewrite (data_offset _ _ _ a').
-    refine (proj1 (Nat.add_le_mono_r _ _ _) _).
-    repeat rewrite <- Nat.add_assoc.
-    refine (Nat.add_le_mono _ _ _ _ _ _); [rewrite Nat.mul_add_distr_r; lia|].
-    rewrite (Nat.add_comm (pad_pre _ _ _ a') _).
-    rewrite <- Nat.add_assoc.
-    refine (proj1 (Nat.add_le_mono_l _ _ _) _).
-    unfold base.
-    destruct (mmapper _ _ _ a' (mmapped_size _ _ _ a')) as [x' [X' X'acc]].
-    rewrite (pad_add_l x' _ _ Pnz (aligned_mod X')).
-    rewrite (pad_add_l ((1 + offset _ _ _ a') * P) _ _ Pnz (Nat.mod_mul _ _ Pnz)).
-    rewrite Nat.add_comm.
-    rewrite pad_add_small; [auto|exact Pnz|].
-    exact (pad_pre_prop _ _ _ a').
 Qed.
 
 Lemma optimal_allocator_super_page_aligned {P} (M: mmap P):
@@ -447,7 +418,7 @@ Proof.
   pose (o := i - 1 - j mod i).
   pose (d := x + o * P + P).
 
-  simple refine (mkOptimalAllocation _ _ _ (mkGuardedAllocation _ _ _ (mkAllocation n A d _ _) M N o 0 _ _ _) _ _).
+  simple refine (mkOptimalAllocation _ _ _ (mkGuardedAllocation _ _ _ (mkAllocation n A d _ _) M N o 0 _ _) _).
   - refine (conj Anz _).
     unfold d, o.
     rewrite XP'.
@@ -488,7 +459,6 @@ Proof.
     unfold i.
     rewrite <- AP'.
     apply Nat.le_sub_l.
-  - lia.
   - rewrite Mx. simpl. unfold d. lia.
   - simpl. unfold N, d.
     refine (proj1 (Nat.add_le_mono_r _ _ _) _).
@@ -516,10 +486,5 @@ Proof.
       rewrite (Nat.mod_same _ Pnz), Nat.add_0_r.
       rewrite <- (Nat.add_mod_idemp_r _ _ _ Pnz).
       rewrite (Nat.mod_mul _ _ Pnz), Nat.add_0_r.
-      apply (aligned_mod XP).
-  - intro a'.
-    simpl.
-    unfold N.
-    refine (Nat.le_trans _ _ _ _ (post_guard _ _ _ a')).
-    admit.
-Admitted.
+      now apply aligned_mod.
+Qed.
