@@ -104,14 +104,26 @@ impl Receive<CMsg> for Client {
                 kstore.try_tell(KMsg::CreateVault(vid), None);
             }
             CMsg::CreateVaultReturn(vid, rid) => {
-                unimplemented!()
+                #[cfg(test)]
+                let external = ctx
+                    .select(self.external_actor.as_ref().expect(line_error!()))
+                    .expect(line_error!());
+
+                #[cfg(test)]
+                external.try_tell(EMsg::ReturnCreateVault(vid, rid), None);
             }
             CMsg::ReadDataAsk(vid, rid) => {
                 let kstore = ctx.select("/user/keystore/").expect(line_error!());
                 kstore.try_tell(KMsg::ReadData(vid, rid), None);
             }
             CMsg::ReadDataReturn(data) => {
-                unimplemented!()
+                #[cfg(test)]
+                let external = ctx
+                    .select(self.external_actor.as_ref().expect(line_error!()))
+                    .expect(line_error!());
+
+                #[cfg(test)]
+                external.try_tell(EMsg::ReturnReadData(data), None);
             }
             CMsg::WriteData(vid, rid, payload, hint) => {
                 let kstore = ctx.select("/user/keystore/").expect(line_error!());
@@ -134,7 +146,14 @@ impl Receive<CMsg> for Client {
                 kstore.try_tell(KMsg::ListIds(vid), None);
             }
             CMsg::ListReturn(ids) => {
-                unimplemented!()
+                println!("{:?}", ids);
+                #[cfg(test)]
+                let external = ctx
+                    .select(self.external_actor.as_ref().expect(line_error!()))
+                    .expect(line_error!());
+
+                #[cfg(test)]
+                external.try_tell(EMsg::ReturnList(ids), None);
             }
             CMsg::SetExternalName(id) => {
                 self.external_actor = Some(id);
@@ -245,16 +264,143 @@ impl Receive<KMsg> for KeyStore<Provider> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum EMsg {
+    CreateVault,
+    ReturnCreateVault(VaultId, RecordId),
+    WriteData(usize, Vec<u8>, RecordHint),
+    CommitWrite(usize),
+    ReturnReadData(Vec<u8>),
+    ReadData(usize),
+    RevokeData(usize),
+    GarbageCollect(usize),
+    ListIds(usize),
+    ReturnList(Vec<(RecordId, RecordHint)>),
+}
+
+pub struct MockExternalActor {
+    vaults: Vec<(VaultId, RecordId)>,
+}
+
+impl Actor for MockExternalActor {
+    type Msg = EMsg;
+
+    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        self.receive(ctx, msg, sender);
+    }
+}
+
+impl ActorFactory for MockExternalActor {
+    fn create() -> Self {
+        let vaults = Vec::new();
+        Self { vaults }
+    }
+}
+
+impl Receive<EMsg> for MockExternalActor {
+    type Msg = EMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
+        match msg {
+            EMsg::CreateVault => {
+                let client = ctx.select("/user/client/").expect(line_error!());
+                client.try_tell(CMsg::CreateVaultAsk, None);
+            }
+            EMsg::ReturnCreateVault(vid, rid) => {
+                self.vaults.push((vid, rid));
+            }
+            EMsg::WriteData(index, payload, hint) => {
+                if index >= self.vaults.len() {
+                    let external = ctx.select("/user/external").expect(line_error!());
+                    external.try_tell(EMsg::WriteData(index, payload.clone(), hint), None);
+                } else {
+                    let (vid, rid) = self.vaults[index];
+
+                    let client = ctx.select("/user/client/").expect(line_error!());
+                    client.try_tell(CMsg::WriteData(vid, rid, payload, hint), None);
+                }
+            }
+            EMsg::CommitWrite(index) => {
+                if index >= self.vaults.len() {
+                    let external = ctx.select("/user/external").expect(line_error!());
+                    external.try_tell(EMsg::CommitWrite(index), None);
+                } else {
+                    let (vid, rid) = self.vaults[index];
+
+                    let client = ctx.select("/user/client/").expect(line_error!());
+                    client.try_tell(CMsg::CommitWrite(vid, rid), None);
+                }
+            }
+            EMsg::ReadData(index) => {
+                if index >= self.vaults.len() {
+                    let external = ctx.select("/user/external").expect(line_error!());
+                    external.try_tell(EMsg::ReadData(index), None);
+                } else {
+                    let (vid, rid) = self.vaults[index];
+
+                    let client = ctx.select("/user/client/").expect(line_error!());
+                    client.try_tell(CMsg::ReadDataAsk(vid, rid), None);
+                }
+            }
+            EMsg::ReturnReadData(data) => {
+                println!("Plaintext Data: {:?}", std::str::from_utf8(&data));
+            }
+            EMsg::RevokeData(index) => {
+                let (vid, rid) = self.vaults[index];
+
+                let client = ctx.select("/user/client/").expect(line_error!());
+                client.try_tell(CMsg::RevokeData(vid, rid), None);
+            }
+            EMsg::GarbageCollect(index) => {
+                let (vid, _) = self.vaults[index];
+
+                let client = ctx.select("/user/client/").expect(line_error!());
+                client.try_tell(CMsg::GarbageCollect(vid), None);
+            }
+            EMsg::ListIds(index) => {
+                let (vid, _) = self.vaults[index];
+
+                let client = ctx.select("/user/client/").expect(line_error!());
+                client.try_tell(CMsg::ListAsk(vid), None);
+            }
+            EMsg::ReturnList(ids) => {
+                println!("Read Ids: {:?}", ids);
+                ids.iter().for_each(|(id, hint)| {
+                    println!("Record Id: {:?}, Hint: {:?}", id, hint);
+                });
+            }
+        }
+    }
+}
+
 #[test]
-
 fn test_actor_system() {
+    let external_path = "/user/external/";
     let sys = ActorSystem::new().unwrap();
-
     let client = sys.actor_of::<Client>("client").unwrap();
     sys.actor_of::<Bucket<Provider>>("bucket").unwrap();
     sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
+    let external = sys.actor_of::<MockExternalActor>("external").unwrap();
 
+    client.tell(CMsg::SetExternalName(String::from(external_path)), None);
     client.tell(CMsg::CreateVaultAsk, None);
+
+    external.tell(EMsg::CreateVault, None);
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    external.tell(
+        EMsg::WriteData(0, b"Some Data".to_vec(), RecordHint::new(b"").expect(line_error!())),
+        None,
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    external.tell(EMsg::CommitWrite(0), None);
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    external.tell(EMsg::ListIds(0), None);
 
     std::thread::sleep(std::time::Duration::from_millis(2000));
     sys.print_tree();

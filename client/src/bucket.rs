@@ -18,10 +18,10 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
     }
 
     pub fn create_and_init_vault(&mut self, key: Key<P>) -> (Key<P>, RecordId) {
-        let id = RecordId::random::<P>().expect(line_error!());
+        let id1 = RecordId::random::<P>().expect(line_error!());
 
         self.take(key.clone(), |view, mut reads| {
-            let mut writer = view.writer(id);
+            let mut writer = view.writer(id1);
 
             let truncate = writer.truncate().expect(line_error!());
 
@@ -30,7 +30,9 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
             reads
         });
 
-        (key, id)
+        let id2 = RecordId::random::<P>().expect(line_error!());
+
+        (key, id2)
     }
 
     pub fn read_data(&mut self, key: Key<P>, id: RecordId) -> Vec<u8> {
@@ -156,8 +158,6 @@ fn write_to_read(write: &WriteRequest) -> ReadResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::Provider;
-    use std::iter::empty;
 
     #[test]
     fn test_bucket() {
@@ -252,60 +252,6 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_stuff() {
-        let id1 = RecordId::random::<Provider>().expect(line_error!());
-        let id2 = RecordId::random::<Provider>().expect(line_error!());
-        let key1 = Key::<Provider>::random().expect(line_error!());
-        let key2 = Key::<Provider>::random().expect(line_error!());
-        let mut map: HashMap<Key<Provider>, Option<DBView<Provider>>> = HashMap::new();
-        let mut writes1 = vec![];
-        let mut writes2 = vec![];
-        let view1 = DBView::load(key1.clone(), empty::<ReadResult>()).expect(line_error!());
-        let view2 = DBView::load(key2.clone(), empty::<ReadResult>()).expect(line_error!());
-        let mut writer1 = view1.writer(id1);
-        let mut writer2 = view2.writer(id2);
-        writes1.push(writer1.truncate().expect(line_error!()));
-        writes2.push(writer2.truncate().expect(line_error!()));
-        writes1.append(
-            &mut writer1
-                .write(b"some data", RecordHint::new(b"").expect(line_error!()))
-                .expect(line_error!()),
-        );
-        writes2.append(
-            &mut writer2
-                .write(b"some data", RecordHint::new(b"").expect(line_error!()))
-                .expect(line_error!()),
-        );
-        let view1 = DBView::load(key1.clone(), writes1.iter().map(write_to_read)).expect(line_error!());
-        let view2 = DBView::load(key2.clone(), writes2.iter().map(write_to_read)).expect(line_error!());
-        map.insert(key1.clone(), Some(view1));
-        map.insert(key2.clone(), Some(view2));
-        let view1 = map.remove(&key1).unwrap().unwrap();
-        let id12 = RecordId::random::<Provider>().expect(line_error!());
-        let id22 = RecordId::random::<Provider>().expect(line_error!());
-        let mut writer1 = view1.writer(id12);
-        writes1.push(writer1.truncate().expect(line_error!()));
-        writes1.append(
-            &mut writer1
-                .write(b"some data", RecordHint::new(b"").expect(line_error!()))
-                .expect(line_error!()),
-        );
-        writes1.push(writer1.truncate().expect(line_error!()));
-        let view1 = DBView::load(key1.clone(), writes1.iter().map(write_to_read)).expect(line_error!());
-        map.insert(key1.clone(), Some(view1));
-
-        let view1 = DBView::load(key1.clone(), writes1.iter().map(write_to_read)).expect(line_error!());
-
-        let reader = view1.reader();
-
-        let res = reader.prepare_read(&id1).expect(line_error!());
-
-        match res {
-            PreparedRead::CacheHit(v) => println!("{:?}", std::str::from_utf8(&v)),
-            _ => println!("no data"),
-        }
-    }
     fn write_to_read(write: &WriteRequest) -> ReadResult {
         ReadResult::new(write.kind(), write.id(), write.data())
     }
