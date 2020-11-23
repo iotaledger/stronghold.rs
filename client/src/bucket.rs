@@ -17,10 +17,10 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         Self { cache, vaults }
     }
 
-    pub fn create_and_init_vault(&mut self, key: Key<P>) -> RecordId {
+    pub fn create_and_init_vault(&mut self, key: Key<P>) -> (Key<P>, RecordId) {
         let id = RecordId::random::<P>().expect(line_error!());
 
-        self.take(key, |view, mut reads| {
+        self.take(key.clone(), |view, mut reads| {
             let mut writer = view.writer(id);
 
             let truncate = writer.truncate().expect(line_error!());
@@ -30,7 +30,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
             reads
         });
 
-        id
+        (key, id)
     }
 
     pub fn read_data(&mut self, key: Key<P>, id: RecordId) -> Vec<u8> {
@@ -309,4 +309,7 @@ mod tests {
     fn write_to_read(write: &WriteRequest) -> ReadResult {
         ReadResult::new(write.kind(), write.id(), write.data())
     }
+
+    #[test]
+    fn test_hashmap() {}
 }

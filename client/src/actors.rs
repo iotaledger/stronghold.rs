@@ -2,7 +2,7 @@ use riker::actors::*;
 
 use std::fmt::Debug;
 
-use engine::vault::{BoxProvider, Key, RecordId};
+use engine::vault::{BoxProvider, Key, RecordHint, RecordId};
 
 use crate::{
     bucket::Bucket,
@@ -15,39 +15,44 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum CMsg {
-    AddVaultSend,
-    AddVaultReturn(VaultId),
-    CreateRecord(VaultId, Vec<u8>),
-    ReadRecord(VaultId, RecordId),
+    SetExternalName(String),
+    CreateVaultAsk,
+    CreateVaultReturn(VaultId, RecordId),
+    ReadDataAsk(VaultId, RecordId),
+    ReadDataReturn(Vec<u8>),
+    WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
+    CommitWrite(VaultId, RecordId),
+    RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
-    RevokeRecord(VaultId, RecordId),
-    ListRecords(VaultId),
-    ReturnRecordId(RecordId),
+    ListAsk(VaultId),
+    ListReturn(Vec<(RecordId, RecordHint)>),
 }
 
 #[derive(Debug, Clone)]
 pub enum BMsg<P: BoxProvider + Debug> {
-    AddVault(VaultId, Key<P>),
-    CreateRecord(VaultId, Key<P>, Vec<u8>),
-    ReadRecord(VaultId, Key<P>, RecordId),
-    GarbageCollect(VaultId),
-    RevokeRecord(VaultId, Key<P>, RecordId),
-    ListRecords(VaultId, Key<P>),
+    CreateVault(VaultId, Key<P>),
+    ReadData(Key<P>, RecordId),
+    WriteData(Key<P>, RecordId, Vec<u8>, RecordHint),
+    CommitWrite(Key<P>, RecordId),
+    RevokeData(Key<P>, RecordId),
+    GarbageCollect(Key<P>),
+    ListAsk(Key<P>),
 }
 
 #[derive(Clone, Debug)]
 pub enum KMsg {
-    AddVault,
-    CreateRecord(VaultId, Vec<u8>),
-    ReadRecord(VaultId, RecordId),
+    CreateVault(VaultId),
+    ReadData(VaultId, RecordId),
+    WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
+    CommitWrite(VaultId, RecordId),
+    RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
-    RevokeRecord(VaultId, RecordId),
-    ListRecords(VaultId),
+    ListIds(VaultId),
 }
 
 impl ActorFactory for Client {
     fn create() -> Self {
-        Client::new(ClientId::random::<Provider>().expect(line_error!()))
+        Client::new(ClientId::random::<Provider>().expect(line_error!()), None)
     }
 }
 
@@ -92,41 +97,47 @@ impl Receive<CMsg> for Client {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         match msg {
-            CMsg::AddVaultSend => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-                keystore.try_tell(KMsg::AddVault, None)
-            }
-            CMsg::AddVaultReturn(vid) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-                keystore.try_tell(KMsg::CreateRecord(vid, b"Some data".to_vec()), None);
+            CMsg::CreateVaultAsk => {
+                let vid = VaultId::random::<Provider>().expect(line_error!());
 
-                std::thread::sleep(std::time::Duration::from_millis(50));
-
-                keystore.try_tell(KMsg::ListRecords(vid), None);
+                let kstore = ctx.select("/user/keystore/").expect(line_error!());
+                kstore.try_tell(KMsg::CreateVault(vid), None);
             }
-            CMsg::CreateRecord(vid, payload) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-                keystore.try_tell(KMsg::CreateRecord(vid, payload), None)
+            CMsg::CreateVaultReturn(vid, rid) => {
+                unimplemented!()
             }
-            CMsg::ReadRecord(vid, tx_id) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-                keystore.try_tell(KMsg::ReadRecord(vid, tx_id), None)
+            CMsg::ReadDataAsk(vid, rid) => {
+                let kstore = ctx.select("/user/keystore/").expect(line_error!());
+                kstore.try_tell(KMsg::ReadData(vid, rid), None);
+            }
+            CMsg::ReadDataReturn(data) => {
+                unimplemented!()
+            }
+            CMsg::WriteData(vid, rid, payload, hint) => {
+                let kstore = ctx.select("/user/keystore/").expect(line_error!());
+                kstore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
+            }
+            CMsg::CommitWrite(vid, rid) => {
+                let kstore = ctx.select("/user/keystore/").expect(line_error!());
+                kstore.try_tell(KMsg::CommitWrite(vid, rid), None);
+            }
+            CMsg::RevokeData(vid, rid) => {
+                let kstore = ctx.select("/user/keystore/").expect(line_error!());
+                kstore.try_tell(KMsg::RevokeData(vid, rid), None);
             }
             CMsg::GarbageCollect(vid) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-                keystore.try_tell(KMsg::GarbageCollect(vid), None)
+                let kstore = ctx.select("/user/keystore/").expect(line_error!());
+                kstore.try_tell(KMsg::GarbageCollect(vid), None);
             }
-
-            CMsg::RevokeRecord(vid, tx_id) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-                keystore.try_tell(KMsg::RevokeRecord(vid, tx_id), None)
+            CMsg::ListAsk(vid) => {
+                let kstore = ctx.select("/user/keystore/").expect(line_error!());
+                kstore.try_tell(KMsg::ListIds(vid), None);
             }
-            CMsg::ListRecords(vid) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-                keystore.try_tell(KMsg::ListRecords(vid), None)
+            CMsg::ListReturn(ids) => {
+                unimplemented!()
             }
-            CMsg::ReturnRecordId(id) => {
-                println!("{:?}", id);
+            CMsg::SetExternalName(id) => {
+                self.external_actor = Some(id);
             }
         }
     }
@@ -136,30 +147,38 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
     type Msg = BMsg<Provider>;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
-        // match msg {
-        unimplemented!()
-        // BMsg::AddVault(vid, key) => {
-        //     self.add_vault(vid, key);
+        match msg {
+            BMsg::CreateVault(vid, key) => {
+                let (_, rid) = self.create_and_init_vault(key);
 
-        //     let client = ctx.select("/user/client/").expect(line_error!());
+                let client = ctx.select("/user/client/").expect(line_error!());
+                client.try_tell(CMsg::CreateVaultReturn(vid, rid), None);
+            }
+            BMsg::ReadData(key, rid) => {
+                let plain = self.read_data(key, rid);
 
-        //     client.try_tell(CMsg::AddVaultReturn(vid), None);
-        // }
-        // BMsg::CreateRecord(vid, key, payload) => {
-        //     let tx_id = self.create_record(vid, key, payload);
+                let client = ctx.select("/user/client/").expect(line_error!());
+                client.try_tell(CMsg::ReadDataReturn(plain), None);
+            }
+            BMsg::WriteData(key, rid, payload, hint) => {
+                self.write_payload(key, rid, payload, hint);
+            }
+            BMsg::CommitWrite(key, rid) => {
+                self.commit_write(key, rid);
+            }
+            BMsg::RevokeData(key, rid) => {
+                self.revoke_data(key, rid);
+            }
+            BMsg::GarbageCollect(key) => {
+                self.garbage_collect(key);
+            }
+            BMsg::ListAsk(key) => {
+                let ids = self.list_ids(key);
 
-        //     let client = ctx.select("/user/client/").expect(line_error!());
-        //     client.try_tell(CMsg::ReturnRecordId(tx_id), None)
-        // }
-        // BMsg::ReadRecord(vid, key, tx_id) => {}
-        // BMsg::GarbageCollect(vid) => unimplemented!(),
-        // BMsg::RevokeRecord(vid, key, tx_id) => {
-        //     self.revoke_record(vid, key, tx_id);
-        // }
-        // BMsg::ListRecords(vid, key) => {
-        //     self.list_all_valid_by_key(vid, key);
-        // }
-        // }
+                let client = ctx.select("/user/client/").expect(line_error!());
+                client.try_tell(CMsg::ListReturn(ids), None);
+            }
+        }
     }
 }
 
@@ -167,56 +186,62 @@ impl Receive<KMsg> for KeyStore<Provider> {
     type Msg = KMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
-        unimplemented!()
-        // match msg {
+        match msg {
+            KMsg::CreateVault(vid) => {
+                let key = self.create_key(vid);
 
-        // KMsg::AddVault => {
-        //     let vid = VaultId::random::<Provider>().expect(line_error!());
-        //     let vid = self.create_key_for_vault(vid);
-        //     let (vid, key) = self.get_key_and_id(vid);
+                let bucket = ctx.select("/user/bucket/").expect(line_error!());
+                bucket.try_tell(BMsg::CreateVault(vid, key), None);
+            }
+            KMsg::ReadData(vid, rid) => {
+                if let Some(key) = self.get_key(vid) {
+                    let bucket = ctx.select("/user/bucket/").expect(line_error!());
+                    bucket.try_tell(BMsg::ReadData(key.clone(), rid), None);
 
-        //     let keystore = ctx.select("/user/blob/").expect(line_error!());
-        //     keystore.try_tell(BMsg::AddVault(vid, key.clone()), None);
+                    self.insert_key(vid, key);
+                }
+            }
+            KMsg::WriteData(vid, rid, payload, hint) => {
+                if let Some(key) = self.get_key(vid) {
+                    let bucket = ctx.select("/user/bucket/").expect(line_error!());
+                    bucket.try_tell(BMsg::WriteData(key.clone(), rid, payload, hint), None);
 
-        //     self.insert_key(vid, key);
-        // }
-        // KMsg::CreateRecord(vid, payload) => {
-        //     let (vid, key) = self.get_key_and_id(vid);
+                    self.insert_key(vid, key);
+                }
+            }
+            KMsg::CommitWrite(vid, rid) => {
+                if let Some(key) = self.get_key(vid) {
+                    let bucket = ctx.select("/user/bucket/").expect(line_error!());
+                    bucket.try_tell(BMsg::CommitWrite(key.clone(), rid), None);
 
-        //     let keystore = ctx.select("/user/blob/").expect(line_error!());
-        //     keystore.try_tell(BMsg::CreateRecord(vid, key.clone(), payload), None);
+                    self.insert_key(vid, key);
+                }
+            }
+            KMsg::RevokeData(vid, rid) => {
+                if let Some(key) = self.get_key(vid) {
+                    let bucket = ctx.select("/user/bucket/").expect(line_error!());
+                    bucket.try_tell(BMsg::RevokeData(key.clone(), rid), None);
 
-        //     self.insert_key(vid, key);
-        // }
-        // KMsg::ReadRecord(vid, tx_id) => {
-        //     let (vid, key) = self.get_key_and_id(vid);
+                    self.insert_key(vid, key);
+                }
+            }
+            KMsg::GarbageCollect(vid) => {
+                if let Some(key) = self.get_key(vid) {
+                    let bucket = ctx.select("/user/bucket/").expect(line_error!());
+                    bucket.try_tell(BMsg::GarbageCollect(key.clone()), None);
 
-        //     let keystore = ctx.select("/user/blob/").expect(line_error!());
-        //     keystore.try_tell(BMsg::ReadRecord(vid, key.clone(), tx_id), None);
+                    self.insert_key(vid, key);
+                }
+            }
+            KMsg::ListIds(vid) => {
+                if let Some(key) = self.get_key(vid) {
+                    let bucket = ctx.select("/user/bucket/").expect(line_error!());
+                    bucket.try_tell(BMsg::ListAsk(key.clone()), None);
 
-        //     self.insert_key(vid, key);
-        // }
-        // KMsg::GarbageCollect(vid) => {
-        //     let keystore = ctx.select("/user/blob/").expect(line_error!());
-        //     keystore.try_tell(BMsg::GarbageCollect::<Provider>(vid), None);
-        // }
-        // KMsg::RevokeRecord(vid, tx_id) => {
-        //     let (vid, key) = self.get_key_and_id(vid);
-
-        //     let keystore = ctx.select("/user/blob/").expect(line_error!());
-        //     keystore.try_tell(BMsg::RevokeRecord::<Provider>(vid, key.clone(), tx_id), None);
-
-        //     self.insert_key(vid, key);
-        // }
-        // KMsg::ListRecords(vid) => {
-        //     let (vid, key) = self.get_key_and_id(vid);
-
-        //     let keystore = ctx.select("/user/blob/").expect(line_error!());
-        //     keystore.try_tell(BMsg::ListRecords::<Provider>(vid, key.clone()), None);
-
-        //     self.insert_key(vid, key);
-        // }
-        // }
+                    self.insert_key(vid, key);
+                }
+            }
+        }
     }
 }
 
@@ -229,7 +254,7 @@ fn test_actor_system() {
     sys.actor_of::<Bucket<Provider>>("bucket").unwrap();
     sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
 
-    client.tell(CMsg::AddVaultSend, None);
+    client.tell(CMsg::CreateVaultAsk, None);
 
     std::thread::sleep(std::time::Duration::from_millis(2000));
     sys.print_tree();

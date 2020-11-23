@@ -2,6 +2,7 @@ use crate::ClientId;
 
 pub struct Client {
     id: ClientId,
+    pub external_actor: Option<String>,
 }
 
 // pub struct Snapshot<P: BoxProvider + Clone + Send + Sync> {
@@ -11,7 +12,7 @@ pub struct Client {
 // }
 
 impl Client {
-    pub fn new(id: ClientId) -> Self {
-        Self { id }
+    pub fn new(id: ClientId, external_actor: Option<String>) -> Self {
+        Self { id, external_actor }
     }
 }
