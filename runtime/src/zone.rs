@@ -7,7 +7,6 @@ use core::mem;
 pub enum Error {
     UnexpectedExitCode { exit_code: libc::c_int },
     Signal { signo: libc::c_int },
-    Unreachable(&'static str),
 }
 
 impl Error {
@@ -17,10 +16,6 @@ impl Error {
 
     fn signal(signo: libc::c_int) -> crate::Error {
         crate::Error::ZoneError(Self::Signal { signo })
-    }
-
-    fn unreachable(msg: &'static str) -> crate::Error {
-        crate::Error::ZoneError(Self::Unreachable(msg))
     }
 }
 
@@ -80,7 +75,7 @@ where
         } else if libc::WIFSIGNALED(st) {
             Err(Error::signal(libc::WTERMSIG(st)))
         } else {
-            Err(Error::unreachable("waitpid returned but: !WIFEXITED(st) && !WIFSIGNALED(st)"))
+            Err(crate::Error::unreachable("waitpid returned but: !WIFEXITED(st) && !WIFSIGNALED(st)"))
         };
 
         let r = libc::close(fds[0]);

@@ -51,91 +51,107 @@ unsafe impl GlobalAlloc for GuardedAllocator {
     }
 }
 
+fn pad(x: usize, n: usize) -> usize {
+    match x % n {
+        0 => 0,
+        r => n - r,
+    }
+}
+
+fn pad_minimizer(a: usize, b: usize, c: usize) -> usize {
+    match b % c {
+        0 => 0,
+        bc => if bc % a == 0 {
+            c / a - bc / a
+        } else {
+            c / a - bc / a - 1
+        }
+    }
+}
+
+fn mmap(n: usize) -> crate::Result<*mut u8> {
+    let x = unsafe {
+        libc::mmap(
+            ptr::null_mut::<u8>() as *mut libc::c_void,
+            n,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            -1, 0)
+    };
+    if x == libc::MAP_FAILED {
+        return Err(crate::Error::os("mmap"));
+    }
+    Ok(x as *mut u8)
+}
+
+fn munmap(p: *mut u8, n: usize) -> crate::Result<()> {
+    match unsafe { libc::munmap(p as *mut libc::c_void, n) } {
+        0 => Ok(()),
+        _ => Err(crate::Error::os("munmap")),
+    }
+}
+
 pub struct Allocation {
     base: *mut u8,
     data: *mut u8,
-    total_size: usize, // NB size of the memory mapping (including guard pages)
+    mmapped_size: usize, // NB size of the memory mapping (including guard pages)
 }
 
 impl Allocation {
     pub fn new(l: Layout) -> crate::Result<Self> {
-        if l.size() == 0 {
+        let n = l.size();
+        if n == 0 {
             return Err(Error::ZeroAllocation.into());
         }
 
+        let a = l.align();
         let p = page_size();
-        let (total_size, offset) = if p % l.align() == 0 {
-            let n = l.pad_to_align().size();
-            let (q, r) = num::integer::div_rem(n, p);
-            if r == 0 {
-                ((2 + q)*p, Some(p))
-            } else {
-                ((2 + 1 + q)*p, Some(p + (p - r)))
-            }
-        } else {
-            let i = Layout::from_size_align(l.align(), p).map_err(|e| Error::Layout(e))?
-                .pad_to_align().size();
-            let k = l.align_to(p).map_err(|e| Error::Layout(e))?.pad_to_align().size();
-            (2*p + i + k, None)
-        };
 
-        let base = unsafe {
-            libc::mmap(
-                ptr::null_mut::<u8>() as *mut libc::c_void,
-                total_size,
-                libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
-                -1, 0)
-        };
-        if base == libc::MAP_FAILED {
-            return Err(crate::Error::os("mmap"));
+        if p % a == 0 {
+            let mmapped_size = p + n + pad(n, p) + p;
+            let base = mmap(mmapped_size)?;
+            let i = pad_minimizer(a, n, p);
+            let data = unsafe { base.offset((p + i * a) as isize) };
+            Ok(Self { base, data, mmapped_size })
+        } else if a % p == 0 {
+            let x = mmap(a + n + pad(n, p) + p)?;
+            let i = a / p;
+            let j = x as usize / p;
+            let o = i - 1 - (j % i);
+            let base = unsafe { x.offset((o * p) as isize) };
+            if o > 0 {
+                munmap(x, o * p)?;
+            }
+            let data = unsafe { base.offset(p as isize) };
+            let mmapped_size = p + n + pad(n, p) + p;
+
+            if j % i > 0 {
+                let end = unsafe { base.offset(mmapped_size as isize) };
+                munmap(end, (j % i) * p)?;
+            }
+
+            Ok(Self { base, data, mmapped_size })
+        } else {
+            Err(crate::Error::unreachable("page size and requested alignment is coprime"))
         }
-        let base = base as *mut u8;
 
         // TODO: write canary for the writable page (NB don't write canaries in the guards,
         // then at least they don't reserve physical memory, (assuming COW))
         // TODO: lock the guard pages
         // TODO: mlock the data pages
         // TODO: zero the data pages
-
-        let data = match offset {
-            Some(o) => unsafe { base.offset(o as isize) },
-            None => unsafe {
-                let q = base.offset(p as isize);
-                q.offset(q.align_offset(l.align()) as isize)
-            }
-        };
-
-        Ok(Self { base, data, total_size })
     }
 
     pub fn from_ptr(data: *mut u8, l: Layout) -> Self {
         let p = page_size();
-        let (total_size, offset) = if p % l.align() == 0 {
-            let n = l.pad_to_align().size();
-            let (q, r) = num::integer::div_rem(n, p);
-            if r == 0 {
-                ((2 + q)*p, p)
-            } else {
-                ((2 + 1 + q)*p, p + (p - r))
-            }
-        } else {
-            todo!()
-        };
-
-        let base = unsafe { data.offset(-(offset as isize)) };
-        Self { base, data, total_size }
+        let n = l.size();
+        let base = unsafe { data.offset(-((p + (data as usize) % p) as isize)) };
+        let mmapped_size = p + n + pad(n, p) + p;
+        Self { base, data, mmapped_size }
     }
 
     pub fn free(&self) -> crate::Result<()> {
-        unsafe {
-            let r = libc::munmap(self.base as *mut libc::c_void, self.total_size);
-            if r != 0 {
-                return Err(crate::Error::os("mmap"));
-            }
-        }
-
-        Ok(())
+        munmap(self.base, self.mmapped_size)
     }
 }
 
@@ -147,16 +163,20 @@ mod tests {
     use super::*;
     use rand::{random, thread_rng, Rng};
 
-    fn do_sized_alloc_test(n: usize) -> crate::Result<()> {
-        let a = GuardedAllocator::new();
-        let p = a.alloc_unaligned(n)?;
-
+    fn do_test_write(p: *mut u8, n: usize) {
         let bs = unsafe { core::slice::from_raw_parts_mut(p, n) };
         for i in 0..n {
             assert_eq!(bs[i], 0);
         }
 
         thread_rng().fill(bs);
+    }
+
+    fn do_sized_alloc_test(n: usize) -> crate::Result<()> {
+        let a = GuardedAllocator::new();
+        let p = a.alloc_unaligned(n)?;
+
+        do_test_write(p, n);
 
         a.dealloc_unaligned(p, n)?;
 
@@ -206,6 +226,8 @@ mod tests {
             let al = GuardedAllocator::new();
             let p = al.alloc(l)?;
             assert_eq!((p as usize) % a, 0);
+            do_test_write(p, n);
+
             al.dealloc(p, l)?;
         }
 

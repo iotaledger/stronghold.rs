@@ -20,12 +20,17 @@ pub enum Error {
     OsError { syscall: &'static str, errno: libc::c_int },
     MemError(mem::Error),
     ZoneError(zone::Error),
+    Unreachable(&'static str),
 }
 
 impl Error {
     pub fn os(syscall: &'static str) -> Self {
         let errno = unsafe { *libc::__errno_location() };
         Self::OsError { syscall, errno }
+    }
+
+    fn unreachable(msg: &'static str) -> Self {
+        Self::Unreachable(msg)
     }
 }
 
@@ -56,7 +61,8 @@ impl fmt::Debug for Error {
                     .field("syscall", syscall)
                     .field("errno", errno)
                     .field("strerror", &strerror(*errno))
-                    .finish()
+                    .finish(),
+            Self::Unreachable(msg) => f.write_fmt(format_args!("unreachable state: {}", msg)),
         }
     }
 }
