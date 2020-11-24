@@ -58,7 +58,8 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         buffer
     }
 
-    pub fn commit_write(&mut self, key: Key<P>, id: RecordId) -> RecordId {
+    pub fn init_record(&mut self, key: Key<P>) -> RecordId {
+        let id = RecordId::random::<P>().expect(line_error!());
         self.take(key, |view, mut reads| {
             let mut writer = view.writer(id);
 
@@ -69,7 +70,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
             reads
         });
 
-        RecordId::random::<P>().expect(line_error!())
+        id
     }
 
     pub fn write_payload(&mut self, key: Key<P>, id: RecordId, payload: Vec<u8>, hint: RecordHint) {
@@ -169,32 +170,28 @@ mod tests {
         let key = Key::<Provider>::random().expect(line_error!());
 
         let mut bucket = Bucket::<Provider>::new();
-        let id1 = RecordId::random::<Provider>().expect(line_error!());
-        let id2 = RecordId::random::<Provider>().expect(line_error!());
 
-        let (key, rid) = bucket.create_and_init_vault(key);
+        let (key, rid1) = bucket.create_and_init_vault(key);
 
         bucket.write_payload(
             key.clone(),
-            rid,
+            rid1,
             b"some data".to_vec(),
             RecordHint::new(b"").expect(line_error!()),
         );
 
-        bucket.commit_write(key.clone(), id1);
+        let rid2 = bucket.init_record(key.clone());
 
         bucket.write_payload(
             key.clone(),
-            id1,
+            rid2,
             b"some more data".to_vec(),
             RecordHint::new(b"").expect(line_error!()),
         );
 
-        bucket.commit_write(key.clone(), id2);
-
-        let data = bucket.read_data(key.clone(), rid);
+        let data = bucket.read_data(key.clone(), rid1);
         println!("{:?}", std::str::from_utf8(&data));
-        let data = bucket.read_data(key, id1);
+        let data = bucket.read_data(key, rid2);
 
         println!("{:?}", std::str::from_utf8(&data));
     }
