@@ -18,10 +18,10 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
     }
 
     pub fn create_and_init_vault(&mut self, key: Key<P>) -> (Key<P>, RecordId) {
-        let id1 = RecordId::random::<P>().expect(line_error!());
+        let id = RecordId::random::<P>().expect(line_error!());
 
         self.take(key.clone(), |view, mut reads| {
-            let mut writer = view.writer(id1);
+            let mut writer = view.writer(id);
 
             let truncate = writer.truncate().expect(line_error!());
 
@@ -30,9 +30,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
             reads
         });
 
-        let id2 = RecordId::random::<P>().expect(line_error!());
-
-        (key, id2)
+        (key, id)
     }
 
     pub fn read_data(&mut self, key: Key<P>, id: RecordId) -> Vec<u8> {
@@ -46,6 +44,9 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
                 PreparedRead::CacheHit(mut v) => {
                     buffer.append(&mut v);
                 }
+                PreparedRead::CacheMiss(v) => {
+                    println!("{:?}", v.id());
+                }
                 _ => {
                     println!("no data");
                 }
@@ -57,7 +58,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         buffer
     }
 
-    pub fn commit_write(&mut self, key: Key<P>, id: RecordId) {
+    pub fn commit_write(&mut self, key: Key<P>, id: RecordId) -> RecordId {
         self.take(key, |view, mut reads| {
             let mut writer = view.writer(id);
 
@@ -67,6 +68,8 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
 
             reads
         });
+
+        RecordId::random::<P>().expect(line_error!())
     }
 
     pub fn write_payload(&mut self, key: Key<P>, id: RecordId, payload: Vec<u8>, hint: RecordHint) {
@@ -169,12 +172,59 @@ mod tests {
         let id1 = RecordId::random::<Provider>().expect(line_error!());
         let id2 = RecordId::random::<Provider>().expect(line_error!());
 
+        let (key, rid) = bucket.create_and_init_vault(key);
+
+        bucket.write_payload(
+            key.clone(),
+            rid,
+            b"some data".to_vec(),
+            RecordHint::new(b"").expect(line_error!()),
+        );
+
+        bucket.commit_write(key.clone(), id1);
+
+        bucket.write_payload(
+            key.clone(),
+            id1,
+            b"some more data".to_vec(),
+            RecordHint::new(b"").expect(line_error!()),
+        );
+
+        bucket.commit_write(key.clone(), id2);
+
+        let data = bucket.read_data(key.clone(), rid);
+        println!("{:?}", std::str::from_utf8(&data));
+        let data = bucket.read_data(key, id1);
+
+        println!("{:?}", std::str::from_utf8(&data));
+    }
+
+    fn write_to_read(write: &WriteRequest) -> ReadResult {
+        ReadResult::new(write.kind(), write.id(), write.data())
+    }
+
+    #[test]
+    fn test_take() {
+        use crate::provider::Provider;
+
+        let key = Key::<Provider>::random().expect(line_error!());
+
+        let mut bucket = Bucket::<Provider>::new();
+        let id1 = RecordId::random::<Provider>().expect(line_error!());
+        let id2 = RecordId::random::<Provider>().expect(line_error!());
+
         bucket.take(key.clone(), |view, mut reads| -> Vec<ReadResult> {
             let mut writer = view.writer(id1);
 
             let wr = writer.truncate().expect(line_error!());
 
             reads.push(write_to_read(&wr));
+
+            reads
+        });
+
+        bucket.take(key.clone(), |view, mut reads| {
+            let mut writer = view.writer(id1);
 
             let wr = writer
                 .write(b"some data", RecordHint::new(b"").expect(line_error!()))
@@ -184,6 +234,10 @@ mod tests {
 
             reads.append(&mut wr);
 
+            reads
+        });
+
+        bucket.take(key.clone(), |view, mut reads| {
             let mut writer = view.writer(id2);
 
             let wr = writer.truncate().expect(line_error!());
@@ -250,12 +304,7 @@ mod tests {
 
             reads
         });
-    }
 
-    fn write_to_read(write: &WriteRequest) -> ReadResult {
-        ReadResult::new(write.kind(), write.id(), write.data())
+        println!("{:?}, {:?}", id1, id2);
     }
-
-    #[test]
-    fn test_hashmap() {}
 }
