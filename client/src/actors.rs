@@ -458,6 +458,32 @@ mod test {
 
         external.tell(EMsg::ReadData(1), None);
 
+        external.tell(EMsg::InitRecord(1), None);
+
+        external.tell(
+            EMsg::WriteData(
+                1,
+                b"even more data".to_vec(),
+                RecordHint::new(b"").expect(line_error!()),
+            ),
+            None,
+        );
+
+        external.tell(EMsg::ReadData(1), None);
+
+        external.tell(EMsg::InitRecord(0), None);
+
+        external.tell(
+            EMsg::WriteData(
+                0,
+                b"A bit more data".to_vec(),
+                RecordHint::new(b"").expect(line_error!()),
+            ),
+            None,
+        );
+
+        external.tell(EMsg::ReadData(0), None);
+
         std::thread::sleep(std::time::Duration::from_millis(2000));
         sys.print_tree();
     }
