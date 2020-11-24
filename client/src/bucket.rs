@@ -2,7 +2,7 @@ use engine::vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHi
 
 use std::collections::HashMap;
 
-use crate::line_error;
+use crate::{client::Snapshot, line_error};
 
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
     vaults: HashMap<Key<P>, Option<DBView<P>>>,
@@ -152,6 +152,31 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
 
     fn insert_reads(&mut self, key: Key<P>, reads: Vec<ReadResult>) {
         self.cache.insert(key, reads);
+    }
+
+    pub fn offload_data(&mut self) -> HashMap<Key<P>, Vec<ReadResult>> {
+        let mut cache = HashMap::new();
+
+        self.cache.iter().for_each(|(k, v)| {
+            cache.insert(k.clone(), v.clone());
+        });
+
+        cache
+    }
+
+    pub fn repopulate_data(&mut self, state: HashMap<Key<P>, Vec<ReadResult>>) -> Self {
+        let mut vaults = HashMap::new();
+        let mut cache = HashMap::new();
+
+        state.into_iter().for_each(|(k, v)| {
+            let view = Some(DBView::load(k.clone(), v.iter()).expect(line_error!()));
+
+            vaults.insert(k.clone(), view);
+
+            cache.insert(k, v);
+        });
+
+        Self { vaults, cache }
     }
 }
 
