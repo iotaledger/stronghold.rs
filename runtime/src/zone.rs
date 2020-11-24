@@ -52,7 +52,7 @@ where
 
             let _ = libc::write(1, &mut t as *mut _ as *mut libc::c_void, mem::size_of::<T>());
             // TODO: partial writes
-            libc::exit(0)
+            libc::_exit(0)
         }
 
         let r = libc::close(fds[1]);

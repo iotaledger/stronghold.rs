@@ -163,6 +163,23 @@ mod tests {
     use super::*;
     use rand::{random, thread_rng, Rng};
 
+    fn page_size_exponent() -> u32 {
+        let mut p = 1; let mut k = 0;
+        while p != page_size() {
+            p *= 2; k += 1;
+        }
+        k as u32
+    }
+
+    fn fresh_layout() -> Layout {
+        let mut n = 0;
+        while n == 0 { n = random::<usize>() % 3*page_size(); }
+
+        let a = 2usize.pow(random::<u32>() % page_size_exponent() + 3);
+
+        Layout::from_size_align(n, a).unwrap()
+    }
+
     fn do_test_write(p: *mut u8, n: usize) {
         let bs = unsafe { core::slice::from_raw_parts_mut(p, n) };
         for i in 0..n {
@@ -181,14 +198,6 @@ mod tests {
         a.dealloc_unaligned(p, n)?;
 
         Ok(())
-    }
-
-    fn page_size_exponent() -> u32 {
-        let mut p = 1; let mut k = 0;
-        while p != page_size() {
-            p *= 2; k += 1;
-        }
-        k as u32
     }
 
     #[test]
@@ -217,16 +226,11 @@ mod tests {
     #[test]
     fn alignment() -> crate::Result<()> {
         for _ in 1..100 {
-            let a = 2usize.pow(random::<u32>() % page_size_exponent() + 3);
-
-            let mut n = 0;
-            while n == 0 { n = random::<usize>() % 3*page_size(); }
-
-            let l = Layout::from_size_align(n, a).unwrap();
+            let l = fresh_layout();
             let al = GuardedAllocator::new();
             let p = al.alloc(l)?;
-            assert_eq!((p as usize) % a, 0);
-            do_test_write(p, n);
+            assert_eq!((p as usize) % l.align(), 0);
+            do_test_write(p, l.size());
 
             al.dealloc(p, l)?;
         }
@@ -254,5 +258,23 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn inside_zone() -> crate::Result<()> {
+        let l = fresh_layout();
+        crate::zone::soft(|| {
+            let s = crate::seccomp::Spec {
+                anonymous_mmap: true,
+                munmap: true,
+                ..crate::seccomp::Spec::default()
+            };
+            s.apply().unwrap();
+
+            let al = GuardedAllocator::new();
+            let p = al.alloc(l).unwrap();
+            al.dealloc(p, l).unwrap();
+            unsafe { libc::_exit(0); }
+        })
     }
 }
