@@ -17,12 +17,16 @@ lazy_static! {
     static ref PAGE_SIZE: usize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize };
 }
 #[cfg(unix)]
-fn page_size() -> usize { *PAGE_SIZE }
+fn page_size() -> usize {
+    *PAGE_SIZE
+}
 
-pub struct GuardedAllocator { }
+pub struct GuardedAllocator {}
 
 impl GuardedAllocator {
-    pub const fn new() -> Self { Self { } }
+    pub const fn new() -> Self {
+        Self {}
+    }
 
     pub fn alloc(&self, l: Layout) -> crate::Result<*mut u8> {
         Allocation::new(l).map(|a| a.data)
@@ -61,10 +65,12 @@ fn pad(x: usize, n: usize) -> usize {
 fn pad_minimizer(a: usize, b: usize, c: usize) -> usize {
     match b % c {
         0 => 0,
-        bc => if bc % a == 0 {
-            c / a - bc / a
-        } else {
-            c / a - bc / a - 1
+        bc => {
+            if bc % a == 0 {
+                c / a - bc / a
+            } else {
+                c / a - bc / a - 1
+            }
         }
     }
 }
@@ -76,7 +82,9 @@ fn mmap(n: usize) -> crate::Result<*mut u8> {
             n,
             libc::PROT_READ | libc::PROT_WRITE,
             libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
-            -1, 0)
+            -1,
+            0,
+        )
     };
     if x == libc::MAP_FAILED {
         return Err(crate::Error::os("mmap"));
@@ -112,7 +120,11 @@ impl Allocation {
             let base = mmap(mmapped_size)?;
             let i = pad_minimizer(a, n, p);
             let data = unsafe { base.offset((p + i * a) as isize) };
-            Ok(Self { base, data, mmapped_size })
+            Ok(Self {
+                base,
+                data,
+                mmapped_size,
+            })
         } else if a % p == 0 {
             let x = mmap(a + n + pad(n, p) + p)?;
             let i = a / p;
@@ -130,9 +142,15 @@ impl Allocation {
                 munmap(end, (j % i) * p)?;
             }
 
-            Ok(Self { base, data, mmapped_size })
+            Ok(Self {
+                base,
+                data,
+                mmapped_size,
+            })
         } else {
-            Err(crate::Error::unreachable("page size and requested alignment is coprime"))
+            Err(crate::Error::unreachable(
+                "page size and requested alignment is coprime",
+            ))
         }
 
         // TODO: write canary for the writable page (NB don't write canaries in the guards,
@@ -147,7 +165,11 @@ impl Allocation {
         let n = l.size();
         let base = unsafe { data.offset(-((p + (data as usize) % p) as isize)) };
         let mmapped_size = p + n + pad(n, p) + p;
-        Self { base, data, mmapped_size }
+        Self {
+            base,
+            data,
+            mmapped_size,
+        }
     }
 
     pub fn free(&self) -> crate::Result<()> {
@@ -164,16 +186,20 @@ mod tests {
     use rand::{random, thread_rng, Rng};
 
     fn page_size_exponent() -> u32 {
-        let mut p = 1; let mut k = 0;
+        let mut p = 1;
+        let mut k = 0;
         while p != page_size() {
-            p *= 2; k += 1;
+            p *= 2;
+            k += 1;
         }
         k as u32
     }
 
     fn fresh_layout() -> Layout {
         let mut n = 0;
-        while n == 0 { n = random::<usize>() % 3*page_size(); }
+        while n == 0 {
+            n = random::<usize>() % 3 * page_size();
+        }
 
         let a = 2usize.pow(random::<u32>() % page_size_exponent() + 3);
 
@@ -218,7 +244,7 @@ mod tests {
     #[test]
     fn allocate_random_sizes() -> crate::Result<()> {
         for _ in 1..10 {
-            do_sized_alloc_test(random::<usize>() % 1024*1024)?
+            do_sized_alloc_test(random::<usize>() % 1024 * 1024)?
         }
         Ok(())
     }
@@ -274,7 +300,9 @@ mod tests {
             let al = GuardedAllocator::new();
             let p = al.alloc(l).unwrap();
             al.dealloc(p, l).unwrap();
-            unsafe { libc::_exit(0); }
+            unsafe {
+                libc::_exit(0);
+            }
         })
     }
 }

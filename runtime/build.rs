@@ -3,8 +3,7 @@
 
 extern crate bindgen;
 
-use std::env;
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 fn seccomp_bindings() {
     println!("cargo:rerun-if-changed=src/seccomp.h");

@@ -12,8 +12,8 @@ extern crate memoffset;
 extern crate lazy_static;
 
 pub mod mem;
-pub mod zone;
 pub mod seccomp;
+pub mod zone;
 
 #[derive(PartialEq)]
 pub enum Error {
@@ -35,7 +35,9 @@ impl Error {
 }
 
 impl From<mem::Error> for Error {
-    fn from(e: mem::Error) -> Self { Error::MemError(e) }
+    fn from(e: mem::Error) -> Self {
+        Error::MemError(e)
+    }
 }
 
 #[cfg(unix)]
@@ -46,8 +48,7 @@ fn strerror(errno: libc::c_int) -> &'static str {
         assert_eq!(res, 0);
 
         let len = BUF.iter().position(|c| *c == 0).unwrap_or(BUF.len());
-        core::str::from_utf8_unchecked(
-            core::slice::from_raw_parts(BUF.as_ptr() as *const u8, len))
+        core::str::from_utf8_unchecked(core::slice::from_raw_parts(BUF.as_ptr() as *const u8, len))
     }
 }
 
@@ -56,12 +57,12 @@ impl fmt::Debug for Error {
         match self {
             Self::MemError(me) => me.fmt(f),
             Self::ZoneError(ze) => ze.fmt(f),
-            Self::OsError { syscall, errno } =>
-                f.debug_struct("OsError")
-                    .field("syscall", syscall)
-                    .field("errno", errno)
-                    .field("strerror", &strerror(*errno))
-                    .finish(),
+            Self::OsError { syscall, errno } => f
+                .debug_struct("OsError")
+                .field("syscall", syscall)
+                .field("errno", errno)
+                .field("strerror", &strerror(*errno))
+                .finish(),
             Self::Unreachable(msg) => f.write_fmt(format_args!("unreachable state: {}", msg)),
         }
     }

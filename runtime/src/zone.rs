@@ -26,22 +26,34 @@ where
     unsafe {
         let mut fds: [libc::c_int; 2] = [-1 as libc::c_int; 2];
         let r = libc::pipe(fds.as_mut_ptr());
-        if r != 0 { return Err(crate::Error::os("pipe")) }
+        if r != 0 {
+            return Err(crate::Error::os("pipe"));
+        }
 
         let pid = libc::fork();
-        if pid < 0 { return Err(crate::Error::os("fork")) }
+        if pid < 0 {
+            return Err(crate::Error::os("fork"));
+        }
         if pid == 0 {
             let r = libc::close(0);
-            if r != 0 { libc::exit(1) }
+            if r != 0 {
+                libc::exit(1)
+            }
 
             let r = libc::dup2(fds[1], 1); // NB dup to stdout in order to simplify seccomp filter
-            if r < 0 { libc::exit(1) }
+            if r < 0 {
+                libc::exit(1)
+            }
 
             let r = libc::close(2);
-            if r != 0 { libc::exit(1) }
+            if r != 0 {
+                libc::exit(1)
+            }
 
             let r = libc::close(fds[0]);
-            if r != 0 { libc::exit(1) }
+            if r != 0 {
+                libc::exit(1)
+            }
 
             // TODO: apply seccomp: provide a list of memory allocations, then:
             // 1. apply whitelist that includes the *exact* mprotect:s
@@ -56,11 +68,15 @@ where
         }
 
         let r = libc::close(fds[1]);
-        if r != 0 { return Err(crate::Error::os("close")) }
+        if r != 0 {
+            return Err(crate::Error::os("close"));
+        }
 
         let mut st = 0;
         let r = libc::waitpid(pid, &mut st, 0);
-        if r < 0 { return Err(crate::Error::os("waitpid")) }
+        if r < 0 {
+            return Err(crate::Error::os("waitpid"));
+        }
         let ret = if libc::WIFEXITED(st) {
             let ec = libc::WEXITSTATUS(st);
             if ec == 0 {
@@ -75,11 +91,15 @@ where
         } else if libc::WIFSIGNALED(st) {
             Err(Error::signal(libc::WTERMSIG(st)))
         } else {
-            Err(crate::Error::unreachable("waitpid returned but: !WIFEXITED(st) && !WIFSIGNALED(st)"))
+            Err(crate::Error::unreachable(
+                "waitpid returned but: !WIFEXITED(st) && !WIFSIGNALED(st)",
+            ))
         };
 
         let r = libc::close(fds[0]);
-        if r != 0 { return Err(crate::Error::os("close")) }
+        if r != 0 {
+            return Err(crate::Error::os("close"));
+        }
         ret
     }
 }
@@ -97,7 +117,9 @@ mod tests {
     #[test]
     fn unexpected_exit_code() -> crate::Result<()> {
         assert_eq!(
-            soft(|| unsafe { let _ = libc::exit(1); }),
+            soft(|| unsafe {
+                let _ = libc::exit(1);
+            }),
             Err(Error::unexpected_exit_code(1))
         );
         Ok(())
