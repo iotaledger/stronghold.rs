@@ -21,40 +21,6 @@ fn page_size() -> usize {
     *PAGE_SIZE
 }
 
-pub struct GuardedAllocator {}
-
-impl GuardedAllocator {
-    pub const fn new() -> Self {
-        Self {}
-    }
-
-    pub fn alloc(&self, l: Layout) -> crate::Result<*mut u8> {
-        Allocation::new(l).map(|a| a.data)
-    }
-
-    pub fn dealloc(&self, p: *mut u8, l: Layout) -> crate::Result<()> {
-        Allocation::from_ptr(p, l).free()
-    }
-
-    pub fn alloc_unaligned(&self, n: usize) -> crate::Result<*mut u8> {
-        self.alloc(Layout::from_size_align(n, 1).map_err(|e| Error::Layout(e))?)
-    }
-
-    pub fn dealloc_unaligned(&self, p: *mut u8, n: usize) -> crate::Result<()> {
-        self.dealloc(p, Layout::from_size_align(n, 1).map_err(|e| Error::Layout(e))?)
-    }
-}
-
-unsafe impl GlobalAlloc for GuardedAllocator {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        Allocation::new(l).map(|a| a.data).unwrap()
-    }
-
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        Allocation::from_ptr(p, l).free().unwrap()
-    }
-}
-
 fn pad(x: usize, n: usize) -> usize {
     match x % n {
         0 => 0,
@@ -99,14 +65,19 @@ fn munmap(p: *mut u8, n: usize) -> crate::Result<()> {
     }
 }
 
-pub struct Allocation {
+#[derive(Debug, PartialEq)]
+pub struct GuardedAllocation {
     base: *mut u8,
     data: *mut u8,
     mmapped_size: usize, // NB size of the memory mapping (including guard pages)
 }
 
-impl Allocation {
-    pub fn new(l: Layout) -> crate::Result<Self> {
+impl GuardedAllocation {
+    pub fn unaligned(n: usize) -> crate::Result<Self> {
+        Self::aligned(Layout::from_size_align(n, 1).map_err(Error::Layout)?)
+    }
+
+    pub fn aligned(l: Layout) -> crate::Result<Self> {
         let n = l.size();
         if n == 0 {
             return Err(Error::ZeroAllocation.into());
@@ -119,7 +90,7 @@ impl Allocation {
             let mmapped_size = p + n + pad(n, p) + p;
             let base = mmap(mmapped_size)?;
             let i = pad_minimizer(a, n, p);
-            let data = unsafe { base.offset((p + i * a) as isize) };
+            let data = unsafe { base.add(p + i * a) };
             Ok(Self {
                 base,
                 data,
@@ -130,15 +101,15 @@ impl Allocation {
             let i = a / p;
             let j = x as usize / p;
             let o = i - 1 - (j % i);
-            let base = unsafe { x.offset((o * p) as isize) };
+            let base = unsafe { x.add(o * p) };
             if o > 0 {
                 munmap(x, o * p)?;
             }
-            let data = unsafe { base.offset(p as isize) };
+            let data = unsafe { base.add(p) };
             let mmapped_size = p + n + pad(n, p) + p;
 
             if j % i > 0 {
-                let end = unsafe { base.offset(mmapped_size as isize) };
+                let end = unsafe { base.add(mmapped_size) };
                 munmap(end, (j % i) * p)?;
             }
 
@@ -160,10 +131,10 @@ impl Allocation {
         // TODO: zero the data pages
     }
 
-    pub fn from_ptr(data: *mut u8, l: Layout) -> Self {
+    pub unsafe fn from_ptr(data: *mut u8, l: Layout) -> Self {
         let p = page_size();
         let n = l.size();
-        let base = unsafe { data.offset(-((p + (data as usize) % p) as isize)) };
+        let base = data.offset(-((p + (data as usize) % p) as isize));
         let mmapped_size = p + n + pad(n, p) + p;
         Self {
             base,
@@ -174,6 +145,28 @@ impl Allocation {
 
     pub fn free(&self) -> crate::Result<()> {
         munmap(self.base, self.mmapped_size)
+    }
+
+    pub fn data(&self) -> *mut u8 {
+        self.data
+    }
+}
+
+pub struct GuardedAllocator {}
+
+impl GuardedAllocator {
+    pub const fn new() -> Self {
+        Self {}
+    }
+}
+
+unsafe impl GlobalAlloc for GuardedAllocator {
+    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+        GuardedAllocation::aligned(l).map(|a| a.data).unwrap()
+    }
+
+    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+        GuardedAllocation::from_ptr(p, l).free().unwrap()
     }
 }
 
@@ -216,12 +209,11 @@ mod tests {
     }
 
     fn do_sized_alloc_test(n: usize) -> crate::Result<()> {
-        let a = GuardedAllocator::new();
-        let p = a.alloc_unaligned(n)?;
+        let a = GuardedAllocation::unaligned(n)?;
 
-        do_test_write(p, n);
+        do_test_write(a.data(), n);
 
-        a.dealloc_unaligned(p, n)?;
+        a.free()?;
 
         Ok(())
     }
@@ -253,12 +245,11 @@ mod tests {
     fn alignment() -> crate::Result<()> {
         for _ in 1..100 {
             let l = fresh_layout();
-            let al = GuardedAllocator::new();
-            let p = al.alloc(l)?;
-            assert_eq!((p as usize) % l.align(), 0);
-            do_test_write(p, l.size());
+            let a = GuardedAllocation::aligned(l)?;
+            assert_eq!((a.data() as usize) % l.align(), 0);
+            do_test_write(a.data(), l.size());
 
-            al.dealloc(p, l)?;
+            a.free()?;
         }
 
         Ok(())
@@ -266,10 +257,7 @@ mod tests {
 
     #[test]
     fn zero_allocation() -> crate::Result<()> {
-        assert_eq!(
-            GuardedAllocator::new().alloc_unaligned(0),
-            Err(Error::ZeroAllocation.into()),
-        );
+        assert_eq!(GuardedAllocation::unaligned(0), Err(Error::ZeroAllocation.into()),);
         Ok(())
     }
 
@@ -297,9 +285,8 @@ mod tests {
             };
             s.apply().unwrap();
 
-            let al = GuardedAllocator::new();
-            let p = al.alloc(l).unwrap();
-            al.dealloc(p, l).unwrap();
+            let a = GuardedAllocation::aligned(l).unwrap();
+            a.free().unwrap();
             unsafe {
                 libc::_exit(0);
             }

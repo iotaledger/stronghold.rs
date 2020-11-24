@@ -5,7 +5,8 @@ extern crate bindgen;
 
 use std::{env, path::PathBuf};
 
-fn seccomp_bindings() {
+#[cfg(target_os = "linux")]
+fn main() {
     println!("cargo:rerun-if-changed=src/seccomp.h");
 
     bindgen::Builder::default()
@@ -19,6 +20,5 @@ fn seccomp_bindings() {
         .expect("Couldn't write bindings!");
 }
 
-fn main() {
-    seccomp_bindings();
-}
+#[cfg(not(target_os = "linux"))]
+fn main() {}

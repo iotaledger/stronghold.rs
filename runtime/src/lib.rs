@@ -12,7 +12,10 @@ extern crate memoffset;
 extern crate lazy_static;
 
 pub mod mem;
+
+#[cfg(target_os = "linux")]
 pub mod seccomp;
+
 pub mod zone;
 
 #[derive(PartialEq)]
