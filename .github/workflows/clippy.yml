@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [engine, client]
+        project: [engine, client, runtime]
 
     steps:
       - uses: actions/checkout@v2
