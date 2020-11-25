@@ -200,7 +200,7 @@ mod tests {
         crate::zone::soft(f)
     }
 
-    fn expect_sigsys<T: PartialEq + Debug, F: FnOnce() -> T>(f: F) -> () {
+    fn expect_sigsys<T: PartialEq + Debug, F: FnOnce() -> T>(f: F) {
         assert_eq!(
             harness(f),
             Err(crate::Error::ZoneError(crate::zone::Error::Signal {

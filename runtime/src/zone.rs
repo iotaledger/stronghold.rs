@@ -118,7 +118,7 @@ mod tests {
     fn unexpected_exit_code() -> crate::Result<()> {
         assert_eq!(
             soft(|| unsafe {
-                let _ = libc::exit(1);
+                libc::exit(1);
             }),
             Err(Error::unexpected_exit_code(1))
         );

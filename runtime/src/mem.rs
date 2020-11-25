@@ -1,6 +1,8 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(clippy::many_single_char_names)]
+
 use core::{
     alloc::{GlobalAlloc, Layout, LayoutErr},
     ptr,
@@ -131,7 +133,7 @@ impl GuardedAllocation {
         // TODO: zero the data pages
     }
 
-    pub unsafe fn from_ptr(data: *mut u8, l: Layout) -> Self {
+    unsafe fn from_ptr(data: *mut u8, l: Layout) -> Self {
         let p = page_size();
         let n = l.size();
         let base = data.offset(-((p + (data as usize) % p) as isize));
@@ -201,8 +203,8 @@ mod tests {
 
     fn do_test_write(p: *mut u8, n: usize) {
         let bs = unsafe { core::slice::from_raw_parts_mut(p, n) };
-        for i in 0..n {
-            assert_eq!(bs[i], 0);
+        for b in bs.iter() {
+            assert_eq!(*b, 0u8);
         }
 
         thread_rng().fill(bs);
