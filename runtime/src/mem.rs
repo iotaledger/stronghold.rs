@@ -172,6 +172,15 @@ unsafe impl GlobalAlloc for GuardedAllocator {
     }
 }
 
+#[cfg(target_os = "linux")]
+pub fn seccomp_spec() -> crate::seccomp::Spec {
+    crate::seccomp::Spec {
+        anonymous_mmap: true,
+        munmap: true,
+        ..crate::seccomp::Spec::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[global_allocator]
@@ -280,14 +289,12 @@ mod tests {
     fn inside_zone() -> crate::Result<()> {
         let l = fresh_layout();
         crate::zone::soft(|| {
-            let s = crate::seccomp::Spec {
-                anonymous_mmap: true,
-                munmap: true,
-                ..crate::seccomp::Spec::default()
-            };
-            s.apply().unwrap();
+            if cfg!(target_os = "linux") {
+                seccomp_spec().with_getrandom().apply().unwrap();
+            }
 
             let a = GuardedAllocation::aligned(l).unwrap();
+            do_test_write(a.data(), l.size());
             a.free().unwrap();
             unsafe {
                 libc::_exit(0);

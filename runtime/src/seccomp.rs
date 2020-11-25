@@ -84,15 +84,14 @@ pub struct Spec {
     pub write_stderr: bool,
     pub anonymous_mmap: bool,
     pub munmap: bool,
+    pub getrandom: bool,
 }
 
 impl Spec {
     pub fn strict() -> Self {
         Self {
             write_stdout: true,
-            write_stderr: false,
-            anonymous_mmap: false,
-            munmap: false,
+            ..Self::default()
         }
     }
 
@@ -173,6 +172,16 @@ impl Spec {
             }
         }
 
+        if self.getrandom {
+            p.jmp(
+                bindings::BPF_JEQ | bindings::BPF_K,
+                0,
+                1,
+                libc::SYS_getrandom as bindings::__u32,
+            );
+            p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_ALLOW);
+        }
+
         p.jmp(
             bindings::BPF_JEQ | bindings::BPF_K,
             0,
@@ -188,6 +197,13 @@ impl Spec {
 
     pub fn apply(&self) -> crate::Result<()> {
         self.program().apply()
+    }
+
+    pub fn with_getrandom(&self) -> Self {
+        Self {
+            getrandom: true,
+            ..*self
+        }
     }
 }
 
