@@ -83,6 +83,7 @@ pub struct Spec {
     pub anonymous_mmap: bool,
     pub munmap: bool,
     pub mprotect: bool,
+    pub mlock: bool,
     pub getrandom: bool,
 }
 
@@ -167,6 +168,16 @@ impl Spec {
             p.jmp(bindings::BPF_JEQ | bindings::BPF_K, 0, 1, 0);
             p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_ALLOW);
             p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_KILL_PROCESS);
+        }
+
+        if self.mlock {
+            p.jmp(
+                bindings::BPF_JEQ | bindings::BPF_K,
+                0,
+                1,
+                libc::SYS_mlock as bindings::__u32,
+            );
+            p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_ALLOW);
         }
 
         if self.write_stdout || self.write_stderr {

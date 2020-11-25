@@ -127,13 +127,12 @@ impl GuardedAllocation {
         };
 
         a.protect(true, true)?;
+        a.lock()?;
 
         Ok(a)
 
         // TODO: write canary for the writable page (NB don't write canaries in the guards,
         // then at least they don't reserve physical memory, (assuming COW))
-        // TODO: lock the guard pages
-        // TODO: mlock the data pages
         // TODO: zero the data pages
     }
 
@@ -165,6 +164,14 @@ impl GuardedAllocation {
             _ => Err(crate::Error::os("mprotect")),
         }
     }
+
+    fn lock(&self) -> crate::Result<()> {
+        let p = page_size();
+        match unsafe { libc::mlock(self.base.add(p) as *mut libc::c_void, self.mmapped_size - 2 * p) } {
+            0 => Ok(()),
+            _ => Err(crate::Error::os("mlock")),
+        }
+    }
 }
 
 pub struct GuardedAllocator {}
@@ -191,6 +198,7 @@ pub fn seccomp_spec() -> crate::seccomp::Spec {
         anonymous_mmap: true,
         munmap: true,
         mprotect: true,
+        mlock: true,
         ..crate::seccomp::Spec::default()
     }
 }
