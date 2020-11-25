@@ -8,6 +8,8 @@ use core::{
     ptr,
 };
 
+use zeroize::Zeroize;
+
 #[derive(PartialEq, Debug)]
 pub enum Error {
     ZeroAllocation,
@@ -70,8 +72,10 @@ fn munmap(p: *mut u8, n: usize) -> crate::Result<()> {
 #[derive(Debug, PartialEq)]
 pub struct GuardedAllocation {
     base: *mut u8,
-    data: *mut u8,
-    mmapped_size: usize, // NB size of the memory mapping (including guard pages)
+    data_region_start: *mut u8,
+    data_region_size: usize,
+    data_aligned: *mut u8,
+    mmapped_size: usize, // size of the memory mapping (including guard pages)
 }
 
 impl GuardedAllocation {
@@ -88,18 +92,20 @@ impl GuardedAllocation {
         let a = l.align();
         let p = page_size();
 
+        let data_region_size = n + pad(n, p);
         let a = if p % a == 0 {
-            let mmapped_size = p + n + pad(n, p) + p;
+            let mmapped_size = p + data_region_size + p;
             let base = mmap(mmapped_size)?;
             let i = pad_minimizer(a, n, p);
-            let data = unsafe { base.add(p + i * a) };
             Self {
                 base,
-                data,
+                data_region_start: unsafe { base.add(p) },
+                data_region_size,
+                data_aligned: unsafe { base.add(p + i * a) },
                 mmapped_size,
             }
         } else if a % p == 0 {
-            let x = mmap(a + n + pad(n, p) + p)?;
+            let x = mmap(a + data_region_size + p)?;
             let i = a / p;
             let j = x as usize / p;
             let o = i - 1 - (j % i);
@@ -107,7 +113,6 @@ impl GuardedAllocation {
             if o > 0 {
                 munmap(x, o * p)?;
             }
-            let data = unsafe { base.add(p) };
             let mmapped_size = p + n + pad(n, p) + p;
 
             if j % i > 0 {
@@ -117,7 +122,9 @@ impl GuardedAllocation {
 
             Self {
                 base,
-                data,
+                data_region_start: unsafe { base.add(p) },
+                data_region_size,
+                data_aligned: unsafe { base.add(p) },
                 mmapped_size,
             }
         } else {
@@ -133,41 +140,42 @@ impl GuardedAllocation {
 
         // TODO: write canary for the writable page (NB don't write canaries in the guards,
         // then at least they don't reserve physical memory, (assuming COW))
-        // TODO: zero the data pages
     }
 
     unsafe fn from_ptr(data: *mut u8, l: Layout) -> Self {
         let p = page_size();
         let n = l.size();
+        let data_region_size = n + pad(n, p);
+        let mmapped_size = p + data_region_size + p;
         let base = data.offset(-((p + (data as usize) % p) as isize));
-        let mmapped_size = p + n + pad(n, p) + p;
         Self {
             base,
-            data,
+            data_region_start: base.add(p),
+            data_region_size,
+            data_aligned: data,
             mmapped_size,
         }
     }
 
     pub fn free(&self) -> crate::Result<()> {
+        unsafe { core::slice::from_raw_parts_mut(self.data_region_start, self.data_region_size) }.zeroize();
         munmap(self.base, self.mmapped_size)
     }
 
     pub fn data(&self) -> *mut u8 {
-        self.data
+        self.data_aligned
     }
 
     fn protect(&self, read: bool, write: bool) -> crate::Result<()> {
-        let p = page_size();
         let prot = (read as i32 * libc::PROT_READ) | (write as i32 * libc::PROT_WRITE);
-        match unsafe { libc::mprotect(self.base.add(p) as *mut libc::c_void, self.mmapped_size - 2 * p, prot) } {
+        match unsafe { libc::mprotect(self.data_region_start as *mut libc::c_void, self.data_region_size, prot) } {
             0 => Ok(()),
             _ => Err(crate::Error::os("mprotect")),
         }
     }
 
     fn lock(&self) -> crate::Result<()> {
-        let p = page_size();
-        match unsafe { libc::mlock(self.base.add(p) as *mut libc::c_void, self.mmapped_size - 2 * p) } {
+        match unsafe { libc::mlock(self.data_region_start as *mut libc::c_void, self.data_region_size) } {
             0 => Ok(()),
             _ => Err(crate::Error::os("mlock")),
         }
@@ -184,7 +192,7 @@ impl GuardedAllocator {
 
 unsafe impl GlobalAlloc for GuardedAllocator {
     unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        GuardedAllocation::aligned(l).map(|a| a.data).unwrap()
+        GuardedAllocation::aligned(l).map(|a| a.data()).unwrap()
     }
 
     unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
