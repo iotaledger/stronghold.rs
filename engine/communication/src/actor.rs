@@ -118,7 +118,8 @@ impl Actor for CommunicationActor {
                     Poll::Ready(err) => Poll::Ready(err),
                     _ => Poll::Pending,
                 }
-            })).unwrap();
+            }))
+            .unwrap();
         }
         if let Some(handle) = self.poll_swarm_handle.as_mut() {
             task::block_on(handle);

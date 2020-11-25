@@ -129,7 +129,6 @@ fn listen() -> QueryResult<()> {
                             "Received identify event: {:?} observes us at {:?}",
                             peer_id, observed_addr
                         );
-                        Swarm::add_external_address(&mut swarm, observed_addr);
                     }
                 }
                 Poll::Ready(None) => {
