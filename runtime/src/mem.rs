@@ -201,7 +201,7 @@ mod tests {
     static ALLOC: GuardedAllocator = GuardedAllocator::new();
 
     use super::*;
-    use rand::{random, thread_rng, Rng};
+    use rand::{rngs::OsRng, Rng};
 
     fn page_size_exponent() -> u32 {
         let mut p = 1;
@@ -216,10 +216,10 @@ mod tests {
     fn fresh_layout() -> Layout {
         let mut n = 0;
         while n == 0 {
-            n = random::<usize>() % 3 * page_size();
+            n = OsRng.gen::<usize>() % 3 * page_size();
         }
 
-        let a = 2usize.pow(random::<u32>() % page_size_exponent() + 3);
+        let a = 2usize.pow(OsRng.gen::<u32>() % page_size_exponent() + 3);
 
         Layout::from_size_align(n, a).unwrap()
     }
@@ -230,7 +230,7 @@ mod tests {
             assert_eq!(*b, 0u8);
         }
 
-        thread_rng().fill(bs);
+        OsRng.fill(bs);
     }
 
     fn do_sized_alloc_test(n: usize) -> crate::Result<()> {
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn allocate_random_sizes() -> crate::Result<()> {
         for _ in 1..10 {
-            do_sized_alloc_test(random::<usize>() % 1024 * 1024)?
+            do_sized_alloc_test(OsRng.gen::<usize>() % 1024 * 1024)?
         }
         Ok(())
     }
@@ -315,7 +315,7 @@ mod tests {
             crate::zone::soft(|| {
                 for i in 0..page_size() {
                     unsafe {
-                        core::ptr::write_unaligned(a.data().offset(-(i as isize)), random());
+                        core::ptr::write_unaligned(a.data().offset(-(i as isize)), OsRng.gen());
                     }
                 }
             }),
@@ -357,7 +357,7 @@ mod tests {
             crate::zone::soft(|| {
                 for i in 0..page_size() {
                     unsafe {
-                        core::ptr::write_unaligned(a.data().add(l.size() + i), random());
+                        core::ptr::write_unaligned(a.data().add(l.size() + i), OsRng.gen());
                     }
                 }
             }),
@@ -376,7 +376,7 @@ mod tests {
 
         let mut bs: Vec<u8> = Vec::with_capacity(10);
         for _ in 1..100 {
-            bs.push(random());
+            bs.push(OsRng.gen());
         }
 
         Ok(())

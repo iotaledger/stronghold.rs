@@ -14,11 +14,15 @@ repository = "https://github.com/iotaledger/stronghold.rs"
 name = "runtime"
 
 [dependencies]
-libc = "0.2.79"
 memoffset = "0.6.1"
+
+[dependencies.libc]
+version = "0.2.79"
+default-features = false
 
 [dependencies.lazy_static]
 version = "1.4.0"
+default-features = false
 features = ["spin_no_std"]
 
 [dependencies.num]
@@ -28,5 +32,7 @@ default-features = false
 [build-dependencies]
 bindgen = "0.55.1"
 
-[dev-dependencies]
-rand = "0.7.3"
+[dev-dependencies.rand]
+version = "0.7.3"
+default-features = false
+features = [ "getrandom" ]

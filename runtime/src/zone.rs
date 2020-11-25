@@ -37,28 +37,28 @@ where
         if pid == 0 {
             let r = libc::close(0);
             if r != 0 {
-                libc::exit(1)
+                libc::_exit(1)
             }
 
             let r = libc::dup2(fds[1], 1); // NB dup to stdout in order to simplify seccomp filter
             if r < 0 {
-                libc::exit(1)
+                libc::_exit(1)
             }
 
             let r = libc::close(2);
             if r != 0 {
-                libc::exit(1)
+                libc::_exit(1)
             }
 
             let r = libc::close(fds[0]);
             if r != 0 {
-                libc::exit(1)
+                libc::_exit(1)
             }
 
-            // TODO: apply seccomp: provide a list of memory allocations, then:
-            // 1. apply whitelist that includes the *exact* mprotect:s
-            // 2. unlock the memory mappings
-            // 3. further restrict the whitelist to disallow all mprotects
+            if cfg!(test) {
+                extern crate std;
+                std::panic::set_hook(std::boxed::Box::new(|_| libc::_exit(101)));
+            }
 
             let mut t = f();
 
@@ -133,6 +133,12 @@ mod tests {
             }),
             Err(Error::signal(libc::SIGKILL))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn panic() -> crate::Result<()> {
+        assert_eq!(soft(|| panic!("oopsie")), Err(Error::unexpected_exit_code(101)));
         Ok(())
     }
 }
