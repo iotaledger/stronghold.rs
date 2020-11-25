@@ -106,12 +106,36 @@ impl Spec {
             p.jmp(
                 bindings::BPF_JEQ | bindings::BPF_K,
                 0,
-                1,
+                6,
                 libc::SYS_mmap as bindings::__u32,
             );
-            p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_ALLOW);
 
-            // TODO: restrict arguments (and exclude PROT_EXEC)
+            p.op(
+                bindings::BPF_LD | bindings::BPF_W | bindings::BPF_ABS,
+                (offset_of!(bindings::seccomp_data, args) + 2 * core::mem::size_of::<bindings::__u64>())
+                    as bindings::__u32,
+            );
+            p.jmp(
+                bindings::BPF_JEQ | bindings::BPF_K,
+                0,
+                3,
+                libc::PROT_NONE as bindings::__u32,
+            );
+
+            p.op(
+                bindings::BPF_LD | bindings::BPF_W | bindings::BPF_ABS,
+                (offset_of!(bindings::seccomp_data, args) + 3 * core::mem::size_of::<bindings::__u64>())
+                    as bindings::__u32,
+            );
+            p.jmp(
+                bindings::BPF_JEQ | bindings::BPF_K,
+                0,
+                1,
+                (libc::MAP_PRIVATE | libc::MAP_ANONYMOUS) as bindings::__u32,
+            );
+
+            p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_ALLOW);
+            p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_KILL_PROCESS);
         }
 
         if self.munmap {
