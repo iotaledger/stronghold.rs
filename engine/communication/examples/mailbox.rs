@@ -14,10 +14,10 @@
 //! $ cargo run --example mailbox -- start-mailbox
 //! Local PeerId: PeerId("12D3KooWLVFib1KbfjY4Qv3phtc8hafD8HVJm9QygeSmH28Jw2HG")
 //! Listening on:
-//! "/ip4/127.0.0.1/tcp/41807"
-//! "/ip4/192.168.178.25/tcp/41807"
-//! "/ip4/172.17.0.1/tcp/41807"
-//! "/ip6/::1/tcp/41807"
+//! "/ip4/127.0.0.1/tcp/16384"
+//! "/ip4/192.168.178.25/tcp/16384"
+//! "/ip4/172.17.0.1/tcp/16384"
+//! "/ip6/::1/tcp/16384"
 //! ```
 //! # Deposit a record in the mailbox
 //!
@@ -29,7 +29,6 @@
 //!     mailbox put_mailbox [OPTIONS] --mail-id <mailbox-peer-id> --mail-addr <mailbox-multi-addr> --key <record-key> --value <record-value>
 //!
 //! OPTIONS:
-//!     -e, --expires <expires-sec>             the expire seconds for the record
 //!     -k, --key <record-key>                  the key for the record
 //!     -a, --mail-addr <mailbox-multi-addr>    the multiaddr of the mailbox
 //!     -i, --mail-id <mailbox-peer-id>         the peer id of the mailbox
@@ -43,8 +42,6 @@
 //! Local PeerId: PeerId("12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA")
 //! Received Result for publish request RequestId(1): Success.
 //! ```
-//!
-//! Without the `--expires` argument, the record-expire default to 9000s.
 //!
 //! # Reading a record
 //!
@@ -83,7 +80,7 @@ use core::{
 use futures::{future, prelude::*};
 use libp2p::{
     core::{identity::Keypair, PeerId},
-    multiaddr::{multiaddr, Multiaddr},
+    multiaddr::Multiaddr,
     swarm::Swarm,
 };
 use std::collections::BTreeMap;
@@ -127,11 +124,7 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
 
         // Create swarm for communication
         let mut swarm = P2PNetworkBehaviour::new(local_keys)?;
-        let port = matches
-            .value_of("port")
-            .and_then(|port_str| port_str.parse::<u16>().ok())
-            .unwrap_or(16384u16);
-        P2PNetworkBehaviour::start_listening(&mut swarm, Some(multiaddr!(Ip4([127, 0, 0, 1]), Tcp(port))))?;
+        P2PNetworkBehaviour::start_listening(&mut swarm, Some("/ip4/0.0.0.0/tcp/16384".parse().unwrap()))?;
         println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
         let mut listening = false;
         let mut local_records = BTreeMap::new();

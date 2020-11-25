@@ -111,6 +111,15 @@ impl Actor for CommunicationActor {
     }
 
     fn post_stop(&mut self) {
+        if let Some(tx) = self.swarm_tx.as_mut() {
+            task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
+                match tx.poll_ready(tcx) {
+                    Poll::Ready(Ok(())) => Poll::Ready(tx.start_send(CommActorEvent::Shutdown)),
+                    Poll::Ready(err) => Poll::Ready(err),
+                    _ => Poll::Pending,
+                }
+            })).unwrap();
+        }
         if let Some(handle) = self.poll_swarm_handle.as_mut() {
             task::block_on(handle);
         }
