@@ -63,18 +63,16 @@ impl Program {
             return Err(crate::Error::os("prctl(PR_SET_NO_NEW_PRIVS)"));
         }
 
-        let r = unsafe {
+        match unsafe {
             libc::prctl(
                 libc::PR_SET_SECCOMP,
                 libc::SECCOMP_MODE_FILTER,
                 &p as *const _ as *const libc::c_void,
             )
-        };
-        if r != 0 {
-            return Err(crate::Error::os("prctl(PR_SET_SECCOMP)"));
+        } {
+            0 => Ok(()),
+            _ => Err(crate::Error::os("prctl(PR_SET_SECCOMP)")),
         }
-
-        Ok(())
     }
 }
 
@@ -84,6 +82,7 @@ pub struct Spec {
     pub write_stderr: bool,
     pub anonymous_mmap: bool,
     pub munmap: bool,
+    pub mprotect: bool,
     pub getrandom: bool,
 }
 
@@ -123,6 +122,27 @@ impl Spec {
                 libc::SYS_munmap as bindings::__u32,
             );
             p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_ALLOW);
+        }
+
+        if self.mprotect {
+            p.jmp(
+                bindings::BPF_JEQ | bindings::BPF_K,
+                0,
+                5,
+                libc::SYS_mprotect as bindings::__u32,
+            );
+            p.op(
+                bindings::BPF_LD | bindings::BPF_W | bindings::BPF_ABS,
+                (offset_of!(bindings::seccomp_data, args) + 2 * core::mem::size_of::<bindings::__u64>())
+                    as bindings::__u32,
+            );
+            p.op(
+                bindings::BPF_ALU | bindings::BPF_AND | bindings::BPF_K,
+                !((libc::PROT_READ | libc::PROT_WRITE) as bindings::__u32),
+            );
+            p.jmp(bindings::BPF_JEQ | bindings::BPF_K, 0, 1, 0);
+            p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_ALLOW);
+            p.op(bindings::BPF_RET | bindings::BPF_K, bindings::SECCOMP_RET_KILL_PROCESS);
         }
 
         if self.write_stdout || self.write_stderr {

@@ -48,7 +48,7 @@ fn mmap(n: usize) -> crate::Result<*mut u8> {
         libc::mmap(
             ptr::null_mut::<u8>() as *mut libc::c_void,
             n,
-            libc::PROT_READ | libc::PROT_WRITE,
+            libc::PROT_NONE,
             libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
             -1,
             0,
@@ -88,16 +88,16 @@ impl GuardedAllocation {
         let a = l.align();
         let p = page_size();
 
-        if p % a == 0 {
+        let a = if p % a == 0 {
             let mmapped_size = p + n + pad(n, p) + p;
             let base = mmap(mmapped_size)?;
             let i = pad_minimizer(a, n, p);
             let data = unsafe { base.add(p + i * a) };
-            Ok(Self {
+            Self {
                 base,
                 data,
                 mmapped_size,
-            })
+            }
         } else if a % p == 0 {
             let x = mmap(a + n + pad(n, p) + p)?;
             let i = a / p;
@@ -115,16 +115,20 @@ impl GuardedAllocation {
                 munmap(end, (j % i) * p)?;
             }
 
-            Ok(Self {
+            Self {
                 base,
                 data,
                 mmapped_size,
-            })
+            }
         } else {
-            Err(crate::Error::unreachable(
+            return Err(crate::Error::unreachable(
                 "page size and requested alignment is coprime",
-            ))
-        }
+            ));
+        };
+
+        a.protect(true, true)?;
+
+        Ok(a)
 
         // TODO: write canary for the writable page (NB don't write canaries in the guards,
         // then at least they don't reserve physical memory, (assuming COW))
@@ -152,6 +156,15 @@ impl GuardedAllocation {
     pub fn data(&self) -> *mut u8 {
         self.data
     }
+
+    fn protect(&self, read: bool, write: bool) -> crate::Result<()> {
+        let p = page_size();
+        let prot = (read as i32 * libc::PROT_READ) | (write as i32 * libc::PROT_WRITE);
+        match unsafe { libc::mprotect(self.base.add(p) as *mut libc::c_void, self.mmapped_size - 2 * p, prot) } {
+            0 => Ok(()),
+            _ => Err(crate::Error::os("mprotect")),
+        }
+    }
 }
 
 pub struct GuardedAllocator {}
@@ -177,6 +190,7 @@ pub fn seccomp_spec() -> crate::seccomp::Spec {
     crate::seccomp::Spec {
         anonymous_mmap: true,
         munmap: true,
+        mprotect: true,
         ..crate::seccomp::Spec::default()
     }
 }
@@ -259,7 +273,6 @@ mod tests {
             let a = GuardedAllocation::aligned(l)?;
             assert_eq!((a.data() as usize) % l.align(), 0);
             do_test_write(a.data(), l.size());
-
             a.free()?;
         }
 
@@ -269,6 +282,90 @@ mod tests {
     #[test]
     fn zero_allocation() -> crate::Result<()> {
         assert_eq!(GuardedAllocation::unaligned(0), Err(Error::ZeroAllocation.into()),);
+        Ok(())
+    }
+
+    #[test]
+    fn guard_pages_pre_read() -> crate::Result<()> {
+        let l = fresh_layout();
+        let a = GuardedAllocation::aligned(l)?;
+
+        assert_eq!(
+            crate::zone::soft(|| {
+                for i in 0..page_size() {
+                    let _ = unsafe {
+                        core::ptr::read_unaligned(a.data().offset(-(i as isize)));
+                    };
+                }
+            }),
+            Err(crate::Error::ZoneError(crate::zone::Error::Signal {
+                signo: libc::SIGSEGV
+            }))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn guard_pages_pre_write() -> crate::Result<()> {
+        let l = fresh_layout();
+        let a = GuardedAllocation::aligned(l)?;
+
+        assert_eq!(
+            crate::zone::soft(|| {
+                for i in 0..page_size() {
+                    unsafe {
+                        core::ptr::write_unaligned(a.data().offset(-(i as isize)), random());
+                    }
+                }
+            }),
+            Err(crate::Error::ZoneError(crate::zone::Error::Signal {
+                signo: libc::SIGSEGV
+            }))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn guard_pages_post_read() -> crate::Result<()> {
+        let l = fresh_layout();
+        let a = GuardedAllocation::aligned(l)?;
+
+        assert_eq!(
+            crate::zone::soft(|| {
+                for i in 0..page_size() {
+                    let _ = unsafe {
+                        core::ptr::read_unaligned(a.data().add(l.size() + i));
+                    };
+                }
+            }),
+            Err(crate::Error::ZoneError(crate::zone::Error::Signal {
+                signo: libc::SIGSEGV
+            }))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn guard_pages_post_write() -> crate::Result<()> {
+        let l = fresh_layout();
+        let a = GuardedAllocation::aligned(l)?;
+
+        assert_eq!(
+            crate::zone::soft(|| {
+                for i in 0..page_size() {
+                    unsafe {
+                        core::ptr::write_unaligned(a.data().add(l.size() + i), random());
+                    }
+                }
+            }),
+            Err(crate::Error::ZoneError(crate::zone::Error::Signal {
+                signo: libc::SIGSEGV
+            }))
+        );
+
         Ok(())
     }
 
