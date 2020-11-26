@@ -17,6 +17,21 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         Self { cache, vaults }
     }
 
+    pub fn get_vault_recordids(&mut self, key: Key<P>) -> Vec<RecordId> {
+        let mut buffer = Vec::new();
+        self.take(key.clone(), |view, reads| {
+            let map = view.chain_ctrs();
+
+            map.keys().into_iter().for_each(|rid| {
+                buffer.push(*rid);
+            });
+
+            reads
+        });
+
+        buffer
+    }
+
     pub fn create_and_init_vault(&mut self, key: Key<P>) -> (Key<P>, RecordId) {
         let id = RecordId::random::<P>().expect(line_error!());
 
@@ -199,31 +214,44 @@ mod tests {
     fn test_bucket() {
         use crate::provider::Provider;
 
-        let key = Key::<Provider>::random().expect(line_error!());
+        let key1 = Key::<Provider>::random().expect(line_error!());
+        let key2 = Key::<Provider>::random().expect(line_error!());
 
         let mut bucket = Bucket::<Provider>::new();
 
-        let (key, rid1) = bucket.create_and_init_vault(key);
+        let (key1, rid1) = bucket.create_and_init_vault(key1);
+        let (key2, rid2) = bucket.create_and_init_vault(key2);
+        println!("vault1 id1: {:?}", rid1);
+        println!("vault2 id1: {:?}", rid2);
 
         bucket.write_payload(
-            key.clone(),
+            key1.clone(),
             rid1,
             b"some data".to_vec(),
             RecordHint::new(b"").expect(line_error!()),
         );
 
-        let rid2 = bucket.init_record(key.clone());
+        bucket.write_payload(
+            key2.clone(),
+            rid2,
+            b"some new data".to_vec(),
+            RecordHint::new(b"").expect(line_error!()),
+        );
+
+        let rid3 = bucket.init_record(key1.clone());
 
         bucket.write_payload(
-            key.clone(),
-            rid2,
+            key1.clone(),
+            rid3,
             b"some more data".to_vec(),
             RecordHint::new(b"").expect(line_error!()),
         );
 
-        let data = bucket.read_data(key.clone(), rid1);
+        println!("vault1 rid2: {:?}", rid3);
+
+        let data = bucket.read_data(key1.clone(), rid1);
         println!("{:?}", std::str::from_utf8(&data));
-        let data = bucket.read_data(key, rid2);
+        let data = bucket.read_data(key1.clone(), rid3);
 
         println!("{:?}", std::str::from_utf8(&data));
     }

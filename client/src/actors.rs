@@ -4,7 +4,7 @@
 
 use riker::actors::*;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, Key, RecordHint, RecordId};
 
@@ -19,7 +19,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum CMsg {
-    SetExternalName(String),
+    SetExternalActorName(String),
     CreateVaultAsk,
     CreateVaultReturn(VaultId, RecordId),
     ReadDataAsk(VaultId, RecordId),
@@ -31,8 +31,8 @@ pub enum CMsg {
     GarbageCollect(VaultId),
     ListAsk(VaultId),
     ListReturn(Vec<(RecordId, RecordHint)>),
-    WriteSnapshot(String),
-    ReadSnapshot(String),
+    WriteSnapshot(String, Option<PathBuf>),
+    ReadSnapshot(String, Option<PathBuf>),
 }
 
 #[derive(Debug, Clone)]
@@ -44,8 +44,8 @@ pub enum BMsg<P: BoxProvider + Debug> {
     RevokeData(Key<P>, RecordId),
     GarbageCollect(Key<P>),
     ListAsk(Key<P>),
-    WriteSnapshot(String),
-    ReadSnapshot(String),
+    WriteSnapshot(String, Option<PathBuf>),
+    ReadSnapshot(String, Option<PathBuf>),
     ReloadData(Vec<u8>),
 }
 
@@ -63,8 +63,8 @@ pub enum KMsg {
 
 #[derive(Clone, Debug)]
 pub enum SMsg {
-    WriteSnapshot(String, Vec<u8>),
-    ReadSnapshot(String),
+    WriteSnapshot(String, Option<PathBuf>, Vec<u8>),
+    ReadSnapshot(String, Option<PathBuf>),
 }
 
 impl ActorFactory for Client {
@@ -82,6 +82,12 @@ impl ActorFactory for Bucket<Provider> {
 impl ActorFactory for KeyStore<Provider> {
     fn create() -> Self {
         KeyStore::new()
+    }
+}
+
+impl ActorFactory for Snapshot {
+    fn create() -> Self {
+        Snapshot::new::<Provider>(vec![])
     }
 }
 
@@ -122,15 +128,23 @@ impl Receive<SMsg> for Snapshot {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         match msg {
-            SMsg::WriteSnapshot(pass, state) => {
+            SMsg::WriteSnapshot(pass, path, state) => {
                 let snapshot = Snapshot::new::<Provider>(state);
 
-                let path = Snapshot::get_snapshot_path();
+                let path = if let Some(p) = path {
+                    p
+                } else {
+                    Snapshot::get_snapshot_path()
+                };
 
                 snapshot.write_to_snapshot(&path, &pass);
             }
-            SMsg::ReadSnapshot(pass) => {
-                let path = Snapshot::get_snapshot_path();
+            SMsg::ReadSnapshot(pass, path) => {
+                let path = if let Some(p) = path {
+                    p
+                } else {
+                    Snapshot::get_snapshot_path()
+                };
 
                 let snapshot = Snapshot::read_from_snapshot::<Provider>(&path, &pass);
 
@@ -153,12 +167,10 @@ impl Receive<CMsg> for Client {
                 kstore.try_tell(KMsg::CreateVault(vid), None);
             }
             CMsg::CreateVaultReturn(vid, rid) => {
-                #[cfg(test)]
                 let external = ctx
                     .select(self.external_actor.as_ref().expect(line_error!()))
                     .expect(line_error!());
 
-                #[cfg(test)]
                 external.try_tell(EMsg::ReturnCreateVault(vid, rid), None);
             }
             CMsg::ReadDataAsk(vid, rid) => {
@@ -166,12 +178,10 @@ impl Receive<CMsg> for Client {
                 kstore.try_tell(KMsg::ReadData(vid, rid), None);
             }
             CMsg::ReadDataReturn(data) => {
-                #[cfg(test)]
                 let external = ctx
                     .select(self.external_actor.as_ref().expect(line_error!()))
                     .expect(line_error!());
 
-                #[cfg(test)]
                 external.try_tell(EMsg::ReturnReadData(data), None);
             }
             CMsg::WriteData(vid, rid, payload, hint) => {
@@ -183,12 +193,10 @@ impl Receive<CMsg> for Client {
                 kstore.try_tell(KMsg::InitRecord(vid), None);
             }
             CMsg::InitRecordReturn(vid, rid) => {
-                #[cfg(test)]
                 let external = ctx
                     .select(self.external_actor.as_ref().expect(line_error!()))
                     .expect(line_error!());
 
-                #[cfg(test)]
                 external.try_tell(EMsg::InitRecordReturn(vid, rid), None);
             }
             CMsg::RevokeData(vid, rid) => {
@@ -204,24 +212,22 @@ impl Receive<CMsg> for Client {
                 kstore.try_tell(KMsg::ListIds(vid), None);
             }
             CMsg::ListReturn(ids) => {
-                #[cfg(test)]
                 let external = ctx
                     .select(self.external_actor.as_ref().expect(line_error!()))
                     .expect(line_error!());
 
-                #[cfg(test)]
                 external.try_tell(EMsg::ReturnList(ids), None);
             }
-            CMsg::SetExternalName(id) => {
+            CMsg::SetExternalActorName(id) => {
                 self.external_actor = Some(id);
             }
-            CMsg::WriteSnapshot(pass) => {
+            CMsg::WriteSnapshot(pass, path) => {
                 let bucket = ctx.select("/user/bucket/").expect(line_error!());
-                bucket.try_tell(BMsg::WriteSnapshot::<Provider>(pass), None);
+                bucket.try_tell(BMsg::WriteSnapshot::<Provider>(pass, path), None);
             }
-            CMsg::ReadSnapshot(pass) => {
+            CMsg::ReadSnapshot(pass, path) => {
                 let bucket = ctx.select("/user/bucket/").expect(line_error!());
-                bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass), None);
+                bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass, path), None);
             }
         }
     }
@@ -265,15 +271,15 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
                 let client = ctx.select("/user/client/").expect(line_error!());
                 client.try_tell(CMsg::ListReturn(ids), None);
             }
-            BMsg::WriteSnapshot(pass) => {
+            BMsg::WriteSnapshot(pass, path) => {
                 let state = self.offload_data();
 
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
-                snapshot.try_tell(SMsg::WriteSnapshot(pass, state), None);
+                snapshot.try_tell(SMsg::WriteSnapshot(pass, path, state), None);
             }
-            BMsg::ReadSnapshot(pass) => {
+            BMsg::ReadSnapshot(pass, path) => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
-                snapshot.try_tell(SMsg::ReadSnapshot(pass), None);
+                snapshot.try_tell(SMsg::ReadSnapshot(pass, path), None);
             }
             BMsg::ReloadData(state) => {
                 let keys = self.repopulate_data(state);
@@ -352,7 +358,6 @@ impl Receive<KMsg> for KeyStore<Provider> {
     }
 }
 
-#[cfg(test)]
 #[derive(Clone, Debug)]
 pub enum EMsg {
     CreateVault,
@@ -366,6 +371,8 @@ pub enum EMsg {
     GarbageCollect(usize),
     ListIds(usize),
     ReturnList(Vec<(RecordId, RecordHint)>),
+    WriteSnapshot(String, Option<PathBuf>),
+    ReadSnapshot(String, Option<PathBuf>),
 }
 
 #[cfg(test)]
@@ -387,9 +394,8 @@ mod test {
         }
     }
 
-    impl ActorFactory for MockExternalActor {
-        fn create() -> Self {
-            let vaults = HashMap::new();
+    impl ActorFactoryArgs<HashMap<VaultId, Vec<RecordId>>> for MockExternalActor {
+        fn create_args(vaults: HashMap<VaultId, Vec<RecordId>>) -> Self {
             let index = Vec::new();
 
             Self { vaults, index }
@@ -435,7 +441,11 @@ mod test {
                         client.try_tell(CMsg::InitRecord(vid), None);
                     }
                 }
-                EMsg::InitRecordReturn(vid, rid) => {}
+                EMsg::InitRecordReturn(vid, rid) => {
+                    self.vaults.entry(vid).and_modify(|records| records.push(rid));
+
+                    println!("{:?} {:?}", rid, vid);
+                }
                 EMsg::ReadData(index) => {
                     if index >= self.index.len() {
                         let external = ctx.select("/user/external").expect(line_error!());
@@ -444,34 +454,42 @@ mod test {
                         let vid = self.index[index];
 
                         let rids = self.vaults.get(&vid).expect(line_error!());
-                        let rid = rids.last().expect(line_error!());
-
-                        let client = ctx.select("/user/client/").expect(line_error!());
-                        client.try_tell(CMsg::ReadDataAsk(vid, *rid), None);
+                        match rids.last() {
+                            Some(rid) => {
+                                let client = ctx.select("/user/client/").expect(line_error!());
+                                client.try_tell(CMsg::ReadDataAsk(vid, *rid), None);
+                            }
+                            None => {}
+                        }
                     }
                 }
                 EMsg::ReturnReadData(data) => {
                     println!("Plaintext Data: {:?}", std::str::from_utf8(&data));
                 }
                 EMsg::RevokeData(index) => {
-                    let vid = self.index[index];
+                    if index >= self.index.len() {
+                        let external = ctx.select("/user/external").expect(line_error!());
+                        external.try_tell(EMsg::RevokeData(index), None);
+                    } else {
+                        let vid = self.index[index];
 
-                    let rids = self.vaults.get(&vid).expect(line_error!());
-                    let rid = rids.clone().pop().expect(line_error!());
+                        let rids = self.vaults.get_mut(&vid).expect(line_error!());
+                        let rid = rids.pop().expect(line_error!());
 
-                    let client = ctx.select("/user/client/").expect(line_error!());
-                    client.try_tell(CMsg::RevokeData(vid, rid), None);
-
-                    self.vaults.insert(vid, rids.clone());
+                        let client = ctx.select("/user/client/").expect(line_error!());
+                        client.try_tell(CMsg::RevokeData(vid, rid), None);
+                    }
                 }
                 EMsg::GarbageCollect(index) => {
-                    let vid = self.index[index];
+                    if index >= self.index.len() {
+                        let external = ctx.select("/user/external").expect(line_error!());
+                        external.try_tell(EMsg::GarbageCollect(index), None);
+                    } else {
+                        let vid = self.index[index];
 
-                    let rids = self.vaults.get(&vid).expect(line_error!());
-                    let rid = rids.last().expect(line_error!());
-
-                    let client = ctx.select("/user/client/").expect(line_error!());
-                    client.try_tell(CMsg::GarbageCollect(vid), None);
+                        let client = ctx.select("/user/client/").expect(line_error!());
+                        client.try_tell(CMsg::GarbageCollect(vid), None);
+                    }
                 }
                 EMsg::ListIds(index) => {
                     if index >= self.index.len() {
@@ -485,10 +503,17 @@ mod test {
                     }
                 }
                 EMsg::ReturnList(ids) => {
-                    println!("{:?}", self.vaults);
                     ids.iter().for_each(|(id, hint)| {
                         println!("Record Id: {:?}, Hint: {:?}", id, hint);
                     });
+                }
+                EMsg::WriteSnapshot(pass, path) => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+                    client.try_tell(CMsg::WriteSnapshot(pass, path), None);
+                }
+                EMsg::ReadSnapshot(pass, path) => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+                    client.try_tell(CMsg::ReadSnapshot(pass, path), None);
                 }
             }
         }
@@ -501,9 +526,13 @@ mod test {
         let client = sys.actor_of::<Client>("client").unwrap();
         sys.actor_of::<Bucket<Provider>>("bucket").unwrap();
         sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
-        let external = sys.actor_of::<MockExternalActor>("external").unwrap();
+        sys.actor_of::<Snapshot>("snapshot").unwrap();
+        let external_hashmap = HashMap::new();
+        let external = sys
+            .actor_of_args::<MockExternalActor, _>("external", external_hashmap)
+            .unwrap();
 
-        client.tell(CMsg::SetExternalName(String::from(external_path)), None);
+        client.tell(CMsg::SetExternalActorName(String::from(external_path)), None);
 
         external.tell(EMsg::CreateVault, None);
 
@@ -558,6 +587,16 @@ mod test {
             ),
             None,
         );
+
+        external.tell(EMsg::ReadData(0), None);
+
+        external.tell(EMsg::WriteSnapshot("password".into(), None), None);
+
+        external.tell(EMsg::RevokeData(0), None);
+
+        external.tell(EMsg::ReadData(0), None);
+
+        external.tell(EMsg::ReadSnapshot("password".into(), None), None);
 
         external.tell(EMsg::ReadData(0), None);
 
