@@ -11,22 +11,34 @@ extern crate memoffset;
 #[macro_use]
 extern crate lazy_static;
 
+#[cfg(unix)]
 pub mod mem;
 
 #[cfg(target_os = "linux")]
 pub mod seccomp;
 
-pub mod zone;
+#[cfg(unix)]
+pub mod zone {
+    include!("zone_unix.rs");
+}
+
+#[cfg(windows)]
+pub mod zone {
+    include!("zone_windows.rs");
+}
 
 #[derive(PartialEq)]
 pub enum Error {
+    #[cfg(unix)]
     OsError { syscall: &'static str, errno: libc::c_int },
+    #[cfg(unix)]
     MemError(mem::Error),
     ZoneError(zone::Error),
     Unreachable(&'static str),
 }
 
 impl Error {
+    #[cfg(unix)]
     pub fn os(syscall: &'static str) -> Self {
         let errno = unsafe { *libc::__errno_location() };
         Self::OsError { syscall, errno }
@@ -37,6 +49,7 @@ impl Error {
     }
 }
 
+#[cfg(unix)]
 impl From<mem::Error> for Error {
     fn from(e: mem::Error) -> Self {
         Error::MemError(e)
@@ -58,7 +71,9 @@ fn strerror(errno: libc::c_int) -> &'static str {
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(unix)]
             Self::MemError(me) => me.fmt(f),
+            #[cfg(unix)]
             Self::ZoneError(ze) => ze.fmt(f),
             Self::OsError { syscall, errno } => f
                 .debug_struct("OsError")

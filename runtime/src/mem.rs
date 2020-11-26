@@ -409,9 +409,6 @@ mod tests {
             let a = GuardedAllocation::aligned(l).unwrap();
             do_test_write(a.data(), l.size());
             a.free().unwrap();
-            unsafe {
-                libc::_exit(0);
-            }
         })
     }
 }

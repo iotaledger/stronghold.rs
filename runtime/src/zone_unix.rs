@@ -62,8 +62,11 @@ where
 
             let mut t = f();
 
-            let _ = libc::write(1, &mut t as *mut _ as *mut libc::c_void, mem::size_of::<T>());
-            // TODO: partial writes
+            if mem::size_of::<T>() > 0 {
+                let _ = libc::write(1, &mut t as *mut _ as *mut libc::c_void, mem::size_of::<T>());
+                // TODO: partial writes
+            }
+
             libc::_exit(0)
         }
 
@@ -81,9 +84,10 @@ where
             let ec = libc::WEXITSTATUS(st);
             if ec == 0 {
                 let mut t: mem::MaybeUninit<T> = mem::MaybeUninit::uninit();
-                let _ = libc::read(fds[0], t.as_mut_ptr() as *mut libc::c_void, mem::size_of::<T>());
-                // TODO: partial reads
-
+                if mem::size_of::<T>() > 0 {
+                    let _ = libc::read(fds[0], t.as_mut_ptr() as *mut libc::c_void, mem::size_of::<T>());
+                    // TODO: partial reads
+                }
                 Ok(t.assume_init())
             } else {
                 Err(Error::unexpected_exit_code(ec))
