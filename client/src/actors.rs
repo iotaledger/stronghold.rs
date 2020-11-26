@@ -1,3 +1,7 @@
+// TODO: Synchronization via 4th actor and status type.
+// TODO: Add supervisors
+// TODO: Add documentation
+
 use riker::actors::*;
 
 use std::fmt::Debug;
@@ -6,7 +10,7 @@ use engine::vault::{BoxProvider, Key, RecordHint, RecordId};
 
 use crate::{
     bucket::Bucket,
-    client::Client,
+    client::{Client, Snapshot},
     ids::{ClientId, VaultId},
     key_store::KeyStore,
     line_error,
@@ -27,6 +31,8 @@ pub enum CMsg {
     GarbageCollect(VaultId),
     ListAsk(VaultId),
     ListReturn(Vec<(RecordId, RecordHint)>),
+    WriteSnapshot(String),
+    ReadSnapshot(String),
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +44,9 @@ pub enum BMsg<P: BoxProvider + Debug> {
     RevokeData(Key<P>, RecordId),
     GarbageCollect(Key<P>),
     ListAsk(Key<P>),
+    WriteSnapshot(String),
+    ReadSnapshot(String),
+    ReloadData(Vec<u8>),
 }
 
 #[derive(Clone, Debug)]
@@ -49,6 +58,13 @@ pub enum KMsg {
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
     ListIds(VaultId),
+    RebuildKeys(Vec<Key<Provider>>),
+}
+
+#[derive(Clone, Debug)]
+pub enum SMsg {
+    WriteSnapshot(String, Vec<u8>),
+    ReadSnapshot(String),
 }
 
 impl ActorFactory for Client {
@@ -90,6 +106,38 @@ impl Actor for KeyStore<Provider> {
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         self.receive(ctx, msg, sender);
+    }
+}
+
+impl Actor for Snapshot {
+    type Msg = SMsg;
+
+    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        self.receive(ctx, msg, sender);
+    }
+}
+
+impl Receive<SMsg> for Snapshot {
+    type Msg = SMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
+        match msg {
+            SMsg::WriteSnapshot(pass, state) => {
+                let snapshot = Snapshot::new::<Provider>(state);
+
+                let path = Snapshot::get_snapshot_path();
+
+                snapshot.write_to_snapshot(&path, &pass);
+            }
+            SMsg::ReadSnapshot(pass) => {
+                let path = Snapshot::get_snapshot_path();
+
+                let snapshot = Snapshot::read_from_snapshot::<Provider>(&path, &pass);
+
+                let bucket = ctx.select("/user/bucket/").expect(line_error!());
+                bucket.try_tell(BMsg::ReloadData::<Provider>(snapshot.get_state()), None);
+            }
+        }
     }
 }
 
@@ -167,6 +215,14 @@ impl Receive<CMsg> for Client {
             CMsg::SetExternalName(id) => {
                 self.external_actor = Some(id);
             }
+            CMsg::WriteSnapshot(pass) => {
+                let bucket = ctx.select("/user/bucket/").expect(line_error!());
+                bucket.try_tell(BMsg::WriteSnapshot::<Provider>(pass), None);
+            }
+            CMsg::ReadSnapshot(pass) => {
+                let bucket = ctx.select("/user/bucket/").expect(line_error!());
+                bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass), None);
+            }
         }
     }
 }
@@ -208,6 +264,22 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
 
                 let client = ctx.select("/user/client/").expect(line_error!());
                 client.try_tell(CMsg::ListReturn(ids), None);
+            }
+            BMsg::WriteSnapshot(pass) => {
+                let state = self.offload_data();
+
+                let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
+                snapshot.try_tell(SMsg::WriteSnapshot(pass, state), None);
+            }
+            BMsg::ReadSnapshot(pass) => {
+                let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
+                snapshot.try_tell(SMsg::ReadSnapshot(pass), None);
+            }
+            BMsg::ReloadData(state) => {
+                let keys = self.repopulate_data(state);
+
+                let keystore = ctx.select("/user/keystore/").expect(line_error!());
+                keystore.try_tell(KMsg::RebuildKeys(keys), None);
             }
         }
     }
@@ -272,10 +344,15 @@ impl Receive<KMsg> for KeyStore<Provider> {
                     self.insert_key(vid, key);
                 }
             }
+
+            KMsg::RebuildKeys(keys) => {
+                self.rebuild_keystore(keys);
+            }
         }
     }
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug)]
 pub enum EMsg {
     CreateVault,

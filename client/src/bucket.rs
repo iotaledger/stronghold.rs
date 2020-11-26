@@ -154,21 +154,25 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         self.cache.insert(key, reads);
     }
 
-    pub fn offload_data(&mut self) -> HashMap<Key<P>, Vec<ReadResult>> {
-        let mut cache = HashMap::new();
+    pub fn offload_data(&mut self) -> Vec<u8> {
+        let mut cache: HashMap<Key<P>, Vec<ReadResult>> = HashMap::new();
 
         self.cache.iter().for_each(|(k, v)| {
             cache.insert(k.clone(), v.clone());
         });
 
-        cache
+        bincode::serialize(&cache).expect(line_error!())
     }
 
-    pub fn repopulate_data(&mut self, state: HashMap<Key<P>, Vec<ReadResult>>) -> Self {
+    pub fn repopulate_data(&mut self, state: Vec<u8>) -> Vec<Key<P>> {
         let mut vaults = HashMap::new();
         let mut cache = HashMap::new();
+        let mut keystore_keys: Vec<Key<P>> = Vec::new();
+
+        let state: HashMap<Key<P>, Vec<ReadResult>> = bincode::deserialize(&state).expect(line_error!());
 
         state.into_iter().for_each(|(k, v)| {
+            keystore_keys.push(k.clone());
             let view = Some(DBView::load(k.clone(), v.iter()).expect(line_error!()));
 
             vaults.insert(k.clone(), view);
@@ -176,7 +180,10 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
             cache.insert(k, v);
         });
 
-        Self { vaults, cache }
+        self.cache = cache;
+        self.vaults = vaults;
+
+        keystore_keys
     }
 }
 
