@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![no_std]
+#![allow(clippy::many_single_char_names)]
 
 use core::fmt;
 
 #[macro_use]
+#[cfg(target_os = "linux")]
 extern crate memoffset;
 
 #[macro_use]
@@ -30,7 +32,10 @@ pub mod zone {
 #[derive(PartialEq)]
 pub enum Error {
     #[cfg(unix)]
-    OsError { syscall: &'static str, errno: libc::c_int },
+    OsError {
+        syscall: &'static str,
+        errno: libc::c_int,
+    },
     #[cfg(unix)]
     MemError(mem::Error),
     ZoneError(zone::Error),
@@ -38,10 +43,20 @@ pub enum Error {
 }
 
 impl Error {
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     pub fn os(syscall: &'static str) -> Self {
-        let errno = unsafe { *libc::__errno_location() };
-        Self::OsError { syscall, errno }
+        Self::OsError {
+            syscall,
+            errno: unsafe { *libc::__errno_location() },
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn os(syscall: &'static str) -> Self {
+        Self::OsError {
+            syscall,
+            errno: unsafe { *libc::__error() },
+        }
     }
 
     fn unreachable(msg: &'static str) -> Self {
@@ -53,6 +68,13 @@ impl Error {
 impl From<mem::Error> for Error {
     fn from(e: mem::Error) -> Self {
         Error::MemError(e)
+    }
+}
+
+#[cfg(unix)]
+impl From<zone::Error> for Error {
+    fn from(e: zone::Error) -> Self {
+        Error::ZoneError(e)
     }
 }
 
@@ -72,15 +94,15 @@ impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             #[cfg(unix)]
-            Self::MemError(me) => me.fmt(f),
-            #[cfg(unix)]
-            Self::ZoneError(ze) => ze.fmt(f),
             Self::OsError { syscall, errno } => f
                 .debug_struct("OsError")
                 .field("syscall", syscall)
                 .field("errno", errno)
                 .field("strerror", &strerror(*errno))
                 .finish(),
+            #[cfg(unix)]
+            Self::MemError(me) => me.fmt(f),
+            Self::ZoneError(ze) => ze.fmt(f),
             Self::Unreachable(msg) => f.write_fmt(format_args!("unreachable state: {}", msg)),
         }
     }

@@ -3,10 +3,9 @@
 
 extern crate bindgen;
 
-use std::{env, path::PathBuf};
-
 #[cfg(target_os = "linux")]
 fn main() {
+    use std::{env, path::PathBuf};
     println!("cargo:rerun-if-changed=src/seccomp.h");
 
     bindgen::Builder::default()

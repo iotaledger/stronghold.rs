@@ -11,11 +11,11 @@ pub enum Error {
 
 impl Error {
     fn unexpected_exit_code(exit_code: libc::c_int) -> crate::Error {
-        crate::Error::ZoneError(Self::UnexpectedExitCode { exit_code })
+        Self::UnexpectedExitCode { exit_code }.into()
     }
 
     fn signal(signo: libc::c_int) -> crate::Error {
-        crate::Error::ZoneError(Self::Signal { signo })
+        Self::Signal { signo }.into()
     }
 }
 

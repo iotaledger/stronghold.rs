@@ -1,8 +1,6 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(clippy::many_single_char_names)]
-
 use core::{
     alloc::{GlobalAlloc, Layout, LayoutErr},
     ptr,
@@ -219,6 +217,11 @@ mod tests {
     use super::*;
     use rand::{rngs::OsRng, Rng};
 
+    #[cfg(target_os = "linux")]
+    const MEM_ACCESS_ERR: crate::Error = crate::Error::ZoneError(crate::zone::Error::Signal { signo: libc::SIGSEGV });
+    #[cfg(target_os = "macos")]
+    const MEM_ACCESS_ERR: crate::Error = crate::Error::ZoneError(crate::zone::Error::Signal { signo: libc::SIGBUS });
+
     fn page_size_exponent() -> u32 {
         let mut p = 1;
         let mut k = 0;
@@ -309,14 +312,12 @@ mod tests {
         assert_eq!(
             crate::zone::soft(|| {
                 for i in 0..page_size() {
-                    let _ = unsafe {
-                        core::ptr::read_unaligned(a.data().offset(-(i as isize)));
-                    };
+                    unsafe {
+                        assert_eq!(0u8, core::ptr::read_unaligned(a.data().offset(-(i as isize))));
+                    }
                 }
             }),
-            Err(crate::Error::ZoneError(crate::zone::Error::Signal {
-                signo: libc::SIGSEGV
-            }))
+            Err(MEM_ACCESS_ERR)
         );
 
         Ok(())
@@ -335,9 +336,7 @@ mod tests {
                     }
                 }
             }),
-            Err(crate::Error::ZoneError(crate::zone::Error::Signal {
-                signo: libc::SIGSEGV
-            }))
+            Err(MEM_ACCESS_ERR)
         );
 
         Ok(())
@@ -351,14 +350,12 @@ mod tests {
         assert_eq!(
             crate::zone::soft(|| {
                 for i in 0..page_size() {
-                    let _ = unsafe {
-                        core::ptr::read_unaligned(a.data().add(l.size() + i));
+                    unsafe {
+                        assert_eq!(0u8, core::ptr::read_unaligned(a.data().add(l.size() + i)));
                     };
                 }
             }),
-            Err(crate::Error::ZoneError(crate::zone::Error::Signal {
-                signo: libc::SIGSEGV
-            }))
+            Err(MEM_ACCESS_ERR)
         );
 
         Ok(())
@@ -377,9 +374,7 @@ mod tests {
                     }
                 }
             }),
-            Err(crate::Error::ZoneError(crate::zone::Error::Signal {
-                signo: libc::SIGSEGV
-            }))
+            Err(MEM_ACCESS_ERR)
         );
 
         Ok(())
@@ -398,14 +393,24 @@ mod tests {
         Ok(())
     }
 
+    // TODO: unify these apis, maybe a dedicated zone::Spec?
     #[test]
-    fn inside_zone() -> crate::Result<()> {
+    #[cfg(target_os = "linux")]
+    fn inside_zone_linux() -> crate::Result<()> {
         let l = fresh_layout();
         crate::zone::soft(|| {
-            if cfg!(target_os = "linux") {
-                seccomp_spec().with_getrandom().apply().unwrap();
-            }
+            seccomp_spec().with_getrandom().apply().unwrap();
+            let a = GuardedAllocation::aligned(l).unwrap();
+            do_test_write(a.data(), l.size());
+            a.free().unwrap();
+        })
+    }
 
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn inside_zone_macos() -> crate::Result<()> {
+        let l = fresh_layout();
+        crate::zone::soft(|| {
             let a = GuardedAllocation::aligned(l).unwrap();
             do_test_write(a.data(), l.size());
             a.free().unwrap();
