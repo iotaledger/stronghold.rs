@@ -3,10 +3,12 @@ use thiserror::Error as DeriveError;
 mod actors;
 mod bucket;
 mod client;
+mod external;
 mod ids;
 mod key_store;
 mod provider;
 mod secret;
+mod snapshot;
 
 pub use crate::ids::{ClientId, VaultId};
 

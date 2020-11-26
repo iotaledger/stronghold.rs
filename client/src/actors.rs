@@ -9,28 +9,23 @@ use std::{fmt::Debug, path::PathBuf};
 use engine::vault::{BoxProvider, Key, RecordHint, RecordId};
 
 use crate::{
-    bucket::Bucket,
-    client::{Client, Snapshot},
-    ids::{ClientId, VaultId},
-    key_store::KeyStore,
-    line_error,
-    provider::Provider,
+    bucket::Bucket, client::ClientMsg, ids::VaultId, key_store::KeyStore, line_error, provider::Provider,
+    snapshot::Snapshot,
 };
 
-#[derive(Debug, Clone)]
-pub enum CMsg {
-    SetExternalActorName(String),
-    CreateVaultAsk,
-    CreateVaultReturn(VaultId, RecordId),
-    ReadDataAsk(VaultId, RecordId),
-    ReadDataReturn(Vec<u8>),
-    WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
-    InitRecord(VaultId),
+#[derive(Clone, Debug)]
+pub enum TestMsg {
+    CreateVault,
+    ReturnCreateVault(VaultId, RecordId),
+    WriteData(usize, Vec<u8>, RecordHint),
+    InitRecord(usize),
     InitRecordReturn(VaultId, RecordId),
-    RevokeData(VaultId, RecordId),
-    GarbageCollect(VaultId),
-    ListAsk(VaultId),
-    ListReturn(Vec<(RecordId, RecordHint)>),
+    ReturnReadData(Vec<u8>),
+    ReadData(usize),
+    RevokeData(usize),
+    GarbageCollect(usize),
+    ListIds(usize),
+    ReturnList(Vec<(RecordId, RecordHint)>),
     WriteSnapshot(String, Option<PathBuf>),
     ReadSnapshot(String, Option<PathBuf>),
 }
@@ -67,12 +62,6 @@ pub enum SMsg {
     ReadSnapshot(String, Option<PathBuf>),
 }
 
-impl ActorFactory for Client {
-    fn create() -> Self {
-        Client::new(ClientId::random::<Provider>().expect(line_error!()), None)
-    }
-}
-
 impl ActorFactory for Bucket<Provider> {
     fn create() -> Self {
         Bucket::new()
@@ -88,14 +77,6 @@ impl ActorFactory for KeyStore<Provider> {
 impl ActorFactory for Snapshot {
     fn create() -> Self {
         Snapshot::new::<Provider>(vec![])
-    }
-}
-
-impl Actor for Client {
-    type Msg = CMsg;
-
-    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        self.receive(ctx, msg, sender);
     }
 }
 
@@ -155,84 +136,6 @@ impl Receive<SMsg> for Snapshot {
     }
 }
 
-impl Receive<CMsg> for Client {
-    type Msg = CMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
-        match msg {
-            CMsg::CreateVaultAsk => {
-                let vid = VaultId::random::<Provider>().expect(line_error!());
-
-                let kstore = ctx.select("/user/keystore/").expect(line_error!());
-                kstore.try_tell(KMsg::CreateVault(vid), None);
-            }
-            CMsg::CreateVaultReturn(vid, rid) => {
-                let external = ctx
-                    .select(self.external_actor.as_ref().expect(line_error!()))
-                    .expect(line_error!());
-
-                external.try_tell(EMsg::ReturnCreateVault(vid, rid), None);
-            }
-            CMsg::ReadDataAsk(vid, rid) => {
-                let kstore = ctx.select("/user/keystore/").expect(line_error!());
-                kstore.try_tell(KMsg::ReadData(vid, rid), None);
-            }
-            CMsg::ReadDataReturn(data) => {
-                let external = ctx
-                    .select(self.external_actor.as_ref().expect(line_error!()))
-                    .expect(line_error!());
-
-                external.try_tell(EMsg::ReturnReadData(data), None);
-            }
-            CMsg::WriteData(vid, rid, payload, hint) => {
-                let kstore = ctx.select("/user/keystore/").expect(line_error!());
-                kstore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
-            }
-            CMsg::InitRecord(vid) => {
-                let kstore = ctx.select("/user/keystore/").expect(line_error!());
-                kstore.try_tell(KMsg::InitRecord(vid), None);
-            }
-            CMsg::InitRecordReturn(vid, rid) => {
-                let external = ctx
-                    .select(self.external_actor.as_ref().expect(line_error!()))
-                    .expect(line_error!());
-
-                external.try_tell(EMsg::InitRecordReturn(vid, rid), None);
-            }
-            CMsg::RevokeData(vid, rid) => {
-                let kstore = ctx.select("/user/keystore/").expect(line_error!());
-                kstore.try_tell(KMsg::RevokeData(vid, rid), None);
-            }
-            CMsg::GarbageCollect(vid) => {
-                let kstore = ctx.select("/user/keystore/").expect(line_error!());
-                kstore.try_tell(KMsg::GarbageCollect(vid), None);
-            }
-            CMsg::ListAsk(vid) => {
-                let kstore = ctx.select("/user/keystore/").expect(line_error!());
-                kstore.try_tell(KMsg::ListIds(vid), None);
-            }
-            CMsg::ListReturn(ids) => {
-                let external = ctx
-                    .select(self.external_actor.as_ref().expect(line_error!()))
-                    .expect(line_error!());
-
-                external.try_tell(EMsg::ReturnList(ids), None);
-            }
-            CMsg::SetExternalActorName(id) => {
-                self.external_actor = Some(id);
-            }
-            CMsg::WriteSnapshot(pass, path) => {
-                let bucket = ctx.select("/user/bucket/").expect(line_error!());
-                bucket.try_tell(BMsg::WriteSnapshot::<Provider>(pass, path), None);
-            }
-            CMsg::ReadSnapshot(pass, path) => {
-                let bucket = ctx.select("/user/bucket/").expect(line_error!());
-                bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass, path), None);
-            }
-        }
-    }
-}
-
 impl Receive<BMsg<Provider>> for Bucket<Provider> {
     type Msg = BMsg<Provider>;
 
@@ -242,13 +145,13 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
                 let (_, rid) = self.create_and_init_vault(key);
 
                 let client = ctx.select("/user/client/").expect(line_error!());
-                client.try_tell(CMsg::CreateVaultReturn(vid, rid), None);
+                client.try_tell(ClientMsg::CreateVaultReturn(vid, rid), None);
             }
             BMsg::ReadData(key, rid) => {
                 let plain = self.read_data(key, rid);
 
                 let client = ctx.select("/user/client/").expect(line_error!());
-                client.try_tell(CMsg::ReadDataReturn(plain), None);
+                client.try_tell(ClientMsg::ReadDataReturn(plain), None);
             }
             BMsg::WriteData(key, rid, payload, hint) => {
                 self.write_payload(key, rid, payload, hint);
@@ -257,7 +160,7 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
                 let rid = self.init_record(key);
 
                 let client = ctx.select("/user/client/").expect(line_error!());
-                client.try_tell(CMsg::InitRecordReturn(vid, rid), None);
+                client.try_tell(ClientMsg::InitRecordReturn(vid, rid), None);
             }
             BMsg::RevokeData(key, rid) => {
                 self.revoke_data(key, rid);
@@ -269,7 +172,7 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
                 let ids = self.list_ids(key);
 
                 let client = ctx.select("/user/client/").expect(line_error!());
-                client.try_tell(CMsg::ListReturn(ids), None);
+                client.try_tell(ClientMsg::ListReturn(ids), None);
             }
             BMsg::WriteSnapshot(pass, path) => {
                 let state = self.offload_data();
@@ -358,26 +261,11 @@ impl Receive<KMsg> for KeyStore<Provider> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum EMsg {
-    CreateVault,
-    ReturnCreateVault(VaultId, RecordId),
-    WriteData(usize, Vec<u8>, RecordHint),
-    InitRecord(usize),
-    InitRecordReturn(VaultId, RecordId),
-    ReturnReadData(Vec<u8>),
-    ReadData(usize),
-    RevokeData(usize),
-    GarbageCollect(usize),
-    ListIds(usize),
-    ReturnList(Vec<(RecordId, RecordHint)>),
-    WriteSnapshot(String, Option<PathBuf>),
-    ReadSnapshot(String, Option<PathBuf>),
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
+
+    use crate::client::Client;
 
     use std::collections::HashMap;
 
@@ -387,7 +275,7 @@ mod test {
     }
 
     impl Actor for MockExternalActor {
-        type Msg = EMsg;
+        type Msg = TestMsg;
 
         fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
             self.receive(ctx, msg, sender);
@@ -402,24 +290,24 @@ mod test {
         }
     }
 
-    impl Receive<EMsg> for MockExternalActor {
-        type Msg = EMsg;
+    impl Receive<TestMsg> for MockExternalActor {
+        type Msg = TestMsg;
 
         fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
             match msg {
-                EMsg::CreateVault => {
+                TestMsg::CreateVault => {
                     let client = ctx.select("/user/client/").expect(line_error!());
-                    client.try_tell(CMsg::CreateVaultAsk, None);
+                    client.try_tell(ClientMsg::CreateVaultAsk, None);
                 }
-                EMsg::ReturnCreateVault(vid, rid) => {
+                TestMsg::ReturnCreateVault(vid, rid) => {
                     self.vaults.insert(vid, vec![rid]);
 
                     self.index.push(vid);
                 }
-                EMsg::WriteData(index, payload, hint) => {
+                TestMsg::WriteData(index, payload, hint) => {
                     if index >= self.index.len() {
                         let external = ctx.select("/user/external").expect(line_error!());
-                        external.try_tell(EMsg::WriteData(index, payload.clone(), hint), None);
+                        external.try_tell(TestMsg::WriteData(index, payload.clone(), hint), None);
                     } else {
                         let vid = self.index[index];
 
@@ -427,29 +315,29 @@ mod test {
                         let rid = rids.last().expect(line_error!());
 
                         let client = ctx.select("/user/client/").expect(line_error!());
-                        client.try_tell(CMsg::WriteData(vid, *rid, payload, hint), None);
+                        client.try_tell(ClientMsg::WriteData(vid, *rid, payload, hint), None);
                     }
                 }
-                EMsg::InitRecord(index) => {
+                TestMsg::InitRecord(index) => {
                     if index >= self.index.len() {
                         let external = ctx.select("/user/external").expect(line_error!());
-                        external.try_tell(EMsg::InitRecord(index), None);
+                        external.try_tell(TestMsg::InitRecord(index), None);
                     } else {
                         let vid = self.index[index];
 
                         let client = ctx.select("/user/client/").expect(line_error!());
-                        client.try_tell(CMsg::InitRecord(vid), None);
+                        client.try_tell(ClientMsg::InitRecord(vid), None);
                     }
                 }
-                EMsg::InitRecordReturn(vid, rid) => {
+                TestMsg::InitRecordReturn(vid, rid) => {
                     self.vaults.entry(vid).and_modify(|records| records.push(rid));
 
                     println!("{:?} {:?}", rid, vid);
                 }
-                EMsg::ReadData(index) => {
+                TestMsg::ReadData(index) => {
                     if index >= self.index.len() {
                         let external = ctx.select("/user/external").expect(line_error!());
-                        external.try_tell(EMsg::ReadData(index), None);
+                        external.try_tell(TestMsg::ReadData(index), None);
                     } else {
                         let vid = self.index[index];
 
@@ -457,19 +345,19 @@ mod test {
                         match rids.last() {
                             Some(rid) => {
                                 let client = ctx.select("/user/client/").expect(line_error!());
-                                client.try_tell(CMsg::ReadDataAsk(vid, *rid), None);
+                                client.try_tell(ClientMsg::ReadDataAsk(vid, *rid), None);
                             }
                             None => {}
                         }
                     }
                 }
-                EMsg::ReturnReadData(data) => {
+                TestMsg::ReturnReadData(data) => {
                     println!("Plaintext Data: {:?}", std::str::from_utf8(&data));
                 }
-                EMsg::RevokeData(index) => {
+                TestMsg::RevokeData(index) => {
                     if index >= self.index.len() {
                         let external = ctx.select("/user/external").expect(line_error!());
-                        external.try_tell(EMsg::RevokeData(index), None);
+                        external.try_tell(TestMsg::RevokeData(index), None);
                     } else {
                         let vid = self.index[index];
 
@@ -477,43 +365,43 @@ mod test {
                         let rid = rids.pop().expect(line_error!());
 
                         let client = ctx.select("/user/client/").expect(line_error!());
-                        client.try_tell(CMsg::RevokeData(vid, rid), None);
+                        client.try_tell(ClientMsg::RevokeData(vid, rid), None);
                     }
                 }
-                EMsg::GarbageCollect(index) => {
+                TestMsg::GarbageCollect(index) => {
                     if index >= self.index.len() {
                         let external = ctx.select("/user/external").expect(line_error!());
-                        external.try_tell(EMsg::GarbageCollect(index), None);
+                        external.try_tell(TestMsg::GarbageCollect(index), None);
                     } else {
                         let vid = self.index[index];
 
                         let client = ctx.select("/user/client/").expect(line_error!());
-                        client.try_tell(CMsg::GarbageCollect(vid), None);
+                        client.try_tell(ClientMsg::GarbageCollect(vid), None);
                     }
                 }
-                EMsg::ListIds(index) => {
+                TestMsg::ListIds(index) => {
                     if index >= self.index.len() {
                         let external = ctx.select("/user/external").expect(line_error!());
-                        external.try_tell(EMsg::ListIds(index), None);
+                        external.try_tell(TestMsg::ListIds(index), None);
                     } else {
                         let vid = self.index[index];
 
                         let client = ctx.select("/user/client/").expect(line_error!());
-                        client.try_tell(CMsg::ListAsk(vid), None);
+                        client.try_tell(ClientMsg::ListAsk(vid), None);
                     }
                 }
-                EMsg::ReturnList(ids) => {
+                TestMsg::ReturnList(ids) => {
                     ids.iter().for_each(|(id, hint)| {
                         println!("Record Id: {:?}, Hint: {:?}", id, hint);
                     });
                 }
-                EMsg::WriteSnapshot(pass, path) => {
+                TestMsg::WriteSnapshot(pass, path) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
-                    client.try_tell(CMsg::WriteSnapshot(pass, path), None);
+                    client.try_tell(ClientMsg::WriteSnapshot(pass, path), None);
                 }
-                EMsg::ReadSnapshot(pass, path) => {
+                TestMsg::ReadSnapshot(pass, path) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
-                    client.try_tell(CMsg::ReadSnapshot(pass, path), None);
+                    client.try_tell(ClientMsg::ReadSnapshot(pass, path), None);
                 }
             }
         }
@@ -532,27 +420,27 @@ mod test {
             .actor_of_args::<MockExternalActor, _>("external", external_hashmap)
             .unwrap();
 
-        client.tell(CMsg::SetExternalActorName(String::from(external_path)), None);
+        client.tell(ClientMsg::SetExternalActorName(String::from(external_path)), None);
 
-        external.tell(EMsg::CreateVault, None);
+        external.tell(TestMsg::CreateVault, None);
 
         std::thread::sleep(std::time::Duration::from_millis(5));
 
         external.tell(
-            EMsg::WriteData(0, b"Some Data".to_vec(), RecordHint::new(b"").expect(line_error!())),
+            TestMsg::WriteData(0, b"Some Data".to_vec(), RecordHint::new(b"").expect(line_error!())),
             None,
         );
 
-        external.tell(EMsg::ListIds(0), None);
+        external.tell(TestMsg::ListIds(0), None);
 
-        external.tell(EMsg::ReadData(0), None);
+        external.tell(TestMsg::ReadData(0), None);
 
-        external.tell(EMsg::CreateVault, None);
+        external.tell(TestMsg::CreateVault, None);
 
         std::thread::sleep(std::time::Duration::from_millis(5));
 
         external.tell(
-            EMsg::WriteData(
+            TestMsg::WriteData(
                 1,
                 b"Some other data".to_vec(),
                 RecordHint::new(b"").expect(line_error!()),
@@ -560,14 +448,14 @@ mod test {
             None,
         );
 
-        external.tell(EMsg::ListIds(1), None);
+        external.tell(TestMsg::ListIds(1), None);
 
-        external.tell(EMsg::ReadData(1), None);
+        external.tell(TestMsg::ReadData(1), None);
 
-        external.tell(EMsg::InitRecord(1), None);
+        external.tell(TestMsg::InitRecord(1), None);
 
         external.tell(
-            EMsg::WriteData(
+            TestMsg::WriteData(
                 1,
                 b"even more data".to_vec(),
                 RecordHint::new(b"").expect(line_error!()),
@@ -575,12 +463,12 @@ mod test {
             None,
         );
 
-        external.tell(EMsg::ReadData(1), None);
+        external.tell(TestMsg::ReadData(1), None);
 
-        external.tell(EMsg::InitRecord(0), None);
+        external.tell(TestMsg::InitRecord(0), None);
 
         external.tell(
-            EMsg::WriteData(
+            TestMsg::WriteData(
                 0,
                 b"A bit more data".to_vec(),
                 RecordHint::new(b"").expect(line_error!()),
@@ -588,17 +476,17 @@ mod test {
             None,
         );
 
-        external.tell(EMsg::ReadData(0), None);
+        external.tell(TestMsg::ReadData(0), None);
 
-        external.tell(EMsg::WriteSnapshot("password".into(), None), None);
+        external.tell(TestMsg::WriteSnapshot("password".into(), None), None);
 
-        external.tell(EMsg::RevokeData(0), None);
+        external.tell(TestMsg::RevokeData(0), None);
 
-        external.tell(EMsg::ReadData(0), None);
+        external.tell(TestMsg::ReadData(0), None);
 
-        external.tell(EMsg::ReadSnapshot("password".into(), None), None);
+        external.tell(TestMsg::ReadSnapshot("password".into(), None), None);
 
-        external.tell(EMsg::ReadData(0), None);
+        external.tell(TestMsg::ReadData(0), None);
 
         std::thread::sleep(std::time::Duration::from_millis(2000));
         sys.print_tree();

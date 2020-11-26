@@ -2,7 +2,7 @@ use engine::vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHi
 
 use std::collections::HashMap;
 
-use crate::{client::Snapshot, line_error};
+use crate::line_error;
 
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
     vaults: HashMap<Key<P>, Option<DBView<P>>>,
