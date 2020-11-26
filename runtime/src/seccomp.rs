@@ -356,7 +356,6 @@ mod tests {
             harness(|| {
                 s.apply().unwrap();
                 unsafe { libc::write(2, "hello".as_ptr() as *const libc::c_void, 5) };
-                unsafe { libc::_exit(0) };
             }),
             Ok(())
         );

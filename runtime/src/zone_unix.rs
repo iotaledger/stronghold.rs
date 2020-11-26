@@ -62,9 +62,15 @@ where
 
             let mut t = f();
 
-            if mem::size_of::<T>() > 0 {
-                let _ = libc::write(1, &mut t as *mut _ as *mut libc::c_void, mem::size_of::<T>());
-                // TODO: partial writes
+            let mut p = &mut t as *mut T as *mut u8;
+            let mut n = mem::size_of::<T>();
+            while n > 0 {
+                let r = libc::write(1, p as *mut libc::c_void, n);
+                if r < 0 {
+                    libc::_exit(1)
+                }
+                n -= r as usize;
+                p = p.add(r as usize);
             }
 
             libc::_exit(0)
@@ -75,6 +81,7 @@ where
             return Err(crate::Error::os("close"));
         }
 
+
         let mut st = 0;
         let r = libc::waitpid(pid, &mut st, 0);
         if r < 0 {
@@ -84,9 +91,15 @@ where
             let ec = libc::WEXITSTATUS(st);
             if ec == 0 {
                 let mut t: mem::MaybeUninit<T> = mem::MaybeUninit::uninit();
-                if mem::size_of::<T>() > 0 {
-                    let _ = libc::read(fds[0], t.as_mut_ptr() as *mut libc::c_void, mem::size_of::<T>());
-                    // TODO: partial reads
+                let mut n = mem::size_of::<T>();
+                let mut p = t.as_mut_ptr() as *mut u8;
+                while n > 0 {
+                    let r = libc::read(fds[0], p as *mut libc::c_void, n);
+                    if r < 0 {
+                        return Err(crate::Error::os("read"));
+                    }
+                    n -= r as usize;
+                    p = p.add(r as usize);
                 }
                 Ok(t.assume_init())
             } else {
@@ -104,6 +117,7 @@ where
         if r != 0 {
             return Err(crate::Error::os("close"));
         }
+
         ret
     }
 }
@@ -111,10 +125,28 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::{rngs::OsRng, RngCore};
 
     #[test]
     fn pure() -> crate::Result<()> {
         assert_eq!(soft(|| 7)?, 7);
+        Ok(())
+    }
+
+    #[test]
+    fn pure_buffer() -> crate::Result<()> {
+        let mut bs = [0u8; 128];
+        OsRng.fill_bytes(&mut bs);
+        assert_eq!(soft(|| bs)?, bs);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "TODO: read and waitpid non-blocking"]
+    fn pure_large_buffer() -> crate::Result<()> {
+        let mut bs = [0u8; 1024*128];
+        OsRng.fill_bytes(&mut bs);
+        assert_eq!(soft(|| bs)?, bs);
         Ok(())
     }
 
