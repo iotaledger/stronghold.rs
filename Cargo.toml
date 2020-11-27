@@ -5,12 +5,12 @@ members = [
     "engine/primitives",
     "engine/random",
     "engine/crypto",
-    "engine/snapshot"
+    "engine/snapshot",
+    "runtime",
 ]
 exclude = [
   "products/commandline",
   "products/desktop",
   "products/SHaaS",
   "client",
-  "stronghold",
 ]
