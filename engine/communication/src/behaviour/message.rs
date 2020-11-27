@@ -12,49 +12,6 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "mdns")]
 use libp2p::mdns::MdnsEvent;
 
-pub type Key = String;
-pub type Value = String;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MailboxRecord {
-    key: String,
-    value: String,
-}
-
-impl MailboxRecord {
-    pub fn new(key: Key, value: Key) -> Self {
-        MailboxRecord { key, value }
-    }
-
-    pub fn key(&self) -> Key {
-        self.key.clone()
-    }
-    pub fn value(&self) -> Value {
-        self.value.clone()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Request {
-    Ping,
-    PutRecord(MailboxRecord),
-    GetRecord(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Response {
-    Pong,
-    Outcome(RequestOutcome),
-    Record(MailboxRecord),
-}
-
-/// Indicates if a Request was received and / or the associated operation at the remote peer was successful
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RequestOutcome {
-    Success,
-    Error,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ProcedureError {
     Outbound,
@@ -89,15 +46,15 @@ pub enum FailureType {
 }
 
 #[derive(Debug, Clone)]
-pub enum ReqResEvent {
-    Req(Request),
-    Res(Response),
+pub enum ReqResEvent<T, U> {
+    Req(T),
+    Res(U),
     ReqResErr(RequestResponseError),
 }
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
-pub enum CommunicationEvent {
+pub enum CommunicationEvent<T, U> {
     SwarmCtrl,
     Identify {
         peer_id: PeerId,
@@ -107,19 +64,19 @@ pub enum CommunicationEvent {
     RequestResponse {
         peer_id: PeerId,
         request_id: RequestId,
-        event: ReqResEvent,
+        event: ReqResEvent<T, U>,
     },
 }
 
 #[cfg(feature = "mdns")]
-impl From<MdnsEvent> for CommunicationEvent {
-    fn from(_event: MdnsEvent) -> CommunicationEvent {
+impl<T, U> From<MdnsEvent> for CommunicationEvent<T, U> {
+    fn from(_event: MdnsEvent) -> CommunicationEvent<T, U> {
         CommunicationEvent::SwarmCtrl
     }
 }
 
-impl From<IdentifyEvent> for CommunicationEvent {
-    fn from(event: IdentifyEvent) -> CommunicationEvent {
+impl<T, U> From<IdentifyEvent> for CommunicationEvent<T, U> {
+    fn from(event: IdentifyEvent) -> CommunicationEvent<T, U> {
         if let IdentifyEvent::Received {
             peer_id,
             info,
@@ -137,8 +94,8 @@ impl From<IdentifyEvent> for CommunicationEvent {
     }
 }
 
-impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
-    fn from(event: RequestResponseEvent<Request, Response>) -> CommunicationEvent {
+impl<T, U> From<RequestResponseEvent<T, U>> for CommunicationEvent<T, U> {
+    fn from(event: RequestResponseEvent<T, U>) -> CommunicationEvent<T, U> {
         match event {
             RequestResponseEvent::Message { peer, message } => match message {
                 RequestResponseMessage::Request {
@@ -197,13 +154,4 @@ impl From<RequestResponseEvent<Request, Response>> for CommunicationEvent {
             }
         }
     }
-}
-
-#[test]
-fn test_new_message() {
-    let key = String::from("key1");
-    let value = String::from("value1");
-    let record = MailboxRecord::new(key.clone(), value.clone());
-    assert_eq!(record.key(), key);
-    assert_eq!(record.value(), value);
 }

@@ -43,10 +43,10 @@ use async_std::{
     io::{stdin, BufReader, Stdin},
     task,
 };
-use communication::{
-    behaviour::P2PNetworkBehaviour,
+use communication::behaviour::{
     error::QueryResult,
-    message::{CommunicationEvent, ReqResEvent, Request, Response},
+    message::{CommunicationEvent, ReqResEvent},
+    MessageEvent, P2PNetworkBehaviour,
 };
 use core::{
     str::FromStr,
@@ -60,6 +60,52 @@ use libp2p::{
     swarm::Swarm,
 };
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+
+pub type Key = String;
+pub type Value = String;
+
+/// Indicates if a Request was received and / or the associated operation at the remote peer was successful
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RequestOutcome {
+    Success,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MailboxRecord {
+    key: String,
+    value: String,
+}
+
+impl MailboxRecord {
+    pub fn new(key: Key, value: Key) -> Self {
+        MailboxRecord { key, value }
+    }
+
+    pub fn key(&self) -> Key {
+        self.key.clone()
+    }
+    pub fn value(&self) -> Value {
+        self.value.clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Request {
+    Ping,
+    PutRecord(MailboxRecord),
+    GetRecord(String),
+}
+impl MessageEvent for Request {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Response {
+    Pong,
+    Outcome(RequestOutcome),
+    Record(MailboxRecord),
+}
+impl MessageEvent for Response {}
 
 // Poll for user input
 fn poll_stdin(stdin: &mut Lines<BufReader<Stdin>>, cx: &mut Context<'_>) -> Result<Option<String>, Box<dyn Error>> {
@@ -77,7 +123,7 @@ fn poll_stdin(stdin: &mut Lines<BufReader<Stdin>>, cx: &mut Context<'_>) -> Resu
 fn listen() -> QueryResult<()> {
     let local_keys = Keypair::generate_ed25519();
     // Create a Swarm that implementes the Request-Reponse Protocl and mDNS
-    let mut swarm = P2PNetworkBehaviour::new(local_keys)?;
+    let mut swarm = P2PNetworkBehaviour::<Request, Response>::new(local_keys)?;
     P2PNetworkBehaviour::start_listening(&mut swarm, None)?;
     println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
     let mut listening = false;
@@ -163,7 +209,7 @@ fn listen() -> QueryResult<()> {
     Ok(())
 }
 
-fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour>, line: String) {
+fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, line: String) {
     if let Some(peer_id) = Regex::new("PING\\s+\"(\\w+)\"")
         .ok()
         .and_then(|regex| regex.captures(&line))

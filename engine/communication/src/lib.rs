@@ -59,5 +59,3 @@
 
 pub mod actor;
 pub mod behaviour;
-pub mod error;
-pub mod message;

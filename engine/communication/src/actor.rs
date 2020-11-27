@@ -1,9 +1,9 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    behaviour::P2PNetworkBehaviour,
+use crate::behaviour::{
     message::{CommunicationEvent, ReqResEvent},
+    MessageEvent, P2PNetworkBehaviour,
 };
 use async_std::task;
 use core::task::{Context as TaskContext, Poll};
@@ -11,21 +11,22 @@ use futures::{channel::mpsc, future, prelude::*};
 use libp2p::{core::identity::Keypair, swarm::Swarm};
 use riker::actors::*;
 
-pub enum CommActorEvent {
-    Message(CommunicationEvent),
+pub enum CommActorEvent<T, U> {
+    Message(CommunicationEvent<T, U>),
     Shutdown,
 }
 
-#[actor(CommunicationEvent)]
-pub struct CommunicationActor {
-    chan: ChannelRef<CommunicationEvent>,
+pub struct CommunicationActor<T: MessageEvent, U: MessageEvent> {
+    chan: ChannelRef<CommunicationEvent<T, U>>,
     keypair: Keypair,
-    swarm_tx: Option<mpsc::Sender<CommActorEvent>>,
+    swarm_tx: Option<mpsc::Sender<CommActorEvent<T, U>>>,
     poll_swarm_handle: Option<future::RemoteHandle<()>>,
 }
 
-impl ActorFactoryArgs<(Keypair, ChannelRef<CommunicationEvent>)> for CommunicationActor {
-    fn create_args((keypair, chan): (Keypair, ChannelRef<CommunicationEvent>)) -> Self {
+impl<T: MessageEvent, U: MessageEvent> ActorFactoryArgs<(Keypair, ChannelRef<CommunicationEvent<T, U>>)>
+    for CommunicationActor<T, U>
+{
+    fn create_args((keypair, chan): (Keypair, ChannelRef<CommunicationEvent<T, U>>)) -> Self {
         Self {
             chan,
             keypair,
@@ -35,8 +36,8 @@ impl ActorFactoryArgs<(Keypair, ChannelRef<CommunicationEvent>)> for Communicati
     }
 }
 
-impl Actor for CommunicationActor {
-    type Msg = CommunicationActorMsg;
+impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
+    type Msg = CommunicationEvent<T, U>;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         let topic = Topic::from("swarm_outbound");
@@ -47,7 +48,7 @@ impl Actor for CommunicationActor {
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         let (swarm_tx, mut swarm_rx) = mpsc::channel(16);
         self.swarm_tx = Some(swarm_tx);
-        let mut swarm = P2PNetworkBehaviour::new(self.keypair.clone()).unwrap();
+        let mut swarm = P2PNetworkBehaviour::<T, U>::new(self.keypair.clone()).unwrap();
         P2PNetworkBehaviour::start_listening(&mut swarm, None).unwrap();
         let topic = Topic::from("swarm_inbound");
         let chan = self.chan.clone();
@@ -126,14 +127,7 @@ impl Actor for CommunicationActor {
         }
     }
 
-    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        self.receive(ctx, msg, sender);
-    }
-}
-
-impl Receive<CommunicationEvent> for CommunicationActor {
-    type Msg = CommunicationActorMsg;
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: CommunicationEvent, _sender: Sender) {
+    fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         if let Some(tx) = self.swarm_tx.as_mut() {
             task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
                 match tx.poll_ready(tcx) {

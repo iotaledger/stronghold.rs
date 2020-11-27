@@ -1,16 +1,16 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod error;
+pub mod message;
 mod protocol;
-use crate::{
-    error::{QueryError, QueryResult},
-    message::{CommunicationEvent, ReqResEvent, Request, Response},
-};
 use core::{
     iter,
+    marker::PhantomData,
     str::FromStr,
     task::{Context, Poll},
 };
+use error::{QueryError, QueryResult};
 #[cfg(feature = "mdns")]
 use libp2p::mdns::{Mdns, MdnsEvent};
 use libp2p::{
@@ -25,32 +25,31 @@ use libp2p::{
     swarm::{NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters, Swarm},
     NetworkBehaviour,
 };
+use message::{CommunicationEvent, ReqResEvent};
+pub use protocol::MessageEvent;
 use protocol::{MessageCodec, MessageProtocol};
 // TODO: support no_std
-use std::collections::btree_map::BTreeMap;
-mod structs_proto {
-    include!(concat!(env!("OUT_DIR"), "/structs.pb.rs"));
-}
+use std::collections::BTreeMap;
 
-type ReqId = String;
-type PeerStr = String;
+type ReqIdStr = String;
+type PeerIdStr = String;
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "CommunicationEvent", poll_method = "poll")]
-pub struct P2PNetworkBehaviour {
+#[behaviour(out_event = "CommunicationEvent<T, U>", poll_method = "poll")]
+pub struct P2PNetworkBehaviour<T: MessageEvent, U: MessageEvent> {
     #[cfg(feature = "mdns")]
     mdns: Mdns,
     identify: Identify,
-    msg_proto: RequestResponse<MessageCodec>,
+    msg_proto: RequestResponse<MessageCodec<T, U>>,
     #[behaviour(ignore)]
-    peers: BTreeMap<PeerStr, Multiaddr>,
+    peers: BTreeMap<PeerIdStr, Multiaddr>,
     #[behaviour(ignore)]
-    events: Vec<CommunicationEvent>,
+    events: Vec<CommunicationEvent<T, U>>,
     #[behaviour(ignore)]
-    response_channels: BTreeMap<ReqId, ResponseChannel<Response>>,
+    response_channels: BTreeMap<ReqIdStr, ResponseChannel<U>>,
 }
 
-impl P2PNetworkBehaviour {
+impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     /// Creates a new P2PNetworkbehaviour that defines the communication with the libp2p swarm.
     /// It combines the following protocols from libp2p:
     /// - mDNS for peer discovery within the local network
@@ -59,21 +58,30 @@ impl P2PNetworkBehaviour {
     ///
     /// # Example
     /// ```no_run
-    /// use communication::{
-    ///     behaviour::P2PNetworkBehaviour,
-    ///     error::QueryResult,
-    ///     message::{Request, Response},
-    /// };
+    /// use communication::behaviour::{error::QueryResult, MessageEvent, P2PNetworkBehaviour};
     /// use libp2p::{
     ///     core::{Multiaddr, PeerId},
     ///     identity::Keypair,
     ///     request_response::{RequestId, RequestResponseEvent, ResponseChannel},
     /// };
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    /// pub enum Request {
+    ///     Ping,
+    /// }
+    /// impl MessageEvent for Request {}
+    ///
+    /// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    /// pub enum Response {
+    ///     Pong,
+    /// }
+    /// impl MessageEvent for Response {}
     ///
     /// let local_keys = Keypair::generate_ed25519();
-    /// let mut swarm = P2PNetworkBehaviour::new(local_keys).unwrap();
+    /// let mut swarm = P2PNetworkBehaviour::<Request, Response>::new(local_keys).unwrap();
     /// ```
-    pub fn new(local_keys: Keypair) -> QueryResult<Swarm<P2PNetworkBehaviour>> {
+    pub fn new(local_keys: Keypair) -> QueryResult<Swarm<P2PNetworkBehaviour<T, U>>> {
         #[allow(unused_variables)]
         let local_peer_id = PeerId::from(local_keys.public());
 
@@ -90,7 +98,7 @@ impl P2PNetworkBehaviour {
         let msg_proto = {
             let cfg = RequestResponseConfig::default();
             let protocols = iter::once((MessageProtocol(), ProtocolSupport::Full));
-            RequestResponse::new(MessageCodec(), protocols, cfg)
+            RequestResponse::new(MessageCodec::<T, U>::new(PhantomData, PhantomData), protocols, cfg)
         };
 
         let behaviour = P2PNetworkBehaviour {
@@ -111,7 +119,7 @@ impl P2PNetworkBehaviour {
         &mut self,
         _cx: &mut Context<'_>,
         _params: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<TEv, CommunicationEvent>> {
+    ) -> Poll<NetworkBehaviourAction<TEv, CommunicationEvent<T, U>>> {
         if !self.events.is_empty() {
             return Poll::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)));
         }
@@ -119,7 +127,7 @@ impl P2PNetworkBehaviour {
     }
 
     pub fn start_listening(
-        swarm: &mut Swarm<P2PNetworkBehaviour>,
+        swarm: &mut Swarm<P2PNetworkBehaviour<T, U>>,
         listening_addr: Option<Multiaddr>,
     ) -> QueryResult<ListenerId> {
         let addr = listening_addr
@@ -140,11 +148,11 @@ impl P2PNetworkBehaviour {
         &self.peers
     }
 
-    pub fn send_request(&mut self, peer_id: PeerId, request: Request) -> RequestId {
+    pub fn send_request(&mut self, peer_id: PeerId, request: T) -> RequestId {
         self.msg_proto.send_request(&peer_id, request)
     }
 
-    pub fn send_response(&mut self, response: Response, request_id: RequestId) -> QueryResult<()> {
+    pub fn send_response(&mut self, response: U, request_id: RequestId) -> QueryResult<()> {
         let channel = self
             .response_channels
             .remove(&request_id.to_string())
@@ -160,7 +168,7 @@ impl P2PNetworkBehaviour {
 }
 
 #[cfg(feature = "mdns")]
-impl NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour {
+impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour<T, U> {
     // Called when `mdns` produces an event.
     #[allow(unused_variables)]
     fn inject_event(&mut self, event: MdnsEvent) {
@@ -172,9 +180,11 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour {
     }
 }
 
-impl NetworkBehaviourEventProcess<RequestResponseEvent<Request, Response>> for P2PNetworkBehaviour {
+impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestResponseEvent<T, U>>
+    for P2PNetworkBehaviour<T, U>
+{
     // Called when the protocol produces an event.
-    fn inject_event(&mut self, event: RequestResponseEvent<Request, Response>) {
+    fn inject_event(&mut self, event: RequestResponseEvent<T, U>) {
         let communication_event = if let RequestResponseEvent::Message {
             peer,
             message:
@@ -186,6 +196,7 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<Request, Response>> for P
         } = event
         {
             self.response_channels.insert(request_id.to_string(), channel);
+
             CommunicationEvent::RequestResponse {
                 peer_id: peer,
                 request_id,
@@ -198,7 +209,7 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<Request, Response>> for P
     }
 }
 
-impl NetworkBehaviourEventProcess<IdentifyEvent> for P2PNetworkBehaviour {
+impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEvent> for P2PNetworkBehaviour<T, U> {
     // Called when `identify` produces an event.
     fn inject_event(&mut self, event: IdentifyEvent) {
         self.events.push(CommunicationEvent::from(event));
@@ -206,9 +217,28 @@ impl NetworkBehaviourEventProcess<IdentifyEvent> for P2PNetworkBehaviour {
 }
 
 #[cfg(test)]
-fn mock_swarm() -> Swarm<P2PNetworkBehaviour> {
+use serde::{Deserialize, Serialize};
+
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Request {
+    Ping,
+}
+#[cfg(test)]
+impl MessageEvent for Request {}
+
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Response {
+    Pong,
+}
+#[cfg(test)]
+impl MessageEvent for Response {}
+
+#[cfg(test)]
+fn mock_swarm() -> Swarm<P2PNetworkBehaviour<Request, Response>> {
     let local_keys = Keypair::generate_ed25519();
-    P2PNetworkBehaviour::new(local_keys).unwrap()
+    P2PNetworkBehaviour::<Request, Response>::new(local_keys).unwrap()
 }
 
 #[cfg(test)]
@@ -219,7 +249,7 @@ fn mock_addr() -> Multiaddr {
 #[test]
 fn test_new_behaviour() {
     let local_keys = Keypair::generate_ed25519();
-    let swarm = P2PNetworkBehaviour::new(local_keys.clone()).unwrap();
+    let swarm = P2PNetworkBehaviour::<Request, Response>::new(local_keys.clone()).unwrap();
     assert_eq!(
         &PeerId::from_public_key(local_keys.public()),
         Swarm::local_peer_id(&swarm)
