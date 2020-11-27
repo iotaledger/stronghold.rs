@@ -19,6 +19,14 @@ mod provider;
 mod secret;
 mod snapshot;
 
+use crate::bucket::Bucket;
+use crate::client::{Client, SHResults};
+use crate::key_store::KeyStore;
+use crate::provider::Provider;
+use crate::snapshot::Snapshot;
+
+use riker::actors::{channel, ActorRefFactory, ActorSystem, ChannelRef};
+
 pub use crate::ids::{ClientId, VaultId};
 
 #[macro_export]
@@ -39,4 +47,17 @@ pub enum Error {
     IDError,
     #[error("Vault Error: {0}")]
     VaultError(#[from] engine::vault::Error),
+}
+
+/// Creates the ActorSystem for stronghold and attaches the actors.  Returns the ActorSystem and the Channel.
+pub fn init_stronghold() -> (ActorSystem, ChannelRef<SHResults>) {
+    let sys = ActorSystem::new().unwrap();
+    let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
+
+    sys.actor_of_args::<Client, _>("client", chan.clone()).unwrap();
+    sys.actor_of::<Bucket<Provider>>("bucket").unwrap();
+    sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
+    sys.actor_of::<Snapshot>("snapshot").unwrap();
+
+    (sys, chan)
 }

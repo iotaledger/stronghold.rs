@@ -311,6 +311,7 @@ impl Receive<InteralResults> for Client {
     }
 }
 
+// Receive to enable the channel.
 impl Receive<SHResults> for Client {
     type Msg = ClientMsg;
 
@@ -321,39 +322,50 @@ impl Receive<SHResults> for Client {
 mod test {
     use super::*;
 
-    use crate::{bucket::Bucket, client::Client, key_store::KeyStore, provider::Provider, snapshot::Snapshot};
+    use crate::{client::Client, init_stronghold, provider::Provider};
 
-    // #[derive(Clone, Debug)]
-    // pub enum TestMsg {
-    //     CreateVault,
-    //     ReturnCreateVault(VaultId, RecordId),
-    //     WriteData(usize, Vec<u8>, RecordHint),
-    //     InitRecord(usize),
-    //     InitRecordReturn(VaultId, RecordId),
-    //     ReturnReadData(Vec<u8>),
-    //     ReadData(usize),
-    //     RevokeData(usize),
-    //     GarbageCollect(usize),
-    //     ListIds(usize),
-    //     ReturnList(Vec<(RecordId, RecordHint)>),
-    //     WriteSnapshot(String, Option<PathBuf>),
-    //     ReadSnapshot(String, Option<PathBuf>),
-    // }
+    #[derive(Clone, Debug)]
+    pub enum TestMsg {
+        CreateVault,
+        WriteData(usize, Vec<u8>, RecordHint),
+        InitRecord(usize),
+        ReturnReadData(Vec<u8>),
+        ReadData(usize),
+        RevokeData(usize),
+        GarbageCollect(usize),
+        ListIds(usize),
+        WriteSnapshot(String, Option<PathBuf>),
+        ReadSnapshot(String, Option<PathBuf>),
+    }
 
-    #[actor(SHRequest, SHResults)]
-    pub struct MockExternal {}
+    #[actor(SHResults, TestMsg)]
+    pub struct MockExternal {
+        chan: ChannelRef<SHResults>,
+    }
 
     impl Actor for MockExternal {
         type Msg = MockExternalMsg;
+
+        fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+            let sub = Box::new(ctx.myself());
+            let topic = Topic::from("external");
+            self.chan.tell(
+                Subscribe {
+                    actor: sub.clone(),
+                    topic,
+                },
+                None,
+            );
+        }
 
         fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
             self.receive(ctx, msg, sender);
         }
     }
 
-    impl ActorFactory for MockExternal {
-        fn create() -> Self {
-            Self {}
+    impl ActorFactoryArgs<ChannelRef<SHResults>> for MockExternal {
+        fn create_args(chan: ChannelRef<SHResults>) -> Self {
+            Self { chan }
         }
     }
 
@@ -363,10 +375,23 @@ mod test {
         fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, sender: Sender) {}
     }
 
-    impl Receive<SHRequest> for MockExternal {
+    impl Receive<TestMsg> for MockExternal {
         type Msg = MockExternalMsg;
 
-        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, sender: Sender) {}
+        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: TestMsg, sender: Sender) {
+            match msg {
+                TestMsg::CreateVault => {}
+                TestMsg::WriteData(idx, payload, hint) => {}
+                TestMsg::InitRecord(idx) => {}
+                TestMsg::ReturnReadData(payload) => {}
+                TestMsg::ReadData(idx) => {}
+                TestMsg::RevokeData(idx) => {}
+                TestMsg::GarbageCollect(idx) => {}
+                TestMsg::ListIds(idx) => {}
+                TestMsg::WriteSnapshot(pass, path) => {}
+                TestMsg::ReadSnapshot(pass, path) => {}
+            }
+        }
     }
 
     #[test]
@@ -480,12 +505,10 @@ mod test {
 
     #[test]
     fn test_actor_model() {
-        let sys = ActorSystem::new().unwrap();
-        let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
+        let (sys, chan) = init_stronghold();
 
-        let client = sys.actor_of_args::<Client, _>("client", chan.clone()).unwrap();
-        sys.actor_of::<Bucket<Provider>>("bucket").unwrap();
-        sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
-        sys.actor_of::<Snapshot>("snapshot").unwrap();
+        let mock = sys
+            .actor_of_args::<MockExternal, _>("mock", chan.clone())
+            .expect(line_error!());
     }
 }
