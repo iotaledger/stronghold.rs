@@ -484,10 +484,6 @@ mod test {
 
         external.tell(TestMsg::ReadData(0), None);
 
-        external.tell(TestMsg::ReadSnapshot("password".into(), None), None);
-
-        external.tell(TestMsg::ReadData(0), None);
-
         std::thread::sleep(std::time::Duration::from_millis(2000));
         sys.print_tree();
     }
