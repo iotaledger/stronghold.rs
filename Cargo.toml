@@ -6,7 +6,7 @@ members = [
     "engine/random",
     "engine/crypto",
     "engine/snapshot",
-    "engine/communication"
+    "engine/communication",
     "runtime",
 ]
 exclude = [
