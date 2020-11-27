@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{BMsg, KMsg},
+    actors::KMsg,
     ids::{ClientId, VaultId},
     line_error,
     provider::Provider,
@@ -11,11 +11,12 @@ use std::path::PathBuf;
 
 use engine::vault::{RecordHint, RecordId};
 
-use riker::actors::{Actor, ActorFactory, Context, Receive, Sender};
+use riker::actors::*;
 
 use std::collections::HashMap;
 
 /// Implement Client in cache App.
+#[actor(SHResponses, SHResults)]
 pub struct Client {
     id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
@@ -24,32 +25,53 @@ pub struct Client {
     heads: Vec<RecordId>,
     // Contains the VaultIds in order of creation.
     index: Vec<VaultId>,
-    // Set the actor path for the cache actor which will talk with the Stronghold.
-    external_actor_path: Option<String>,
+
+    chan: ChannelRef<SHResults>,
 }
 
-/// Messages to interact with Stronghold
-#[derive(Clone, Debug)]
-pub enum StrongholdMessage {
-    CreateNewVault,
-    ReturnCreateVault(VaultId, RecordId),
-    WriteData(usize, Vec<u8>, RecordHint),
-    InitRecord(usize),
-    ReturnInitRecord(VaultId, RecordId),
-    ReturnReadData(Vec<u8>),
-    ReadData(usize),
-    RevokeData(usize),
-    GarbageCollect(usize),
-    ListIds(usize),
-    ReturnList(Vec<(RecordId, RecordHint)>),
-    WriteSnapshot(String, Option<PathBuf>),
-    ReadSnapshot(String, Option<PathBuf>),
-    SetExternalActorPath(Option<String>),
+// /// Messages to interact with Stronghold
+// #[derive(Clone, Debug)]
+// pub enum StrongholdMessage {
+//     CreateNewVault,
+//     ReturnCreateVault(VaultId, RecordId),
+//     WriteData(usize, Vec<u8>, RecordHint),
+//     InitRecord(usize),
+//     ReturnInitRecord(VaultId, RecordId),
+//     ReturnReadData(Vec<u8>),
+//     ReadData(usize),
+//     RevokeData(usize),
+//     GarbageCollect(usize),
+//     ListIds(usize),
+//     ReturnList(Vec<(RecordId, RecordHint)>),
+//     WriteSnapshot(String, Option<PathBuf>),
+//     ReadSnapshot(String, Option<PathBuf>),
+//     SetExternalActorPath(Option<String>),
+// }
+
+#[derive(Debug, Clone)]
+pub struct SHResponses {
+    create_vault: Option<()>,
+    write_data: Option<(usize, Vec<u8>, RecordHint)>,
+    init_record: Option<usize>,
+    read_data: Option<usize>,
+    revoke_Data: Option<usize>,
+    garbage_collect: Option<usize>,
+    list_ids: Option<usize>,
+    write_snapshot: Option<(String, Option<PathBuf>)>,
+    read_snapshot: Option<(String, Option<PathBuf>)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SHResults {
+    return_create: Option<(VaultId, RecordId)>,
+    return_init: Option<usize>,
+    return_read: Option<Vec<u8>>,
+    read_list: Option<Vec<(RecordId, RecordHint)>>,
 }
 
 /// Create a new Client.
 impl Client {
-    pub fn new(id: ClientId) -> Self {
+    pub fn new(id: ClientId, chan: ChannelRef<SHResults>) -> Self {
         let vaults = HashMap::new();
         let heads = Vec::new();
         let index = Vec::new();
@@ -59,7 +81,7 @@ impl Client {
             vaults,
             heads,
             index,
-            external_actor_path: None,
+            chan,
         }
     }
 
@@ -131,15 +153,15 @@ impl Client {
 }
 
 /// Actor Factor for the Client Struct.
-impl ActorFactory for Client {
-    fn create() -> Self {
-        Client::new(ClientId::random::<Provider>().expect(line_error!()))
+impl ActorFactoryArgs<ChannelRef<SHResults>> for Client {
+    fn create_args(chan: ChannelRef<SHResults>) -> Self {
+        Client::new(ClientId::random::<Provider>().expect(line_error!()), chan)
     }
 }
 
 /// Actor implementation for the Client.
 impl Actor for Client {
-    type Msg = StrongholdMessage;
+    type Msg = ClientMsg;
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         self.receive(ctx, msg, sender);
@@ -147,103 +169,16 @@ impl Actor for Client {
 }
 
 /// Client Receive Block.
-impl Receive<StrongholdMessage> for Client {
-    type Msg = StrongholdMessage;
+impl Receive<SHResponses> for Client {
+    type Msg = ClientMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
-        match msg {
-            StrongholdMessage::CreateNewVault => {}
-            StrongholdMessage::ReturnCreateVault(vid, rid) => {}
-            StrongholdMessage::WriteData(index, payload, hint) => {}
-            StrongholdMessage::InitRecord(index) => {}
-            StrongholdMessage::ReturnInitRecord(vid, rid) => {}
-            StrongholdMessage::ReturnReadData(payload) => {}
-            StrongholdMessage::ReadData(index) => {}
-            StrongholdMessage::RevokeData(index) => {}
-            StrongholdMessage::GarbageCollect(index) => {}
-            StrongholdMessage::ListIds(index) => {}
-            StrongholdMessage::ReturnList(records_and_hints) => {}
-            StrongholdMessage::WriteSnapshot(pass, path) => {}
-            StrongholdMessage::ReadSnapshot(pass, path) => {}
-            StrongholdMessage::SetExternalActorPath(path) => {
-                if let Some(p) = path {
-                    self.external_actor_path = Some(p);
-                } else {
-                    self.external_actor_path = None;
-                }
-            } // // Creates a new Vault in the Bucket using the provided VaultId.
-              // ClientMsg::CreateVaultAsk => {
-              //     let vid = VaultId::random::<Provider>().expect(line_error!());
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResponses, _sender: Sender) {}
+}
 
-              //     let kstore = ctx.select("/user/keystore/").expect(line_error!());
-              //     kstore.try_tell(KMsg::CreateVault(vid), None);
-              // }
-              // // Accepts return statements from the Bucket after CreateVaultAsk is called.
-              // ClientMsg::CreateVaultReturn(vid, rid) => {
-              //     let cache = ctx.select("/user/cache/").expect(line_error!());
+impl Receive<SHResults> for Client {
+    type Msg = ClientMsg;
 
-              //     cache.try_tell(StrongholdMessage::ReturnCreateVault(vid, rid), None);
-              // }
-              // // Asks to read data from the Bucket given a VaultId and a RecordId
-              // ClientMsg::ReadDataAsk(vid, rid) => {
-              //     let kstore = ctx.select("/user/keystore/").expect(line_error!());
-              //     kstore.try_tell(KMsg::ReadData(vid, rid), None);
-              // }
-              // // Deals with the data being returned.
-              // ClientMsg::ReadDataReturn(data) => {
-              //     let cache = ctx.select("/user/cache/").expect(line_error!());
-
-              //     cache.try_tell(StrongholdMessage::ReturnReadData(data), None);
-              // }
-              // // Asks to write data into a Record in the associated Vault.  Accepts a VaultId, RecordId, Payload (Vec<u8>)
-              // // and RecordHint
-              // ClientMsg::WriteData(vid, rid, payload, hint) => {
-              //     let kstore = ctx.select("/user/keystore/").expect(line_error!());
-              //     kstore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
-              // }
-              // // Initiates a new Record in a Vault.  Must be called before you can write into a new Record.  Accepts the
-              // // VaultId
-              // ClientMsg::InitRecord(vid) => {
-              //     let kstore = ctx.select("/user/keystore/").expect(line_error!());
-              //     kstore.try_tell(KMsg::InitRecord(vid), None);
-              // }
-              // // Deals with the aftermath of Initializing a Record.
-              // ClientMsg::InitRecordReturn(vid, rid) => {
-              //     let cache = ctx.select("/user/cache/").expect(line_error!());
-
-              //     cache.try_tell(StrongholdMessage::ReturnInitRecord(vid, rid), None);
-              // }
-              // // Calls to revoke data from a Vault given a the VaultId and a RecordId
-              // ClientMsg::RevokeData(vid, rid) => {
-              //     let kstore = ctx.select("/user/keystore/").expect(line_error!());
-              //     kstore.try_tell(KMsg::RevokeData(vid, rid), None);
-              // }
-              // // Garbage collects on a vault given the VaultId.
-              // ClientMsg::GarbageCollect(vid) => {
-              //     let kstore = ctx.select("/user/keystore/").expect(line_error!());
-              //     kstore.try_tell(KMsg::GarbageCollect(vid), None);
-              // }
-              // // List all of the RecordIds associated with a Vault given a VaultId.
-              // ClientMsg::ListAsk(vid) => {
-              //     let kstore = ctx.select("/user/keystore/").expect(line_error!());
-              //     kstore.try_tell(KMsg::ListIds(vid), None);
-              // }
-              // // Handle the Returning data from the call to List the RecordIds.
-              // ClientMsg::ListReturn(ids) => {
-              //     let cache = ctx.select("/user/cache/").expect(line_error!());
-
-              //     cache.try_tell(StrongholdMessage::ReturnList(ids), None);
-              // }
-              // ClientMsg::WriteSnapshot(pass, path) => {
-              //     let bucket = ctx.select("/user/bucket/").expect(line_error!());
-              //     bucket.try_tell(BMsg::WriteSnapshot::<Provider>(pass, path), None);
-              // }
-              // ClientMsg::ReadSnapshot(pass, path) => {
-              //     let bucket = ctx.select("/user/bucket/").expect(line_error!());
-              //     bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass, path), None);
-              // }
-        }
-    }
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {}
 }
 
 #[cfg(test)]
@@ -252,39 +187,38 @@ mod test {
 
     use crate::{bucket::Bucket, client::Client, key_store::KeyStore, provider::Provider, snapshot::Snapshot};
 
-    use riker::actors::{ActorFactoryArgs, ActorRefFactory, ActorSelectionFactory, ActorSystem};
+    // #[derive(Clone, Debug)]
+    // pub enum TestMsg {
+    //     CreateVault,
+    //     ReturnCreateVault(VaultId, RecordId),
+    //     WriteData(usize, Vec<u8>, RecordHint),
+    //     InitRecord(usize),
+    //     InitRecordReturn(VaultId, RecordId),
+    //     ReturnReadData(Vec<u8>),
+    //     ReadData(usize),
+    //     RevokeData(usize),
+    //     GarbageCollect(usize),
+    //     ListIds(usize),
+    //     ReturnList(Vec<(RecordId, RecordHint)>),
+    //     WriteSnapshot(String, Option<PathBuf>),
+    //     ReadSnapshot(String, Option<PathBuf>),
+    // }
 
-    #[derive(Clone, Debug)]
-    pub enum TestMsg {
-        CreateVault,
-        ReturnCreateVault(VaultId, RecordId),
-        WriteData(usize, Vec<u8>, RecordHint),
-        InitRecord(usize),
-        InitRecordReturn(VaultId, RecordId),
-        ReturnReadData(Vec<u8>),
-        ReadData(usize),
-        RevokeData(usize),
-        GarbageCollect(usize),
-        ListIds(usize),
-        ReturnList(Vec<(RecordId, RecordHint)>),
-        WriteSnapshot(String, Option<PathBuf>),
-        ReadSnapshot(String, Option<PathBuf>),
-    }
-
-    pub struct MockExternalActor {
+    #[actor(SHResponses, SHResults)]
+    pub struct MockExternal {
         vaults: HashMap<VaultId, Vec<RecordId>>,
         index: Vec<VaultId>,
     }
 
-    impl Actor for MockExternalActor {
-        type Msg = TestMsg;
+    impl Actor for MockExternal {
+        type Msg = MockExternalMsg;
 
         fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
             self.receive(ctx, msg, sender);
         }
     }
 
-    impl ActorFactoryArgs<HashMap<VaultId, Vec<RecordId>>> for MockExternalActor {
+    impl ActorFactoryArgs<HashMap<VaultId, Vec<RecordId>>> for MockExternal {
         fn create_args(vaults: HashMap<VaultId, Vec<RecordId>>) -> Self {
             let index = Vec::new();
 
@@ -292,65 +226,16 @@ mod test {
         }
     }
 
-    impl Receive<TestMsg> for MockExternalActor {
-        type Msg = TestMsg;
+    impl Receive<SHResults> for MockExternal {
+        type Msg = MockExternalMsg;
 
-        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
-            match msg {
-                TestMsg::CreateVault => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
-                    client.try_tell(StrongholdMessage::CreateNewVault, None);
-                }
-                TestMsg::ReturnCreateVault(vid, rid) => {
-                    self.vaults.insert(vid, vec![rid]);
+        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, sender: Sender) {}
+    }
 
-                    self.index.push(vid);
-                }
-                TestMsg::WriteData(index, payload, hint) => {
-                    let cache = ctx.select("/user/cache").expect(line_error!());
-                    cache.try_tell(StrongholdMessage::WriteData(index, payload, hint), None);
-                }
-                TestMsg::InitRecord(index) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
-                    client.try_tell(StrongholdMessage::InitRecord(index), None);
-                }
-                TestMsg::InitRecordReturn(vid, rid) => {
-                    println!("{:?} {:?}", rid, vid);
-                }
-                TestMsg::ReadData(index) => {
-                    let cache = ctx.select("/user/cache").expect(line_error!());
-                    cache.try_tell(StrongholdMessage::ReadData(index), None);
-                }
-                TestMsg::ReturnReadData(data) => {
-                    println!("Plaintext Data: {:?}", std::str::from_utf8(&data));
-                }
-                TestMsg::RevokeData(index) => {
-                    let cache = ctx.select("/user/cache").expect(line_error!());
-                    cache.try_tell(StrongholdMessage::RevokeData(index), None);
-                }
-                TestMsg::GarbageCollect(index) => {
-                    let cache = ctx.select("/user/cache").expect(line_error!());
-                    cache.try_tell(StrongholdMessage::GarbageCollect(index), None);
-                }
-                TestMsg::ListIds(index) => {
-                    let cache = ctx.select("/user/cache").expect(line_error!());
-                    cache.try_tell(StrongholdMessage::ListIds(index), None);
-                }
-                TestMsg::ReturnList(ids) => {
-                    ids.iter().for_each(|(id, hint)| {
-                        println!("Record Id: {:?}, Hint: {:?}", id, hint);
-                    });
-                }
-                TestMsg::WriteSnapshot(pass, path) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
-                    client.try_tell(StrongholdMessage::WriteSnapshot(pass, path), None);
-                }
-                TestMsg::ReadSnapshot(pass, path) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
-                    client.try_tell(StrongholdMessage::ReadSnapshot(pass, path), None);
-                }
-            }
-        }
+    impl Receive<SHResponses> for MockExternal {
+        type Msg = MockExternalMsg;
+
+        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResponses, sender: Sender) {}
     }
 
     #[test]
@@ -358,7 +243,10 @@ mod test {
         let vid = VaultId::random::<Provider>().expect(line_error!());
         let rid = RecordId::random::<Provider>().expect(line_error!());
 
-        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
+        let sys = ActorSystem::new().unwrap();
+        let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
+
+        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()), chan);
 
         cache.add_vault(vid, rid);
 
@@ -385,7 +273,10 @@ mod test {
         let vid = VaultId::random::<Provider>().expect(line_error!());
         let rid = RecordId::random::<Provider>().expect(line_error!());
 
-        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
+        let sys = ActorSystem::new().unwrap();
+        let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
+
+        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()), chan);
 
         cache.insert_record(vid, rid);
 
@@ -429,7 +320,10 @@ mod test {
         let rid3 = RecordId::random::<Provider>().expect(line_error!());
         let rid4 = RecordId::random::<Provider>().expect(line_error!());
 
-        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
+        let sys = ActorSystem::new().unwrap();
+        let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
+
+        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()), chan);
 
         cache.add_vault(vid, rid);
         cache.insert_record(vid, rid2);
@@ -456,7 +350,9 @@ mod test {
     #[test]
     fn test_actor_model() {
         let sys = ActorSystem::new().unwrap();
-        let client = sys.actor_of::<Client>("client").unwrap();
+        let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
+
+        let client = sys.actor_of_args::<Client, _>("client", chan.clone()).unwrap();
         sys.actor_of::<Bucket<Provider>>("bucket").unwrap();
         sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
         sys.actor_of::<Snapshot>("snapshot").unwrap();
