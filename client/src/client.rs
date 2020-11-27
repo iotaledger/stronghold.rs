@@ -1,3 +1,6 @@
+// Copyright 2020 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{
     actors::{BMsg, KMsg},
     external::StrongholdMessage,
@@ -87,12 +90,14 @@ impl Receive<ClientMsg> for Client {
 
                 cache.try_tell(StrongholdMessage::ReturnReadData(data), None);
             }
-            // Asks to write data into a Record in the associated Vault.  Accepts a VaultId, RecordId, Payload (Vec<u8>) and RecordHint
+            // Asks to write data into a Record in the associated Vault.  Accepts a VaultId, RecordId, Payload (Vec<u8>)
+            // and RecordHint
             ClientMsg::WriteData(vid, rid, payload, hint) => {
                 let kstore = ctx.select("/user/keystore/").expect(line_error!());
                 kstore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
             }
-            // Initiates a new Record in a Vault.  Must be called before you can write into a new Record.  Accepts the VaultId
+            // Initiates a new Record in a Vault.  Must be called before you can write into a new Record.  Accepts the
+            // VaultId
             ClientMsg::InitRecord(vid) => {
                 let kstore = ctx.select("/user/keystore/").expect(line_error!());
                 kstore.try_tell(KMsg::InitRecord(vid), None);

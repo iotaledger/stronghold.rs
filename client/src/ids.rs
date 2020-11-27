@@ -1,3 +1,6 @@
+// Copyright 2020 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use serde::{Deserialize, Serialize};
 
 use engine::vault::{Base64Encodable, BoxProvider};
@@ -125,12 +128,12 @@ impl Debug for VaultId {
 
 impl Into<Vec<u8>> for VaultId {
     fn into(self) -> Vec<u8> {
-        self.0.0.to_vec()
+        self.0 .0.to_vec()
     }
 }
 
 impl AsRef<[u8]> for VaultId {
     fn as_ref(&self) -> &[u8] {
-        &self.0.0
+        &self.0 .0
     }
 }

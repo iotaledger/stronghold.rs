@@ -1,3 +1,6 @@
+// Copyright 2020 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use engine::vault::{BoxProvider, Key};
 
 use std::collections::HashMap;
