@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::KMsg,
+    actors::{BMsg, KMsg},
     ids::{ClientId, VaultId},
     line_error,
     provider::Provider,
@@ -16,7 +16,8 @@ use riker::actors::*;
 use std::collections::HashMap;
 
 /// Implement Client in cache App.
-#[actor(SHResponses, SHResults)]
+/// TODO: Add Handshake Messages.
+#[actor(SHRequest, InteralResults, SHResults)]
 pub struct Client {
     id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
@@ -26,47 +27,40 @@ pub struct Client {
     // Contains the VaultIds in order of creation.
     index: Vec<VaultId>,
 
+    // channel to receive data from stronghold.
     chan: ChannelRef<SHResults>,
 }
 
-// /// Messages to interact with Stronghold
-// #[derive(Clone, Debug)]
-// pub enum StrongholdMessage {
-//     CreateNewVault,
-//     ReturnCreateVault(VaultId, RecordId),
-//     WriteData(usize, Vec<u8>, RecordHint),
-//     InitRecord(usize),
-//     ReturnInitRecord(VaultId, RecordId),
-//     ReturnReadData(Vec<u8>),
-//     ReadData(usize),
-//     RevokeData(usize),
-//     GarbageCollect(usize),
-//     ListIds(usize),
-//     ReturnList(Vec<(RecordId, RecordHint)>),
-//     WriteSnapshot(String, Option<PathBuf>),
-//     ReadSnapshot(String, Option<PathBuf>),
-//     SetExternalActorPath(Option<String>),
-// }
-
-#[derive(Debug, Clone)]
-pub struct SHResponses {
-    create_vault: Option<()>,
-    write_data: Option<(usize, Vec<u8>, RecordHint)>,
-    init_record: Option<usize>,
-    read_data: Option<usize>,
-    revoke_Data: Option<usize>,
-    garbage_collect: Option<usize>,
-    list_ids: Option<usize>,
-    write_snapshot: Option<(String, Option<PathBuf>)>,
-    read_snapshot: Option<(String, Option<PathBuf>)>,
+/// Messages to interact with Stronghold
+#[derive(Clone, Debug)]
+pub enum SHRequest {
+    CreateNewVault,
+    WriteData(usize, Vec<u8>, RecordHint),
+    InitRecord(usize),
+    ReadData(usize),
+    RevokeData(usize),
+    GarbageCollect(usize),
+    ListIds(usize),
+    WriteSnapshot(String, Option<PathBuf>),
+    ReadSnapshot(String, Option<PathBuf>),
 }
 
-#[derive(Debug, Clone)]
-pub struct SHResults {
-    return_create: Option<(VaultId, RecordId)>,
-    return_init: Option<usize>,
-    return_read: Option<Vec<u8>>,
-    read_list: Option<Vec<(RecordId, RecordHint)>>,
+/// Messages that come from stronghold
+#[derive(Clone, Debug)]
+pub enum SHResults {
+    ReturnCreate,
+    ReturnInit(usize),
+    ReturnRead(Vec<u8>),
+    ReturnList(Vec<(RecordId, RecordHint)>),
+}
+
+/// Messages used internally by the client.
+#[derive(Clone, Debug)]
+pub enum InteralResults {
+    ReturnCreateVault(VaultId, RecordId),
+    ReturnInitRecord(VaultId, RecordId),
+    ReturnReadData(Vec<u8>),
+    ReturnList(Vec<(RecordId, RecordHint)>),
 }
 
 /// Create a new Client.
@@ -163,16 +157,110 @@ impl ActorFactoryArgs<ChannelRef<SHResults>> for Client {
 impl Actor for Client {
     type Msg = ClientMsg;
 
+    // set up the channel.
+    // TODO: Make Topic random to create a handshake.
+    fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        let sub = Box::new(ctx.myself());
+
+        let topic = Topic::from("external");
+
+        self.chan.tell(
+            Subscribe {
+                actor: sub.clone(),
+                topic,
+            },
+            None,
+        );
+    }
+
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         self.receive(ctx, msg, sender);
     }
 }
 
 /// Client Receive Block.
-impl Receive<SHResponses> for Client {
+impl Receive<SHRequest> for Client {
     type Msg = ClientMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResponses, _sender: Sender) {}
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, _sender: Sender) {
+        match msg {
+            SHRequest::CreateNewVault => {
+                let vid = VaultId::random::<Provider>().expect(line_error!());
+
+                let keystore = ctx.select("/user/keystore/").expect(line_error!());
+
+                keystore.try_tell(KMsg::CreateVault(vid), None);
+            }
+            SHRequest::ReadData(idx) => {
+                let vid = self.get_vault(idx).expect(line_error!());
+                let rid = self.get_head(idx).expect(line_error!());
+
+                let keystore = ctx.select("/user/keystore/").expect(line_error!());
+
+                keystore.try_tell(KMsg::ReadData(vid, rid), None);
+            }
+            SHRequest::InitRecord(idx) => {
+                let vid = self.get_vault(idx).expect(line_error!());
+
+                let keystore = ctx.select("/user/keystore/").expect(line_error!());
+
+                keystore.try_tell(KMsg::InitRecord(vid), None);
+            }
+            SHRequest::WriteData(idx, payload, hint) => {
+                let vid = self.get_vault(idx).expect(line_error!());
+                let rid = self.get_head(idx).expect(line_error!());
+
+                let keystore = ctx.select("/user/keystore/").expect(line_error!());
+
+                keystore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
+            }
+            SHRequest::RevokeData(idx) => {
+                let vid = self.get_vault(idx).expect(line_error!());
+                let rid = self.get_head(idx).expect(line_error!());
+
+                let keystore = ctx.select("/user/keystore/").expect(line_error!());
+
+                keystore.try_tell(KMsg::RevokeData(vid, rid), None);
+            }
+            SHRequest::GarbageCollect(idx) => {
+                let vid = self.get_vault(idx).expect(line_error!());
+
+                let keystore = ctx.select("/user/keystore/").expect(line_error!());
+
+                keystore.try_tell(KMsg::GarbageCollect(vid), None);
+            }
+            SHRequest::ListIds(idx) => {
+                let vid = self.get_vault(idx).expect(line_error!());
+
+                let keystore = ctx.select("/user/keystore/").expect(line_error!());
+
+                keystore.try_tell(KMsg::ListIds(vid), None);
+            }
+            SHRequest::WriteSnapshot(pass, path) => {
+                let bucket = ctx.select("/user/bucket/").expect(line_error!());
+
+                bucket.try_tell(BMsg::WriteSnapshot::<Provider>(pass, path), None);
+            }
+            SHRequest::ReadSnapshot(pass, path) => {
+                let bucket = ctx.select("/user/bucket/").expect(line_error!());
+
+                bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass, path), None);
+            }
+        }
+    }
+}
+
+impl Receive<InteralResults> for Client {
+    type Msg = ClientMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InteralResults, _sender: Sender) {
+        match msg {
+            InteralResults::ReturnCreateVault(vid, rid) => {}
+            InteralResults::ReturnInitRecord(vid, rid) => {}
+            InteralResults::ReturnReadData(payload) => {}
+            InteralResults::ReturnList(list) => {}
+        }
+    }
 }
 
 impl Receive<SHResults> for Client {
@@ -204,11 +292,8 @@ mod test {
     //     ReadSnapshot(String, Option<PathBuf>),
     // }
 
-    #[actor(SHResponses, SHResults)]
-    pub struct MockExternal {
-        vaults: HashMap<VaultId, Vec<RecordId>>,
-        index: Vec<VaultId>,
-    }
+    #[actor(SHRequest, SHResults)]
+    pub struct MockExternal {}
 
     impl Actor for MockExternal {
         type Msg = MockExternalMsg;
@@ -218,11 +303,9 @@ mod test {
         }
     }
 
-    impl ActorFactoryArgs<HashMap<VaultId, Vec<RecordId>>> for MockExternal {
-        fn create_args(vaults: HashMap<VaultId, Vec<RecordId>>) -> Self {
-            let index = Vec::new();
-
-            Self { vaults, index }
+    impl ActorFactory for MockExternal {
+        fn create() -> Self {
+            Self {}
         }
     }
 
@@ -232,10 +315,10 @@ mod test {
         fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, sender: Sender) {}
     }
 
-    impl Receive<SHResponses> for MockExternal {
+    impl Receive<SHRequest> for MockExternal {
         type Msg = MockExternalMsg;
 
-        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResponses, sender: Sender) {}
+        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, sender: Sender) {}
     }
 
     #[test]

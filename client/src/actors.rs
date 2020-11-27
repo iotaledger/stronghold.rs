@@ -4,10 +4,7 @@ use std::{fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, Key, RecordHint, RecordId};
 
-use crate::{
-    bucket::Bucket, client::ClientMsg, ids::VaultId, key_store::KeyStore, line_error, provider::Provider,
-    snapshot::Snapshot,
-};
+use crate::{bucket::Bucket, ids::VaultId, key_store::KeyStore, line_error, provider::Provider, snapshot::Snapshot};
 
 #[derive(Debug, Clone)]
 pub enum BMsg<P: BoxProvider + Debug> {
