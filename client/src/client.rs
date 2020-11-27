@@ -48,7 +48,7 @@ pub enum SHRequest {
 /// Messages that come from stronghold
 #[derive(Clone, Debug)]
 pub enum SHResults {
-    ReturnCreate,
+    ReturnCreate(usize),
     ReturnInit(usize),
     ReturnRead(Vec<u8>),
     ReturnList(Vec<(RecordId, RecordHint)>),
@@ -79,7 +79,7 @@ impl Client {
         }
     }
 
-    pub fn add_vault(&mut self, vid: VaultId, rid: RecordId) {
+    pub fn add_vault(&mut self, vid: VaultId, rid: RecordId) -> usize {
         self.heads.push(rid);
 
         self.index.push(vid);
@@ -87,9 +87,11 @@ impl Client {
         let idx = self.index.len() - 1;
 
         self.vaults.insert(vid, (idx, vec![rid]));
+
+        idx
     }
 
-    pub fn insert_record(&mut self, vid: VaultId, rid: RecordId) {
+    pub fn insert_record(&mut self, vid: VaultId, rid: RecordId) -> usize {
         let mut heads: Vec<RecordId> = self.heads.clone();
         let mut index: Vec<VaultId> = self.index.clone();
 
@@ -117,6 +119,8 @@ impl Client {
 
         self.index = index;
         self.heads = heads;
+
+        *idx
     }
 
     pub fn get_head(&self, index: usize) -> Option<RecordId> {
@@ -255,10 +259,54 @@ impl Receive<InteralResults> for Client {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InteralResults, _sender: Sender) {
         match msg {
-            InteralResults::ReturnCreateVault(vid, rid) => {}
-            InteralResults::ReturnInitRecord(vid, rid) => {}
-            InteralResults::ReturnReadData(payload) => {}
-            InteralResults::ReturnList(list) => {}
+            InteralResults::ReturnCreateVault(vid, rid) => {
+                let idx = self.add_vault(vid, rid);
+
+                let topic = Topic::from("return_create");
+
+                self.chan.tell(
+                    Publish {
+                        msg: SHResults::ReturnCreate(idx),
+                        topic,
+                    },
+                    None,
+                )
+            }
+            InteralResults::ReturnInitRecord(vid, rid) => {
+                let idx = self.insert_record(vid, rid);
+
+                let topic = Topic::from("return_init");
+
+                self.chan.tell(
+                    Publish {
+                        msg: SHResults::ReturnInit(idx),
+                        topic,
+                    },
+                    None,
+                )
+            }
+            InteralResults::ReturnReadData(payload) => {
+                let topic = Topic::from("return_read");
+
+                self.chan.tell(
+                    Publish {
+                        msg: SHResults::ReturnRead(payload),
+                        topic,
+                    },
+                    None,
+                )
+            }
+            InteralResults::ReturnList(list) => {
+                let topic = Topic::from("return_list");
+
+                self.chan.tell(
+                    Publish {
+                        msg: SHResults::ReturnList(list),
+                        topic,
+                    },
+                    None,
+                )
+            }
         }
     }
 }
