@@ -1,6 +1,8 @@
 use riker::actors::*;
 
-use engine::vault::RecordId;
+use engine::vault::{RecordHint, RecordId};
+
+use std::path::PathBuf;
 
 use crate::{ids::VaultId, line_error};
 
@@ -17,7 +19,21 @@ pub struct ExternalCacheActor {
 
 /// Messages to interact with Stronghold
 #[derive(Clone, Debug)]
-pub enum StrongholdMessage {}
+pub enum StrongholdMessage {
+    CreateNewVault,
+    CreateVaultReturn(VaultId, RecordId),
+    WriteData(usize, Vec<u8>, RecordHint),
+    InitRecord(usize),
+    ReturnInitRecord(VaultId, RecordId),
+    ReturnReadData(Vec<u8>),
+    ReadData(usize),
+    RevokeData(usize),
+    GarbageCollect(usize),
+    ListIds(usize),
+    ReturnList(Vec<(RecordId, RecordHint)>),
+    WriteSnapshot(String, Option<PathBuf>),
+    ReadSnapshot(String, Option<PathBuf>),
+}
 
 impl ExternalCacheActor {
     pub fn new() -> Self {
@@ -112,7 +128,23 @@ impl ActorFactory for ExternalCacheActor {
 impl Receive<StrongholdMessage> for ExternalCacheActor {
     type Msg = StrongholdMessage;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {}
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
+        match msg {
+            StrongholdMessage::CreateNewVault => {}
+            StrongholdMessage::CreateVaultReturn(vid, rid) => {}
+            StrongholdMessage::WriteData(index, payload, hint) => {}
+            StrongholdMessage::InitRecord(index) => {}
+            StrongholdMessage::ReturnInitRecord(vid, rid) => {}
+            StrongholdMessage::ReturnReadData(payload) => {}
+            StrongholdMessage::ReadData(index) => {}
+            StrongholdMessage::RevokeData(index) => {}
+            StrongholdMessage::GarbageCollect(index) => {}
+            StrongholdMessage::ListIds(index) => {}
+            StrongholdMessage::ReturnList(records_and_hints) => {}
+            StrongholdMessage::WriteSnapshot(pass, path) => {}
+            StrongholdMessage::ReadSnapshot(pass, path) => {}
+        }
+    }
 }
 
 #[cfg(test)]
