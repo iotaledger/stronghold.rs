@@ -5,7 +5,7 @@ use std::{fmt::Debug, path::PathBuf};
 use engine::vault::{BoxProvider, Key, RecordHint, RecordId};
 
 use crate::{
-    bucket::Bucket, client::ClientMsg, ids::VaultId, key_store::KeyStore, line_error, provider::Provider,
+    bucket::Bucket, client::StrongholdMessage, ids::VaultId, key_store::KeyStore, line_error, provider::Provider,
     snapshot::Snapshot,
 };
 
@@ -124,13 +124,13 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
                 let (_, rid) = self.create_and_init_vault(key);
 
                 let client = ctx.select("/user/client/").expect(line_error!());
-                client.try_tell(ClientMsg::CreateVaultReturn(vid, rid), None);
+                client.try_tell(StrongholdMessage::ReturnCreateVault(vid, rid), None);
             }
             BMsg::ReadData(key, rid) => {
                 let plain = self.read_data(key, rid);
 
                 let client = ctx.select("/user/client/").expect(line_error!());
-                client.try_tell(ClientMsg::ReadDataReturn(plain), None);
+                client.try_tell(StrongholdMessage::ReturnReadData(plain), None);
             }
             BMsg::WriteData(key, rid, payload, hint) => {
                 self.write_payload(key, rid, payload, hint);
@@ -139,7 +139,7 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
                 let rid = self.init_record(key);
 
                 let client = ctx.select("/user/client/").expect(line_error!());
-                client.try_tell(ClientMsg::InitRecordReturn(vid, rid), None);
+                client.try_tell(StrongholdMessage::ReturnInitRecord(vid, rid), None);
             }
             BMsg::RevokeData(key, rid) => {
                 self.revoke_data(key, rid);
@@ -151,7 +151,7 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
                 let ids = self.list_ids(key);
 
                 let client = ctx.select("/user/client/").expect(line_error!());
-                client.try_tell(ClientMsg::ListReturn(ids), None);
+                client.try_tell(StrongholdMessage::ReturnList(ids), None);
             }
             BMsg::WriteSnapshot(pass, path) => {
                 let state = self.offload_data();
