@@ -9,8 +9,13 @@ mod actors {
     use std::{fmt::Debug, path::PathBuf};
     use engine::vault::{BoxProvider, Key, RecordHint, RecordId};
     use crate::{
-        bucket::Bucket, client::ClientMsg, ids::VaultId, key_store::KeyStore, line_error,
-        provider::Provider, snapshot::Snapshot,
+        bucket::Bucket,
+        client::{ClientMsg, InternalResults},
+        ids::VaultId,
+        key_store::KeyStore,
+        line_error,
+        provider::Provider,
+        snapshot::Snapshot,
     };
     pub enum BMsg<P: BoxProvider + Debug> {
         CreateVault(VaultId, Key<P>),
@@ -344,7 +349,7 @@ mod actors {
                     let snapshot = Snapshot::read_from_snapshot::<Provider>(&path, &pass);
                     let bucket = ctx
                         .select("/user/bucket/")
-                        .expect("Error at src\\actors.rs:111");
+                        .expect("Error at src\\actors.rs:116");
                     bucket.try_tell(BMsg::ReloadData::<Provider>(snapshot.get_state()), None);
                 }
             }
@@ -358,13 +363,21 @@ mod actors {
                     let (_, rid) = self.create_and_init_vault(key);
                     let client = ctx
                         .select("/user/client/")
-                        .expect("Error at src\\actors.rs:126");
+                        .expect("Error at src\\actors.rs:131");
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnCreateVault(vid, rid)),
+                        None,
+                    );
                 }
                 BMsg::ReadData(key, rid) => {
                     let plain = self.read_data(key, rid);
                     let client = ctx
                         .select("/user/client/")
-                        .expect("Error at src\\actors.rs:132");
+                        .expect("Error at src\\actors.rs:140");
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnReadData(plain)),
+                        None,
+                    );
                 }
                 BMsg::WriteData(key, rid, payload, hint) => {
                     self.write_payload(key, rid, payload, hint);
@@ -373,7 +386,7 @@ mod actors {
                     let rid = self.init_record(key);
                     let client = ctx
                         .select("/user/client/")
-                        .expect("Error at src\\actors.rs:141");
+                        .expect("Error at src\\actors.rs:149");
                 }
                 BMsg::RevokeData(key, rid) => {
                     self.revoke_data(key, rid);
@@ -385,26 +398,26 @@ mod actors {
                     let ids = self.list_ids(key);
                     let client = ctx
                         .select("/user/client/")
-                        .expect("Error at src\\actors.rs:153");
+                        .expect("Error at src\\actors.rs:161");
                 }
                 BMsg::WriteSnapshot(pass, path) => {
                     let state = self.offload_data();
                     let snapshot = ctx
                         .select("/user/snapshot/")
-                        .expect("Error at src\\actors.rs:159");
+                        .expect("Error at src\\actors.rs:167");
                     snapshot.try_tell(SMsg::WriteSnapshot(pass, path, state), None);
                 }
                 BMsg::ReadSnapshot(pass, path) => {
                     let snapshot = ctx
                         .select("/user/snapshot/")
-                        .expect("Error at src\\actors.rs:163");
+                        .expect("Error at src\\actors.rs:171");
                     snapshot.try_tell(SMsg::ReadSnapshot(pass, path), None);
                 }
                 BMsg::ReloadData(state) => {
                     let keys = self.repopulate_data(state);
                     let keystore = ctx
                         .select("/user/keystore/")
-                        .expect("Error at src\\actors.rs:169");
+                        .expect("Error at src\\actors.rs:177");
                     keystore.try_tell(KMsg::RebuildKeys(keys), None);
                 }
             }
@@ -418,14 +431,14 @@ mod actors {
                     let key = self.create_key(vid);
                     let bucket = ctx
                         .select("/user/bucket/")
-                        .expect("Error at src\\actors.rs:184");
+                        .expect("Error at src\\actors.rs:192");
                     bucket.try_tell(BMsg::CreateVault(vid, key), None);
                 }
                 KMsg::ReadData(vid, rid) => {
                     if let Some(key) = self.get_key(vid) {
                         let bucket = ctx
                             .select("/user/bucket/")
-                            .expect("Error at src\\actors.rs:189");
+                            .expect("Error at src\\actors.rs:197");
                         bucket.try_tell(BMsg::ReadData(key.clone(), rid), None);
                         self.insert_key(vid, key);
                     }
@@ -434,7 +447,7 @@ mod actors {
                     if let Some(key) = self.get_key(vid) {
                         let bucket = ctx
                             .select("/user/bucket/")
-                            .expect("Error at src\\actors.rs:197");
+                            .expect("Error at src\\actors.rs:205");
                         bucket.try_tell(BMsg::WriteData(key.clone(), rid, payload, hint), None);
                         self.insert_key(vid, key);
                     }
@@ -443,7 +456,7 @@ mod actors {
                     if let Some(key) = self.get_key(vid) {
                         let bucket = ctx
                             .select("/user/bucket/")
-                            .expect("Error at src\\actors.rs:205");
+                            .expect("Error at src\\actors.rs:213");
                         bucket.try_tell(BMsg::InitRecord(key.clone(), vid), None);
                         self.insert_key(vid, key);
                     }
@@ -452,7 +465,7 @@ mod actors {
                     if let Some(key) = self.get_key(vid) {
                         let bucket = ctx
                             .select("/user/bucket/")
-                            .expect("Error at src\\actors.rs:213");
+                            .expect("Error at src\\actors.rs:221");
                         bucket.try_tell(BMsg::RevokeData(key.clone(), rid), None);
                         self.insert_key(vid, key);
                     }
@@ -461,7 +474,7 @@ mod actors {
                     if let Some(key) = self.get_key(vid) {
                         let bucket = ctx
                             .select("/user/bucket/")
-                            .expect("Error at src\\actors.rs:221");
+                            .expect("Error at src\\actors.rs:229");
                         bucket.try_tell(BMsg::GarbageCollect(key.clone()), None);
                         self.insert_key(vid, key);
                     }
@@ -470,7 +483,7 @@ mod actors {
                     if let Some(key) = self.get_key(vid) {
                         let bucket = ctx
                             .select("/user/bucket/")
-                            .expect("Error at src\\actors.rs:229");
+                            .expect("Error at src\\actors.rs:237");
                         bucket.try_tell(BMsg::ListAsk(key.clone()), None);
                         self.insert_key(vid, key);
                     }
@@ -672,7 +685,7 @@ mod bucket {
 }
 mod client {
     use crate::{
-        actors::KMsg,
+        actors::{BMsg, KMsg},
         ids::{ClientId, VaultId},
         line_error,
         provider::Provider,
@@ -682,17 +695,18 @@ mod client {
     use riker::actors::*;
     use std::collections::HashMap;
     /// Implement Client in cache App.
+    /// TODO: Add Handshake Messages.
     pub struct Client {
         id: ClientId,
         vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
         heads: Vec<RecordId>,
         index: Vec<VaultId>,
-        chan: ChannelRef<ExternalResults>,
+        chan: ChannelRef<SHResults>,
     }
     pub enum ClientMsg {
-        SHResponses(SHResponses),
+        SHRequest(SHRequest),
+        InternalResults(InternalResults),
         SHResults(SHResults),
-        ExternalResults(ExternalResults),
     }
     #[automatically_derived]
     #[allow(unused_qualifications)]
@@ -700,14 +714,14 @@ mod client {
         #[inline]
         fn clone(&self) -> ClientMsg {
             match (&*self,) {
-                (&ClientMsg::SHResponses(ref __self_0),) => {
-                    ClientMsg::SHResponses(::core::clone::Clone::clone(&(*__self_0)))
+                (&ClientMsg::SHRequest(ref __self_0),) => {
+                    ClientMsg::SHRequest(::core::clone::Clone::clone(&(*__self_0)))
+                }
+                (&ClientMsg::InternalResults(ref __self_0),) => {
+                    ClientMsg::InternalResults(::core::clone::Clone::clone(&(*__self_0)))
                 }
                 (&ClientMsg::SHResults(ref __self_0),) => {
                     ClientMsg::SHResults(::core::clone::Clone::clone(&(*__self_0)))
-                }
-                (&ClientMsg::ExternalResults(ref __self_0),) => {
-                    ClientMsg::ExternalResults(::core::clone::Clone::clone(&(*__self_0)))
                 }
             }
         }
@@ -717,8 +731,13 @@ mod client {
     impl ::core::fmt::Debug for ClientMsg {
         fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
             match (&*self,) {
-                (&ClientMsg::SHResponses(ref __self_0),) => {
-                    let mut debug_trait_builder = f.debug_tuple("SHResponses");
+                (&ClientMsg::SHRequest(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("SHRequest");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&ClientMsg::InternalResults(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("InternalResults");
                     let _ = debug_trait_builder.field(&&(*__self_0));
                     debug_trait_builder.finish()
                 }
@@ -727,27 +746,22 @@ mod client {
                     let _ = debug_trait_builder.field(&&(*__self_0));
                     debug_trait_builder.finish()
                 }
-                (&ClientMsg::ExternalResults(ref __self_0),) => {
-                    let mut debug_trait_builder = f.debug_tuple("ExternalResults");
-                    let _ = debug_trait_builder.field(&&(*__self_0));
-                    debug_trait_builder.finish()
-                }
             }
         }
     }
-    impl Into<ClientMsg> for SHResponses {
+    impl Into<ClientMsg> for SHRequest {
         fn into(self) -> ClientMsg {
-            ClientMsg::SHResponses(self)
+            ClientMsg::SHRequest(self)
+        }
+    }
+    impl Into<ClientMsg> for InternalResults {
+        fn into(self) -> ClientMsg {
+            ClientMsg::InternalResults(self)
         }
     }
     impl Into<ClientMsg> for SHResults {
         fn into(self) -> ClientMsg {
             ClientMsg::SHResults(self)
-        }
-    }
-    impl Into<ClientMsg> for ExternalResults {
-        fn into(self) -> ClientMsg {
-            ClientMsg::ExternalResults(self)
         }
     }
     impl Receive<ClientMsg> for Client {
@@ -759,149 +773,237 @@ mod client {
             sender: Option<BasicActorRef>,
         ) {
             match msg {
-                ClientMsg::SHResponses(msg) => <Client>::receive(self, ctx, msg, sender),
+                ClientMsg::SHRequest(msg) => <Client>::receive(self, ctx, msg, sender),
+                ClientMsg::InternalResults(msg) => <Client>::receive(self, ctx, msg, sender),
                 ClientMsg::SHResults(msg) => <Client>::receive(self, ctx, msg, sender),
-                ClientMsg::ExternalResults(msg) => <Client>::receive(self, ctx, msg, sender),
             }
         }
     }
-    pub struct SHResponses {
-        create_vault: Option<()>,
-        write_data: Option<(usize, Vec<u8>, RecordHint)>,
-        init_record: Option<usize>,
-        read_data: Option<usize>,
-        revoke_Data: Option<usize>,
-        garbage_collect: Option<usize>,
-        list_ids: Option<usize>,
-        write_snapshot: Option<(String, Option<PathBuf>)>,
-        read_snapshot: Option<(String, Option<PathBuf>)>,
+    /// Messages to interact with Stronghold
+    pub enum SHRequest {
+        CreateNewVault,
+        WriteData(usize, Vec<u8>, RecordHint),
+        InitRecord(usize),
+        ReadData(usize),
+        RevokeData(usize),
+        GarbageCollect(usize),
+        ListIds(usize),
+        WriteSnapshot(String, Option<PathBuf>),
+        ReadSnapshot(String, Option<PathBuf>),
     }
     #[automatically_derived]
     #[allow(unused_qualifications)]
-    impl ::core::fmt::Debug for SHResponses {
-        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-            match *self {
-                SHResponses {
-                    create_vault: ref __self_0_0,
-                    write_data: ref __self_0_1,
-                    init_record: ref __self_0_2,
-                    read_data: ref __self_0_3,
-                    revoke_Data: ref __self_0_4,
-                    garbage_collect: ref __self_0_5,
-                    list_ids: ref __self_0_6,
-                    write_snapshot: ref __self_0_7,
-                    read_snapshot: ref __self_0_8,
-                } => {
-                    let mut debug_trait_builder = f.debug_struct("SHResponses");
-                    let _ = debug_trait_builder.field("create_vault", &&(*__self_0_0));
-                    let _ = debug_trait_builder.field("write_data", &&(*__self_0_1));
-                    let _ = debug_trait_builder.field("init_record", &&(*__self_0_2));
-                    let _ = debug_trait_builder.field("read_data", &&(*__self_0_3));
-                    let _ = debug_trait_builder.field("revoke_Data", &&(*__self_0_4));
-                    let _ = debug_trait_builder.field("garbage_collect", &&(*__self_0_5));
-                    let _ = debug_trait_builder.field("list_ids", &&(*__self_0_6));
-                    let _ = debug_trait_builder.field("write_snapshot", &&(*__self_0_7));
-                    let _ = debug_trait_builder.field("read_snapshot", &&(*__self_0_8));
-                    debug_trait_builder.finish()
-                }
-            }
-        }
-    }
-    #[automatically_derived]
-    #[allow(unused_qualifications)]
-    impl ::core::clone::Clone for SHResponses {
+    impl ::core::clone::Clone for SHRequest {
         #[inline]
-        fn clone(&self) -> SHResponses {
-            match *self {
-                SHResponses {
-                    create_vault: ref __self_0_0,
-                    write_data: ref __self_0_1,
-                    init_record: ref __self_0_2,
-                    read_data: ref __self_0_3,
-                    revoke_Data: ref __self_0_4,
-                    garbage_collect: ref __self_0_5,
-                    list_ids: ref __self_0_6,
-                    write_snapshot: ref __self_0_7,
-                    read_snapshot: ref __self_0_8,
-                } => SHResponses {
-                    create_vault: ::core::clone::Clone::clone(&(*__self_0_0)),
-                    write_data: ::core::clone::Clone::clone(&(*__self_0_1)),
-                    init_record: ::core::clone::Clone::clone(&(*__self_0_2)),
-                    read_data: ::core::clone::Clone::clone(&(*__self_0_3)),
-                    revoke_Data: ::core::clone::Clone::clone(&(*__self_0_4)),
-                    garbage_collect: ::core::clone::Clone::clone(&(*__self_0_5)),
-                    list_ids: ::core::clone::Clone::clone(&(*__self_0_6)),
-                    write_snapshot: ::core::clone::Clone::clone(&(*__self_0_7)),
-                    read_snapshot: ::core::clone::Clone::clone(&(*__self_0_8)),
-                },
+        fn clone(&self) -> SHRequest {
+            match (&*self,) {
+                (&SHRequest::CreateNewVault,) => SHRequest::CreateNewVault,
+                (&SHRequest::WriteData(ref __self_0, ref __self_1, ref __self_2),) => {
+                    SHRequest::WriteData(
+                        ::core::clone::Clone::clone(&(*__self_0)),
+                        ::core::clone::Clone::clone(&(*__self_1)),
+                        ::core::clone::Clone::clone(&(*__self_2)),
+                    )
+                }
+                (&SHRequest::InitRecord(ref __self_0),) => {
+                    SHRequest::InitRecord(::core::clone::Clone::clone(&(*__self_0)))
+                }
+                (&SHRequest::ReadData(ref __self_0),) => {
+                    SHRequest::ReadData(::core::clone::Clone::clone(&(*__self_0)))
+                }
+                (&SHRequest::RevokeData(ref __self_0),) => {
+                    SHRequest::RevokeData(::core::clone::Clone::clone(&(*__self_0)))
+                }
+                (&SHRequest::GarbageCollect(ref __self_0),) => {
+                    SHRequest::GarbageCollect(::core::clone::Clone::clone(&(*__self_0)))
+                }
+                (&SHRequest::ListIds(ref __self_0),) => {
+                    SHRequest::ListIds(::core::clone::Clone::clone(&(*__self_0)))
+                }
+                (&SHRequest::WriteSnapshot(ref __self_0, ref __self_1),) => {
+                    SHRequest::WriteSnapshot(
+                        ::core::clone::Clone::clone(&(*__self_0)),
+                        ::core::clone::Clone::clone(&(*__self_1)),
+                    )
+                }
+                (&SHRequest::ReadSnapshot(ref __self_0, ref __self_1),) => SHRequest::ReadSnapshot(
+                    ::core::clone::Clone::clone(&(*__self_0)),
+                    ::core::clone::Clone::clone(&(*__self_1)),
+                ),
             }
         }
     }
-    pub struct SHResults {
-        return_create: Option<(VaultId, RecordId)>,
-        return_init: Option<usize>,
-        return_read: Option<Vec<u8>>,
-        read_list: Option<Vec<(RecordId, RecordHint)>>,
-    }
     #[automatically_derived]
     #[allow(unused_qualifications)]
-    impl ::core::fmt::Debug for SHResults {
+    impl ::core::fmt::Debug for SHRequest {
         fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-            match *self {
-                SHResults {
-                    return_create: ref __self_0_0,
-                    return_init: ref __self_0_1,
-                    return_read: ref __self_0_2,
-                    read_list: ref __self_0_3,
-                } => {
-                    let mut debug_trait_builder = f.debug_struct("SHResults");
-                    let _ = debug_trait_builder.field("return_create", &&(*__self_0_0));
-                    let _ = debug_trait_builder.field("return_init", &&(*__self_0_1));
-                    let _ = debug_trait_builder.field("return_read", &&(*__self_0_2));
-                    let _ = debug_trait_builder.field("read_list", &&(*__self_0_3));
+            match (&*self,) {
+                (&SHRequest::CreateNewVault,) => {
+                    let mut debug_trait_builder = f.debug_tuple("CreateNewVault");
+                    debug_trait_builder.finish()
+                }
+                (&SHRequest::WriteData(ref __self_0, ref __self_1, ref __self_2),) => {
+                    let mut debug_trait_builder = f.debug_tuple("WriteData");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    let _ = debug_trait_builder.field(&&(*__self_1));
+                    let _ = debug_trait_builder.field(&&(*__self_2));
+                    debug_trait_builder.finish()
+                }
+                (&SHRequest::InitRecord(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("InitRecord");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&SHRequest::ReadData(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ReadData");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&SHRequest::RevokeData(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("RevokeData");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&SHRequest::GarbageCollect(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("GarbageCollect");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&SHRequest::ListIds(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ListIds");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&SHRequest::WriteSnapshot(ref __self_0, ref __self_1),) => {
+                    let mut debug_trait_builder = f.debug_tuple("WriteSnapshot");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    let _ = debug_trait_builder.field(&&(*__self_1));
+                    debug_trait_builder.finish()
+                }
+                (&SHRequest::ReadSnapshot(ref __self_0, ref __self_1),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ReadSnapshot");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    let _ = debug_trait_builder.field(&&(*__self_1));
                     debug_trait_builder.finish()
                 }
             }
         }
+    }
+    /// Messages that come from stronghold
+    pub enum SHResults {
+        ReturnCreate(usize),
+        ReturnInit(usize),
+        ReturnRead(Vec<u8>),
+        ReturnList(Vec<(RecordId, RecordHint)>),
     }
     #[automatically_derived]
     #[allow(unused_qualifications)]
     impl ::core::clone::Clone for SHResults {
         #[inline]
         fn clone(&self) -> SHResults {
-            match *self {
-                SHResults {
-                    return_create: ref __self_0_0,
-                    return_init: ref __self_0_1,
-                    return_read: ref __self_0_2,
-                    read_list: ref __self_0_3,
-                } => SHResults {
-                    return_create: ::core::clone::Clone::clone(&(*__self_0_0)),
-                    return_init: ::core::clone::Clone::clone(&(*__self_0_1)),
-                    return_read: ::core::clone::Clone::clone(&(*__self_0_2)),
-                    read_list: ::core::clone::Clone::clone(&(*__self_0_3)),
-                },
-            }
-        }
-    }
-    pub struct ExternalResults {}
-    #[automatically_derived]
-    #[allow(unused_qualifications)]
-    impl ::core::clone::Clone for ExternalResults {
-        #[inline]
-        fn clone(&self) -> ExternalResults {
-            match *self {
-                ExternalResults {} => ExternalResults {},
+            match (&*self,) {
+                (&SHResults::ReturnCreate(ref __self_0),) => {
+                    SHResults::ReturnCreate(::core::clone::Clone::clone(&(*__self_0)))
+                }
+                (&SHResults::ReturnInit(ref __self_0),) => {
+                    SHResults::ReturnInit(::core::clone::Clone::clone(&(*__self_0)))
+                }
+                (&SHResults::ReturnRead(ref __self_0),) => {
+                    SHResults::ReturnRead(::core::clone::Clone::clone(&(*__self_0)))
+                }
+                (&SHResults::ReturnList(ref __self_0),) => {
+                    SHResults::ReturnList(::core::clone::Clone::clone(&(*__self_0)))
+                }
             }
         }
     }
     #[automatically_derived]
     #[allow(unused_qualifications)]
-    impl ::core::fmt::Debug for ExternalResults {
+    impl ::core::fmt::Debug for SHResults {
         fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-            match *self {
-                ExternalResults {} => {
-                    let mut debug_trait_builder = f.debug_struct("ExternalResults");
+            match (&*self,) {
+                (&SHResults::ReturnCreate(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ReturnCreate");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&SHResults::ReturnInit(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ReturnInit");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&SHResults::ReturnRead(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ReturnRead");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&SHResults::ReturnList(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ReturnList");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+            }
+        }
+    }
+    /// Messages used internally by the client.
+    pub enum InternalResults {
+        ReturnCreateVault(VaultId, RecordId),
+        ReturnInitRecord(VaultId, RecordId),
+        ReturnReadData(Vec<u8>),
+        ReturnList(Vec<(RecordId, RecordHint)>),
+    }
+    #[automatically_derived]
+    #[allow(unused_qualifications)]
+    impl ::core::clone::Clone for InternalResults {
+        #[inline]
+        fn clone(&self) -> InternalResults {
+            match (&*self,) {
+                (&InternalResults::ReturnCreateVault(ref __self_0, ref __self_1),) => {
+                    InternalResults::ReturnCreateVault(
+                        ::core::clone::Clone::clone(&(*__self_0)),
+                        ::core::clone::Clone::clone(&(*__self_1)),
+                    )
+                }
+                (&InternalResults::ReturnInitRecord(ref __self_0, ref __self_1),) => {
+                    InternalResults::ReturnInitRecord(
+                        ::core::clone::Clone::clone(&(*__self_0)),
+                        ::core::clone::Clone::clone(&(*__self_1)),
+                    )
+                }
+                (&InternalResults::ReturnReadData(ref __self_0),) => {
+                    InternalResults::ReturnReadData(::core::clone::Clone::clone(&(*__self_0)))
+                }
+                (&InternalResults::ReturnList(ref __self_0),) => {
+                    InternalResults::ReturnList(::core::clone::Clone::clone(&(*__self_0)))
+                }
+            }
+        }
+    }
+    #[automatically_derived]
+    #[allow(unused_qualifications)]
+    impl ::core::fmt::Debug for InternalResults {
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            match (&*self,) {
+                (&InternalResults::ReturnCreateVault(ref __self_0, ref __self_1),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ReturnCreateVault");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    let _ = debug_trait_builder.field(&&(*__self_1));
+                    debug_trait_builder.finish()
+                }
+                (&InternalResults::ReturnInitRecord(ref __self_0, ref __self_1),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ReturnInitRecord");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    let _ = debug_trait_builder.field(&&(*__self_1));
+                    debug_trait_builder.finish()
+                }
+                (&InternalResults::ReturnReadData(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ReturnReadData");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&InternalResults::ReturnList(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("ReturnList");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
                     debug_trait_builder.finish()
                 }
             }
@@ -909,7 +1011,7 @@ mod client {
     }
     /// Create a new Client.
     impl Client {
-        pub fn new(id: ClientId, chan: ChannelRef<ExternalResults>) -> Self {
+        pub fn new(id: ClientId, chan: ChannelRef<SHResults>) -> Self {
             let vaults = HashMap::new();
             let heads = Vec::new();
             let index = Vec::new();
@@ -921,13 +1023,14 @@ mod client {
                 chan,
             }
         }
-        pub fn add_vault(&mut self, vid: VaultId, rid: RecordId) {
+        pub fn add_vault(&mut self, vid: VaultId, rid: RecordId) -> usize {
             self.heads.push(rid);
             self.index.push(vid);
             let idx = self.index.len() - 1;
             self.vaults.insert(vid, (idx, <[_]>::into_vec(box [rid])));
+            idx
         }
-        pub fn insert_record(&mut self, vid: VaultId, rid: RecordId) {
+        pub fn insert_record(&mut self, vid: VaultId, rid: RecordId) -> usize {
             let mut heads: Vec<RecordId> = self.heads.clone();
             let mut index: Vec<VaultId> = self.index.clone();
             let (idx, rids) = self
@@ -950,6 +1053,7 @@ mod client {
             }
             self.index = index;
             self.heads = heads;
+            *idx
         }
         pub fn get_head(&self, index: usize) -> Option<RecordId> {
             if self.heads.len() <= index {
@@ -967,7 +1071,7 @@ mod client {
         }
         pub fn get_index(&self, vid: VaultId) -> Option<usize> {
             if self.vaults.contains_key(&vid) {
-                let (idx, _) = self.vaults.get(&vid).expect("Error at src\\client.rs:149");
+                let (idx, _) = self.vaults.get(&vid).expect("Error at src\\client.rs:144");
                 Some(*idx)
             } else {
                 None
@@ -975,10 +1079,10 @@ mod client {
         }
     }
     /// Actor Factor for the Client Struct.
-    impl ActorFactoryArgs<ChannelRef<ExternalResults>> for Client {
-        fn create_args(chan: ChannelRef<ExternalResults>) -> Self {
+    impl ActorFactoryArgs<ChannelRef<SHResults>> for Client {
+        fn create_args(chan: ChannelRef<SHResults>) -> Self {
             Client::new(
-                ClientId::random::<Provider>().expect("Error at src\\client.rs:161"),
+                ClientId::random::<Provider>().expect("Error at src\\client.rs:156"),
                 chan,
             )
         }
@@ -986,23 +1090,145 @@ mod client {
     /// Actor implementation for the Client.
     impl Actor for Client {
         type Msg = ClientMsg;
+        fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+            let sub = Box::new(ctx.myself());
+            let topic = Topic::from("external");
+            self.chan.tell(
+                Subscribe {
+                    actor: sub.clone(),
+                    topic,
+                },
+                None,
+            );
+        }
         fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
             self.receive(ctx, msg, sender);
         }
     }
     /// Client Receive Block.
-    impl Receive<SHResponses> for Client {
+    impl Receive<SHRequest> for Client {
         type Msg = ClientMsg;
-        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResponses, _sender: Sender) {}
+        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, _sender: Sender) {
+            match msg {
+                SHRequest::CreateNewVault => {
+                    let vid = VaultId::random::<Provider>().expect("Error at src\\client.rs:192");
+                    let keystore = ctx
+                        .select("/user/keystore/")
+                        .expect("Error at src\\client.rs:194");
+                    keystore.try_tell(KMsg::CreateVault(vid), None);
+                }
+                SHRequest::ReadData(idx) => {
+                    let vid = self.get_vault(idx).expect("Error at src\\client.rs:199");
+                    let rid = self.get_head(idx).expect("Error at src\\client.rs:200");
+                    let keystore = ctx
+                        .select("/user/keystore/")
+                        .expect("Error at src\\client.rs:202");
+                    keystore.try_tell(KMsg::ReadData(vid, rid), None);
+                }
+                SHRequest::InitRecord(idx) => {
+                    let vid = self.get_vault(idx).expect("Error at src\\client.rs:207");
+                    let keystore = ctx
+                        .select("/user/keystore/")
+                        .expect("Error at src\\client.rs:209");
+                    keystore.try_tell(KMsg::InitRecord(vid), None);
+                }
+                SHRequest::WriteData(idx, payload, hint) => {
+                    let vid = self.get_vault(idx).expect("Error at src\\client.rs:214");
+                    let rid = self.get_head(idx).expect("Error at src\\client.rs:215");
+                    let keystore = ctx
+                        .select("/user/keystore/")
+                        .expect("Error at src\\client.rs:217");
+                    keystore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
+                }
+                SHRequest::RevokeData(idx) => {
+                    let vid = self.get_vault(idx).expect("Error at src\\client.rs:222");
+                    let rid = self.get_head(idx).expect("Error at src\\client.rs:223");
+                    let keystore = ctx
+                        .select("/user/keystore/")
+                        .expect("Error at src\\client.rs:225");
+                    keystore.try_tell(KMsg::RevokeData(vid, rid), None);
+                }
+                SHRequest::GarbageCollect(idx) => {
+                    let vid = self.get_vault(idx).expect("Error at src\\client.rs:230");
+                    let keystore = ctx
+                        .select("/user/keystore/")
+                        .expect("Error at src\\client.rs:232");
+                    keystore.try_tell(KMsg::GarbageCollect(vid), None);
+                }
+                SHRequest::ListIds(idx) => {
+                    let vid = self.get_vault(idx).expect("Error at src\\client.rs:237");
+                    let keystore = ctx
+                        .select("/user/keystore/")
+                        .expect("Error at src\\client.rs:239");
+                    keystore.try_tell(KMsg::ListIds(vid), None);
+                }
+                SHRequest::WriteSnapshot(pass, path) => {
+                    let bucket = ctx
+                        .select("/user/bucket/")
+                        .expect("Error at src\\client.rs:244");
+                    bucket.try_tell(BMsg::WriteSnapshot::<Provider>(pass, path), None);
+                }
+                SHRequest::ReadSnapshot(pass, path) => {
+                    let bucket = ctx
+                        .select("/user/bucket/")
+                        .expect("Error at src\\client.rs:249");
+                    bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass, path), None);
+                }
+            }
+        }
+    }
+    impl Receive<InternalResults> for Client {
+        type Msg = ClientMsg;
+        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InternalResults, _sender: Sender) {
+            match msg {
+                InternalResults::ReturnCreateVault(vid, rid) => {
+                    let idx = self.add_vault(vid, rid);
+                    let topic = Topic::from("return_create");
+                    self.chan.tell(
+                        Publish {
+                            msg: SHResults::ReturnCreate(idx),
+                            topic,
+                        },
+                        None,
+                    )
+                }
+                InternalResults::ReturnInitRecord(vid, rid) => {
+                    let idx = self.insert_record(vid, rid);
+                    let topic = Topic::from("return_init");
+                    self.chan.tell(
+                        Publish {
+                            msg: SHResults::ReturnInit(idx),
+                            topic,
+                        },
+                        None,
+                    )
+                }
+                InternalResults::ReturnReadData(payload) => {
+                    let topic = Topic::from("return_read");
+                    self.chan.tell(
+                        Publish {
+                            msg: SHResults::ReturnRead(payload),
+                            topic,
+                        },
+                        None,
+                    )
+                }
+                InternalResults::ReturnList(list) => {
+                    let topic = Topic::from("return_list");
+                    self.chan.tell(
+                        Publish {
+                            msg: SHResults::ReturnList(list),
+                            topic,
+                        },
+                        None,
+                    )
+                }
+            }
+        }
     }
     impl Receive<SHResults> for Client {
         type Msg = ClientMsg;
         fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {}
-    }
-    /// Client Receive Block.
-    impl Receive<ExternalResults> for Client {
-        type Msg = ClientMsg;
-        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ExternalResults, _sender: Sender) {}
     }
 }
 mod ids {
@@ -2315,6 +2541,12 @@ mod snapshot {
         }
     }
 }
+use crate::bucket::Bucket;
+use crate::client::{Client, SHResults};
+use crate::key_store::KeyStore;
+use crate::provider::Provider;
+use crate::snapshot::Snapshot;
+use riker::actors::{channel, ActorRefFactory, ActorSystem, ChannelRef};
 pub use crate::ids::{ClientId, VaultId};
 pub type Result<T> = anyhow::Result<T, Error>;
 pub enum Error {

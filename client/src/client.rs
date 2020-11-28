@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 /// Implement Client in cache App.
 /// TODO: Add Handshake Messages.
-#[actor(SHRequest, InteralResults, SHResults)]
+#[actor(SHRequest, InternalResults, SHResults)]
 pub struct Client {
     id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
@@ -56,7 +56,7 @@ pub enum SHResults {
 
 /// Messages used internally by the client.
 #[derive(Clone, Debug)]
-pub enum InteralResults {
+pub enum InternalResults {
     ReturnCreateVault(VaultId, RecordId),
     ReturnInitRecord(VaultId, RecordId),
     ReturnReadData(Vec<u8>),
@@ -254,15 +254,15 @@ impl Receive<SHRequest> for Client {
     }
 }
 
-impl Receive<InteralResults> for Client {
+impl Receive<InternalResults> for Client {
     type Msg = ClientMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InteralResults, _sender: Sender) {
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: InternalResults, _sender: Sender) {
         match msg {
-            InteralResults::ReturnCreateVault(vid, rid) => {
+            InternalResults::ReturnCreateVault(vid, rid) => {
                 let idx = self.add_vault(vid, rid);
 
-                let topic = Topic::from("return_create");
+                let topic = Topic::from("external");
 
                 self.chan.tell(
                     Publish {
@@ -272,10 +272,10 @@ impl Receive<InteralResults> for Client {
                     None,
                 )
             }
-            InteralResults::ReturnInitRecord(vid, rid) => {
+            InternalResults::ReturnInitRecord(vid, rid) => {
                 let idx = self.insert_record(vid, rid);
 
-                let topic = Topic::from("return_init");
+                let topic = Topic::from("external");
 
                 self.chan.tell(
                     Publish {
@@ -285,8 +285,8 @@ impl Receive<InteralResults> for Client {
                     None,
                 )
             }
-            InteralResults::ReturnReadData(payload) => {
-                let topic = Topic::from("return_read");
+            InternalResults::ReturnReadData(payload) => {
+                let topic = Topic::from("external");
 
                 self.chan.tell(
                     Publish {
@@ -296,8 +296,8 @@ impl Receive<InteralResults> for Client {
                     None,
                 )
             }
-            InteralResults::ReturnList(list) => {
-                let topic = Topic::from("return_list");
+            InternalResults::ReturnList(list) => {
+                let topic = Topic::from("external");
 
                 self.chan.tell(
                     Publish {
@@ -315,21 +315,20 @@ impl Receive<InteralResults> for Client {
 impl Receive<SHResults> for Client {
     type Msg = ClientMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {}
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: SHResults, _sender: Sender) {}
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    use crate::{client::Client, init_stronghold, provider::Provider};
+    use crate::{client::Client, provider::Provider};
 
     #[derive(Clone, Debug)]
     pub enum TestMsg {
         CreateVault,
         WriteData(usize, Vec<u8>, RecordHint),
         InitRecord(usize),
-        ReturnReadData(Vec<u8>),
         ReadData(usize),
         RevokeData(usize),
         GarbageCollect(usize),
@@ -372,7 +371,22 @@ mod test {
     impl Receive<SHResults> for MockExternal {
         type Msg = MockExternalMsg;
 
-        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, sender: Sender) {}
+        fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {
+            match msg {
+                SHResults::ReturnCreate(idx) => {
+                    println!("{:?}", idx);
+                }
+                SHResults::ReturnInit(idx) => {
+                    println!("{:?}", idx);
+                }
+                SHResults::ReturnList(list) => {
+                    println!("{:?}", list);
+                }
+                SHResults::ReturnRead(data) => {
+                    println!("{:?}", std::str::from_utf8(&data));
+                }
+            }
+        }
     }
 
     impl Receive<TestMsg> for MockExternal {
@@ -380,16 +394,51 @@ mod test {
 
         fn receive(&mut self, ctx: &Context<Self::Msg>, msg: TestMsg, sender: Sender) {
             match msg {
-                TestMsg::CreateVault => {}
-                TestMsg::WriteData(idx, payload, hint) => {}
-                TestMsg::InitRecord(idx) => {}
-                TestMsg::ReturnReadData(payload) => {}
-                TestMsg::ReadData(idx) => {}
-                TestMsg::RevokeData(idx) => {}
-                TestMsg::GarbageCollect(idx) => {}
-                TestMsg::ListIds(idx) => {}
-                TestMsg::WriteSnapshot(pass, path) => {}
-                TestMsg::ReadSnapshot(pass, path) => {}
+                TestMsg::CreateVault => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::CreateNewVault), None);
+                }
+                TestMsg::WriteData(idx, payload, hint) => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::WriteData(idx, payload, hint)), None);
+                }
+                TestMsg::InitRecord(idx) => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::InitRecord(idx)), None);
+                }
+                TestMsg::ReadData(idx) => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::ReadData(idx)), None);
+                }
+                TestMsg::RevokeData(idx) => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::RevokeData(idx)), None);
+                }
+                TestMsg::GarbageCollect(idx) => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::GarbageCollect(idx)), None);
+                }
+                TestMsg::ListIds(idx) => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::ListIds(idx)), None);
+                }
+                TestMsg::WriteSnapshot(pass, path) => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::WriteSnapshot(pass, path)), None);
+                }
+                TestMsg::ReadSnapshot(pass, path) => {
+                    let client = ctx.select("/user/client/").expect(line_error!());
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::ReadSnapshot(pass, path)), None);
+                }
             }
         }
     }
@@ -505,10 +554,35 @@ mod test {
 
     #[test]
     fn test_actor_model() {
+        use crate::init_stronghold;
+
         let (sys, chan) = init_stronghold();
 
         let mock = sys
             .actor_of_args::<MockExternal, _>("mock", chan.clone())
             .expect(line_error!());
+
+        mock.tell(MockExternalMsg::TestMsg(TestMsg::CreateVault), None);
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        mock.tell(
+            MockExternalMsg::TestMsg(TestMsg::WriteData(
+                0,
+                b"Some Data".to_vec(),
+                RecordHint::new(b"").expect(line_error!()),
+            )),
+            None,
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        mock.tell(MockExternalMsg::TestMsg(TestMsg::ReadData(0)), None);
+
+        mock.tell(MockExternalMsg::TestMsg(TestMsg::ListIds(0)), None);
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 }
