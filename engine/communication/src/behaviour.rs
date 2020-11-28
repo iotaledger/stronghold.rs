@@ -25,7 +25,7 @@ use libp2p::{
     swarm::{NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters, Swarm},
     NetworkBehaviour,
 };
-use message::{CommunicationEvent, ReqResEvent};
+use message::{CommunicationEvent, P2PMdnsEvent, P2PReqResEvent};
 pub use protocol::MessageEvent;
 use protocol::{MessageCodec, MessageProtocol};
 // TODO: support no_std
@@ -70,13 +70,11 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     /// pub enum Request {
     ///     Ping,
     /// }
-    /// impl MessageEvent for Request {}
     ///
     /// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     /// pub enum Response {
     ///     Pong,
     /// }
-    /// impl MessageEvent for Response {}
     ///
     /// let local_keys = Keypair::generate_ed25519();
     /// let mut swarm = P2PNetworkBehaviour::<Request, Response>::new(local_keys).unwrap();
@@ -140,6 +138,10 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
         self.peers.insert(peer_id.to_string(), addr);
     }
 
+    pub fn remove_peer(&mut self, peer_id: PeerId) -> Option<Multiaddr> {
+        self.peers.remove(&peer_id.to_string())
+    }
+
     pub fn get_peer_addr(&self, peer_id: PeerId) -> Option<&Multiaddr> {
         self.peers.get(&peer_id.to_string())
     }
@@ -172,11 +174,22 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> f
     // Called when `mdns` produces an event.
     #[allow(unused_variables)]
     fn inject_event(&mut self, event: MdnsEvent) {
-        if let MdnsEvent::Discovered(list) = event {
-            for (peer_id, multiaddr) in list {
-                self.add_peer(peer_id, multiaddr);
+        let comm_event = CommunicationEvent::from(event);
+        if let CommunicationEvent::Mdns(e) = comm_event.clone() {
+            match e {
+                P2PMdnsEvent::Discovered(list) => {
+                    for (peer_id, multiaddr) in list {
+                        self.add_peer(peer_id, multiaddr);
+                    }
+                }
+                P2PMdnsEvent::Expired(list) => {
+                    for (peer_id, multiaddr) in list {
+                        self.remove_peer(peer_id);
+                    }
+                }
             }
         }
+        self.events.push(comm_event);
     }
 }
 
@@ -196,11 +209,10 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestRespo
         } = event
         {
             self.response_channels.insert(request_id.to_string(), channel);
-
             CommunicationEvent::RequestResponse {
                 peer_id: peer,
                 request_id,
-                event: ReqResEvent::Req(request),
+                event: P2PReqResEvent::Req(request),
             }
         } else {
             CommunicationEvent::from(event)
@@ -224,16 +236,12 @@ use serde::{Deserialize, Serialize};
 pub enum Request {
     Ping,
 }
-#[cfg(test)]
-impl MessageEvent for Request {}
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     Pong,
 }
-#[cfg(test)]
-impl MessageEvent for Response {}
 
 #[cfg(test)]
 fn mock_swarm() -> Swarm<P2PNetworkBehaviour<Request, Response>> {

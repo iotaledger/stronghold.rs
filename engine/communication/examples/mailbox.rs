@@ -70,8 +70,8 @@ use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
 use communication::behaviour::{
     error::QueryResult,
-    message::{CommunicationEvent, ReqResEvent},
-    MessageEvent, P2PNetworkBehaviour,
+    message::{CommunicationEvent, P2PReqResEvent},
+    P2PNetworkBehaviour,
 };
 use core::{
     str::FromStr,
@@ -117,19 +117,15 @@ impl MailboxRecord {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Request {
-    Ping,
     PutRecord(MailboxRecord),
     GetRecord(String),
 }
-impl MessageEvent for Request {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
-    Pong,
     Outcome(RequestOutcome),
     Record(MailboxRecord),
 }
-impl MessageEvent for Response {}
 
 // only used for this CLI
 struct Matches {
@@ -182,14 +178,11 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
                     if let CommunicationEvent::RequestResponse {
                         peer_id: _,
                         request_id,
-                        event: ReqResEvent::Req(request),
+                        event: P2PReqResEvent::Req(request),
                     } = event
                     {
                         println!("Request:{:?}", request);
                         match request {
-                            Request::Ping => {
-                                swarm.send_response(Response::Pong, request_id).unwrap();
-                            }
                             Request::PutRecord(record) => {
                                 local_records.insert(record.key(), record.value());
                                 swarm
@@ -261,7 +254,7 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
                         if let CommunicationEvent::RequestResponse {
                             peer_id: _,
                             request_id,
-                            event: ReqResEvent::Res(response),
+                            event: P2PReqResEvent::Res(response),
                         } = event
                         {
                             println!("Response:{:?}", response);
@@ -322,7 +315,7 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
                         if let CommunicationEvent::RequestResponse {
                             peer_id: _,
                             request_id,
-                            event: ReqResEvent::Res(response),
+                            event: P2PReqResEvent::Res(response),
                         } = event
                         {
                             println!("Response:{:?}", response);

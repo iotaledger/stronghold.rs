@@ -45,8 +45,8 @@ use async_std::{
 };
 use communication::behaviour::{
     error::QueryResult,
-    message::{CommunicationEvent, ReqResEvent},
-    MessageEvent, P2PNetworkBehaviour,
+    message::{CommunicationEvent, P2PIdentifyEvent, P2PReqResEvent},
+    P2PNetworkBehaviour,
 };
 use core::{
     str::FromStr,
@@ -62,50 +62,17 @@ use libp2p::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-pub type Key = String;
-pub type Value = String;
-
-/// Indicates if a Request was received and / or the associated operation at the remote peer was successful
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RequestOutcome {
-    Success,
-    Error,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MailboxRecord {
-    key: String,
-    value: String,
-}
-
-impl MailboxRecord {
-    pub fn new(key: Key, value: Key) -> Self {
-        MailboxRecord { key, value }
-    }
-
-    pub fn key(&self) -> Key {
-        self.key.clone()
-    }
-    pub fn value(&self) -> Value {
-        self.value.clone()
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Request {
     Ping,
-    PutRecord(MailboxRecord),
-    GetRecord(String),
+    Msg(String),
 }
-impl MessageEvent for Request {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     Pong,
-    Outcome(RequestOutcome),
-    Record(MailboxRecord),
+    Msg(String),
 }
-impl MessageEvent for Response {}
 
 // Poll for user input
 fn poll_stdin(stdin: &mut Lines<BufReader<Stdin>>, cx: &mut Context<'_>) -> Result<Option<String>, Box<dyn Error>> {
@@ -146,29 +113,39 @@ fn listen() -> QueryResult<()> {
                     } = e
                     {
                         match event {
-                            ReqResEvent::Req(request) => {
+                            P2PReqResEvent::Req(request) => {
                                 println!("Received message from peer {:?}\n{:?}", peer_id, request);
-                                if let Request::Ping = request {
-                                    let response = swarm.send_response(Response::Pong, request_id);
-                                    if response.is_ok() {
-                                        println!("Send Pong back");
-                                    } else {
-                                        println!("Error sending pong: {:?}", response.unwrap_err());
+                                match request {
+                                    Request::Ping => {
+                                        let response = swarm.send_response(Response::Pong, request_id);
+                                        if response.is_ok() {
+                                            println!("Send Pong back");
+                                        } else {
+                                            println!("Error sending pong: {:?}", response.unwrap_err());
+                                        }
+                                    }
+                                    Request::Msg(msg) => {
+                                        let response =
+                                            swarm.send_response(Response::Msg(format!("echo: {}", msg)), request_id);
+                                        if response.is_ok() {
+                                            println!("Echoed message");
+                                        } else {
+                                            println!("Error sending echo: {:?}", response.unwrap_err());
+                                        }
                                     }
                                 }
                             }
-                            ReqResEvent::Res(response) => println!(
+                            P2PReqResEvent::Res(response) => println!(
                                 "Response from peer {:?} for Request {:?}:\n{:?}",
                                 peer_id, request_id, response
                             ),
-                            ReqResEvent::ReqResErr(error) => {
+                            error => {
                                 println!("Error for request {:?} to peer {:?}:\n{:?}", request_id, peer_id, error)
                             }
                         }
                     } else if let CommunicationEvent::Identify {
                         peer_id,
-                        public_key: _,
-                        observed_addr,
+                        event: P2PIdentifyEvent::Received { info: _, observed_addr },
                     } = e
                     {
                         println!(

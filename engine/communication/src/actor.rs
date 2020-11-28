@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::behaviour::{
-    message::{CommunicationEvent, ReqResEvent},
+    message::{CommunicationEvent, P2PIdentifyEvent, P2PReqResEvent},
     MessageEvent, P2PNetworkBehaviour,
 };
 use async_std::task;
@@ -68,18 +68,17 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
                         } = message
                         {
                             match event {
-                                ReqResEvent::Req(request) => {
+                                P2PReqResEvent::Req(request) => {
                                     swarm.send_request(peer_id, request);
                                 }
-                                ReqResEvent::Res(response) => {
+                                P2PReqResEvent::Res(response) => {
                                     swarm.send_response(response, request_id).unwrap();
                                 }
                                 _ => {}
                             }
                         } else if let CommunicationEvent::Identify {
                             peer_id: _,
-                            public_key: _,
-                            observed_addr,
+                            event: P2PIdentifyEvent::Received { info: _, observed_addr },
                         } = message
                         {
                             Swarm::add_external_address(&mut swarm, observed_addr);

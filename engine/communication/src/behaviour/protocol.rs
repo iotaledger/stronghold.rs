@@ -16,6 +16,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::io::{Error as IOError, ErrorKind as IOErrorKind, Result as IOResult};
 
 pub trait MessageEvent: Serialize + DeserializeOwned + Debug + Send + Clone + Sync + 'static {}
+impl<T: Serialize + DeserializeOwned + Debug + Send + Clone + Sync + 'static> MessageEvent for T {}
 
 /// Custom protocol that extends libp2p's RequestReponseProtocol
 #[derive(Debug, Clone)]

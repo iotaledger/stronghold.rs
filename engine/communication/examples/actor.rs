@@ -3,60 +3,22 @@
 
 use communication::{
     actor::CommunicationActor,
-    behaviour::{
-        message::{CommunicationEvent, ReqResEvent},
-        MessageEvent,
-    },
+    behaviour::message::{CommunicationEvent, P2PReqResEvent},
 };
 use core::time::Duration;
 use libp2p::core::identity::Keypair;
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
 
-pub type Key = String;
-pub type Value = String;
-
-/// Indicates if a Request was received and / or the associated operation at the remote peer was successful
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RequestOutcome {
-    Success,
-    Error,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MailboxRecord {
-    key: String,
-    value: String,
-}
-
-impl MailboxRecord {
-    pub fn new(key: Key, value: Key) -> Self {
-        MailboxRecord { key, value }
-    }
-
-    pub fn key(&self) -> Key {
-        self.key.clone()
-    }
-    pub fn value(&self) -> Value {
-        self.value.clone()
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Request {
     Ping,
-    PutRecord(MailboxRecord),
-    GetRecord(String),
 }
-impl MessageEvent for Request {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     Pong,
-    Outcome(RequestOutcome),
-    Record(MailboxRecord),
 }
-impl MessageEvent for Response {}
 
 struct TestActor {
     chan: ChannelRef<CommunicationEvent<Request, Response>>,
@@ -82,13 +44,13 @@ impl Actor for TestActor {
         if let CommunicationEvent::RequestResponse {
             peer_id,
             request_id,
-            event: ReqResEvent::Req(Request::Ping),
+            event: P2PReqResEvent::Req(Request::Ping),
         } = msg
         {
             let response = CommunicationEvent::RequestResponse {
                 peer_id,
                 request_id,
-                event: ReqResEvent::Res(Response::Pong),
+                event: P2PReqResEvent::Res(Response::Pong),
             };
             self.chan.tell(
                 Publish {
