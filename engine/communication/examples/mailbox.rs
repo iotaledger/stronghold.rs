@@ -74,6 +74,7 @@ use communication::behaviour::{
     P2PNetworkBehaviour,
 };
 use core::{
+    ops::Deref,
     str::FromStr,
     task::{Context, Poll},
 };
@@ -174,32 +175,34 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
             // poll for events from the swarm, store incoming key-value-records and answer request for
             // keys
             match swarm.poll_next_unpin(cx) {
-                Poll::Ready(Some(event)) => {
-                    if let CommunicationEvent::RequestResponse {
-                        peer_id: _,
-                        request_id,
-                        event: P2PReqResEvent::Req(request),
-                    } = event
-                    {
-                        println!("Request:{:?}", request);
-                        match request {
-                            Request::PutRecord(record) => {
-                                local_records.insert(record.key(), record.value());
-                                swarm
-                                    .send_response(Response::Outcome(RequestOutcome::Success), request_id)
-                                    .unwrap();
-                            }
-                            Request::GetRecord(key) => {
-                                if let Some((key, value)) = local_records.get_key_value(&key) {
-                                    let record = MailboxRecord::new(key.clone(), value.clone());
-                                    swarm.send_response(Response::Record(record), request_id).unwrap();
-                                } else {
+                Poll::Ready(Some(e)) => {
+                    if let CommunicationEvent::RequestResponse(event) = e {
+                        if let P2PReqResEvent::Req {
+                            peer_id: _,
+                            request_id,
+                            request,
+                        } = event.deref().clone()
+                        {
+                            println!("Request:{:?}", request);
+                            match request {
+                                Request::PutRecord(record) => {
+                                    local_records.insert(record.key(), record.value());
                                     swarm
-                                        .send_response(Response::Outcome(RequestOutcome::Error), request_id)
+                                        .send_response(Response::Outcome(RequestOutcome::Success), request_id)
                                         .unwrap();
                                 }
-                            }
-                        };
+                                Request::GetRecord(key) => {
+                                    if let Some((key, value)) = local_records.get_key_value(&key) {
+                                        let record = MailboxRecord::new(key.clone(), value.clone());
+                                        swarm.send_response(Response::Record(record), request_id).unwrap();
+                                    } else {
+                                        swarm
+                                            .send_response(Response::Outcome(RequestOutcome::Error), request_id)
+                                            .unwrap();
+                                    }
+                                }
+                            };
+                        }
                     }
                 }
                 Poll::Ready(None) => {
@@ -250,17 +253,19 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
             task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
                 // poll for the outcome of the request
                 match swarm.poll_next_unpin(cx) {
-                    Poll::Ready(Some(event)) => {
-                        if let CommunicationEvent::RequestResponse {
-                            peer_id: _,
-                            request_id,
-                            event: P2PReqResEvent::Res(response),
-                        } = event
-                        {
-                            println!("Response:{:?}", response);
-                            if original_id.is_some() && request_id == original_id.clone().unwrap() {
-                                println!("Response from Mailbox: {:?}", response);
-                                return Poll::Ready(());
+                    Poll::Ready(Some(e)) => {
+                        if let CommunicationEvent::RequestResponse(event) = e {
+                            if let P2PReqResEvent::Res {
+                                peer_id: _,
+                                request_id,
+                                response,
+                            } = event.deref().clone()
+                            {
+                                println!("Response:{:?}", response);
+                                if original_id.is_some() && request_id == original_id.clone().unwrap() {
+                                    println!("Response from Mailbox: {:?}", response);
+                                    return Poll::Ready(());
+                                }
                             }
                         }
                         Poll::Pending
@@ -276,7 +281,7 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
                             }
                             // Deposit a record on the mailbox
                             let record = MailboxRecord::new(key.clone(), value.clone());
-                            original_id = Some(swarm.send_request(mail_id.clone(), Request::PutRecord(record)));
+                            original_id = Some(swarm.send_request(&mail_id, Request::PutRecord(record)));
                             println!("Send Put Record Request {:?}", original_id.clone());
                         }
                         Poll::Pending
@@ -311,21 +316,23 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
             task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
                 // poll for the outcome of the request
                 match swarm.poll_next_unpin(cx) {
-                    Poll::Ready(Some(event)) => {
-                        if let CommunicationEvent::RequestResponse {
-                            peer_id: _,
-                            request_id,
-                            event: P2PReqResEvent::Res(response),
-                        } = event
-                        {
-                            println!("Response:{:?}", response);
-                            if original_id.is_some() && request_id == original_id.clone().unwrap() {
-                                if let Response::Record(record) = response {
-                                    println!("Key:\n{:?}, Value:\n{:?}", record.key(), record.value());
-                                } else {
-                                    println!("Response from Mailbox: {:?}", response);
+                    Poll::Ready(Some(e)) => {
+                        if let CommunicationEvent::RequestResponse(event) = e {
+                            if let P2PReqResEvent::Res {
+                                peer_id: _,
+                                request_id,
+                                response,
+                            } = event.deref().clone()
+                            {
+                                println!("Response:{:?}", response);
+                                if original_id.is_some() && request_id == original_id.clone().unwrap() {
+                                    if let Response::Record(record) = response {
+                                        println!("Key:\n{:?}, Value:\n{:?}", record.key(), record.value());
+                                    } else {
+                                        println!("Response from Mailbox: {:?}", response);
+                                    }
+                                    return Poll::Ready(());
                                 }
-                                return Poll::Ready(());
                             }
                         }
                         Poll::Pending
@@ -343,7 +350,7 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
                             }
 
                             // Get Record from remote peer
-                            original_id = Some(swarm.send_request(mail_id.clone(), Request::GetRecord(key.clone())));
+                            original_id = Some(swarm.send_request(&mail_id, Request::GetRecord(key.clone())));
                             println!("Send Get Record Request {:?}", original_id);
                         }
                         Poll::Pending

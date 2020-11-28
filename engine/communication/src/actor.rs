@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::behaviour::{
-    message::{CommunicationEvent, P2PIdentifyEvent, P2PReqResEvent},
+    message::{CommunicationEvent, P2PReqResEvent},
     MessageEvent, P2PNetworkBehaviour,
 };
 use async_std::task;
-use core::task::{Context as TaskContext, Poll};
+use core::{
+    ops::Deref,
+    task::{Context as TaskContext, Poll},
+};
 use futures::{channel::mpsc, future, prelude::*};
-use libp2p::{core::identity::Keypair, swarm::Swarm};
+use libp2p::core::identity::Keypair;
 use riker::actors::*;
 
 pub enum CommActorEvent<T, U> {
@@ -61,27 +64,24 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
                 };
                 match event {
                     CommActorEvent::Message(message) => {
-                        if let CommunicationEvent::RequestResponse {
-                            peer_id,
-                            request_id,
-                            event,
-                        } = message
-                        {
-                            match event {
-                                P2PReqResEvent::Req(request) => {
-                                    swarm.send_request(peer_id, request);
+                        if let CommunicationEvent::RequestResponse(boxed_event) = message {
+                            match boxed_event.deref().clone() {
+                                P2PReqResEvent::Req {
+                                    peer_id,
+                                    request_id: _,
+                                    request,
+                                } => {
+                                    swarm.send_request(&peer_id, request);
                                 }
-                                P2PReqResEvent::Res(response) => {
+                                P2PReqResEvent::Res {
+                                    peer_id: _,
+                                    request_id,
+                                    response,
+                                } => {
                                     swarm.send_response(response, request_id).unwrap();
                                 }
                                 _ => {}
                             }
-                        } else if let CommunicationEvent::Identify {
-                            peer_id: _,
-                            event: P2PIdentifyEvent::Received { info: _, observed_addr },
-                        } = message
-                        {
-                            Swarm::add_external_address(&mut swarm, observed_addr);
                         }
                     }
                     CommActorEvent::Shutdown => {

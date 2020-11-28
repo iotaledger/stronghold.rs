@@ -32,7 +32,6 @@ use protocol::{MessageCodec, MessageProtocol};
 use std::collections::BTreeMap;
 
 type ReqIdStr = String;
-type PeerIdStr = String;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "CommunicationEvent<T, U>", poll_method = "poll")]
@@ -42,7 +41,7 @@ pub struct P2PNetworkBehaviour<T: MessageEvent, U: MessageEvent> {
     identify: Identify,
     msg_proto: RequestResponse<MessageCodec<T, U>>,
     #[behaviour(ignore)]
-    peers: BTreeMap<PeerIdStr, Multiaddr>,
+    peers: BTreeMap<PeerId, Multiaddr>,
     #[behaviour(ignore)]
     events: Vec<CommunicationEvent<T, U>>,
     #[behaviour(ignore)]
@@ -135,23 +134,23 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     }
 
     pub fn add_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
-        self.peers.insert(peer_id.to_string(), addr);
+        self.peers.insert(peer_id, addr);
     }
 
-    pub fn remove_peer(&mut self, peer_id: PeerId) -> Option<Multiaddr> {
-        self.peers.remove(&peer_id.to_string())
+    pub fn remove_peer(&mut self, peer_id: &PeerId) -> Option<Multiaddr> {
+        self.peers.remove(peer_id)
     }
 
-    pub fn get_peer_addr(&self, peer_id: PeerId) -> Option<&Multiaddr> {
-        self.peers.get(&peer_id.to_string())
+    pub fn get_peer_addr(&self, peer_id: &PeerId) -> Option<&Multiaddr> {
+        self.peers.get(peer_id)
     }
 
-    pub fn get_all_peers(&self) -> &BTreeMap<String, Multiaddr> {
+    pub fn get_all_peers(&self) -> &BTreeMap<PeerId, Multiaddr> {
         &self.peers
     }
 
-    pub fn send_request(&mut self, peer_id: PeerId, request: T) -> RequestId {
-        self.msg_proto.send_request(&peer_id, request)
+    pub fn send_request(&mut self, peer_id: &PeerId, request: T) -> RequestId {
+        self.msg_proto.send_request(peer_id, request)
     }
 
     pub fn send_response(&mut self, response: U, request_id: RequestId) -> QueryResult<()> {
@@ -184,7 +183,7 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> f
                 }
                 P2PMdnsEvent::Expired(list) => {
                     for (peer_id, multiaddr) in list {
-                        self.remove_peer(peer_id);
+                        self.remove_peer(&peer_id);
                     }
                 }
             }
@@ -209,11 +208,11 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestRespo
         } = event
         {
             self.response_channels.insert(request_id.to_string(), channel);
-            CommunicationEvent::RequestResponse {
+            CommunicationEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
                 peer_id: peer,
                 request_id,
-                event: P2PReqResEvent::Req(request),
-            }
+                request,
+            }))
         } else {
             CommunicationEvent::from(event)
         };
@@ -270,6 +269,6 @@ fn test_add_peer() {
     let mut swarm = mock_swarm();
     let peer_id = PeerId::random();
     swarm.add_peer(peer_id.clone(), mock_addr());
-    assert!(swarm.get_peer_addr(peer_id.clone()).is_some());
-    assert!(swarm.get_all_peers().contains_key(&peer_id.to_string()));
+    assert!(swarm.get_peer_addr(&peer_id).is_some());
+    assert!(swarm.get_all_peers().contains_key(&peer_id));
 }

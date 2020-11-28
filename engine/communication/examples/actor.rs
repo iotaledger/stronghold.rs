@@ -5,7 +5,7 @@ use communication::{
     actor::CommunicationActor,
     behaviour::message::{CommunicationEvent, P2PReqResEvent},
 };
-use core::time::Duration;
+use core::{ops::Deref, time::Duration};
 use libp2p::core::identity::Keypair;
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
@@ -41,24 +41,26 @@ impl Actor for TestActor {
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         println!("{}: -> got msg: {:?}", ctx.myself.name(), msg);
-        if let CommunicationEvent::RequestResponse {
-            peer_id,
-            request_id,
-            event: P2PReqResEvent::Req(Request::Ping),
-        } = msg
-        {
-            let response = CommunicationEvent::RequestResponse {
+        if let CommunicationEvent::RequestResponse(event) = msg {
+            if let P2PReqResEvent::Req {
                 peer_id,
                 request_id,
-                event: P2PReqResEvent::Res(Response::Pong),
-            };
-            self.chan.tell(
-                Publish {
-                    msg: response,
-                    topic: Topic::from("swarm_outbound"),
-                },
-                None,
-            );
+                request: Request::Ping,
+            } = event.deref().clone()
+            {
+                let response = CommunicationEvent::RequestResponse(Box::new(P2PReqResEvent::Res {
+                    peer_id,
+                    request_id,
+                    response: Response::Pong,
+                }));
+                self.chan.tell(
+                    Publish {
+                        msg: response,
+                        topic: Topic::from("swarm_outbound"),
+                    },
+                    None,
+                );
+            }
         }
     }
 }

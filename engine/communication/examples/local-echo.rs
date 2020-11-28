@@ -49,6 +49,7 @@ use communication::behaviour::{
     P2PNetworkBehaviour,
 };
 use core::{
+    ops::Deref,
     str::FromStr,
     task::{Context, Poll},
 };
@@ -105,55 +106,61 @@ fn listen() -> QueryResult<()> {
         loop {
             // poll for events from the swarm
             match swarm.poll_next_unpin(cx) {
-                Poll::Ready(Some(e)) => {
-                    if let CommunicationEvent::RequestResponse {
-                        peer_id,
-                        request_id,
-                        event,
-                    } = e
-                    {
-                        match event {
-                            P2PReqResEvent::Req(request) => {
-                                println!("Received message from peer {:?}\n{:?}", peer_id, request);
-                                match request {
-                                    Request::Ping => {
-                                        let response = swarm.send_response(Response::Pong, request_id);
-                                        if response.is_ok() {
-                                            println!("Send Pong back");
-                                        } else {
-                                            println!("Error sending pong: {:?}", response.unwrap_err());
-                                        }
+                Poll::Ready(Some(e)) => match e {
+                    CommunicationEvent::RequestResponse(event) => match event.deref().clone() {
+                        P2PReqResEvent::Req {
+                            peer_id,
+                            request_id,
+                            request,
+                        } => {
+                            println!("Received message from peer {:?}\n{:?}", peer_id, request);
+                            match request {
+                                Request::Ping => {
+                                    let response = swarm.send_response(Response::Pong, request_id);
+                                    if response.is_ok() {
+                                        println!("Send Pong back");
+                                    } else {
+                                        println!("Error sending pong: {:?}", response.unwrap_err());
                                     }
-                                    Request::Msg(msg) => {
-                                        let response =
-                                            swarm.send_response(Response::Msg(format!("echo: {}", msg)), request_id);
-                                        if response.is_ok() {
-                                            println!("Echoed message");
-                                        } else {
-                                            println!("Error sending echo: {:?}", response.unwrap_err());
-                                        }
+                                }
+                                Request::Msg(msg) => {
+                                    let response =
+                                        swarm.send_response(Response::Msg(format!("echo: {}", msg)), request_id);
+                                    if response.is_ok() {
+                                        println!("Echoed message");
+                                    } else {
+                                        println!("Error sending echo: {:?}", response.unwrap_err());
                                     }
                                 }
                             }
-                            P2PReqResEvent::Res(response) => println!(
-                                "Response from peer {:?} for Request {:?}:\n{:?}",
-                                peer_id, request_id, response
-                            ),
-                            error => {
-                                println!("Error for request {:?} to peer {:?}:\n{:?}", request_id, peer_id, error)
-                            }
                         }
-                    } else if let CommunicationEvent::Identify {
-                        peer_id,
-                        event: P2PIdentifyEvent::Received { info: _, observed_addr },
-                    } = e
-                    {
-                        println!(
-                            "Received identify event: {:?} observes us at {:?}",
-                            peer_id, observed_addr
-                        );
+                        P2PReqResEvent::Res {
+                            peer_id,
+                            request_id,
+                            response,
+                        } => println!(
+                            "Response from peer {:?} for Request {:?}:\n{:?}",
+                            peer_id, request_id, response
+                        ),
+                        error => {
+                            println!("Error {:?}", error)
+                        }
+                    },
+                    CommunicationEvent::Identify(event) => {
+                        if let P2PIdentifyEvent::Received {
+                            peer_id,
+                            info: _,
+                            observed_addr,
+                        } = event.deref().clone()
+                        {
+                            println!(
+                                "Received identify event: {:?} observes us at {:?}",
+                                peer_id, observed_addr
+                            );
+                        }
                     }
-                }
+                    _ => {}
+                },
                 Poll::Ready(None) => {
                     return Poll::Ready(());
                 }
@@ -170,6 +177,7 @@ fn listen() -> QueryResult<()> {
                         }
                         println!("commands:");
                         println!("PING <peer_id>");
+                        println!("MSG <peer_id>");
                         println!("DIAL <peer_addr>");
                         println!("LIST");
                         if cfg!(not(feature = "mdns")) {
@@ -193,8 +201,20 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
         .and_then(|cap| cap.get(1))
         .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
     {
-        swarm.send_request(peer_id.clone(), Request::Ping);
+        swarm.send_request(&peer_id, Request::Ping);
         println!("Pinged {:?}", peer_id);
+    } else if let Some((peer_id, msg)) = Regex::new("MSG\\s+\"(\\w+)\"\\s+\"(\\w+)\"")
+        .ok()
+        .and_then(|regex| regex.captures(&line))
+        .and_then(|cap| cap.get(1).and_then(|p| cap.get(2).map(|m| (p, m))))
+        .and_then(|(peer_match, msg)| {
+            PeerId::from_str(peer_match.as_str())
+                .ok()
+                .map(|p| (p, msg.as_str().to_string()))
+        })
+    {
+        swarm.send_request(&peer_id, Request::Msg(msg.clone()));
+        println!("Send msg {:?} to peer {:?}", msg, peer_id);
     } else if line.contains("LIST") {
         println!("Known peers:");
         let known_peers = swarm.get_all_peers();
