@@ -37,7 +37,7 @@ pub enum KMsg {
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
     ListIds(VaultId),
-    RebuildKeys(Vec<Key<Provider>>),
+    RebuildKeys(Vec<Key<Provider>>, Vec<Vec<RecordId>>),
 }
 
 #[derive(Clone, Debug)]
@@ -175,10 +175,10 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
                 snapshot.try_tell(SMsg::ReadSnapshot(pass, path), None);
             }
             BMsg::ReloadData(state) => {
-                let keys = self.repopulate_data(state);
+                let (keys, rids) = self.repopulate_data(state);
 
                 let keystore = ctx.select("/user/keystore/").expect(line_error!());
-                keystore.try_tell(KMsg::RebuildKeys(keys), None);
+                keystore.try_tell(KMsg::RebuildKeys(keys, rids), None);
             }
         }
     }
@@ -244,8 +244,14 @@ impl Receive<KMsg> for KeyStore<Provider> {
                 }
             }
 
-            KMsg::RebuildKeys(keys) => {
-                self.rebuild_keystore(keys);
+            KMsg::RebuildKeys(keys, rids) => {
+                let vids = self.rebuild_keystore(keys);
+
+                let client = ctx.select("/user/client/").expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::RebuildCache(vids, rids)),
+                    None,
+                );
             }
         }
     }

@@ -30,14 +30,20 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
         self.store.entry(id).or_insert(key);
     }
 
-    pub fn rebuild_keystore(&mut self, keys: Vec<Key<P>>) {
+    pub fn rebuild_keystore(&mut self, keys: Vec<Key<P>>) -> Vec<VaultId> {
         let mut store: HashMap<VaultId, Key<P>> = HashMap::new();
+        let mut id_buffer: Vec<VaultId> = Vec::new();
 
         keys.into_iter().for_each(|key| {
-            store.insert(VaultId::random::<P>().expect(line_error!()), key);
+            let vid = VaultId::random::<P>().expect(line_error!());
+            store.insert(vid, key);
+
+            id_buffer.push(vid);
         });
 
         self.store = store;
+
+        id_buffer
     }
 
     pub fn get_vault_ids(&mut self) -> Vec<VaultId> {

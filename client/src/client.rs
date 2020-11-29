@@ -61,6 +61,7 @@ pub enum InternalResults {
     ReturnInitRecord(VaultId, RecordId),
     ReturnReadData(Vec<u8>),
     ReturnList(Vec<(RecordId, RecordHint)>),
+    RebuildCache(Vec<VaultId>, Vec<Vec<RecordId>>),
 }
 
 /// Create a new Client.
@@ -95,7 +96,7 @@ impl Client {
         let mut heads: Vec<RecordId> = self.heads.clone();
         let mut index: Vec<VaultId> = self.index.clone();
 
-        let (idx, rids) = self
+        let (idx, _rids) = self
             .vaults
             .entry(vid)
             .and_modify(|(idx, rids)| {
@@ -147,6 +148,14 @@ impl Client {
         } else {
             None
         }
+    }
+
+    pub fn clear_cache(&mut self) -> Option<()> {
+        self.heads = vec![];
+        self.index = vec![];
+        self.vaults = HashMap::default();
+
+        Some(())
     }
 }
 
@@ -306,6 +315,16 @@ impl Receive<InternalResults> for Client {
                     },
                     None,
                 )
+            }
+            InternalResults::RebuildCache(vids, rids) => {
+                self.clear_cache();
+                let iter = vids.iter().zip(rids.iter());
+
+                for (v, rs) in iter {
+                    rs.iter().for_each(|r| {
+                        self.insert_record(*v, *r);
+                    });
+                }
             }
         }
     }
@@ -564,7 +583,7 @@ mod test {
 
         mock.tell(MockExternalMsg::TestMsg(TestMsg::CreateVault), None);
 
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(5));
 
         mock.tell(
             MockExternalMsg::TestMsg(TestMsg::WriteData(
@@ -575,14 +594,45 @@ mod test {
             None,
         );
 
-        std::thread::sleep(std::time::Duration::from_millis(5));
-
         mock.tell(MockExternalMsg::TestMsg(TestMsg::ReadData(0)), None);
 
         mock.tell(MockExternalMsg::TestMsg(TestMsg::ListIds(0)), None);
 
+        mock.tell(MockExternalMsg::TestMsg(TestMsg::CreateVault), None);
+
         std::thread::sleep(std::time::Duration::from_millis(5));
 
+        mock.tell(
+            MockExternalMsg::TestMsg(TestMsg::WriteData(
+                1,
+                b"Some more data".to_vec(),
+                RecordHint::new(b"").expect(line_error!()),
+            )),
+            None,
+        );
+
+        mock.tell(MockExternalMsg::TestMsg(TestMsg::ReadData(1)), None);
+
+        mock.tell(MockExternalMsg::TestMsg(TestMsg::ListIds(1)), None);
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        mock.tell(
+            MockExternalMsg::TestMsg(TestMsg::WriteSnapshot("password".into(), None)),
+            None,
+        );
+
         std::thread::sleep(std::time::Duration::from_millis(50));
+
+        mock.tell(
+            MockExternalMsg::TestMsg(TestMsg::ReadSnapshot("password".into(), None)),
+            None,
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        mock.tell(MockExternalMsg::TestMsg(TestMsg::ReadData(1)), None);
+
+        std::thread::sleep(std::time::Duration::from_millis(200));
     }
 }

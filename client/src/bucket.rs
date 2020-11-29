@@ -182,18 +182,21 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         bincode::serialize(&cache).expect(line_error!())
     }
 
-    pub fn repopulate_data(&mut self, state: Vec<u8>) -> Vec<Key<P>> {
+    pub fn repopulate_data(&mut self, state: Vec<u8>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
         let mut vaults = HashMap::new();
         let mut cache = HashMap::new();
+        let mut rids: Vec<Vec<RecordId>> = Vec::new();
         let mut keystore_keys: Vec<Key<P>> = Vec::new();
 
         let state: HashMap<Key<P>, Vec<ReadResult>> = bincode::deserialize(&state).expect(line_error!());
 
         state.into_iter().for_each(|(k, v)| {
             keystore_keys.push(k.clone());
-            let view = Some(DBView::load(k.clone(), v.iter()).expect(line_error!()));
+            let view = DBView::load(k.clone(), v.iter()).expect(line_error!());
 
-            vaults.insert(k.clone(), view);
+            rids.push(view.all().collect());
+
+            vaults.insert(k.clone(), Some(view));
 
             cache.insert(k, v);
         });
@@ -201,7 +204,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         self.cache = cache;
         self.vaults = vaults;
 
-        keystore_keys
+        (keystore_keys, rids)
     }
 }
 
@@ -330,7 +333,7 @@ mod tests {
                     println!("{:?}", v.id());
                 }
                 _ => {
-                    println!("no data");
+                    println!("Record doesn't exist");
                 }
             }
 
