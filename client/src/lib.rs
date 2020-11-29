@@ -20,11 +20,13 @@ mod provider;
 mod secret;
 mod snapshot;
 
-use crate::bucket::Bucket;
-use crate::client::{Client, SHResults};
-use crate::key_store::KeyStore;
-use crate::provider::Provider;
-use crate::snapshot::Snapshot;
+use crate::{
+    bucket::Bucket,
+    client::{Client, SHResults},
+    key_store::KeyStore,
+    provider::Provider,
+    snapshot::Snapshot,
+};
 
 use riker::actors::{channel, ActorRefFactory, ActorSystem, ChannelRef};
 
