@@ -363,13 +363,7 @@ mod test {
         fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
             let sub = Box::new(ctx.myself());
             let topic = Topic::from("external");
-            self.chan.tell(
-                Subscribe {
-                    actor: sub.clone(),
-                    topic,
-                },
-                None,
-            );
+            self.chan.tell(Subscribe { actor: sub, topic }, None);
         }
 
         fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -573,9 +567,7 @@ mod test {
 
         let (sys, chan) = init_stronghold();
 
-        let mock = sys
-            .actor_of_args::<MockExternal, _>("mock", chan.clone())
-            .expect(line_error!());
+        let mock = sys.actor_of_args::<MockExternal, _>("mock", chan).expect(line_error!());
 
         mock.tell(MockExternalMsg::TestMsg(TestMsg::CreateVault), None);
 

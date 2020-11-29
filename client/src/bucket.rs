@@ -239,7 +239,7 @@ mod tests {
         );
 
         bucket.write_payload(
-            key2.clone(),
+            key2,
             rid2,
             b"some new data".to_vec(),
             RecordHint::new(b"").expect(line_error!()),
@@ -258,7 +258,7 @@ mod tests {
 
         let data = bucket.read_data(key1.clone(), rid1);
         println!("{:?}", std::str::from_utf8(&data));
-        let data = bucket.read_data(key1.clone(), rid3);
+        let data = bucket.read_data(key1, rid3);
 
         println!("{:?}", std::str::from_utf8(&data));
     }
