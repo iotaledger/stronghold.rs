@@ -25,9 +25,13 @@ where {
         self.state
     }
 
-    pub fn get_snapshot_path() -> PathBuf {
+    pub fn get_snapshot_path(name: Option<String>) -> PathBuf {
         let path = snapshot_dir().expect("Unable to get the snapshot directory");
-        path.join("backup.snapshot")
+        if let Some(name) = name {
+            path.join(format!("{}.snapshot", name))
+        } else {
+            path.join("backup.snapshot")
+        }
     }
     pub fn read_from_snapshot<P>(snapshot: &PathBuf, pass: &str) -> Self
     where

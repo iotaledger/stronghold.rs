@@ -42,8 +42,8 @@ pub enum SHRequest {
     RevokeData(usize),
     GarbageCollect(usize),
     ListIds(usize),
-    WriteSnapshot(String, Option<PathBuf>),
-    ReadSnapshot(String, Option<PathBuf>),
+    WriteSnapshot(String, Option<String>, Option<PathBuf>),
+    ReadSnapshot(String, Option<String>, Option<PathBuf>),
 }
 
 /// Messages that come from stronghold
@@ -245,15 +245,15 @@ impl Receive<SHRequest> for Client {
 
                 keystore.try_tell(KMsg::ListIds(vid), None);
             }
-            SHRequest::WriteSnapshot(pass, path) => {
+            SHRequest::WriteSnapshot(pass, name, path) => {
                 let bucket = ctx.select("/user/bucket/").expect(line_error!());
 
-                bucket.try_tell(BMsg::WriteSnapshot::<Provider>(pass, path), None);
+                bucket.try_tell(BMsg::WriteSnapshot::<Provider>(pass, name, path), None);
             }
-            SHRequest::ReadSnapshot(pass, path) => {
+            SHRequest::ReadSnapshot(pass, name, path) => {
                 let bucket = ctx.select("/user/bucket/").expect(line_error!());
 
-                bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass, path), None);
+                bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass, name, path), None);
             }
         }
     }
@@ -348,8 +348,8 @@ mod test {
         RevokeData(usize),
         GarbageCollect(usize),
         ListIds(usize),
-        WriteSnapshot(String, Option<PathBuf>),
-        ReadSnapshot(String, Option<PathBuf>),
+        WriteSnapshot(String, Option<String>, Option<PathBuf>),
+        ReadSnapshot(String, Option<String>, Option<PathBuf>),
     }
 
     #[actor(SHResults, TestMsg)]
@@ -438,15 +438,15 @@ mod test {
 
                     client.try_tell(ClientMsg::SHRequest(SHRequest::ListIds(idx)), None);
                 }
-                TestMsg::WriteSnapshot(pass, path) => {
+                TestMsg::WriteSnapshot(pass, name, path) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
-                    client.try_tell(ClientMsg::SHRequest(SHRequest::WriteSnapshot(pass, path)), None);
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::WriteSnapshot(pass, name, path)), None);
                 }
-                TestMsg::ReadSnapshot(pass, path) => {
+                TestMsg::ReadSnapshot(pass, name, path) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
-                    client.try_tell(ClientMsg::SHRequest(SHRequest::ReadSnapshot(pass, path)), None);
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::ReadSnapshot(pass, name, path)), None);
                 }
             }
         }
@@ -606,14 +606,14 @@ mod test {
         std::thread::sleep(std::time::Duration::from_millis(5));
 
         mock.tell(
-            MockExternalMsg::TestMsg(TestMsg::WriteSnapshot("password".into(), None)),
+            MockExternalMsg::TestMsg(TestMsg::WriteSnapshot("password".into(), None, None)),
             None,
         );
 
         std::thread::sleep(std::time::Duration::from_millis(5));
 
         mock.tell(
-            MockExternalMsg::TestMsg(TestMsg::ReadSnapshot("password".into(), None)),
+            MockExternalMsg::TestMsg(TestMsg::ReadSnapshot("password".into(), None, None)),
             None,
         );
 

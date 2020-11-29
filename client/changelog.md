@@ -33,6 +33,6 @@ To call the APIs, currently you must call `init_stronghold()` which will return 
 - Create O(1) comparison for all IDS.
 - Remove #[allow(dead_code)]s tags.
 - Add more test coverage
-- Add ability to name snapshots
+- ~~Add ability to name snapshots~~
 - Add ability to read and revoke records not on the head of the chain.
 - Add Reference types for the RecordIds and VaultIds to expose to the External programs.

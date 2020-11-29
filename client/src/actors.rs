@@ -26,8 +26,8 @@ pub enum BMsg<P: BoxProvider + Debug> {
     RevokeData(Key<P>, RecordId),
     GarbageCollect(Key<P>),
     ListAsk(Key<P>),
-    WriteSnapshot(String, Option<PathBuf>),
-    ReadSnapshot(String, Option<PathBuf>),
+    WriteSnapshot(String, Option<String>, Option<PathBuf>),
+    ReadSnapshot(String, Option<String>, Option<PathBuf>),
     ReloadData(Vec<u8>),
 }
 
@@ -45,8 +45,8 @@ pub enum KMsg {
 
 #[derive(Clone, Debug)]
 pub enum SMsg {
-    WriteSnapshot(String, Option<PathBuf>, Vec<u8>),
-    ReadSnapshot(String, Option<PathBuf>),
+    WriteSnapshot(String, Option<String>, Option<PathBuf>, Vec<u8>),
+    ReadSnapshot(String, Option<String>, Option<PathBuf>),
 }
 
 impl ActorFactory for Bucket<Provider> {
@@ -96,22 +96,22 @@ impl Receive<SMsg> for Snapshot {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         match msg {
-            SMsg::WriteSnapshot(pass, path, state) => {
+            SMsg::WriteSnapshot(pass, name, path, state) => {
                 let snapshot = Snapshot::new::<Provider>(state);
 
                 let path = if let Some(p) = path {
                     p
                 } else {
-                    Snapshot::get_snapshot_path()
+                    Snapshot::get_snapshot_path(name)
                 };
 
                 snapshot.write_to_snapshot(&path, &pass);
             }
-            SMsg::ReadSnapshot(pass, path) => {
+            SMsg::ReadSnapshot(pass, name, path) => {
                 let path = if let Some(p) = path {
                     p
                 } else {
-                    Snapshot::get_snapshot_path()
+                    Snapshot::get_snapshot_path(name)
                 };
 
                 let snapshot = Snapshot::read_from_snapshot::<Provider>(&path, &pass);
@@ -167,15 +167,15 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
                 let client = ctx.select("/user/client/").expect(line_error!());
                 client.try_tell(ClientMsg::InternalResults(InternalResults::ReturnList(ids)), None);
             }
-            BMsg::WriteSnapshot(pass, path) => {
+            BMsg::WriteSnapshot(pass, name, path) => {
                 let state = self.offload_data();
 
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
-                snapshot.try_tell(SMsg::WriteSnapshot(pass, path, state), None);
+                snapshot.try_tell(SMsg::WriteSnapshot(pass, name, path, state), None);
             }
-            BMsg::ReadSnapshot(pass, path) => {
+            BMsg::ReadSnapshot(pass, name, path) => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
-                snapshot.try_tell(SMsg::ReadSnapshot(pass, path), None);
+                snapshot.try_tell(SMsg::ReadSnapshot(pass, name, path), None);
             }
             BMsg::ReloadData(state) => {
                 let (keys, rids) = self.repopulate_data(state);
