@@ -7,8 +7,9 @@ use std::collections::HashMap;
 
 use crate::line_error;
 
-/// A `Bucket` cache of the Data for stronghold. Contains a `HashMap<Key<P>, Option<DBView<P>>>` pairing the vault `Key<P>` and the vault `DBView<P>` together.  
-/// Also contains a `HashMap<Key<P>, Vec<ReadResult>>` which pairs the backing data with the associated `Key<P>`.
+/// A `Bucket` cache of the Data for stronghold. Contains a `HashMap<Key<P>, Option<DBView<P>>>` pairing the vault
+/// `Key<P>` and the vault `DBView<P>` together. Also contains a `HashMap<Key<P>, Vec<ReadResult>>` which pairs the
+/// backing data with the associated `Key<P>`.
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
     vaults: HashMap<Key<P>, Option<DBView<P>>>,
     cache: HashMap<Key<P>, Vec<ReadResult>>,
@@ -40,8 +41,8 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         buffer
     }
 
-    /// Creates and initializes a new Vault given a `Key<P>`.  Returns a tuple of `(Key<P>, RecordId)`.  
-    /// The returned `Key<P>` is the Key associated with the Vault and the `RecordId` is the ID for its first record.
+    /// Creates and initializes a new Vault given a `Key<P>`.  Returns a tuple of `(Key<P>, RecordId)`. The returned
+    /// `Key<P>` is the Key associated with the Vault and the `RecordId` is the ID for its first record.
     pub fn create_and_init_vault(&mut self, key: Key<P>) -> (Key<P>, RecordId) {
         let id = RecordId::random::<P>().expect(line_error!());
 
@@ -100,7 +101,8 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         id
     }
 
-    /// Writes a payload of `Vec<u8>` and a `RecordHint` into a Record. Record is specified with the inserted `RecordId` and the `Key<P>`
+    /// Writes a payload of `Vec<u8>` and a `RecordHint` into a Record. Record is specified with the inserted `RecordId`
+    /// and the `Key<P>`
     pub fn write_payload(&mut self, key: Key<P>, id: RecordId, payload: Vec<u8>, hint: RecordHint) {
         self.take(key, |view, mut reads| {
             let mut writer = view.writer(id);
@@ -154,7 +156,8 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         buffer
     }
 
-    /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.  Returns a `Vec<Key<P>, Vec<Vec<RecordId>>`.
+    /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.  Returns a `Vec<Key<P>,
+    /// Vec<Vec<RecordId>>`.
     pub fn repopulate_data(&mut self, state: Vec<u8>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
         let mut vaults = HashMap::new();
         let mut cache = HashMap::new();

@@ -27,7 +27,8 @@ where {
         self.state
     }
 
-    /// Gets the `Snapshot` path given a `Option<String>` as the snapshot name.  Defaults to `$HOME/.engine/snapshot/backup.snapshot` and returns a `PathBuf`.
+    /// Gets the `Snapshot` path given a `Option<String>` as the snapshot name.  Defaults to
+    /// `$HOME/.engine/snapshot/backup.snapshot` and returns a `PathBuf`.
     pub fn get_snapshot_path(name: Option<String>) -> PathBuf {
         let path = snapshot_dir().expect("Unable to get the snapshot directory");
         if let Some(name) = name {
