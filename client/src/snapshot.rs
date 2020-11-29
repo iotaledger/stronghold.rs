@@ -16,15 +16,18 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// Creates a new `Snapshot` from a buffer of `Vec<u8>` state.
     pub fn new<P>(state: Vec<u8>) -> Self
 where {
         Self { state }
     }
 
+    /// Gets the state from the `Snapshot`
     pub fn get_state(self) -> Vec<u8> {
         self.state
     }
 
+    /// Gets the `Snapshot` path given a `Option<String>` as the snapshot name.  Defaults to `$HOME/.engine/snapshot/backup.snapshot` and returns a `PathBuf`.
     pub fn get_snapshot_path(name: Option<String>) -> PathBuf {
         let path = snapshot_dir().expect("Unable to get the snapshot directory");
         if let Some(name) = name {
@@ -33,6 +36,8 @@ where {
             path.join("backup.snapshot")
         }
     }
+
+    /// Reads the data from the specified `&PathBuf` when given a `&str` password.  Returns a new `Snapshot`.
     pub fn read_from_snapshot<P>(snapshot: &PathBuf, pass: &str) -> Self
     where
         P: BoxProvider + Clone + Send + Sync,
@@ -46,6 +51,8 @@ where {
 
         Snapshot::new::<P>(buffer)
     }
+
+    /// Writes the data to the specified `&PathBuf` when given a `&str` password creating a new snapshot file.
     pub fn write_to_snapshot(self, snapshot: &PathBuf, pass: &str) {
         let mut file = OpenOptions::new()
             .write(true)
