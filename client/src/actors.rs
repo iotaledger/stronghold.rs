@@ -17,6 +17,7 @@ use crate::{
     snapshot::Snapshot,
 };
 
+/// Messages used to talk to the Bucket Actor.
 #[derive(Debug, Clone)]
 pub enum BMsg<P: BoxProvider + Debug> {
     CreateVault(VaultId, Key<P>),
@@ -31,6 +32,7 @@ pub enum BMsg<P: BoxProvider + Debug> {
     ReloadData(Vec<u8>),
 }
 
+/// Messages used for the KeyStore Actor.
 #[derive(Clone, Debug)]
 pub enum KMsg {
     CreateVault(VaultId),
@@ -43,24 +45,28 @@ pub enum KMsg {
     RebuildKeys(Vec<Key<Provider>>, Vec<Vec<RecordId>>),
 }
 
+/// Messages used for the Snapshot Actor.
 #[derive(Clone, Debug)]
 pub enum SMsg {
     WriteSnapshot(String, Option<String>, Option<PathBuf>, Vec<u8>),
     ReadSnapshot(String, Option<String>, Option<PathBuf>),
 }
 
+/// Actor Factory for the Bucket.
 impl ActorFactory for Bucket<Provider> {
     fn create() -> Self {
         Bucket::new()
     }
 }
 
+/// Actor Factory for the KeyStore.
 impl ActorFactory for KeyStore<Provider> {
     fn create() -> Self {
         KeyStore::new()
     }
 }
 
+/// Actor Factory for the Snapshot.
 impl ActorFactory for Snapshot {
     fn create() -> Self {
         Snapshot::new::<Provider>(vec![])

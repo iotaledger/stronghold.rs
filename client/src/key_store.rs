@@ -37,7 +37,8 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
         self.store.entry(id).or_insert(key)
     }
 
-    /// Rebuilds the `KeyStore` while throwing out any existing `VauldId`, `Key<P>` pairs.  Accepts a `Vec<Key<P>>` and returns the a `Vec<VaultId>` containing all of the new `VaultId`s
+    /// Rebuilds the `KeyStore` while throwing out any existing `VauldId`, `Key<P>` pairs.  Accepts a `Vec<Key<P>>`
+    /// and returns the a `Vec<VaultId>` containing all of the new `VaultId`s
     pub fn rebuild_keystore(&mut self, keys: Vec<Key<P>>) -> Vec<VaultId> {
         let mut store: HashMap<VaultId, Key<P>> = HashMap::new();
         let mut id_buffer: Vec<VaultId> = Vec::new();

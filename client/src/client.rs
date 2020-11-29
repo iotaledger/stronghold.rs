@@ -15,8 +15,7 @@ use riker::actors::*;
 
 use std::collections::HashMap;
 
-/// Implement Client in cache App.
-/// TODO: Add Handshake Messages.
+/// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
 #[actor(SHRequest, InternalResults, SHResults)]
 pub struct Client {
     #[allow(dead_code)]
@@ -65,8 +64,8 @@ pub enum InternalResults {
     RebuildCache(Vec<VaultId>, Vec<Vec<RecordId>>),
 }
 
-/// Create a new Client.
 impl Client {
+    /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
     pub fn new(id: ClientId, chan: ChannelRef<SHResults>) -> Self {
         let vaults = HashMap::new();
         let heads = Vec::new();
@@ -81,6 +80,7 @@ impl Client {
         }
     }
 
+    /// Add a vault to the client.  Returns the Vault's index.
     pub fn add_vault(&mut self, vid: VaultId, rid: RecordId) -> usize {
         self.heads.push(rid);
 
@@ -93,6 +93,7 @@ impl Client {
         idx
     }
 
+    /// Insert a new Record into the Stronghold on the Vault based on the given RecordId.
     pub fn insert_record(&mut self, vid: VaultId, rid: RecordId) -> usize {
         let mut heads: Vec<RecordId> = self.heads.clone();
         let mut index: Vec<VaultId> = self.index.clone();
@@ -125,6 +126,7 @@ impl Client {
         *idx
     }
 
+    /// Get the head of a vault.
     pub fn get_head(&self, index: usize) -> Option<RecordId> {
         if self.heads.len() <= index {
             None
@@ -133,6 +135,7 @@ impl Client {
         }
     }
 
+    /// Get a vault by index.
     pub fn get_vault(&self, index: usize) -> Option<VaultId> {
         if self.index.len() <= index {
             None
@@ -141,6 +144,7 @@ impl Client {
         }
     }
 
+    /// get the index based on the `VaultId`.
     #[allow(dead_code)]
     pub fn get_index(&self, vid: VaultId) -> Option<usize> {
         if self.vaults.contains_key(&vid) {
@@ -152,6 +156,7 @@ impl Client {
         }
     }
 
+    /// Empty the Client Cache.
     pub fn clear_cache(&mut self) -> Option<()> {
         self.heads = vec![];
         self.index = vec![];

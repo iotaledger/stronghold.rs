@@ -11,6 +11,7 @@
 // TODO: ~~Add ability to name snapshots~~
 // TODO: Add ability to read and revoke records not on the head of the chain.
 // TODO: Add Reference types for the RecordIds and VaultIds to expose to the External programs.
+// TODO: Add Handshake Messages.
 
 use thiserror::Error as DeriveError;
 
