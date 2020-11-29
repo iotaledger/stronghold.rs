@@ -407,7 +407,7 @@ mod test {
     impl Receive<TestMsg> for MockExternal {
         type Msg = MockExternalMsg;
 
-        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: TestMsg, sender: Sender) {
+        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: TestMsg, _sender: Sender) {
             match msg {
                 TestMsg::CreateVault => {
                     let client = ctx.select("/user/client/").expect(line_error!());
