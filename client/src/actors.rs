@@ -1,3 +1,6 @@
+// Copyright 2020 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use riker::actors::*;
 
 use std::{fmt::Debug, path::PathBuf};
