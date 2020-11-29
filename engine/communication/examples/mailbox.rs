@@ -69,7 +69,7 @@
 use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
 use communication::behaviour::{
-    error::QueryResult,
+    error::{QueryError, QueryResult},
     message::{CommunicationEvent, P2PReqResEvent},
     P2PNetworkBehaviour,
 };
@@ -91,13 +91,13 @@ pub type Key = String;
 pub type Value = String;
 
 /// Indicates if a Request was received and / or the associated operation at the remote peer was successful
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RequestOutcome {
     Success,
     Error,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MailboxRecord {
     key: String,
     value: String,
@@ -116,13 +116,13 @@ impl MailboxRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
     PutRecord(MailboxRecord),
     GetRecord(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Response {
     Outcome(RequestOutcome),
     Record(MailboxRecord),
@@ -166,8 +166,10 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
         let local_keys = Keypair::generate_ed25519();
 
         // Create swarm for communication
-        let mut swarm = P2PNetworkBehaviour::<Request, Response>::new(local_keys)?;
-        P2PNetworkBehaviour::start_listening(&mut swarm, Some("/ip4/0.0.0.0/tcp/16384".parse().unwrap()))?;
+        let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys)?;
+        if let Err(err) = Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/16384".parse().unwrap()) {
+            return Err(QueryError::ConnectionError(format!("{}", err)));
+        }
         println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
         let mut listening = false;
         let mut local_records = BTreeMap::new();
@@ -179,7 +181,7 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
                     if let CommunicationEvent::RequestResponse(event) = e {
                         if let P2PReqResEvent::Req {
                             peer_id: _,
-                            request_id,
+                            request_id: Some(request_id),
                             request,
                         } = event.deref().clone()
                         {
@@ -242,7 +244,7 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
         {
             let local_keys = Keypair::generate_ed25519();
             // Create swarm for communication
-            let mut swarm = P2PNetworkBehaviour::<Request, Response>::new(local_keys)?;
+            let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys)?;
             println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
 
             // Connect to a remote mailbox on the server.
@@ -308,7 +310,7 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
             let local_keys = Keypair::generate_ed25519();
 
             // Create swarm for communication
-            let mut swarm = P2PNetworkBehaviour::<Request, Response>::new(local_keys)?;
+            let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys)?;
             println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
 
             let mut original_id = None;

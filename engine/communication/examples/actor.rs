@@ -44,7 +44,7 @@ impl Actor for TestActor {
         if let CommunicationEvent::RequestResponse(event) = msg {
             if let P2PReqResEvent::Req {
                 peer_id,
-                request_id,
+                request_id: Some(request_id),
                 request: Request::Ping,
             } = event.deref().clone()
             {

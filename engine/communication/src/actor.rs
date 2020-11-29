@@ -11,9 +11,10 @@ use core::{
     task::{Context as TaskContext, Poll},
 };
 use futures::{channel::mpsc, future, prelude::*};
-use libp2p::core::identity::Keypair;
+use libp2p::{core::identity::Keypair, swarm::Swarm};
 use riker::actors::*;
 
+#[derive(Debug, Clone)]
 pub enum CommActorEvent<T, U> {
     Message(CommunicationEvent<T, U>),
     Shutdown,
@@ -42,20 +43,32 @@ impl<T: MessageEvent, U: MessageEvent> ActorFactoryArgs<(Keypair, ChannelRef<Com
 impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
     type Msg = CommunicationEvent<T, U>;
 
+    // Subscribe to swarm_outbound to trigger the recv method for them.
+    //
+    // The swarm_outbound topic can be used by other actors within the ActorSystem to publish messages for remote peers.
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         let topic = Topic::from("swarm_outbound");
         let sub = Box::new(ctx.myself());
         self.chan.tell(Subscribe { actor: sub, topic }, None);
     }
 
+    // Start a seperate task to manage the communication from and to the swarm
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        // Channel to communicate from the CommunicationActor with the swarm task.
         let (swarm_tx, mut swarm_rx) = mpsc::channel(16);
         self.swarm_tx = Some(swarm_tx);
-        let mut swarm = P2PNetworkBehaviour::<T, U>::new(self.keypair.clone()).unwrap();
-        P2PNetworkBehaviour::start_listening(&mut swarm, None).unwrap();
-        let topic = Topic::from("swarm_inbound");
+
+        // Create a P2PNetworkBehaviour for the swarm communication.
+        let mut swarm = P2PNetworkBehaviour::<T, U>::init_swarm(self.keypair.clone()).unwrap();
+        Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp0".parse().unwrap()).unwrap();
+
         let chan = self.chan.clone();
+        let topic = Topic::from("swarm_inbound");
+
+        // Kick off the swarm communication in it's own task.
         let handle = ctx.run(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
+            // Poll for request that are forwarded through the swarm_tx channel and send them over the swarm to remote
+            // peers.
             loop {
                 let event = match swarm_rx.poll_next_unpin(tcx) {
                     Poll::Ready(Some(event)) => event,
@@ -85,10 +98,12 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
                         }
                     }
                     CommActorEvent::Shutdown => {
+                        // Break from the loop and end task.
                         return Poll::Ready(());
                     }
                 }
             }
+            // Poll from the swarm for requests and responses from remote peers and publish them in the channel.
             loop {
                 match swarm.poll_next_unpin(tcx) {
                     Poll::Ready(Some(event)) => {
@@ -110,6 +125,7 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
         self.poll_swarm_handle = handle.ok();
     }
 
+    // Send shutdown event over tx to swarm task and wait for the swarm to stop listening.
     fn post_stop(&mut self) {
         if let Some(tx) = self.swarm_tx.as_mut() {
             task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
@@ -126,6 +142,7 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
         }
     }
 
+    /// Forward the received events to the task that is managing the swarm communication.
     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         if let Some(tx) = self.swarm_tx.as_mut() {
             task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {

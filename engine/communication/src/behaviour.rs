@@ -7,7 +7,6 @@ mod protocol;
 use core::{
     iter,
     marker::PhantomData,
-    str::FromStr,
     task::{Context, Poll},
 };
 use error::{QueryError, QueryResult};
@@ -15,7 +14,7 @@ use error::{QueryError, QueryResult};
 use libp2p::mdns::{Mdns, MdnsEvent};
 use libp2p::{
     build_tcp_ws_noise_mplex_yamux,
-    core::{connection::ListenerId, Multiaddr, PeerId},
+    core::{Multiaddr, PeerId},
     identify::{Identify, IdentifyEvent},
     identity::Keypair,
     request_response::{
@@ -52,6 +51,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     /// Creates a new P2PNetworkbehaviour that defines the communication with the libp2p swarm.
     /// It combines the following protocols from libp2p:
     /// - mDNS for peer discovery within the local network
+    /// - identify for the public key and general information of the remote peer
     /// - RequestResponse Protocol for sending request and Response messages. This stronghold-communication library
     ///   defines a custom version of this protocol that for sending pings, string-messages and key-value-records.
     ///
@@ -65,20 +65,20 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     /// };
     /// use serde::{Deserialize, Serialize};
     ///
-    /// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// pub enum Request {
     ///     Ping,
     /// }
     ///
-    /// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// pub enum Response {
     ///     Pong,
     /// }
     ///
     /// let local_keys = Keypair::generate_ed25519();
-    /// let mut swarm = P2PNetworkBehaviour::<Request, Response>::new(local_keys).unwrap();
+    /// let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).unwrap();
     /// ```
-    pub fn new(local_keys: Keypair) -> QueryResult<Swarm<P2PNetworkBehaviour<T, U>>> {
+    pub fn init_swarm(local_keys: Keypair) -> QueryResult<Swarm<P2PNetworkBehaviour<T, U>>> {
         #[allow(unused_variables)]
         let local_peer_id = PeerId::from(local_keys.public());
 
@@ -107,6 +107,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
             events: Vec::new(),
             response_channels: BTreeMap::new(),
         };
+        // create a transport and swarm for the new P2PNetworkBehaviour
         let transport = build_tcp_ws_noise_mplex_yamux(local_keys)
             .map_err(|_| QueryError::ConnectionError("Could not build transport layer".to_string()))?;
         Ok(Swarm::new(transport, behaviour, local_peer_id))
@@ -121,16 +122,6 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
             return Poll::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)));
         }
         Poll::Pending
-    }
-
-    pub fn start_listening(
-        swarm: &mut Swarm<P2PNetworkBehaviour<T, U>>,
-        listening_addr: Option<Multiaddr>,
-    ) -> QueryResult<ListenerId> {
-        let addr = listening_addr
-            .or_else(|| Multiaddr::from_str("/ip4/0.0.0.0/tcp/0").ok())
-            .ok_or_else(|| QueryError::ConnectionError("Invalid Multiaddr".to_string()))?;
-        Swarm::listen_on(swarm, addr).map_err(|e| QueryError::ConnectionError(format!("{}", e)))
     }
 
     pub fn add_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
@@ -210,7 +201,7 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestRespo
             self.response_channels.insert(request_id.to_string(), channel);
             CommunicationEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
                 peer_id: peer,
-                request_id,
+                request_id: Some(request_id),
                 request,
             }))
         } else {
@@ -228,47 +219,51 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEven
 }
 
 #[cfg(test)]
-use serde::{Deserialize, Serialize};
+mod test {
+    use super::*;
+    use core::str::FromStr;
+    use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Request {
-    Ping,
-}
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum Request {
+        Ping,
+    }
 
-#[cfg(test)]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Response {
-    Pong,
-}
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum Response {
+        Pong,
+    }
 
-#[cfg(test)]
-fn mock_swarm() -> Swarm<P2PNetworkBehaviour<Request, Response>> {
-    let local_keys = Keypair::generate_ed25519();
-    P2PNetworkBehaviour::<Request, Response>::new(local_keys).unwrap()
-}
+    fn mock_swarm() -> Swarm<P2PNetworkBehaviour<Request, Response>> {
+        let local_keys = Keypair::generate_ed25519();
+        P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).unwrap()
+    }
 
-#[cfg(test)]
-fn mock_addr() -> Multiaddr {
-    Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap()
-}
+    fn mock_addr() -> Multiaddr {
+        Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap()
+    }
 
-#[test]
-fn test_new_behaviour() {
-    let local_keys = Keypair::generate_ed25519();
-    let swarm = P2PNetworkBehaviour::<Request, Response>::new(local_keys.clone()).unwrap();
-    assert_eq!(
-        &PeerId::from_public_key(local_keys.public()),
-        Swarm::local_peer_id(&swarm)
-    );
-    assert!(swarm.get_all_peers().is_empty());
-}
+    #[test]
+    fn test_new_behaviour() {
+        let local_keys = Keypair::generate_ed25519();
+        let swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys.clone()).unwrap();
+        assert_eq!(
+            &PeerId::from_public_key(local_keys.public()),
+            Swarm::local_peer_id(&swarm)
+        );
+        assert!(swarm.get_all_peers().is_empty());
+    }
 
-#[test]
-fn test_add_peer() {
-    let mut swarm = mock_swarm();
-    let peer_id = PeerId::random();
-    swarm.add_peer(peer_id.clone(), mock_addr());
-    assert!(swarm.get_peer_addr(&peer_id).is_some());
-    assert!(swarm.get_all_peers().contains_key(&peer_id));
+    #[test]
+    fn test_add_peer() {
+        let mut swarm = mock_swarm();
+        let peer_id = PeerId::random();
+        let addr = mock_addr();
+        swarm.add_peer(peer_id.clone(), addr.clone());
+        assert!(swarm.get_peer_addr(&peer_id).is_some());
+        assert!(swarm.get_all_peers().contains_key(&peer_id));
+        assert_eq!(swarm.remove_peer(&peer_id).unwrap(), addr);
+        assert!(swarm.get_peer_addr(&peer_id).is_none());
+        assert!(!swarm.get_all_peers().contains_key(&peer_id));
+    }
 }

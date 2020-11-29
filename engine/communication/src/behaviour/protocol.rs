@@ -15,6 +15,7 @@ use serde::{de::DeserializeOwned, Serialize};
 // TODO: support no_std
 use std::io::{Error as IOError, ErrorKind as IOErrorKind, Result as IOResult};
 
+/// Trait for the generic Request and Response types
 pub trait MessageEvent: Serialize + DeserializeOwned + Debug + Send + Clone + Sync + 'static {}
 impl<T: Serialize + DeserializeOwned + Debug + Send + Clone + Sync + 'static> MessageEvent for T {}
 
@@ -41,6 +42,7 @@ impl<T, U> MessageCodec<T, U> {
     }
 }
 
+/// Read and write request and responses and parse them into the generic structs T and U
 #[async_trait]
 impl<T, U> RequestResponseCodec for MessageCodec<T, U>
 where
@@ -79,6 +81,7 @@ where
             .await
     }
 
+    /// read requests from remote peers and parse them into the request struct
     async fn write_request<R>(&mut self, _: &MessageProtocol, io: &mut R, req: Self::Request) -> IOResult<()>
     where
         R: AsyncWrite + Unpin + Send,
@@ -87,6 +90,7 @@ where
         write_one(io, buf).await
     }
 
+    /// read requests from remote peers and parse them into the request struct
     async fn write_response<R>(&mut self, _: &MessageProtocol, io: &mut R, res: Self::Response) -> IOResult<()>
     where
         R: AsyncWrite + Unpin + Send,

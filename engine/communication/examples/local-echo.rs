@@ -44,7 +44,7 @@ use async_std::{
     task,
 };
 use communication::behaviour::{
-    error::QueryResult,
+    error::{QueryError, QueryResult},
     message::{CommunicationEvent, P2PIdentifyEvent, P2PReqResEvent},
     P2PNetworkBehaviour,
 };
@@ -63,13 +63,13 @@ use libp2p::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
     Ping,
     Msg(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Response {
     Pong,
     Msg(String),
@@ -91,8 +91,10 @@ fn poll_stdin(stdin: &mut Lines<BufReader<Stdin>>, cx: &mut Context<'_>) -> Resu
 fn listen() -> QueryResult<()> {
     let local_keys = Keypair::generate_ed25519();
     // Create a Swarm that implementes the Request-Reponse Protocl and mDNS
-    let mut swarm = P2PNetworkBehaviour::<Request, Response>::new(local_keys)?;
-    P2PNetworkBehaviour::start_listening(&mut swarm, None)?;
+    let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys)?;
+    if let Err(err) = Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp0".parse().unwrap()) {
+        return Err(QueryError::ConnectionError(format!("{}", err)));
+    }
     println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
     let mut listening = false;
     let mut stdin = BufReader::new(stdin()).lines();
@@ -110,7 +112,7 @@ fn listen() -> QueryResult<()> {
                     CommunicationEvent::RequestResponse(event) => match event.deref().clone() {
                         P2PReqResEvent::Req {
                             peer_id,
-                            request_id,
+                            request_id: Some(request_id),
                             request,
                         } => {
                             println!("Received message from peer {:?}\n{:?}", peer_id, request);
