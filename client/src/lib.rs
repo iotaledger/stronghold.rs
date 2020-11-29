@@ -23,17 +23,15 @@ mod provider;
 mod secret;
 mod snapshot;
 
-use crate::{
-    bucket::Bucket,
-    client::{Client, SHResults},
-    key_store::KeyStore,
-    provider::Provider,
-    snapshot::Snapshot,
-};
+use crate::{bucket::Bucket, client::Client, key_store::KeyStore, snapshot::Snapshot};
 
 use riker::actors::{channel, ActorRefFactory, ActorSystem, ChannelRef};
 
-pub use crate::ids::{ClientId, VaultId};
+pub use crate::{
+    client::{ClientMsg, SHRequest, SHResults},
+    ids::{ClientId, VaultId},
+    provider::Provider,
+};
 
 #[macro_export]
 macro_rules! line_error {
