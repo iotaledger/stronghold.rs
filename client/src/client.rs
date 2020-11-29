@@ -622,14 +622,14 @@ mod test {
             None,
         );
 
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(5));
 
         mock.tell(
             MockExternalMsg::TestMsg(TestMsg::ReadSnapshot("password".into(), None)),
             None,
         );
 
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(5));
 
         mock.tell(MockExternalMsg::TestMsg(TestMsg::ReadData(1)), None);
 
