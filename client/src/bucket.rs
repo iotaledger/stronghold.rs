@@ -7,12 +7,15 @@ use std::collections::HashMap;
 
 use crate::line_error;
 
+/// A `Bucket` cache of the Data for stronghold. Contains a `HashMap<Key<P>, Option<DBView<P>>>` pairing the vault `Key<P>` and the vault `DBView<P>` together.  
+/// Also contains a `HashMap<Key<P>, Vec<ReadResult>>` which pairs the backing data with the associated `Key<P>`.
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
     vaults: HashMap<Key<P>, Option<DBView<P>>>,
     cache: HashMap<Key<P>, Vec<ReadResult>>,
 }
 
 impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
+    /// Creates a new `Bucket`.
     pub fn new() -> Self {
         let cache = HashMap::new();
         let vaults = HashMap::new();
@@ -21,6 +24,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
     }
 
     #[allow(dead_code)]
+    /// Gets the Vault `RecordIds` when given a `Key<P>`.  Returns a `Vec<RecordId>`.
     pub fn get_vault_recordids(&mut self, key: Key<P>) -> Vec<RecordId> {
         let mut buffer = Vec::new();
         self.take(key, |view, reads| {
@@ -36,6 +40,8 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         buffer
     }
 
+    /// Creates and initializes a new Vault given a `Key<P>`.  Returns a tuple of `(Key<P>, RecordId)`.  
+    /// The returned `Key<P>` is the Key associated with the Vault and the `RecordId` is the ID for its first record.
     pub fn create_and_init_vault(&mut self, key: Key<P>) -> (Key<P>, RecordId) {
         let id = RecordId::random::<P>().expect(line_error!());
 
@@ -52,6 +58,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         (key, id)
     }
 
+    /// Reads data from a Record in the Vault given a `RecordId`.  Returns the data as a `Vec<u8>` of utf8 bytes.
     pub fn read_data(&mut self, key: Key<P>, id: RecordId) -> Vec<u8> {
         let mut buffer: Vec<u8> = vec![];
         self.take(key, |view, reads| {
@@ -77,6 +84,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         buffer
     }
 
+    /// Initializes a new Record in the Vault based on the inserted `Key<P>`. Returns a `RecordId` for the new Record.
     pub fn init_record(&mut self, key: Key<P>) -> RecordId {
         let id = RecordId::random::<P>().expect(line_error!());
         self.take(key, |view, mut reads| {
@@ -92,6 +100,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         id
     }
 
+    /// Writes a payload of `Vec<u8>` and a `RecordHint` into a Record. Record is specified with the inserted `RecordId` and the `Key<P>`
     pub fn write_payload(&mut self, key: Key<P>, id: RecordId, payload: Vec<u8>, hint: RecordHint) {
         self.take(key, |view, mut reads| {
             let mut writer = view.writer(id);
@@ -106,6 +115,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         });
     }
 
+    /// Marks a record for deletion based on a given `Key<P>` and `RecordId`
     pub fn revoke_data(&mut self, key: Key<P>, id: RecordId) {
         self.take(key, |view, mut reads| {
             let mut writer = view.writer(id);
@@ -118,6 +128,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         });
     }
 
+    /// Garbage Collects any deletion marked Records in the given Vault. Accepts a `Key<P>`
     pub fn garbage_collect(&mut self, key: Key<P>) {
         self.take(key, |view, mut reads| {
             let deletes = view.gc();
@@ -128,6 +139,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         });
     }
 
+    /// Lists the `RecordId`s and `RecordHint`s for a given Vault.  Accepts a `Key<P>`
     pub fn list_ids(&mut self, key: Key<P>) -> Vec<(RecordId, RecordHint)> {
         let mut buffer: Vec<(RecordId, RecordHint)> = Vec::new();
 
@@ -142,6 +154,33 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         buffer
     }
 
+    /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.  Returns a `Vec<Key<P>, Vec<Vec<RecordId>>`.
+    pub fn repopulate_data(&mut self, state: Vec<u8>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
+        let mut vaults = HashMap::new();
+        let mut cache = HashMap::new();
+        let mut rids: Vec<Vec<RecordId>> = Vec::new();
+        let mut keystore_keys: Vec<Key<P>> = Vec::new();
+
+        let state: HashMap<Key<P>, Vec<ReadResult>> = bincode::deserialize(&state).expect(line_error!());
+
+        state.into_iter().for_each(|(k, v)| {
+            keystore_keys.push(k.clone());
+            let view = DBView::load(k.clone(), v.iter()).expect(line_error!());
+
+            rids.push(view.all().collect());
+
+            vaults.insert(k.clone(), Some(view));
+
+            cache.insert(k, v);
+        });
+
+        self.cache = cache;
+        self.vaults = vaults;
+
+        (keystore_keys, rids)
+    }
+
+    /// Exposes the `DBView` of the current vault and the cache layer to allow transactions to occur.
     fn take(&mut self, key: Key<P>, f: impl FnOnce(DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>) {
         let mut _reads = self.get_reads(key.clone());
         let reads = _reads.take().expect(line_error!());
@@ -181,31 +220,6 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         });
 
         bincode::serialize(&cache).expect(line_error!())
-    }
-
-    pub fn repopulate_data(&mut self, state: Vec<u8>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
-        let mut vaults = HashMap::new();
-        let mut cache = HashMap::new();
-        let mut rids: Vec<Vec<RecordId>> = Vec::new();
-        let mut keystore_keys: Vec<Key<P>> = Vec::new();
-
-        let state: HashMap<Key<P>, Vec<ReadResult>> = bincode::deserialize(&state).expect(line_error!());
-
-        state.into_iter().for_each(|(k, v)| {
-            keystore_keys.push(k.clone());
-            let view = DBView::load(k.clone(), v.iter()).expect(line_error!());
-
-            rids.push(view.all().collect());
-
-            vaults.insert(k.clone(), Some(view));
-
-            cache.insert(k, v);
-        });
-
-        self.cache = cache;
-        self.vaults = vaults;
-
-        (keystore_keys, rids)
     }
 }
 
