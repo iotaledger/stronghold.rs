@@ -43,6 +43,7 @@ impl ID {
         Ok(Self(buf))
     }
 
+    #[allow(dead_code)]
     pub fn load(data: &[u8]) -> crate::Result<Self> {
         data.try_into()
     }

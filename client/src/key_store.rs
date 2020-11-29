@@ -21,7 +21,10 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
     }
 
     pub fn create_key(&mut self, id: VaultId) -> Key<P> {
-        let key = self.store.entry(id).or_insert(Key::<P>::random().expect(line_error!()));
+        let key = self
+            .store
+            .entry(id)
+            .or_insert_with(|| Key::<P>::random().expect(line_error!()));
 
         key.clone()
     }
@@ -44,13 +47,5 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
         self.store = store;
 
         id_buffer
-    }
-
-    pub fn get_vault_ids(&mut self) -> Vec<VaultId> {
-        let mut ids = Vec::new();
-
-        self.store.keys().into_iter().for_each(|id| ids.push(*id));
-
-        ids
     }
 }

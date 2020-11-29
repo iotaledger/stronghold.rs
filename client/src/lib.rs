@@ -7,6 +7,7 @@
 // TODO: Encrypted Return Channel
 // TODO: Handshake
 // TODO: O(1) comparison for IDS.
+// TODO: Remove #[allow(dead_code)]s.
 
 use thiserror::Error as DeriveError;
 

@@ -19,6 +19,7 @@ use std::collections::HashMap;
 /// TODO: Add Handshake Messages.
 #[actor(SHRequest, InternalResults, SHResults)]
 pub struct Client {
+    #[allow(dead_code)]
     id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
     vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
@@ -140,6 +141,7 @@ impl Client {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_index(&self, vid: VaultId) -> Option<usize> {
         if self.vaults.contains_key(&vid) {
             let (idx, _) = self.vaults.get(&vid).expect(line_error!());
@@ -177,13 +179,7 @@ impl Actor for Client {
 
         let topic = Topic::from("external");
 
-        self.chan.tell(
-            Subscribe {
-                actor: sub.clone(),
-                topic,
-            },
-            None,
-        );
+        self.chan.tell(Subscribe { actor: sub, topic }, None);
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {

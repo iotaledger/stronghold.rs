@@ -20,9 +20,10 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         Self { cache, vaults }
     }
 
+    #[allow(dead_code)]
     pub fn get_vault_recordids(&mut self, key: Key<P>) -> Vec<RecordId> {
         let mut buffer = Vec::new();
-        self.take(key.clone(), |view, reads| {
+        self.take(key, |view, reads| {
             let map = view.chain_ctrs();
 
             map.keys().into_iter().for_each(|rid| {
@@ -148,11 +149,11 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         let view = _view.take().expect(line_error!());
         let res = f(view, reads);
         self.insert_reads(key.clone(), res);
-        self.insert_view(key.clone(), _view);
+        self.insert_view(key, _view);
     }
 
     fn get_view(&mut self, key: Key<P>, reads: Vec<ReadResult>) -> Option<DBView<P>> {
-        self.vaults.remove(&key.clone());
+        self.vaults.remove(&key);
 
         Some(DBView::load(key, reads.iter()).expect(line_error!()))
     }
