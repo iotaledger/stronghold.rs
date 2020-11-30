@@ -25,7 +25,7 @@ custom messages and parse them.
 ## Stronghold-Communication
 
 Similar to the swarm in libp2p, the stronghold-communication creates the `P2PNetworkBehaviour` struct that manages sending messages and reacting upon the outcome of the operation. 
-Upon creating a new instance, a transport is created and upgraded, and combined with a the P2PNetworkBehaviour into a ExpandedSwarm. This Swarm is returned to the caller and serves as entrypoint for all communication to other peers. It implements methods for listening to the swarm, sending outbound messages, and manually adding and dialing peers. Incoming `CommunicationEvent` can be handled by polling from the swarm, e.g. via the `poll_next_unpin` method. 
+Upon creating a new instance, a transport is created and upgraded, and combined with a the P2PNetworkBehaviour into a ExpandedSwarm. This Swarm is returned to the caller and serves as entrypoint for all communication to other peers. It implements methods for listening to the swarm, sending outbound messages, and manually adding and dialing peers. Incoming `P2PEvent` can be handled by polling from the swarm, e.g. via the `poll_next_unpin` method. 
 Due to libp2ps concept of `multiaddresses`, the swarm has multiple listening addresses that encode different addressing schemes for different
 protocols. Apart from IPv4 and IPv6 Addresses, these multiaddresses can also be dns addresses, which is relevant if a peer is listening
 to such an address on a server. The listed multiaddresses are only the ones within the same local network, but if port forwarding was configured,

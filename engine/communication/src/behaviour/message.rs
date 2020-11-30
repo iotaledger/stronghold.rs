@@ -139,7 +139,7 @@ pub enum P2PReqResEvent<T, U> {
 
 /// Event that was emitted by one of the protocols of the `P2PNetwokBehaviour`
 #[derive(Debug, Clone, PartialEq)]
-pub enum CommunicationEvent<T, U> {
+pub enum P2PEvent<T, U> {
     /// Events from the libp2p mDNS protocol
     Mdns(P2PMdnsEvent),
     /// Events from the libp2p identify protocl
@@ -151,23 +151,23 @@ pub enum CommunicationEvent<T, U> {
 }
 
 #[cfg(feature = "mdns")]
-impl<T, U> From<MdnsEvent> for CommunicationEvent<T, U> {
-    fn from(event: MdnsEvent) -> CommunicationEvent<T, U> {
+impl<T, U> From<MdnsEvent> for P2PEvent<T, U> {
+    fn from(event: MdnsEvent) -> P2PEvent<T, U> {
         match event {
-            MdnsEvent::Discovered(list) => CommunicationEvent::Mdns(P2PMdnsEvent::Discovered(list.collect())),
-            MdnsEvent::Expired(list) => CommunicationEvent::Mdns(P2PMdnsEvent::Expired(list.collect())),
+            MdnsEvent::Discovered(list) => P2PEvent::Mdns(P2PMdnsEvent::Discovered(list.collect())),
+            MdnsEvent::Expired(list) => P2PEvent::Mdns(P2PMdnsEvent::Expired(list.collect())),
         }
     }
 }
 
-impl<T, U> From<IdentifyEvent> for CommunicationEvent<T, U> {
-    fn from(event: IdentifyEvent) -> CommunicationEvent<T, U> {
+impl<T, U> From<IdentifyEvent> for P2PEvent<T, U> {
+    fn from(event: IdentifyEvent) -> P2PEvent<T, U> {
         match event {
             IdentifyEvent::Received {
                 peer_id,
                 info,
                 observed_addr,
-            } => CommunicationEvent::Identify(Box::new(P2PIdentifyEvent::Received {
+            } => P2PEvent::Identify(Box::new(P2PIdentifyEvent::Received {
                 peer_id,
                 info: P2PIdentifyInfo {
                     public_key: info.public_key,
@@ -178,36 +178,34 @@ impl<T, U> From<IdentifyEvent> for CommunicationEvent<T, U> {
                 },
                 observed_addr,
             })),
-            IdentifyEvent::Sent { peer_id } => {
-                CommunicationEvent::Identify(Box::new(P2PIdentifyEvent::Sent { peer_id }))
-            }
+            IdentifyEvent::Sent { peer_id } => P2PEvent::Identify(Box::new(P2PIdentifyEvent::Sent { peer_id })),
             IdentifyEvent::Error { peer_id, error } => {
                 let error = match error {
                     ProtocolsHandlerUpgrErr::Timeout => P2PProtocolsHandlerUpgrErr::Timeout,
                     ProtocolsHandlerUpgrErr::Timer => P2PProtocolsHandlerUpgrErr::Timer,
                     ProtocolsHandlerUpgrErr::Upgrade(_) => P2PProtocolsHandlerUpgrErr::Upgrade,
                 };
-                CommunicationEvent::Identify(Box::new(P2PIdentifyEvent::Error { peer_id, error }))
+                P2PEvent::Identify(Box::new(P2PIdentifyEvent::Error { peer_id, error }))
             }
         }
     }
 }
 
-impl<T, U> From<RequestResponseEvent<T, U>> for CommunicationEvent<T, U> {
-    fn from(event: RequestResponseEvent<T, U>) -> CommunicationEvent<T, U> {
+impl<T, U> From<RequestResponseEvent<T, U>> for P2PEvent<T, U> {
+    fn from(event: RequestResponseEvent<T, U>) -> P2PEvent<T, U> {
         match event {
             RequestResponseEvent::Message { peer, message } => match message {
                 RequestResponseMessage::Request {
                     request_id,
                     request,
                     channel: _,
-                } => CommunicationEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
+                } => P2PEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
                     peer_id: peer,
                     request_id: Some(request_id),
                     request,
                 })),
                 RequestResponseMessage::Response { request_id, response } => {
-                    CommunicationEvent::RequestResponse(Box::new(P2PReqResEvent::Res {
+                    P2PEvent::RequestResponse(Box::new(P2PReqResEvent::Res {
                         peer_id: peer,
                         request_id,
                         response,
@@ -225,7 +223,7 @@ impl<T, U> From<RequestResponseEvent<T, U>> for CommunicationEvent<T, U> {
                     OutboundFailure::ConnectionClosed => P2POutboundFailure::ConnectionClosed,
                     OutboundFailure::UnsupportedProtocols => P2POutboundFailure::UnsupportedProtocols,
                 };
-                CommunicationEvent::RequestResponse(Box::new(P2PReqResEvent::OutboundFailure {
+                P2PEvent::RequestResponse(Box::new(P2PReqResEvent::OutboundFailure {
                     peer_id: peer,
                     request_id,
                     error,
@@ -241,7 +239,7 @@ impl<T, U> From<RequestResponseEvent<T, U>> for CommunicationEvent<T, U> {
                     InboundFailure::ConnectionClosed => P2PInboundFailure::ConnectionClosed,
                     InboundFailure::UnsupportedProtocols => P2PInboundFailure::UnsupportedProtocols,
                 };
-                CommunicationEvent::RequestResponse(Box::new(P2PReqResEvent::InboundFailure {
+                P2PEvent::RequestResponse(Box::new(P2PReqResEvent::InboundFailure {
                     peer_id: peer,
                     request_id,
                     error,
@@ -298,7 +296,7 @@ mod test {
                 protocols: protocols.clone(),
             },
         };
-        let expected = CommunicationEvent::<Request, Response>::Identify(Box::new(P2PIdentifyEvent::Received {
+        let expected = P2PEvent::<Request, Response>::Identify(Box::new(P2PIdentifyEvent::Received {
             peer_id: peer_id.clone(),
             observed_addr,
             info: P2PIdentifyInfo {
@@ -309,22 +307,22 @@ mod test {
                 protocols,
             },
         }));
-        assert_eq!(CommunicationEvent::<Request, Response>::from(received_event), expected);
+        assert_eq!(P2PEvent::<Request, Response>::from(received_event), expected);
         let sent_event = IdentifyEvent::Sent {
             peer_id: peer_id.clone(),
         };
-        let expected = CommunicationEvent::Identify(Box::new(P2PIdentifyEvent::Sent {
+        let expected = P2PEvent::Identify(Box::new(P2PIdentifyEvent::Sent {
             peer_id: peer_id.clone(),
         }));
-        assert_eq!(CommunicationEvent::<Request, Response>::from(sent_event), expected);
+        assert_eq!(P2PEvent::<Request, Response>::from(sent_event), expected);
         let error_event = IdentifyEvent::Error {
             peer_id: peer_id.clone(),
             error: ProtocolsHandlerUpgrErr::Timeout,
         };
-        let expected = CommunicationEvent::Identify(Box::new(P2PIdentifyEvent::Error {
+        let expected = P2PEvent::Identify(Box::new(P2PIdentifyEvent::Error {
             peer_id,
             error: P2PProtocolsHandlerUpgrErr::Timeout,
         }));
-        assert_eq!(CommunicationEvent::<Request, Response>::from(error_event), expected);
+        assert_eq!(P2PEvent::<Request, Response>::from(error_event), expected);
     }
 }

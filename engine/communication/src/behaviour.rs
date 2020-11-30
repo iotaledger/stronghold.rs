@@ -8,6 +8,7 @@ use core::{
     iter,
     marker::PhantomData,
     task::{Context, Poll},
+    time::Duration,
 };
 use error::{QueryError, QueryResult};
 #[cfg(feature = "mdns")]
@@ -24,7 +25,7 @@ use libp2p::{
     swarm::{NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters, Swarm},
     NetworkBehaviour,
 };
-use message::{CommunicationEvent, P2PMdnsEvent, P2PReqResEvent};
+use message::{P2PEvent, P2PMdnsEvent, P2PReqResEvent};
 pub use protocol::MessageEvent;
 use protocol::{MessageCodec, MessageProtocol};
 // TODO: support no_std
@@ -33,7 +34,7 @@ use std::collections::BTreeMap;
 type ReqIdStr = String;
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "CommunicationEvent<T, U>", poll_method = "poll")]
+#[behaviour(out_event = "P2PEvent<T, U>", poll_method = "poll")]
 pub struct P2PNetworkBehaviour<T: MessageEvent, U: MessageEvent> {
     #[cfg(feature = "mdns")]
     mdns: Mdns,
@@ -42,7 +43,7 @@ pub struct P2PNetworkBehaviour<T: MessageEvent, U: MessageEvent> {
     #[behaviour(ignore)]
     peers: BTreeMap<PeerId, Multiaddr>,
     #[behaviour(ignore)]
-    events: Vec<CommunicationEvent<T, U>>,
+    events: Vec<P2PEvent<T, U>>,
     #[behaviour(ignore)]
     response_channels: BTreeMap<ReqIdStr, ResponseChannel<U>>,
 }
@@ -93,7 +94,8 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
         );
         // Create RequestResponse behaviour with MessageProtocol
         let msg_proto = {
-            let cfg = RequestResponseConfig::default();
+            let mut cfg = RequestResponseConfig::default();
+            cfg.set_connection_keep_alive(Duration::from_secs(60));
             let protocols = iter::once((MessageProtocol(), ProtocolSupport::Full));
             RequestResponse::new(MessageCodec::<T, U>::new(PhantomData, PhantomData), protocols, cfg)
         };
@@ -117,7 +119,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
         &mut self,
         _cx: &mut Context<'_>,
         _params: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<TEv, CommunicationEvent<T, U>>> {
+    ) -> Poll<NetworkBehaviourAction<TEv, P2PEvent<T, U>>> {
         if !self.events.is_empty() {
             return Poll::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)));
         }
@@ -164,8 +166,8 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> f
     // Called when `mdns` produces an event.
     #[allow(unused_variables)]
     fn inject_event(&mut self, event: MdnsEvent) {
-        let comm_event = CommunicationEvent::from(event);
-        if let CommunicationEvent::Mdns(e) = comm_event.clone() {
+        let comm_event = P2PEvent::from(event);
+        if let P2PEvent::Mdns(e) = comm_event.clone() {
             match e {
                 P2PMdnsEvent::Discovered(list) => {
                     for (peer_id, multiaddr) in list {
@@ -199,13 +201,13 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestRespo
         } = event
         {
             self.response_channels.insert(request_id.to_string(), channel);
-            CommunicationEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
+            P2PEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
                 peer_id: peer,
                 request_id: Some(request_id),
                 request,
             }))
         } else {
-            CommunicationEvent::from(event)
+            P2PEvent::from(event)
         };
         self.events.push(communication_event);
     }
@@ -214,7 +216,7 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestRespo
 impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEvent> for P2PNetworkBehaviour<T, U> {
     // Called when `identify` produces an event.
     fn inject_event(&mut self, event: IdentifyEvent) {
-        self.events.push(CommunicationEvent::from(event));
+        self.events.push(P2PEvent::from(event));
     }
 }
 

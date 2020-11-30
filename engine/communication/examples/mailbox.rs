@@ -70,7 +70,7 @@ use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
 use communication::behaviour::{
     error::{QueryError, QueryResult},
-    message::{CommunicationEvent, P2PReqResEvent},
+    message::{P2PEvent, P2PReqResEvent},
     P2PNetworkBehaviour,
 };
 use core::{
@@ -178,7 +178,7 @@ fn run_mailbox(matches: &ArgMatches) -> QueryResult<()> {
             // keys
             match swarm.poll_next_unpin(cx) {
                 Poll::Ready(Some(e)) => {
-                    if let CommunicationEvent::RequestResponse(event) = e {
+                    if let P2PEvent::RequestResponse(event) = e {
                         if let P2PReqResEvent::Req {
                             peer_id: _,
                             request_id: Some(request_id),
@@ -256,7 +256,7 @@ fn put_record(matches: &ArgMatches) -> QueryResult<()> {
                 // poll for the outcome of the request
                 match swarm.poll_next_unpin(cx) {
                     Poll::Ready(Some(e)) => {
-                        if let CommunicationEvent::RequestResponse(event) = e {
+                        if let P2PEvent::RequestResponse(event) = e {
                             if let P2PReqResEvent::Res {
                                 peer_id: _,
                                 request_id,
@@ -319,7 +319,7 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
                 // poll for the outcome of the request
                 match swarm.poll_next_unpin(cx) {
                     Poll::Ready(Some(e)) => {
-                        if let CommunicationEvent::RequestResponse(event) = e {
+                        if let P2PEvent::RequestResponse(event) = e {
                             if let P2PReqResEvent::Res {
                                 peer_id: _,
                                 request_id,

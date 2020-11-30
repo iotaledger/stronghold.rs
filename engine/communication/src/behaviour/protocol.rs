@@ -53,6 +53,7 @@ where
     type Request = T;
     type Response = U;
 
+    // read requests from remote peers and parse them into the request struct
     async fn read_request<R>(&mut self, _: &MessageProtocol, io: &mut R) -> IOResult<Self::Request>
     where
         R: AsyncRead + Unpin + Send,
@@ -67,6 +68,7 @@ where
             .await
     }
 
+    // read responses from remote peers and parse them into the request struct
     async fn read_response<R>(&mut self, _: &MessageProtocol, io: &mut R) -> IOResult<Self::Response>
     where
         R: AsyncRead + Unpin + Send,
@@ -81,7 +83,7 @@ where
             .await
     }
 
-    /// read requests from remote peers and parse them into the request struct
+    // deserialize request and write to the io socket
     async fn write_request<R>(&mut self, _: &MessageProtocol, io: &mut R, req: Self::Request) -> IOResult<()>
     where
         R: AsyncWrite + Unpin + Send,
@@ -90,7 +92,7 @@ where
         write_one(io, buf).await
     }
 
-    /// read requests from remote peers and parse them into the request struct
+    //  deserialize response and write to the io socket
     async fn write_response<R>(&mut self, _: &MessageProtocol, io: &mut R, res: Self::Response) -> IOResult<()>
     where
         R: AsyncWrite + Unpin + Send,

@@ -45,7 +45,7 @@ use async_std::{
 };
 use communication::behaviour::{
     error::{QueryError, QueryResult},
-    message::{CommunicationEvent, P2PIdentifyEvent, P2PReqResEvent},
+    message::{P2PEvent, P2PIdentifyEvent, P2PReqResEvent},
     P2PNetworkBehaviour,
 };
 use core::{
@@ -109,7 +109,7 @@ fn listen() -> QueryResult<()> {
             // poll for events from the swarm
             match swarm.poll_next_unpin(cx) {
                 Poll::Ready(Some(e)) => match e {
-                    CommunicationEvent::RequestResponse(event) => match event.deref().clone() {
+                    P2PEvent::RequestResponse(event) => match event.deref().clone() {
                         P2PReqResEvent::Req {
                             peer_id,
                             request_id: Some(request_id),
@@ -148,7 +148,7 @@ fn listen() -> QueryResult<()> {
                             println!("Error {:?}", error)
                         }
                     },
-                    CommunicationEvent::Identify(event) => {
+                    P2PEvent::Identify(event) => {
                         if let P2PIdentifyEvent::Received {
                             peer_id,
                             info: _,

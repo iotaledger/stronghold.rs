@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::behaviour::{
-    message::{CommunicationEvent, P2PReqResEvent},
+    message::{P2PEvent, P2PReqResEvent},
     MessageEvent, P2PNetworkBehaviour,
 };
 use async_std::task;
@@ -11,19 +11,74 @@ use core::{
     task::{Context as TaskContext, Poll},
 };
 use futures::{channel::mpsc, future, prelude::*};
-use libp2p::{core::identity::Keypair, swarm::Swarm};
+use libp2p::{
+    core::{connection::PendingConnectionError, identity::Keypair, ConnectedPoint, Multiaddr},
+    swarm::{Swarm, SwarmEvent},
+};
 use riker::actors::*;
 
 #[derive(Debug, Clone)]
-pub enum CommActorEvent<T, U> {
-    Message(CommunicationEvent<T, U>),
+pub enum ConnectPeerError {
+    Transport,
+    InvalidPeerId,
+    ConnectionLimit,
+    IO,
+}
+
+impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
+    fn from(error: PendingConnectionError<TTransErr>) -> Self {
+        match error {
+            PendingConnectionError::Transport(_) => ConnectPeerError::Transport,
+            PendingConnectionError::InvalidPeerId => ConnectPeerError::InvalidPeerId,
+            PendingConnectionError::ConnectionLimit(_) => ConnectPeerError::ConnectionLimit,
+            PendingConnectionError::IO(_) => ConnectPeerError::IO,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CommunicationEvent<T, U> {
+    Message(P2PReqResEvent<T, U>),
+    ConnectPeer(Multiaddr),
+    ConnectPeerResult {
+        addr: Multiaddr,
+        result: Result<(), ConnectPeerError>,
+    },
     Shutdown,
 }
 
+/// Actor for the communication to a remote actor over the swarm
+///
+/// Publishes incoming request- and response-messages from the swarm in the given channel to the "swarm_inbound"
+/// topic and subscribes to the "swarm_outbound".  
+/// Received `CommunicationEvent::Message` are send to the associated Peer.
+///
+///
+/// ```no_run
+/// use communication::actor::{CommunicationActor, CommunicationEvent};
+/// use libp2p::identity::Keypair;
+/// use riker::actors::*;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// pub enum Request {
+///     Ping,
+/// }
+///
+/// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// pub enum Response {
+///     Pong,
+/// }
+///
+/// let local_keys = Keypair::generate_ed25519();
+/// let sys = ActorSystem::new().unwrap();
+/// let chan: ChannelRef<CommunicationEvent<Request, Response>> = channel("remote-peer", &sys).unwrap();
+/// sys.actor_of_args::<CommunicationActor<Request, Response>, _>("communication-actor", (local_keys, chan));
+/// ```
 pub struct CommunicationActor<T: MessageEvent, U: MessageEvent> {
     chan: ChannelRef<CommunicationEvent<T, U>>,
     keypair: Keypair,
-    swarm_tx: Option<mpsc::Sender<CommActorEvent<T, U>>>,
+    swarm_tx: Option<mpsc::Sender<CommunicationEvent<T, U>>>,
     poll_swarm_handle: Option<future::RemoteHandle<()>>,
 }
 
@@ -66,61 +121,8 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
         let topic = Topic::from("swarm_inbound");
 
         // Kick off the swarm communication in it's own task.
-        let handle = ctx.run(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
-            // Poll for request that are forwarded through the swarm_tx channel and send them over the swarm to remote
-            // peers.
-            loop {
-                let event = match swarm_rx.poll_next_unpin(tcx) {
-                    Poll::Ready(Some(event)) => event,
-                    Poll::Ready(None) => return Poll::Ready(()),
-                    Poll::Pending => break,
-                };
-                match event {
-                    CommActorEvent::Message(message) => {
-                        if let CommunicationEvent::RequestResponse(boxed_event) = message {
-                            match boxed_event.deref().clone() {
-                                P2PReqResEvent::Req {
-                                    peer_id,
-                                    request_id: _,
-                                    request,
-                                } => {
-                                    swarm.send_request(&peer_id, request);
-                                }
-                                P2PReqResEvent::Res {
-                                    peer_id: _,
-                                    request_id,
-                                    response,
-                                } => {
-                                    swarm.send_response(response, request_id).unwrap();
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    CommActorEvent::Shutdown => {
-                        // Break from the loop and end task.
-                        return Poll::Ready(());
-                    }
-                }
-            }
-            // Poll from the swarm for requests and responses from remote peers and publish them in the channel.
-            loop {
-                match swarm.poll_next_unpin(tcx) {
-                    Poll::Ready(Some(event)) => {
-                        println!("Received event: {:?}", event);
-                        chan.tell(
-                            Publish {
-                                msg: event,
-                                topic: topic.clone(),
-                            },
-                            None,
-                        )
-                    }
-                    Poll::Ready(None) => return Poll::Ready(()),
-                    Poll::Pending => break,
-                }
-            }
-            Poll::Pending
+        let handle = ctx.run(future::poll_fn(move |mut tcx: &mut TaskContext<'_>| {
+            poll_swarm(&mut tcx, &mut swarm, &mut swarm_rx, &chan, topic.clone())
         }));
         self.poll_swarm_handle = handle.ok();
     }
@@ -130,7 +132,7 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
         if let Some(tx) = self.swarm_tx.as_mut() {
             task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
                 match tx.poll_ready(tcx) {
-                    Poll::Ready(Ok(())) => Poll::Ready(tx.start_send(CommActorEvent::Shutdown)),
+                    Poll::Ready(Ok(())) => Poll::Ready(tx.start_send(CommunicationEvent::Shutdown)),
                     Poll::Ready(err) => Poll::Ready(err),
                     _ => Poll::Pending,
                 }
@@ -142,17 +144,169 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
         }
     }
 
-    /// Forward the received events to the task that is managing the swarm communication.
+    // Forward the received events to the task that is managing the swarm communication.
     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         if let Some(tx) = self.swarm_tx.as_mut() {
             task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
                 match tx.poll_ready(tcx) {
-                    Poll::Ready(Ok(())) => Poll::Ready(tx.start_send(CommActorEvent::Message(msg.clone()))),
+                    Poll::Ready(Ok(())) => Poll::Ready(tx.start_send(msg.clone())),
                     Poll::Ready(err) => Poll::Ready(err),
                     _ => Poll::Pending,
                 }
             }))
             .unwrap();
         }
+    }
+}
+
+// Poll from the swarm for events from remote peers and from the `swarm_tx` channel for events from the local actor, and
+// forward them
+fn poll_swarm<T: MessageEvent, U: MessageEvent>(
+    tcx: &mut TaskContext<'_>,
+    swarm: &mut Swarm<P2PNetworkBehaviour<T, U>>,
+    swarm_rx: &mut mpsc::Receiver<CommunicationEvent<T, U>>,
+    chan: &ChannelRef<CommunicationEvent<T, U>>,
+    topic: Topic,
+) -> Poll<()> {
+    // Poll for request that are forwarded through the swarm_tx channel and send them over the swarm to remote
+    // peers.
+    loop {
+        let event = match swarm_rx.poll_next_unpin(tcx) {
+            Poll::Ready(Some(event)) => event,
+            Poll::Ready(None) => return Poll::Ready(()),
+            Poll::Pending => break,
+        };
+        match event {
+            CommunicationEvent::Message(message) => match message {
+                P2PReqResEvent::Req {
+                    peer_id,
+                    request_id: _,
+                    request,
+                } => {
+                    swarm.send_request(&peer_id, request);
+                }
+                P2PReqResEvent::Res {
+                    peer_id: _,
+                    request_id,
+                    response,
+                } => {
+                    swarm.send_response(response, request_id).unwrap();
+                }
+                _ => {}
+            },
+            CommunicationEvent::ConnectPeer(addr) => connect_remote(swarm, addr, chan, topic.clone()),
+            CommunicationEvent::Shutdown => {
+                // Break from the loop and end task.
+                return Poll::Ready(());
+            }
+            _ => {}
+        }
+    }
+    // Poll from the swarm for requests and responses from remote peers and publish them in the channel.
+    loop {
+        match swarm.poll_next_unpin(tcx) {
+            Poll::Ready(Some(event)) => {
+                println!("Received event: {:?}", event);
+                if let P2PEvent::RequestResponse(boxed_event) = event {
+                    chan.tell(
+                        Publish {
+                            msg: CommunicationEvent::Message(boxed_event.deref().clone()),
+                            topic: topic.clone(),
+                        },
+                        None,
+                    )
+                }
+            }
+            Poll::Ready(None) => return Poll::Ready(()),
+            Poll::Pending => break,
+        }
+    }
+    Poll::Pending
+}
+
+fn connect_remote<T: MessageEvent, U: MessageEvent>(
+    swarm: &mut Swarm<P2PNetworkBehaviour<T, U>>,
+    addr: Multiaddr,
+    chan: &ChannelRef<CommunicationEvent<T, U>>,
+    topic: Topic,
+) {
+    if Swarm::dial_addr(swarm, addr.clone()).is_ok() {
+        loop {
+            match task::block_on(swarm.next_event()) {
+                SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
+                    chan.tell(
+                        Publish {
+                            msg: CommunicationEvent::Message(boxed_event.deref().clone()),
+                            topic,
+                        },
+                        None,
+                    );
+                    break;
+                }
+                SwarmEvent::ConnectionEstablished {
+                    peer_id: _,
+                    endpoint: ConnectedPoint::Dialer { address },
+                    num_established: _,
+                } => {
+                    if address == addr {
+                        chan.tell(
+                            Publish {
+                                msg: CommunicationEvent::ConnectPeerResult { addr, result: Ok(()) },
+                                topic,
+                            },
+                            None,
+                        );
+                        break;
+                    }
+                }
+                SwarmEvent::UnreachableAddr {
+                    peer_id: _,
+                    address,
+                    error,
+                    attempts_remaining: 0,
+                } => {
+                    if address == addr {
+                        chan.tell(
+                            Publish {
+                                msg: CommunicationEvent::ConnectPeerResult {
+                                    addr,
+                                    result: Err(ConnectPeerError::from(error)),
+                                },
+                                topic,
+                            },
+                            None,
+                        );
+                        break;
+                    }
+                }
+                SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {
+                    if address == addr {
+                        chan.tell(
+                            Publish {
+                                msg: CommunicationEvent::ConnectPeerResult {
+                                    addr,
+                                    result: Err(ConnectPeerError::from(error)),
+                                },
+                                topic,
+                            },
+                            None,
+                        );
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+    } else {
+        chan.tell(
+            Publish {
+                msg: CommunicationEvent::ConnectPeerResult {
+                    addr,
+                    result: Err(ConnectPeerError::Transport),
+                },
+                topic,
+            },
+            None,
+        );
     }
 }
