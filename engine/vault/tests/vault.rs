@@ -156,7 +156,7 @@ fn test_write_twice() -> Result<()> {
 }
 
 #[test]
-fn test_rekove() -> Result<()> {
+fn test_revoke() -> Result<()> {
     let k: Key<Provider> = Key::random()?;
     let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
 

@@ -91,14 +91,13 @@ impl Chain {
                     TransactionType::Revocation => {
                         revokes.push(tx.id);
                         revocation_score += 1;
-                    }
-                    //TransactionType::Unrevocation => {
-                    //    if revocation_score <= 0 {
-                    //        res.garbage.push(tx.id);
-                    //    } else {
-                    //        revocation_score -= 1;
-                    //    }
-                    //}
+                    } //TransactionType::Unrevocation => {
+                      //    if revocation_score <= 0 {
+                      //        res.garbage.push(tx.id);
+                      //    } else {
+                      //        revocation_score -= 1;
+                      //    }
+                      //}
                 }
 
                 res.subchain.push(tx.id);
