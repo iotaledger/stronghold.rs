@@ -137,7 +137,7 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
             BMsg::CreateVault(vid, key) => {
                 let (_, rid) = self.create_and_init_vault(key);
 
-                let client = ctx.select("/user/client/").expect(line_error!());
+                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnCreateVault(vid, rid)),
                     None,
@@ -146,7 +146,7 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
             BMsg::ReadData(key, rid) => {
                 let plain = self.read_data(key, rid);
 
-                let client = ctx.select("/user/client/").expect(line_error!());
+                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
                 client.try_tell(ClientMsg::InternalResults(InternalResults::ReturnReadData(plain)), None);
             }
             BMsg::WriteData(key, rid, payload, hint) => {
@@ -155,7 +155,7 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
             BMsg::InitRecord(key, vid) => {
                 let rid = self.init_record(key);
 
-                let client = ctx.select("/user/client/").expect(line_error!());
+                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnInitRecord(vid, rid)),
                     None,
@@ -170,7 +170,7 @@ impl Receive<BMsg<Provider>> for Bucket<Provider> {
             BMsg::ListAsk(key) => {
                 let ids = self.list_ids(key);
 
-                let client = ctx.select("/user/client/").expect(line_error!());
+                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
                 client.try_tell(ClientMsg::InternalResults(InternalResults::ReturnList(ids)), None);
             }
             BMsg::WriteSnapshot(pass, name, path) => {
@@ -256,7 +256,7 @@ impl Receive<KMsg> for KeyStore<Provider> {
             KMsg::RebuildKeys(keys, rids) => {
                 let vids = self.rebuild_keystore(keys);
 
-                let client = ctx.select("/user/client/").expect(line_error!());
+                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::RebuildCache(vids, rids)),
                     None,

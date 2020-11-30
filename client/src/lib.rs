@@ -54,15 +54,15 @@ pub enum Error {
     VaultError(#[from] engine::vault::Error),
 }
 
-/// Creates the ActorSystem for stronghold and attaches the actors.  Returns the ActorSystem and the Channel.
-pub fn init_stronghold() -> (ActorSystem, ChannelRef<SHResults>) {
-    let sys = ActorSystem::new().unwrap();
+/// Attaches the Stronghold Actors to the Riker `ActorSystem`.  Returns the ActorSystem and the a `ChannelRef<SHResults>`.
+pub fn init_stronghold(sys: ActorSystem) -> (ActorSystem, ChannelRef<SHResults>) {
     let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
 
-    sys.actor_of_args::<Client, _>("client", chan.clone()).unwrap();
     sys.actor_of::<Bucket<Provider>>("bucket").unwrap();
     sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
     sys.actor_of::<Snapshot>("snapshot").unwrap();
+    sys.actor_of_args::<Client, _>("stronghold-internal", chan.clone())
+        .unwrap();
 
     (sys, chan)
 }

@@ -31,24 +31,38 @@ pub struct Client {
 /// Messages to interact with Stronghold
 #[derive(Clone, Debug)]
 pub enum SHRequest {
+    // Creates a new Vault.
     CreateNewVault,
+    // Writes data to a record in the vault.  Accepts the vault id, an optional record id, the payload and the record hint.  If a record id is not specified, the write will default to the head of the vault.  Returns `ReturnCreate`.
     WriteData(VaultId, Option<RecordId>, Vec<u8>, RecordHint),
+    // Moves the head forward in the specified Vault and opens a new record.  Returns `ReturnInit`.
     InitRecord(VaultId),
+    // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not specified, it reads the head.  Returns with `ReturnRead`.
     ReadData(VaultId, Option<RecordId>),
+    // Marks a Record for deletion.  Accepts a vault id and a record id.  Deletion only occurs after a `GarbageCollect` is called.
     RevokeData(VaultId, RecordId),
+    // Garbages collects any marked records on a Vault. Accepts the vault id.
     GarbageCollect(VaultId),
+    // Lists all of the record ids and the record hints for the records in a vault.  Accepts a vault id and returns with `ReturnList`.
     ListIds(VaultId),
+    // Writes to the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
     WriteSnapshot(String, Option<String>, Option<PathBuf>),
+    // Reads from the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
     ReadSnapshot(String, Option<String>, Option<PathBuf>),
 }
 
 /// Messages that come from stronghold
 #[derive(Clone, Debug)]
 pub enum SHResults {
+    // Results from calling `CreateNewVault`.
     ReturnCreate(VaultId, RecordId),
+    // Results from calling `InitRecord`.
     ReturnInit(VaultId, RecordId),
+    // Results from calling `ReadData`
     ReturnRead(Vec<u8>),
+    // Results from calling `ListIds`
     ReturnList(Vec<(RecordId, RecordHint)>),
+    // Results from calling `ReadSnapshot`
     ReturnRebuild(Vec<VaultId>, Vec<Vec<RecordId>>),
 }
 
@@ -439,12 +453,12 @@ mod test {
         fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InterfaceMsg, _sender: Sender) {
             match msg {
                 InterfaceMsg::CreateVault => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
+                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
 
                     client.try_tell(ClientMsg::SHRequest(SHRequest::CreateNewVault), None);
                 }
                 InterfaceMsg::WriteData(vidx, ridx, payload, hint) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
+                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
 
                     let rid = if let Some(ridx) = ridx {
                         let rids = self.records[vidx].clone();
@@ -462,14 +476,14 @@ mod test {
                     );
                 }
                 InterfaceMsg::InitRecord(vidx) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
+                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
 
                     let vid = self.vaults[vidx];
 
                     client.try_tell(ClientMsg::SHRequest(SHRequest::InitRecord(vid)), None);
                 }
                 InterfaceMsg::ReadData(vidx, ridx) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
+                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
 
                     let vid = self.vaults[vidx];
 
@@ -484,7 +498,7 @@ mod test {
                     client.try_tell(ClientMsg::SHRequest(SHRequest::ReadData(vid, rid)), None);
                 }
                 InterfaceMsg::RevokeData(vidx, ridx) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
+                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
 
                     let vid = self.vaults[vidx];
 
@@ -495,26 +509,26 @@ mod test {
                     client.try_tell(ClientMsg::SHRequest(SHRequest::RevokeData(vid, rid)), None);
                 }
                 InterfaceMsg::GarbageCollect(vidx) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
+                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
 
                     let vid = self.vaults[vidx];
 
                     client.try_tell(ClientMsg::SHRequest(SHRequest::GarbageCollect(vid)), None);
                 }
                 InterfaceMsg::ListIds(vidx) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
+                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
 
                     let vid = self.vaults[vidx];
 
                     client.try_tell(ClientMsg::SHRequest(SHRequest::ListIds(vid)), None);
                 }
                 InterfaceMsg::WriteSnapshot(pass, name, path) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
+                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
 
                     client.try_tell(ClientMsg::SHRequest(SHRequest::WriteSnapshot(pass, name, path)), None);
                 }
                 InterfaceMsg::ReadSnapshot(pass, name, path) => {
-                    let client = ctx.select("/user/client/").expect(line_error!());
+                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
 
                     client.try_tell(ClientMsg::SHRequest(SHRequest::ReadSnapshot(pass, name, path)), None);
                 }
@@ -703,7 +717,9 @@ mod test {
     fn test_actor_model() {
         use crate::init_stronghold;
 
-        let (sys, chan) = init_stronghold();
+        let sys = ActorSystem::new().expect(line_error!());
+
+        let (sys, chan) = init_stronghold(sys);
 
         sys.actor_of_args::<MockExternal, _>("mock", chan).expect(line_error!());
 
