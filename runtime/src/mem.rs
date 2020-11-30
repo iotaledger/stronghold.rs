@@ -232,14 +232,17 @@ mod tests {
         k as u32
     }
 
-    fn fresh_layout() -> Layout {
+    fn fresh_non_zero_size(bound: usize) -> usize {
         let mut n = 0;
         while n == 0 {
-            n = OsRng.gen::<usize>() % 3 * page_size();
+            n = OsRng.gen::<usize>() % bound;
         }
+        n
+    }
 
+    fn fresh_layout() -> Layout {
+        let n = fresh_non_zero_size(3 * page_size());
         let a = 2usize.pow(OsRng.gen::<u32>() % page_size_exponent() + 3);
-
         Layout::from_size_align(n, a).unwrap()
     }
 
@@ -280,7 +283,7 @@ mod tests {
     #[test]
     fn allocate_random_sizes() -> crate::Result<()> {
         for _ in 1..10 {
-            do_sized_alloc_test(OsRng.gen::<usize>() % 1024 * 1024)?
+            do_sized_alloc_test(fresh_non_zero_size(1024 * 1024))?
         }
         Ok(())
     }
