@@ -1,6 +1,6 @@
 ---
-"client": major
-"vault": minor
+"client": minor
+"vault": patch
 ---
 
 Added the initial client logic and integrated it with the Riker actor model. Change includes a Client/Cache actor, a Bucket actor, a Snapshot actor, and a keystore actor.  All of the Stronghold APIs are available. 
@@ -24,17 +24,3 @@ Added the initial client logic and integrated it with the Riker actor model. Cha
 - `ReturnRebuild` Returns the results of `ReadSnapshot`, a `Vec<VaultId>` containing newly generated `VaultId`s and a `Vec<Vec<RecordId>>` containing all of the records for each vault in order.
 
 To call the APIs, currently you must call `init_stronghold()` which will return a tuple of the Riker `ActorSystem` and a `ChannelRef` of type `SHResults`.  The `ActorSystem` is used to attach any external actors and the `ChannelRef` is used to collect the outgoing messages from stronghold. 
-
-**TODOS**:
-- Synchronization via 4th actor and status type.
-- Add supervisors
-- Add documentation
-- Encrypted Return Channel
-- Build a Handshake Process
-- Create O(1) comparison for all IDS.
-- Remove #[allow(dead_code)]s tags.
-- Add more test coverage
-- Add a method of attaching metadata (`RecordHints`)
-- ~~Add ability to name snapshots~~
-- ~~Add ability to read and revoke records not on the head of the chain.~~
-- ~~Add Reference types for the RecordIds and VaultIds to expose to the External programs.~~
