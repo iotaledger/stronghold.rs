@@ -587,18 +587,23 @@ mod test {
                 MockExternalMsg::InterfaceMsg(InterfaceMsg::WriteSnapshot("password".into(), None, None)),
                 None,
             );
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            std::thread::sleep(std::time::Duration::from_millis(300));
+
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::RevokeData(1, 0)), None);
+
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::RevokeData(1, 1)), None);
+
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::GarbageCollect(1)), None);
+
             mock.try_tell(
                 MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadSnapshot("password".into(), None, None)),
                 None,
             );
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            std::thread::sleep(std::time::Duration::from_millis(300));
 
             mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(1, None)), None);
 
             mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(1, Some(0))), None);
-
-            std::thread::sleep(std::time::Duration::from_millis(200));
         }
     }
 
@@ -711,6 +716,6 @@ mod test {
 
         test.tell(StartTest {}, None);
 
-        std::thread::sleep(std::time::Duration::from_millis(5000));
+        std::thread::sleep(std::time::Duration::from_millis(2000));
     }
 }

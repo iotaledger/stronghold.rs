@@ -2,6 +2,8 @@
 target/
 Cargo.lock
 
+hold/
+
 # Runtime data
 pids
 *.pid
