@@ -101,3 +101,107 @@ where
         write_one(io, buf).await
     }
 }
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use async_std::{
+        io,
+        net::{TcpListener, TcpStream},
+        task,
+    };
+    use serde::Deserialize;
+
+    type RequestId = u64;
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+    struct Message {
+        id: RequestId,
+        msg: String,
+        record: Option<Record>,
+        message_type: Type,
+    }
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+    struct Record {
+        key: String,
+        values: Vec<String>,
+    }
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+    enum Type {
+        Request,
+        Response(RequestId),
+    }
+
+    #[test]
+    fn send_request() {
+        let listener = task::spawn(async {
+            let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+            let mut incoming = listener.incoming();
+            let stream = incoming.next().await.unwrap().unwrap();
+            let (reader, writer) = &mut (&stream, &stream);
+            io::copy(reader, writer).await.unwrap();
+        });
+
+        let writer = task::spawn(async {
+            let protocol = MessageProtocol();
+            let mut codec = MessageCodec::<Message, Message>::new(PhantomData, PhantomData);
+            let mut socket = TcpStream::connect("127.0.0.1:8080").await.unwrap();
+            let record = Record {
+                key: "key1".to_string(),
+                values: vec!["value1".to_string(), "value2".to_string()],
+            };
+            let message = Message {
+                id: 1u64,
+                msg: "POST/record".to_string(),
+                record: Some(record),
+                message_type: Type::Request,
+            };
+            codec
+                .write_request(&protocol, &mut socket, message.clone())
+                .await
+                .unwrap();
+            let received = codec.read_request(&protocol, &mut socket).await.unwrap();
+            assert_eq!(message, received);
+        });
+        task::block_on(async {
+            listener.await;
+            writer.await;
+        })
+    }
+
+    #[test]
+    fn send_response() {
+        let listener = task::spawn(async {
+            let listener = TcpListener::bind("127.0.0.1:8081").await.unwrap();
+            let mut incoming = listener.incoming();
+            let stream = incoming.next().await.unwrap().unwrap();
+            let (reader, writer) = &mut (&stream, &stream);
+            io::copy(reader, writer).await.unwrap();
+        });
+
+        let writer = task::spawn(async {
+            let protocol = MessageProtocol();
+            let mut codec = MessageCodec::<Message, Message>::new(PhantomData, PhantomData);
+            let mut socket = TcpStream::connect("127.0.0.1:8081").await.unwrap();
+            let message = Message {
+                id: 2u64,
+                msg: "OK".to_string(),
+                record: None,
+                message_type: Type::Response(1u64),
+            };
+            codec
+                .write_response(&protocol, &mut socket, message.clone())
+                .await
+                .unwrap();
+            let received = codec.read_response(&protocol, &mut socket).await.unwrap();
+            assert_eq!(message, received);
+        });
+        task::block_on(async {
+            listener.await;
+            writer.await;
+        })
+    }
+}
