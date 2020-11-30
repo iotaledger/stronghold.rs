@@ -1,7 +1,7 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use engine::vault::{DeleteRequest, ListResult, ReadRequest, ReadResult, WriteRequest};
+use engine::vault::{DeleteRequest, ReadRequest, ReadResult, WriteRequest, Kind};
 
 use std::{thread, time::Duration};
 
@@ -19,7 +19,7 @@ pub enum CRequest {
 // results from the vault.
 #[derive(Clone)]
 pub enum CResult {
-    List(ListResult),
+    List(Vec<ReadResult>),
     Write,
     Delete,
     Read(ReadResult),
@@ -27,7 +27,7 @@ pub enum CResult {
 
 impl CResult {
     // get a list result back.
-    pub fn list(self) -> ListResult {
+    pub fn list(self) -> Vec<ReadResult> {
         match self {
             CResult::List(list) => list,
             _ => panic!(line_error!()),
@@ -41,20 +41,24 @@ pub fn send(req: CRequest) -> Option<CResult> {
         // if the request is a list, get the keys from the map and put them into a ListResult.
         CRequest::List => {
             let entries = State::storage_map()
-                .read()
-                .expect(line_error!())
-                .keys()
-                .cloned()
+                .read().expect(line_error!())
+                .iter()
+                .filter_map(|((k, id), bs)|
+                    if *k == Kind::Transaction {
+                        Some(ReadResult::new(*k, id, bs))
+                    } else {
+                        None
+                    }
+                )
                 .collect();
-
-            CResult::List(ListResult::new(entries))
+            CResult::List(entries)
         }
         // on write, write data to the map and send back a Write result.
         CRequest::Write(write) => {
             State::storage_map()
                 .write()
                 .expect(line_error!())
-                .insert(write.id().to_vec(), write.data().to_vec());
+                .insert((write.kind(), write.id().to_vec()), write.data().to_vec());
 
             CResult::Write
         }
@@ -63,20 +67,20 @@ pub fn send(req: CRequest) -> Option<CResult> {
             State::storage_map()
                 .write()
                 .expect(line_error!())
-                .retain(|id, _| *id != del.id());
+                .retain(|id, _| id.0 != del.kind() || id.1 != del.id());
 
             CResult::Delete
         }
         // on read, read the data from the map and send it back in a Read Result.
         CRequest::Read(read) => {
-            let state = State::storage_map()
+            let bs = State::storage_map()
                 .read()
                 .expect(line_error!())
-                .get(read.id())
+                .get(&(read.kind(), read.id().to_vec()))
                 .cloned()
                 .expect(line_error!());
 
-            CResult::Read(ReadResult::new(read.into(), state))
+            CResult::Read(read.result(bs))
         }
     };
 

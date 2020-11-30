@@ -30,9 +30,8 @@ pub(in crate) fn deserialize_from_snapshot(snapshot: &PathBuf, pass: &str) -> Cl
 
     let snap: Snapshot<Provider> = bincode::deserialize(&buffer[..]).expect("Unable to deserialize data");
 
-    let (id, key) = snap.offload();
-
-    Client::<Provider>::new(key, id)
+    let key = snap.offload();
+    Client::<Provider>::new(key)
 }
 
 // serialize the snapshot data into the snapshot file.
@@ -46,7 +45,7 @@ pub(in crate) fn serialize_to_snapshot(snapshot: &PathBuf, pass: &str, client: C
     // clear contents of the file before writing.
     file.set_len(0).expect("unable to clear the contents of the file file");
 
-    let snap: Snapshot<Provider> = Snapshot::new(client.id, client.db.key);
+    let snap: Snapshot<Provider> = Snapshot::new(client.db.key);
 
     let data: Vec<u8> = bincode::serialize(&snap).expect("Couldn't serialize the client data");
     encrypt_snapshot(data, &mut file, pass.as_bytes()).expect("Couldn't write to the snapshot");
