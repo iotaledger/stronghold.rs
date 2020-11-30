@@ -130,6 +130,16 @@ impl Client {
 
         Some(())
     }
+
+    pub fn rebuild_cache(&mut self, vids: Vec<VaultId>, rids: Vec<Vec<RecordId>>) {
+        let iter = vids.iter().zip(rids.iter());
+
+        for (v, rs) in iter {
+            rs.iter().for_each(|r| {
+                self.insert_record(*v, *r);
+            });
+        }
+    }
 }
 
 /// Actor Factor for the Client Struct.
@@ -281,13 +291,7 @@ impl Receive<InternalResults> for Client {
             }
             InternalResults::RebuildCache(vids, rids) => {
                 self.clear_cache();
-                let iter = vids.iter().zip(rids.iter());
-
-                for (v, rs) in iter {
-                    rs.iter().for_each(|r| {
-                        self.insert_record(*v, *r);
-                    });
-                }
+                self.rebuild_cache(vids.clone(), rids.clone());
 
                 let topic = Topic::from("external");
 
