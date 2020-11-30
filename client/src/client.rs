@@ -33,21 +33,28 @@ pub struct Client {
 pub enum SHRequest {
     // Creates a new Vault.
     CreateNewVault,
-    // Writes data to a record in the vault.  Accepts the vault id, an optional record id, the payload and the record hint.  If a record id is not specified, the write will default to the head of the vault.  Returns `ReturnCreate`.
+    // Writes data to a record in the vault.  Accepts the vault id, an optional record id, the payload and the record
+    // hint.  If a record id is not specified, the write will default to the head of the vault.  Returns
+    // `ReturnCreate`.
     WriteData(VaultId, Option<RecordId>, Vec<u8>, RecordHint),
     // Moves the head forward in the specified Vault and opens a new record.  Returns `ReturnInit`.
     InitRecord(VaultId),
-    // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not specified, it reads the head.  Returns with `ReturnRead`.
+    // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not
+    // specified, it reads the head.  Returns with `ReturnRead`.
     ReadData(VaultId, Option<RecordId>),
-    // Marks a Record for deletion.  Accepts a vault id and a record id.  Deletion only occurs after a `GarbageCollect` is called.
+    // Marks a Record for deletion.  Accepts a vault id and a record id.  Deletion only occurs after a
+    // `GarbageCollect` is called.
     RevokeData(VaultId, RecordId),
     // Garbages collects any marked records on a Vault. Accepts the vault id.
     GarbageCollect(VaultId),
-    // Lists all of the record ids and the record hints for the records in a vault.  Accepts a vault id and returns with `ReturnList`.
+    // Lists all of the record ids and the record hints for the records in a vault.  Accepts a vault id and returns
+    // with `ReturnList`.
     ListIds(VaultId),
-    // Writes to the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
+    // Writes to the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults to
+    // `$HOME/.engine/snapshots/backup.snapshot`.
     WriteSnapshot(String, Option<String>, Option<PathBuf>),
-    // Reads from the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
+    // Reads from the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults
+    // to `$HOME/.engine/snapshots/backup.snapshot`.
     ReadSnapshot(String, Option<String>, Option<PathBuf>),
 }
 

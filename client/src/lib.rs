@@ -54,7 +54,8 @@ pub enum Error {
     VaultError(#[from] engine::vault::Error),
 }
 
-/// Attaches the Stronghold Actors to the Riker `ActorSystem`.  Returns the ActorSystem and the a `ChannelRef<SHResults>`.
+/// Attaches the Stronghold Actors to the Riker `ActorSystem`.  Returns the ActorSystem and the a
+/// `ChannelRef<SHResults>`.
 pub fn init_stronghold(sys: ActorSystem) -> (ActorSystem, ChannelRef<SHResults>) {
     let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
 
