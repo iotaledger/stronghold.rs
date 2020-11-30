@@ -536,20 +536,11 @@ mod test {
                     0,
                     None,
                     b"Some Data".to_vec(),
-                    RecordHint::new(b"").expect(line_error!()),
+                    RecordHint::new(b"some_hint").expect(line_error!()),
                 )),
                 None,
             );
 
-            mock.try_tell(
-                MockExternalMsg::InterfaceMsg(InterfaceMsg::WriteData(
-                    0,
-                    None,
-                    b"Some Data".to_vec(),
-                    RecordHint::new(b"").expect(line_error!()),
-                )),
-                None,
-            );
             mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(0, None)), None);
             mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ListIds(0)), None);
 
@@ -562,7 +553,7 @@ mod test {
                     1,
                     None,
                     b"Some more data".to_vec(),
-                    RecordHint::new(b"").expect(line_error!()),
+                    RecordHint::new(b"key_data").expect(line_error!()),
                 )),
                 None,
             );
@@ -576,7 +567,7 @@ mod test {
                     1,
                     None,
                     b"Even more data".to_vec(),
-                    RecordHint::new(b"").expect(line_error!()),
+                    RecordHint::new(b"password").expect(line_error!()),
                 )),
                 None,
             );
