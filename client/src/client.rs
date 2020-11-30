@@ -24,9 +24,6 @@ pub struct Client {
     vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
     // Contains the Record Ids for the most recent Record in each vault.
     heads: Vec<RecordId>,
-    // Contains the VaultIds in order of creation.
-    index: Vec<VaultId>,
-
     // channel to receive data from stronghold.
     chan: ChannelRef<SHResults>,
 }
@@ -35,12 +32,12 @@ pub struct Client {
 #[derive(Clone, Debug)]
 pub enum SHRequest {
     CreateNewVault,
-    WriteData(usize, Vec<u8>, RecordHint),
-    InitRecord(usize),
-    ReadData(usize),
-    RevokeData(usize),
-    GarbageCollect(usize),
-    ListIds(usize),
+    WriteData(VaultId, Option<RecordId>, Vec<u8>, RecordHint),
+    InitRecord(VaultId),
+    ReadData(VaultId, Option<RecordId>),
+    RevokeData(VaultId, RecordId),
+    GarbageCollect(VaultId),
+    ListIds(VaultId),
     WriteSnapshot(String, Option<String>, Option<PathBuf>),
     ReadSnapshot(String, Option<String>, Option<PathBuf>),
 }
@@ -48,10 +45,11 @@ pub enum SHRequest {
 /// Messages that come from stronghold
 #[derive(Clone, Debug)]
 pub enum SHResults {
-    ReturnCreate(usize),
-    ReturnInit(usize),
+    ReturnCreate(VaultId, RecordId),
+    ReturnInit(VaultId, RecordId),
     ReturnRead(Vec<u8>),
     ReturnList(Vec<(RecordId, RecordHint)>),
+    ReturnRebuild(Vec<VaultId>, Vec<Vec<RecordId>>),
 }
 
 /// Messages used internally by the client.
@@ -69,97 +67,65 @@ impl Client {
     pub fn new(id: ClientId, chan: ChannelRef<SHResults>) -> Self {
         let vaults = HashMap::new();
         let heads = Vec::new();
-        let index = Vec::new();
 
         Self {
             id,
             vaults,
             heads,
-            index,
             chan,
         }
     }
 
-    /// Add a vault to the client.  Returns the Vault's index.
-    pub fn add_vault(&mut self, vid: VaultId, rid: RecordId) -> usize {
+    /// Add a vault to the client.  Returns a Tuple of `VaultId` and `RecordId`.
+    pub fn add_vault(&mut self, vid: VaultId, rid: RecordId) -> (VaultId, RecordId) {
         self.heads.push(rid);
 
-        self.index.push(vid);
+        let idx = self.heads.len();
 
-        let idx = self.index.len() - 1;
+        let idx = idx - 1;
 
         self.vaults.insert(vid, (idx, vec![rid]));
 
-        idx
+        (vid, rid)
     }
 
     /// Insert a new Record into the Stronghold on the Vault based on the given RecordId.
-    pub fn insert_record(&mut self, vid: VaultId, rid: RecordId) -> usize {
+    pub fn insert_record(&mut self, vid: VaultId, rid: RecordId) -> RecordId {
         let mut heads: Vec<RecordId> = self.heads.clone();
-        let mut index: Vec<VaultId> = self.index.clone();
 
-        let (idx, _rids) = self
+        let (idx, _) = self
             .vaults
             .entry(vid)
-            .and_modify(|(idx, rids)| {
+            .and_modify(|(_, rids)| {
                 rids.push(rid);
-
-                if heads.len() <= *idx {
-                    heads.push(rid);
-                } else {
-                    heads[*idx] = rid;
-                }
             })
             .or_insert((0, vec![rid]));
+
+        if heads.len() <= *idx {
+            heads.push(rid);
+        } else {
+            heads[*idx] = rid;
+        }
 
         if !heads.contains(&rid) {
             heads.push(rid);
         }
 
-        if !index.contains(&vid) {
-            index.push(vid);
-        }
-
-        self.index = index;
         self.heads = heads;
 
-        *idx
+        rid
     }
 
     /// Get the head of a vault.
-    pub fn get_head(&self, index: usize) -> Option<RecordId> {
-        if self.heads.len() <= index {
-            None
-        } else {
-            Some(self.heads[index])
-        }
-    }
+    pub fn get_head(&self, vid: VaultId) -> RecordId {
+        let (idx, _) = self.vaults.get(&vid).expect(line_error!("Vault doesn't exist"));
 
-    /// Get a vault by index.
-    pub fn get_vault(&self, index: usize) -> Option<VaultId> {
-        if self.index.len() <= index {
-            None
-        } else {
-            Some(self.index[index])
-        }
-    }
-
-    /// get the index based on the `VaultId`.
-    #[allow(dead_code)]
-    pub fn get_index(&self, vid: VaultId) -> Option<usize> {
-        if self.vaults.contains_key(&vid) {
-            let (idx, _) = self.vaults.get(&vid).expect(line_error!());
-
-            Some(*idx)
-        } else {
-            None
-        }
+        self.heads[*idx]
     }
 
     /// Empty the Client Cache.
     pub fn clear_cache(&mut self) -> Option<()> {
         self.heads = vec![];
-        self.index = vec![];
         self.vaults = HashMap::default();
 
         Some(())
@@ -205,47 +171,43 @@ impl Receive<SHRequest> for Client {
 
                 keystore.try_tell(KMsg::CreateVault(vid), None);
             }
-            SHRequest::ReadData(idx) => {
-                let vid = self.get_vault(idx).expect(line_error!());
-                let rid = self.get_head(idx).expect(line_error!());
-
+            SHRequest::ReadData(vid, rid) => {
                 let keystore = ctx.select("/user/keystore/").expect(line_error!());
 
-                keystore.try_tell(KMsg::ReadData(vid, rid), None);
-            }
-            SHRequest::InitRecord(idx) => {
-                let vid = self.get_vault(idx).expect(line_error!());
+                if let Some(rid) = rid {
+                    keystore.try_tell(KMsg::ReadData(vid, rid), None);
+                } else {
+                    let rid = self.get_head(vid);
 
+                    keystore.try_tell(KMsg::ReadData(vid, rid), None);
+                }
+            }
+            SHRequest::InitRecord(vid) => {
                 let keystore = ctx.select("/user/keystore/").expect(line_error!());
 
                 keystore.try_tell(KMsg::InitRecord(vid), None);
             }
-            SHRequest::WriteData(idx, payload, hint) => {
-                let vid = self.get_vault(idx).expect(line_error!());
-                let rid = self.get_head(idx).expect(line_error!());
-
+            SHRequest::WriteData(vid, rid, payload, hint) => {
                 let keystore = ctx.select("/user/keystore/").expect(line_error!());
+                if let Some(rid) = rid {
+                    keystore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
+                } else {
+                    let rid = self.get_head(vid);
 
-                keystore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
+                    keystore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
+                }
             }
-            SHRequest::RevokeData(idx) => {
-                let vid = self.get_vault(idx).expect(line_error!());
-                let rid = self.get_head(idx).expect(line_error!());
-
+            SHRequest::RevokeData(vid, rid) => {
                 let keystore = ctx.select("/user/keystore/").expect(line_error!());
 
                 keystore.try_tell(KMsg::RevokeData(vid, rid), None);
             }
-            SHRequest::GarbageCollect(idx) => {
-                let vid = self.get_vault(idx).expect(line_error!());
-
+            SHRequest::GarbageCollect(vid) => {
                 let keystore = ctx.select("/user/keystore/").expect(line_error!());
 
                 keystore.try_tell(KMsg::GarbageCollect(vid), None);
             }
-            SHRequest::ListIds(idx) => {
-                let vid = self.get_vault(idx).expect(line_error!());
-
+            SHRequest::ListIds(vid) => {
                 let keystore = ctx.select("/user/keystore/").expect(line_error!());
 
                 keystore.try_tell(KMsg::ListIds(vid), None);
@@ -270,26 +232,26 @@ impl Receive<InternalResults> for Client {
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: InternalResults, _sender: Sender) {
         match msg {
             InternalResults::ReturnCreateVault(vid, rid) => {
-                let idx = self.add_vault(vid, rid);
+                let (vid, rid) = self.add_vault(vid, rid);
 
                 let topic = Topic::from("external");
 
                 self.chan.tell(
                     Publish {
-                        msg: SHResults::ReturnCreate(idx),
+                        msg: SHResults::ReturnCreate(vid, rid),
                         topic,
                     },
                     None,
                 )
             }
             InternalResults::ReturnInitRecord(vid, rid) => {
-                let idx = self.insert_record(vid, rid);
+                self.insert_record(vid, rid);
 
                 let topic = Topic::from("external");
 
                 self.chan.tell(
                     Publish {
-                        msg: SHResults::ReturnInit(idx),
+                        msg: SHResults::ReturnInit(vid, rid),
                         topic,
                     },
                     None,
@@ -326,6 +288,16 @@ impl Receive<InternalResults> for Client {
                         self.insert_record(*v, *r);
                     });
                 }
+
+                let topic = Topic::from("external");
+
+                self.chan.tell(
+                    Publish {
+                        msg: SHResults::ReturnRebuild(vids, rids),
+                        topic,
+                    },
+                    None,
+                );
             }
         }
     }
@@ -345,21 +317,37 @@ mod test {
     use crate::{client::Client, provider::Provider};
 
     #[derive(Clone, Debug)]
-    pub enum TestMsg {
+    pub enum InterfaceMsg {
         CreateVault,
-        WriteData(usize, Vec<u8>, RecordHint),
+        WriteData(usize, Option<usize>, Vec<u8>, RecordHint),
         InitRecord(usize),
-        ReadData(usize),
-        RevokeData(usize),
+        ReadData(usize, Option<usize>),
+        RevokeData(usize, usize),
         GarbageCollect(usize),
         ListIds(usize),
         WriteSnapshot(String, Option<String>, Option<PathBuf>),
         ReadSnapshot(String, Option<String>, Option<PathBuf>),
     }
 
-    #[actor(SHResults, TestMsg)]
+    #[derive(Clone, Debug)]
+    pub struct StartTest {}
+
+    #[actor(StartTest, InterfaceMsg)]
+    pub struct TestActor {}
+
+    #[actor(SHResults, InterfaceMsg)]
     pub struct MockExternal {
         chan: ChannelRef<SHResults>,
+        vaults: Vec<VaultId>,
+        records: Vec<Vec<RecordId>>,
+    }
+
+    impl Actor for TestActor {
+        type Msg = TestActorMsg;
+
+        fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+            self.receive(ctx, msg, sender);
+        }
     }
 
     impl Actor for MockExternal {
@@ -378,7 +366,16 @@ mod test {
 
     impl ActorFactoryArgs<ChannelRef<SHResults>> for MockExternal {
         fn create_args(chan: ChannelRef<SHResults>) -> Self {
-            Self { chan }
+            let vaults = Vec::new();
+            let records = Vec::new();
+
+            Self { vaults, records, chan }
+        }
+    }
+
+    impl ActorFactory for TestActor {
+        fn create() -> Self {
+            Self {}
         }
     }
 
@@ -387,74 +384,228 @@ mod test {
 
         fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {
             match msg {
-                SHResults::ReturnCreate(idx) => {
-                    println!("{:?}", idx);
+                SHResults::ReturnCreate(vid, rid) => {
+                    println!("Create Vault: {:?} with first record: {:?}", vid, rid);
+                    self.vaults.push(vid);
+
+                    self.records.push(vec![rid]);
                 }
-                SHResults::ReturnInit(idx) => {
-                    println!("{:?}", idx);
+                SHResults::ReturnInit(vid, rid) => {
+                    println!("Record {:?} Initialized at {:?} Vault", rid, vid);
+
+                    let index = self.vaults.iter().position(|&v| v == vid).expect(line_error!());
+
+                    let rids = &mut self.records[index];
+
+                    rids.push(rid);
                 }
                 SHResults::ReturnList(list) => {
-                    println!("{:?}", list);
+                    list.iter().for_each(|(rid, hint)| {
+                        println!("Record: {:?}, Hint: {:?}", rid, hint);
+                    });
                 }
                 SHResults::ReturnRead(data) => {
-                    println!("{:?}", std::str::from_utf8(&data));
+                    println!("Data Output: {}", std::str::from_utf8(&data).expect(line_error!()));
+                }
+                SHResults::ReturnRebuild(vids, rids) => {
+                    println!("Read from snapshot and rebuilt table");
+
+                    self.vaults.clear();
+
+                    self.records.clear();
+
+                    let iter = vids.iter().zip(rids.iter());
+
+                    for (v, rs) in iter {
+                        let mut rids = Vec::new();
+                        rs.iter().for_each(|r| {
+                            rids.push(*r);
+                        });
+                        self.vaults.push(*v);
+                        self.records.push(rids);
+                    }
                 }
             }
         }
     }
 
-    impl Receive<TestMsg> for MockExternal {
+    impl Receive<InterfaceMsg> for MockExternal {
         type Msg = MockExternalMsg;
 
-        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: TestMsg, _sender: Sender) {
+        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InterfaceMsg, _sender: Sender) {
             match msg {
-                TestMsg::CreateVault => {
+                InterfaceMsg::CreateVault => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
                     client.try_tell(ClientMsg::SHRequest(SHRequest::CreateNewVault), None);
                 }
-                TestMsg::WriteData(idx, payload, hint) => {
+                InterfaceMsg::WriteData(vidx, ridx, payload, hint) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
-                    client.try_tell(ClientMsg::SHRequest(SHRequest::WriteData(idx, payload, hint)), None);
+                    let rid = if let Some(ridx) = ridx {
+                        let rids = self.records[vidx].clone();
+
+                        Some(rids[ridx])
+                    } else {
+                        None
+                    };
+
+                    let vidx = self.vaults[vidx];
+
+                    client.try_tell(
+                        ClientMsg::SHRequest(SHRequest::WriteData(vidx, rid, payload, hint)),
+                        None,
+                    );
                 }
-                TestMsg::InitRecord(idx) => {
+                InterfaceMsg::InitRecord(vidx) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
-                    client.try_tell(ClientMsg::SHRequest(SHRequest::InitRecord(idx)), None);
+                    let vid = self.vaults[vidx];
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::InitRecord(vid)), None);
                 }
-                TestMsg::ReadData(idx) => {
+                InterfaceMsg::ReadData(vidx, ridx) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
-                    client.try_tell(ClientMsg::SHRequest(SHRequest::ReadData(idx)), None);
+                    let vid = self.vaults[vidx];
+
+                    let rid = if let Some(ridx) = ridx {
+                        let rids = self.records[vidx].clone();
+
+                        Some(rids[ridx])
+                    } else {
+                        None
+                    };
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::ReadData(vid, rid)), None);
                 }
-                TestMsg::RevokeData(idx) => {
+                InterfaceMsg::RevokeData(vidx, ridx) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
-                    client.try_tell(ClientMsg::SHRequest(SHRequest::RevokeData(idx)), None);
+                    let vid = self.vaults[vidx];
+
+                    let rids = self.records[vidx].clone();
+
+                    let rid = rids[ridx];
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::RevokeData(vid, rid)), None);
                 }
-                TestMsg::GarbageCollect(idx) => {
+                InterfaceMsg::GarbageCollect(vidx) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
-                    client.try_tell(ClientMsg::SHRequest(SHRequest::GarbageCollect(idx)), None);
+                    let vid = self.vaults[vidx];
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::GarbageCollect(vid)), None);
                 }
-                TestMsg::ListIds(idx) => {
+                InterfaceMsg::ListIds(vidx) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
-                    client.try_tell(ClientMsg::SHRequest(SHRequest::ListIds(idx)), None);
+                    let vid = self.vaults[vidx];
+
+                    client.try_tell(ClientMsg::SHRequest(SHRequest::ListIds(vid)), None);
                 }
-                TestMsg::WriteSnapshot(pass, name, path) => {
+                InterfaceMsg::WriteSnapshot(pass, name, path) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
                     client.try_tell(ClientMsg::SHRequest(SHRequest::WriteSnapshot(pass, name, path)), None);
                 }
-                TestMsg::ReadSnapshot(pass, name, path) => {
+                InterfaceMsg::ReadSnapshot(pass, name, path) => {
                     let client = ctx.select("/user/client/").expect(line_error!());
 
                     client.try_tell(ClientMsg::SHRequest(SHRequest::ReadSnapshot(pass, name, path)), None);
                 }
             }
         }
+    }
+
+    impl Receive<StartTest> for TestActor {
+        type Msg = TestActorMsg;
+
+        fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: StartTest, _sender: Sender) {
+            let mock = ctx.select("/user/mock/").expect(line_error!());
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::CreateVault), None);
+
+            std::thread::sleep(std::time::Duration::from_millis(5));
+
+            mock.try_tell(
+                MockExternalMsg::InterfaceMsg(InterfaceMsg::WriteData(
+                    0,
+                    None,
+                    b"Some Data".to_vec(),
+                    RecordHint::new(b"").expect(line_error!()),
+                )),
+                None,
+            );
+
+            mock.try_tell(
+                MockExternalMsg::InterfaceMsg(InterfaceMsg::WriteData(
+                    0,
+                    None,
+                    b"Some Data".to_vec(),
+                    RecordHint::new(b"").expect(line_error!()),
+                )),
+                None,
+            );
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(0, None)), None);
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ListIds(0)), None);
+
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::CreateVault), None);
+
+            std::thread::sleep(std::time::Duration::from_millis(5));
+
+            mock.try_tell(
+                MockExternalMsg::InterfaceMsg(InterfaceMsg::WriteData(
+                    1,
+                    None,
+                    b"Some more data".to_vec(),
+                    RecordHint::new(b"").expect(line_error!()),
+                )),
+                None,
+            );
+
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::InitRecord(1)), None);
+
+            std::thread::sleep(std::time::Duration::from_millis(5));
+
+            mock.try_tell(
+                MockExternalMsg::InterfaceMsg(InterfaceMsg::WriteData(
+                    1,
+                    None,
+                    b"Even more data".to_vec(),
+                    RecordHint::new(b"").expect(line_error!()),
+                )),
+                None,
+            );
+
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(1, Some(0))), None);
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(1, None)), None);
+
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ListIds(1)), None);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+
+            mock.try_tell(
+                MockExternalMsg::InterfaceMsg(InterfaceMsg::WriteSnapshot("password".into(), None, None)),
+                None,
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            mock.try_tell(
+                MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadSnapshot("password".into(), None, None)),
+                None,
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(1, None)), None);
+
+            mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(1, Some(0))), None);
+
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
+
+    impl Receive<InterfaceMsg> for TestActor {
+        type Msg = TestActorMsg;
+
+        fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: InterfaceMsg, _sender: Sender) {}
     }
 
     #[test]
@@ -469,9 +620,7 @@ mod test {
 
         cache.add_vault(vid, rid);
 
-        assert_eq!(cache.index.len(), 1);
         assert_eq!(cache.heads.len(), 1);
-        assert_eq!(cache.index[0], vid);
         assert_eq!(cache.heads[0], rid);
         assert_eq!(cache.vaults.get(&vid), Some(&(0usize, vec![rid])));
 
@@ -480,9 +629,7 @@ mod test {
 
         cache.add_vault(vid, rid);
 
-        assert_eq!(cache.index.len(), 2);
         assert_eq!(cache.heads.len(), 2);
-        assert_eq!(cache.index[1], vid);
         assert_eq!(cache.heads[1], rid);
         assert_eq!(cache.vaults.get(&vid), Some(&(1usize, vec![rid])));
     }
@@ -499,9 +646,7 @@ mod test {
 
         cache.insert_record(vid, rid);
 
-        assert_eq!(cache.index.len(), 1);
         assert_eq!(cache.heads.len(), 1);
-        assert_eq!(cache.index[0], vid);
         assert_eq!(cache.heads[0], rid);
         assert_eq!(cache.vaults.get(&vid), Some(&(0usize, vec![rid])));
 
@@ -509,10 +654,9 @@ mod test {
 
         cache.insert_record(vid, rid2);
 
-        assert_eq!(cache.index.len(), 1);
         assert_eq!(cache.heads.len(), 1);
         assert_eq!(cache.heads[0], rid2);
-        assert_eq!(cache.index[0], vid);
+
         assert_eq!(cache.vaults.get(&vid), Some(&(0usize, vec![rid, rid2])));
 
         let vid2 = VaultId::random::<Provider>().expect(line_error!());
@@ -522,10 +666,9 @@ mod test {
         cache.add_vault(vid2, rid3);
         cache.insert_record(vid2, rid4);
 
-        assert_eq!(cache.index.len(), 2);
         assert_eq!(cache.heads.len(), 2);
         assert_eq!(cache.heads[1], rid4);
-        assert_eq!(cache.index[1], vid2);
+
         assert_eq!(cache.vaults.get(&vid2), Some(&(1usize, vec![rid3, rid4])));
     }
 
@@ -549,21 +692,11 @@ mod test {
         cache.add_vault(vid2, rid3);
         cache.insert_record(vid2, rid4);
 
-        let head0 = cache.get_head(0);
-        let head1 = cache.get_head(1);
-        let head2 = cache.get_head(2);
+        let head0 = cache.get_head(vid);
+        let head1 = cache.get_head(vid2);
 
-        assert_eq!(head0, Some(rid2));
-        assert_eq!(head1, Some(rid4));
-        assert_eq!(head2, None);
-
-        let vault0 = cache.get_vault(0);
-        let vault1 = cache.get_vault(1);
-        let vault2 = cache.get_vault(3);
-
-        assert_eq!(vault0, Some(vid));
-        assert_eq!(vault1, Some(vid2));
-        assert_eq!(vault2, None);
+        assert_eq!(head0, rid2);
+        assert_eq!(head1, rid4);
     }
 
     #[test]
@@ -572,60 +705,12 @@ mod test {
 
         let (sys, chan) = init_stronghold();
 
-        let mock = sys.actor_of_args::<MockExternal, _>("mock", chan).expect(line_error!());
+        sys.actor_of_args::<MockExternal, _>("mock", chan).expect(line_error!());
 
-        mock.tell(MockExternalMsg::TestMsg(TestMsg::CreateVault), None);
+        let test = sys.sys_actor_of::<TestActor>("test").expect(line_error!());
 
-        std::thread::sleep(std::time::Duration::from_millis(5));
+        test.tell(StartTest {}, None);
 
-        mock.tell(
-            MockExternalMsg::TestMsg(TestMsg::WriteData(
-                0,
-                b"Some Data".to_vec(),
-                RecordHint::new(b"").expect(line_error!()),
-            )),
-            None,
-        );
-
-        mock.tell(MockExternalMsg::TestMsg(TestMsg::ReadData(0)), None);
-
-        mock.tell(MockExternalMsg::TestMsg(TestMsg::ListIds(0)), None);
-
-        mock.tell(MockExternalMsg::TestMsg(TestMsg::CreateVault), None);
-
-        std::thread::sleep(std::time::Duration::from_millis(5));
-
-        mock.tell(
-            MockExternalMsg::TestMsg(TestMsg::WriteData(
-                1,
-                b"Some more data".to_vec(),
-                RecordHint::new(b"").expect(line_error!()),
-            )),
-            None,
-        );
-
-        mock.tell(MockExternalMsg::TestMsg(TestMsg::ReadData(1)), None);
-
-        mock.tell(MockExternalMsg::TestMsg(TestMsg::ListIds(1)), None);
-
-        std::thread::sleep(std::time::Duration::from_millis(5));
-
-        mock.tell(
-            MockExternalMsg::TestMsg(TestMsg::WriteSnapshot("password".into(), None, None)),
-            None,
-        );
-
-        std::thread::sleep(std::time::Duration::from_millis(5));
-
-        mock.tell(
-            MockExternalMsg::TestMsg(TestMsg::ReadSnapshot("password".into(), None, None)),
-            None,
-        );
-
-        std::thread::sleep(std::time::Duration::from_millis(5));
-
-        mock.tell(MockExternalMsg::TestMsg(TestMsg::ReadData(1)), None);
-
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        std::thread::sleep(std::time::Duration::from_millis(5000));
     }
 }
