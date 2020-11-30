@@ -13,14 +13,11 @@ use crate::{
     snap::{deserialize_from_snapshot, get_snapshot_path, serialize_to_snapshot},
 };
 
-use engine::vault::{Base64Decodable, RecordId, Key};
+use engine::vault::{Base64Decodable, Key, RecordId};
 
 use clap::{load_yaml, App, ArgMatches};
 
-use std::{
-    path::Path,
-    convert::TryFrom,
-};
+use std::{convert::TryFrom, path::Path};
 
 // create a line error with the file and the line number
 #[macro_export]

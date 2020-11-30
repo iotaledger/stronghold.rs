@@ -1,7 +1,7 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use engine::vault::{DeleteRequest, ReadRequest, ReadResult, WriteRequest, Kind};
+use engine::vault::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
 
 use std::{thread, time::Duration};
 
@@ -41,15 +41,16 @@ pub fn send(req: CRequest) -> Option<CResult> {
         // if the request is a list, get the keys from the map and put them into a ListResult.
         CRequest::List => {
             let entries = State::storage_map()
-                .read().expect(line_error!())
+                .read()
+                .expect(line_error!())
                 .iter()
-                .filter_map(|((k, id), bs)|
+                .filter_map(|((k, id), bs)| {
                     if *k == Kind::Transaction {
                         Some(ReadResult::new(*k, id, bs))
                     } else {
                         None
                     }
-                )
+                })
                 .collect();
             CResult::List(entries)
         }

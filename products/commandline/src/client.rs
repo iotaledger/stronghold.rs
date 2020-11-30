@@ -1,7 +1,7 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use engine::vault::{BoxProvider, DBView, RecordId, Key, RecordHint, PreparedRead, Kind};
+use engine::vault::{BoxProvider, DBView, Key, Kind, PreparedRead, RecordHint, RecordId};
 
 use crate::{
     connection::{send_until_success, CRequest, CResult},
@@ -60,13 +60,15 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
             let mut reqs = vec![];
             let mut w = db.writer(id);
 
-            if ! db.reader().exists(id) {
+            if !db.reader().exists(id) {
                 reqs.push(w.truncate().expect(line_error!()));
             }
 
-            reqs.append(&mut w
-                .write(&payload, RecordHint::new(b"").expect(line_error!()))
-                .expect(line_error!()));
+            reqs.append(
+                &mut w
+                    .write(&payload, RecordHint::new(b"").expect(line_error!()))
+                    .expect(line_error!()),
+            );
 
             reqs.into_iter().for_each(|req| {
                 send_until_success(CRequest::Write(req));
@@ -77,7 +79,8 @@ impl<P: BoxProvider + Send + Sync + 'static> Client<P> {
     // list the ids and hints of all of valid records in the Vault.
     pub fn list_ids(&self) {
         self.db.take(|db| {
-            db.records().for_each(|(id, hint)| println!("Id: {}, Hint: {:?}", id, hint));
+            db.records()
+                .for_each(|(id, hint)| println!("Id: {}, Hint: {:?}", id, hint));
         });
     }
 
