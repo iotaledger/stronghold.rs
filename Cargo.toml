@@ -1,13 +1,16 @@
 [workspace]
 members = [
-    "stronghold",
-    "engine",
-    "engine/vault",
-    "engine/primitives",
-    "engine/random",
-    "engine/crypto",
-    "engine/snapshot"
+  "engine",
+  "engine/vault",
+  "engine/primitives",
+  "engine/random",
+  "engine/crypto",
+  "engine/snapshot",
+  "runtime",
 ]
 exclude = [
-  "engine/examples/commandline",
+  "products/commandline",
+  "products/desktop",
+  "products/SHaaS",
+  "client",
 ]

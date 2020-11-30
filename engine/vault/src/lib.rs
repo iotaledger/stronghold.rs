@@ -1,13 +1,5 @@
 // Copyright 2020 IOTA Stiftung
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
-// an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 /// Vault is an in-memory database specification which is designed to work without a central server. The data in
 /// the database follows a versioned format where each user can access a chain of data that documents changes to a
@@ -46,8 +38,10 @@ mod vault;
 pub use crate::{
     base64::{Base64Decodable, Base64Encodable},
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
-    types::utils::{Id, RecordHint},
-    vault::{DBReader, DBView, DBWriter, DeleteRequest, ListResult, ReadRequest, ReadResult, Record, WriteRequest},
+    types::utils::{ChainId, RecordHint},
+    vault::{
+        DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult, RecordId, WriteRequest,
+    },
 };
 
 /// Errors for the Vault Crate
@@ -69,6 +63,10 @@ pub enum Error {
     OtherError(String),
     #[error("Crypto Error: `{0}`")]
     CryptoError(String),
+    #[error("Value Error: `{0}`")]
+    ValueError(String),
+    #[error("Protocol Error: `{0}`")]
+    ProtocolError(String),
 }
 
 // Crate result type

@@ -1,13 +1,5 @@
 // Copyright 2020 IOTA Stiftung
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
-// an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 use sodiumoxide::crypto::{
     hash, pwhash,
@@ -290,19 +282,22 @@ mod test {
 
         let expected = data.clone();
 
+        let _ = std::fs::copy("test/snapshot.snapshot", "test/temp.snapshot");
         let mut encrypt = OpenOptions::new()
             .write(true)
             .create(true)
-            .open("test/snapshot.snapshot")
+            .open("test/temp.snapshot")
             .unwrap();
 
-        let mut decrypt = OpenOptions::new().read(true).open("test/snapshot.snapshot").unwrap();
+        let mut decrypt = OpenOptions::new().read(true).open("test/temp.snapshot").unwrap();
 
         let mut output: Vec<u8> = Vec::new();
 
         encrypt_snapshot(data, &mut encrypt, password).unwrap();
 
         decrypt_snapshot(&mut decrypt, &mut output, password).unwrap();
+
+        let _ = std::fs::remove_file("test/temp.snapshot");
 
         assert_eq!(expected, output);
     }

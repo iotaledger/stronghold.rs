@@ -84,7 +84,7 @@ environment variable.
 Create a new chain by encrypting some data and get back the unique identifier
 of the newly created encrypted record containing our plain-text data:
 EOF
-ID0=$(run_example encrypt --pass foo --plain "secret text")
+ID0=$(run_example encrypt --pass foo --plain "secret-text")
 cat <<EOF >> "$OUT"
 (Note that if you haven't/don't want to install the executable you can still
 run this as: \`cargo run -- encrypt --pass foo --plain "secret text"\`.)
@@ -96,7 +96,7 @@ cat <<EOF >> "$OUT"
 
 In order to make the following examples less trivial, we create another entry:
 EOF
-ID1=$(run_example encrypt --pass foo --plain "another secret is 42")
+ID1=$(run_example encrypt --pass foo --plain "another-secret-is-42")
 cat <<EOF >> "$OUT"
 And now we can list the two records we currently have stored:
 EOF
