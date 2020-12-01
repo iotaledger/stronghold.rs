@@ -180,12 +180,20 @@
     "vault": {
       "path": "./engine/vault/",
       "manager": "rust",
-      "publish": false
+      "publish": false,
+      "dependencies": [
+        "crypto",
+        "random"
+      ]
     },
     "snapshot": {
       "path": "./engine/snapshot/",
       "manager": "rust",
-      "publish": false
+      "publish": false,
+      "dependencies": [
+        "crypto",
+        "random"
+      ]
     },
     "random": {
       "path": "./engine/random/",
