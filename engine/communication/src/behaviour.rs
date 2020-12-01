@@ -249,16 +249,16 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEven
 #[cfg(test)]
 mod test {
     use super::*;
-    #[cfg(not(feature="mdns"))]
+    #[cfg(not(feature = "mdns"))]
     use crate::behaviour::message::P2PIdentifyEvent;
     use async_std::task;
     use core::{ops::Deref, str::FromStr};
-    #[cfg(not(feature="mdns"))]
+    #[cfg(not(feature = "mdns"))]
     use futures::future;
     use libp2p::swarm::SwarmEvent;
-    use serde::{Deserialize, Serialize};
     #[cfg(not(feature = "mdns"))]
     use message::P2PMdnsEvent;
+    use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Request {
@@ -310,7 +310,6 @@ mod test {
         let listener_id = Swarm::listen_on(&mut remote, remote_addr.clone()).unwrap();
         let remote_peer_id = Swarm::local_peer_id(&remote).clone();
         let remote_addr_clone = remote_addr.clone();
-
 
         let mut local = mock_swarm();
         let local_peer_id = Swarm::local_peer_id(&local).clone();
@@ -423,7 +422,7 @@ mod test {
     }
 
     // TODO: fix test for mdns
-    #[cfg(not(feature="mdns"))]
+    #[cfg(not(feature = "mdns"))]
     #[test]
     fn identify_event() {
         let mut remote = mock_swarm();
@@ -445,7 +444,7 @@ mod test {
                         if let P2PIdentifyEvent::Received {
                             peer_id,
                             info,
-                            observed_addr:_,
+                            observed_addr: _,
                         } = boxed_event.deref().clone()
                         {
                             if peer_id == local_peer_id {
