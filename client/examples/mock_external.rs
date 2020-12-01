@@ -1,3 +1,6 @@
+// Copyright 2020 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use engine::vault::{RecordHint, RecordId};
 
 use iota_stronghold::{init_stronghold, line_error, ClientMsg, Procedure, SHRequest, SHResults, VaultId};

@@ -5,11 +5,7 @@ use riker::actors::*;
 
 use crate::{actors::KMsg, hd::Seed, line_error, VaultId};
 
-use engine::{
-    primitives::rng::SecureRng,
-    random::OsRng,
-    vault::{RecordHint, RecordId},
-};
+use engine::vault::{RecordHint, RecordId};
 
 use runtime::zone::soft;
 
