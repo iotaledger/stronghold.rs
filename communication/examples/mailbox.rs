@@ -68,7 +68,7 @@
 
 use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
-use communication::behaviour::{
+use stronghold_communication::behaviour::{
     error::{QueryError, QueryResult},
     message::{P2PEvent, P2PReqResEvent},
     P2PNetworkBehaviour,

@@ -1,7 +1,7 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use communication::{
+use stronghold_communication::{
     actor::{CommunicationActor, CommunicationEvent},
     behaviour::message::P2PReqResEvent,
 };

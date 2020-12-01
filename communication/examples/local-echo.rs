@@ -43,7 +43,7 @@ use async_std::{
     io::{stdin, BufReader, Stdin},
     task,
 };
-use communication::behaviour::{
+use stronghold_communication::behaviour::{
     error::{QueryError, QueryResult},
     message::{P2PEvent, P2PIdentifyEvent, P2PReqResEvent},
     P2PNetworkBehaviour,
