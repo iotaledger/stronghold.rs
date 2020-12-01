@@ -23,9 +23,14 @@ thiserror = "1.0"
 
 riker = "0.4"
 
+num-bigint = "0.3.1"
+
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
 rev = "bc35d38561efcf20a50aeb0f0b08028b4b4fda46"
-features = [ "ed25519" ]
+features = [ "ed25519", "sha", "hmac" ]
+
+[dev-dependencies]
+hex = "0.4.2"
 
 [workspace]

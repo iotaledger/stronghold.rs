@@ -19,11 +19,13 @@ mod actors;
 mod bucket;
 mod client;
 mod ids;
-mod hd;
 mod key_store;
 mod provider;
 mod secret;
 mod snapshot;
+
+#[allow(non_snake_case)]
+mod hd;
 
 use crate::{bucket::Bucket, client::Client, key_store::KeyStore, snapshot::Snapshot};
 
