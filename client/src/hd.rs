@@ -3,8 +3,7 @@
 
 // TODO: this module should probably not reside in the client
 
-use crypto::ed25519::SecretKey;
-use crypto::macs::hmac::HMAC_SHA512;
+use crypto::{ed25519::SecretKey, macs::hmac::HMAC_SHA512};
 use num_bigint::BigUint;
 
 #[derive(Debug)]
