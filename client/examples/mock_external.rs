@@ -220,7 +220,7 @@ impl Receive<InterfaceMsg> for MockExternal {
 
                 client.try_tell(
                     ClientMsg::SHRequest(SHRequest::ControlRequest(Procedure::SIP10 {
-                        seed: b"8f9240688685a1e99109831kljhasi8".to_vec(),
+                        seed: b"000102030405060708090a0b0c0d0e0f".to_vec(),
                         master_record: (vid0, rid0, RecordHint::new(b"master").expect(line_error!())),
                         secret_record: (vid1, rid1, RecordHint::new(b"secret").expect(line_error!())),
                     })),
