@@ -38,6 +38,8 @@ pub use crate::{
     provider::Provider,
 };
 
+pub use engine::vault::{RecordHint, RecordId};
+
 #[macro_export]
 macro_rules! line_error {
     () => {
