@@ -21,13 +21,20 @@ mod client;
 mod ids;
 mod key_store;
 mod provider;
+mod runtime;
 mod secret;
 mod snapshot;
 
 #[allow(non_snake_case)]
 mod hd;
 
-use crate::{bucket::Bucket, client::Client, key_store::KeyStore, snapshot::Snapshot};
+use crate::{
+    bucket::Bucket,
+    client::Client,
+    hd::{Key, Seed},
+    key_store::KeyStore,
+    snapshot::Snapshot,
+};
 
 use riker::actors::{channel, ActorRefFactory, ActorSystem, ChannelRef};
 

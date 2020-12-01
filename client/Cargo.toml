@@ -25,6 +25,8 @@ riker = "0.4"
 
 num-bigint = "0.3.1"
 
+stronghold-runtime = {path = "../runtime"}
+
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
 rev = "bc35d38561efcf20a50aeb0f0b08028b4b4fda46"
