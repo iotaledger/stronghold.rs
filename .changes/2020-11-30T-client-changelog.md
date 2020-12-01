@@ -1,5 +1,5 @@
 ---
-"client": minor
+"iota-stronghold": minor
 "vault": patch
 ---
 

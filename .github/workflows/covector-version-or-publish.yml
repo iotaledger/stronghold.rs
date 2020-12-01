@@ -37,7 +37,7 @@ jobs:
         run: echo "$COVECTOR_CONTEXT"
       - name: create pull request
         id: cpr
-        uses: peter-evans/create-pull-request@v2
+        uses: tauri-apps/create-pull-request@v3.4.1
         if: steps.covector.outputs.commandRan == 'version'
         with:
           title: "Publish New Versions"
