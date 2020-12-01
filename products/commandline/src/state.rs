@@ -1,11 +1,16 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
-use std::sync::{Arc, RwLock};
+use engine::vault::Kind;
 
 use crate::line_error;
+
+type StateHashMap = HashMap<(Kind, Vec<u8>), Vec<u8>>;
 
 // lazy static macro
 #[macro_export]
@@ -22,16 +27,16 @@ macro_rules! lazy_static {
 pub struct State;
 impl State {
     // lazy static global hashmap
-    pub fn storage_map() -> Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>> {
+    pub fn storage_map() -> Arc<RwLock<StateHashMap>> {
         lazy_static!(
-            Arc::new(RwLock::new(HashMap::new())) => Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>
+            Arc::new(RwLock::new(HashMap::new())) => Arc<RwLock<StateHashMap>>
         )
         .clone()
     }
 
     // offload the hashmap data.
-    pub fn offload_data() -> HashMap<Vec<u8>, Vec<u8>> {
-        let mut map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+    pub fn offload_data() -> StateHashMap {
+        let mut map: StateHashMap = HashMap::new();
         State::storage_map()
             .write()
             .expect("failed to read map")
@@ -45,7 +50,7 @@ impl State {
     }
 
     // upload data to the hashmap.
-    pub fn upload_data(map: HashMap<Vec<u8>, Vec<u8>>) {
+    pub fn upload_data(map: StateHashMap) {
         map.into_iter().for_each(|(k, v)| {
             State::storage_map().write().expect("couldn't open map").insert(k, v);
         });
