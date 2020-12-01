@@ -1,6 +1,6 @@
 use engine::vault::{RecordHint, RecordId};
 
-use iota_stronghold::{init_stronghold, line_error, ClientMsg, SHRequest, SHResults, VaultId};
+use iota_stronghold::{init_stronghold, line_error, ClientMsg, Procedure, SHRequest, SHResults, VaultId};
 
 use riker::actors::*;
 
@@ -17,6 +17,7 @@ pub enum InterfaceMsg {
     ListIds(usize),
     WriteSnapshot(String, Option<String>, Option<PathBuf>),
     ReadSnapshot(String, Option<String>, Option<PathBuf>),
+    ControlRequest(usize, usize),
 }
 
 #[derive(Clone, Debug)]
@@ -95,7 +96,7 @@ impl Receive<SHResults> for MockExternal {
                 });
             }
             SHResults::ReturnRead(data) => {
-                println!("Data Output: {}", std::str::from_utf8(&data).expect(line_error!()));
+                println!("Data Output: {:?}", &data);
             }
             SHResults::ReturnRebuild(vids, rids) => {
                 println!("Read from snapshot and rebuilt table");
@@ -204,6 +205,26 @@ impl Receive<InterfaceMsg> for MockExternal {
 
                 client.try_tell(ClientMsg::SHRequest(SHRequest::ReadSnapshot(pass, name, path)), None);
             }
+            InterfaceMsg::ControlRequest(vidx0, vidx1) => {
+                let vid0 = self.vaults[vidx0];
+                let vid1 = self.vaults[vidx1];
+
+                let rids0 = self.records[vidx0].clone();
+                let rids1 = self.records[vidx1].clone();
+
+                let rid0 = rids0[0];
+                let rid1 = rids1[0];
+
+                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
+
+                client.try_tell(
+                    ClientMsg::SHRequest(SHRequest::ControlRequest(Procedure::SIP10 {
+                        master_record: (vid0, rid0, RecordHint::new(b"master").expect(line_error!())),
+                        secret_record: (vid1, rid1, RecordHint::new(b"secret").expect(line_error!())),
+                    })),
+                    None,
+                );
+            }
         }
     }
 }
@@ -285,6 +306,20 @@ impl Receive<StartTest> for TestActor {
         mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(1, None)), None);
 
         mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(1, Some(0))), None);
+
+        mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::CreateVault), None);
+
+        mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::CreateVault), None);
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ControlRequest(2, 3)), None);
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(2, None)), None);
+
+        mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(3, None)), None);
     }
 }
 
@@ -305,5 +340,5 @@ fn main() {
 
     test.tell(StartTest {}, None);
 
-    std::thread::sleep(std::time::Duration::from_millis(2000));
+    std::thread::sleep(std::time::Duration::from_millis(5000));
 }
