@@ -63,13 +63,13 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     ///
     /// # Example
     /// ```no_run
-    /// use communication::behaviour::{error::QueryResult, MessageEvent, P2PNetworkBehaviour};
     /// use libp2p::{
     ///     core::{Multiaddr, PeerId},
     ///     identity::Keypair,
     ///     request_response::{RequestId, RequestResponseEvent, ResponseChannel},
     /// };
     /// use serde::{Deserialize, Serialize};
+    /// use stronghold_communication::behaviour::{error::QueryResult, MessageEvent, P2PNetworkBehaviour};
     ///
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// pub enum Request {
@@ -249,16 +249,13 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEven
 #[cfg(test)]
 mod test {
     use super::*;
-    #[cfg(not(feature = "mdns"))]
     use crate::behaviour::message::P2PIdentifyEvent;
     use async_std::task;
-    use core::{ops::Deref, str::FromStr};
-    #[cfg(not(feature = "mdns"))]
+    use core::{ops::Deref, str::FromStr, time::Duration};
     use futures::future;
     use libp2p::swarm::SwarmEvent;
-    #[cfg(not(feature = "mdns"))]
-    use message::P2PMdnsEvent;
     use serde::{Deserialize, Serialize};
+    use std::thread;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Request {
@@ -304,11 +301,46 @@ mod test {
     }
 
     #[test]
+    fn listen_addr() {
+        let mut swarm = mock_swarm();
+        let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8085".parse().unwrap();
+        let listener_id = Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
+        let actual_addr = task::block_on(async {
+            loop {
+                match swarm.next_event().await {
+                    SwarmEvent::NewListenAddr(addr) => return addr,
+                    SwarmEvent::ListenerClosed {
+                        addresses: _,
+                        reason: _,
+                    } => panic!(),
+                    SwarmEvent::ListenerError { error: _ } => panic!(),
+                    _ => {}
+                }
+            }
+        });
+        assert_eq!(listen_addr, actual_addr);
+        Swarm::remove_listener(&mut swarm, listener_id).unwrap();
+        assert!(!Swarm::listeners(&swarm).any(|addr| addr == &listen_addr));
+    }
+
+    #[test]
     fn request_respose() {
         let mut remote = mock_swarm();
-        let remote_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8085".parse().unwrap();
-        let listener_id = Swarm::listen_on(&mut remote, remote_addr.clone()).unwrap();
+        let listener_id = Swarm::listen_on(&mut remote, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
         let remote_peer_id = Swarm::local_peer_id(&remote).clone();
+        let remote_addr = task::block_on(async {
+            loop {
+                match remote.next_event().await {
+                    SwarmEvent::NewListenAddr(addr) => return addr,
+                    SwarmEvent::ListenerClosed {
+                        addresses: _,
+                        reason: _,
+                    } => panic!(),
+                    SwarmEvent::ListenerError { error: _ } => panic!(),
+                    _ => {}
+                }
+            }
+        });
         let remote_addr_clone = remote_addr.clone();
 
         let mut local = mock_swarm();
@@ -316,7 +348,7 @@ mod test {
 
         let remote_handle = task::spawn(async move {
             loop {
-                match task::block_on(remote.next_event()) {
+                match remote.next_event().await {
                     SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
                         if let P2PReqResEvent::Req {
                             peer_id,
@@ -364,7 +396,7 @@ mod test {
         Swarm::dial_addr(&mut local, remote_addr_clone.clone()).unwrap();
         let local_handle = task::spawn(async move {
             loop {
-                match task::block_on(local.next_event()) {
+                match local.next_event().await {
                     SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
                         if let P2PReqResEvent::Res {
                             peer_id,
@@ -421,78 +453,109 @@ mod test {
         })
     }
 
-    // TODO: fix test for mdns
-    #[cfg(not(feature = "mdns"))]
     #[test]
     fn identify_event() {
         let mut remote = mock_swarm();
-        let remote_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8086".parse().unwrap();
-        let remote_listener_id = Swarm::listen_on(&mut remote, remote_addr.clone()).unwrap();
         let remote_peer_id = Swarm::local_peer_id(&remote).clone();
-        let remote_addr_clone = remote_addr.clone();
-
-        let mut local = mock_swarm();
-        let local_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8087".parse().unwrap();
-        let local_listener_id = Swarm::listen_on(&mut local, local_addr.clone()).unwrap();
-        let local_peer_id = Swarm::local_peer_id(&local).clone();
-        let local_addr_clone = local_addr.clone();
-
-        let remote_handle = task::spawn(async move {
+        let remote_listener_id = Swarm::listen_on(&mut remote, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+        let remote_addr = task::block_on(async {
             loop {
-                match task::block_on(remote.next_event()) {
-                    SwarmEvent::Behaviour(P2PEvent::Identify(boxed_event)) => {
-                        if let P2PIdentifyEvent::Received {
-                            peer_id,
-                            info,
-                            observed_addr: _,
-                        } = boxed_event.deref().clone()
-                        {
-                            if peer_id == local_peer_id {
-                                Swarm::remove_listener(&mut remote, remote_listener_id).unwrap();
-                                assert_eq!(PeerId::from_public_key(info.clone().public_key), peer_id);
-                                assert!(info.listen_addrs.contains(&local_addr_clone));
-                                break;
-                            }
-                        }
-                    }
-                    SwarmEvent::NewListenAddr(addr) => {
-                        assert_eq!(addr, remote_addr);
-                    }
+                match remote.next_event().await {
+                    SwarmEvent::NewListenAddr(addr) => return addr,
+                    SwarmEvent::ListenerClosed {
+                        addresses: _,
+                        reason: _,
+                    } => panic!(),
+                    SwarmEvent::ListenerError { error: _ } => panic!(),
                     _ => {}
                 }
             }
         });
 
-        let local_handle = task::spawn(async move {
+        let mut local = mock_swarm();
+        let local_peer_id = Swarm::local_peer_id(&local).clone();
+        let local_listener_id = Swarm::listen_on(&mut local, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+        let local_addr = task::block_on(async {
             loop {
-                match task::block_on(local.next_event()) {
-                    SwarmEvent::Behaviour(P2PEvent::Identify(boxed_event)) => {
-                        if let P2PIdentifyEvent::Received {
-                            peer_id,
-                            info,
-                            observed_addr: _,
-                        } = boxed_event.deref().clone()
-                        {
-                            if peer_id == remote_peer_id {
-                                Swarm::remove_listener(&mut local, local_listener_id).unwrap();
-                                assert_eq!(PeerId::from_public_key(info.clone().public_key), peer_id);
-                                assert!(info.listen_addrs.contains(&remote_addr_clone));
-                                break;
-                            }
-                        }
-                    }
-                    SwarmEvent::Behaviour(P2PEvent::Mdns(P2PMdnsEvent::Discovered(list))) => {
-                        if list.contains(&(remote_peer_id.clone(), remote_addr_clone.clone())) {
-                            Swarm::dial_addr(&mut local, remote_addr_clone.clone()).unwrap();
-                        }
-                    }
-                    SwarmEvent::NewListenAddr(addr) => {
-                        assert_eq!(addr, local_addr);
-                        Swarm::dial_addr(&mut local, remote_addr_clone.clone()).unwrap();
-                    }
+                match local.next_event().await {
+                    SwarmEvent::NewListenAddr(addr) => return addr,
+                    SwarmEvent::ListenerClosed {
+                        addresses: _,
+                        reason: _,
+                    } => panic!(),
+                    SwarmEvent::ListenerError { error: _ } => panic!(),
                     _ => {}
                 }
             }
+        });
+
+        let remote_handle = task::spawn(async move {
+            let mut sent = false;
+            let mut received = false;
+            while !sent || !received {
+                if let SwarmEvent::Behaviour(P2PEvent::Identify(boxed_event)) = remote.next_event().await {
+                    match boxed_event.deref().clone() {
+                        P2PIdentifyEvent::Received {
+                            peer_id,
+                            info,
+                            observed_addr: _,
+                        } => {
+                            if peer_id == local_peer_id {
+                                assert_eq!(PeerId::from_public_key(info.clone().public_key), peer_id);
+                                assert!(info.listen_addrs.contains(&local_addr));
+                                received = true;
+                            }
+                        }
+                        P2PIdentifyEvent::Sent { peer_id } => {
+                            if peer_id == local_peer_id {
+                                sent = true;
+                                thread::sleep(Duration::from_millis(50));
+                            }
+                        }
+                        P2PIdentifyEvent::Error { peer_id, error: _ } => {
+                            if peer_id == local_peer_id {
+                                panic!();
+                            }
+                        }
+                    }
+                }
+            }
+            Swarm::remove_listener(&mut remote, remote_listener_id).unwrap();
+        });
+
+        Swarm::dial_addr(&mut local, remote_addr.clone()).unwrap();
+        let local_handle = task::spawn(async move {
+            let mut sent = false;
+            let mut received = false;
+            while !sent || !received {
+                if let SwarmEvent::Behaviour(P2PEvent::Identify(boxed_event)) = local.next_event().await {
+                    match boxed_event.deref().clone() {
+                        P2PIdentifyEvent::Received {
+                            peer_id,
+                            info,
+                            observed_addr: _,
+                        } => {
+                            if peer_id == remote_peer_id {
+                                assert_eq!(PeerId::from_public_key(info.clone().public_key), peer_id);
+                                assert!(info.listen_addrs.contains(&remote_addr));
+                                received = true;
+                            }
+                        }
+                        P2PIdentifyEvent::Sent { peer_id } => {
+                            if peer_id == remote_peer_id {
+                                sent = true;
+                                thread::sleep(Duration::from_millis(50));
+                            }
+                        }
+                        P2PIdentifyEvent::Error { peer_id, error: _ } => {
+                            if peer_id == remote_peer_id {
+                                panic!();
+                            }
+                        }
+                    }
+                }
+            }
+            Swarm::remove_listener(&mut local, local_listener_id).unwrap();
         });
         task::block_on(async {
             future::join(local_handle, remote_handle).await;

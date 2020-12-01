@@ -59,10 +59,10 @@ pub enum CommunicationEvent<T, U> {
 ///
 ///
 /// ```no_run
-/// use communication::actor::{CommunicationActor, CommunicationEvent};
 /// use libp2p::identity::Keypair;
 /// use riker::actors::*;
 /// use serde::{Deserialize, Serialize};
+/// use stronghold_communication::actor::{CommunicationActor, CommunicationEvent};
 ///
 /// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 /// pub enum Request {
