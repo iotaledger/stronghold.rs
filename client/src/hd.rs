@@ -9,12 +9,14 @@ use num_bigint::BigUint;
 
 #[derive(Debug)]
 pub enum Error {
+    #[allow(dead_code)]
     NotSupported,
     CryptoError(crypto::Error),
 }
 
 // 2^252+27742317777372353535851937790883648493
 // 0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed
+#[allow(dead_code)]
 fn ed25519_group_order() -> BigUint {
     BigUint::from_bytes_be(&[
         0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0xde,
@@ -31,7 +33,7 @@ impl Seed {
 
     pub fn to_master_key(&self) -> Key {
         let mut I = [0; 64];
-        HMAC_SHA512(&self.0, &"ed25519 seed".as_bytes(), &mut I);
+        HMAC_SHA512(&self.0, b"ed25519 seed", &mut I);
         Key(I)
     }
 }
@@ -61,6 +63,7 @@ impl Key {
         self.I_r()
     }
 
+    #[allow(dead_code)]
     fn step(&self, segment: &Segment) -> Result<Key, Error> {
         if !segment.hardened {
             return Err(Error::NotSupported);
@@ -77,11 +80,13 @@ impl Key {
     }
 }
 
+#[allow(dead_code)]
 struct Segment {
     hardened: bool,
     bs: [u8; 4],
 }
 
+#[allow(dead_code)]
 impl Segment {
     pub fn from_u32(i: u32) -> Self {
         Self {
@@ -90,9 +95,11 @@ impl Segment {
         }
     }
 
+    #[allow(dead_code)]
     pub const HARDEN_MASK: u32 = 1 << 31;
 }
 
+#[allow(dead_code)]
 type Chain = Vec<Segment>;
 
 #[cfg(test)]
@@ -125,7 +132,7 @@ mod tests {
 
         {
             // m/0'
-            let ck = m.step(&Segment::from_u32(Segment::HARDEN_MASK | 0))?;
+            let ck = m.step(&Segment::from_u32(Segment::HARDEN_MASK))?;
 
             let mut expected_chain_code = [0u8; 32];
             hex::decode_to_slice(
