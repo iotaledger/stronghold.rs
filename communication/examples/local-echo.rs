@@ -43,17 +43,17 @@ use async_std::{
     io::{stdin, BufReader, Stdin},
     task,
 };
-use stronghold_communication::behaviour::{
-    error::{QueryError, QueryResult},
-    message::{P2PEvent, P2PIdentifyEvent, P2PReqResEvent},
-    P2PNetworkBehaviour,
-};
 use core::{
     ops::Deref,
     str::FromStr,
     task::{Context, Poll},
 };
 use std::{error::Error, string::String};
+use stronghold_communication::behaviour::{
+    error::{QueryError, QueryResult},
+    message::{P2PEvent, P2PIdentifyEvent, P2PReqResEvent},
+    P2PNetworkBehaviour,
+};
 
 use futures::{future, io::Lines, prelude::*};
 use libp2p::{

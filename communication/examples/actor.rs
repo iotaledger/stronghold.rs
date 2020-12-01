@@ -1,14 +1,14 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use stronghold_communication::{
-    actor::{CommunicationActor, CommunicationEvent},
-    behaviour::message::P2PReqResEvent,
-};
 use core::time::Duration;
 use libp2p::core::identity::Keypair;
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
+use stronghold_communication::{
+    actor::{CommunicationActor, CommunicationEvent},
+    behaviour::message::P2PReqResEvent,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Request {
