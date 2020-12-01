@@ -6,6 +6,7 @@ use crate::{
     ids::{ClientId, VaultId},
     line_error,
     provider::Provider,
+    runtime::RMsg,
 };
 use std::path::PathBuf;
 
@@ -26,6 +27,14 @@ pub struct Client {
     heads: Vec<RecordId>,
     // channel to receive data from stronghold.
     chan: ChannelRef<SHResults>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Procedure {
+    SIP10 {
+        master_record: (VaultId, RecordId, RecordHint),
+        secret_record: (VaultId, RecordId, RecordHint),
+    },
 }
 
 /// Messages to interact with Stronghold
@@ -56,6 +65,8 @@ pub enum SHRequest {
     // Reads from the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults
     // to `$HOME/.engine/snapshots/backup.snapshot`.
     ReadSnapshot(String, Option<String>, Option<PathBuf>),
+
+    ControlRequest(Procedure),
 }
 
 /// Messages that come from stronghold
@@ -253,6 +264,22 @@ impl Receive<SHRequest> for Client {
 
                 bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass, name, path), None);
             }
+            SHRequest::ControlRequest(procedure) => match procedure {
+                Procedure::SIP10 {
+                    master_record,
+                    secret_record,
+                } => {
+                    let runtime = ctx.select("/user/runtime/").expect(line_error!());
+
+                    runtime.try_tell(
+                        RMsg::Slip10GenerateKey {
+                            master_record,
+                            secret_record,
+                        },
+                        None,
+                    );
+                }
+            },
         }
     }
 }

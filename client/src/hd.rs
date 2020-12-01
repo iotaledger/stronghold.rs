@@ -8,7 +8,7 @@ use crypto::macs::hmac::HMAC_SHA512;
 use num_bigint::BigUint;
 
 #[derive(Debug)]
-enum Error {
+pub enum Error {
     NotSupported,
     CryptoError(crypto::Error),
 }
@@ -29,13 +29,14 @@ impl Seed {
         Self(bs.to_vec())
     }
 
-    fn to_master_key(&self) -> Key {
+    pub fn to_master_key(&self) -> Key {
         let mut I = [0; 64];
         HMAC_SHA512(&self.0, &"ed25519 seed".as_bytes(), &mut I);
         Key(I)
     }
 }
 
+#[derive(Debug)]
 pub struct Key([u8; 64]);
 
 impl Key {
