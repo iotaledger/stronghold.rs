@@ -19,6 +19,7 @@ mod actors;
 mod bucket;
 mod client;
 mod ids;
+mod hd;
 mod key_store;
 mod provider;
 mod secret;
