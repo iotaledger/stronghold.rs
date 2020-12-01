@@ -3,7 +3,13 @@
 ## Introduction
 [summary]: #summary
 
-**IOTA Stronghold** is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidental leaks. It uses versioned snapshots with double-encryption that can be easily backed up and securely shared between devices. Written in stable rust, it has strong guarantees of memory safety and process integrity. The high-level developer-friendly libraries will integrate the IOTA protocol and serve as a reference implementation for anyone looking for inspiration or best-in-class tooling.
+**IOTA Stronghold** is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidental leaks. It uses encrypted snapshots that can be easily backed up and securely shared between devices. Written in stable rust, it has strong guarantees of memory safety and process integrity. 
+
+There are four main components of Stronghold:
+1. **Client**: The high-level interface to Stronghold (prefers Riker, functional integration also available)
+2. **Engine**: Combines a persistence store (Snapshot) with an in-memory state interface (Vault).
+3. **Runtime**: Is a process fork with limited permissions within which cryptographic operations take place
+4. **Communication**: Enables Strongholds in different processes or on different devices to communicate with each other securely.
 
 ## WARNING
 This library has not yet been audited for security, so use at your own peril. Until a formal third-party security audit has taken place, the IOTA Foundation makes no guarantees to the fitness of this library for any purposes.
@@ -15,9 +21,17 @@ Nevertheless, we are very interested in feedback about the design and implementa
 ## Roadmap
 Here are some of the features and tasks that we are working on.
 
+#### Components
+- [x] Engine (beta quality, fuzzed)
+- [x] Client (with dual interfaces)
+- [x] peer-to-peer communications
+- [x] Secure runtime zone 
+- [x] Integration with crypto.rs 
+
 ### Documentation and Specification
 - [ ] User Handbooks
 - [ ] Specification Documentation
+- [ ] Tutorials
 
 ### Performance and Testing
 - [x] Unit Tests
@@ -26,18 +40,16 @@ Here are some of the features and tasks that we are working on.
 - [ ] Multiplatform benchmarks
 - [ ] Continuous Fuzzing
 
-### Applications
-- [x] Low-level libraries (beta quality, fuzzed)
-- [x] High-level libraries (under active development)
-- [ ] Rust Actor Wrapper
-- [ ] Portable CLI binary
+#### Applications
+- [x] CLI binary
+- [ ] Standalone Desktop Application
 - [ ] Portable Daemon (for nodes, etc)
 - [ ] Dynamic high-performance store 
 - [ ] C FFI bindings
-- [ ] Sync service between strongholds
 
 ### Hardware Integrations
-- [ ] Works with Yubikey
+- [ ] Works with USB Armory Mk II
+- [ ] Works with Yubikey
 - [ ] Works with Ledger Nano X
 - [ ] Use Secure Element to generate private keys for decryption
 - [ ] Move entirely to FPGA
