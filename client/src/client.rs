@@ -32,6 +32,7 @@ pub struct Client {
 #[derive(Debug, Clone)]
 pub enum Procedure {
     SIP10 {
+        seed: Vec<u8>,
         master_record: (VaultId, RecordId, RecordHint),
         secret_record: (VaultId, RecordId, RecordHint),
     },
@@ -266,6 +267,7 @@ impl Receive<SHRequest> for Client {
             }
             SHRequest::ControlRequest(procedure) => match procedure {
                 Procedure::SIP10 {
+                    seed,
                     master_record,
                     secret_record,
                 } => {
@@ -273,6 +275,7 @@ impl Receive<SHRequest> for Client {
 
                     runtime.try_tell(
                         RMsg::Slip10GenerateKey {
+                            seed,
                             master_record,
                             secret_record,
                         },

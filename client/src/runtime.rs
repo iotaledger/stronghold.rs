@@ -13,6 +13,7 @@ use runtime::zone::*;
 #[derive(Debug, Clone)]
 pub enum RMsg {
     Slip10GenerateKey {
+        seed: Vec<u8>,
         master_record: (VaultId, RecordId, RecordHint),
         secret_record: (VaultId, RecordId, RecordHint),
     },
@@ -40,15 +41,12 @@ impl Receive<RMsg> for Runtime {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         match msg {
             RMsg::Slip10GenerateKey {
+                seed,
                 master_record,
                 secret_record,
             } => {
                 let (master_key, secret_key) = soft(|| {
-                    let mut rng: Vec<u8> = vec![0u8; 64];
-
-                    OsRng.random(&mut rng).expect(line_error!());
-
-                    let seed = Seed::from_bytes(&rng);
+                    let seed = Seed::from_bytes(&seed);
 
                     let master_key = seed.to_master_key();
 

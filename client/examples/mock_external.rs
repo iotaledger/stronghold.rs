@@ -95,9 +95,10 @@ impl Receive<SHResults> for MockExternal {
                     println!("Record: {:?}, Hint: {:?}", rid, hint);
                 });
             }
-            SHResults::ReturnRead(data) => {
-                println!("Data Output: {:?}", &data);
-            }
+            SHResults::ReturnRead(data) => match std::str::from_utf8(&data) {
+                Ok(s) => println!("Data Output: {}", s),
+                Err(_) => println!("Data Output: {:?}", String::from_utf8_lossy(&data)),
+            },
             SHResults::ReturnRebuild(vids, rids) => {
                 println!("Read from snapshot and rebuilt table");
 
@@ -219,6 +220,7 @@ impl Receive<InterfaceMsg> for MockExternal {
 
                 client.try_tell(
                     ClientMsg::SHRequest(SHRequest::ControlRequest(Procedure::SIP10 {
+                        seed: b"8f9240688685a1e99109831kljhasi8".to_vec(),
                         master_record: (vid0, rid0, RecordHint::new(b"master").expect(line_error!())),
                         secret_record: (vid1, rid1, RecordHint::new(b"secret").expect(line_error!())),
                     })),
@@ -340,5 +342,5 @@ fn main() {
 
     test.tell(StartTest {}, None);
 
-    std::thread::sleep(std::time::Duration::from_millis(5000));
+    std::thread::sleep(std::time::Duration::from_millis(2000));
 }
