@@ -141,6 +141,29 @@
     }
   },
   "packages": {
+    "iota-stronghold": {
+      "path": "./client/",
+      "manager": "rust",
+      "dependencies": [
+        "stronghold-engine",
+        "crypto",
+        "vault",
+        "snapshot",
+        "random",
+        "primitives"
+      ]
+    },
+    "stronghold-engine": {
+      "path": "./engine/",
+      "manager": "rust",
+      "dependencies": [
+        "crypto",
+        "vault",
+        "snapshot",
+        "random",
+        "primitives"
+      ]
+    },
     "stronghold-runtime": {
       "path": "./runtime/",
       "manager": "rust"
@@ -173,16 +196,6 @@
       "path": "./engine/primitives/",
       "manager": "rust",
       "publish": false
-    },
-    "stronghold-engine": {
-      "path": "./engine/",
-      "manager": "rust",
-      "dependencies": ["crypto", "vault", "snapshot", "random", "primitives"]
-    },
-    "iota-stronghold": {
-      "path": "./client/",
-      "manager": "rust",
-      "dependencies": ["stronghold-engine"]
     }
   }
 }
