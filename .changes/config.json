@@ -168,7 +168,7 @@
       "path": "./runtime/",
       "manager": "rust"
     },
-    "communication": {
+    "stronghold-communication": {
       "path": "./communication/",
       "manager": "rust"
     },
