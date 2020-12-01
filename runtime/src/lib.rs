@@ -10,8 +10,9 @@ use core::fmt;
 #[cfg(target_os = "linux")]
 extern crate memoffset;
 
-// #[macro_use]
-// extern crate lazy_static;
+#[macro_use]
+#[cfg(unix)]
+extern crate lazy_static;
 
 #[cfg(unix)]
 pub mod mem;
