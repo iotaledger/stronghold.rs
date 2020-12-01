@@ -12,7 +12,11 @@ use core::{
 };
 use futures::{channel::mpsc, future, prelude::*};
 use libp2p::{
-    core::{connection::PendingConnectionError, identity::Keypair, ConnectedPoint, Multiaddr},
+    core::{
+        connection::{ListenerId, PendingConnectionError},
+        identity::Keypair,
+        ConnectedPoint, Multiaddr,
+    },
     swarm::{Swarm, SwarmEvent},
 };
 use riker::actors::*;
@@ -115,14 +119,14 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
 
         // Create a P2PNetworkBehaviour for the swarm communication.
         let mut swarm = P2PNetworkBehaviour::<T, U>::init_swarm(self.keypair.clone()).unwrap();
-        Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp0".parse().unwrap()).unwrap();
+        let listener = Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp0".parse().unwrap()).unwrap();
 
         let chan = self.chan.clone();
         let topic = Topic::from("swarm_inbound");
 
         // Kick off the swarm communication in it's own task.
         let handle = ctx.run(future::poll_fn(move |mut tcx: &mut TaskContext<'_>| {
-            poll_swarm(&mut tcx, &mut swarm, &mut swarm_rx, &chan, topic.clone())
+            poll_swarm(&mut tcx, &mut swarm, &mut swarm_rx, &chan, topic.clone(), listener)
         }));
         self.poll_swarm_handle = handle.ok();
     }
@@ -163,10 +167,11 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
 // forward them
 fn poll_swarm<T: MessageEvent, U: MessageEvent>(
     tcx: &mut TaskContext<'_>,
-    swarm: &mut Swarm<P2PNetworkBehaviour<T, U>>,
+    mut swarm: &mut Swarm<P2PNetworkBehaviour<T, U>>,
     swarm_rx: &mut mpsc::Receiver<CommunicationEvent<T, U>>,
     chan: &ChannelRef<CommunicationEvent<T, U>>,
     topic: Topic,
+    listener: ListenerId,
 ) -> Poll<()> {
     // Poll for request that are forwarded through the swarm_tx channel and send them over the swarm to remote
     // peers.
@@ -196,7 +201,7 @@ fn poll_swarm<T: MessageEvent, U: MessageEvent>(
             },
             CommunicationEvent::ConnectPeer(addr) => connect_remote(swarm, addr, chan, topic.clone()),
             CommunicationEvent::Shutdown => {
-                // Break from the loop and end task.
+                Swarm::remove_listener(&mut swarm, listener).unwrap();
                 return Poll::Ready(());
             }
             _ => {}
@@ -309,4 +314,10 @@ fn connect_remote<T: MessageEvent, U: MessageEvent>(
             None,
         );
     }
+}
+
+#[cfg(test)]
+mod test {
+
+    //     use super::*;
 }

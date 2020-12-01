@@ -14,18 +14,24 @@ use error::{QueryError, QueryResult};
 #[cfg(feature = "mdns")]
 use libp2p::mdns::{Mdns, MdnsEvent};
 use libp2p::{
-    build_tcp_ws_noise_mplex_yamux,
-    core::{Multiaddr, PeerId},
+    core::{upgrade, Multiaddr, PeerId},
+    dns::DnsConfig,
     identify::{Identify, IdentifyEvent},
     identity::Keypair,
+    noise::{self, NoiseConfig},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
         RequestResponseMessage, ResponseChannel,
     },
     swarm::{NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters, Swarm},
-    NetworkBehaviour,
+    tcp::TcpConfig,
+    websocket::WsConfig,
+    yamux::Config as YamuxConfig,
+    NetworkBehaviour, Transport,
 };
-use message::{P2PEvent, P2PMdnsEvent, P2PReqResEvent};
+#[cfg(feature = "mdns")]
+use message::P2PMdnsEvent;
+use message::{P2PEvent, P2PReqResEvent};
 pub use protocol::MessageEvent;
 use protocol::{MessageCodec, MessageProtocol};
 // TODO: support no_std
@@ -52,9 +58,8 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     /// Creates a new P2PNetworkbehaviour that defines the communication with the libp2p swarm.
     /// It combines the following protocols from libp2p:
     /// - mDNS for peer discovery within the local network
-    /// - identify for the public key and general information of the remote peer
-    /// - RequestResponse Protocol for sending request and Response messages. This stronghold-communication library
-    ///   defines a custom version of this protocol that for sending pings, string-messages and key-value-records.
+    /// - identify-protocol to receive identifying information of the remote peer
+    /// - RequestResponse Protocol for sending generic request `T` and response `U` messages
     ///
     /// # Example
     /// ```no_run
@@ -83,16 +88,35 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
         #[allow(unused_variables)]
         let local_peer_id = PeerId::from(local_keys.public());
 
+        let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
+            .into_authentic(&local_keys)
+            .map_err(|e| QueryError::NoiseAuthenticError(format!("Could not create authentic keypair: {:?}", e)))?;
+        // Use XX handshake pattern
+        let noise = NoiseConfig::xx(noise_keys).into_authenticated();
+        // Tcp layer with wrapper to resolve dns addresses
+        let dns_transport = DnsConfig::new(TcpConfig::new())
+            .map_err(|e| QueryError::TransportError(format!("Could not create transport: {:?}", e)))?;
+        // The configured transport establishes connections via tcp with websockets as fallback, and
+        // negotiates authentification and multiplexing on all connections
+        let transport = dns_transport
+            .clone()
+            .or_transport(WsConfig::new(dns_transport))
+            .upgrade(upgrade::Version::V1)
+            .authenticate(noise)
+            .multiplex(YamuxConfig::default());
+
+        // multicast DNS for peer discovery within a local network
         #[cfg(feature = "mdns")]
         let mdns =
-            Mdns::new().map_err(|_| QueryError::ConnectionError("Could not build mdns behaviour".to_string()))?;
-
+            Mdns::new().map_err(|e| QueryError::ConnectionError(format!("Could not build mdns behaviour: {:?}", e)))?;
+        // Identify protocol to receive identifying information of a remote peer once a connection
+        // was established
         let identify = Identify::new(
             "/identify/0.1.0".into(),
             "stronghold-communication".into(),
             local_keys.public(),
         );
-        // Create RequestResponse behaviour with MessageProtocol
+        // Enable Request- and Response-Messages with the generic MessageProtocol
         let msg_proto = {
             let mut cfg = RequestResponseConfig::default();
             cfg.set_connection_keep_alive(Duration::from_secs(60));
@@ -100,6 +124,8 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
             RequestResponse::new(MessageCodec::<T, U>::new(PhantomData, PhantomData), protocols, cfg)
         };
 
+        // The behaviour describes how the swarm handles events enables interacting with the
+        // network
         let behaviour = P2PNetworkBehaviour {
             #[cfg(feature = "mdns")]
             mdns,
@@ -109,12 +135,13 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
             events: Vec::new(),
             response_channels: BTreeMap::new(),
         };
-        // create a transport and swarm for the new P2PNetworkBehaviour
-        let transport = build_tcp_ws_noise_mplex_yamux(local_keys)
-            .map_err(|_| QueryError::ConnectionError("Could not build transport layer".to_string()))?;
+
+        // The swarm manages a pool of connections established through the transport and drives the
+        // NetworkBehaviour through emitting events triggered by activity on the managed connections.
         Ok(Swarm::new(transport, behaviour, local_peer_id))
     }
 
+    // Custom function that is called when the swarm is polled
     fn poll<TEv>(
         &mut self,
         _cx: &mut Context<'_>,
@@ -164,7 +191,6 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
 #[cfg(feature = "mdns")]
 impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour<T, U> {
     // Called when `mdns` produces an event.
-    #[allow(unused_variables)]
     fn inject_event(&mut self, event: MdnsEvent) {
         let comm_event = P2PEvent::from(event);
         if let P2PEvent::Mdns(e) = comm_event.clone() {
@@ -175,7 +201,7 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> f
                     }
                 }
                 P2PMdnsEvent::Expired(list) => {
-                    for (peer_id, multiaddr) in list {
+                    for (peer_id, _multiaddr) in list {
                         self.remove_peer(&peer_id);
                     }
                 }
@@ -188,7 +214,7 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> f
 impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestResponseEvent<T, U>>
     for P2PNetworkBehaviour<T, U>
 {
-    // Called when the protocol produces an event.
+    // Called when a request or response was received.
     fn inject_event(&mut self, event: RequestResponseEvent<T, U>) {
         let communication_event = if let RequestResponseEvent::Message {
             peer,
@@ -223,8 +249,16 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEven
 #[cfg(test)]
 mod test {
     use super::*;
-    use core::str::FromStr;
+    #[cfg(not(feature="mdns"))]
+    use crate::behaviour::message::P2PIdentifyEvent;
+    use async_std::task;
+    use core::{ops::Deref, str::FromStr};
+    #[cfg(not(feature="mdns"))]
+    use futures::future;
+    use libp2p::swarm::SwarmEvent;
     use serde::{Deserialize, Serialize};
+    #[cfg(not(feature = "mdns"))]
+    use message::P2PMdnsEvent;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Request {
@@ -246,7 +280,7 @@ mod test {
     }
 
     #[test]
-    fn test_new_behaviour() {
+    fn new_behaviour() {
         let local_keys = Keypair::generate_ed25519();
         let swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys.clone()).unwrap();
         assert_eq!(
@@ -257,7 +291,7 @@ mod test {
     }
 
     #[test]
-    fn test_add_peer() {
+    fn add_peer() {
         let mut swarm = mock_swarm();
         let peer_id = PeerId::random();
         let addr = mock_addr();
@@ -267,5 +301,202 @@ mod test {
         assert_eq!(swarm.remove_peer(&peer_id).unwrap(), addr);
         assert!(swarm.get_peer_addr(&peer_id).is_none());
         assert!(!swarm.get_all_peers().contains_key(&peer_id));
+    }
+
+    #[test]
+    fn request_respose() {
+        let mut remote = mock_swarm();
+        let remote_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8085".parse().unwrap();
+        let listener_id = Swarm::listen_on(&mut remote, remote_addr.clone()).unwrap();
+        let remote_peer_id = Swarm::local_peer_id(&remote).clone();
+        let remote_addr_clone = remote_addr.clone();
+
+
+        let mut local = mock_swarm();
+        let local_peer_id = Swarm::local_peer_id(&local).clone();
+
+        let remote_handle = task::spawn(async move {
+            loop {
+                match task::block_on(remote.next_event()) {
+                    SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
+                        if let P2PReqResEvent::Req {
+                            peer_id,
+                            request_id,
+                            request: Request::Ping,
+                        } = boxed_event.deref().clone()
+                        {
+                            if peer_id == local_peer_id {
+                                remote.send_response(Response::Pong, request_id.unwrap()).unwrap();
+                            }
+                        }
+                    }
+                    SwarmEvent::ConnectionClosed {
+                        peer_id,
+                        endpoint: _,
+                        num_established: _,
+                        cause: _,
+                    } => {
+                        if peer_id == local_peer_id {
+                            Swarm::remove_listener(&mut remote, listener_id).unwrap();
+                            return;
+                        }
+                    }
+                    SwarmEvent::UnreachableAddr {
+                        peer_id: _,
+                        address,
+                        error: _,
+                        attempts_remaining: 0,
+                    } => {
+                        if address == remote_addr {
+                            panic!();
+                        }
+                    }
+                    SwarmEvent::UnknownPeerUnreachableAddr { address, error: _ } => {
+                        if address == remote_addr {
+                            panic!();
+                        }
+                    }
+
+                    _ => {}
+                }
+            }
+        });
+
+        Swarm::dial_addr(&mut local, remote_addr_clone.clone()).unwrap();
+        let local_handle = task::spawn(async move {
+            loop {
+                match task::block_on(local.next_event()) {
+                    SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
+                        if let P2PReqResEvent::Res {
+                            peer_id,
+                            request_id: _,
+                            response: Response::Pong,
+                        } = boxed_event.deref().clone()
+                        {
+                            if peer_id == remote_peer_id {
+                                return;
+                            }
+                        }
+                    }
+                    SwarmEvent::ConnectionEstablished {
+                        peer_id,
+                        endpoint: _,
+                        num_established: _,
+                    } => {
+                        if peer_id == remote_peer_id {
+                            local.send_request(&remote_peer_id, Request::Ping);
+                        }
+                    }
+                    SwarmEvent::ConnectionClosed {
+                        peer_id,
+                        endpoint: _,
+                        num_established: _,
+                        cause: _,
+                    } => {
+                        if peer_id == remote_peer_id {
+                            return;
+                        }
+                    }
+                    SwarmEvent::UnreachableAddr {
+                        peer_id,
+                        address: _,
+                        error: _,
+                        attempts_remaining: 0,
+                    } => {
+                        if peer_id == remote_peer_id {
+                            panic!();
+                        }
+                    }
+                    SwarmEvent::UnknownPeerUnreachableAddr { address, error: _ } => {
+                        if address == remote_addr_clone {
+                            panic!();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
+        task::block_on(async {
+            local_handle.await;
+            remote_handle.await;
+        })
+    }
+
+    // TODO: fix test for mdns
+    #[cfg(not(feature="mdns"))]
+    #[test]
+    fn identify_event() {
+        let mut remote = mock_swarm();
+        let remote_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8086".parse().unwrap();
+        let remote_listener_id = Swarm::listen_on(&mut remote, remote_addr.clone()).unwrap();
+        let remote_peer_id = Swarm::local_peer_id(&remote).clone();
+        let remote_addr_clone = remote_addr.clone();
+
+        let mut local = mock_swarm();
+        let local_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8087".parse().unwrap();
+        let local_listener_id = Swarm::listen_on(&mut local, local_addr.clone()).unwrap();
+        let local_peer_id = Swarm::local_peer_id(&local).clone();
+        let local_addr_clone = local_addr.clone();
+
+        let remote_handle = task::spawn(async move {
+            loop {
+                match task::block_on(remote.next_event()) {
+                    SwarmEvent::Behaviour(P2PEvent::Identify(boxed_event)) => {
+                        if let P2PIdentifyEvent::Received {
+                            peer_id,
+                            info,
+                            observed_addr:_,
+                        } = boxed_event.deref().clone()
+                        {
+                            if peer_id == local_peer_id {
+                                Swarm::remove_listener(&mut remote, remote_listener_id).unwrap();
+                                assert_eq!(PeerId::from_public_key(info.clone().public_key), peer_id);
+                                assert!(info.listen_addrs.contains(&local_addr_clone));
+                                break;
+                            }
+                        }
+                    }
+                    SwarmEvent::NewListenAddr(addr) => {
+                        assert_eq!(addr, remote_addr);
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        let local_handle = task::spawn(async move {
+            loop {
+                match task::block_on(local.next_event()) {
+                    SwarmEvent::Behaviour(P2PEvent::Identify(boxed_event)) => {
+                        if let P2PIdentifyEvent::Received {
+                            peer_id,
+                            info,
+                            observed_addr: _,
+                        } = boxed_event.deref().clone()
+                        {
+                            if peer_id == remote_peer_id {
+                                Swarm::remove_listener(&mut local, local_listener_id).unwrap();
+                                assert_eq!(PeerId::from_public_key(info.clone().public_key), peer_id);
+                                assert!(info.listen_addrs.contains(&remote_addr_clone));
+                                break;
+                            }
+                        }
+                    }
+                    SwarmEvent::Behaviour(P2PEvent::Mdns(P2PMdnsEvent::Discovered(list))) => {
+                        if list.contains(&(remote_peer_id.clone(), remote_addr_clone.clone())) {
+                            Swarm::dial_addr(&mut local, remote_addr_clone.clone()).unwrap();
+                        }
+                    }
+                    SwarmEvent::NewListenAddr(addr) => {
+                        assert_eq!(addr, local_addr);
+                        Swarm::dial_addr(&mut local, remote_addr_clone.clone()).unwrap();
+                    }
+                    _ => {}
+                }
+            }
+        });
+        task::block_on(async {
+            future::join(local_handle, remote_handle).await;
+        });
     }
 }

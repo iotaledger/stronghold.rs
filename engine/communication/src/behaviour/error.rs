@@ -5,13 +5,19 @@ use thiserror::Error as DeriveError;
 
 #[derive(Debug, DeriveError)]
 pub enum QueryError {
-    #[error("Connection Error: `{0}`")]
+    #[error("Transport error: `{0}`")]
+    TransportError(String),
+
+    #[error("Noise authentic error: `{0}")]
+    NoiseAuthenticError(String),
+
+    #[error("Connection error: `{0}`")]
     ConnectionError(String),
 
-    #[error("IO Error: `{0}`")]
+    #[error("IO error: `{0}`")]
     IOError(String),
 
-    #[error("Missing Channel for Request: `{0}`")]
+    #[error("Missing response channel: `{0}`")]
     MissingChannelError(String),
 }
 
