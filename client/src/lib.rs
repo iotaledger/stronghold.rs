@@ -21,18 +21,24 @@ mod client;
 mod ids;
 mod key_store;
 mod provider;
+mod runtime;
 mod secret;
 mod snapshot;
 
-use crate::{bucket::Bucket, client::Client, key_store::KeyStore, snapshot::Snapshot};
+#[allow(non_snake_case)]
+mod hd;
+
+use crate::{bucket::Bucket, client::Client, key_store::KeyStore, runtime::Runtime, snapshot::Snapshot};
 
 use riker::actors::{channel, ActorRefFactory, ActorSystem, ChannelRef};
 
 pub use crate::{
-    client::{ClientMsg, SHRequest, SHResults},
+    client::{ClientMsg, Procedure, SHRequest, SHResults},
     ids::{ClientId, VaultId},
     provider::Provider,
 };
+
+pub use engine::vault::{RecordHint, RecordId};
 
 #[macro_export]
 macro_rules! line_error {
@@ -62,6 +68,7 @@ pub fn init_stronghold(sys: ActorSystem) -> (ActorSystem, ChannelRef<SHResults>)
     sys.actor_of::<Bucket<Provider>>("bucket").unwrap();
     sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
     sys.actor_of::<Snapshot>("snapshot").unwrap();
+    sys.actor_of::<Runtime>("runtime").unwrap();
     sys.actor_of_args::<Client, _>("stronghold-internal", chan.clone())
         .unwrap();
 
