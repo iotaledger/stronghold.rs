@@ -25,7 +25,7 @@ mod runtime;
 mod secret;
 mod snapshot;
 
-#[allow(non_snake_case)]
+#[allow(non_snake_case, dead_code)]
 mod hd;
 
 use crate::{bucket::Bucket, client::Client, key_store::KeyStore, runtime::Runtime, snapshot::Snapshot};
