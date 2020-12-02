@@ -55,7 +55,7 @@ impl Receive<RMsg> for Runtime {
                 })
                 .expect(line_error!());
 
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
+                let keystore = ctx.select("/user/internal-actor/").expect(line_error!());
 
                 let (vid0, rid0, hint0) = master_record;
                 let (vid1, rid1, hint1) = secret_record;

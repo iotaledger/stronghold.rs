@@ -20,6 +20,7 @@ zeroize = "1.1"
 zeroize_derive = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
+futures = "0.3"
 
 riker = "0.4"
 

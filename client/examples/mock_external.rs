@@ -294,7 +294,7 @@ impl Receive<StartTest> for TestActor {
             MockExternalMsg::InterfaceMsg(InterfaceMsg::WriteSnapshot("password".into(), None, None)),
             None,
         );
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        std::thread::sleep(std::time::Duration::from_millis(305));
 
         mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::RevokeData(1, 0)), None);
 
@@ -306,7 +306,7 @@ impl Receive<StartTest> for TestActor {
             MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadSnapshot("password".into(), None, None)),
             None,
         );
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        std::thread::sleep(std::time::Duration::from_millis(305));
 
         mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(1, None)), None);
 

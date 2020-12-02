@@ -16,6 +16,7 @@
 use thiserror::Error as DeriveError;
 
 mod actors;
+mod ask;
 mod bucket;
 mod client;
 mod ids;
@@ -28,7 +29,7 @@ mod snapshot;
 #[allow(non_snake_case, dead_code)]
 mod hd;
 
-use crate::{bucket::Bucket, client::Client, key_store::KeyStore, runtime::Runtime, snapshot::Snapshot};
+use crate::{actors::InternalActor, client::Client, runtime::Runtime, snapshot::Snapshot};
 
 use riker::actors::{channel, ActorRefFactory, ActorSystem, ChannelRef};
 
@@ -65,8 +66,7 @@ pub enum Error {
 pub fn init_stronghold(sys: ActorSystem) -> (ActorSystem, ChannelRef<SHResults>) {
     let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
 
-    sys.actor_of::<Bucket<Provider>>("bucket").unwrap();
-    sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
+    sys.actor_of::<InternalActor<Provider>>("internal-actor").unwrap();
     sys.actor_of::<Snapshot>("snapshot").unwrap();
     sys.actor_of::<Runtime>("runtime").unwrap();
     sys.actor_of_args::<Client, _>("stronghold-internal", chan.clone())

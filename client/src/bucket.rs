@@ -183,6 +183,17 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         (keystore_keys, rids)
     }
 
+    /// Deserialize the data in the cache of the bucket into bytes to be passed into a snapshot.  Returns a `Vec<u8>`.
+    pub fn offload_data(&mut self) -> Vec<u8> {
+        let mut cache: HashMap<Key<P>, Vec<ReadResult>> = HashMap::new();
+
+        self.cache.iter().for_each(|(k, v)| {
+            cache.insert(k.clone(), v.clone());
+        });
+
+        bincode::serialize(&cache).expect(line_error!())
+    }
+
     /// Exposes the `DBView` of the current vault and the cache layer to allow transactions to occur.
     fn take(&mut self, key: Key<P>, f: impl FnOnce(DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>) {
         let mut _reads = self.get_reads(key.clone());
@@ -213,16 +224,6 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
 
     fn insert_reads(&mut self, key: Key<P>, reads: Vec<ReadResult>) {
         self.cache.insert(key, reads);
-    }
-
-    pub fn offload_data(&mut self) -> Vec<u8> {
-        let mut cache: HashMap<Key<P>, Vec<ReadResult>> = HashMap::new();
-
-        self.cache.iter().for_each(|(k, v)| {
-            cache.insert(k.clone(), v.clone());
-        });
-
-        bincode::serialize(&cache).expect(line_error!())
     }
 }
 
