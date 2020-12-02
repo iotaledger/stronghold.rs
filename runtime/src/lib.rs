@@ -11,6 +11,7 @@ use core::fmt;
 extern crate memoffset;
 
 #[macro_use]
+#[cfg(unix)]
 extern crate lazy_static;
 
 #[cfg(unix)]
@@ -39,6 +40,7 @@ pub enum Error {
     #[cfg(unix)]
     MemError(mem::Error),
     ZoneError(zone::Error),
+    #[allow(dead_code)]
     Unreachable(&'static str),
 }
 
@@ -59,6 +61,7 @@ impl Error {
         }
     }
 
+    #[allow(dead_code)]
     fn unreachable(msg: &'static str) -> Self {
         Self::Unreachable(msg)
     }

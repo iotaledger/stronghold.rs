@@ -3,6 +3,37 @@ workspace = { }
 
 [package]
 name = "iota-stronghold"
-version = "0.2.0"
-authors = [ "Daniel Thompson-Yvetot <daniel.yvetot@iota.org>" ]
+version = "0.1.0"
+authors = ["tensorprogramming <tensordeveloper@gmail.com>", "Daniel Thompson-Yvetot <daniel.yvetot@iota.org>"]
 edition = "2018"
+license = "Apache-2.0"
+readme = "README.md"
+description = "Client interface for Stronghold"
+keywords = ["iota", "stronghold", "security"]
+categories = [ "security" ]
+homepage = "https://iota.org"
+repository = "https://github.com/iotaledger/stronghold.rs"
+
+[dependencies]
+stronghold-engine = {path = "../engine"}
+
+bincode = "1.3"
+serde = {version = "1.0", features = ["derive"]}
+zeroize = "1.1"
+zeroize_derive = "1.0"
+anyhow = "1.0"
+thiserror = "1.0"
+
+riker = "0.4"
+
+stronghold-runtime = {path = "../runtime"}
+
+[dependencies.iota-crypto]
+git = "https://github.com/iotaledger/crypto.rs"
+rev = "bc35d38561efcf20a50aeb0f0b08028b4b4fda46"
+features = [ "ed25519", "sha", "hmac" ]
+
+[dev-dependencies]
+hex = "0.4.2"
+
+[workspace]

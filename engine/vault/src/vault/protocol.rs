@@ -58,7 +58,7 @@ impl ReadRequest {
 }
 
 /// a read result
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ReadResult {
     kind: Kind,
     id: Vec<u8>,

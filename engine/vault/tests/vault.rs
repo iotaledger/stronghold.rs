@@ -52,7 +52,7 @@ fn test_truncate() -> Result<()> {
 #[test]
 fn test_read_non_existent_record() -> Result<()> {
     let k: Key<Provider> = Key::random()?;
-    let v = DBView::load(k.clone(), empty::<ReadResult>())?;
+    let v = DBView::load(k, empty::<ReadResult>())?;
 
     let id = RecordId::random::<Provider>()?;
     assert_eq!(v.reader().prepare_read(&id)?, PreparedRead::NoSuchRecord);
@@ -77,7 +77,7 @@ fn test_write_cache_hit() -> Result<()> {
     let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
 
     assert_eq!(v1.all().len(), 1);
-    assert_eq!(v1.records().collect::<Vec<_>>().len(), 1);
+    assert_eq!(v1.records().count(), 1);
     assert_eq!(v1.absolute_balance(), (2, 2));
     assert_eq!(v1.chain_ctrs(), vec![(id, 1u64)].into_iter().collect());
     assert_eq!(v1.gc().len(), 0);
@@ -145,7 +145,7 @@ fn test_write_twice() -> Result<()> {
     let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
 
     assert_eq!(v1.all().len(), 1);
-    assert_eq!(v1.records().collect::<Vec<_>>().len(), 1);
+    assert_eq!(v1.records().count(), 1);
     assert_eq!(v1.absolute_balance(), (2, 3));
     assert_eq!(v1.chain_ctrs(), vec![(id, 2u64)].into_iter().collect());
     assert_eq!(v1.gc().len(), 1);
@@ -156,7 +156,7 @@ fn test_write_twice() -> Result<()> {
 }
 
 #[test]
-fn test_rekove() -> Result<()> {
+fn test_revoke() -> Result<()> {
     let k: Key<Provider> = Key::random()?;
     let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
 
@@ -173,7 +173,7 @@ fn test_rekove() -> Result<()> {
     assert_eq!(v2.reader().prepare_read(&id)?, PreparedRead::NoSuchRecord);
 
     assert_eq!(v2.all().len(), 1);
-    assert_eq!(v2.records().collect::<Vec<_>>().len(), 0);
+    assert_eq!(v2.records().count(), 0);
     assert_eq!(v2.absolute_balance(), (0, 2));
     assert_eq!(v2.chain_ctrs(), vec![(id, 1u64)].into_iter().collect());
     assert_eq!(v2.gc().len(), 2);
@@ -197,7 +197,7 @@ fn test_rekove_without_reload() -> Result<()> {
     assert_eq!(v1.reader().prepare_read(&id)?, PreparedRead::NoSuchRecord);
 
     assert_eq!(v1.all().len(), 1);
-    assert_eq!(v1.records().collect::<Vec<_>>().len(), 0);
+    assert_eq!(v1.records().count(), 0);
     assert_eq!(v1.absolute_balance(), (0, 2));
     assert_eq!(v1.chain_ctrs(), vec![(id, 1u64)].into_iter().collect());
     assert_eq!(v1.gc().len(), 2);
@@ -224,7 +224,7 @@ fn test_rekove_then_write() -> Result<()> {
     assert_eq!(v1.reader().prepare_read(&id)?, PreparedRead::CacheHit(data));
 
     assert_eq!(v1.all().len(), 1);
-    assert_eq!(v1.records().collect::<Vec<_>>().len(), 1);
+    assert_eq!(v1.records().count(), 1);
     assert_eq!(v1.absolute_balance(), (2, 3));
     assert_eq!(v1.chain_ctrs(), vec![(id, 2u64)].into_iter().collect());
     assert_eq!(v1.gc().len(), 1);
@@ -302,7 +302,7 @@ fn test_storage_returns_stale_blob() -> Result<()> {
         ws => panic!("{} unexpected writes", ws.len()),
     };
 
-    let v1 = DBView::load(k.clone(), writes.iter().map(write_to_read))?;
+    let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
 
     let r = v1.reader();
     let res = match r.prepare_read(&id)? {
