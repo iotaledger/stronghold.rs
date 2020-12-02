@@ -34,7 +34,7 @@ impl Actor for TestActor {
     type Msg = CommunicationEvent<Request, Response>;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        let topic = Topic::from("swarm_inbound");
+        let topic = Topic::from("from_swarm");
         let sub = Box::new(ctx.myself());
         self.chan.tell(Subscribe { actor: sub, topic }, None);
     }
@@ -55,7 +55,7 @@ impl Actor for TestActor {
             self.chan.tell(
                 Publish {
                     msg: response,
-                    topic: Topic::from("swarm_outbound"),
+                    topic: Topic::from("to_swarm"),
                 },
                 None,
             );
@@ -66,9 +66,12 @@ impl Actor for TestActor {
 fn main() {
     let local_keys = Keypair::generate_ed25519();
     let sys = ActorSystem::new().unwrap();
-    let chan: ChannelRef<CommunicationEvent<Request, Response>> = channel("remote-peer", &sys).unwrap();
-    sys.actor_of_args::<CommunicationActor<Request, Response>, _>("communication-actor", (local_keys, chan.clone()))
-        .unwrap();
+    let chan: ChannelRef<CommunicationEvent<Request, Response>> = channel("p2p", &sys).unwrap();
+    sys.actor_of_args::<CommunicationActor<Request, Response>, _>(
+        "communication-actor",
+        (local_keys, chan.clone(), None),
+    )
+    .unwrap();
     sys.actor_of_args::<TestActor, _>("test-actor", chan).unwrap();
     std::thread::sleep(Duration::from_secs(600));
 }
