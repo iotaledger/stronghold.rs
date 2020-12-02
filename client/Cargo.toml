@@ -1,6 +1,3 @@
-dependencies = { }
-workspace = { }
-
 [package]
 name = "iota-stronghold"
 version = "0.1.0"
