@@ -37,6 +37,7 @@ pub enum KMsg {
     WriteSnapshot(String, Option<String>, Option<PathBuf>),
     ReadSnapshot(String, Option<String>, Option<PathBuf>),
     ReloadData(Vec<u8>),
+    ClearCache,
 }
 
 /// Messages used for the Snapshot Actor.
@@ -153,6 +154,10 @@ impl Receive<KMsg> for InternalActor<Provider> {
             KMsg::ReadSnapshot(pass, name, path) => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
                 snapshot.try_tell(SMsg::ReadSnapshot(pass, name, path), None);
+            }
+            KMsg::ClearCache => {
+                self.bucket.clear_cache();
+                self.keystore.clear_keys();
             }
         })
         .expect(line_error!());

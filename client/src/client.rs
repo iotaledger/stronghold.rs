@@ -66,7 +66,8 @@ pub enum SHRequest {
     // Reads from the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults
     // to `$HOME/.engine/snapshots/backup.snapshot`.
     ReadSnapshot(String, Option<String>, Option<PathBuf>),
-
+    ClearCache,
+    // Requests to preform a procedure in the runtime.  Takes a Procedure and its associated arguments.
     ControlRequest(Procedure),
 }
 
@@ -264,6 +265,11 @@ impl Receive<SHRequest> for Client {
                 let bucket = ctx.select("/user/internal-actor/").expect(line_error!());
 
                 bucket.try_tell(KMsg::ReadSnapshot(pass, name, path), None);
+            }
+            SHRequest::ClearCache => {
+                let bucket = ctx.select("/user/internal-actor/").expect(line_error!());
+
+                bucket.try_tell(KMsg::ClearCache, None);
             }
             SHRequest::ControlRequest(procedure) => match procedure {
                 Procedure::SIP10 {

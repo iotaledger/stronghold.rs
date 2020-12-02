@@ -55,6 +55,10 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
 
         id_buffer
     }
+
+    pub fn clear_keys(&mut self) {
+        self.store.clear();
+    }
 }
 
 #[cfg(test)]

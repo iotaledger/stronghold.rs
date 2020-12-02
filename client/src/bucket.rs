@@ -194,6 +194,11 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         bincode::serialize(&cache).expect(line_error!())
     }
 
+    pub fn clear_cache(&mut self) {
+        self.vaults.clear();
+        self.cache.clear();
+    }
+
     /// Exposes the `DBView` of the current vault and the cache layer to allow transactions to occur.
     fn take(&mut self, key: Key<P>, f: impl FnOnce(DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>) {
         let mut _reads = self.get_reads(key.clone());
