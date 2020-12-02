@@ -101,7 +101,7 @@ impl Chain {
     }
 
     pub fn from_u32<I: IntoIterator<Item = u32>>(is: I) -> Self {
-        Self(is.into_iter().map(|i| Segment::from_u32(i)).collect())
+        Self(is.into_iter().map(Segment::from_u32).collect())
     }
 
     pub fn from_u32_hardened<I: IntoIterator<Item = u32>>(is: I) -> Self {
