@@ -26,7 +26,7 @@ pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
 
 /// Messages used for the KeyStore Actor.
 #[derive(Clone, Debug)]
-pub enum KMsg {
+pub enum InternalMsg {
     CreateVault(VaultId),
     ReadData(VaultId, RecordId),
     WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
@@ -57,19 +57,19 @@ impl ActorFactory for InternalActor<Provider> {
 }
 
 impl Actor for InternalActor<Provider> {
-    type Msg = KMsg;
+    type Msg = InternalMsg;
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         self.receive(ctx, msg, sender);
     }
 }
 
-impl Receive<KMsg> for InternalActor<Provider> {
-    type Msg = KMsg;
+impl Receive<InternalMsg> for InternalActor<Provider> {
+    type Msg = InternalMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         soft(|| match msg {
-            KMsg::CreateVault(vid) => {
+            InternalMsg::CreateVault(vid) => {
                 let key = self.keystore.create_key(vid);
 
                 let (_, rid) = self.bucket.create_and_init_vault(key);
@@ -80,7 +80,7 @@ impl Receive<KMsg> for InternalActor<Provider> {
                     None,
                 );
             }
-            KMsg::ReadData(vid, rid) => {
+            InternalMsg::ReadData(vid, rid) => {
                 if let Some(key) = self.keystore.get_key(vid) {
                     let plain = self.bucket.read_data(key.clone(), rid);
 
@@ -90,14 +90,14 @@ impl Receive<KMsg> for InternalActor<Provider> {
                     client.try_tell(ClientMsg::InternalResults(InternalResults::ReturnReadData(plain)), None);
                 }
             }
-            KMsg::WriteData(vid, rid, payload, hint) => {
+            InternalMsg::WriteData(vid, rid, payload, hint) => {
                 if let Some(key) = self.keystore.get_key(vid) {
                     self.bucket.write_payload(key.clone(), rid, payload, hint);
 
                     self.keystore.insert_key(vid, key);
                 }
             }
-            KMsg::InitRecord(vid) => {
+            InternalMsg::InitRecord(vid) => {
                 if let Some(key) = self.keystore.get_key(vid) {
                     let rid = self.bucket.init_record(key.clone());
 
@@ -110,21 +110,21 @@ impl Receive<KMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            KMsg::RevokeData(vid, rid) => {
+            InternalMsg::RevokeData(vid, rid) => {
                 if let Some(key) = self.keystore.get_key(vid) {
                     self.bucket.revoke_data(key.clone(), rid);
 
                     self.keystore.insert_key(vid, key);
                 }
             }
-            KMsg::GarbageCollect(vid) => {
+            InternalMsg::GarbageCollect(vid) => {
                 if let Some(key) = self.keystore.get_key(vid) {
                     self.bucket.garbage_collect(key.clone());
 
                     self.keystore.insert_key(vid, key);
                 }
             }
-            KMsg::ListIds(vid) => {
+            InternalMsg::ListIds(vid) => {
                 if let Some(key) = self.keystore.get_key(vid) {
                     let ids = self.bucket.list_ids(key.clone());
 
@@ -134,7 +134,7 @@ impl Receive<KMsg> for InternalActor<Provider> {
                     client.try_tell(ClientMsg::InternalResults(InternalResults::ReturnList(ids)), None);
                 }
             }
-            KMsg::ReloadData(data) => {
+            InternalMsg::ReloadData(data) => {
                 let (keys, rids) = self.bucket.repopulate_data(data);
 
                 let vids = self.keystore.rebuild_keystore(keys);
@@ -145,17 +145,17 @@ impl Receive<KMsg> for InternalActor<Provider> {
                     None,
                 );
             }
-            KMsg::WriteSnapshot(pass, name, path) => {
+            InternalMsg::WriteSnapshot(pass, name, path) => {
                 let state = self.bucket.offload_data();
 
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
                 snapshot.try_tell(SMsg::WriteSnapshot(pass, name, path, state), None);
             }
-            KMsg::ReadSnapshot(pass, name, path) => {
+            InternalMsg::ReadSnapshot(pass, name, path) => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
                 snapshot.try_tell(SMsg::ReadSnapshot(pass, name, path), None);
             }
-            KMsg::ClearCache => {
+            InternalMsg::ClearCache => {
                 self.bucket.clear_cache();
                 self.keystore.clear_keys();
             }
@@ -205,7 +205,7 @@ impl Receive<SMsg> for Snapshot {
                 let snapshot = Snapshot::read_from_snapshot::<Provider>(&path, &pass);
 
                 let bucket = ctx.select("/user/internal-actor/").expect(line_error!());
-                bucket.try_tell(KMsg::ReloadData(snapshot.get_state()), None);
+                bucket.try_tell(InternalMsg::ReloadData(snapshot.get_state()), None);
             }
         }
     }

@@ -3,7 +3,7 @@
 
 use riker::actors::*;
 
-use crate::{actors::KMsg, hd::Seed, line_error, VaultId};
+use crate::{actors::InternalMsg, hd::Seed, line_error, VaultId};
 
 use engine::vault::{RecordHint, RecordId};
 
@@ -61,12 +61,12 @@ impl Receive<RMsg> for Runtime {
                 let (vid1, rid1, hint1) = secret_record;
 
                 keystore.try_tell(
-                    KMsg::WriteData(vid0, rid0, master_key.chain_code().to_vec(), hint0),
+                    InternalMsg::WriteData(vid0, rid0, master_key.chain_code().to_vec(), hint0),
                     None,
                 );
 
                 keystore.try_tell(
-                    KMsg::WriteData(vid1, rid1, secret_key.to_le_bytes().to_vec(), hint1),
+                    InternalMsg::WriteData(vid1, rid1, secret_key.to_le_bytes().to_vec(), hint1),
                     None,
                 )
             }

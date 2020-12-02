@@ -21,6 +21,7 @@ pub enum InterfaceMsg {
     WriteSnapshot(String, Option<String>, Option<PathBuf>),
     ReadSnapshot(String, Option<String>, Option<PathBuf>),
     ControlRequest(usize, usize),
+    ClearCache,
 }
 
 #[derive(Clone, Debug)]
@@ -230,6 +231,14 @@ impl Receive<InterfaceMsg> for MockExternal {
                     None,
                 );
             }
+            InterfaceMsg::ClearCache => {
+                self.vaults.clear();
+                self.records.clear();
+
+                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
+
+                client.try_tell(ClientMsg::SHRequest(SHRequest::ClearCache), None);
+            }
         }
     }
 }
@@ -325,6 +334,29 @@ impl Receive<StartTest> for TestActor {
         mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(2, None)), None);
 
         mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(3, None)), None);
+
+        mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ClearCache), None);
+
+        mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::CreateVault), None);
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        mock.try_tell(
+            MockExternalMsg::InterfaceMsg(InterfaceMsg::WriteData(
+                0,
+                None,
+                b"Another bit of Data".to_vec(),
+                RecordHint::new(b"some_hint").expect(line_error!()),
+            )),
+            None,
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ReadData(0, None)), None);
+        mock.try_tell(MockExternalMsg::InterfaceMsg(InterfaceMsg::ListIds(0)), None);
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
     }
 }
 

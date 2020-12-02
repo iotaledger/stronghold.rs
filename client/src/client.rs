@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::KMsg,
+    actors::InternalMsg,
     ids::{ClientId, VaultId},
     line_error,
     provider::Provider,
@@ -213,63 +213,63 @@ impl Receive<SHRequest> for Client {
 
                 let keystore = ctx.select("/user/internal-actor/").expect(line_error!());
 
-                keystore.try_tell(KMsg::CreateVault(vid), None);
+                keystore.try_tell(InternalMsg::CreateVault(vid), None);
             }
             SHRequest::ReadData(vid, rid) => {
                 let keystore = ctx.select("/user/internal-actor/").expect(line_error!());
 
                 if let Some(rid) = rid {
-                    keystore.try_tell(KMsg::ReadData(vid, rid), None);
+                    keystore.try_tell(InternalMsg::ReadData(vid, rid), None);
                 } else {
                     let rid = self.get_head(vid);
 
-                    keystore.try_tell(KMsg::ReadData(vid, rid), None);
+                    keystore.try_tell(InternalMsg::ReadData(vid, rid), None);
                 }
             }
             SHRequest::InitRecord(vid) => {
                 let keystore = ctx.select("/user/internal-actor/").expect(line_error!());
 
-                keystore.try_tell(KMsg::InitRecord(vid), None);
+                keystore.try_tell(InternalMsg::InitRecord(vid), None);
             }
             SHRequest::WriteData(vid, rid, payload, hint) => {
                 let keystore = ctx.select("/user/internal-actor/").expect(line_error!());
                 if let Some(rid) = rid {
-                    keystore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
+                    keystore.try_tell(InternalMsg::WriteData(vid, rid, payload, hint), None);
                 } else {
                     let rid = self.get_head(vid);
 
-                    keystore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
+                    keystore.try_tell(InternalMsg::WriteData(vid, rid, payload, hint), None);
                 }
             }
             SHRequest::RevokeData(vid, rid) => {
                 let keystore = ctx.select("/user/internal-actor/").expect(line_error!());
 
-                keystore.try_tell(KMsg::RevokeData(vid, rid), None);
+                keystore.try_tell(InternalMsg::RevokeData(vid, rid), None);
             }
             SHRequest::GarbageCollect(vid) => {
                 let keystore = ctx.select("/user/internal-actor/").expect(line_error!());
 
-                keystore.try_tell(KMsg::GarbageCollect(vid), None);
+                keystore.try_tell(InternalMsg::GarbageCollect(vid), None);
             }
             SHRequest::ListIds(vid) => {
                 let keystore = ctx.select("/user/internal-actor/").expect(line_error!());
 
-                keystore.try_tell(KMsg::ListIds(vid), None);
+                keystore.try_tell(InternalMsg::ListIds(vid), None);
             }
             SHRequest::WriteSnapshot(pass, name, path) => {
                 let bucket = ctx.select("/user/internal-actor/").expect(line_error!());
 
-                bucket.try_tell(KMsg::WriteSnapshot(pass, name, path), None);
+                bucket.try_tell(InternalMsg::WriteSnapshot(pass, name, path), None);
             }
             SHRequest::ReadSnapshot(pass, name, path) => {
                 let bucket = ctx.select("/user/internal-actor/").expect(line_error!());
 
-                bucket.try_tell(KMsg::ReadSnapshot(pass, name, path), None);
+                bucket.try_tell(InternalMsg::ReadSnapshot(pass, name, path), None);
             }
             SHRequest::ClearCache => {
                 let bucket = ctx.select("/user/internal-actor/").expect(line_error!());
 
-                bucket.try_tell(KMsg::ClearCache, None);
+                bucket.try_tell(InternalMsg::ClearCache, None);
             }
             SHRequest::ControlRequest(procedure) => match procedure {
                 Procedure::SIP10 {
