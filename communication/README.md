@@ -14,13 +14,16 @@ for stronghold by using a mailbox concept that is described later.
 Libp2p uses the `transport` as the lowest layer, that is responsible for sending and receiving data over a network.
 The current rust implementation supports tcp and websockets, and apart from that provides the option to upgrade a
 connection with protocols for multiplexing and authentication. 
-This stronghold-communication library uses yamux for multiplexing and the noise-protocol for authentication.
 
 The second important concept of libp2p is its `Swarm` (in newer implementations and documents also called `Switch`).
 The swarm is responsible for negotiating protocols, managing transports and sending and receiving messages via different
 protocols. It is possible to combine different protocols into a so called `NetworkBehaviour`, which is what this library is doing.
 Stronghold-communication uses multicast DNS (mDNS) for peer discovery in a local network and the RequestResponse protocol in order to send / receive
 custom messages and parse them. 
+
+## Multiplexing and Noise-encryption
+
+The transport of stronghold-communication is upgraded with yamux for multiplexing and the noise protocol, this noise protocol uses the XX-Handshake and ensures authentification and encryption.
 
 ## Stronghold-Communication
 

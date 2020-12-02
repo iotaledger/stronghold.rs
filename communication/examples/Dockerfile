@@ -6,8 +6,6 @@ RUN USER=root cargo new --bin stronghold-communication
 WORKDIR /stronghold-communication
 
 COPY ./Cargo.toml ./Cargo.toml
-COPY ./build.rs ./build.rs
-COPY ./src/behaviour/structs.proto ./src/behaviour/structs.proto
 
 # cache dependencies
 RUN cargo build --release

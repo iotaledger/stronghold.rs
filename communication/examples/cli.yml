@@ -16,13 +16,6 @@ subcommands:
   - put-mailbox:
       about: Put record into the mailbox
       args:
-        - mailbox_id:
-            short: i
-            long: mail-id
-            value_name: mailbox-peer-id
-            about: the peer id of the mailbox
-            required: true
-            takes_value: true
         - mailbox_addr:
             short: a
             long: mail-addr
@@ -47,13 +40,6 @@ subcommands:
   - get-record:
       about: Get record from local or the mailbox
       args:
-        - mailbox_id:
-            short: i
-            long: mail-id
-            value_name: mailbox-peer-id
-            about: the peer id of the mailbox
-            required: true
-            takes_value: true
         - mailbox_addr:
             short: a
             long: mail-addr

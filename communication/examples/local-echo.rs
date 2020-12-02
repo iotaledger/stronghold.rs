@@ -92,7 +92,7 @@ fn listen() -> QueryResult<()> {
     let local_keys = Keypair::generate_ed25519();
     // Create a Swarm that implementes the Request-Reponse Protocl and mDNS
     let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys)?;
-    if let Err(err) = Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp0".parse().unwrap()) {
+    if let Err(err) = Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()) {
         return Err(QueryError::ConnectionError(format!("{}", err)));
     }
     println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
