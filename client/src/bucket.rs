@@ -26,7 +26,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
 
     #[allow(dead_code)]
     /// Gets the Vault `RecordIds` when given a `Key<P>`.  Returns a `Vec<RecordId>`.
-    pub fn get_vault_recordids(&mut self, key: Key<P>) -> Vec<RecordId> {
+    pub fn get_vault_record_ids(&mut self, key: Key<P>) -> Vec<RecordId> {
         let mut buffer = Vec::new();
         self.take(key, |view, reads| {
             let map = view.chain_ctrs();
@@ -43,11 +43,9 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
 
     /// Creates and initializes a new Vault given a `Key<P>`.  Returns a tuple of `(Key<P>, RecordId)`. The returned
     /// `Key<P>` is the Key associated with the Vault and the `RecordId` is the ID for its first record.
-    pub fn create_and_init_vault(&mut self, key: Key<P>) -> (Key<P>, RecordId) {
-        let id = RecordId::random::<P>().expect(line_error!());
-
+    pub fn create_and_init_vault(&mut self, key: Key<P>, rid: RecordId) -> (Key<P>, RecordId) {
         self.take(key.clone(), |view, mut reads| {
-            let mut writer = view.writer(id);
+            let mut writer = view.writer(rid);
 
             let truncate = writer.truncate().expect(line_error!());
 
@@ -56,7 +54,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
             reads
         });
 
-        (key, id)
+        (key, rid)
     }
 
     /// Reads data from a Record in the Vault given a `RecordId`.  Returns the data as a `Vec<u8>` of utf8 bytes.
@@ -86,10 +84,9 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
     }
 
     /// Initializes a new Record in the Vault based on the inserted `Key<P>`. Returns a `RecordId` for the new Record.
-    pub fn init_record(&mut self, key: Key<P>) -> RecordId {
-        let id = RecordId::random::<P>().expect(line_error!());
+    pub fn init_record(&mut self, key: Key<P>, rid: RecordId) -> RecordId {
         self.take(key, |view, mut reads| {
-            let mut writer = view.writer(id);
+            let mut writer = view.writer(rid);
 
             let truncate = writer.truncate().expect(line_error!());
 
@@ -98,7 +95,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
             reads
         });
 
-        id
+        rid
     }
 
     /// Writes a payload of `Vec<u8>` and a `RecordHint` into a Record. Record is specified with the inserted `RecordId`
@@ -247,10 +244,13 @@ mod tests {
         let key1 = Key::<Provider>::random().expect(line_error!());
         let key2 = Key::<Provider>::random().expect(line_error!());
 
+        let rid1 = RecordId::random::<Provider>().expect(line_error!());
+        let rid2 = RecordId::random::<Provider>().expect(line_error!());
+
         let mut bucket = Bucket::<Provider>::new();
 
-        let (key1, rid1) = bucket.create_and_init_vault(key1);
-        let (key2, rid2) = bucket.create_and_init_vault(key2);
+        let (key1, rid1) = bucket.create_and_init_vault(key1, rid1);
+        let (key2, rid2) = bucket.create_and_init_vault(key2, rid2);
         println!("vault1 id1: {:?}", rid1);
         println!("vault2 id1: {:?}", rid2);
 
@@ -268,7 +268,8 @@ mod tests {
             RecordHint::new(b"").expect(line_error!()),
         );
 
-        let rid3 = bucket.init_record(key1.clone());
+        let rid3 = RecordId::random::<Provider>().expect(line_error!());
+        let rid3 = bucket.init_record(key1.clone(), rid3);
 
         bucket.write_payload(
             key1.clone(),
