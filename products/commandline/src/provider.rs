@@ -1,14 +1,16 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use engine::crypto::XChaChaPoly;
-use engine::random::{
-    primitives::{cipher::AeadCipher, rng::SecureRng},
-    OsRng,
+use engine::{
+    crypto::XChaChaPoly,
+    random::{
+        primitives::{cipher::AeadCipher, rng::SecureRng},
+        OsRng,
+    },
 };
 
-use serde::{Deserialize, Serialize};
 use engine::vault::{BoxProvider, Key};
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Provider;

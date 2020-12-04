@@ -1,7 +1,12 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{convert::TryFrom, marker::PhantomData};
+use std::{
+    convert::TryFrom,
+    fmt::Debug,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -89,6 +94,27 @@ impl<T: BoxProvider> Drop for Key<T> {
         if let Some(hook) = self.drop_fn {
             hook(&mut self.key);
         }
+    }
+}
+
+impl<T: BoxProvider> Eq for Key<T> {}
+
+impl<T: BoxProvider> PartialEq for Key<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key && self._box_provider == other._box_provider
+    }
+}
+
+impl<T: BoxProvider> Hash for Key<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key.hash(state);
+        self._box_provider.hash(state);
+    }
+}
+
+impl<T: BoxProvider> Debug for Key<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KeyData")
     }
 }
 
