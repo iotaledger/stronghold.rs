@@ -271,7 +271,7 @@ fn get_record(matches: &ArgMatches) -> QueryResult<()> {
                             response: Response::Record(record),
                         } = boxed_event.deref().clone()
                         {
-                            println!("Key:\n{:?},\n Value:\n{:?}", record.key(), record.value());
+                            println!("Key:\n{:?},\nValue:\n{:?}", record.key(), record.value());
                         } else {
                             println!("Received Message: {:?}", boxed_event.deref().clone());
                         }

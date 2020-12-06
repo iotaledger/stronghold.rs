@@ -242,6 +242,18 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestRespo
 impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEvent> for P2PNetworkBehaviour<T, U> {
     // Called when `identify` produces an event.
     fn inject_event(&mut self, event: IdentifyEvent) {
+        if let IdentifyEvent::Received {
+            ref peer_id,
+            ref info,
+            observed_addr: _,
+        } = event
+        {
+            if self.get_peer_addr(peer_id).is_none() {
+                if let Some(addr) = info.listen_addrs.clone().pop() {
+                    self.add_peer(peer_id.clone(), addr);
+                }
+            }
+        }
         self.events.push(P2PEvent::from(event));
     }
 }
