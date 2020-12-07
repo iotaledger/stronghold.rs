@@ -62,6 +62,11 @@ impl RecordId {
     pub fn random<P: BoxProvider>() -> crate::Result<Self> {
         Ok(RecordId(ChainId::random::<P>()?))
     }
+
+    /// load record_id from data
+    pub fn load(data: &[u8]) -> crate::Result<Self> {
+        Ok(RecordId(ChainId::load(data)?))
+    }
 }
 
 /// A view over the records in a vault
