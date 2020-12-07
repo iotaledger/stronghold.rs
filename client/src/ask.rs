@@ -2,9 +2,11 @@ use riker::actors::*;
 
 use std::sync::{Arc, Mutex};
 
-use futures::channel::oneshot::{channel, Sender as ChannelSender};
-use futures::future::RemoteHandle;
-use futures::FutureExt;
+use futures::{
+    channel::oneshot::{channel, Sender as ChannelSender},
+    future::RemoteHandle,
+    FutureExt,
+};
 
 pub fn ask<Msg, Ctx, R, T>(ctx: &Ctx, receiver: &T, msg: Msg) -> RemoteHandle<R>
 where

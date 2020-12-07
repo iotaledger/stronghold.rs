@@ -21,6 +21,7 @@ mod ask;
 mod bucket;
 mod client;
 mod ids;
+mod interface;
 mod key_store;
 mod provider;
 mod runtime;
@@ -61,7 +62,6 @@ pub enum Error {
     #[error("Vault Error: {0}")]
     VaultError(#[from] engine::vault::Error),
 }
-
 
 // pub fn init_stronghold(sys: ActorSystem, data: Vec<u8>, path: Vec<u8>) -> (ActorSystem, ChannelRef<SHResults>) {
 //     let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();

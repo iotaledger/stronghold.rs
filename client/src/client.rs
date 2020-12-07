@@ -39,25 +39,25 @@ pub struct Client {
 // pub enum SHRequest {
 //     // Creates a new Vault.
 //     CreateNewVault(Vec<u8>),
-//     // Writes data to a record in the vault.  Accepts the vault `Vec<u8>` path, an optional record `Vec<u8>` path, the payload and the record
-//     // hint.  If a record path is not specified, the write will default to the head of the vault.  Returns
-//     // `ReturnCreate`.
+//     // Writes data to a record in the vault.  Accepts the vault `Vec<u8>` path, an optional record `Vec<u8>` path,
+// the payload and the record     // hint.  If a record path is not specified, the write will default to the head of the
+// vault.  Returns     // `ReturnCreate`.
 //     WriteData(Vec<u8>, Option<Vec<u8>>, Vec<u8>, RecordHint),
 //     // Moves the head forward in the specified Vault and opens a new record.  Returns `ReturnInit`.
 //     InitRecord(Vec<u8>),
-//     // Reads data from a record in the vault. Accepts a vault `Vec<u8>` path and an optional record `Vec<u8>` path.  If the record path is not
-//     // specified, it reads the head.  Returns with `ReturnRead`.
+//     // Reads data from a record in the vault. Accepts a vault `Vec<u8>` path and an optional record `Vec<u8>` path.
+// If the record path is not     // specified, it reads the head.  Returns with `ReturnRead`.
 //     ReadData(Vec<u8>, Option<Vec<u8>>),
-//     // Marks a Record for deletion.  Accepts a vault `Vec<u8>` path and a record `Vec<u8>` path.  Deletion only occurs after a
-//     // `GarbageCollect` is called.
+//     // Marks a Record for deletion.  Accepts a vault `Vec<u8>` path and a record `Vec<u8>` path.  Deletion only
+// occurs after a     // `GarbageCollect` is called.
 //     RevokeData(Vec<u8>, Vec<u8>),
 //     // Garbages collects any marked records on a Vault. Accepts the Vec<u8> path for the vault.
 //     GarbageCollect(Vec<u8>),
-//     // Lists all of the record ids and the record hints for the records in a vault.  Accepts a `Vec<u8>` path and returns
-//     // with `ReturnList`.
+//     // Lists all of the record ids and the record hints for the records in a vault.  Accepts a `Vec<u8>` path and
+// returns     // with `ReturnList`.
 //     ListIds(Vec<u8>),
-//     // Writes to the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults to
-//     // `$HOME/.engine/snapshots/backup.snapshot`.
+//     // Writes to the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults
+// to     // `$HOME/.engine/snapshots/backup.snapshot`.
 //     WriteSnapshot(String, Option<String>, Option<PathBuf>),
 //     // Reads from the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults
 //     // to `$HOME/.engine/snapshots/backup.snapshot`.
@@ -94,7 +94,7 @@ pub struct Client {
 
 impl Client {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
-    pub fn new( data: Vec<u8>, path: Vec<u8>) -> Self {
+    pub fn new(data: Vec<u8>, path: Vec<u8>) -> Self {
         let vaults = HashMap::new();
         let heads = Vec::new();
         let id = ClientId::load_from_path(&data, &path).expect(line_error!());
