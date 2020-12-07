@@ -4,10 +4,7 @@
 use crate::{
     ids::{ClientId, VaultId},
     line_error,
-    provider::Provider,
-    runtime::RMsg,
 };
-use std::path::PathBuf;
 
 use engine::vault::{RecordHint, RecordId};
 
@@ -36,11 +33,15 @@ pub enum Procedure {
 }
 
 #[derive(Clone, Debug)]
-pub enum SHRequest {}
+pub enum SHRequest {
+    Test,
+}
 
 /// Messages that come from stronghold
 #[derive(Clone, Debug)]
-pub enum SHResults {}
+pub enum SHResults {
+    Test,
+}
 
 // /// Messages used internally by the client.
 #[derive(Clone, Debug)]
@@ -235,30 +236,27 @@ mod test {
         assert_eq!(cache.vaults.get(&vid2), Some(&(1usize, vec![rid3, rid4])));
     }
 
-    // #[test]
-    // fn test_get_head_and_vault() {
-    //     let vid = VaultId::random::<Provider>().expect(line_error!());
-    //     let vid2 = VaultId::random::<Provider>().expect(line_error!());
+    #[test]
+    fn test_get_head_and_vault() {
+        let vid = VaultId::random::<Provider>().expect(line_error!());
+        let vid2 = VaultId::random::<Provider>().expect(line_error!());
 
-    //     let rid = RecordId::random::<Provider>().expect(line_error!());
-    //     let rid2 = RecordId::random::<Provider>().expect(line_error!());
-    //     let rid3 = RecordId::random::<Provider>().expect(line_error!());
-    //     let rid4 = RecordId::random::<Provider>().expect(line_error!());
+        let rid = RecordId::random::<Provider>().expect(line_error!());
+        let rid2 = RecordId::random::<Provider>().expect(line_error!());
+        let rid3 = RecordId::random::<Provider>().expect(line_error!());
+        let rid4 = RecordId::random::<Provider>().expect(line_error!());
 
-    //     let sys = ActorSystem::new().unwrap();
-    //     let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
+        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
 
-    //     let mut cache = Client::new(chan, b"key_data".to_vec(), b"client_path".to_vec());
+        cache.add_vault(vid, rid);
+        cache.insert_record(vid, rid2);
+        cache.add_vault(vid2, rid3);
+        cache.insert_record(vid2, rid4);
 
-    //     cache.add_vault(vid, rid);
-    //     cache.insert_record(vid, rid2);
-    //     cache.add_vault(vid2, rid3);
-    //     cache.insert_record(vid2, rid4);
+        let head0 = cache.get_head(vid);
+        let head1 = cache.get_head(vid2);
 
-    //     let head0 = cache.get_head(vid);
-    //     let head1 = cache.get_head(vid2);
-
-    //     assert_eq!(head0, rid2);
-    //     assert_eq!(head1, rid4);
-    // }
+        assert_eq!(head0, rid2);
+        assert_eq!(head1, rid4);
+    }
 }

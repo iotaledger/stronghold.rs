@@ -1,7 +1,7 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use riker::actors::ActorSystem;
+use riker::actors::*;
 
 use futures::future::RemoteHandle;
 
@@ -9,7 +9,12 @@ use std::{collections::HashMap, time::Duration};
 
 use engine::vault::RecordHint;
 
-use crate::{ask::ask, client::Procedure, ids::ClientId, line_error};
+use crate::{
+    ask::ask,
+    client::{Client, ClientMsg, Procedure},
+    ids::ClientId,
+    line_error,
+};
 
 pub enum StatusMessage {
     Ok,
@@ -27,18 +32,22 @@ pub struct Stronghold {
     // actor system.
     system: ActorSystem,
     // clients in the system.
-    clients: Vec<ClientId>,
+    client_ids: Vec<ClientId>,
+
+    actors: Vec<ActorRef<ClientMsg>>,
+
     // client id and keydata
     data: HashMap<ClientId, Vec<u8>>,
-    // current target client.
-    current_target: Option<ClientId>,
+    // current index of the client.
+    current_target: Option<usize>,
 }
 
 impl Stronghold {
     pub fn init_stronghold(mut system: ActorSystem) -> Self {
         Self {
             system,
-            clients: vec![],
+            client_ids: vec![],
+            actors: vec![],
             data: HashMap::new(),
             current_target: None,
         }
@@ -50,19 +59,31 @@ impl Stronghold {
         keydata: Vec<u8>,
         client_path: Vec<u8>,
         options: Vec<StrongholdFlags>,
-    ) -> (ActorSystem, StatusMessage) {
-        self.add_client(keydata, client_path);
+    ) -> StatusMessage {
+        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+        let id_str: String = client_id.into();
+        let counter = self.actors.len();
 
-        //     sys.actor_of::<InternalActor<Provider>>("internal-actor").unwrap();
-        //     sys.actor_of::<Snapshot>("snapshot").unwrap();
-        //     sys.actor_of::<Runtime>("runtime").unwrap();
-        //     sys.actor_of_args::<Client, _>("stronghold-internal", (chan.clone(), data, path))
-        //         .unwrap();
+        if self.client_ids.contains(&client_id) {
+            self.current_target = Some(index_of_unchecked(&self.client_ids, &client_id));
+        } else {
+            let client = self
+                .system
+                .actor_of_args::<Client, _>(&id_str, client_id)
+                .expect(line_error!());
 
-        (self.system.clone(), StatusMessage::Ok)
+            self.actors.push(client);
+            self.client_ids.push(client_id);
+            self.data.insert(client_id, keydata);
+
+            self.current_target = Some(counter + 1);
+        }
+
+        StatusMessage::Ok
     }
 
     pub async fn write_data(
+        &self,
         data: Vec<u8>,
         vault_path: Vec<u8>,
         record_counter: Option<usize>,
@@ -71,31 +92,36 @@ impl Stronghold {
         StatusMessage::Ok
     }
 
-    pub async fn read_data(vault_path: Vec<u8>, record_counter: Option<usize>) -> (Option<Vec<u8>>, StatusMessage) {
+    pub async fn read_data(
+        &self,
+        vault_path: Vec<u8>,
+        record_counter: Option<usize>,
+    ) -> (Option<Vec<u8>>, StatusMessage) {
         unimplemented!()
     }
 
-    pub async fn delete_data(vault_path: Vec<u8>, record_counter: usize, should_gc: bool) -> StatusMessage {
+    pub async fn delete_data(&self, vault_path: Vec<u8>, record_counter: usize, should_gc: bool) -> StatusMessage {
         unimplemented!()
     }
 
-    pub async fn garbage_collect(vault_path: Vec<u8>, record_counter: usize) -> StatusMessage {
+    pub async fn garbage_collect(&self, vault_path: Vec<u8>, record_counter: usize) -> StatusMessage {
         unimplemented!()
     }
 
-    pub async fn kill_stronghold(client_path: Vec<u8>, kill_actor: bool, write_snapshot: bool) -> StatusMessage {
+    pub async fn kill_stronghold(&self, client_path: Vec<u8>, kill_actor: bool, write_snapshot: bool) -> StatusMessage {
         unimplemented!()
     }
 
-    pub async fn list_hints_and_ids(vault_path: Vec<u8>) -> (Vec<(Vec<u8>, RecordHint)>, StatusMessage) {
+    pub async fn list_hints_and_ids(&self, vault_path: Vec<u8>) -> (Vec<(Vec<u8>, RecordHint)>, StatusMessage) {
         unimplemented!()
     }
 
-    pub async fn runtime_exec(control_request: Procedure) -> StatusMessage {
+    pub async fn runtime_exec(&self, control_request: Procedure) -> StatusMessage {
         unimplemented!()
     }
 
     pub async fn read_snapshot(
+        &self,
         keydata: Vec<u8>,
         client_path: Vec<u8>,
         new_stronghold: bool,
@@ -104,33 +130,16 @@ impl Stronghold {
         unimplemented!()
     }
 
-    pub async fn write_snapshot(client_path: Vec<u8>, duration: Option<Duration>) -> StatusMessage {
+    pub async fn write_snapshot(&self, client_path: Vec<u8>, duration: Option<Duration>) -> StatusMessage {
         unimplemented!()
     }
+}
 
-    fn add_client(&mut self, keydata: Vec<u8>, client_path: Vec<u8>) {
-        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
-
-        if self.clients.contains(&client_id) {
-            self.current_target = Some(client_id);
-        } else {
-            self.clients.push(client_id);
-            self.current_target = Some(client_id);
-
-            self.data.insert(client_id, keydata);
-        }
+fn index_of_unchecked<T>(slice: &[T], item: &T) -> usize {
+    if ::std::mem::size_of::<T>() == 0 {
+        return 0; // do what you will with this case
     }
-
-    fn remove_client(&mut self, keydata: Vec<u8>, client_path: Vec<u8>) {
-        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
-        let clients = self.clients.clone();
-
-        let new_clients: Vec<ClientId> = clients.into_iter().filter(|id| id != &client_id).collect();
-
-        self.data.remove(&client_id);
-
-        self.clients = new_clients;
-    }
+    (item as *const _ as usize - slice.as_ptr() as usize) / std::mem::size_of::<T>()
 }
 
 #[cfg(test)]
@@ -139,19 +148,33 @@ mod tests {
 
     use super::*;
 
+    use crate::client::{Client, SHRequest};
+
     #[test]
     fn test_stronghold() {
         let sys = ActorSystem::new().unwrap();
 
         let mut stronghold = Stronghold::init_stronghold(sys);
 
-        stronghold.add_client(b"test".to_vec(), b"path".to_vec());
-        stronghold.add_client(b"test".to_vec(), b"path".to_vec());
+        let id0 = ClientId::load_from_path(&b"test".to_vec(), &b"test".to_vec()).expect(line_error!());
+        let id1 = ClientId::load_from_path(&b"test".to_vec(), &b"path".to_vec()).expect(line_error!());
 
-        println!("{:?}", stronghold.clients);
+        let client = stronghold
+            .system
+            .actor_of_args::<Client, _>("stronghold-internal1", id0)
+            .unwrap();
 
-        stronghold.remove_client(b"test".to_vec(), b"path".to_vec());
+        stronghold.actors.push(client);
+        let client = stronghold
+            .system
+            .actor_of_args::<Client, _>("stronghold-internal2", id1)
+            .unwrap();
 
-        println!("{:?}", stronghold.clients);
+        stronghold.actors.push(client);
+
+        stronghold.actors[0].tell(ClientMsg::SHRequest(SHRequest::Test), None);
+        stronghold.actors[1].tell(ClientMsg::SHRequest(SHRequest::Test), None);
+
+        stronghold.system.print_tree()
     }
 }

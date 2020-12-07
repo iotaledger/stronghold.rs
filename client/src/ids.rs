@@ -184,6 +184,12 @@ impl AsRef<[u8]> for ClientId {
     }
 }
 
+impl Into<String> for ClientId {
+    fn into(self) -> String {
+        self.0.as_ref().base64()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
