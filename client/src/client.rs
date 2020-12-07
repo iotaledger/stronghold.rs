@@ -18,8 +18,7 @@ use std::collections::HashMap;
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
 #[actor(SHRequest, SHResults)]
 pub struct Client {
-    id: ClientId,
-    key_data: Option<Vec<u8>>,
+    client_id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
     vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
     // Contains the Record Ids for the most recent Record in each vault.
@@ -55,14 +54,12 @@ pub enum InternalResults {
 
 impl Client {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
-    pub fn new(data: Vec<u8>, path: Vec<u8>) -> Self {
+    pub fn new(client_id: ClientId) -> Self {
         let vaults = HashMap::new();
         let heads = Vec::new();
-        let id = ClientId::load_from_path(&data, &path).expect(line_error!());
 
         Self {
-            id,
-            key_data: Some(data),
+            client_id,
             vaults,
             heads,
         }
@@ -134,22 +131,22 @@ impl Client {
     }
 
     pub fn derive_vault_id(&self, path: Vec<u8>) -> VaultId {
-        let data: Vec<u8> = self.id.into();
+        let data: Vec<u8> = self.client_id.into();
 
         VaultId::load(&data).expect(line_error!(""))
     }
 
     pub fn derive_record_id(&self, path: Vec<u8>) -> RecordId {
-        let data: Vec<u8> = self.id.into();
+        let data: Vec<u8> = self.client_id.into();
 
         RecordId::load(&data).expect(line_error!(""))
     }
 }
 
 // /// Actor Factor for the Client Struct.
-impl ActorFactoryArgs<(Vec<u8>, Vec<u8>)> for Client {
-    fn create_args((data, path): (Vec<u8>, Vec<u8>)) -> Self {
-        Client::new(data, path)
+impl ActorFactoryArgs<ClientId> for Client {
+    fn create_args(client_id: ClientId) -> Self {
+        Client::new(client_id)
     }
 }
 
@@ -185,7 +182,7 @@ mod test {
         let vid = VaultId::random::<Provider>().expect(line_error!());
         let rid = RecordId::random::<Provider>().expect(line_error!());
 
-        let mut cache = Client::new(b"key_data".to_vec(), b"client_path".to_vec());
+        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
 
         cache.add_vault(vid, rid);
 
@@ -208,7 +205,7 @@ mod test {
         let vid = VaultId::random::<Provider>().expect(line_error!());
         let rid = RecordId::random::<Provider>().expect(line_error!());
 
-        let mut cache = Client::new(b"key_data".to_vec(), b"client_path".to_vec());
+        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
 
         cache.insert_record(vid, rid);
 
