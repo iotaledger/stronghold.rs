@@ -11,22 +11,11 @@ use engine::vault::RecordHint;
 
 use crate::{
     ask::ask,
-    client::{Client, ClientMsg, Procedure},
+    client::{Client, ClientMsg, Procedure, SHRequest},
     ids::ClientId,
     line_error,
+    utils::{index_of_unchecked, StatusMessage, StrongholdFlags},
 };
-
-pub enum StatusMessage {
-    Ok,
-    Busy,
-    Error,
-}
-
-pub enum StrongholdFlags {
-    Readable(bool),
-}
-
-pub enum VaultFlags {}
 
 pub struct Stronghold {
     // actor system.
@@ -89,6 +78,12 @@ impl Stronghold {
         record_counter: Option<usize>,
         hint: RecordHint,
     ) -> StatusMessage {
+        if let Some(idx) = self.current_target {
+            let client = &self.actors[idx];
+
+            let handle: RemoteHandle<ClientMsg> = ask(&self.system, client, ClientMsg::SHRequest(SHRequest::Test));
+        }
+
         StatusMessage::Ok
     }
 
@@ -133,13 +128,6 @@ impl Stronghold {
     pub async fn write_snapshot(&self, client_path: Vec<u8>, duration: Option<Duration>) -> StatusMessage {
         unimplemented!()
     }
-}
-
-fn index_of_unchecked<T>(slice: &[T], item: &T) -> usize {
-    if ::std::mem::size_of::<T>() == 0 {
-        return 0; // do what you will with this case
-    }
-    (item as *const _ as usize - slice.as_ptr() as usize) / std::mem::size_of::<T>()
 }
 
 #[cfg(test)]

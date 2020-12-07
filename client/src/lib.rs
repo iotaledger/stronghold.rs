@@ -27,6 +27,7 @@ mod provider;
 mod runtime;
 mod secret;
 mod snapshot;
+mod utils;
 
 #[allow(non_snake_case, dead_code)]
 mod hd;
