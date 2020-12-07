@@ -25,15 +25,15 @@ pub struct Client {
     heads: Vec<RecordId>,
 }
 
-// #[derive(Debug, Clone)]
-// pub enum Procedure {
-//     SIP10 {
-//         seed: Vec<u8>,
-//         vault_path: Vec<u8>,
-//         record_path: Vec<u8>,
-//         hint: RecordHint,
-//     },
-// }
+#[derive(Debug, Clone)]
+pub enum Procedure {
+    SIP10 {
+        seed: Vec<u8>,
+        vault_path: Vec<u8>,
+        record_path: Vec<u8>,
+        hint: RecordHint,
+    },
+}
 
 // #[derive(Clone, Debug)]
 // pub enum SHRequest {
