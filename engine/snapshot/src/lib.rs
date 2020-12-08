@@ -38,6 +38,9 @@ mod logic;
 mod serialize;
 mod kdf;
 
+#[cfg(test)]
+mod test_utils;
+
 pub use error::{Error, Result};
 
 pub use files::{home_dir, snapshot_dir};

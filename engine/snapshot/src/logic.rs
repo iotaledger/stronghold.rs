@@ -8,7 +8,6 @@ use std::{
 
 use crypto::{
     ciphers::chacha::xchacha20poly1305,
-    rand,
 };
 
 /// PARTI in binary
@@ -17,7 +16,8 @@ const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
 /// version 1.0 in binary
 const VERSION: [u8; 2] = [0x1, 0x0];
 
-type Key = [u8; 32];
+const KEY_SIZE: usize = 32;
+type Key = [u8; KEY_SIZE];
 
 /// encrypt and write a serialized snapshot to a file
 pub fn encrypt_snapshot(input: &[u8], out: &mut File, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
@@ -25,7 +25,7 @@ pub fn encrypt_snapshot(input: &[u8], out: &mut File, key: &Key, associated_data
     out.write_all(&VERSION)?;
 
     let mut nonce = [0; xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE];
-    rand::fill(&mut nonce)?;
+    crypto::rand::fill(&mut nonce)?;
     out.write_all(&nonce)?;
 
     let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
@@ -104,9 +104,34 @@ fn check_header(input: &mut File) -> crate::Result<()> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::test_utils::{fresh, seek_to_beginning, corrupt_file};
 
     #[test]
-    fn test_snapshot() -> crate::Result<()> {
+    fn test_snapshot_file() -> crate::Result<()> {
+        let mut f = tempfile::tempfile().unwrap();
+        let key: Key = rand::random();
+        let bs0 = fresh::bytestring();
+        let ad = fresh::bytestring();
+
+        encrypt_snapshot(&bs0, &mut f, &key, &ad)?;
+        seek_to_beginning(&mut f);
+        let bs1 = decrypt_snapshot(&mut f, &key, &ad)?;
+
+        assert_eq!(bs0, bs1);
+
         Ok(())
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_corrupted_snapshot_file() -> () {
+        let mut f = tempfile::tempfile().unwrap();
+        let key: Key = rand::random();
+        let bs0 = fresh::bytestring();
+        let ad = fresh::bytestring();
+
+        encrypt_snapshot(&bs0, &mut f, &key, &ad).unwrap();
+        corrupt_file(&mut f);
+        decrypt_snapshot(&mut f, &key, &ad).unwrap();
     }
 }
