@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_bucket() {
-        use crate::provider::Provider;
+        use crate::Provider;
 
         let key1 = Key::<Provider>::random().expect(line_error!());
         let key2 = Key::<Provider>::random().expect(line_error!());
@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn test_take() {
-        use crate::provider::Provider;
+        use crate::Provider;
 
         let key = Key::<Provider>::random().expect(line_error!());
 

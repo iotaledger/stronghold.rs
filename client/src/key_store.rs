@@ -5,7 +5,7 @@ use engine::vault::{BoxProvider, Key};
 
 use std::collections::HashMap;
 
-use crate::{ids::VaultId, line_error};
+use crate::{line_error, VaultId};
 
 pub struct KeyStore<P: BoxProvider + Clone + Send + Sync + 'static> {
     store: HashMap<VaultId, Key<P>>,
@@ -64,7 +64,7 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::provider::Provider;
+    use crate::Provider;
 
     #[test]
     fn test_keystore() {

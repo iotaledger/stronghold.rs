@@ -17,29 +17,17 @@
 use thiserror::Error as DeriveError;
 
 mod actors;
-mod ask;
 mod bucket;
 mod client;
-mod ids;
 mod interface;
+mod internals;
 mod key_store;
-mod provider;
-mod runtime;
-mod secret;
 mod snapshot;
 mod utils;
 
-#[allow(non_snake_case, dead_code)]
-mod hd;
-
-use crate::{client::Client, runtime::Runtime, snapshot::Snapshot};
-
-use riker::actors::{channel, ActorRefFactory, ActorSystem, ChannelRef};
-
 pub use crate::{
-    ask::ask,
-    ids::{ClientId, VaultId},
-    provider::Provider,
+    internals::Provider,
+    utils::{ClientId, VaultId},
 };
 
 pub use engine::vault::{RecordHint, RecordId};
@@ -63,15 +51,3 @@ pub enum Error {
     #[error("Vault Error: {0}")]
     VaultError(#[from] engine::vault::Error),
 }
-
-// pub fn init_stronghold(sys: ActorSystem, data: Vec<u8>, path: Vec<u8>) -> (ActorSystem, ChannelRef<SHResults>) {
-//     let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
-
-//     sys.actor_of::<InternalActor<Provider>>("internal-actor").unwrap();
-//     sys.actor_of::<Snapshot>("snapshot").unwrap();
-//     sys.actor_of::<Runtime>("runtime").unwrap();
-//     sys.actor_of_args::<Client, _>("stronghold-internal", (chan.clone(), data, path))
-//         .unwrap();
-
-//     (sys, chan)
-// }

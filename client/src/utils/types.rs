@@ -4,6 +4,19 @@
 use serde::{de, ser, Deserialize, Serialize};
 use zeroize::Zeroize;
 
+#[derive(Debug, Clone)]
+pub enum StatusMessage {
+    Ok,
+    Busy,
+    Error,
+}
+
+pub enum StrongholdFlags {
+    Readable(bool),
+}
+
+pub enum VaultFlags {}
+
 pub trait ReadSecret<S>
 where
     S: Zeroize,

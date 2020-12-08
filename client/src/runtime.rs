@@ -9,15 +9,6 @@ use engine::vault::{RecordHint, RecordId};
 
 use runtime::zone::soft;
 
-#[derive(Debug, Clone)]
-pub enum RMsg {
-    Slip10GenerateKey {
-        seed: Vec<u8>,
-        vault_id: VaultId,
-        record_id: RecordId,
-        hint: RecordHint,
-    },
-}
 
 pub struct Runtime {}
 

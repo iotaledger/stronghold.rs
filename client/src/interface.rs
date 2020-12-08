@@ -10,14 +10,13 @@ use std::{collections::HashMap, time::Duration};
 use engine::vault::RecordHint;
 
 use crate::{
-    actors::InternalActor,
-    ask::ask,
-    client::{Client, ClientMsg, Procedure, SHRequest},
-    ids::ClientId,
+    actors::{InternalActor, Procedure},
+    client::{Client, ClientMsg},
     line_error,
-    provider::Provider,
     snapshot::Snapshot,
+    utils::ask,
     utils::{index_of_unchecked, StatusMessage, StrongholdFlags},
+    ClientId, Provider,
 };
 
 pub struct Stronghold {

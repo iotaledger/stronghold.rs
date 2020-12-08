@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ids::{ClientId, VaultId},
+    actors::{SHRequest, SHResults},
     line_error,
+    utils::StatusMessage,
+    {ClientId, VaultId},
 };
 
 use engine::vault::{RecordHint, RecordId};
 
 use riker::actors::*;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
 #[actor(SHRequest, SHResults)]
@@ -20,37 +22,6 @@ pub struct Client {
     vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
     // Contains the Record Ids for the most recent Record in each vault.
     heads: Vec<RecordId>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Procedure {
-    SIP10 {
-        seed: Vec<u8>,
-        vault_path: Vec<u8>,
-        record_path: Vec<u8>,
-        hint: RecordHint,
-    },
-}
-
-#[derive(Clone, Debug)]
-pub enum SHRequest {
-    Test,
-}
-
-/// Messages that come from stronghold
-#[derive(Clone, Debug)]
-pub enum SHResults {
-    Test,
-}
-
-// /// Messages used internally by the client.
-#[derive(Clone, Debug)]
-pub enum InternalResults {
-    ReturnCreateVault(Vec<u8>, Vec<u8>),
-    ReturnInitRecord(Vec<u8>, Vec<u8>),
-    ReturnReadData(Vec<u8>),
-    ReturnList(Vec<(Vec<u8>, RecordHint)>),
-    RebuildCache(Vec<Vec<u8>>, Vec<Vec<Vec<u8>>>),
 }
 
 impl Client {
@@ -145,38 +116,12 @@ impl Client {
 }
 
 // /// Actor Factor for the Client Struct.
-impl ActorFactoryArgs<ClientId> for Client {
-    fn create_args(client_id: ClientId) -> Self {
-        Client::new(client_id)
-    }
-}
-
-// /// Actor implementation for the Client.
-impl Actor for Client {
-    type Msg = ClientMsg;
-
-    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        self.receive(ctx, msg, sender);
-    }
-}
-
-impl Receive<SHResults> for Client {
-    type Msg = ClientMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {}
-}
-
-impl Receive<SHRequest> for Client {
-    type Msg = ClientMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, _sender: Sender) {}
-}
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    use crate::{client::Client, provider::Provider};
+    use crate::Provider;
 
     #[test]
     fn test_add() {
