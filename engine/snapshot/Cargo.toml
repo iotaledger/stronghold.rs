@@ -10,12 +10,10 @@ readme = "README.md"
 thiserror = "1.0"
 anyhow = "1.0"
 
-# crypto
-sodiumoxide = "0.2"
-
 # file system
 dirs = "3.0"
 
-crypto = {path = "../crypto"}
-random = {path = "../random"}
-
+[dependencies.iota-crypto]
+git = "https://github.com/iotaledger/crypto.rs"
+rev = "bc35d38561efcf20a50aeb0f0b08028b4b4fda46"
+features = [ "random", "chacha" ]
