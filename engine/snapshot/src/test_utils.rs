@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::io::{Seek, SeekFrom, Read, Write};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
+use std::path::Path;
 
 pub mod fresh {
     pub fn bytestring() -> Vec<u8> {
@@ -58,4 +59,9 @@ pub fn corrupt_file(f: &mut File) {
     f.write(&bs).unwrap();
 
     seek_to_beginning(f);
+}
+
+pub fn corrupt_file_at(p: &Path) {
+    let mut f: File = OpenOptions::new().write(true).read(true).open(p).unwrap();
+    corrupt_file(&mut f)
 }

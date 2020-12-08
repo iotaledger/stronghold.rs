@@ -44,6 +44,6 @@ mod test_utils;
 pub use error::{Error, Result};
 
 pub use files::{home_dir, snapshot_dir};
-pub use logic::{decrypt_snapshot, encrypt_snapshot};
+pub use logic::{read, write, read_from, write_to};
 pub use serialize::{deserialize_buffer, serialize_map};
 pub use kdf::derive_key_from_password;

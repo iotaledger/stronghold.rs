@@ -4,6 +4,8 @@
 use std::{
     fs::File,
     io::{Read, Write},
+    fs::OpenOptions,
+    path::Path,
 };
 
 use crypto::{
@@ -19,8 +21,8 @@ const VERSION: [u8; 2] = [0x1, 0x0];
 const KEY_SIZE: usize = 32;
 type Key = [u8; KEY_SIZE];
 
-/// encrypt and write a serialized snapshot to a file
-pub fn encrypt_snapshot(input: &[u8], out: &mut File, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
+/// encrypt and write a serialized snapshot
+pub fn write<O: Write>(input: &[u8], out: &mut O, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
     out.write_all(&MAGIC)?;
     out.write_all(&VERSION)?;
 
@@ -44,10 +46,9 @@ pub fn encrypt_snapshot(input: &[u8], out: &mut File, key: &Key, associated_data
     Ok(())
 }
 
-/// decrypt a snapshot file and return its serialized bytes
-pub fn decrypt_snapshot(input: &mut File, key: &Key, associated_data: &[u8]) -> crate::Result<Vec<u8>> {
-    // check the file len and header
-    check_min_file_len(input)?;
+/// decrypt a snapshot and return its serialized bytes
+pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate::Result<Vec<u8>> {
+    // check the header
     check_header(input)?;
 
     let mut nonce = [0; xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE];
@@ -71,6 +72,19 @@ pub fn decrypt_snapshot(input: &mut File, key: &Key, associated_data: &[u8]) -> 
     Ok(pt)
 }
 
+pub fn write_to(input: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
+    let mut f = OpenOptions::new().write(true).create(true).open(path)?;
+    write(input, &mut f, key, associated_data)?;
+    f.sync_all()?;
+    Ok(())
+}
+
+pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<Vec<u8>> {
+    let mut f: File = OpenOptions::new().read(true).open(path)?;
+    check_min_file_len(&mut f)?;
+    read(&mut f, key, associated_data)
+}
+
 /// check to see if the file is long enough.
 fn check_min_file_len(input: &mut File) -> crate::Result<()> {
     let min = MAGIC.len() + VERSION.len()
@@ -83,7 +97,7 @@ fn check_min_file_len(input: &mut File) -> crate::Result<()> {
     }
 }
 
-fn check_header(input: &mut File) -> crate::Result<()> {
+fn check_header<I: Read>(input: &mut I) -> crate::Result<()> {
     // check the magic bytes
     let mut magic = [0u8; 5];
     input.read_exact(&mut magic)?;
@@ -104,18 +118,18 @@ fn check_header(input: &mut File) -> crate::Result<()> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{fresh, seek_to_beginning, corrupt_file};
+    use crate::test_utils::{fresh, seek_to_beginning, corrupt_file, corrupt_file_at};
 
     #[test]
-    fn test_snapshot_file() -> crate::Result<()> {
+    fn test_write_read() -> crate::Result<()> {
         let mut f = tempfile::tempfile().unwrap();
         let key: Key = rand::random();
         let bs0 = fresh::bytestring();
         let ad = fresh::bytestring();
 
-        encrypt_snapshot(&bs0, &mut f, &key, &ad)?;
+        write(&bs0, &mut f, &key, &ad)?;
         seek_to_beginning(&mut f);
-        let bs1 = decrypt_snapshot(&mut f, &key, &ad)?;
+        let bs1 = read(&mut f, &key, &ad)?;
 
         assert_eq!(bs0, bs1);
 
@@ -124,14 +138,48 @@ mod test {
 
     #[test]
     #[should_panic]
-    fn test_corrupted_snapshot_file() -> () {
+    fn test_corrupted_read_write() -> () {
         let mut f = tempfile::tempfile().unwrap();
         let key: Key = rand::random();
         let bs0 = fresh::bytestring();
         let ad = fresh::bytestring();
 
-        encrypt_snapshot(&bs0, &mut f, &key, &ad).unwrap();
+        write(&bs0, &mut f, &key, &ad).unwrap();
         corrupt_file(&mut f);
-        decrypt_snapshot(&mut f, &key, &ad).unwrap();
+        read(&mut f, &key, &ad).unwrap();
+    }
+
+    #[test]
+    fn test_snapshot() -> crate::Result<()> {
+        let f = tempfile::tempdir().unwrap();
+        let mut pb = f.into_path();
+        pb.push("snapshot");
+
+        let key: Key = rand::random();
+        let bs0 = fresh::bytestring();
+        let ad = fresh::bytestring();
+
+        write_to(&bs0, &pb, &key, &ad)?;
+        let bs1 = read_from(&pb, &key, &ad)?;
+
+        assert_eq!(bs0, bs1);
+
+        Ok(())
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_currupted_snapshot() {
+        let f = tempfile::tempdir().unwrap();
+        let mut pb = f.into_path();
+        pb.push("snapshot");
+
+        let key: Key = rand::random();
+        let bs0 = fresh::bytestring();
+        let ad = fresh::bytestring();
+
+        write_to(&bs0, &pb, &key, &ad).unwrap();
+        corrupt_file_at(&pb);
+        read_from(&pb, &key, &ad).unwrap();
     }
 }
