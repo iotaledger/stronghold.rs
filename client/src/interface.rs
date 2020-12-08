@@ -10,10 +10,13 @@ use std::{collections::HashMap, time::Duration};
 use engine::vault::RecordHint;
 
 use crate::{
+    actors::InternalActor,
     ask::ask,
     client::{Client, ClientMsg, Procedure, SHRequest},
     ids::ClientId,
     line_error,
+    provider::Provider,
+    snapshot::Snapshot,
     utils::{index_of_unchecked, StatusMessage, StrongholdFlags},
 };
 
@@ -50,6 +53,12 @@ impl Stronghold {
             .actor_of_args::<Client, _>(&id_str, client_id)
             .expect(line_error!());
 
+        system
+            .actor_of::<InternalActor<Provider>>(&format!("internal-{}", id_str))
+            .expect(line_error!());
+
+        system.actor_of::<Snapshot>("snapshot").expect(line_error!());
+
         let actors = vec![client];
 
         Self {
@@ -78,6 +87,9 @@ impl Stronghold {
             let client = self
                 .system
                 .actor_of_args::<Client, _>(&id_str, client_id)
+                .expect(line_error!());
+            self.system
+                .actor_of::<InternalActor<Provider>>(&format!("interal-{}", id_str))
                 .expect(line_error!());
 
             self.actors.push(client);
@@ -147,6 +159,10 @@ impl Stronghold {
     pub async fn write_snapshot(&self, client_path: Vec<u8>, duration: Option<Duration>) -> StatusMessage {
         unimplemented!()
     }
+
+    fn check_config_flags() {
+        unimplemented!()
+    }
 }
 
 #[cfg(test)]
@@ -155,9 +171,9 @@ mod tests {
 
     use super::*;
 
-    use crate::client::{Client, SHRequest};
+    // use crate::client::{Client, SHRequest};
 
-    use futures::executor::block_on;
+    // use futures::executor::block_on;
 
     #[test]
     fn test_stronghold() {
