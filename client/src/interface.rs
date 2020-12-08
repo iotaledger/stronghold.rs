@@ -28,22 +28,41 @@ pub struct Stronghold {
     // client id and keydata
     data: HashMap<ClientId, Vec<u8>>,
     // current index of the client.
-    current_target: Option<usize>,
+    current_target: usize,
 }
 
 impl Stronghold {
-    pub fn init_stronghold(mut system: ActorSystem) -> Self {
+    /// Initializes a new instance of the system.  Sets up the first client actor.
+    pub fn init_stronghold_system(
+        system: ActorSystem,
+        keydata: Vec<u8>,
+        client_path: Vec<u8>,
+        options: Vec<StrongholdFlags>,
+    ) -> Self {
+        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+        let id_str: String = client_id.into();
+        let client_ids = vec![client_id];
+        let mut data: HashMap<ClientId, Vec<u8>> = HashMap::new();
+
+        data.insert(client_id, keydata);
+
+        let client = system
+            .actor_of_args::<Client, _>(&id_str, client_id)
+            .expect(line_error!());
+
+        let actors = vec![client];
+
         Self {
             system,
-            client_ids: vec![],
-            actors: vec![],
-            data: HashMap::new(),
-            current_target: None,
+            client_ids,
+            actors,
+            data,
+            current_target: 0,
         }
     }
 
     /// Starts actor model and sets current_target actor.  Can be used to add another stronghold actor to the system if called a 2nd time.
-    pub async fn start_stronghold(
+    pub fn spawn_stronghold_actor(
         &mut self,
         keydata: Vec<u8>,
         client_path: Vec<u8>,
@@ -54,7 +73,7 @@ impl Stronghold {
         let counter = self.actors.len();
 
         if self.client_ids.contains(&client_id) {
-            self.current_target = Some(index_of_unchecked(&self.client_ids, &client_id));
+            self.current_target = index_of_unchecked(&self.client_ids, &client_id);
         } else {
             let client = self
                 .system
@@ -65,7 +84,7 @@ impl Stronghold {
             self.client_ids.push(client_id);
             self.data.insert(client_id, keydata);
 
-            self.current_target = Some(counter + 1);
+            self.current_target = counter + 1;
         }
 
         StatusMessage::Ok
@@ -78,11 +97,11 @@ impl Stronghold {
         record_counter: Option<usize>,
         hint: RecordHint,
     ) -> StatusMessage {
-        if let Some(idx) = self.current_target {
-            let client = &self.actors[idx];
+        let idx = self.current_target;
 
-            let handle: RemoteHandle<ClientMsg> = ask(&self.system, client, ClientMsg::SHRequest(SHRequest::Test));
-        }
+        let client = &self.actors[idx];
+
+        // ask for write_data
 
         StatusMessage::Ok
     }
@@ -138,30 +157,15 @@ mod tests {
 
     use crate::client::{Client, SHRequest};
 
+    use futures::executor::block_on;
+
     #[test]
     fn test_stronghold() {
         let sys = ActorSystem::new().unwrap();
 
-        let mut stronghold = Stronghold::init_stronghold(sys);
+        let mut stronghold = Stronghold::init_stronghold_system(sys, b"test".to_vec(), b"test".to_vec(), vec![]);
 
-        let id0 = ClientId::load_from_path(&b"test".to_vec(), &b"test".to_vec()).expect(line_error!());
-        let id1 = ClientId::load_from_path(&b"test".to_vec(), &b"path".to_vec()).expect(line_error!());
-
-        let client = stronghold
-            .system
-            .actor_of_args::<Client, _>("stronghold-internal1", id0)
-            .unwrap();
-
-        stronghold.actors.push(client);
-        let client = stronghold
-            .system
-            .actor_of_args::<Client, _>("stronghold-internal2", id1)
-            .unwrap();
-
-        stronghold.actors.push(client);
-
-        stronghold.actors[0].tell(ClientMsg::SHRequest(SHRequest::Test), None);
-        stronghold.actors[1].tell(ClientMsg::SHRequest(SHRequest::Test), None);
+        stronghold.spawn_stronghold_actor(b"another".to_vec(), b"test".to_vec(), vec![]);
 
         stronghold.system.print_tree()
     }

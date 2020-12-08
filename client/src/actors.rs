@@ -1,52 +1,52 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-// use riker::actors::*;
+use riker::actors::*;
 
-// use std::{fmt::Debug, path::PathBuf};
+use std::{fmt::Debug, path::PathBuf};
 
-// use engine::vault::{BoxProvider, RecordHint, RecordId};
+use engine::vault::{BoxProvider, RecordHint, RecordId};
 
-// use runtime::zone::soft;
+use runtime::zone::soft;
 
-// use crate::{
-//     bucket::Bucket,
-//     client::{ClientMsg, InternalResults},
-//     ids::VaultId,
-//     key_store::KeyStore,
-//     line_error,
-//     provider::Provider,
-//     snapshot::Snapshot,
-// };
+use crate::{
+    bucket::Bucket,
+    client::{ClientMsg, InternalResults},
+    ids::VaultId,
+    key_store::KeyStore,
+    line_error,
+    provider::Provider,
+    snapshot::Snapshot,
+};
 
-// pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
-//     bucket: Bucket<P>,
-//     keystore: KeyStore<P>,
-// }
+pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
+    bucket: Bucket<P>,
+    keystore: KeyStore<P>,
+}
 
-// /// Messages used for the KeyStore Actor.
-// #[derive(Clone, Debug)]
-// pub enum InternalMsg {
-//     StoreKeyData(VaultId, RecordId, Vec<u8>),
-//     CreateVault(VaultId),
-//     ReadData(VaultId, RecordId),
-//     WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
-//     InitRecord(VaultId),
-//     RevokeData(VaultId, RecordId),
-//     GarbageCollect(VaultId),
-//     ListIds(VaultId),
-//     WriteSnapshot(String, Option<String>, Option<PathBuf>),
-//     ReadSnapshot(String, Option<String>, Option<PathBuf>),
-//     ReloadData(Vec<u8>),
-//     ClearCache,
-// }
+/// Messages used for the KeyStore Actor.
+#[derive(Clone, Debug)]
+pub enum InternalMsg {
+    StoreKeyData(VaultId, RecordId, Vec<u8>),
+    CreateVault(VaultId),
+    ReadData(VaultId, RecordId),
+    WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
+    InitRecord(VaultId),
+    RevokeData(VaultId, RecordId),
+    GarbageCollect(VaultId),
+    ListIds(VaultId),
+    WriteSnapshot(String, Option<String>, Option<PathBuf>),
+    ReadSnapshot(String, Option<String>, Option<PathBuf>),
+    ReloadData(Vec<u8>),
+    ClearCache,
+}
 
-// /// Messages used for the Snapshot Actor.
-// #[derive(Clone, Debug)]
-// pub enum SMsg {
-//     WriteSnapshot(String, Option<String>, Option<PathBuf>, Vec<u8>),
-//     ReadSnapshot(String, Option<String>, Option<PathBuf>),
-// }
+/// Messages used for the Snapshot Actor.
+#[derive(Clone, Debug)]
+pub enum SMsg {
+    WriteSnapshot(String, Option<String>, Option<PathBuf>, Vec<u8>),
+    ReadSnapshot(String, Option<String>, Option<PathBuf>),
+}
 
 // impl ActorFactory for InternalActor<Provider> {
 //     fn create() -> Self {
