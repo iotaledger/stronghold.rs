@@ -40,7 +40,7 @@ impl Receive<SMsg> for Snapshot {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         match msg {
-            SMsg::WriteSnapshot(pass, name, path, state) => {
+            SMsg::WriteSnapshot(key, name, path, state) => {
                 let snapshot = Snapshot::new(state);
 
                 let path = if let Some(p) = path {
@@ -49,16 +49,16 @@ impl Receive<SMsg> for Snapshot {
                     Snapshot::get_snapshot_path(name)
                 };
 
-                snapshot.write_to_snapshot(&path, pass);
+                snapshot.write_to_snapshot(&path, key);
             }
-            SMsg::ReadSnapshot(pass, name, path) => {
+            SMsg::ReadSnapshot(key, name, path) => {
                 let path = if let Some(p) = path {
                     p
                 } else {
                     Snapshot::get_snapshot_path(name)
                 };
 
-                let snapshot = Snapshot::read_from_snapshot(&path, pass);
+                let snapshot = Snapshot::read_from_snapshot(&path, key);
 
                 let bucket = ctx.select("/user/internal-actor/").expect(line_error!());
                 bucket.try_tell(InternalMsg::ReloadData(snapshot.get_state()), None);
