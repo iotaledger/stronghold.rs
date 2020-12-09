@@ -48,11 +48,11 @@ impl Stronghold {
         data.insert(client_id, keydata);
 
         let client = system
-            .actor_of_args::<Client, _>(&id_str, client_id)
+            .actor_of_args::<Client, _>(&format!("{}", id_str), client_id)
             .expect(line_error!());
 
         system
-            .actor_of::<InternalActor<Provider>>(&format!("internal-{}", id_str))
+            .actor_of_args::<InternalActor<Provider>, _>(&format!("internal-{}", id_str), client_id)
             .expect(line_error!());
 
         system.actor_of::<Snapshot>("snapshot").expect(line_error!());
@@ -87,7 +87,7 @@ impl Stronghold {
                 .actor_of_args::<Client, _>(&id_str, client_id)
                 .expect(line_error!());
             self.system
-                .actor_of::<InternalActor<Provider>>(&format!("interal-{}", id_str))
+                .actor_of_args::<InternalActor<Provider>, _>(&format!("internal-{}", id_str), client_id)
                 .expect(line_error!());
 
             self.actors.push(client);
@@ -111,7 +111,11 @@ impl Stronghold {
 
         let client = &self.actors[idx];
 
-        let handle = ask(&self.system, client, SHRequest::CreateNewVault(vault_path.clone()));
+        let handle = ask(
+            &self.system,
+            client,
+            ClientMsg::SHRequest(SHRequest::CreateNewVault(vault_path.clone())),
+        );
 
         let status: ClientMsg = handle.await;
 
@@ -135,7 +139,21 @@ impl Stronghold {
         vault_path: Vec<u8>,
         record_counter: Option<usize>,
     ) -> (Option<Vec<u8>>, StatusMessage) {
-        unimplemented!()
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        let handle = ask(
+            &self.system,
+            client,
+            ClientMsg::SHRequest(SHRequest::ReadData(vault_path.clone(), record_counter)),
+        );
+
+        let status: ClientMsg = handle.await;
+
+        println!("{:?}", status);
+
+        (Some(vec![]), StatusMessage::Ok)
     }
 
     pub async fn delete_data(&self, vault_path: Vec<u8>, record_counter: usize, should_gc: bool) -> StatusMessage {
@@ -193,14 +211,14 @@ mod tests {
 
         let mut stronghold = Stronghold::init_stronghold_system(sys, b"test".to_vec(), b"test".to_vec(), vec![]);
 
-        stronghold.spawn_stronghold_actor(b"another".to_vec(), b"test".to_vec(), vec![]);
-
         futures::executor::block_on(stronghold.write_data(
             b"test".to_vec(),
             b"path".to_vec(),
             None,
             RecordHint::new(b"hint").expect(line_error!()),
         ));
+
+        futures::executor::block_on(stronghold.read_data(b"path".to_vec(), None));
 
         stronghold.system.print_tree()
     }

@@ -17,9 +17,11 @@ use crate::{
     key_store::KeyStore,
     line_error,
     utils::{StatusMessage, VaultId},
+    ClientId,
 };
 
 pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
+    client_id: ClientId,
     bucket: Bucket<P>,
     keystore: KeyStore<P>,
 }
@@ -57,12 +59,16 @@ pub enum InternalResults {
     RebuildCache(Vec<Vec<u8>>, Vec<Vec<Vec<u8>>>, StatusMessage),
 }
 
-impl ActorFactory for InternalActor<Provider> {
-    fn create() -> Self {
+impl ActorFactoryArgs<ClientId> for InternalActor<Provider> {
+    fn create_args(id: ClientId) -> Self {
         let bucket = Bucket::new();
         let keystore = KeyStore::new();
 
-        Self { bucket, keystore }
+        Self {
+            bucket,
+            keystore,
+            client_id: id,
+        }
     }
 }
 
@@ -77,21 +83,26 @@ impl Actor for InternalActor<Provider> {
 impl Receive<InternalMsg> for InternalActor<Provider> {
     type Msg = InternalMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
-        soft(|| match msg {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        println!("Received message from client");
+        match msg {
             InternalMsg::CreateVault(vid, rid) => {
                 let key = self.keystore.create_key(vid);
 
                 let (_, rid) = self.bucket.create_and_init_vault(key, rid);
 
-                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
+                let cstr: String = self.client_id.into();
+
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnCreateVault(vid, rid, StatusMessage::Ok)),
-                    None,
+                    sender,
                 );
             }
             InternalMsg::ReadData(vid, rid) => {
-                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
                 if let Some(key) = self.keystore.get_key(vid) {
                     let plain = self.bucket.read_data(key.clone(), rid);
 
@@ -99,7 +110,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                     client.try_tell(
                         ClientMsg::InternalResults(InternalResults::ReturnReadData(plain, StatusMessage::Ok)),
-                        None,
+                        sender,
                     );
                 } else {
                     client.try_tell(
@@ -107,12 +118,13 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             vec![],
                             StatusMessage::Error("Vault does not exist.".into()),
                         )),
-                        None,
+                        sender,
                     );
                 }
             }
             InternalMsg::WriteData(vid, rid, payload, hint) => {
-                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
                 if let Some(key) = self.keystore.get_key(vid) {
                     self.bucket.write_payload(key.clone(), rid, payload, hint);
@@ -121,14 +133,14 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                     client.try_tell(
                         ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::Ok)),
-                        None,
+                        sender,
                     );
                 } else {
                     client.try_tell(
                         ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::Error(
                             "Vault doesn't exist".into(),
                         ))),
-                        None,
+                        sender,
                     );
                 }
             }
@@ -195,7 +207,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 self.keystore.clear_keys();
             }
             InternalMsg::StoreKeyData(vid, rid, data) => {}
-        })
-        .expect(line_error!());
+        }
     }
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::InternalResults,
+    actors::{InternalMsg, InternalResults},
     client::{Client, ClientMsg},
     line_error,
     utils::{ClientId, StatusMessage, VaultId},
@@ -105,28 +105,39 @@ impl Receive<SHRequest> for Client {
         match msg {
             SHRequest::CreateNewVault(vpath) => {
                 let vid = self.derive_vault_id(vpath);
+                let rid = self.derive_record_id(vid, None);
+                let client_str = self.get_client_str();
 
-                sender
-                    .as_ref()
-                    .expect(line_error!())
-                    .try_tell(
-                        ClientMsg::SHResults(SHResults::ReturnCreateVault(StatusMessage::Ok)),
-                        None,
-                    )
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
+
+                internal.try_tell(InternalMsg::CreateVault(vid, rid), sender);
             }
             SHRequest::WriteData(vpath, idx, data, hint) => {
-                sender
-                    .as_ref()
-                    .expect(line_error!())
-                    .try_tell(
-                        ClientMsg::SHResults(SHResults::ReturnWriteData(StatusMessage::Ok)),
-                        None,
-                    )
+                let vid = self.derive_vault_id(vpath);
+                let rid = self.derive_record_id(vid, idx);
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
+
+                internal.try_tell(InternalMsg::WriteData(vid, rid, data, hint), sender);
             }
             SHRequest::InitRecord(vpath) => {}
-            SHRequest::ReadData(vpath, idx) => {}
+            SHRequest::ReadData(vpath, idx) => {
+                let vid = self.derive_vault_id(vpath);
+                let rid = self.derive_record_id(vid, idx);
+
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(InternalMsg::ReadData(vid, rid), sender);
+            }
             SHRequest::RevokeData(vpath, idx) => {}
             SHRequest::GarbageCollect(vpath) => {}
             SHRequest::ListIds(vpath) => {}
@@ -140,21 +151,42 @@ impl Receive<SHRequest> for Client {
 impl Receive<InternalResults> for Client {
     type Msg = ClientMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InternalResults, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InternalResults, sender: Sender) {
         match msg {
             InternalResults::ReturnCreateVault(vid, rid, status) => {
                 let (vid, rid) = self.add_vault(vid, rid);
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(ClientMsg::SHResults(SHResults::ReturnCreateVault(status)), None)
+                    .expect(line_error!());
             }
             InternalResults::ReturnInitRecord(vid, rid, status) => {
                 self.insert_record(vid, rid);
             }
-            InternalResults::ReturnReadData(payload, status) => {}
+            InternalResults::ReturnReadData(payload, status) => {
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(ClientMsg::SHResults(SHResults::ReturnReadData(payload, status)), None)
+                    .expect(line_error!());
+            }
             InternalResults::ReturnList(list, status) => {}
             InternalResults::RebuildCache(vids, rids, status) => {
                 self.clear_cache();
                 // self.rebuild_cache(vids.clone(), rids.clone());
             }
-            InternalResults::ReturnWriteData(_) => {}
+            InternalResults::ReturnWriteData(status) => {
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(
+                        ClientMsg::SHResults(SHResults::ReturnCreateVault(StatusMessage::Ok)),
+                        None,
+                    )
+                    .expect(line_error!());
+            }
             InternalResults::ReturnRevoke(_) => {}
             InternalResults::ReturnGarbage(_) => {}
             InternalResults::ReturnWriteSnap(_) => {}

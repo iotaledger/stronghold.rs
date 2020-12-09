@@ -108,14 +108,28 @@ impl Client {
         VaultId::load_from_path(&data, &path).expect(line_error!(""))
     }
 
-    pub fn derive_record_id(&self, vault_id: VaultId) -> RecordId {
+    pub fn derive_record_id(&mut self, vault_id: VaultId, ctr: Option<usize>) -> RecordId {
         let data: Vec<u8> = self.client_id.into();
 
-        let (ctr, _) = self.vaults.get(&vault_id).expect(line_error!());
-        let vid_str: String = vault_id.into();
-        let path_counter = format!("{}{}", vid_str, ctr);
+        if let Some(cnt) = ctr {
+            let vid_str: String = vault_id.into();
+            let path_counter = format!("{}{}", vid_str, cnt);
 
-        RecordId::load_from_path(&data, &path_counter.as_bytes()).expect(line_error!(""))
+            RecordId::load_from_path(&data, &path_counter.as_bytes()).expect(line_error!(""))
+        } else {
+            let (ctr, _) = self.vaults.entry(vault_id).or_insert((0, vec![]));
+
+            let vid_str: String = vault_id.into();
+            let path_counter = format!("{}{}", vid_str, ctr);
+
+            RecordId::load_from_path(&data, &path_counter.as_bytes()).expect(line_error!(""))
+        }
+    }
+
+    pub fn get_client_str(&self) -> String {
+        let client_str = self.client_id.into();
+
+        client_str
     }
 }
 
