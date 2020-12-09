@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    fs::File,
+    fs::{File, rename},
     io::{Read, Write},
     fs::OpenOptions,
     path::Path,
@@ -73,9 +73,24 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
 }
 
 pub fn write_to(input: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
-    let mut f = OpenOptions::new().write(true).create(true).open(path)?;
+    // TODO: if path exists and is a symlink, resolve it and then append the salt
+    // TODO: if the sibling tempfile isn't writeable (e.g. directory permissions), write to
+    // env::temp_dir()
+
+    let mut salt = [0u8; 6];
+    crypto::rand::fill(&mut salt)?;
+
+    let mut s = path.as_os_str().to_os_string();
+    s.push(".");
+    s.push(hex::encode(salt));
+    let tmp = Path::new(&s);
+
+    let mut f = OpenOptions::new().write(true).create_new(true).open(tmp)?;
     write(input, &mut f, key, associated_data)?;
     f.sync_all()?;
+
+    rename(tmp, path)?;
+
     Ok(())
 }
 
@@ -181,5 +196,23 @@ mod test {
         write_to(&bs0, &pb, &key, &ad).unwrap();
         corrupt_file_at(&pb);
         read_from(&pb, &key, &ad).unwrap();
+    }
+
+    #[test]
+    fn test_snapshot_overwrite() -> crate::Result<()> {
+        let f = tempfile::tempdir().unwrap();
+        let mut pb = f.into_path();
+        pb.push("snapshot");
+
+        write_to(&fresh::bytestring(), &pb, &rand::random(), &fresh::bytestring())?;
+
+        let key: Key = rand::random();
+        let bs0 = fresh::bytestring();
+        let ad = fresh::bytestring();
+        write_to(&bs0, &pb, &key, &ad).unwrap();
+        let bs1 = read_from(&pb, &key, &ad)?;
+        assert_eq!(bs0, bs1);
+
+        Ok(())
     }
 }

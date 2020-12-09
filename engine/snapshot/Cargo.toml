@@ -13,6 +13,8 @@ anyhow = "1.0"
 # file system
 dirs = "3.0"
 
+hex = "0.4.2"
+
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
 rev = "bc35d38561efcf20a50aeb0f0b08028b4b4fda46"
