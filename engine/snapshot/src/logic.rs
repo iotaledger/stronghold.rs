@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    fs::{File, rename},
+    fs::{rename, File, OpenOptions},
     io::{Read, Write},
-    fs::OpenOptions,
     path::Path,
 };
 
-use crypto::{
-    ciphers::chacha::xchacha20poly1305,
-};
+use crypto::ciphers::chacha::xchacha20poly1305;
 
 /// PARTI in binary
 const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
@@ -32,13 +29,7 @@ pub fn write<O: Write>(input: &[u8], out: &mut O, key: &Key, associated_data: &[
 
     let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
     let mut ct = vec![0; input.len()];
-    xchacha20poly1305::encrypt(
-        &mut ct,
-        &mut tag,
-        input,
-        key,
-        &nonce,
-        associated_data)?;
+    xchacha20poly1305::encrypt(&mut ct, &mut tag, input, key, &nonce, associated_data)?;
 
     out.write_all(&tag)?;
     out.write_all(&ct)?;
@@ -61,13 +52,7 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
     input.read_to_end(&mut ct)?;
 
     let mut pt = vec![0; ct.len()];
-    xchacha20poly1305::decrypt(
-        &mut pt,
-        &ct,
-        key,
-        &tag,
-        &nonce,
-        associated_data)?;
+    xchacha20poly1305::decrypt(&mut pt, &ct, key, &tag, &nonce, associated_data)?;
 
     Ok(pt)
 }
@@ -102,7 +87,8 @@ pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> crate::Resul
 
 /// check to see if the file is long enough.
 fn check_min_file_len(input: &mut File) -> crate::Result<()> {
-    let min = MAGIC.len() + VERSION.len()
+    let min = MAGIC.len()
+        + VERSION.len()
         + xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE
         + xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE;
     if input.metadata()?.len() >= min as u64 {
@@ -117,7 +103,9 @@ fn check_header<I: Read>(input: &mut I) -> crate::Result<()> {
     let mut magic = [0u8; 5];
     input.read_exact(&mut magic)?;
     if magic != MAGIC {
-        return Err(crate::Error::SnapshotError("magic bytes mismatch, is this really a snapshot file?".into()));
+        return Err(crate::Error::SnapshotError(
+            "magic bytes mismatch, is this really a snapshot file?".into(),
+        ));
     }
 
     // check the version
@@ -133,7 +121,7 @@ fn check_header<I: Read>(input: &mut I) -> crate::Result<()> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{fresh, seek_to_beginning, corrupt_file, corrupt_file_at};
+    use crate::test_utils::{corrupt_file, corrupt_file_at, fresh, seek_to_beginning};
 
     #[test]
     fn test_write_read() -> crate::Result<()> {
@@ -153,7 +141,7 @@ mod test {
 
     #[test]
     #[should_panic]
-    fn test_corrupted_read_write() -> () {
+    fn test_corrupted_read_write() {
         let mut f = tempfile::tempfile().unwrap();
         let key: Key = rand::random();
         let bs0 = fresh::bytestring();

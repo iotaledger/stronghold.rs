@@ -34,9 +34,9 @@
 /// serializing and deserializing HashMaps are included in this library.
 mod error;
 mod files;
+mod kdf;
 mod logic;
 mod serialize;
-mod kdf;
 
 #[cfg(test)]
 mod test_utils;
@@ -44,6 +44,6 @@ mod test_utils;
 pub use error::{Error, Result};
 
 pub use files::{home_dir, snapshot_dir};
-pub use logic::{read, write, read_from, write_to, Key};
+pub use kdf::{naive_kdf, recommended_kdf};
+pub use logic::{read, read_from, write, write_to, Key};
 pub use serialize::{deserialize_buffer, serialize_map};
-pub use kdf::{recommended_kdf, naive_kdf};

@@ -1,9 +1,11 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::io::{Seek, SeekFrom, Read, Write};
-use std::fs::{File, OpenOptions};
-use std::path::Path;
+use std::{
+    fs::{File, OpenOptions},
+    io::{Read, Seek, SeekFrom, Write},
+    path::Path,
+};
 
 pub mod fresh {
     pub fn bytestring() -> Vec<u8> {
@@ -20,6 +22,7 @@ pub mod fresh {
         bs
     }
 
+    #[allow(dead_code)]
     pub fn non_empty_bytestring() -> Vec<u8> {
         let s = (rand::random::<usize>() % 4096) + 1;
         let mut bs = Vec::with_capacity(s);
@@ -56,7 +59,7 @@ pub fn corrupt_file(f: &mut File) {
     corrupt(&mut bs);
 
     seek_to_beginning(f);
-    f.write(&bs).unwrap();
+    f.write_all(&bs).unwrap();
 
     seek_to_beginning(f);
 }
