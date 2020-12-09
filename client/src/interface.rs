@@ -100,6 +100,34 @@ impl Stronghold {
         StatusMessage::Ok
     }
 
+    pub async fn create_new_vault(&self, vault_path: Vec<u8>) -> StatusMessage {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        if let SHResults::ReturnCreateVault(status) =
+            ask(&self.system, client, SHRequest::CreateNewVault(vault_path)).await
+        {
+            status
+        } else {
+            StatusMessage::Error("Invalid Message".into())
+        }
+    }
+
+    pub async fn init_record(&self, vault_path: Vec<u8>) -> (Option<usize>, StatusMessage) {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        let res: SHResults = ask(&self.system, client, SHRequest::InitRecord(vault_path.clone())).await;
+
+        if let SHResults::ReturnInitRecord(idx, status) = res {
+            (Some(idx), status)
+        } else {
+            (None, StatusMessage::Error("Unable to initialize record".into()))
+        }
+    }
+
     pub async fn write_data(
         &self,
         data: Vec<u8>,
@@ -111,25 +139,14 @@ impl Stronghold {
 
         let client = &self.actors[idx];
 
-        let handle = ask(
-            &self.system,
-            client,
-            ClientMsg::SHRequest(SHRequest::CreateNewVault(vault_path.clone())),
-        );
-
-        let status: ClientMsg = handle.await;
-
-        println!("{:?}", status);
-
-        let handle = ask(
+        let res: SHResults = ask(
             &self.system,
             client,
             SHRequest::WriteData(vault_path, record_counter, data, hint),
-        );
+        )
+        .await;
 
-        let status: ClientMsg = handle.await;
-
-        println!("{:?}", status);
+        println!("{:?}", res);
 
         StatusMessage::Ok
     }
@@ -143,17 +160,18 @@ impl Stronghold {
 
         let client = &self.actors[idx];
 
-        let handle = ask(
+        let res: SHResults = ask(
             &self.system,
             client,
-            ClientMsg::SHRequest(SHRequest::ReadData(vault_path.clone(), record_counter)),
-        );
+            SHRequest::ReadData(vault_path.clone(), record_counter),
+        )
+        .await;
 
-        let status: ClientMsg = handle.await;
-
-        println!("{:?}", status);
-
-        (Some(vec![]), StatusMessage::Ok)
+        if let SHResults::ReturnReadData(payload, status) = res {
+            (Some(payload), StatusMessage::Ok)
+        } else {
+            (None, StatusMessage::Error("Unable to read data".into()))
+        }
     }
 
     pub async fn delete_data(&self, vault_path: Vec<u8>, record_counter: usize, should_gc: bool) -> StatusMessage {
@@ -208,17 +226,31 @@ mod tests {
     #[test]
     fn test_stronghold() {
         let sys = ActorSystem::new().unwrap();
+        let vault_path = b"path".to_vec();
 
         let mut stronghold = Stronghold::init_stronghold_system(sys, b"test".to_vec(), b"test".to_vec(), vec![]);
 
+        futures::executor::block_on(stronghold.create_new_vault(vault_path.clone()));
+
         futures::executor::block_on(stronghold.write_data(
             b"test".to_vec(),
-            b"path".to_vec(),
+            vault_path.clone(),
             None,
             RecordHint::new(b"hint").expect(line_error!()),
         ));
 
-        futures::executor::block_on(stronghold.read_data(b"path".to_vec(), None));
+        futures::executor::block_on(stronghold.read_data(vault_path.clone(), None));
+
+        let (idx, status) = futures::executor::block_on(stronghold.init_record(vault_path.clone()));
+
+        futures::executor::block_on(stronghold.write_data(
+            b"more data".to_vec(),
+            vault_path.clone(),
+            None,
+            RecordHint::new(b"hint").expect(line_error!()),
+        ));
+
+        futures::executor::block_on(stronghold.read_data(vault_path, Some(3)));
 
         stronghold.system.print_tree()
     }

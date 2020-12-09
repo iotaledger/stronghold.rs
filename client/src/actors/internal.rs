@@ -33,7 +33,7 @@ pub enum InternalMsg {
     CreateVault(VaultId, RecordId),
     ReadData(VaultId, RecordId),
     WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
-    InitRecord(VaultId),
+    InitRecord(VaultId, RecordId),
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
     ListIds(VaultId),
@@ -84,7 +84,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
     type Msg = InternalMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        println!("Received message from client");
         match msg {
             InternalMsg::CreateVault(vid, rid) => {
                 let key = self.keystore.create_key(vid);
@@ -144,17 +143,18 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::InitRecord(vid) => {
+            InternalMsg::InitRecord(vid, rid) => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
-                    // let rid = self.bucket.init_record(key.clone());
+                    let rid = self.bucket.init_record(key.clone(), rid);
 
                     self.keystore.insert_key(vid, key);
 
-                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
-                    // client.try_tell(
-                    //     ClientMsg::InternalResults(InternalResults::ReturnInitRecord(vid, rid)),
-                    //     None,
-                    // );
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnInitRecord(vid, rid, StatusMessage::Ok)),
+                        sender,
+                    );
                 }
             }
             InternalMsg::RevokeData(vid, rid) => {

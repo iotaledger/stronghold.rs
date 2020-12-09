@@ -35,6 +35,11 @@ pub enum ProcResult {
 
 #[derive(Clone, Debug)]
 pub enum SHRequest {
+    // check if vault exists.
+    CheckVault(Vec<u8>),
+    // check if record exists.
+    CheckRecord(Vec<u8>, Option<usize>),
+
     // Creates a new Vault.
     CreateNewVault(Vec<u8>),
 
@@ -75,6 +80,8 @@ pub enum SHResults {
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
     ReturnControlRequest(ProcResult),
+    ReturnExistsVault(bool, StatusMessage),
+    ReturnExistsRecord(bool, StatusMessage),
 }
 
 impl ActorFactoryArgs<ClientId> for Client {
@@ -103,6 +110,33 @@ impl Receive<SHRequest> for Client {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, sender: Sender) {
         match msg {
+            SHRequest::CheckVault(vpath) => {
+                let vid = self.derive_vault_id(vpath);
+                if self.vault_exist(vid) {
+                    sender
+                        .as_ref()
+                        .expect(line_error!())
+                        .try_tell(SHResults::ReturnExistsVault(true, StatusMessage::Ok), None)
+                        .expect(line_error!());
+                } else {
+                    sender
+                        .as_ref()
+                        .expect(line_error!())
+                        .try_tell(SHResults::ReturnExistsVault(false, StatusMessage::Ok), None)
+                        .expect(line_error!());
+                }
+            }
+            SHRequest::CheckRecord(vpath, ctr) => {
+                let vid = self.derive_vault_id(vpath);
+                let rid = self.derive_record_id(vid, ctr);
+
+                let res = self.record_exists_in_vault(vid, rid);
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnExistsRecord(res, StatusMessage::Ok), None)
+                    .expect(line_error!());
+            }
             SHRequest::CreateNewVault(vpath) => {
                 let vid = self.derive_vault_id(vpath);
                 let rid = self.derive_record_id(vid, None);
@@ -125,10 +159,23 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::WriteData(vid, rid, data, hint), sender);
             }
-            SHRequest::InitRecord(vpath) => {}
+            SHRequest::InitRecord(vpath) => {
+                let vid = self.derive_vault_id(vpath);
+                let rid = self.derive_record_id(vid, None);
+
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(InternalMsg::InitRecord(vid, rid), sender);
+            }
             SHRequest::ReadData(vpath, idx) => {
                 let vid = self.derive_vault_id(vpath);
                 let rid = self.derive_record_id(vid, idx);
+
+                println!("{:?}", rid);
 
                 let client_str = self.get_client_str();
 
@@ -151,25 +198,34 @@ impl Receive<SHRequest> for Client {
 impl Receive<InternalResults> for Client {
     type Msg = ClientMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InternalResults, sender: Sender) {
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: InternalResults, sender: Sender) {
         match msg {
             InternalResults::ReturnCreateVault(vid, rid, status) => {
-                let (vid, rid) = self.add_vault(vid, rid);
+                self.add_vault(vid, rid);
 
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(ClientMsg::SHResults(SHResults::ReturnCreateVault(status)), None)
+                    .try_tell(SHResults::ReturnCreateVault(status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnInitRecord(vid, rid, status) => {
                 self.insert_record(vid, rid);
-            }
-            InternalResults::ReturnReadData(payload, status) => {
+
+                let ctr = self.get_record_index(vid);
+
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(ClientMsg::SHResults(SHResults::ReturnReadData(payload, status)), None)
+                    .try_tell(SHResults::ReturnInitRecord(ctr, status), None)
+                    .expect(line_error!());
+            }
+            InternalResults::ReturnReadData(payload, status) => {
+                println!("{:?}", payload);
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnReadData(payload, status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnList(list, status) => {}
@@ -181,10 +237,7 @@ impl Receive<InternalResults> for Client {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(
-                        ClientMsg::SHResults(SHResults::ReturnCreateVault(StatusMessage::Ok)),
-                        None,
-                    )
+                    .try_tell(SHResults::ReturnCreateVault(StatusMessage::Ok), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnRevoke(_) => {}
