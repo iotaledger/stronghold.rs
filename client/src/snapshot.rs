@@ -4,11 +4,14 @@
 use serde::{Deserialize, Serialize};
 
 use engine::{
-    snapshot::{write_to, read_from, snapshot_dir, Key},
+    snapshot::{read_from, snapshot_dir, write_to, Key},
     vault::BoxProvider,
 };
 
-use std::{fs::OpenOptions, path::{Path, PathBuf}};
+use std::{
+    fs::OpenOptions,
+    path::{Path, PathBuf},
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct Snapshot {
@@ -38,16 +41,15 @@ impl Snapshot {
     }
 
     /// Reads the data from the specified `&PathBuf` when given a `&str` password.  Returns a new `Snapshot`.
-    pub fn read_from_snapshot(path: &Path, key: Key) -> Self
-    {
-        let state = read_from(path, &key, &vec![])
+    pub fn read_from_snapshot(path: &Path, key: Key) -> Self {
+        let state = read_from(path, &key, &[])
             .expect("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.");
         Self::new(state)
     }
 
     /// Writes the data to the specified `&PathBuf` when given a `&str` password creating a new snapshot file.
     pub fn write_to_snapshot(self, path: &Path, key: Key) {
-        write_to(&self.state, path, &key, &vec![])
+        write_to(&self.state, path, &key, &[])
             .expect("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.");
     }
 }
