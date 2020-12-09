@@ -12,11 +12,11 @@ use runtime::zone::soft;
 use crate::{
     actors::{ProcResult, SMsg},
     bucket::Bucket,
+    client::ClientMsg,
     internals::Provider,
     key_store::KeyStore,
     line_error,
-    utils::StatusMessage,
-    utils::VaultId,
+    utils::{StatusMessage, VaultId},
 };
 
 pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
@@ -28,7 +28,7 @@ pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
 #[derive(Clone, Debug)]
 pub enum InternalMsg {
     StoreKeyData(VaultId, RecordId, Vec<u8>),
-    CreateVault(VaultId),
+    CreateVault(VaultId, RecordId),
     ReadData(VaultId, RecordId),
     WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
     InitRecord(VaultId),
@@ -79,32 +79,57 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         soft(|| match msg {
-            InternalMsg::CreateVault(vid) => {
+            InternalMsg::CreateVault(vid, rid) => {
                 let key = self.keystore.create_key(vid);
 
-                // let (_, rid) = self.bucket.create_and_init_vault(key);
+                let (_, rid) = self.bucket.create_and_init_vault(key, rid);
 
                 let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
-                // client.try_tell(
-                //     ClientMsg::InternalResults(InternalResults::ReturnCreateVault(vid, rid)),
-                //     None,
-                // );
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnCreateVault(vid, rid, StatusMessage::Ok)),
+                    None,
+                );
             }
             InternalMsg::ReadData(vid, rid) => {
+                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
                     let plain = self.bucket.read_data(key.clone(), rid);
 
                     self.keystore.insert_key(vid, key);
 
-                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
-                    // client.try_tell(ClientMsg::InternalResults(InternalResults::ReturnReadData(plain)), None);
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnReadData(plain, StatusMessage::Ok)),
+                        None,
+                    );
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnReadData(
+                            vec![],
+                            StatusMessage::Error("Vault does not exist.".into()),
+                        )),
+                        None,
+                    );
                 }
             }
             InternalMsg::WriteData(vid, rid, payload, hint) => {
+                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
+
                 if let Some(key) = self.keystore.get_key(vid) {
                     self.bucket.write_payload(key.clone(), rid, payload, hint);
 
                     self.keystore.insert_key(vid, key);
+
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::Ok)),
+                        None,
+                    );
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::Error(
+                            "Vault doesn't exist".into(),
+                        ))),
+                        None,
+                    );
                 }
             }
             InternalMsg::InitRecord(vid) => {

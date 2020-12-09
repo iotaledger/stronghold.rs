@@ -5,13 +5,15 @@ use serde::{Deserialize, Serialize};
 
 use crypto::macs::hmac::HMAC_SHA512;
 
-use engine::vault::{Base64Encodable, BoxProvider};
+use engine::vault::{Base64Encodable, BoxProvider, RecordId};
 
 use std::{
     convert::{TryFrom, TryInto},
     fmt::{self, Debug, Formatter},
     hash::Hash,
 };
+
+use crate::line_error;
 
 /// TODO: Implement
 /// Messages to interact with Stronghold
@@ -38,6 +40,21 @@ impl AsRef<[u8]> for ID {
     }
 }
 
+pub trait LoadFromPath: Sized {
+    fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self>;
+}
+
+impl LoadFromPath for RecordId {
+    fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self> {
+        let mut buf = [0; 64];
+        HMAC_SHA512(data, path, &mut buf);
+
+        let (id, _) = buf.split_at(24);
+
+        Ok(id.try_into().expect(line_error!()))
+    }
+}
+
 impl Debug for ID {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "Chain({})", self.0.base64())
@@ -55,8 +72,10 @@ impl ID {
     pub fn load(data: &[u8]) -> crate::Result<Self> {
         data.try_into()
     }
+}
 
-    pub fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self> {
+impl LoadFromPath for ID {
+    fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self> {
         let mut buf = [0; 64];
         HMAC_SHA512(data, path, &mut buf);
 
@@ -74,8 +93,10 @@ impl VaultId {
     pub fn load(data: &[u8]) -> crate::Result<Self> {
         Ok(VaultId(ID::load(data)?))
     }
+}
 
-    pub fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self> {
+impl LoadFromPath for VaultId {
+    fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self> {
         Ok(VaultId(ID::load_from_path(data, path)?))
     }
 }
@@ -88,8 +109,10 @@ impl ClientId {
     pub fn load(data: &[u8]) -> crate::Result<Self> {
         Ok(ClientId(ID::load(data)?))
     }
+}
 
-    pub fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self> {
+impl LoadFromPath for ClientId {
+    fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self> {
         Ok(ClientId(ID::load_from_path(data, path)?))
     }
 }
@@ -185,6 +208,12 @@ impl AsRef<[u8]> for ClientId {
 }
 
 impl Into<String> for ClientId {
+    fn into(self) -> String {
+        self.0.as_ref().base64()
+    }
+}
+
+impl Into<String> for VaultId {
     fn into(self) -> String {
         self.0.as_ref().base64()
     }

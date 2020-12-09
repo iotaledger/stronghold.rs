@@ -2,20 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{SHRequest, SHResults},
+    actors::{InternalResults, SHRequest, SHResults},
     line_error,
-    utils::StatusMessage,
+    utils::{LoadFromPath, StatusMessage},
     {ClientId, VaultId},
 };
 
-use engine::vault::{RecordHint, RecordId};
+use engine::vault::RecordId;
 
 use riker::actors::*;
 
 use std::{collections::HashMap, path::PathBuf};
 
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
-#[actor(SHRequest, SHResults)]
+#[actor(SHResults, SHRequest, InternalResults)]
 pub struct Client {
     client_id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
@@ -105,17 +105,21 @@ impl Client {
     pub fn derive_vault_id(&self, path: Vec<u8>) -> VaultId {
         let data: Vec<u8> = self.client_id.into();
 
-        VaultId::load(&data).expect(line_error!(""))
+        VaultId::load_from_path(&data, &path).expect(line_error!(""))
     }
 
-    pub fn derive_record_id(&self, path: Vec<u8>) -> RecordId {
+    pub fn derive_record_id(&self, vault_id: VaultId) -> RecordId {
         let data: Vec<u8> = self.client_id.into();
 
-        RecordId::load(&data).expect(line_error!(""))
+        let (ctr, _) = self.vaults.get(&vault_id).expect(line_error!());
+        let vid_str: String = vault_id.into();
+        let path_counter = format!("{}{}", vid_str, ctr);
+
+        RecordId::load_from_path(&data, &path_counter.as_bytes()).expect(line_error!(""))
     }
 }
 
-// /// Actor Factor for the Client Struct.
+/// Actor Factor for the Client Struct.
 
 #[cfg(test)]
 mod test {
@@ -203,5 +207,39 @@ mod test {
 
         assert_eq!(head0, rid2);
         assert_eq!(head1, rid4);
+    }
+
+    #[test]
+    fn test_vault_id() {
+        let clientid = ClientId::random::<Provider>().expect(line_error!());
+        let cid: Vec<u8> = clientid.into();
+
+        let vid = VaultId::random::<Provider>().expect(line_error!());
+        let ctr = 1;
+
+        let vid_str: String = vid.into();
+        let path_counter = format!("{}{}", vid_str, ctr);
+
+        let rid = RecordId::load_from_path(&cid, &path_counter.as_bytes()).expect(line_error!(""));
+
+        println!("{:?}", rid);
+
+        let ctr = 2;
+
+        let vid_str: String = vid.into();
+        let path_counter = format!("{}{}", vid_str, ctr);
+
+        let rid = RecordId::load_from_path(&cid, &path_counter.as_bytes()).expect(line_error!(""));
+
+        println!("{:?}", rid);
+
+        let ctr = 3;
+
+        let vid_str: String = vid.into();
+        let path_counter = format!("{}{}", vid_str, ctr);
+
+        let rid = RecordId::load_from_path(&cid, &path_counter.as_bytes()).expect(line_error!(""));
+
+        println!("{:?}", rid);
     }
 }

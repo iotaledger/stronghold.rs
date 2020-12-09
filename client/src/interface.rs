@@ -10,12 +10,11 @@ use std::{collections::HashMap, time::Duration};
 use engine::vault::RecordHint;
 
 use crate::{
-    actors::{InternalActor, Procedure},
+    actors::{InternalActor, Procedure, SHRequest, SHResults},
     client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
-    utils::ask,
-    utils::{index_of_unchecked, StatusMessage, StrongholdFlags},
+    utils::{ask, index_of_unchecked, LoadFromPath, StatusMessage, StrongholdFlags},
     ClientId, Provider,
 };
 
@@ -95,7 +94,7 @@ impl Stronghold {
             self.client_ids.push(client_id);
             self.data.insert(client_id, keydata);
 
-            self.current_target = counter + 1;
+            self.current_target = counter;
         }
 
         StatusMessage::Ok
@@ -112,7 +111,21 @@ impl Stronghold {
 
         let client = &self.actors[idx];
 
-        // ask for write_data
+        let handle = ask(&self.system, client, SHRequest::CreateNewVault(vault_path.clone()));
+
+        let status: ClientMsg = handle.await;
+
+        println!("{:?}", status);
+
+        let handle = ask(
+            &self.system,
+            client,
+            SHRequest::WriteData(vault_path, record_counter, data, hint),
+        );
+
+        let status: ClientMsg = handle.await;
+
+        println!("{:?}", status);
 
         StatusMessage::Ok
     }
@@ -181,6 +194,13 @@ mod tests {
         let mut stronghold = Stronghold::init_stronghold_system(sys, b"test".to_vec(), b"test".to_vec(), vec![]);
 
         stronghold.spawn_stronghold_actor(b"another".to_vec(), b"test".to_vec(), vec![]);
+
+        futures::executor::block_on(stronghold.write_data(
+            b"test".to_vec(),
+            b"path".to_vec(),
+            None,
+            RecordHint::new(b"hint").expect(line_error!()),
+        ));
 
         stronghold.system.print_tree()
     }

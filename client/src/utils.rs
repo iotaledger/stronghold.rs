@@ -6,7 +6,7 @@ mod types;
 
 pub use self::{
     ask::ask,
-    ids::{ClientId, VaultId},
+    ids::{ClientId, LoadFromPath, VaultId},
     types::{StatusMessage, StrongholdFlags},
 };
 

@@ -8,7 +8,7 @@ use zeroize::Zeroize;
 pub enum StatusMessage {
     Ok,
     Busy,
-    Error,
+    Error(String),
 }
 
 pub enum StrongholdFlags {

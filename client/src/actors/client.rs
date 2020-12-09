@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    actors::InternalResults,
     client::{Client, ClientMsg},
     line_error,
-    utils::StatusMessage,
-    utils::{ClientId, VaultId},
+    utils::{ClientId, StatusMessage, VaultId},
 };
 
 use engine::vault::{RecordHint, RecordId};
 
 use riker::actors::*;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub enum Procedure {
@@ -35,26 +35,23 @@ pub enum ProcResult {
 
 #[derive(Clone, Debug)]
 pub enum SHRequest {
-    Test,
     // Creates a new Vault.
-    CreateNewVault,
-    // Writes data to a record in the vault.  Accepts the vault id, an optional record id, the payload and the record
-    // hint.  If a record id is not specified, the write will default to the head of the vault.  Returns
-    // `ReturnCreate`.
-    WriteData(VaultId, Option<RecordId>, Vec<u8>, RecordHint),
+    CreateNewVault(Vec<u8>),
+
+    WriteData(Vec<u8>, Option<usize>, Vec<u8>, RecordHint),
     // Moves the head forward in the specified Vault and opens a new record.  Returns `ReturnInit`.
-    InitRecord(VaultId),
+    InitRecord(Vec<u8>),
     // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not
     // specified, it reads the head.  Returns with `ReturnRead`.
-    ReadData(VaultId, Option<RecordId>),
+    ReadData(Vec<u8>, Option<usize>),
     // Marks a Record for deletion.  Accepts a vault id and a record id.  Deletion only occurs after a
     // `GarbageCollect` is called.
-    RevokeData(VaultId, RecordId),
+    RevokeData(Vec<u8>, usize),
     // Garbages collects any marked records on a Vault. Accepts the vault id.
-    GarbageCollect(VaultId),
+    GarbageCollect(Vec<u8>),
     // Lists all of the record ids and the record hints for the records in a vault.  Accepts a vault id and returns
     // with `ReturnList`.
-    ListIds(VaultId),
+    ListIds(Vec<u8>),
     // Writes to the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults to
     // `$HOME/.engine/snapshots/backup.snapshot`.
     WriteSnapshot(Vec<u8>, Option<String>, Option<PathBuf>),
@@ -68,9 +65,9 @@ pub enum SHRequest {
 /// Messages that come from stronghold
 #[derive(Clone, Debug)]
 pub enum SHResults {
-    ReturnCreateVault(VaultId, RecordId, StatusMessage),
+    ReturnCreateVault(StatusMessage),
     ReturnWriteData(StatusMessage),
-    ReturnInitRecord(VaultId, RecordId, StatusMessage),
+    ReturnInitRecord(usize, StatusMessage),
     ReturnReadData(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
@@ -86,7 +83,7 @@ impl ActorFactoryArgs<ClientId> for Client {
     }
 }
 
-// /// Actor implementation for the Client.
+/// Actor implementation for the Client.
 impl Actor for Client {
     type Msg = ClientMsg;
 
@@ -104,5 +101,65 @@ impl Receive<SHResults> for Client {
 impl Receive<SHRequest> for Client {
     type Msg = ClientMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, _sender: Sender) {}
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, sender: Sender) {
+        match msg {
+            SHRequest::CreateNewVault(vpath) => {
+                let vid = self.derive_vault_id(vpath);
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(
+                        ClientMsg::SHResults(SHResults::ReturnCreateVault(StatusMessage::Ok)),
+                        None,
+                    )
+                    .expect(line_error!());
+            }
+            SHRequest::WriteData(vpath, idx, data, hint) => {
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(
+                        ClientMsg::SHResults(SHResults::ReturnWriteData(StatusMessage::Ok)),
+                        None,
+                    )
+                    .expect(line_error!());
+            }
+            SHRequest::InitRecord(vpath) => {}
+            SHRequest::ReadData(vpath, idx) => {}
+            SHRequest::RevokeData(vpath, idx) => {}
+            SHRequest::GarbageCollect(vpath) => {}
+            SHRequest::ListIds(vpath) => {}
+            SHRequest::WriteSnapshot(data, name, path) => {}
+            SHRequest::ReadSnapshot(data, name, path) => {}
+            SHRequest::ControlRequest(procedure) => {}
+        }
+    }
+}
+
+impl Receive<InternalResults> for Client {
+    type Msg = ClientMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InternalResults, _sender: Sender) {
+        match msg {
+            InternalResults::ReturnCreateVault(vid, rid, status) => {
+                let (vid, rid) = self.add_vault(vid, rid);
+            }
+            InternalResults::ReturnInitRecord(vid, rid, status) => {
+                self.insert_record(vid, rid);
+            }
+            InternalResults::ReturnReadData(payload, status) => {}
+            InternalResults::ReturnList(list, status) => {}
+            InternalResults::RebuildCache(vids, rids, status) => {
+                self.clear_cache();
+                // self.rebuild_cache(vids.clone(), rids.clone());
+            }
+            InternalResults::ReturnWriteData(_) => {}
+            InternalResults::ReturnRevoke(_) => {}
+            InternalResults::ReturnGarbage(_) => {}
+            InternalResults::ReturnWriteSnap(_) => {}
+            InternalResults::ReturnReadSnap(_) => {}
+            InternalResults::ReturnControlRequest(_) => {}
+        }
+    }
 }
