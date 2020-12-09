@@ -8,7 +8,10 @@ use crate::{
     utils::{ClientId, StatusMessage, VaultId},
 };
 
-use engine::vault::{RecordHint, RecordId};
+use engine::{
+    snapshot,
+    vault::{RecordHint, RecordId},
+};
 
 use riker::actors::*;
 
@@ -52,12 +55,12 @@ pub enum SHRequest {
     // Lists all of the record ids and the record hints for the records in a vault.  Accepts a vault id and returns
     // with `ReturnList`.
     ListIds(Vec<u8>),
-    // Writes to the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults to
-    // `$HOME/.engine/snapshots/backup.snapshot`.
-    WriteSnapshot(Vec<u8>, Option<String>, Option<PathBuf>),
-    // Reads from the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults
-    // to `$HOME/.engine/snapshots/backup.snapshot`.
-    ReadSnapshot(Vec<u8>, Option<String>, Option<PathBuf>),
+    // Writes to the snapshot file.  Accepts the snapshot key, an optional filename and an optional filepath.
+    // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
+    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>),
+    // Reads from the snapshot file.  Accepts the snapshot key, an optional filename and an optional filepath.
+    // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
+    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>),
 
     ControlRequest(Procedure),
 }

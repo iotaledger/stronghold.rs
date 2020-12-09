@@ -5,7 +5,7 @@ use crate::{
     actors::{InternalResults, SHRequest, SHResults},
     line_error,
     utils::{LoadFromPath, StatusMessage},
-    {ClientId, VaultId},
+    ClientId, VaultId,
 };
 
 use engine::vault::RecordId;
@@ -127,9 +127,7 @@ impl Client {
     }
 
     pub fn get_client_str(&self) -> String {
-        let client_str = self.client_id.into();
-
-        client_str
+        self.client_id.into()
     }
 }
 

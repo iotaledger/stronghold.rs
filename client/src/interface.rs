@@ -48,7 +48,7 @@ impl Stronghold {
         data.insert(client_id, keydata);
 
         let client = system
-            .actor_of_args::<Client, _>(&format!("{}", id_str), client_id)
+            .actor_of_args::<Client, _>(&id_str, client_id)
             .expect(line_error!());
 
         system
@@ -68,7 +68,8 @@ impl Stronghold {
         }
     }
 
-    /// Starts actor model and sets current_target actor.  Can be used to add another stronghold actor to the system if called a 2nd time.
+    /// Starts actor model and sets current_target actor.  Can be used to add another stronghold actor to the system if
+    /// called a 2nd time.
     pub fn spawn_stronghold_actor(
         &mut self,
         keydata: Vec<u8>,

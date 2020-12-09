@@ -4,11 +4,14 @@
 use serde::{Deserialize, Serialize};
 
 use engine::{
-    snapshot::{decrypt_snapshot, encrypt_snapshot, snapshot_dir},
+    snapshot::{read_from, snapshot_dir, write_to, Key},
     vault::BoxProvider,
 };
 
-use std::{fs::OpenOptions, path::PathBuf};
+use std::{
+    fs::OpenOptions,
+    path::{Path, PathBuf},
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct Snapshot {
@@ -17,8 +20,7 @@ pub struct Snapshot {
 
 impl Snapshot {
     /// Creates a new `Snapshot` from a buffer of `Vec<u8>` state.
-    pub fn new<P>(state: Vec<u8>) -> Self
-where {
+    pub fn new(state: Vec<u8>) -> Self {
         Self { state }
     }
 
@@ -39,29 +41,15 @@ where {
     }
 
     /// Reads the data from the specified `&PathBuf` when given a `&str` password.  Returns a new `Snapshot`.
-    pub fn read_from_snapshot<P>(snapshot: &PathBuf, pass: Vec<u8>) -> Self
-    where
-        P: BoxProvider + Clone + Send + Sync,
-    {
-        let mut buffer = Vec::new();
-        let mut file = OpenOptions::new()
-            .read(true)
-            .open(snapshot)
+    pub fn read_from_snapshot(path: &Path, key: Key) -> Self {
+        let state = read_from(path, &key, &[])
             .expect("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.");
-        // decrypt_snapshot(&mut file, &mut buffer, pass.as_bytes()).expect("unable to decrypt the snapshot");
-
-        Snapshot::new::<P>(buffer)
+        Self::new(state)
     }
 
     /// Writes the data to the specified `&PathBuf` when given a `&str` password creating a new snapshot file.
-    pub fn write_to_snapshot(self, snapshot: &PathBuf, pass: Vec<u8>) {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(snapshot)
+    pub fn write_to_snapshot(self, path: &Path, key: Key) {
+        write_to(&self.state, path, &key, &[])
             .expect("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.");
-        // clear contents of the file before writing.
-        file.set_len(0).expect("unable to clear the contents of the file file");
-        // encrypt_snapshot(self.state, &mut file, pass.as_bytes()).expect("Couldn't write to the snapshot");
     }
 }

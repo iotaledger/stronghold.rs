@@ -3,8 +3,12 @@
 
 use riker::actors::*;
 
-use std::{fmt::Debug, path::PathBuf};
+use std::{
+    fmt::Debug,
+    path::{Path, PathBuf},
+};
 
+use engine::snapshot;
 use runtime::zone::soft;
 
 use crate::{actors::InternalMsg, line_error, snapshot::Snapshot, Provider, VaultId};
@@ -12,14 +16,14 @@ use crate::{actors::InternalMsg, line_error, snapshot::Snapshot, Provider, Vault
 /// Messages used for the Snapshot Actor.
 #[derive(Clone, Debug)]
 pub enum SMsg {
-    WriteSnapshot(Vec<u8>, Option<String>, Option<PathBuf>, Vec<u8>),
-    ReadSnapshot(Vec<u8>, Option<String>, Option<PathBuf>),
+    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, Vec<u8>),
+    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>),
 }
 
 /// Actor Factory for the Snapshot.
 impl ActorFactory for Snapshot {
     fn create() -> Self {
-        Snapshot::new::<Provider>(vec![])
+        Snapshot::new(vec![])
     }
 }
 
@@ -36,8 +40,8 @@ impl Receive<SMsg> for Snapshot {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         match msg {
-            SMsg::WriteSnapshot(pass, name, path, state) => {
-                let snapshot = Snapshot::new::<Provider>(state);
+            SMsg::WriteSnapshot(key, name, path, state) => {
+                let snapshot = Snapshot::new(state);
 
                 let path = if let Some(p) = path {
                     p
@@ -45,16 +49,16 @@ impl Receive<SMsg> for Snapshot {
                     Snapshot::get_snapshot_path(name)
                 };
 
-                snapshot.write_to_snapshot(&path, pass);
+                snapshot.write_to_snapshot(&path, key);
             }
-            SMsg::ReadSnapshot(pass, name, path) => {
+            SMsg::ReadSnapshot(key, name, path) => {
                 let path = if let Some(p) = path {
                     p
                 } else {
                     Snapshot::get_snapshot_path(name)
                 };
 
-                let snapshot = Snapshot::read_from_snapshot::<Provider>(&path, pass);
+                let snapshot = Snapshot::read_from_snapshot(&path, key);
 
                 let bucket = ctx.select("/user/internal-actor/").expect(line_error!());
                 bucket.try_tell(InternalMsg::ReloadData(snapshot.get_state()), None);

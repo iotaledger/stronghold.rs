@@ -10,7 +10,13 @@ pub enum Error {
     #[error("Snapshot Error: `{0}`")]
     SnapshotError(String),
     #[error("Crypto Error: `{0}`")]
-    CryptoError(String),
+    CryptoError(crypto::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<crypto::Error> for Error {
+    fn from(e: crypto::Error) -> Self {
+        Self::CryptoError(e)
+    }
+}

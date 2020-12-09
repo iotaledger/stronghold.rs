@@ -1,3 +1,6 @@
+// Copyright 2020 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use riker::actors::*;
 
 use std::sync::{Arc, Mutex};
@@ -18,7 +21,7 @@ where
     let (tx, rx) = channel::<R>();
     let tx = Arc::new(Mutex::new(Some(tx)));
 
-    let props = Props::new_from_args(Box::new(AskActor::new), tx);
+    let props = Props::new_from_args(Box::new(AskActor::boxed), tx);
     let actor = ctx.tmp_actor_of_props(props).unwrap();
     receiver.tell(msg, Some(actor.into()));
 
@@ -30,7 +33,7 @@ struct AskActor<Msg> {
 }
 
 impl<Msg: Message> AskActor<Msg> {
-    fn new(tx: Arc<Mutex<Option<ChannelSender<Msg>>>>) -> BoxActor<Msg> {
+    fn boxed(tx: Arc<Mutex<Option<ChannelSender<Msg>>>>) -> BoxActor<Msg> {
         let ask = AskActor { tx };
         Box::new(ask)
     }
