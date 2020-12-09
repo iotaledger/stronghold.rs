@@ -7,6 +7,8 @@ use std::{fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, RecordHint, RecordId};
 
+use engine::snapshot;
+
 use runtime::zone::soft;
 
 use crate::{
@@ -37,8 +39,8 @@ pub enum InternalMsg {
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
     ListIds(VaultId),
-    WriteSnapshot(Vec<u8>, Option<String>, Option<PathBuf>),
-    ReadSnapshot(Vec<u8>, Option<String>, Option<PathBuf>),
+    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>),
+    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>),
     ReloadData(Vec<u8>),
     ClearCache,
 }

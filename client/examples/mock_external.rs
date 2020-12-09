@@ -1,5 +1,5 @@
-// // Copyright 2020 IOTA Stiftung
-// // SPDX-License-Identifier: Apache-2.0
+// Copyright 2020 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
 
 // use engine::vault::{RecordHint, RecordId};
 

@@ -10,12 +10,18 @@ readme = "README.md"
 thiserror = "1.0"
 anyhow = "1.0"
 
-# crypto
-sodiumoxide = "0.2"
-
 # file system
 dirs = "3.0"
 
-crypto = {path = "../crypto"}
-random = {path = "../random"}
+hex = "0.4.2"
 
+[dependencies.iota-crypto]
+git = "https://github.com/iotaledger/crypto.rs"
+rev = "bc35d38561efcf20a50aeb0f0b08028b4b4fda46"
+
+# TODO: remove hmac and sha when a proper kdf is chosen
+features = [ "random", "chacha", "hmac", "sha" ]
+
+[dev-dependencies]
+tempfile = "3.1.0"
+rand = "0.7.3"
