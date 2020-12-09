@@ -19,7 +19,7 @@ const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
 const VERSION: [u8; 2] = [0x1, 0x0];
 
 const KEY_SIZE: usize = 32;
-type Key = [u8; KEY_SIZE];
+pub type Key = [u8; KEY_SIZE];
 
 /// encrypt and write a serialized snapshot
 pub fn write<O: Write>(input: &[u8], out: &mut O, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
