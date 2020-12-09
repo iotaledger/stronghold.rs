@@ -32,9 +32,9 @@ where {
     pub fn get_snapshot_path(name: Option<String>) -> PathBuf {
         let path = snapshot_dir().expect("Unable to get the snapshot directory");
         if let Some(name) = name {
-            path.join(format!("{}.snapshot", name))
+            path.join(format!("{}.stronghold", name))
         } else {
-            path.join("backup.snapshot")
+            path.join("snapshot.stronghold")
         }
     }
 
