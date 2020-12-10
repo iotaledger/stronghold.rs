@@ -7,7 +7,6 @@ use zeroize::Zeroize;
 #[derive(Debug, Clone)]
 pub enum StatusMessage {
     Ok,
-    Busy,
     Error(String),
 }
 

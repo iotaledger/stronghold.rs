@@ -101,34 +101,6 @@ impl Stronghold {
         StatusMessage::Ok
     }
 
-    pub async fn create_new_vault(&self, vault_path: Vec<u8>) -> StatusMessage {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
-        if let SHResults::ReturnCreateVault(status) =
-            ask(&self.system, client, SHRequest::CreateNewVault(vault_path)).await
-        {
-            status
-        } else {
-            StatusMessage::Error("Invalid Message".into())
-        }
-    }
-
-    pub async fn init_record(&self, vault_path: Vec<u8>) -> (Option<usize>, StatusMessage) {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
-        let res: SHResults = ask(&self.system, client, SHRequest::InitRecord(vault_path.clone())).await;
-
-        if let SHResults::ReturnInitRecord(idx, status) = res {
-            (Some(idx), status)
-        } else {
-            (None, StatusMessage::Error("Unable to initialize record".into()))
-        }
-    }
-
     pub async fn write_data(
         &self,
         data: Vec<u8>,
@@ -140,12 +112,87 @@ impl Stronghold {
 
         let client = &self.actors[idx];
 
-        let res: SHResults = ask(
-            &self.system,
-            client,
-            SHRequest::WriteData(vault_path, record_counter, data, hint),
-        )
-        .await;
+        if let SHResults::ReturnExistsVault(b) =
+            ask(&self.system, client, SHRequest::CheckVault(vault_path.clone())).await
+        {
+            // check if vault exists
+            if b {
+                if let SHResults::ReturnExistsRecord(b) = ask(
+                    &self.system,
+                    client,
+                    SHRequest::CheckRecord(vault_path.clone(), record_counter),
+                )
+                .await
+                {
+                    if b {
+                        if let SHResults::ReturnWriteData(status) = ask(
+                            &self.system,
+                            client,
+                            SHRequest::WriteData(vault_path.clone(), record_counter, data.clone(), hint),
+                        )
+                        .await
+                        {
+                            status
+                        } else {
+                            return StatusMessage::Error("Error Writing data".into());
+                        };
+                    } else {
+                        let (idx, _) = if let SHResults::ReturnInitRecord(idx, status) =
+                            ask(&self.system, client, SHRequest::InitRecord(vault_path.clone())).await
+                        {
+                            (Some(idx), status)
+                        } else {
+                            (None, StatusMessage::Error("Unable to initialize record".into()))
+                        };
+
+                        if let SHResults::ReturnWriteData(status) = ask(
+                            &self.system,
+                            client,
+                            SHRequest::WriteData(vault_path.clone(), idx, data.clone(), hint),
+                        )
+                        .await
+                        {
+                            status
+                        } else {
+                            return StatusMessage::Error("Error Writing data".into());
+                        };
+                    }
+                };
+
+                if let SHResults::ReturnWriteData(status) = ask(
+                    &self.system,
+                    client,
+                    SHRequest::WriteData(vault_path, record_counter, data, hint),
+                )
+                .await
+                {
+                    status
+                } else {
+                    return StatusMessage::Error("Error Writing data".into());
+                };
+            } else {
+                // no vault so create new one before writing.
+                if let SHResults::ReturnCreateVault(status) =
+                    ask(&self.system, client, SHRequest::CreateNewVault(vault_path.clone())).await
+                {
+                    status
+                } else {
+                    return StatusMessage::Error("Invalid Message".into());
+                };
+
+                if let SHResults::ReturnWriteData(status) = ask(
+                    &self.system,
+                    client,
+                    SHRequest::WriteData(vault_path, record_counter, data, hint),
+                )
+                .await
+                {
+                    status
+                } else {
+                    return StatusMessage::Error("Error Writing data".into());
+                };
+            }
+        };
 
         StatusMessage::Ok
     }
@@ -167,7 +214,7 @@ impl Stronghold {
         .await;
 
         if let SHResults::ReturnReadData(payload, status) = res {
-            (Some(payload), StatusMessage::Ok)
+            (Some(payload), status)
         } else {
             (None, StatusMessage::Error("Unable to read data".into()))
         }
@@ -229,18 +276,15 @@ mod tests {
 
         let stronghold = Stronghold::init_stronghold_system(sys, b"test".to_vec(), b"test".to_vec(), vec![]);
 
-        futures::executor::block_on(stronghold.create_new_vault(vault_path.clone()));
-
+        // Write at the first record of the vault using Some(0).  Also creates the new vault.
         futures::executor::block_on(stronghold.write_data(
             b"test".to_vec(),
             vault_path.clone(),
-            None,
+            Some(0),
             RecordHint::new(b"hint").expect(line_error!()),
         ));
 
-        let (idx, _) = futures::executor::block_on(stronghold.init_record(vault_path.clone()));
-
-        println!("{:?}", idx);
+        // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
         futures::executor::block_on(stronghold.write_data(
             b"another test".to_vec(),
             vault_path.clone(),
@@ -248,10 +292,12 @@ mod tests {
             RecordHint::new(b"hint").expect(line_error!()),
         ));
 
+        // Read the first record of the vault.
         let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(0)));
 
         println!("{:?}", std::str::from_utf8(&p.unwrap()));
 
+        // Read the head record of the vault.
         let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path, None));
 
         println!("{:?}", std::str::from_utf8(&p.unwrap()));

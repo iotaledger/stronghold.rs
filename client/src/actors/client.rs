@@ -83,8 +83,8 @@ pub enum SHResults {
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
     ReturnControlRequest(ProcResult),
-    ReturnExistsVault(bool, StatusMessage),
-    ReturnExistsRecord(bool, StatusMessage),
+    ReturnExistsVault(bool),
+    ReturnExistsRecord(bool),
 }
 
 impl ActorFactoryArgs<ClientId> for Client {
@@ -115,19 +115,13 @@ impl Receive<SHRequest> for Client {
         match msg {
             SHRequest::CheckVault(vpath) => {
                 let vid = self.derive_vault_id(vpath);
-                if self.vault_exist(vid) {
-                    sender
-                        .as_ref()
-                        .expect(line_error!())
-                        .try_tell(SHResults::ReturnExistsVault(true, StatusMessage::Ok), None)
-                        .expect(line_error!());
-                } else {
-                    sender
-                        .as_ref()
-                        .expect(line_error!())
-                        .try_tell(SHResults::ReturnExistsVault(false, StatusMessage::Ok), None)
-                        .expect(line_error!());
-                }
+                let res = self.vault_exist(vid);
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnExistsVault(res), None)
+                    .expect(line_error!());
             }
             SHRequest::CheckRecord(vpath, ctr) => {
                 let vid = self.derive_vault_id(vpath);
@@ -137,7 +131,7 @@ impl Receive<SHRequest> for Client {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnExistsRecord(res, StatusMessage::Ok), None)
+                    .try_tell(SHResults::ReturnExistsRecord(res), None)
                     .expect(line_error!());
             }
             SHRequest::CreateNewVault(vpath) => {

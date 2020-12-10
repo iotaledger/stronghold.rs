@@ -351,6 +351,9 @@ mod test {
         let test_ctr = client.get_counter_index(vid);
         let test_rid = client.derive_record_id(vid, Some(test_ctr - 1));
 
+        assert!(client.record_exists_in_vault(vid, test_rid));
+        assert!(client.vault_exist(vid));
+
         assert_eq!(test_rid, rid);
         assert_eq!(Some(test_ctr), Some(3));
         assert_eq!(client.counters, vec![3, 2])
