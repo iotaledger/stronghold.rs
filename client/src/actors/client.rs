@@ -145,6 +145,8 @@ impl Receive<SHRequest> for Client {
                 let rid = self.derive_record_id(vid, None);
                 let client_str = self.get_client_str();
 
+                self.add_vault_insert_record(vid, rid);
+
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
@@ -153,7 +155,14 @@ impl Receive<SHRequest> for Client {
             }
             SHRequest::WriteData(vpath, idx, data, hint) => {
                 let vid = self.derive_vault_id(vpath);
-                let rid = self.derive_record_id(vid, idx);
+
+                let rid = if let Some(idx) = idx {
+                    self.derive_record_id(vid, Some(idx))
+                } else {
+                    let ctr = self.get_counter_index(vid);
+                    self.derive_record_id(vid, Some(ctr - 1))
+                };
+
                 let client_str = self.get_client_str();
 
                 let internal = ctx
@@ -176,7 +185,13 @@ impl Receive<SHRequest> for Client {
             }
             SHRequest::ReadData(vpath, idx) => {
                 let vid = self.derive_vault_id(vpath);
-                let rid = self.derive_record_id(vid, idx);
+
+                let rid = if let Some(idx) = idx {
+                    self.derive_record_id(vid, Some(idx))
+                } else {
+                    let ctr = self.get_counter_index(vid);
+                    self.derive_record_id(vid, Some(ctr - 1))
+                };
 
                 let client_str = self.get_client_str();
 
@@ -213,8 +228,6 @@ impl Receive<InternalResults> for Client {
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: InternalResults, sender: Sender) {
         match msg {
             InternalResults::ReturnCreateVault(vid, rid, status) => {
-                self.add_vault_insert_record(vid, rid);
-
                 sender
                     .as_ref()
                     .expect(line_error!())
@@ -229,7 +242,7 @@ impl Receive<InternalResults> for Client {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnInitRecord(ctr, status), None)
+                    .try_tell(SHResults::ReturnInitRecord(ctr - 1, status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnReadData(payload, status) => {

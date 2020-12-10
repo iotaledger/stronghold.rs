@@ -168,16 +168,14 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnRevoke(vid, rid, StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnRevoke(StatusMessage::Ok)),
                         sender,
                     );
                 } else {
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnRevoke(
-                            vid,
-                            rid,
-                            StatusMessage::Error("Failed to revoke record, vault wasn't found".into()),
-                        )),
+                        ClientMsg::InternalResults(InternalResults::ReturnRevoke(StatusMessage::Error(
+                            "Failed to revoke record, vault wasn't found".into(),
+                        ))),
                         sender,
                     );
                 }

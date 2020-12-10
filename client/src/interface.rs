@@ -242,17 +242,17 @@ mod tests {
 
         println!("{:?}", idx);
         futures::executor::block_on(stronghold.write_data(
-            b"more data".to_vec(),
+            b"another test".to_vec(),
             vault_path.clone(),
-            Some(2),
+            None,
             RecordHint::new(b"hint").expect(line_error!()),
         ));
 
-        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(1)));
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(0)));
 
         println!("{:?}", std::str::from_utf8(&p.unwrap()));
 
-        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path, Some(0)));
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path, None));
 
         println!("{:?}", std::str::from_utf8(&p.unwrap()));
 
