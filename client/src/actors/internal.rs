@@ -52,7 +52,7 @@ pub enum InternalResults {
     ReturnWriteData(StatusMessage),
     ReturnInitRecord(VaultId, RecordId, StatusMessage),
     ReturnReadData(Vec<u8>, StatusMessage),
-    ReturnRevoke(VaultId, RecordId, StatusMessage),
+    ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
     ReturnList(Vec<(RecordId, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),

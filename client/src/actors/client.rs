@@ -213,7 +213,7 @@ impl Receive<InternalResults> for Client {
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: InternalResults, sender: Sender) {
         match msg {
             InternalResults::ReturnCreateVault(vid, rid, status) => {
-                self.add_vault(vid, rid);
+                self.add_vault_insert_record(vid, rid);
 
                 sender
                     .as_ref()
@@ -222,7 +222,7 @@ impl Receive<InternalResults> for Client {
                     .expect(line_error!());
             }
             InternalResults::ReturnInitRecord(vid, rid, status) => {
-                self.insert_record(vid, rid);
+                self.add_vault_insert_record(vid, rid);
 
                 let ctr = self.get_counter_index(vid);
 
@@ -251,9 +251,7 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnCreateVault(StatusMessage::Ok), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnRevoke(vid, rid, status) => {
-                self.remove_record(vid, rid);
-
+            InternalResults::ReturnRevoke(status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
