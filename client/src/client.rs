@@ -4,7 +4,7 @@
 use crate::{
     actors::{InternalResults, SHRequest, SHResults},
     line_error,
-    utils::{LoadFromPath, StatusMessage},
+    utils::LoadFromPath,
     ClientId, VaultId,
 };
 
@@ -12,7 +12,7 @@ use engine::vault::RecordId;
 
 use riker::actors::*;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
 #[actor(SHResults, SHRequest, InternalResults)]
@@ -44,7 +44,7 @@ impl Client {
     /// Add a vault to the client.  Returns a Tuple of `VaultId` and `RecordId`.
     pub fn add_vault(&mut self, vid: VaultId, rid: RecordId) -> (VaultId, RecordId) {
         self.heads.push(rid);
-        self.counters.push(1);
+        self.counters.push(0);
 
         let idx = self.heads.len();
 
@@ -82,6 +82,16 @@ impl Client {
         rid
     }
 
+    pub fn remove_record(&mut self, vid: VaultId, rid: RecordId) {
+        let mut opt = self.vaults.get_mut(&vid);
+        if let Some((_, rids)) = opt {
+            rids.retain(|r| r != &rid);
+
+            let idx = self.get_index(vid).expect(line_error!());
+
+            self.counters[idx] -= 1;
+        }
+    }
     /// Get the head of a vault.
     pub fn get_head(&mut self, vid: VaultId) -> RecordId {
         let idx = self.get_index(vid);
@@ -105,9 +115,12 @@ impl Client {
         let iter = vids.iter().zip(rids.iter());
 
         for (v, rs) in iter {
+            let mut counter = 0;
             rs.iter().for_each(|r| {
                 self.insert_record(*v, *r);
+                counter += 1;
             });
+            self.counters.push(counter);
         }
     }
 
@@ -120,20 +133,21 @@ impl Client {
     pub fn derive_record_id(&mut self, vault_id: VaultId, ctr: Option<usize>) -> RecordId {
         let data: Vec<u8> = self.client_id.into();
         let vid_str: String = vault_id.into();
-        let vcntr = self.get_counter(vault_id);
+        let vctr = self.get_counter_index(vault_id);
 
-        if let Some(vcntr) = vcntr {
-            if let Some(cnt) = ctr {
-                let path_counter = format!("{}{}", vid_str, cnt);
-
+        if let Some(c) = ctr {
+            if c > vctr {
+                let path_counter = format!("{}{}", vid_str, vctr);
                 RecordId::load_from_path(&data, &path_counter.as_bytes()).expect(line_error!(""))
             } else {
-                let path_counter = format!("{}{}", vid_str, vcntr - 1);
+                let path_counter = format!("{}{}", vid_str, c);
 
                 RecordId::load_from_path(&data, &path_counter.as_bytes()).expect(line_error!(""))
             }
         } else {
-            let path_counter = format!("{}{}", vid_str, 0);
+            let path_counter = format!("{}{}", vid_str, vctr);
+
+            println!("{:?}", vctr);
 
             RecordId::load_from_path(&data, &path_counter.as_bytes()).expect(line_error!(""))
         }
@@ -156,7 +170,7 @@ impl Client {
         self.vaults.contains_key(&vid)
     }
 
-    pub fn get_record_index(&self, vid: VaultId) -> usize {
+    pub fn get_counter_index(&self, vid: VaultId) -> usize {
         let opt = self.get_counter(vid);
 
         if let Some(ctr) = opt {

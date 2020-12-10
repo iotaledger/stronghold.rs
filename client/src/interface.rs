@@ -147,8 +147,6 @@ impl Stronghold {
         )
         .await;
 
-        println!("{:?}", res);
-
         StatusMessage::Ok
     }
 
@@ -229,7 +227,7 @@ mod tests {
         let sys = ActorSystem::new().unwrap();
         let vault_path = b"path".to_vec();
 
-        let mut stronghold = Stronghold::init_stronghold_system(sys, b"test".to_vec(), b"test".to_vec(), vec![]);
+        let stronghold = Stronghold::init_stronghold_system(sys, b"test".to_vec(), b"test".to_vec(), vec![]);
 
         futures::executor::block_on(stronghold.create_new_vault(vault_path.clone()));
 
@@ -240,18 +238,23 @@ mod tests {
             RecordHint::new(b"hint").expect(line_error!()),
         ));
 
-        futures::executor::block_on(stronghold.read_data(vault_path.clone(), None));
+        let (idx, _) = futures::executor::block_on(stronghold.init_record(vault_path.clone()));
 
-        let (idx, status) = futures::executor::block_on(stronghold.init_record(vault_path.clone()));
-
+        println!("{:?}", idx);
         futures::executor::block_on(stronghold.write_data(
             b"more data".to_vec(),
             vault_path.clone(),
-            None,
+            Some(2),
             RecordHint::new(b"hint").expect(line_error!()),
         ));
 
-        futures::executor::block_on(stronghold.read_data(vault_path, Some(3)));
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(1)));
+
+        println!("{:?}", std::str::from_utf8(&p.unwrap()));
+
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path, Some(0)));
+
+        println!("{:?}", std::str::from_utf8(&p.unwrap()));
 
         stronghold.system.print_tree()
     }

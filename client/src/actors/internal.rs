@@ -52,13 +52,13 @@ pub enum InternalResults {
     ReturnWriteData(StatusMessage),
     ReturnInitRecord(VaultId, RecordId, StatusMessage),
     ReturnReadData(Vec<u8>, StatusMessage),
-    ReturnRevoke(StatusMessage),
+    ReturnRevoke(VaultId, RecordId, StatusMessage),
     ReturnGarbage(StatusMessage),
-    ReturnList(Vec<(Vec<u8>, RecordHint)>, StatusMessage),
+    ReturnList(Vec<(RecordId, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
     ReturnControlRequest(ProcResult),
-    RebuildCache(Vec<Vec<u8>>, Vec<Vec<Vec<u8>>>, StatusMessage),
+    RebuildCache(Vec<VaultId>, Vec<Vec<RecordId>>, StatusMessage),
 }
 
 impl ActorFactoryArgs<ClientId> for InternalActor<Provider> {
@@ -160,27 +160,70 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 }
             }
             InternalMsg::RevokeData(vid, rid) => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
                     self.bucket.revoke_data(key.clone(), rid);
 
                     self.keystore.insert_key(vid, key);
+
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnRevoke(vid, rid, StatusMessage::Ok)),
+                        sender,
+                    );
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnRevoke(
+                            vid,
+                            rid,
+                            StatusMessage::Error("Failed to revoke record, vault wasn't found".into()),
+                        )),
+                        sender,
+                    );
                 }
             }
             InternalMsg::GarbageCollect(vid) => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
                     self.bucket.garbage_collect(key.clone());
 
                     self.keystore.insert_key(vid, key);
+
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnGarbage(StatusMessage::Ok)),
+                        sender,
+                    );
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnGarbage(StatusMessage::Error(
+                            "Failed to garbage collect, vault wasn't found".into(),
+                        ))),
+                        sender,
+                    );
                 }
             }
             InternalMsg::ListIds(vid) => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
                     let ids = self.bucket.list_ids(key.clone());
 
                     self.keystore.insert_key(vid, key);
 
                     let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
-                    // client.try_tell(ClientMsg::InternalResults(InternalResults::ReturnList(ids)), None);
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnList(ids, StatusMessage::Ok)),
+                        sender,
+                    );
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnList(
+                            vec![],
+                            StatusMessage::Error("Failed to get list, vault wasn't found".into()),
+                        )),
+                        sender,
+                    );
                 }
             }
             InternalMsg::ReloadData(data) => {

@@ -178,8 +178,6 @@ impl Receive<SHRequest> for Client {
                 let vid = self.derive_vault_id(vpath);
                 let rid = self.derive_record_id(vid, idx);
 
-                println!("{:?}", rid);
-
                 let client_str = self.get_client_str();
 
                 let internal = ctx
@@ -188,7 +186,18 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::ReadData(vid, rid), sender);
             }
-            SHRequest::RevokeData(vpath, idx) => {}
+            SHRequest::RevokeData(vpath, idx) => {
+                let vid = self.derive_vault_id(vpath);
+                let rid = self.derive_record_id(vid, Some(idx));
+
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(InternalMsg::RevokeData(vid, rid), sender);
+            }
             SHRequest::GarbageCollect(vpath) => {}
             SHRequest::ListIds(vpath) => {}
             SHRequest::WriteSnapshot(data, name, path) => {}
@@ -215,7 +224,7 @@ impl Receive<InternalResults> for Client {
             InternalResults::ReturnInitRecord(vid, rid, status) => {
                 self.insert_record(vid, rid);
 
-                let ctr = self.get_record_index(vid);
+                let ctr = self.get_counter_index(vid);
 
                 sender
                     .as_ref()
@@ -224,7 +233,6 @@ impl Receive<InternalResults> for Client {
                     .expect(line_error!());
             }
             InternalResults::ReturnReadData(payload, status) => {
-                println!("{:?}", payload);
                 sender
                     .as_ref()
                     .expect(line_error!())
@@ -243,7 +251,15 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnCreateVault(StatusMessage::Ok), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnRevoke(_) => {}
+            InternalResults::ReturnRevoke(vid, rid, status) => {
+                self.remove_record(vid, rid);
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnRevoke(status), None)
+                    .expect(line_error!());
+            }
             InternalResults::ReturnGarbage(_) => {}
             InternalResults::ReturnWriteSnap(_) => {}
             InternalResults::ReturnReadSnap(_) => {}
