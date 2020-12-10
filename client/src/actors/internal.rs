@@ -54,7 +54,7 @@ pub enum InternalResults {
     ReturnReadData(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
-    ReturnList(Vec<(RecordId, RecordHint)>, StatusMessage),
+    ReturnList(VaultId, Vec<(RecordId, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
     ReturnControlRequest(ProcResult),
@@ -209,14 +209,14 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                     self.keystore.insert_key(vid, key);
 
-                    let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnList(ids, StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnList(vid, ids, StatusMessage::Ok)),
                         sender,
                     );
                 } else {
                     client.try_tell(
                         ClientMsg::InternalResults(InternalResults::ReturnList(
+                            vid,
                             vec![],
                             StatusMessage::Error("Failed to get list, vault wasn't found".into()),
                         )),
@@ -239,11 +239,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let state = self.bucket.offload_data();
 
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
-                snapshot.try_tell(SMsg::WriteSnapshot(pass, name, path, state), None);
+                snapshot.try_tell(SMsg::WriteSnapshot(pass, name, path, state, self.client_id), None);
             }
             InternalMsg::ReadSnapshot(pass, name, path) => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
-                snapshot.try_tell(SMsg::ReadSnapshot(pass, name, path), None);
+                snapshot.try_tell(SMsg::ReadSnapshot(pass, name, path, self.client_id), None);
             }
             InternalMsg::ClearCache => {
                 self.bucket.clear_cache();

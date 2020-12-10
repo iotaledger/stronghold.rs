@@ -79,7 +79,7 @@ pub enum SHResults {
     ReturnReadData(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
-    ReturnList(Vec<(Vec<u8>, RecordHint)>, StatusMessage),
+    ReturnList(Vec<(usize, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
     ReturnControlRequest(ProcResult),
@@ -207,8 +207,28 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::RevokeData(vid, rid), sender);
             }
-            SHRequest::GarbageCollect(vpath) => {}
-            SHRequest::ListIds(vpath) => {}
+            SHRequest::GarbageCollect(vpath) => {
+                let vid = self.derive_vault_id(vpath);
+
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(InternalMsg::GarbageCollect(vid), sender);
+            }
+            SHRequest::ListIds(vpath) => {
+                let vid = self.derive_vault_id(vpath);
+
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(InternalMsg::ListIds(vid), sender);
+            }
             SHRequest::WriteSnapshot(data, name, path) => {}
             SHRequest::ReadSnapshot(data, name, path) => {}
             SHRequest::ControlRequest(procedure) => {}
@@ -246,7 +266,21 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnReadData(payload, status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnList(list, status) => {}
+            InternalResults::ReturnList(vid, list, status) => {
+                let ids: Vec<(usize, RecordHint)> = list
+                    .into_iter()
+                    .map(|(rid, hint)| {
+                        let idx = self.get_index_from_record_id(vid, rid);
+                        (idx, hint)
+                    })
+                    .collect();
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnList(ids, status), None)
+                    .expect(line_error!());
+            }
             InternalResults::RebuildCache(vids, rids, status) => {
                 self.clear_cache();
                 // self.rebuild_cache(vids.clone(), rids.clone());
@@ -265,7 +299,13 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnRevoke(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnGarbage(_) => {}
+            InternalResults::ReturnGarbage(status) => {
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnGarbage(status), None)
+                    .expect(line_error!());
+            }
             InternalResults::ReturnWriteSnap(_) => {}
             InternalResults::ReturnReadSnap(_) => {}
             InternalResults::ReturnControlRequest(_) => {}

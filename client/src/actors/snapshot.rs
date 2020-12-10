@@ -11,13 +11,13 @@ use std::{
 use engine::snapshot;
 use runtime::zone::soft;
 
-use crate::{actors::InternalMsg, line_error, snapshot::Snapshot, Provider, VaultId};
+use crate::{actors::InternalMsg, line_error, snapshot::Snapshot, ClientId};
 
 /// Messages used for the Snapshot Actor.
 #[derive(Clone, Debug)]
 pub enum SMsg {
-    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, Vec<u8>),
-    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>),
+    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, Vec<u8>, ClientId),
+    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, ClientId),
 }
 
 /// Actor Factory for the Snapshot.
@@ -40,7 +40,7 @@ impl Receive<SMsg> for Snapshot {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
         match msg {
-            SMsg::WriteSnapshot(key, name, path, state) => {
+            SMsg::WriteSnapshot(key, name, path, state, cid) => {
                 let snapshot = Snapshot::new(state);
 
                 let path = if let Some(p) = path {
@@ -51,7 +51,7 @@ impl Receive<SMsg> for Snapshot {
 
                 snapshot.write_to_snapshot(&path, key);
             }
-            SMsg::ReadSnapshot(key, name, path) => {
+            SMsg::ReadSnapshot(key, name, path, cid) => {
                 let path = if let Some(p) = path {
                     p
                 } else {

@@ -7,7 +7,7 @@ use futures::future::RemoteHandle;
 
 use std::{collections::HashMap, time::Duration};
 
-use engine::vault::RecordHint;
+use engine::vault::{RecordHint, RecordId};
 
 use crate::{
     actors::{InternalActor, Procedure, SHRequest, SHResults},
@@ -272,12 +272,19 @@ impl Stronghold {
         }
     }
 
-    pub async fn kill_stronghold(&self, client_path: Vec<u8>, kill_actor: bool, write_snapshot: bool) -> StatusMessage {
-        unimplemented!()
-    }
+    pub async fn list_hints_and_ids(&self, vault_path: Vec<u8>) -> (Vec<(usize, RecordHint)>, StatusMessage) {
+        let idx = self.current_target;
 
-    pub async fn list_hints_and_ids(&self, vault_path: Vec<u8>) -> (Vec<(Vec<u8>, RecordHint)>, StatusMessage) {
-        unimplemented!()
+        let client = &self.actors[idx];
+
+        if let SHResults::ReturnList(ids, status) = ask(&self.system, client, SHRequest::ListIds(vault_path)).await {
+            return (ids, status);
+        } else {
+            return (
+                vec![],
+                StatusMessage::Error("Failed to list hints and indexes from the vault".into()),
+            );
+        }
     }
 
     pub async fn runtime_exec(&self, control_request: Procedure) -> StatusMessage {
@@ -295,6 +302,10 @@ impl Stronghold {
     }
 
     pub async fn write_snapshot(&self, client_path: Vec<u8>, duration: Option<Duration>) -> StatusMessage {
+        unimplemented!()
+    }
+
+    pub async fn kill_stronghold(&self, client_path: Vec<u8>, kill_actor: bool, write_snapshot: bool) -> StatusMessage {
         unimplemented!()
     }
 
@@ -325,7 +336,7 @@ mod tests {
             b"test".to_vec(),
             vault_path.clone(),
             Some(0),
-            RecordHint::new(b"hint").expect(line_error!()),
+            RecordHint::new(b"first hint").expect(line_error!()),
         ));
 
         // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
@@ -333,19 +344,37 @@ mod tests {
             b"another test".to_vec(),
             vault_path.clone(),
             None,
-            RecordHint::new(b"hint").expect(line_error!()),
+            RecordHint::new(b"another hint").expect(line_error!()),
+        ));
+
+        futures::executor::block_on(stronghold.write_data(
+            b"yet another test".to_vec(),
+            vault_path.clone(),
+            None,
+            RecordHint::new(b"yet another hint").expect(line_error!()),
         ));
 
         // Read the first record of the vault.
         let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(0)));
 
-        println!("{:?}", std::str::from_utf8(&p.unwrap()));
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
         // Read the head record of the vault.
-        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path, None));
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), None));
 
-        println!("{:?}", std::str::from_utf8(&p.unwrap()));
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
-        stronghold.system.print_tree()
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
+
+        println!("{:?}", ids);
+
+        futures::executor::block_on(stronghold.delete_data(vault_path.clone(), 0, false));
+
+        // attempt to read the first record of the vault.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(0)));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
+
+        futures::executor::block_on(stronghold.garbage_collect(vault_path.clone()));
     }
 }

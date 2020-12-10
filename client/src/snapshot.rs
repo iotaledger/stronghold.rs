@@ -3,15 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use engine::{
-    snapshot::{read_from, snapshot_dir, write_to, Key},
-    vault::BoxProvider,
-};
+use engine::snapshot::{read_from, snapshot_dir, write_to, Key};
 
-use std::{
-    fs::OpenOptions,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 #[derive(Serialize, Deserialize)]
 pub struct Snapshot {

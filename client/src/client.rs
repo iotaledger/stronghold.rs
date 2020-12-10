@@ -147,6 +147,21 @@ impl Client {
         }
     }
 
+    pub fn get_index_from_record_id(&self, vid: VaultId, record_id: RecordId) -> usize {
+        let mut ctr = 0;
+        let vctr = self.get_counter_index(vid);
+
+        while ctr < vctr {
+            let rid = self.derive_record_id_from_ctr(vid, ctr);
+            if record_id == rid {
+                break;
+            }
+            ctr += 1;
+        }
+
+        ctr
+    }
+
     fn derive_record_id_from_ctr(&self, vault_id: VaultId, ctr: usize) -> RecordId {
         let data: Vec<u8> = self.client_id.into();
         let vid_str: String = vault_id.into();
