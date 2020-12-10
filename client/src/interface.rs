@@ -221,11 +221,55 @@ impl Stronghold {
     }
 
     pub async fn delete_data(&self, vault_path: Vec<u8>, record_counter: usize, should_gc: bool) -> StatusMessage {
-        unimplemented!()
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+        if should_gc {
+            let status = if let SHResults::ReturnRevoke(status) = ask(
+                &self.system,
+                client,
+                SHRequest::RevokeData(vault_path.clone(), record_counter),
+            )
+            .await
+            {
+                status
+            } else {
+                return StatusMessage::Error("Could not revoke data".into());
+            };
+
+            let status = if let SHResults::ReturnGarbage(status) =
+                ask(&self.system, client, SHRequest::GarbageCollect(vault_path.clone())).await
+            {
+                status
+            } else {
+                return StatusMessage::Error("Failed to garbage collect the vault".into());
+            };
+
+            return status;
+        } else {
+            let status = if let SHResults::ReturnRevoke(status) =
+                ask(&self.system, client, SHRequest::RevokeData(vault_path, record_counter)).await
+            {
+                status
+            } else {
+                return StatusMessage::Error("Could not revoke data".into());
+            };
+
+            return status;
+        }
     }
 
-    pub async fn garbage_collect(&self, vault_path: Vec<u8>, record_counter: usize) -> StatusMessage {
-        unimplemented!()
+    pub async fn garbage_collect(&self, vault_path: Vec<u8>) -> StatusMessage {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        if let SHResults::ReturnGarbage(status) = ask(&self.system, client, SHRequest::GarbageCollect(vault_path)).await
+        {
+            return status;
+        } else {
+            return StatusMessage::Error("Failed to garbage collect the vault".into());
+        }
     }
 
     pub async fn kill_stronghold(&self, client_path: Vec<u8>, kill_actor: bool, write_snapshot: bool) -> StatusMessage {
