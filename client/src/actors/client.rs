@@ -184,6 +184,7 @@ impl Receive<SHRequest> for Client {
                     self.derive_record_id(vid, Some(idx))
                 } else {
                     let ctr = self.get_counter_index(vid);
+
                     self.derive_record_id(vid, Some(ctr - 1))
                 };
 
@@ -229,9 +230,31 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::ListIds(vid), sender);
             }
-            SHRequest::WriteSnapshot(data, name, path) => {}
-            SHRequest::ReadSnapshot(data, name, path) => {}
-            SHRequest::ControlRequest(procedure) => {}
+            SHRequest::WriteSnapshot(data, name, path) => {
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(InternalMsg::WriteSnapshot(data, name, path, client_str), sender);
+            }
+            SHRequest::ReadSnapshot(data, name, path) => {
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(InternalMsg::ReadSnapshot(data, name, path, client_str), sender);
+            }
+            SHRequest::ControlRequest(procedure) => {
+                // let client_str = self.get_client_str();
+
+                // let internal = ctx
+                //     .select(&format!("/user/internal-{}/", client_str))
+                //     .expect(line_error!());
+            }
         }
     }
 }
@@ -283,7 +306,14 @@ impl Receive<InternalResults> for Client {
             }
             InternalResults::RebuildCache(vids, rids, status) => {
                 self.clear_cache();
-                // self.rebuild_cache(vids.clone(), rids.clone());
+
+                self.rebuild_cache(vids.clone(), rids.clone());
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnReadSnap(status), None)
+                    .expect(line_error!());
             }
             InternalResults::ReturnWriteData(status) => {
                 sender
@@ -306,9 +336,15 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnGarbage(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnWriteSnap(_) => {}
-            InternalResults::ReturnReadSnap(_) => {}
-            InternalResults::ReturnControlRequest(_) => {}
+            InternalResults::ReturnWriteSnap(status) => {
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnWriteSnap(status), None)
+                    .expect(line_error!());
+            }
+
+            InternalResults::ReturnControlRequest(result) => {}
         }
     }
 }

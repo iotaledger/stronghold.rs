@@ -3,27 +3,37 @@
 
 use riker::actors::*;
 
-use std::{
-    fmt::Debug,
-    path::{Path, PathBuf},
-};
+use std::{fmt::Debug, path::PathBuf};
 
 use engine::snapshot;
 use runtime::zone::soft;
 
-use crate::{actors::InternalMsg, line_error, snapshot::Snapshot, ClientId};
+use crate::{
+    actors::{InternalMsg, InternalResults},
+    client::ClientMsg,
+    line_error,
+    snapshot::{Snapshot, SnapshotData},
+    utils::StatusMessage,
+    ClientId,
+};
 
 /// Messages used for the Snapshot Actor.
 #[derive(Clone, Debug)]
 pub enum SMsg {
-    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, Vec<u8>, ClientId),
-    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, ClientId),
+    WriteSnapshot(
+        snapshot::Key,
+        Option<String>,
+        Option<PathBuf>,
+        (Vec<u8>, Vec<u8>),
+        String,
+    ),
+    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String),
 }
 
 /// Actor Factory for the Snapshot.
 impl ActorFactory for Snapshot {
     fn create() -> Self {
-        Snapshot::new(vec![])
+        Snapshot::new(None)
     }
 }
 
@@ -38,10 +48,11 @@ impl Actor for Snapshot {
 impl Receive<SMsg> for Snapshot {
     type Msg = SMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         match msg {
-            SMsg::WriteSnapshot(key, name, path, state, cid) => {
-                let snapshot = Snapshot::new(state);
+            SMsg::WriteSnapshot(key, name, path, (cache, store), cid) => {
+                let snapshotdata = SnapshotData::new(cache, store);
+                let snapshot = Snapshot::new(Some(snapshotdata));
 
                 let path = if let Some(p) = path {
                     p
@@ -50,6 +61,13 @@ impl Receive<SMsg> for Snapshot {
                 };
 
                 snapshot.write_to_snapshot(&path, key);
+
+                let internal = ctx.select(&format!("/user/{}/", cid)).expect(line_error!());
+
+                internal.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnWriteSnap(StatusMessage::Ok)),
+                    sender,
+                );
             }
             SMsg::ReadSnapshot(key, name, path, cid) => {
                 let path = if let Some(p) = path {
@@ -60,8 +78,13 @@ impl Receive<SMsg> for Snapshot {
 
                 let snapshot = Snapshot::read_from_snapshot(&path, key);
 
-                let bucket = ctx.select("/user/internal-actor/").expect(line_error!());
-                bucket.try_tell(InternalMsg::ReloadData(snapshot.get_state()), None);
+                let internal = ctx.select(&format!("/user/internal-{}/", cid)).expect(line_error!());
+
+                let data: SnapshotData = snapshot.get_state();
+                let cache: Vec<u8> = data.get_cache();
+                let store: Vec<u8> = data.get_store();
+
+                internal.try_tell(InternalMsg::ReloadData(cache, store, StatusMessage::Ok), sender);
             }
         }
     }

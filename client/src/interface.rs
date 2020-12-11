@@ -5,7 +5,7 @@ use riker::actors::*;
 
 use futures::future::RemoteHandle;
 
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use engine::vault::{RecordHint, RecordId};
 
@@ -26,8 +26,8 @@ pub struct Stronghold {
 
     actors: Vec<ActorRef<ClientMsg>>,
 
-    // client id and keydata
-    data: HashMap<ClientId, Vec<u8>>,
+    // client path bytes and keydata
+    data: HashMap<Vec<u8>, Vec<u8>>,
     // current index of the client.
     current_target: usize,
 }
@@ -43,9 +43,9 @@ impl Stronghold {
         let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
         let id_str: String = client_id.into();
         let client_ids = vec![client_id];
-        let mut data: HashMap<ClientId, Vec<u8>> = HashMap::new();
+        let mut data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
 
-        data.insert(client_id, keydata);
+        data.insert(client_path, keydata);
 
         let client = system
             .actor_of_args::<Client, _>(&id_str, client_id)
@@ -93,7 +93,7 @@ impl Stronghold {
 
             self.actors.push(client);
             self.client_ids.push(client_id);
-            self.data.insert(client_id, keydata);
+            self.data.insert(client_path, keydata);
 
             self.current_target = counter;
         }
@@ -293,16 +293,77 @@ impl Stronghold {
 
     pub async fn read_snapshot(
         &self,
-        keydata: Vec<u8>,
         client_path: Vec<u8>,
+        name: Option<String>,
+        path: Option<PathBuf>,
         new_stronghold: bool,
-        options: Option<Vec<StrongholdFlags>>,
+        _options: Option<Vec<StrongholdFlags>>,
     ) -> StatusMessage {
-        unimplemented!()
+        if new_stronghold {
+            unimplemented!()
+        } else {
+            let keydata = self.data.get(&client_path);
+            if let Some(keydata) = keydata {
+                let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+
+                let idx = self.client_ids.iter().position(|id| id == &client_id);
+                if let Some(idx) = idx {
+                    let client = &self.actors[idx];
+
+                    let mut key: [u8; 32] = [0u8; 32];
+
+                    key.copy_from_slice(keydata);
+
+                    if let SHResults::ReturnReadSnap(status) =
+                        ask(&self.system, client, SHRequest::ReadSnapshot(key, name, path)).await
+                    {
+                        return status;
+                    } else {
+                        return StatusMessage::Error("Unable to read snapshot".into());
+                    }
+                } else {
+                    return StatusMessage::Error("Unable to find client actor".into());
+                }
+            } else {
+                return StatusMessage::Error("Failed to retrieve keydata, try another client_path".into());
+            }
+        }
     }
 
-    pub async fn write_snapshot(&self, client_path: Vec<u8>, duration: Option<Duration>) -> StatusMessage {
-        unimplemented!()
+    pub async fn write_snapshot(
+        &self,
+        client_path: Vec<u8>,
+        name: Option<String>,
+        path: Option<PathBuf>,
+        _duration: Option<Duration>,
+    ) -> StatusMessage {
+        let keydata = self.data.get(&client_path);
+        if let Some(keydata) = keydata {
+            let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+
+            let idx = self.client_ids.iter().position(|id| id == &client_id);
+            if let Some(idx) = idx {
+                let client = &self.actors[idx];
+
+                let mut key: [u8; 32] = [0u8; 32];
+
+                key.copy_from_slice(keydata);
+
+                if let SHResults::ReturnWriteSnap(status) =
+                    ask(&self.system, client, SHRequest::WriteSnapshot(key, name, path)).await
+                {
+                    return status;
+                } else {
+                    return StatusMessage::Error("Unable to read snapshot".into());
+                }
+            } else {
+                return StatusMessage::Error("Unable to find client actor".into());
+            }
+        } else {
+            return StatusMessage::Error("Failed to retrieve keydata, try another client_path".into());
+        }
+
+        StatusMessage::Ok
     }
 
     pub async fn kill_stronghold(&self, client_path: Vec<u8>, kill_actor: bool, write_snapshot: bool) -> StatusMessage {
@@ -328,8 +389,10 @@ mod tests {
     fn test_stronghold() {
         let sys = ActorSystem::new().unwrap();
         let vault_path = b"path".to_vec();
+        let client_path = b"test".to_vec();
+        let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
-        let stronghold = Stronghold::init_stronghold_system(sys, b"test".to_vec(), b"test".to_vec(), vec![]);
+        let stronghold = Stronghold::init_stronghold_system(sys, key_data, client_path.clone(), vec![]);
 
         // Write at the first record of the vault using Some(0).  Also creates the new vault.
         futures::executor::block_on(stronghold.write_data(
@@ -376,5 +439,17 @@ mod tests {
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
         futures::executor::block_on(stronghold.garbage_collect(vault_path.clone()));
+
+        futures::executor::block_on(stronghold.write_snapshot(client_path.clone(), None, None, None));
+
+        futures::executor::block_on(stronghold.read_snapshot(client_path, None, None, false, None));
+
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
+
+        println!("{:?}", ids);
+
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(2)));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
     }
 }

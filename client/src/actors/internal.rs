@@ -31,7 +31,6 @@ pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
 /// Messages used for the KeyStore Actor.
 #[derive(Clone, Debug)]
 pub enum InternalMsg {
-    StoreKeyData(VaultId, RecordId, Vec<u8>),
     CreateVault(VaultId, RecordId),
     ReadData(VaultId, RecordId),
     WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
@@ -39,9 +38,9 @@ pub enum InternalMsg {
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
     ListIds(VaultId),
-    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>),
-    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>),
-    ReloadData(Vec<u8>),
+    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String),
+    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String),
+    ReloadData(Vec<u8>, Vec<u8>, StatusMessage),
     ClearCache,
 }
 
@@ -56,7 +55,6 @@ pub enum InternalResults {
     ReturnGarbage(StatusMessage),
     ReturnList(VaultId, Vec<(RecordId, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),
-    ReturnReadSnap(StatusMessage),
     ReturnControlRequest(ProcResult),
     RebuildCache(Vec<VaultId>, Vec<Vec<RecordId>>, StatusMessage),
 }
@@ -224,32 +222,36 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::ReloadData(data) => {
-                let (keys, rids) = self.bucket.repopulate_data(data);
+            InternalMsg::ReloadData(cache, keystore, status) => {
+                let (_, rids) = self.bucket.repopulate_data(cache);
 
-                let vids = self.keystore.rebuild_keystore(keys);
+                let vids = self.keystore.rebuild_keystore(keystore);
 
-                let client = ctx.select("/user/stronghold-internal/").expect(line_error!());
-                // client.try_tell(
-                //     ClientMsg::InternalResults(InternalResults::RebuildCache(vids, rids)),
-                //     None,
-                // );
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::RebuildCache(vids, rids, status)),
+                    sender,
+                );
             }
-            InternalMsg::WriteSnapshot(pass, name, path) => {
-                let state = self.bucket.offload_data();
+            InternalMsg::WriteSnapshot(pass, name, path, client_str) => {
+                let cache = self.bucket.offload_data();
+                let store = self.keystore.offload_data();
 
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
-                snapshot.try_tell(SMsg::WriteSnapshot(pass, name, path, state, self.client_id), None);
+                snapshot.try_tell(
+                    SMsg::WriteSnapshot(pass, name, path, (cache, store), client_str),
+                    sender,
+                );
             }
-            InternalMsg::ReadSnapshot(pass, name, path) => {
+            InternalMsg::ReadSnapshot(pass, name, path, client_str) => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
-                snapshot.try_tell(SMsg::ReadSnapshot(pass, name, path, self.client_id), None);
+                snapshot.try_tell(SMsg::ReadSnapshot(pass, name, path, client_str), sender);
             }
             InternalMsg::ClearCache => {
                 self.bucket.clear_cache();
                 self.keystore.clear_keys();
             }
-            InternalMsg::StoreKeyData(vid, rid, data) => {}
         }
     }
 }

@@ -89,6 +89,7 @@ impl Client {
     pub fn clear_cache(&mut self) -> Option<()> {
         self.heads = vec![];
         self.vaults = HashMap::default();
+        self.counters = vec![0];
 
         Some(())
     }
