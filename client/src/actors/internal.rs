@@ -12,13 +12,13 @@ use engine::snapshot;
 use runtime::zone;
 
 use crate::{
-    actors::{ProcResult, SMsg},
+    actors::{ProcResult, SHResults, SMsg},
     bucket::Bucket,
     client::ClientMsg,
     internals::Provider,
     key_store::KeyStore,
     line_error,
-    utils::{Chain, StatusMessage, VaultId},
+    utils::{Chain, Seed, StatusMessage, VaultId},
     ClientId,
 };
 
@@ -46,11 +46,12 @@ pub enum InternalMsg {
 
     SLIP10Generate {
         vault_id: VaultId,
+        record_id: RecordId,
         hint: RecordHint,
     },
     SLIP10Step {
         chain: Chain,
-        seed_vault_path: VaultId,
+        seed_vault_id: VaultId,
         seed_record_id: RecordId,
         key_record_id: RecordId,
         hint: RecordHint,
@@ -108,7 +109,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
             InternalMsg::CreateVault(vid, rid) => {
                 let key = self.keystore.create_key(vid);
 
-                let (_, rid) = self.bucket.create_and_init_vault(key, rid);
+                self.bucket.create_and_init_vault(key, rid);
 
                 let cstr: String = self.client_id.into();
 
@@ -272,21 +273,89 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 self.bucket.clear_cache();
                 self.keystore.clear_keys();
             }
-            InternalMsg::SLIP10Generate { vault_id, hint } => {}
+            InternalMsg::SLIP10Generate {
+                vault_id,
+                record_id,
+                hint,
+            } => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                let key = self.keystore.create_key(vault_id);
+
+                self.bucket.create_and_init_vault(key.clone(), record_id);
+
+                let mut seed_entropy = [0u8; 64];
+                Provider::random_buf(&mut seed_entropy).expect(line_error!());
+
+                self.bucket
+                    .write_payload(key.clone(), record_id, seed_entropy.to_vec(), hint);
+
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Generate {
+                        status: StatusMessage::Ok,
+                    })),
+                    sender,
+                );
+            }
             InternalMsg::SLIP10Step {
                 chain,
-                seed_vault_path,
+                seed_vault_id,
                 seed_record_id,
                 key_record_id,
                 hint,
-            } => {}
+            } => {
+                let cstr: String = self.client_id.into();
+
+                if let Some(key) = self.keystore.get_key(seed_vault_id) {
+                    let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                    let plain = self.bucket.read_data(key.clone(), seed_record_id);
+
+                    let krid = self.bucket.init_record(key.clone(), key_record_id);
+
+                    let seed = Seed::from_bytes(&plain);
+
+                    let skey = seed.derive(&chain).expect(line_error!());
+
+                    self.bucket.write_payload(key.clone(), krid, skey.into(), hint);
+
+                    self.keystore.insert_key(seed_vault_id, key);
+
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Step {
+                            status: StatusMessage::Ok,
+                        })),
+                        sender,
+                    );
+                }
+            }
             InternalMsg::BIP32 {
                 mnemonic,
                 passphrase,
                 vault_id,
                 record_id,
                 hint,
-            } => {}
+            } => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                let key = self.keystore.create_key(vault_id);
+
+                self.bucket.create_and_init_vault(key.clone(), record_id);
+
+                let mut seed = [0u8; 64];
+                crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed).expect(line_error!());
+
+                self.bucket.write_payload(key.clone(), record_id, seed.to_vec(), hint);
+
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP32 {
+                        status: StatusMessage::Ok,
+                    })),
+                    sender,
+                );
+            }
             InternalMsg::KillInternal => {
                 ctx.stop(ctx.myself());
             }

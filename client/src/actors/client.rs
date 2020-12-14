@@ -49,6 +49,7 @@ pub enum Procedure {
 #[derive(Debug, Clone)]
 pub enum ProcResult {
     SLIP10Generate { status: StatusMessage },
+    SLIP10Step { status: StatusMessage },
     BIP32 { status: StatusMessage },
 }
 
@@ -124,7 +125,9 @@ impl Actor for Client {
 impl Receive<SHResults> for Client {
     type Msg = ClientMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {}
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {
+        println!("{:?}", msg);
+    }
 }
 
 impl Receive<SHRequest> for Client {
@@ -273,6 +276,89 @@ impl Receive<SHRequest> for Client {
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
+
+                match procedure {
+                    Procedure::SLIP10Generate { vault_path, hint } => {
+                        let vid = self.derive_vault_id(vault_path);
+
+                        let rid = self.derive_record_id(vid, None);
+
+                        if !self.vault_exist(vid) {
+                            self.add_vault_insert_record(vid, rid);
+                        }
+
+                        internal.try_tell(
+                            InternalMsg::SLIP10Generate {
+                                vault_id: vid,
+                                record_id: rid,
+                                hint: hint,
+                            },
+                            sender,
+                        )
+                    }
+                    Procedure::SLIP10Step {
+                        chain,
+                        seed_vault_path,
+                        hint,
+                    } => {
+                        let vid = self.derive_vault_id(seed_vault_path);
+                        if self.vault_exist(vid) {
+                            let seed_rid = self.derive_record_id(vid, Some(0));
+
+                            let ctr = self.get_counter_index(vid);
+
+                            let key_rid = self.derive_record_id(vid, Some(ctr));
+
+                            internal.try_tell(
+                                InternalMsg::SLIP10Step {
+                                    chain: chain,
+                                    seed_vault_id: vid,
+                                    seed_record_id: seed_rid,
+                                    key_record_id: key_rid,
+                                    hint: hint,
+                                },
+                                sender,
+                            )
+                        } else {
+                            sender
+                                .as_ref()
+                                .expect(line_error!())
+                                .try_tell(
+                                    SHResults::ReturnControlRequest(ProcResult::SLIP10Step {
+                                        status: StatusMessage::Error(
+                                            "Failed to find seed vault. Please generate one".into(),
+                                        ),
+                                    }),
+                                    None,
+                                )
+                                .expect(line_error!());
+                        }
+                    }
+                    Procedure::BIP32 {
+                        mnemonic,
+                        passphrase,
+                        vault_path,
+                        hint,
+                    } => {
+                        let vid = self.derive_vault_id(vault_path);
+                        let rid = self.derive_record_id(vid, None);
+
+                        if !self.vault_exist(vid) {
+                            self.add_vault_insert_record(vid, rid);
+                        }
+
+                        internal.try_tell(
+                            InternalMsg::BIP32 {
+                                mnemonic: mnemonic,
+                                passphrase: passphrase,
+                                vault_id: vid,
+                                record_id: rid,
+                                hint: hint,
+                            },
+                            sender,
+                        )
+                    }
+                }
             }
         }
     }
@@ -363,7 +449,13 @@ impl Receive<InternalResults> for Client {
                     .expect(line_error!());
             }
 
-            InternalResults::ReturnControlRequest(result) => {}
+            InternalResults::ReturnControlRequest(result) => {
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnControlRequest(result), None)
+                    .expect(line_error!());
+            }
         }
     }
 }

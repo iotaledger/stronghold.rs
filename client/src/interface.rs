@@ -36,7 +36,7 @@ impl Stronghold {
         system: ActorSystem,
         keydata: Vec<u8>,
         client_path: Vec<u8>,
-        options: Vec<StrongholdFlags>,
+        _options: Vec<StrongholdFlags>,
     ) -> Self {
         let client_id = ClientId::load_from_path(&keydata, &client_path.clone()).expect(line_error!());
         let id_str: String = client_id.into();
@@ -286,8 +286,14 @@ impl Stronghold {
         }
     }
 
-    pub async fn runtime_exec(&self, _control_request: Procedure) -> StatusMessage {
-        unimplemented!()
+    pub async fn runtime_exec(&self, control_request: Procedure) -> StatusMessage {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+        let request: SHResults = ask(&self.system, client, SHRequest::ControlRequest(control_request)).await;
+
+        println!("{:?}", request);
+        StatusMessage::Ok
     }
 
     pub async fn read_snapshot(
@@ -399,6 +405,7 @@ mod tests {
 
     use super::*;
 
+    use crate::utils::Chain;
     // use crate::client::{Client, SHRequest};
 
     // use futures::executor::block_on;
@@ -408,6 +415,8 @@ mod tests {
         let sys = ActorSystem::new().unwrap();
         let vault_path = b"path".to_vec();
         let client_path = b"test".to_vec();
+        let sip_path = b"sip_10".to_vec();
+        let bip_path = b"bip_32".to_vec();
         let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
         let mut stronghold = Stronghold::init_stronghold_system(sys, key_data, client_path.clone(), vec![]);
@@ -459,6 +468,24 @@ mod tests {
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
+        futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
+            vault_path: sip_path.clone(),
+            hint: RecordHint::new(b"test_seed").expect(line_error!()),
+        }));
+
+        futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Step {
+            chain: Chain::from_u32_hardened(vec![]),
+            seed_vault_path: sip_path.clone(),
+            hint: RecordHint::new(b"test").expect(line_error!()),
+        }));
+
+        futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP32 {
+            vault_path: bip_path.clone(),
+            hint: RecordHint::new(b"bip_seed").expect(line_error!()),
+            mnemonic: "Some mnemonic value".into(),
+            passphrase: "a passphrase".into(),
+        }));
+
         futures::executor::block_on(stronghold.garbage_collect(vault_path.clone()));
 
         futures::executor::block_on(stronghold.write_snapshot(client_path.clone(), None, None, None));
@@ -466,6 +493,14 @@ mod tests {
         futures::executor::block_on(stronghold.read_snapshot(client_path.clone(), None, None));
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
+
+        println!("{:?}", ids);
+
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(bip_path));
+
+        println!("{:?}", ids);
+
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(sip_path));
 
         println!("{:?}", ids);
 

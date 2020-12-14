@@ -110,6 +110,12 @@ impl Chain {
     }
 }
 
+impl Into<Vec<u8>> for Key {
+    fn into(self) -> Vec<u8> {
+        self.0.to_vec()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

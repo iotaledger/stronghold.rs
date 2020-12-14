@@ -9,7 +9,7 @@ mod types;
 
 pub use self::{
     ask::ask,
-    hd::{Chain, Segment},
+    hd::{Chain, Key, Seed, Segment},
     ids::{ClientId, LoadFromPath, VaultId},
     types::{StatusMessage, StrongholdFlags, VaultFlags},
 };
