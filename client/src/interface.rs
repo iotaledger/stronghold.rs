@@ -3,18 +3,16 @@
 
 use riker::actors::*;
 
-use futures::future::RemoteHandle;
-
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 
-use engine::vault::{RecordHint, RecordId};
+use engine::vault::RecordHint;
 
 use crate::{
-    actors::{InternalActor, Procedure, SHRequest, SHResults},
+    actors::{InternalActor, InternalMsg, Procedure, SHRequest, SHResults},
     client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
-    utils::{ask, index_of_unchecked, LoadFromPath, StatusMessage, StrongholdFlags},
+    utils::{ask, index_of_unchecked, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     ClientId, Provider,
 };
 
@@ -40,7 +38,7 @@ impl Stronghold {
         client_path: Vec<u8>,
         options: Vec<StrongholdFlags>,
     ) -> Self {
-        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+        let client_id = ClientId::load_from_path(&keydata, &client_path.clone()).expect(line_error!());
         let id_str: String = client_id.into();
         let client_ids = vec![client_id];
         let mut data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
@@ -74,7 +72,7 @@ impl Stronghold {
         &mut self,
         keydata: Vec<u8>,
         client_path: Vec<u8>,
-        options: Vec<StrongholdFlags>,
+        _options: Vec<StrongholdFlags>,
     ) -> StatusMessage {
         let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
         let id_str: String = client_id.into();
@@ -107,6 +105,7 @@ impl Stronghold {
         vault_path: Vec<u8>,
         record_counter: Option<usize>,
         hint: RecordHint,
+        options: Vec<VaultFlags>,
     ) -> StatusMessage {
         let idx = self.current_target;
 
@@ -225,7 +224,7 @@ impl Stronghold {
 
         let client = &self.actors[idx];
         if should_gc {
-            let status = if let SHResults::ReturnRevoke(status) = ask(
+            let _ = if let SHResults::ReturnRevoke(status) = ask(
                 &self.system,
                 client,
                 SHRequest::RevokeData(vault_path.clone(), record_counter),
@@ -287,7 +286,7 @@ impl Stronghold {
         }
     }
 
-    pub async fn runtime_exec(&self, control_request: Procedure) -> StatusMessage {
+    pub async fn runtime_exec(&self, _control_request: Procedure) -> StatusMessage {
         unimplemented!()
     }
 
@@ -296,37 +295,31 @@ impl Stronghold {
         client_path: Vec<u8>,
         name: Option<String>,
         path: Option<PathBuf>,
-        new_stronghold: bool,
-        _options: Option<Vec<StrongholdFlags>>,
     ) -> StatusMessage {
-        if new_stronghold {
-            unimplemented!()
-        } else {
-            let keydata = self.data.get(&client_path);
-            if let Some(keydata) = keydata {
-                let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+        let keydata = self.data.get(&client_path);
+        if let Some(keydata) = keydata {
+            let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
 
-                let idx = self.client_ids.iter().position(|id| id == &client_id);
-                if let Some(idx) = idx {
-                    let client = &self.actors[idx];
+            let idx = self.client_ids.iter().position(|id| id == &client_id);
+            if let Some(idx) = idx {
+                let client = &self.actors[idx];
 
-                    let mut key: [u8; 32] = [0u8; 32];
+                let mut key: [u8; 32] = [0u8; 32];
 
-                    key.copy_from_slice(keydata);
+                key.copy_from_slice(keydata);
 
-                    if let SHResults::ReturnReadSnap(status) =
-                        ask(&self.system, client, SHRequest::ReadSnapshot(key, name, path)).await
-                    {
-                        return status;
-                    } else {
-                        return StatusMessage::Error("Unable to read snapshot".into());
-                    }
+                if let SHResults::ReturnReadSnap(status) =
+                    ask(&self.system, client, SHRequest::ReadSnapshot(key, name, path)).await
+                {
+                    return status;
                 } else {
-                    return StatusMessage::Error("Unable to find client actor".into());
+                    return StatusMessage::Error("Unable to read snapshot".into());
                 }
             } else {
-                return StatusMessage::Error("Failed to retrieve keydata, try another client_path".into());
+                return StatusMessage::Error("Unable to find client actor".into());
             }
+        } else {
+            return StatusMessage::Error("Failed to retrieve keydata, try another client_path".into());
         }
     }
 
@@ -362,14 +355,39 @@ impl Stronghold {
         } else {
             return StatusMessage::Error("Failed to retrieve keydata, try another client_path".into());
         }
-
-        StatusMessage::Ok
     }
 
-    pub async fn kill_stronghold(&self, client_path: Vec<u8>, kill_actor: bool, write_snapshot: bool) -> StatusMessage {
-        unimplemented!()
+    pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StatusMessage {
+        let keydata = self.data.get(&client_path).expect(line_error!());
+        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+
+        let idx = self.client_ids.iter().position(|id| id == &client_id);
+
+        if let Some(idx) = idx {
+            if kill_actor {
+                let client_str: String = client_id.into();
+                let client = &self.actors.remove(idx);
+                self.client_ids.remove(idx);
+                self.data.remove(&client_path).expect(line_error!());
+
+                self.system.stop(client);
+                let internal = self
+                    .system
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+                internal.try_tell(InternalMsg::KillInternal, None);
+
+                StatusMessage::Ok
+            } else {
+                // clear data from actor.
+                unimplemented!();
+            }
+        } else {
+            return StatusMessage::Error("Unable to find client actor".into());
+        }
     }
 
+    #[allow(dead_code)]
     fn check_config_flags() {
         unimplemented!()
     }
@@ -392,7 +410,7 @@ mod tests {
         let client_path = b"test".to_vec();
         let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
-        let stronghold = Stronghold::init_stronghold_system(sys, key_data, client_path.clone(), vec![]);
+        let mut stronghold = Stronghold::init_stronghold_system(sys, key_data, client_path.clone(), vec![]);
 
         // Write at the first record of the vault using Some(0).  Also creates the new vault.
         futures::executor::block_on(stronghold.write_data(
@@ -400,6 +418,7 @@ mod tests {
             vault_path.clone(),
             Some(0),
             RecordHint::new(b"first hint").expect(line_error!()),
+            vec![],
         ));
 
         // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
@@ -408,6 +427,7 @@ mod tests {
             vault_path.clone(),
             None,
             RecordHint::new(b"another hint").expect(line_error!()),
+            vec![],
         ));
 
         futures::executor::block_on(stronghold.write_data(
@@ -415,6 +435,7 @@ mod tests {
             vault_path.clone(),
             None,
             RecordHint::new(b"yet another hint").expect(line_error!()),
+            vec![],
         ));
 
         // Read the first record of the vault.
@@ -442,7 +463,7 @@ mod tests {
 
         futures::executor::block_on(stronghold.write_snapshot(client_path.clone(), None, None, None));
 
-        futures::executor::block_on(stronghold.read_snapshot(client_path, None, None, false, None));
+        futures::executor::block_on(stronghold.read_snapshot(client_path.clone(), None, None));
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
 
@@ -451,5 +472,9 @@ mod tests {
         let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(2)));
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
+
+        futures::executor::block_on(stronghold.kill_stronghold(client_path, true));
+
+        stronghold.system.print_tree();
     }
 }
