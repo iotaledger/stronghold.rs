@@ -5,37 +5,54 @@ use crate::{
     actors::{InternalMsg, InternalResults},
     client::{Client, ClientMsg},
     line_error,
-    utils::{ClientId, StatusMessage, VaultId},
+    utils::{Chain, ClientId, StatusMessage},
 };
 
-use engine::{
-    snapshot,
-    vault::{RecordHint, RecordId},
-};
+use engine::{snapshot, vault::RecordHint};
 
 use riker::actors::*;
 
 use std::path::PathBuf;
 
+/// TODO: Bip39: words -> seed
+/// TODO: SLIP10: seed -> public key
+/// TODO: SLIP10: add argument for subtree.
+/// TODO: Ed25519 SIGN method.
+/// TODO: Add feature flags
+/// GENERATE SLIP10 SEED -> Sticks seed in vault -> return chaincode
+/// GENERATE BIP39 words -> generates entropy then creates words and the slip10 seed (optionally store entropy).
+/// DERIVE SLIP10 Key
+/// Recover BIP39 SEED -> words checks seed against seed in vault.
+/// backup Words -> returns words
+
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Procedure {
-    SIP10 {
-        seed: Vec<u8>,
+    SLIP10Generate {
         vault_path: Vec<u8>,
-        record_path: Vec<u8>,
+        hint: RecordHint,
+    },
+    SLIP10Step {
+        chain: Chain,
+        seed_vault_path: Vec<u8>,
+        hint: RecordHint,
+    },
+    BIP32 {
+        mnemonic: String,
+        passphrase: String,
+        vault_path: Vec<u8>,
         hint: RecordHint,
     },
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ProcResult {
-    SIP10 {
-        public_key: Vec<u8>,
-        vault_path: Vec<u8>,
-        record_path: Vec<u8>,
-    },
+    SLIP10Generate { status: StatusMessage },
+    BIP32 { status: StatusMessage },
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum SHRequest {
     // check if vault exists.
@@ -74,6 +91,7 @@ pub enum SHRequest {
 #[derive(Clone, Debug)]
 pub enum SHResults {
     ReturnCreateVault(StatusMessage),
+
     ReturnWriteData(StatusMessage),
     ReturnInitRecord(usize, StatusMessage),
     ReturnReadData(Vec<u8>, StatusMessage),
@@ -82,6 +100,7 @@ pub enum SHResults {
     ReturnList(Vec<(usize, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
+
     ReturnControlRequest(ProcResult),
     ReturnExistsVault(bool),
     ReturnExistsRecord(bool),
@@ -249,11 +268,11 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::ReadSnapshot(data, name, path, client_str), sender);
             }
             SHRequest::ControlRequest(procedure) => {
-                // let client_str = self.get_client_str();
+                let client_str = self.get_client_str();
 
-                // let internal = ctx
-                //     .select(&format!("/user/internal-{}/", client_str))
-                //     .expect(line_error!());
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
             }
         }
     }
@@ -264,7 +283,7 @@ impl Receive<InternalResults> for Client {
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: InternalResults, sender: Sender) {
         match msg {
-            InternalResults::ReturnCreateVault(vid, rid, status) => {
+            InternalResults::ReturnCreateVault(status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())

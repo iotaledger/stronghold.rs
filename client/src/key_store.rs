@@ -70,8 +70,8 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::Provider;
+    // use super::*;
+    // use crate::Provider;
 
     // #[test]
     // fn test_keystore() {

@@ -35,7 +35,7 @@ impl Seed {
 
 type ChainCode = [u8; 32];
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Key([u8; 64]);
 
 impl Key {
@@ -76,6 +76,7 @@ impl Key {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Segment {
     hardened: bool,
     bs: [u8; 4],
@@ -92,7 +93,7 @@ impl Segment {
     pub const HARDEN_MASK: u32 = 1 << 31;
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct Chain(Vec<Segment>);
 
 impl Chain {

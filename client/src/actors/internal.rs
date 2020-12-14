@@ -9,7 +9,7 @@ use engine::vault::{BoxProvider, RecordHint, RecordId};
 
 use engine::snapshot;
 
-use runtime::zone::soft;
+use runtime::zone;
 
 use crate::{
     actors::{ProcResult, SMsg},
@@ -18,7 +18,7 @@ use crate::{
     internals::Provider,
     key_store::KeyStore,
     line_error,
-    utils::{StatusMessage, VaultId},
+    utils::{Chain, StatusMessage, VaultId},
     ClientId,
 };
 
@@ -42,12 +42,32 @@ pub enum InternalMsg {
     ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String),
     ReloadData(Vec<u8>, Vec<u8>, StatusMessage),
     ClearCache,
+    KillInternal,
+
+    SLIP10Generate {
+        vault_id: VaultId,
+        hint: RecordHint,
+    },
+    SLIP10Step {
+        chain: Chain,
+        seed_vault_path: VaultId,
+        seed_record_id: RecordId,
+        key_record_id: RecordId,
+        hint: RecordHint,
+    },
+    BIP32 {
+        mnemonic: String,
+        passphrase: String,
+        vault_id: VaultId,
+        record_id: RecordId,
+        hint: RecordHint,
+    },
 }
 
 /// Messages used internally by the client.
 #[derive(Clone, Debug)]
 pub enum InternalResults {
-    ReturnCreateVault(VaultId, RecordId, StatusMessage),
+    ReturnCreateVault(StatusMessage),
     ReturnWriteData(StatusMessage),
     ReturnInitRecord(VaultId, RecordId, StatusMessage),
     ReturnReadData(Vec<u8>, StatusMessage),
@@ -84,7 +104,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
     type Msg = InternalMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        match msg {
+        zone::soft(|| match msg {
             InternalMsg::CreateVault(vid, rid) => {
                 let key = self.keystore.create_key(vid);
 
@@ -94,7 +114,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnCreateVault(vid, rid, StatusMessage::Ok)),
+                    ClientMsg::InternalResults(InternalResults::ReturnCreateVault(StatusMessage::Ok)),
                     sender,
                 );
             }
@@ -252,6 +272,25 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 self.bucket.clear_cache();
                 self.keystore.clear_keys();
             }
-        }
+            InternalMsg::SLIP10Generate { vault_id, hint } => {}
+            InternalMsg::SLIP10Step {
+                chain,
+                seed_vault_path,
+                seed_record_id,
+                key_record_id,
+                hint,
+            } => {}
+            InternalMsg::BIP32 {
+                mnemonic,
+                passphrase,
+                vault_id,
+                record_id,
+                hint,
+            } => {}
+            InternalMsg::KillInternal => {
+                ctx.stop(ctx.myself());
+            }
+        })
+        .expect(line_error!());
     }
 }

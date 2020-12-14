@@ -1,6 +1,8 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use std::path::PathBuf;
+
 use serde::{de, ser, Deserialize, Serialize};
 use zeroize::Zeroize;
 
@@ -11,7 +13,7 @@ pub enum StatusMessage {
 }
 
 pub enum StrongholdFlags {
-    Readable(bool),
+    IsReadable(bool),
 }
 
 pub enum VaultFlags {}

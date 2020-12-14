@@ -6,7 +6,6 @@ use riker::actors::*;
 use std::{fmt::Debug, path::PathBuf};
 
 use engine::snapshot;
-use runtime::zone::soft;
 
 use crate::{
     actors::{InternalMsg, InternalResults},
@@ -14,7 +13,6 @@ use crate::{
     line_error,
     snapshot::{Snapshot, SnapshotData},
     utils::StatusMessage,
-    ClientId,
 };
 
 /// Messages used for the Snapshot Actor.

@@ -9,10 +9,12 @@ mod types;
 
 pub use self::{
     ask::ask,
+    hd::{Chain, Segment},
     ids::{ClientId, LoadFromPath, VaultId},
-    types::{StatusMessage, StrongholdFlags},
+    types::{StatusMessage, StrongholdFlags, VaultFlags},
 };
 
+#[allow(dead_code)]
 pub fn index_of_unchecked<T>(slice: &[T], item: &T) -> usize {
     if ::std::mem::size_of::<T>() == 0 {
         return 0;
