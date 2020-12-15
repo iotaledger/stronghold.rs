@@ -332,7 +332,7 @@ mod test {
         client.add_vault_insert_record(vid, rid);
 
         let test_ctr = client.get_counter_index(vid);
-        let test_rid = client.derive_record_id(vid, Some(test_ctr));
+        let test_rid = client.derive_record_id(vid, Some(test_ctr - 1));
 
         assert_eq!(test_rid, rid);
         assert_eq!(Some(test_ctr), Some(3));

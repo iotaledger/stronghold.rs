@@ -125,7 +125,7 @@ impl Actor for Client {
 impl Receive<SHResults> for Client {
     type Msg = ClientMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {}
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: SHResults, _sender: Sender) {}
 }
 
 impl Receive<SHRequest> for Client {
