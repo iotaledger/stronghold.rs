@@ -9,8 +9,6 @@ use engine::vault::{BoxProvider, RecordHint, RecordId};
 
 use engine::snapshot;
 
-use runtime::zone;
-
 use crate::{
     actors::{ProcResult, SHResults, SMsg},
     bucket::Bucket,
@@ -105,7 +103,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
     type Msg = InternalMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        zone::soft(|| match msg {
+        match msg {
             InternalMsg::CreateVault(vid, rid) => {
                 let key = self.keystore.create_key(vid);
 
@@ -359,7 +357,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
             InternalMsg::KillInternal => {
                 ctx.stop(ctx.myself());
             }
-        })
-        .expect(line_error!());
+        }
     }
 }
