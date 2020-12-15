@@ -10,7 +10,7 @@ use engine::vault::{BoxProvider, RecordHint, RecordId};
 use engine::snapshot;
 
 use crate::{
-    actors::{ProcResult, SHResults, SMsg},
+    actors::{ProcResult, SMsg},
     bucket::Bucket,
     client::ClientMsg,
     internals::Provider,

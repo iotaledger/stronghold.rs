@@ -24,26 +24,23 @@ pub struct Stronghold {
 
     actors: Vec<ActorRef<ClientMsg>>,
 
-    // client path bytes and keydata
-    data: HashMap<Vec<u8>, Vec<u8>>,
+    derive_data: HashMap<Vec<u8>, ClientId>,
+
     // current index of the client.
     current_target: usize,
 }
 
 impl Stronghold {
     /// Initializes a new instance of the system.  Sets up the first client actor.
-    pub fn init_stronghold_system(
-        system: ActorSystem,
-        keydata: Vec<u8>,
-        client_path: Vec<u8>,
-        _options: Vec<StrongholdFlags>,
-    ) -> Self {
-        let client_id = ClientId::load_from_path(&keydata, &client_path.clone()).expect(line_error!());
+    pub fn init_stronghold_system(system: ActorSystem, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> Self {
+        let random = ClientId::random::<Provider>().expect(line_error!());
+        let client_id = ClientId::load_from_path(&random.as_ref(), &client_path.clone()).expect(line_error!());
         let id_str: String = client_id.into();
         let client_ids = vec![client_id];
-        let mut data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
 
-        data.insert(client_path, keydata);
+        let mut derive_data = HashMap::new();
+
+        derive_data.insert(client_path, random);
 
         let client = system
             .actor_of_args::<Client, _>(&id_str, client_id)
@@ -60,21 +57,17 @@ impl Stronghold {
         Self {
             system,
             client_ids,
+            derive_data,
             actors,
-            data,
             current_target: 0,
         }
     }
 
     /// Starts actor model and sets current_target actor.  Can be used to add another stronghold actor to the system if
     /// called a 2nd time.
-    pub fn spawn_stronghold_actor(
-        &mut self,
-        keydata: Vec<u8>,
-        client_path: Vec<u8>,
-        _options: Vec<StrongholdFlags>,
-    ) -> StatusMessage {
-        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+    pub fn spawn_stronghold_actor(&mut self, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> StatusMessage {
+        let random = ClientId::random::<Provider>().expect(line_error!());
+        let client_id = ClientId::load_from_path(&random.as_ref(), &client_path).expect(line_error!());
         let id_str: String = client_id.into();
         let counter = self.actors.len();
 
@@ -91,8 +84,7 @@ impl Stronghold {
 
             self.actors.push(client);
             self.client_ids.push(client_id);
-            self.data.insert(client_path, keydata);
-
+            self.derive_data.insert(client_path, random);
             self.current_target = counter;
         }
 
@@ -299,73 +291,65 @@ impl Stronghold {
     pub async fn read_snapshot(
         &self,
         client_path: Vec<u8>,
+        keydata: Vec<u8>,
         name: Option<String>,
         path: Option<PathBuf>,
     ) -> StatusMessage {
-        let keydata = self.data.get(&client_path);
-        if let Some(keydata) = keydata {
-            let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
 
-            let idx = self.client_ids.iter().position(|id| id == &client_id);
-            if let Some(idx) = idx {
-                let client = &self.actors[idx];
+        let idx = self.client_ids.iter().position(|id| id == &client_id);
+        if let Some(idx) = idx {
+            let client = &self.actors[idx];
 
-                let mut key: [u8; 32] = [0u8; 32];
+            let mut key: [u8; 32] = [0u8; 32];
 
-                key.copy_from_slice(keydata);
+            key.copy_from_slice(&keydata);
 
-                if let SHResults::ReturnReadSnap(status) =
-                    ask(&self.system, client, SHRequest::ReadSnapshot(key, name, path)).await
-                {
-                    return status;
-                } else {
-                    return StatusMessage::Error("Unable to read snapshot".into());
-                }
+            if let SHResults::ReturnReadSnap(status) =
+                ask(&self.system, client, SHRequest::ReadSnapshot(key, name, path)).await
+            {
+                return status;
             } else {
-                return StatusMessage::Error("Unable to find client actor".into());
+                return StatusMessage::Error("Unable to read snapshot".into());
             }
         } else {
-            return StatusMessage::Error("Failed to retrieve keydata, try another client_path".into());
+            return StatusMessage::Error("Unable to find client actor".into());
         }
     }
 
     pub async fn write_snapshot(
         &self,
         client_path: Vec<u8>,
+        keydata: Vec<u8>,
         name: Option<String>,
         path: Option<PathBuf>,
         _duration: Option<Duration>,
     ) -> StatusMessage {
-        let keydata = self.data.get(&client_path);
-        if let Some(keydata) = keydata {
-            let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
 
-            let idx = self.client_ids.iter().position(|id| id == &client_id);
-            if let Some(idx) = idx {
-                let client = &self.actors[idx];
+        let idx = self.client_ids.iter().position(|id| id == &client_id);
+        if let Some(idx) = idx {
+            let client = &self.actors[idx];
 
-                let mut key: [u8; 32] = [0u8; 32];
+            let mut key: [u8; 32] = [0u8; 32];
 
-                key.copy_from_slice(keydata);
+            key.copy_from_slice(&keydata);
 
-                if let SHResults::ReturnWriteSnap(status) =
-                    ask(&self.system, client, SHRequest::WriteSnapshot(key, name, path)).await
-                {
-                    return status;
-                } else {
-                    return StatusMessage::Error("Unable to read snapshot".into());
-                }
+            if let SHResults::ReturnWriteSnap(status) =
+                ask(&self.system, client, SHRequest::WriteSnapshot(key, name, path)).await
+            {
+                return status;
             } else {
-                return StatusMessage::Error("Unable to find client actor".into());
+                return StatusMessage::Error("Unable to read snapshot".into());
             }
         } else {
-            return StatusMessage::Error("Failed to retrieve keydata, try another client_path".into());
+            return StatusMessage::Error("Unable to find client actor".into());
         }
     }
 
     pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StatusMessage {
-        let keydata = self.data.get(&client_path).expect(line_error!());
-        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+        let data = self.derive_data.get(&client_path).expect(line_error!());
+        let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
 
         let idx = self.client_ids.iter().position(|id| id == &client_id);
 
@@ -374,7 +358,7 @@ impl Stronghold {
                 let client_str: String = client_id.into();
                 let client = &self.actors.remove(idx);
                 self.client_ids.remove(idx);
-                self.data.remove(&client_path).expect(line_error!());
+                self.derive_data.remove(&client_path).expect(line_error!());
 
                 self.system.stop(client);
                 let internal = self
@@ -419,7 +403,7 @@ mod tests {
         let bip_path = b"bip_32".to_vec();
         let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
-        let mut stronghold = Stronghold::init_stronghold_system(sys, key_data, client_path.clone(), vec![]);
+        let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
 
         // Write at the first record of the vault using Some(0).  Also creates the new vault.
         futures::executor::block_on(stronghold.write_data(
@@ -488,9 +472,9 @@ mod tests {
 
         futures::executor::block_on(stronghold.garbage_collect(vault_path.clone()));
 
-        futures::executor::block_on(stronghold.write_snapshot(client_path.clone(), None, None, None));
+        futures::executor::block_on(stronghold.write_snapshot(client_path.clone(), key_data.clone(), None, None, None));
 
-        futures::executor::block_on(stronghold.read_snapshot(client_path.clone(), None, None));
+        futures::executor::block_on(stronghold.read_snapshot(client_path.clone(), key_data, None, None));
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
 
