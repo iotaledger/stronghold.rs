@@ -35,7 +35,7 @@ pub enum InternalMsg {
     InitRecord(VaultId, RecordId),
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
-    ListIds(VaultId),
+    ListIds(Vec<u8>, VaultId),
     WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String),
     ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String),
     ReloadData(Vec<u8>, Vec<u8>, StatusMessage),
@@ -72,7 +72,7 @@ pub enum InternalResults {
     ReturnReadData(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
-    ReturnList(VaultId, Vec<(RecordId, RecordHint)>, StatusMessage),
+    ReturnList(Vec<u8>, Vec<(RecordId, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnControlRequest(ProcResult),
     RebuildCache(Vec<VaultId>, Vec<Vec<RecordId>>, StatusMessage),
@@ -218,7 +218,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::ListIds(vid) => {
+            InternalMsg::ListIds(vault_path, vid) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
@@ -227,13 +227,13 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnList(vid, ids, StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnList(vault_path, ids, StatusMessage::Ok)),
                         sender,
                     );
                 } else {
                     client.try_tell(
                         ClientMsg::InternalResults(InternalResults::ReturnList(
-                            vid,
+                            vault_path,
                             vec![],
                             StatusMessage::Error("Failed to get list, vault wasn't found".into()),
                         )),

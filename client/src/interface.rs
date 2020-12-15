@@ -390,9 +390,6 @@ mod tests {
     use super::*;
 
     use crate::utils::Chain;
-    // use crate::client::{Client, SHRequest};
-
-    // use futures::executor::block_on;
 
     #[test]
     fn test_stronghold() {
@@ -488,9 +485,17 @@ mod tests {
 
         println!("{:?}", ids);
 
-        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(2)));
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), None));
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
+
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(1)));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
+
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(0)));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
         futures::executor::block_on(stronghold.kill_stronghold(client_path, true));
 

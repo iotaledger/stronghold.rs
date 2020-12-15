@@ -144,8 +144,8 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
             }
             SHRequest::CheckRecord(vpath, ctr) => {
-                let vid = self.derive_vault_id(vpath);
-                let rid = self.derive_record_id(vid, ctr);
+                let vid = self.derive_vault_id(vpath.clone());
+                let rid = self.derive_record_id(vpath, ctr);
 
                 let res = self.record_exists_in_vault(vid, rid);
                 sender
@@ -155,8 +155,8 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
             }
             SHRequest::CreateNewVault(vpath) => {
-                let vid = self.derive_vault_id(vpath);
-                let rid = self.derive_record_id(vid, None);
+                let vid = self.derive_vault_id(vpath.clone());
+                let rid = self.derive_record_id(vpath, None);
                 let client_str = self.get_client_str();
 
                 self.add_vault_insert_record(vid, rid);
@@ -168,13 +168,13 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::CreateVault(vid, rid), sender);
             }
             SHRequest::WriteData(vpath, idx, data, hint) => {
-                let vid = self.derive_vault_id(vpath);
+                let vid = self.derive_vault_id(vpath.clone());
 
                 let rid = if let Some(idx) = idx {
-                    self.derive_record_id(vid, Some(idx))
+                    self.derive_record_id(vpath, Some(idx))
                 } else {
                     let ctr = self.get_counter_index(vid);
-                    self.derive_record_id(vid, Some(ctr - 1))
+                    self.derive_record_id(vpath, Some(ctr - 1))
                 };
 
                 let client_str = self.get_client_str();
@@ -186,8 +186,8 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::WriteData(vid, rid, data, hint), sender);
             }
             SHRequest::InitRecord(vpath) => {
-                let vid = self.derive_vault_id(vpath);
-                let rid = self.derive_record_id(vid, None);
+                let vid = self.derive_vault_id(vpath.clone());
+                let rid = self.derive_record_id(vpath, None);
 
                 let client_str = self.get_client_str();
 
@@ -198,14 +198,14 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::InitRecord(vid, rid), sender);
             }
             SHRequest::ReadData(vpath, idx) => {
-                let vid = self.derive_vault_id(vpath);
+                let vid = self.derive_vault_id(vpath.clone());
 
                 let rid = if let Some(idx) = idx {
-                    self.derive_record_id(vid, Some(idx))
+                    self.derive_record_id(vpath, Some(idx))
                 } else {
                     let ctr = self.get_counter_index(vid);
 
-                    self.derive_record_id(vid, Some(ctr - 1))
+                    self.derive_record_id(vpath, Some(ctr - 1))
                 };
 
                 let client_str = self.get_client_str();
@@ -217,8 +217,8 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::ReadData(vid, rid), sender);
             }
             SHRequest::RevokeData(vpath, idx) => {
-                let vid = self.derive_vault_id(vpath);
-                let rid = self.derive_record_id(vid, Some(idx));
+                let vid = self.derive_vault_id(vpath.clone());
+                let rid = self.derive_record_id(vpath, Some(idx));
 
                 let client_str = self.get_client_str();
 
@@ -240,7 +240,7 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::GarbageCollect(vid), sender);
             }
             SHRequest::ListIds(vpath) => {
-                let vid = self.derive_vault_id(vpath);
+                let vid = self.derive_vault_id(vpath.clone());
 
                 let client_str = self.get_client_str();
 
@@ -248,7 +248,7 @@ impl Receive<SHRequest> for Client {
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::ListIds(vid), sender);
+                internal.try_tell(InternalMsg::ListIds(vpath, vid), sender);
             }
             SHRequest::WriteSnapshot(data, name, path) => {
                 let client_str = self.get_client_str();
@@ -277,9 +277,9 @@ impl Receive<SHRequest> for Client {
 
                 match procedure {
                     Procedure::SLIP10Generate { vault_path, hint } => {
-                        let vid = self.derive_vault_id(vault_path);
+                        let vid = self.derive_vault_id(vault_path.clone());
 
-                        let rid = self.derive_record_id(vid, None);
+                        let rid = self.derive_record_id(vault_path, None);
 
                         if !self.vault_exist(vid) {
                             self.add_vault_insert_record(vid, rid);
@@ -299,13 +299,13 @@ impl Receive<SHRequest> for Client {
                         seed_vault_path,
                         hint,
                     } => {
-                        let vid = self.derive_vault_id(seed_vault_path);
+                        let vid = self.derive_vault_id(seed_vault_path.clone());
                         if self.vault_exist(vid) {
-                            let seed_rid = self.derive_record_id(vid, Some(0));
+                            let seed_rid = self.derive_record_id(seed_vault_path.clone(), Some(0));
 
                             let ctr = self.get_counter_index(vid);
 
-                            let key_rid = self.derive_record_id(vid, Some(ctr));
+                            let key_rid = self.derive_record_id(seed_vault_path.clone(), Some(ctr));
 
                             internal.try_tell(
                                 InternalMsg::SLIP10Step {
@@ -338,8 +338,8 @@ impl Receive<SHRequest> for Client {
                         vault_path,
                         hint,
                     } => {
-                        let vid = self.derive_vault_id(vault_path);
-                        let rid = self.derive_record_id(vid, None);
+                        let vid = self.derive_vault_id(vault_path.clone());
+                        let rid = self.derive_record_id(vault_path, None);
 
                         if !self.vault_exist(vid) {
                             self.add_vault_insert_record(vid, rid);
@@ -392,11 +392,11 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnReadData(payload, status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnList(vid, list, status) => {
+            InternalResults::ReturnList(vpath, list, status) => {
                 let ids: Vec<(usize, RecordHint)> = list
                     .into_iter()
                     .map(|(rid, hint)| {
-                        let idx = self.get_index_from_record_id(vid, rid);
+                        let idx = self.get_index_from_record_id(vpath.clone(), rid);
                         (idx, hint)
                     })
                     .collect();
