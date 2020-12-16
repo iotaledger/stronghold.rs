@@ -287,7 +287,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 Provider::random_buf(&mut seed_entropy).expect(line_error!());
 
                 self.bucket
-                    .write_payload(key.clone(), record_id, seed_entropy.to_vec(), hint);
+                    .write_payload(key, record_id, seed_entropy.to_vec(), hint);
 
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Generate {
@@ -345,7 +345,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let mut seed = [0u8; 64];
                 crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed).expect(line_error!());
 
-                self.bucket.write_payload(key.clone(), record_id, seed.to_vec(), hint);
+                self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
 
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP32 {

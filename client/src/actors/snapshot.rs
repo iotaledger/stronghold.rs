@@ -89,7 +89,7 @@ impl Receive<SMsg> for Snapshot {
                             .expect(line_error!())
                             .try_tell(
                                 SHResults::ReturnReadSnap(StatusMessage::Error(
-                                    format!("{}, Unable to read snapshot. Please try another password.", e).into(),
+                                    format!("{}, Unable to read snapshot. Please try another password.", e),
                                 )),
                                 None,
                             )

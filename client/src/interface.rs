@@ -33,7 +33,7 @@ pub struct Stronghold {
 impl Stronghold {
     /// Initializes a new instance of the system.  Sets up the first client actor.
     pub fn init_stronghold_system(system: ActorSystem, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> Self {
-        let client_id = ClientId::load_from_path(&client_path.clone(), &client_path.clone()).expect(line_error!());
+        let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
         let id_str: String = client_id.into();
         let client_ids = vec![client_id];
 
@@ -65,7 +65,7 @@ impl Stronghold {
     /// Starts actor model and sets current_target actor.  Can be used to add another stronghold actor to the system if
     /// called a 2nd time.
     pub fn spawn_stronghold_actor(&mut self, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> StatusMessage {
-        let client_id = ClientId::load_from_path(&client_path.clone(), &client_path.clone()).expect(line_error!());
+        let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
         let id_str: String = client_id.into();
         let counter = self.actors.len();
 
@@ -95,7 +95,7 @@ impl Stronghold {
         vault_path: Vec<u8>,
         record_counter: Option<usize>,
         hint: RecordHint,
-        options: Vec<VaultFlags>,
+        _options: Vec<VaultFlags>,
     ) -> StatusMessage {
         let idx = self.current_target;
 
@@ -211,7 +211,7 @@ impl Stronghold {
 
     pub async fn delete_data(&self, vault_path: Vec<u8>, record_counter: usize, should_gc: bool) -> StatusMessage {
         let idx = self.current_target;
-
+        let status;
         let client = &self.actors[idx];
         if should_gc {
             let _ = if let SHResults::ReturnRevoke(status) = ask(
@@ -226,7 +226,7 @@ impl Stronghold {
                 return StatusMessage::Error("Could not revoke data".into());
             };
 
-            let status = if let SHResults::ReturnGarbage(status) =
+            status = if let SHResults::ReturnGarbage(status) =
                 ask(&self.system, client, SHRequest::GarbageCollect(vault_path.clone())).await
             {
                 status
@@ -234,9 +234,9 @@ impl Stronghold {
                 return StatusMessage::Error("Failed to garbage collect the vault".into());
             };
 
-            return status;
+            status
         } else {
-            let status = if let SHResults::ReturnRevoke(status) =
+            status = if let SHResults::ReturnRevoke(status) =
                 ask(&self.system, client, SHRequest::RevokeData(vault_path, record_counter)).await
             {
                 status
@@ -244,7 +244,7 @@ impl Stronghold {
                 return StatusMessage::Error("Could not revoke data".into());
             };
 
-            return status;
+            status
         }
     }
 
@@ -255,9 +255,9 @@ impl Stronghold {
 
         if let SHResults::ReturnGarbage(status) = ask(&self.system, client, SHRequest::GarbageCollect(vault_path)).await
         {
-            return status;
+            status
         } else {
-            return StatusMessage::Error("Failed to garbage collect the vault".into());
+            StatusMessage::Error("Failed to garbage collect the vault".into())
         }
     }
 
@@ -267,12 +267,12 @@ impl Stronghold {
         let client = &self.actors[idx];
 
         if let SHResults::ReturnList(ids, status) = ask(&self.system, client, SHRequest::ListIds(vault_path)).await {
-            return (ids, status);
+            (ids, status)
         } else {
-            return (
+            (
                 vec![],
                 StatusMessage::Error("Failed to list hints and indexes from the vault".into()),
-            );
+            )
         }
     }
 
@@ -307,12 +307,12 @@ impl Stronghold {
             if let SHResults::ReturnReadSnap(status) =
                 ask(&self.system, client, SHRequest::ReadSnapshot(key, name, path)).await
             {
-                return status;
+                status
             } else {
-                return StatusMessage::Error("Unable to read snapshot".into());
+                StatusMessage::Error("Unable to read snapshot".into())
             }
         } else {
-            return StatusMessage::Error("Unable to find client actor".into());
+            StatusMessage::Error("Unable to find client actor".into())
         }
     }
 
@@ -338,12 +338,12 @@ impl Stronghold {
             if let SHResults::ReturnWriteSnap(status) =
                 ask(&self.system, client, SHRequest::WriteSnapshot(key, name, path)).await
             {
-                return status;
+                status
             } else {
-                return StatusMessage::Error("Unable to read snapshot".into());
+                StatusMessage::Error("Unable to read snapshot".into())
             }
         } else {
-            return StatusMessage::Error("Unable to find client actor".into());
+            StatusMessage::Error("Unable to find client actor".into())
         }
     }
 
@@ -373,7 +373,7 @@ impl Stronghold {
                 unimplemented!();
             }
         } else {
-            return StatusMessage::Error("Unable to find client actor".into());
+            StatusMessage::Error("Unable to find client actor".into())
         }
     }
 

@@ -289,7 +289,7 @@ impl Receive<SHRequest> for Client {
                             InternalMsg::SLIP10Generate {
                                 vault_id: vid,
                                 record_id: rid,
-                                hint: hint,
+                                hint,
                             },
                             sender,
                         )
@@ -305,15 +305,15 @@ impl Receive<SHRequest> for Client {
 
                             let ctr = self.get_counter(vid);
 
-                            let key_rid = self.derive_record_id(seed_vault_path.clone(), Some(ctr));
+                            let key_rid = self.derive_record_id(seed_vault_path, Some(ctr));
 
                             internal.try_tell(
                                 InternalMsg::SLIP10Step {
-                                    chain: chain,
+                                    chain,
                                     seed_vault_id: vid,
                                     seed_record_id: seed_rid,
                                     key_record_id: key_rid,
-                                    hint: hint,
+                                    hint,
                                 },
                                 sender,
                             )
@@ -347,11 +347,11 @@ impl Receive<SHRequest> for Client {
 
                         internal.try_tell(
                             InternalMsg::BIP32 {
-                                mnemonic: mnemonic,
-                                passphrase: passphrase,
+                                mnemonic,
+                                passphrase,
                                 vault_id: vid,
                                 record_id: rid,
-                                hint: hint,
+                                hint,
                             },
                             sender,
                         )
@@ -410,7 +410,7 @@ impl Receive<InternalResults> for Client {
             InternalResults::RebuildCache(vids, rids, status) => {
                 self.clear_cache();
 
-                self.rebuild_cache(vids.clone(), rids.clone());
+                self.rebuild_cache(vids, rids);
 
                 sender
                     .as_ref()
@@ -418,7 +418,7 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnReadSnap(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnWriteData(status) => {
+            InternalResults::ReturnWriteData(_status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())

@@ -14,6 +14,8 @@
 // TODO: Add Handshake Messages.
 // TODO: Add Responses for each Message.
 
+#![allow(dead_code)]
+
 use thiserror::Error as DeriveError;
 
 mod actors;

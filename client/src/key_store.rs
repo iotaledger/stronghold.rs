@@ -57,7 +57,7 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
         let mut key_store: HashMap<VaultId, Key<P>> = HashMap::new();
 
         self.store.iter().for_each(|(v, k)| {
-            key_store.insert(v.clone(), k.clone());
+            key_store.insert(*v, k.clone());
         });
 
         bincode::serialize(&key_store).expect(line_error!())
