@@ -16,7 +16,7 @@ use crate::{
     internals::Provider,
     key_store::KeyStore,
     line_error,
-    utils::{hd, StatusMessage, VaultId},
+    utils::{hd, ResultMessage, StatusMessage, VaultId},
     ClientId,
 };
 
@@ -69,6 +69,10 @@ pub enum InternalMsg {
         vault_id: VaultId,
         record_id: RecordId,
         hint: RecordHint,
+    },
+    Ed25519PublicKey {
+        vault_id: VaultId,
+        record_id: RecordId,
     },
 }
 
@@ -280,6 +284,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 self.bucket.clear_cache();
                 self.keystore.clear_keys();
             }
+            InternalMsg::KillInternal => {
+                ctx.stop(ctx.myself());
+            }
             InternalMsg::SLIP10Generate {
                 vault_id,
                 record_id,
@@ -382,6 +389,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let mut seed = [0u8; 64];
                 crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed).expect(line_error!());
 
+                // TODO: also store the mnemonic to be able to export it in the
+                // BIP39MnemonicSentence message
                 self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
 
                 client.try_tell(
@@ -391,8 +400,32 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     sender,
                 );
             }
-            InternalMsg::KillInternal => {
-                ctx.stop(ctx.myself());
+            InternalMsg::Ed25519PublicKey {
+                vault_id,
+                record_id,
+            } => {
+                let key = match self.keystore.get_key(vault_id) {
+                    Some(key) => key,
+                    None => todo!("return error message"),
+                };
+
+                let raw = self.bucket.read_data(key, record_id);
+                if raw.len() < 32 {
+                    todo!("return error message: insufficient bytes")
+                }
+                let mut bs = [0; 32];
+                bs.copy_from_slice(&raw);
+                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                let pk = sk.public_key();
+
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519PublicKey {
+                        result: ResultMessage::Ok(pk.to_compressed_bytes())
+                    })),
+                    sender,
+                );
             }
         }
     }

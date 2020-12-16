@@ -421,7 +421,16 @@ impl Receive<SHRequest> for Client {
                         )
                     }
                     Procedure::BIP39MnemonicSentence { .. } => todo!(),
-                    Procedure::Ed25519PublicKey { .. } => todo!(),
+                    Procedure::Ed25519PublicKey { key } => {
+                        let (vid, rid) = self.resolve_location(key);
+                        internal.try_tell(
+                            InternalMsg::Ed25519PublicKey {
+                                vault_id: vid,
+                                record_id: rid,
+                            },
+                            sender,
+                        )
+                    }
                     Procedure::Ed25519Sign { .. } => todo!(),
                 }
             }
