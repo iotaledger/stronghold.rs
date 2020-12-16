@@ -1,23 +1,17 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-mod client;
-mod connection;
-mod provider;
-mod snap;
-mod state;
+#![allow(unused_imports)]
 
-use crate::{
-    client::Client,
-    provider::Provider,
-    snap::{deserialize_from_snapshot, get_snapshot_path, serialize_to_snapshot},
-};
+use iota_stronghold::{home_dir, naive_kdf, RecordHint, StatusMessage, Stronghold, StrongholdFlags, VaultFlags};
 
-use engine::vault::{Base64Decodable, Key, RecordId};
+use futures::executor::block_on;
+
+use riker::actors::*;
 
 use clap::{load_yaml, App, ArgMatches};
 
-use std::{convert::TryFrom, path::Path};
+use std::path::{Path, PathBuf};
 
 // create a line error with the file and the line number
 #[macro_export]
@@ -31,136 +25,233 @@ macro_rules! line_error {
 }
 
 // handle the encryption command.
-fn encrypt_command(matches: &ArgMatches) {
-    let snapshot = get_snapshot_path();
-
+fn encrypt_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("encrypt") {
-        if let Some(ref pass) = matches.value_of("password") {
+        if let Some(pass) = matches.value_of("password") {
             if let Some(plain) = matches.value_of("plain") {
-                let client: Client<Provider> = if snapshot.exists() {
-                    let snapshot = get_snapshot_path();
-                    deserialize_from_snapshot(&snapshot, pass)
-                } else {
-                    let key = Key::<Provider>::random().expect("Unable to generate a new key");
-                    Client::new(key)
-                };
+                let mut key = [0u8; 32];
+                let salt = [0u8; 32];
+                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-                // TODO: optionally get from argument
-                let id = RecordId::random::<Provider>().expect("Unable to generate a new id");
+                let home_dir = home_dir().expect(line_error!());
+                let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
-                client.write(id, plain.as_bytes().to_vec());
+                if snapshot.exists() {
+                    block_on(stronghold.read_snapshot(
+                        client_path.clone(),
+                        key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ));
+                }
 
-                let snapshot = get_snapshot_path();
-                serialize_to_snapshot(&snapshot, pass, client);
-                println!("{}", id);
+                block_on(stronghold.write_data(
+                    plain.as_bytes().to_vec(),
+                    b"testvault".to_vec(),
+                    None,
+                    RecordHint::new(b"some hint").expect(line_error!()),
+                    vec![],
+                ));
+
+                block_on(stronghold.write_snapshot(
+                    client_path,
+                    key.to_vec(),
+                    Some("commandline".to_string()),
+                    None,
+                    None,
+                ));
             };
         };
     }
 }
 
 // handle the snapshot command.
-fn snapshot_command(matches: &ArgMatches) {
+fn snapshot_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("snapshot") {
         if let Some(ref pass) = matches.value_of("password") {
             if let Some(ref path) = matches.value_of("path") {
+                let mut key = [0u8; 32];
+                let salt = [0u8; 32];
+                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+
                 let path = Path::new(path);
 
-                let client: Client<Provider> = deserialize_from_snapshot(&path.to_path_buf(), pass);
+                let input = path.to_path_buf();
 
-                let new_path = path.parent().unwrap().join("recomputed.snapshot");
-                serialize_to_snapshot(&new_path, pass, client);
+                let output = path.parent().expect(line_error!());
+                let mut out = PathBuf::new();
+                out.push(output);
+                out.push(Path::new("recompute.stronghold"));
+
+                if input.exists() {
+                    let status =
+                        block_on(stronghold.read_snapshot(client_path.clone(), key.to_vec(), None, Some(input)));
+
+                    if let StatusMessage::Error(error) = status {
+                        println!("{:?}", error);
+                        return;
+                    } else {
+                        block_on(stronghold.write_snapshot(client_path, key.to_vec(), None, Some(out), None));
+                    }
+                } else {
+                    println!("The path you entered does not contain a valid snapshot");
+                }
             }
         }
     }
 }
 
 // handle the list command.
-fn list_command(matches: &ArgMatches) {
+fn list_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("list") {
         if let Some(ref pass) = matches.value_of("password") {
-            let snapshot = get_snapshot_path();
-            let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
+            let mut key = [0u8; 32];
+            let salt = [0u8; 32];
+            naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-            if matches.is_present("all") {
-                client.list_all_ids();
+            let home_dir = home_dir().expect(line_error!());
+            let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+
+            if snapshot.exists() {
+                block_on(stronghold.read_snapshot(client_path, key.to_vec(), Some("commandline".to_string()), None));
+
+                let (list, status) = block_on(stronghold.list_hints_and_ids(b"testvault".to_vec()));
+
+                println!("{:?}", status);
+                println!("{:?}", list);
             } else {
-                client.list_ids();
+                println!("Could not find a snapshot at the home path.  Try writing first. ");
+
+                return;
             }
         }
     }
 }
 
 // handle the read command.
-fn read_command(matches: &ArgMatches) {
+fn read_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("read") {
         if let Some(ref pass) = matches.value_of("password") {
             if let Some(ref id) = matches.value_of("id") {
-                let snapshot = get_snapshot_path();
-                let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
+                let mut key = [0u8; 32];
+                let salt = [0u8; 32];
+                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-                let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
-                let id = RecordId::try_from(id).expect("Couldn't build a new Id");
+                let home_dir = home_dir().expect(line_error!());
+                let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
-                client.read_record_by_id(id);
+                if snapshot.exists() {
+                    block_on(stronghold.read_snapshot(
+                        client_path,
+                        key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ));
+
+                    let (data, status) =
+                        block_on(stronghold.read_data(b"testvault".to_vec(), Some(id.parse::<usize>().unwrap())));
+
+                    println!("{:?}", status);
+                    println!("Data: {:?}", std::str::from_utf8(&data.unwrap()).unwrap());
+                } else {
+                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+
+                    return;
+                }
             }
         }
     }
 }
 
 // create a record with a revoke transaction.  Data isn't actually deleted until it is garbage collected.
-fn revoke_command(matches: &ArgMatches) {
+fn revoke_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("revoke") {
         if let Some(ref pass) = matches.value_of("password") {
             if let Some(ref id) = matches.value_of("id") {
-                let snapshot = get_snapshot_path();
-                let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
+                let mut key = [0u8; 32];
+                let salt = [0u8; 32];
+                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-                let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
-                let id = RecordId::try_from(id).expect("Couldn't build a new Id");
+                let home_dir = home_dir().expect(line_error!());
+                let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
-                client.revoke_record(id);
+                if snapshot.exists() {
+                    block_on(stronghold.read_snapshot(
+                        client_path,
+                        key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ));
 
-                let snapshot = get_snapshot_path();
-                serialize_to_snapshot(&snapshot, pass, client);
+                    let status =
+                        block_on(stronghold.delete_data(b"testvault".to_vec(), id.parse::<usize>().unwrap(), false));
+
+                    println!("{:?}", status);
+                } else {
+                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+
+                    return;
+                }
             }
         }
     }
 }
 
 // garbage collect the chain.  Remove any revoked data from the chain.
-fn garbage_collect_vault_command(matches: &ArgMatches) {
+fn garbage_collect_vault_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("garbage_collect") {
         if let Some(ref pass) = matches.value_of("password") {
-            let snapshot = get_snapshot_path();
-            let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
+            let mut key = [0u8; 32];
+            let salt = [0u8; 32];
+            naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-            client.perform_gc();
-            client.list_ids();
+            let home_dir = home_dir().expect(line_error!());
+            let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
-            let snapshot = get_snapshot_path();
-            serialize_to_snapshot(&snapshot, pass, client);
+            if snapshot.exists() {
+                block_on(stronghold.read_snapshot(client_path, key.to_vec(), Some("commandline".to_string()), None));
+
+                let status = block_on(stronghold.garbage_collect(b"testvault".to_vec()));
+
+                println!("{:?}", status);
+            } else {
+                println!("Could not find a snapshot at the home path.  Try writing first. ");
+
+                return;
+            }
         }
     }
 }
 
 // Purge a record from the chain: revoke and then garbage collect.
-fn purge_command(matches: &ArgMatches) {
+fn purge_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("purge") {
         if let Some(ref pass) = matches.value_of("password") {
             if let Some(ref id) = matches.value_of("id") {
-                let snapshot = get_snapshot_path();
-                let client: Client<Provider> = deserialize_from_snapshot(&snapshot, pass);
+                let mut key = [0u8; 32];
+                let salt = [0u8; 32];
+                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-                let id = Vec::from_base64(id.as_bytes()).expect("couldn't convert the id to from base64");
-                let id = RecordId::try_from(id).expect("Couldn't build a new Id");
+                let home_dir = home_dir().expect(line_error!());
+                let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
-                client.revoke_record(id);
-                serialize_to_snapshot(&get_snapshot_path(), pass, client);
+                if snapshot.exists() {
+                    block_on(stronghold.read_snapshot(
+                        client_path,
+                        key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ));
 
-                let client = deserialize_from_snapshot(&snapshot, pass);
-                client.perform_gc();
-                assert!(client.db.take(|db| db.all().find(|i| i == &id).is_none()));
-                serialize_to_snapshot(&get_snapshot_path(), pass, client);
+                    let status =
+                        block_on(stronghold.delete_data(b"testvault".to_vec(), id.parse::<usize>().unwrap(), true));
+
+                    println!("{:?}", status);
+                } else {
+                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+
+                    return;
+                }
             }
         }
     }
@@ -169,12 +260,15 @@ fn purge_command(matches: &ArgMatches) {
 fn main() {
     let yaml = load_yaml!("cli.yml");
     let matches = App::from(yaml).get_matches();
+    let system = ActorSystem::new().expect(line_error!());
+    let client_path = b"actor_path".to_vec();
+    let stronghold = Stronghold::init_stronghold_system(system, client_path.clone(), vec![]);
 
-    encrypt_command(&matches);
-    snapshot_command(&matches);
-    read_command(&matches);
-    list_command(&matches);
-    revoke_command(&matches);
-    garbage_collect_vault_command(&matches);
-    purge_command(&matches);
+    encrypt_command(&matches, &stronghold, client_path.clone());
+    snapshot_command(&matches, &stronghold, client_path.clone());
+    read_command(&matches, &stronghold, client_path.clone());
+    list_command(&matches, &stronghold, client_path.clone());
+    revoke_command(&matches, &stronghold, client_path.clone());
+    garbage_collect_vault_command(&matches, &stronghold, client_path.clone());
+    purge_command(&matches, &stronghold, client_path);
 }

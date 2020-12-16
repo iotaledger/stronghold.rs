@@ -9,36 +9,35 @@
 // TODO: O(1) comparison for IDS.
 // TODO: Remove #[allow(dead_code)]s.
 // TODO: ~~Add ability to name snapshots~~
-// TODO: Add ability to read and revoke records not on the head of the chain.
+// TODO: ~~Add ability to read and revoke records not on the head of the chain.~~
 // TODO: Add Reference types for the RecordIds and VaultIds to expose to the External programs.
 // TODO: Add Handshake Messages.
+// TODO: Add Responses for each Message.
+
+#![allow(dead_code)]
 
 use thiserror::Error as DeriveError;
 
 mod actors;
 mod bucket;
 mod client;
-mod ids;
+mod interface;
+mod internals;
 mod key_store;
-mod provider;
-mod runtime;
-mod secret;
 mod snapshot;
+mod utils;
 
-#[allow(non_snake_case, dead_code)]
-mod hd;
-
-use crate::{bucket::Bucket, client::Client, key_store::KeyStore, runtime::Runtime, snapshot::Snapshot};
-
-use riker::actors::{channel, ActorRefFactory, ActorSystem, ChannelRef};
+use crate::utils::{ClientId, VaultId};
 
 pub use crate::{
-    client::{ClientMsg, Procedure, SHRequest, SHResults},
-    ids::{ClientId, VaultId},
-    provider::Provider,
+    interface::Stronghold,
+    internals::Provider,
+    utils::{StatusMessage, StrongholdFlags, VaultFlags},
 };
 
-pub use engine::vault::{RecordHint, RecordId};
+pub use engine::snapshot::{home_dir, naive_kdf, snapshot_dir, Key};
+
+pub use engine::vault::RecordHint;
 
 #[macro_export]
 macro_rules! line_error {
@@ -58,19 +57,6 @@ pub enum Error {
     IDError,
     #[error("Vault Error: {0}")]
     VaultError(#[from] engine::vault::Error),
-}
-
-/// Attaches the Stronghold Actors to the Riker `ActorSystem`.  Returns the ActorSystem and the a
-/// `ChannelRef<SHResults>`.
-pub fn init_stronghold(sys: ActorSystem) -> (ActorSystem, ChannelRef<SHResults>) {
-    let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
-
-    sys.actor_of::<Bucket<Provider>>("bucket").unwrap();
-    sys.actor_of::<KeyStore<Provider>>("keystore").unwrap();
-    sys.actor_of::<Snapshot>("snapshot").unwrap();
-    sys.actor_of::<Runtime>("runtime").unwrap();
-    sys.actor_of_args::<Client, _>("stronghold-internal", chan.clone())
-        .unwrap();
-
-    (sys, chan)
+    #[error("Snapshot Error: {0}")]
+    SnapshotError(#[from] engine::snapshot::Error),
 }

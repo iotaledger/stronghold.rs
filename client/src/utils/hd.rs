@@ -4,6 +4,7 @@
 // TODO: this module should probably not reside in the client
 
 use crypto::{ed25519::SecretKey, macs::hmac::HMAC_SHA512};
+use std::convert::TryFrom;
 
 // https://github.com/satoshilabs/slips/blob/master/slip-0010.md
 // https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki
@@ -12,6 +13,7 @@ use crypto::{ed25519::SecretKey, macs::hmac::HMAC_SHA512};
 #[derive(Debug)]
 pub enum Error {
     NotSupported,
+    InvalidLength(usize),
     CryptoError(crypto::Error),
 }
 
@@ -35,7 +37,7 @@ impl Seed {
 
 type ChainCode = [u8; 32];
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Key([u8; 64]);
 
 impl Key {
@@ -76,6 +78,21 @@ impl Key {
     }
 }
 
+impl TryFrom<&[u8]> for Key {
+    type Error = Error;
+
+    fn try_from(bs: &[u8]) -> Result<Self, Self::Error> {
+        if bs.len() != 64 {
+            return Err(Error::InvalidLength(bs.len()));
+        }
+
+        let mut ds = [0; 64];
+        ds.copy_from_slice(bs);
+        Ok(Self(ds))
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Segment {
     hardened: bool,
     bs: [u8; 4],
@@ -92,7 +109,7 @@ impl Segment {
     pub const HARDEN_MASK: u32 = 1 << 31;
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct Chain(Vec<Segment>);
 
 impl Chain {
@@ -106,6 +123,12 @@ impl Chain {
 
     pub fn from_u32_hardened<I: IntoIterator<Item = u32>>(is: I) -> Self {
         Self::from_u32(is.into_iter().map(|i| Segment::HARDEN_MASK | i))
+    }
+}
+
+impl Into<Vec<u8>> for Key {
+    fn into(self) -> Vec<u8> {
+        self.0.to_vec()
     }
 }
 

@@ -15,19 +15,8 @@ repository = "https://github.com/iotaledger/stronghold.rs"
 name = "engine"
 
 [dependencies]
-crypto = { version = "0.1", path = "crypto" }
-vault = { version = "0.1", path = "vault" }
-primitives = { version = "0.1", path = "primitives" }
-random = { version = "0.1", path = "random" }
-snapshot = { version = "0.1", path = "snapshot" }
-
-[profile.release]
-overflow-checks = true
-panic = "abort"
-
-[profile.dev]
-overflow-checks = true
-panic = "abort"
-
-[profile.bench]
-overflow-checks = true
+crypto = { path = "crypto" }
+vault = { path = "vault" }
+primitives = { path = "primitives" }
+random = { path = "random" }
+snapshot = { path = "snapshot" }

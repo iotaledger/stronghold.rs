@@ -2,128 +2,88 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{BMsg, KMsg},
-    ids::{ClientId, VaultId},
+    actors::{InternalResults, SHRequest, SHResults},
     line_error,
-    provider::Provider,
-    runtime::RMsg,
+    utils::LoadFromPath,
+    ClientId, VaultId,
 };
-use std::path::PathBuf;
 
-use engine::vault::{RecordHint, RecordId};
+use engine::vault::RecordId;
 
 use riker::actors::*;
 
 use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
+pub enum Location {
+    Generic {
+        vault_path: Vec<u8>,
+        record_path: Vec<u8>,
+    },
+    Counter {
+        vault_path: Vec<u8>,
+        counter: Option<usize>,
+    },
+}
+
+impl Location {
+    pub fn vault_path(&self) -> &[u8] {
+        match self {
+            Self::Generic { vault_path, .. } => vault_path,
+            Self::Counter { vault_path, .. } => vault_path,
+        }
+    }
+
+    pub fn generic<V: Into<Vec<u8>>, R: Into<Vec<u8>>>(vault_path: V, record_path: R) -> Self {
+        Self::Generic {
+            vault_path: vault_path.into(),
+            record_path: record_path.into(),
+        }
+    }
+
+    pub fn counter<V: Into<Vec<u8>>, C: Into<usize>>(vault_path: V, counter: Option<C>) -> Self {
+        Self::Counter {
+            vault_path: vault_path.into(),
+            counter: counter.map(|c| c.into()),
+        }
+    }
+}
+
+impl AsRef<Location> for Location {
+    fn as_ref(&self) -> &Location {
+        self
+    }
+}
+
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
-#[actor(SHRequest, InternalResults, SHResults)]
+#[actor(SHResults, SHRequest, InternalResults)]
+#[derive(Debug)]
 pub struct Client {
-    #[allow(dead_code)]
-    id: ClientId,
+    client_id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
     vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
     // Contains the Record Ids for the most recent Record in each vault.
     heads: Vec<RecordId>,
-    // channel to receive data from stronghold.
-    chan: ChannelRef<SHResults>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Procedure {
-    SIP10 {
-        seed: Vec<u8>,
-        master_record: (VaultId, RecordId, RecordHint),
-        secret_record: (VaultId, RecordId, RecordHint),
-    },
-}
-
-/// Messages to interact with Stronghold
-#[derive(Clone, Debug)]
-pub enum SHRequest {
-    // Creates a new Vault.
-    CreateNewVault,
-    // Writes data to a record in the vault.  Accepts the vault id, an optional record id, the payload and the record
-    // hint.  If a record id is not specified, the write will default to the head of the vault.  Returns
-    // `ReturnCreate`.
-    WriteData(VaultId, Option<RecordId>, Vec<u8>, RecordHint),
-    // Moves the head forward in the specified Vault and opens a new record.  Returns `ReturnInit`.
-    InitRecord(VaultId),
-    // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not
-    // specified, it reads the head.  Returns with `ReturnRead`.
-    ReadData(VaultId, Option<RecordId>),
-    // Marks a Record for deletion.  Accepts a vault id and a record id.  Deletion only occurs after a
-    // `GarbageCollect` is called.
-    RevokeData(VaultId, RecordId),
-    // Garbages collects any marked records on a Vault. Accepts the vault id.
-    GarbageCollect(VaultId),
-    // Lists all of the record ids and the record hints for the records in a vault.  Accepts a vault id and returns
-    // with `ReturnList`.
-    ListIds(VaultId),
-    // Writes to the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults to
-    // `$HOME/.engine/snapshots/backup.snapshot`.
-    WriteSnapshot(String, Option<String>, Option<PathBuf>),
-    // Reads from the snapshot file.  Accepts the password, an optional filename and an optional filepath.  Defaults
-    // to `$HOME/.engine/snapshots/backup.snapshot`.
-    ReadSnapshot(String, Option<String>, Option<PathBuf>),
-
-    ControlRequest(Procedure),
-}
-
-/// Messages that come from stronghold
-#[derive(Clone, Debug)]
-pub enum SHResults {
-    // Results from calling `CreateNewVault`.
-    ReturnCreate(VaultId, RecordId),
-    // Results from calling `InitRecord`.
-    ReturnInit(VaultId, RecordId),
-    // Results from calling `ReadData`
-    ReturnRead(Vec<u8>),
-    // Results from calling `ListIds`
-    ReturnList(Vec<(RecordId, RecordHint)>),
-    // Results from calling `ReadSnapshot`
-    ReturnRebuild(Vec<VaultId>, Vec<Vec<RecordId>>),
-}
-
-/// Messages used internally by the client.
-#[derive(Clone, Debug)]
-pub enum InternalResults {
-    ReturnCreateVault(VaultId, RecordId),
-    ReturnInitRecord(VaultId, RecordId),
-    ReturnReadData(Vec<u8>),
-    ReturnList(Vec<(RecordId, RecordHint)>),
-    RebuildCache(Vec<VaultId>, Vec<Vec<RecordId>>),
+    counters: Vec<usize>,
 }
 
 impl Client {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
-    pub fn new(id: ClientId, chan: ChannelRef<SHResults>) -> Self {
+    pub fn new(client_id: ClientId) -> Self {
         let vaults = HashMap::new();
         let heads = Vec::new();
+        let counters = vec![0];
 
         Self {
-            id,
+            client_id,
             vaults,
             heads,
-            chan,
+            counters,
         }
     }
 
-    /// Add a vault to the client.  Returns a Tuple of `VaultId` and `RecordId`.
-    pub fn add_vault(&mut self, vid: VaultId, rid: RecordId) -> (VaultId, RecordId) {
-        self.heads.push(rid);
-
-        let idx = self.heads.len();
-
-        let idx = idx - 1;
-
-        self.vaults.insert(vid, (idx, vec![rid]));
-
-        (vid, rid)
-    }
-
     /// Insert a new Record into the Stronghold on the Vault based on the given RecordId.
-    pub fn insert_record(&mut self, vid: VaultId, rid: RecordId) -> RecordId {
+    pub fn add_vault_insert_record(&mut self, vid: VaultId, rid: RecordId) -> (VaultId, RecordId) {
         let mut heads: Vec<RecordId> = self.heads.clone();
 
         let (idx, _) = self
@@ -132,7 +92,7 @@ impl Client {
             .and_modify(|(_, rids)| {
                 rids.push(rid);
             })
-            .or_insert((0, vec![rid]));
+            .or_insert((heads.len(), vec![rid]));
 
         if heads.len() <= *idx {
             heads.push(rid);
@@ -144,22 +104,41 @@ impl Client {
             heads.push(rid);
         }
 
+        if self.counters.len() == *idx {
+            self.counters.push(0);
+        }
+
+        self.counters[*idx] += 1;
+
         self.heads = heads;
 
-        rid
+        (vid, rid)
     }
 
     /// Get the head of a vault.
-    pub fn get_head(&self, vid: VaultId) -> RecordId {
-        let (idx, _) = self.vaults.get(&vid).expect(line_error!("Vault doesn't exist"));
+    pub fn get_head(&self, vault_path: Vec<u8>) -> RecordId {
+        let vid = self.derive_vault_id(vault_path.clone());
+        let idx = self.get_index(vid);
 
-        self.heads[*idx]
+        if let Some(idx) = idx {
+            self.heads[idx]
+        } else {
+            let ctr = self.get_counter(vid);
+            let path = if ctr == 0 {
+                format!("{:?}{}", vault_path, "first_record")
+            } else {
+                format!("{:?}{}", vault_path, ctr)
+            };
+
+            RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
+        }
     }
 
     /// Empty the Client Cache.
     pub fn clear_cache(&mut self) -> Option<()> {
         self.heads = vec![];
         self.vaults = HashMap::default();
+        self.counters = vec![0];
 
         Some(())
     }
@@ -169,219 +148,150 @@ impl Client {
 
         for (v, rs) in iter {
             rs.iter().for_each(|r| {
-                self.insert_record(*v, *r);
+                self.add_vault_insert_record(*v, *r);
             });
+        }
+    }
+
+    pub fn resolve_location<L: AsRef<Location>>(&self, l: L) -> (VaultId, RecordId) {
+        match l.as_ref() {
+            Location::Generic {
+                vault_path,
+                record_path,
+            } => {
+                let vid = self.derive_vault_id(vault_path);
+                let rid = RecordId::load_from_path(vid.as_ref(), record_path).expect(line_error!(""));
+                (vid, rid)
+            }
+            Location::Counter { vault_path, counter } => {
+                let vid = self.derive_vault_id(vault_path);
+                let rid = self.derive_record_id(vault_path, *counter);
+                (vid, rid)
+            }
+        }
+    }
+
+    pub fn derive_vault_id<P: AsRef<Vec<u8>>>(&self, path: P) -> VaultId {
+        VaultId::load_from_path(self.client_id.as_ref(), path.as_ref()).expect(line_error!(""))
+    }
+
+    pub fn derive_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, ctr: Option<usize>) -> RecordId {
+        let vault_path = vault_path.as_ref();
+        let vid = self.derive_vault_id(vault_path);
+        if let Some(ctr) = ctr {
+            let path = if ctr == 0 {
+                format!("{:?}{}", vault_path, "first_record")
+            } else {
+                format!("{:?}{}", vault_path, ctr)
+            };
+
+            RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
+        } else {
+            let ctr = self.get_counter(vid);
+            let path = if ctr == 0 {
+                format!("{:?}{}", vault_path, "first_record")
+            } else {
+                format!("{:?}{}", vault_path, ctr)
+            };
+
+            RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
+        }
+    }
+
+    pub fn get_client_str(&self) -> String {
+        self.client_id.into()
+    }
+
+    pub fn record_exists_in_vault(&self, vid: VaultId, rid: RecordId) -> bool {
+        let opts = self.vaults.get(&vid);
+        if let Some((_, rids)) = opts {
+            rids.iter().any(|r| r == &rid)
+        } else {
+            false
+        }
+    }
+
+    pub fn vault_exist(&self, vid: VaultId) -> bool {
+        self.vaults.contains_key(&vid)
+    }
+
+    pub fn get_index_from_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, record_id: RecordId) -> usize {
+        let mut ctr = 0;
+        let vault_path = vault_path.as_ref();
+        let vault_id = self.derive_vault_id(vault_path);
+
+        let vctr = self.get_counter(vault_id);
+
+        while ctr <= vctr {
+            let rid = self.derive_record_id(vault_path, Some(ctr));
+            if record_id == rid {
+                break;
+            }
+            ctr += 1;
+        }
+
+        ctr
+    }
+
+    // fn derive_record_id_from_ctr(&self, vault_path: Vec<u8>, ctr: usize) -> RecordId {
+    //     let vault_id = self.derive_vault_id(vault_path.clone());
+
+    //     let vctr = self.get_counter_index(vault_id);
+
+    //     if ctr >= vctr {
+    //         let path_counter = format!("{:?}{}", vault_path, vctr);
+    //         RecordId::load_from_path(&path_counter.as_bytes(), &path_counter.as_bytes()).expect(line_error!(""))
+    //     } else {
+    //         let path_counter = format!("{:?}{}", vault_path, ctr);
+
+    //         RecordId::load_from_path(&path_counter.as_bytes(), &path_counter.as_bytes()).expect(line_error!(""))
+    //     }
+    // }
+
+    // fn derive_record_id_next(&self, vault_path: Vec<u8>) -> RecordId {
+    //     let vault_id = self.derive_vault_id(vault_path.clone());
+
+    //     let vctr = self.get_counter_index(vault_id);
+
+    //     let path_counter = format!("{:?}{}", vault_path, vctr);
+
+    //     RecordId::load_from_path(&path_counter.as_bytes(), &path_counter.as_bytes()).expect(line_error!(""))
+    // }
+
+    fn get_index(&self, vid: VaultId) -> Option<usize> {
+        let idx = self.vaults.get(&vid);
+
+        if let Some((idx, _)) = idx {
+            Some(*idx)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_counter(&self, vid: VaultId) -> usize {
+        match self.get_index(vid) {
+            Some(idx) => self.counters[idx],
+            None => 0,
         }
     }
 }
 
 /// Actor Factor for the Client Struct.
-impl ActorFactoryArgs<ChannelRef<SHResults>> for Client {
-    fn create_args(chan: ChannelRef<SHResults>) -> Self {
-        Client::new(ClientId::random::<Provider>().expect(line_error!()), chan)
-    }
-}
-
-/// Actor implementation for the Client.
-impl Actor for Client {
-    type Msg = ClientMsg;
-
-    // set up the channel.
-    // TODO: Make Topic random to create a handshake.
-    fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        let sub = Box::new(ctx.myself());
-
-        let topic = Topic::from("external");
-
-        self.chan.tell(Subscribe { actor: sub, topic }, None);
-    }
-
-    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        self.receive(ctx, msg, sender);
-    }
-}
-
-/// Client Receive Block.
-impl Receive<SHRequest> for Client {
-    type Msg = ClientMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, _sender: Sender) {
-        match msg {
-            SHRequest::CreateNewVault => {
-                let vid = VaultId::random::<Provider>().expect(line_error!());
-
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-
-                keystore.try_tell(KMsg::CreateVault(vid), None);
-            }
-            SHRequest::ReadData(vid, rid) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-
-                if let Some(rid) = rid {
-                    keystore.try_tell(KMsg::ReadData(vid, rid), None);
-                } else {
-                    let rid = self.get_head(vid);
-
-                    keystore.try_tell(KMsg::ReadData(vid, rid), None);
-                }
-            }
-            SHRequest::InitRecord(vid) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-
-                keystore.try_tell(KMsg::InitRecord(vid), None);
-            }
-            SHRequest::WriteData(vid, rid, payload, hint) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-                if let Some(rid) = rid {
-                    keystore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
-                } else {
-                    let rid = self.get_head(vid);
-
-                    keystore.try_tell(KMsg::WriteData(vid, rid, payload, hint), None);
-                }
-            }
-            SHRequest::RevokeData(vid, rid) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-
-                keystore.try_tell(KMsg::RevokeData(vid, rid), None);
-            }
-            SHRequest::GarbageCollect(vid) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-
-                keystore.try_tell(KMsg::GarbageCollect(vid), None);
-            }
-            SHRequest::ListIds(vid) => {
-                let keystore = ctx.select("/user/keystore/").expect(line_error!());
-
-                keystore.try_tell(KMsg::ListIds(vid), None);
-            }
-            SHRequest::WriteSnapshot(pass, name, path) => {
-                let bucket = ctx.select("/user/bucket/").expect(line_error!());
-
-                bucket.try_tell(BMsg::WriteSnapshot::<Provider>(pass, name, path), None);
-            }
-            SHRequest::ReadSnapshot(pass, name, path) => {
-                let bucket = ctx.select("/user/bucket/").expect(line_error!());
-
-                bucket.try_tell(BMsg::ReadSnapshot::<Provider>(pass, name, path), None);
-            }
-            SHRequest::ControlRequest(procedure) => match procedure {
-                Procedure::SIP10 {
-                    seed,
-                    master_record,
-                    secret_record,
-                } => {
-                    let runtime = ctx.select("/user/runtime/").expect(line_error!());
-
-                    runtime.try_tell(
-                        RMsg::Slip10GenerateKey {
-                            seed,
-                            master_record,
-                            secret_record,
-                        },
-                        None,
-                    );
-                }
-            },
-        }
-    }
-}
-
-impl Receive<InternalResults> for Client {
-    type Msg = ClientMsg;
-
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: InternalResults, _sender: Sender) {
-        match msg {
-            InternalResults::ReturnCreateVault(vid, rid) => {
-                let (vid, rid) = self.add_vault(vid, rid);
-
-                let topic = Topic::from("external");
-
-                self.chan.tell(
-                    Publish {
-                        msg: SHResults::ReturnCreate(vid, rid),
-                        topic,
-                    },
-                    None,
-                )
-            }
-            InternalResults::ReturnInitRecord(vid, rid) => {
-                self.insert_record(vid, rid);
-
-                let topic = Topic::from("external");
-
-                self.chan.tell(
-                    Publish {
-                        msg: SHResults::ReturnInit(vid, rid),
-                        topic,
-                    },
-                    None,
-                )
-            }
-            InternalResults::ReturnReadData(payload) => {
-                let topic = Topic::from("external");
-
-                self.chan.tell(
-                    Publish {
-                        msg: SHResults::ReturnRead(payload),
-                        topic,
-                    },
-                    None,
-                )
-            }
-            InternalResults::ReturnList(list) => {
-                let topic = Topic::from("external");
-
-                self.chan.tell(
-                    Publish {
-                        msg: SHResults::ReturnList(list),
-                        topic,
-                    },
-                    None,
-                )
-            }
-            InternalResults::RebuildCache(vids, rids) => {
-                self.clear_cache();
-                self.rebuild_cache(vids.clone(), rids.clone());
-
-                let topic = Topic::from("external");
-
-                self.chan.tell(
-                    Publish {
-                        msg: SHResults::ReturnRebuild(vids, rids),
-                        topic,
-                    },
-                    None,
-                );
-            }
-        }
-    }
-}
-
-// Receive to enable the channel.
-impl Receive<SHResults> for Client {
-    type Msg = ClientMsg;
-
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: SHResults, _sender: Sender) {}
-}
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    use crate::{client::Client, provider::Provider};
+    use crate::Provider;
 
     #[test]
     fn test_add() {
         let vid = VaultId::random::<Provider>().expect(line_error!());
         let rid = RecordId::random::<Provider>().expect(line_error!());
 
-        let sys = ActorSystem::new().unwrap();
-        let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
+        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
 
-        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()), chan);
-
-        cache.add_vault(vid, rid);
+        cache.add_vault_insert_record(vid, rid);
 
         assert_eq!(cache.heads.len(), 1);
         assert_eq!(cache.heads[0], rid);
@@ -390,7 +300,7 @@ mod test {
         let vid = VaultId::random::<Provider>().expect(line_error!());
         let rid = RecordId::random::<Provider>().expect(line_error!());
 
-        cache.add_vault(vid, rid);
+        cache.add_vault_insert_record(vid, rid);
 
         assert_eq!(cache.heads.len(), 2);
         assert_eq!(cache.heads[1], rid);
@@ -402,12 +312,9 @@ mod test {
         let vid = VaultId::random::<Provider>().expect(line_error!());
         let rid = RecordId::random::<Provider>().expect(line_error!());
 
-        let sys = ActorSystem::new().unwrap();
-        let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
+        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
 
-        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()), chan);
-
-        cache.insert_record(vid, rid);
+        cache.add_vault_insert_record(vid, rid);
 
         assert_eq!(cache.heads.len(), 1);
         assert_eq!(cache.heads[0], rid);
@@ -415,7 +322,7 @@ mod test {
 
         let rid2 = RecordId::random::<Provider>().expect(line_error!());
 
-        cache.insert_record(vid, rid2);
+        cache.add_vault_insert_record(vid, rid2);
 
         assert_eq!(cache.heads.len(), 1);
         assert_eq!(cache.heads[0], rid2);
@@ -426,8 +333,8 @@ mod test {
         let rid3 = RecordId::random::<Provider>().expect(line_error!());
         let rid4 = RecordId::random::<Provider>().expect(line_error!());
 
-        cache.add_vault(vid2, rid3);
-        cache.insert_record(vid2, rid4);
+        cache.add_vault_insert_record(vid2, rid3);
+        cache.add_vault_insert_record(vid2, rid4);
 
         assert_eq!(cache.heads.len(), 2);
         assert_eq!(cache.heads[1], rid4);
@@ -437,28 +344,108 @@ mod test {
 
     #[test]
     fn test_get_head_and_vault() {
-        let vid = VaultId::random::<Provider>().expect(line_error!());
-        let vid2 = VaultId::random::<Provider>().expect(line_error!());
+        let cid = ClientId::random::<Provider>().expect(line_error!());
+        let data: Vec<u8> = cid.into();
+        let vault_path = b"some_vault".to_vec();
+        let vault_path2 = b"some_vault2".to_vec();
+
+        let vid = VaultId::load_from_path(&data, &vault_path).expect(line_error!(""));
+        let vid2 = VaultId::load_from_path(&data, &vault_path2).expect(line_error!(""));
 
         let rid = RecordId::random::<Provider>().expect(line_error!());
         let rid2 = RecordId::random::<Provider>().expect(line_error!());
         let rid3 = RecordId::random::<Provider>().expect(line_error!());
         let rid4 = RecordId::random::<Provider>().expect(line_error!());
 
-        let sys = ActorSystem::new().unwrap();
-        let chan: ChannelRef<SHResults> = channel("external", &sys).unwrap();
+        let mut cache = Client::new(cid);
 
-        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()), chan);
+        cache.add_vault_insert_record(vid, rid);
+        cache.add_vault_insert_record(vid, rid2);
+        cache.add_vault_insert_record(vid2, rid3);
+        cache.add_vault_insert_record(vid2, rid4);
 
-        cache.add_vault(vid, rid);
-        cache.insert_record(vid, rid2);
-        cache.add_vault(vid2, rid3);
-        cache.insert_record(vid2, rid4);
-
-        let head0 = cache.get_head(vid);
-        let head1 = cache.get_head(vid2);
+        let head0 = cache.get_head(vault_path);
+        let head1 = cache.get_head(vault_path2);
 
         assert_eq!(head0, rid2);
         assert_eq!(head1, rid4);
+    }
+
+    #[test]
+    fn test_rid_internals() {
+        let clientid = ClientId::random::<Provider>().expect(line_error!());
+
+        let vid = VaultId::random::<Provider>().expect(line_error!());
+        let vid2 = VaultId::random::<Provider>().expect(line_error!());
+        let vault_path = b"some_vault".to_vec();
+
+        let mut client = Client::new(clientid);
+        let mut ctr = 0;
+        let mut ctr2 = 0;
+
+        let rid = client.derive_record_id(vault_path.clone(), Some(ctr));
+        let rid2 = client.derive_record_id(vault_path.clone(), Some(ctr2));
+
+        client.add_vault_insert_record(vid, rid);
+        client.add_vault_insert_record(vid2, rid2);
+
+        ctr += 1;
+        ctr2 += 1;
+
+        let rid = client.derive_record_id(vault_path.clone(), Some(ctr));
+        let rid2 = client.derive_record_id(vault_path.clone(), Some(ctr2));
+
+        client.add_vault_insert_record(vid, rid);
+        client.add_vault_insert_record(vid2, rid2);
+
+        ctr += 1;
+
+        let rid = client.derive_record_id(vault_path.clone(), Some(ctr));
+
+        client.add_vault_insert_record(vid, rid);
+
+        let test_ctr = client.get_counter(vid);
+        let test_rid = client.derive_record_id(vault_path, Some(test_ctr - 1));
+
+        assert_eq!(test_rid, rid);
+        assert_eq!(Some(test_ctr), Some(3));
+        assert_eq!(client.counters, vec![3, 2])
+    }
+
+    #[test]
+    fn test_rid_derive() {
+        let clientid = ClientId::random::<Provider>().expect(line_error!());
+
+        let vid = VaultId::random::<Provider>().expect(line_error!());
+        let vid2 = VaultId::random::<Provider>().expect(line_error!());
+        let vault_path = b"some_vault".to_vec();
+
+        let mut client = Client::new(clientid);
+
+        let rid = client.derive_record_id(vault_path.clone(), None);
+        let rid2 = client.derive_record_id(vault_path.clone(), None);
+
+        client.add_vault_insert_record(vid, rid);
+        client.add_vault_insert_record(vid2, rid2);
+
+        let rid = client.derive_record_id(vault_path.clone(), None);
+        let rid2 = client.derive_record_id(vault_path.clone(), None);
+
+        client.add_vault_insert_record(vid, rid);
+        client.add_vault_insert_record(vid2, rid2);
+
+        let rid = client.derive_record_id(vault_path.clone(), None);
+
+        client.add_vault_insert_record(vid, rid);
+
+        let test_ctr = client.get_counter(vid);
+        let test_rid = client.derive_record_id(vault_path, None);
+
+        assert!(client.record_exists_in_vault(vid, test_rid));
+        assert!(client.vault_exist(vid));
+
+        assert_eq!(test_rid, rid);
+        assert_eq!(Some(test_ctr), Some(3));
+        assert_eq!(client.counters, vec![3, 2])
     }
 }

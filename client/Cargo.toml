@@ -20,6 +20,7 @@ zeroize = "1.1"
 zeroize_derive = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
+futures = "0.3"
 
 riker = "0.4"
 
@@ -27,10 +28,15 @@ stronghold-runtime = {path = "../runtime"}
 
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
-rev = "bc35d38561efcf20a50aeb0f0b08028b4b4fda46"
-features = [ "ed25519", "sha", "hmac" ]
+rev = "46128fc8ea08e251ab2506a3f591295a9673c7fc"
+features = [ "random", "ed25519", "sha", "hmac", "bip39-en" ]
 
 [dev-dependencies]
 hex = "0.4.2"
 
-[workspace]
+criterion = "0.3.3"
+
+[[bench]]
+name = "benchmark"
+harness = false
+
