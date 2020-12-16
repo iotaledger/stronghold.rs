@@ -480,6 +480,13 @@ mod tests {
             r => panic!("unexpected result: {:?}", r),
         }
 
+        match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
+            key: slip10_key.clone()
+        })) {
+            ProcResult::Ed25519PublicKey(ResultMessage::Ok(_)) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
+
         match futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Recover {
             output: bip39_seed.clone(),
             hint: RecordHint::new(b"bip_seed").expect(line_error!()),

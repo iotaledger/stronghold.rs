@@ -449,10 +449,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     None => todo!("return error message"),
                 };
 
-                let raw = self.bucket.read_data(key, record_id);
+                let mut raw = self.bucket.read_data(key, record_id);
                 if raw.len() < 32 {
                     todo!("return error message: insufficient bytes")
                 }
+                raw.truncate(32);
                 let mut bs = [0; 32];
                 bs.copy_from_slice(&raw);
                 let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
