@@ -3,7 +3,7 @@
 
 use crate::{
     actors::{InternalMsg, InternalResults},
-    client::{Client, ClientMsg},
+    client::{Client, ClientMsg, Location},
     line_error,
     utils::{Chain, ClientId, ResultMessage, StatusMessage},
 };
@@ -28,12 +28,8 @@ use std::path::PathBuf;
 #[derive(Debug, Clone)]
 pub enum SLIP10DeriveInput {
     /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
-    Seed {
-        vault_path: Vec<u8>,
-    },
-    Key {
-        vault_path: Vec<u8>,
-    },
+    Seed(Location),
+    Key(Location),
 }
 
 #[allow(dead_code)]
@@ -43,12 +39,12 @@ pub enum Procedure {
     ///
     /// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
     /// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
-    SLIP10Generate { vault_path: Vec<u8>, hint: RecordHint },
+    SLIP10Generate { output: Location, hint: RecordHint },
     /// Derive a SLIP10 child key from a seed or a parent key and store it in `vault_path`
     SLIP10Derive {
         chain: Chain,
         input: SLIP10DeriveInput,
-        vault_path: Vec<u8>,
+        output: Location,
         hint: RecordHint,
     },
     /// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
@@ -56,19 +52,19 @@ pub enum Procedure {
     BIP39Recover {
         mnemonic: String,
         passphrase: Option<String>,
-        vault_path: Vec<u8>,
+        output: Location,
         hint: RecordHint,
     },
     /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
     /// passphrase) and store them in `vault_path`
     BIP39Generate {
         passphrase: Option<String>,
-        vault_path: Vec<u8>,
+        output: Location,
         hint: RecordHint,
     },
     /// Read a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
     /// passphrase) and store them in `vault_path`
-    BIP39MnemonicSentence { vault_path: Vec<u8> },
+    BIP39MnemonicSentence { seed: Location },
 }
 
 #[allow(dead_code)]
@@ -304,10 +300,8 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
 
                 match procedure {
-                    Procedure::SLIP10Generate { vault_path, hint } => {
-                        let vid = self.derive_vault_id(&vault_path);
-
-                        let rid = self.derive_record_id(vault_path, None);
+                    Procedure::SLIP10Generate { output, hint } => {
+                        let (vid, rid) = self.resolve_location(output);
 
                         if !self.vault_exist(vid) {
                             self.add_vault_insert_record(vid, rid);
@@ -324,14 +318,13 @@ impl Receive<SHRequest> for Client {
                     }
                     Procedure::SLIP10Derive {
                         chain,
-                        input:
-                            SLIP10DeriveInput::Seed {
-                                vault_path: seed_vault_path,
-                            },
-                        vault_path: key_vault_path,
+                        input: SLIP10DeriveInput::Seed(seed),
+                        output,
                         hint,
                     } => {
-                        let seed_vault_id = self.derive_vault_id(&seed_vault_path);
+                        let (seed_vault_id, seed_record_id) = self.resolve_location(seed);
+                        let (key_vault_id, key_record_id) = self.resolve_location(output);
+
                         if !self.vault_exist(seed_vault_id) {
                             sender
                                 .as_ref()
@@ -348,7 +341,6 @@ impl Receive<SHRequest> for Client {
                             return;
                         }
 
-                        let key_vault_id = self.derive_vault_id(&key_vault_path);
                         if !self.vault_exist(key_vault_id) {
                             sender
                                 .as_ref()
@@ -365,9 +357,6 @@ impl Receive<SHRequest> for Client {
                             return;
                         }
 
-                        let seed_record_id = self.derive_record_id(seed_vault_path, Some(0));
-                        let key_record_id = self.derive_record_id(key_vault_path, Some(0));
-
                         internal.try_tell(
                             InternalMsg::SLIP10Derive {
                                 chain,
@@ -380,14 +369,24 @@ impl Receive<SHRequest> for Client {
                             sender,
                         )
                     }
+                    Procedure::SLIP10Derive {
+                        chain,
+                        input: SLIP10DeriveInput::Key(parent_key),
+                        output,
+                        hint,
+                    } => todo!(),
+                    Procedure::BIP39Generate {
+                        passphrase,
+                        output,
+                        hint,
+                    } => todo!(),
                     Procedure::BIP39Recover {
                         mnemonic,
                         passphrase,
-                        vault_path,
+                        output,
                         hint,
                     } => {
-                        let vid = self.derive_vault_id(&vault_path);
-                        let rid = self.derive_record_id(vault_path, None);
+                        let (vid, rid) = self.resolve_location(output);
 
                         if !self.vault_exist(vid) {
                             self.add_vault_insert_record(vid, rid);
@@ -404,16 +403,7 @@ impl Receive<SHRequest> for Client {
                             sender,
                         )
                     }
-                    p => sender
-                        .as_ref()
-                        .expect(line_error!())
-                        .try_tell(
-                            SHResults::ReturnControlRequest(ProcResult::SLIP10Derive {
-                                status: StatusMessage::Error(format!("procedure not implemented: {:?}", p)),
-                            }),
-                            None,
-                        )
-                        .expect(line_error!()),
+                    Procedure::BIP39MnemonicSentence { .. } => todo!(),
                 }
             }
         }

@@ -14,6 +14,47 @@ use riker::actors::*;
 
 use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
+pub enum Location {
+    Generic {
+        vault_path: Vec<u8>,
+        record_path: Vec<u8>,
+    },
+    Counter {
+        vault_path: Vec<u8>,
+        counter: Option<usize>,
+    },
+}
+
+impl Location {
+    pub fn vault_path(&self) -> &[u8] {
+        match self {
+            Self::Generic { vault_path, .. } => vault_path,
+            Self::Counter { vault_path, .. } => vault_path,
+        }
+    }
+
+    pub fn generic<V: Into<Vec<u8>>, R: Into<Vec<u8>>>(vault_path: V, record_path: R) -> Self {
+        Self::Generic {
+            vault_path: vault_path.into(),
+            record_path: record_path.into(),
+        }
+    }
+
+    pub fn counter<V: Into<Vec<u8>>, C: Into<usize>>(vault_path: V, counter: Option<C>) -> Self {
+        Self::Counter {
+            vault_path: vault_path.into(),
+            counter: counter.map(|c| c.into()),
+        }
+    }
+}
+
+impl AsRef<Location> for Location {
+    fn as_ref(&self) -> &Location {
+        self
+    }
+}
+
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
 #[actor(SHResults, SHRequest, InternalResults)]
 #[derive(Debug)]
@@ -112,10 +153,23 @@ impl Client {
         }
     }
 
-    pub fn derive_vault_id<P: AsRef<Vec<u8>>>(&self, path: P) -> VaultId {
-        let data: Vec<u8> = self.client_id.into();
+    pub fn resolve_location<L: AsRef<Location>>(&self, l: L) -> (VaultId, RecordId) {
+        match l.as_ref() {
+            Location::Generic { vault_path, record_path } => {
+                let vid = self.derive_vault_id(vault_path);
+                let rid = RecordId::load_from_path(vid.as_ref(), record_path).expect(line_error!(""));
+                (vid, rid)
+            }
+            Location::Counter { vault_path, counter } => {
+                let vid = self.derive_vault_id(vault_path);
+                let rid = self.derive_record_id(vault_path, *counter);
+                (vid, rid)
+            }
+        }
+    }
 
-        VaultId::load_from_path(&data, &path.as_ref()).expect(line_error!(""))
+    pub fn derive_vault_id<P: AsRef<Vec<u8>>>(&self, path: P) -> VaultId {
+        VaultId::load_from_path(self.client_id.as_ref(), path.as_ref()).expect(line_error!(""))
     }
 
     pub fn derive_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, ctr: Option<usize>) -> RecordId {

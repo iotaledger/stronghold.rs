@@ -9,7 +9,7 @@ use engine::vault::RecordHint;
 
 use crate::{
     actors::{InternalActor, InternalMsg, Procedure, SHRequest, SHResults},
-    client::{Client, ClientMsg},
+    client::{Client, ClientMsg, Location},
     line_error,
     snapshot::Snapshot,
     utils::{ask, index_of_unchecked, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
@@ -261,12 +261,12 @@ impl Stronghold {
         }
     }
 
-    pub async fn list_hints_and_ids(&self, vault_path: Vec<u8>) -> (Vec<(usize, RecordHint)>, StatusMessage) {
+    pub async fn list_hints_and_ids<V: Into<Vec<u8>>>(&self, vault_path: V) -> (Vec<(usize, RecordHint)>, StatusMessage) {
         let idx = self.current_target;
 
         let client = &self.actors[idx];
 
-        if let SHResults::ReturnList(ids, status) = ask(&self.system, client, SHRequest::ListIds(vault_path)).await {
+        if let SHResults::ReturnList(ids, status) = ask(&self.system, client, SHRequest::ListIds(vault_path.into())).await {
             (ids, status)
         } else {
             (
@@ -398,9 +398,10 @@ mod tests {
         let sys = ActorSystem::new().unwrap();
         let vault_path = b"path".to_vec();
         let client_path = b"test".to_vec();
-        let seed_path = b"slip10 seed".to_vec();
-        let key_path = b"slip10 key".to_vec();
-        let bip39_path = b"bip39 seed".to_vec();
+
+        let slip10_seed = Location::generic("slip10", "seed");
+        let slip10_key = Location::generic("slip10", "key");
+        let bip39_seed = Location::generic("bip39", "seed");
         let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
         let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
@@ -446,7 +447,6 @@ mod tests {
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
-
         println!("{:?}", ids);
 
         futures::executor::block_on(stronghold.delete_data(vault_path.clone(), 0, false));
@@ -457,21 +457,19 @@ mod tests {
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
         futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
-            vault_path: seed_path.clone(),
+            output: slip10_seed.clone(),
             hint: RecordHint::new(b"test_seed").expect(line_error!()),
         }));
 
         futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
             chain: Chain::from_u32_hardened(vec![]),
-            input: SLIP10DeriveInput::Seed {
-                vault_path: seed_path.clone(),
-            },
-            vault_path: key_path.clone(),
+            input: SLIP10DeriveInput::Seed(slip10_seed.clone()),
+            output: slip10_key.clone(),
             hint: RecordHint::new(b"test").expect(line_error!()),
         }));
 
         futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Recover {
-            vault_path: bip39_path.clone(),
+            output: bip39_seed.clone(),
             hint: RecordHint::new(b"bip_seed").expect(line_error!()),
             mnemonic: "Some mnemonic value".into(),
             passphrase: Some("a passphrase".into()),
@@ -484,15 +482,12 @@ mod tests {
         futures::executor::block_on(stronghold.read_snapshot(client_path.clone(), key_data, None, None));
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
-
         println!("{:?}", ids);
 
-        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(bip39_path));
-
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(slip10_seed.vault_path()));
         println!("{:?}", ids);
 
-        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(seed_path));
-
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(bip39_seed.vault_path()));
         println!("{:?}", ids);
 
         // Can't sync head anymore if record was revoked.
