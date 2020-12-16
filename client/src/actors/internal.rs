@@ -286,8 +286,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let mut seed_entropy = [0u8; 64];
                 Provider::random_buf(&mut seed_entropy).expect(line_error!());
 
-                self.bucket
-                    .write_payload(key, record_id, seed_entropy.to_vec(), hint);
+                self.bucket.write_payload(key, record_id, seed_entropy.to_vec(), hint);
 
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Generate {
