@@ -63,6 +63,12 @@ pub enum InternalMsg {
         child_record_id: RecordId,
         hint: RecordHint,
     },
+    BIP39Generate {
+        passphrase: String,
+        vault_id: VaultId,
+        record_id: RecordId,
+        hint: RecordHint,
+    },
     BIP39Recover {
         mnemonic: String,
         passphrase: String,
@@ -377,6 +383,39 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     _ => todo!("return error message")
                 }
             }
+            InternalMsg::BIP39Generate {
+                passphrase,
+                vault_id,
+                record_id,
+                hint,
+            } => {
+                let mut entropy = [0u8; 32];
+                crypto::rand::fill(&mut entropy).expect(line_error!());
+
+                let mnemonic = crypto::bip39::wordlist::encode(
+                    &entropy,
+                    crypto::bip39::wordlist::ENGLISH, // TODO: make this user configurable
+                ).expect(line_error!());
+
+                let mut seed = [0u8; 64];
+                crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+
+                let key = self.keystore.create_key(vault_id);
+                self.bucket.create_and_init_vault(key.clone(), record_id);
+
+                // TODO: also store the mnemonic to be able to export it in the
+                // BIP39MnemonicSentence message
+                self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
+
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Generate {
+                        status: StatusMessage::Ok,
+                    })),
+                    sender,
+                );
+            }
             InternalMsg::BIP39Recover {
                 mnemonic,
                 passphrase,
@@ -384,20 +423,18 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 record_id,
                 hint,
             } => {
-                let cstr: String = self.client_id.into();
-                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-
                 let key = self.keystore.create_key(vault_id);
-
                 self.bucket.create_and_init_vault(key.clone(), record_id);
 
                 let mut seed = [0u8; 64];
-                crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed).expect(line_error!());
+                crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
 
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
                 self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
 
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Recover {
                         status: StatusMessage::Ok,

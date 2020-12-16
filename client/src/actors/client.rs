@@ -392,10 +392,21 @@ impl Receive<SHRequest> for Client {
                         output,
                         hint,
                     } => {
-                        let (vid, rid) = self.resolve_location(output);
-                        ensure_vault_exists!(vid, BIP39Generate, "seed");
+                        let (vault_id, record_id) = self.resolve_location(output);
 
-                        todo!()
+                        if !self.vault_exist(vault_id) {
+                            self.add_vault_insert_record(vault_id, record_id);
+                        }
+
+                        internal.try_tell(
+                            InternalMsg::BIP39Generate {
+                                passphrase: passphrase.unwrap_or_else(|| "".into()),
+                                vault_id,
+                                record_id,
+                                hint,
+                            },
+                            sender,
+                        )
                     }
                     Procedure::BIP39Recover {
                         mnemonic,
