@@ -14,17 +14,6 @@ use riker::actors::*;
 
 use std::path::PathBuf;
 
-/// TODO: Bip39: words -> seed
-/// TODO: SLIP10: seed -> public key
-/// TODO: SLIP10: add argument for subtree.
-/// TODO: Ed25519 SIGN method.
-/// TODO: Add feature flags
-/// GENERATE SLIP10 SEED -> Sticks seed in vault -> return chaincode
-/// GENERATE BIP39 words -> generates entropy then creates words and the slip10 seed (optionally store entropy).
-/// DERIVE SLIP10 Key
-/// Recover BIP39 SEED -> words checks seed against seed in vault.
-/// backup Words -> returns words
-
 #[derive(Debug, Clone)]
 pub enum SLIP10DeriveInput {
     /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
