@@ -35,12 +35,12 @@ pub enum SLIP10DeriveInput {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Procedure {
-    /// Generate a raw SLIP10 seed and store it in `vault_path`
+    /// Generate a raw SLIP10 seed and store it in the `output` location
     ///
     /// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
     /// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
     SLIP10Generate { output: Location, hint: RecordHint },
-    /// Derive a SLIP10 child key from a seed or a parent key and store it in `vault_path`
+    /// Derive a SLIP10 child key from a seed or a parent key and store it in output location
     SLIP10Derive {
         chain: Chain,
         input: SLIP10DeriveInput,
@@ -48,7 +48,7 @@ pub enum Procedure {
         hint: RecordHint,
     },
     /// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
-    /// a BIP39 seed and store it in `vault_path`
+    /// a BIP39 seed and store it in the `output` location
     BIP39Recover {
         mnemonic: String,
         passphrase: Option<String>,
@@ -56,15 +56,19 @@ pub enum Procedure {
         hint: RecordHint,
     },
     /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
-    /// passphrase) and store them in `vault_path`
+    /// passphrase) and store them in the `output` location
     BIP39Generate {
         passphrase: Option<String>,
         output: Location,
         hint: RecordHint,
     },
     /// Read a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
-    /// passphrase) and store them in `vault_path`
+    /// passphrase) and store them in the `output` location
     BIP39MnemonicSentence { seed: Location },
+    /// Derive the Ed25519 public key of the key stored at the specified location
+    Ed25519PublicKey { key: Location },
+    /// Generate the Ed25519 signature of the given message signed by the specified key
+    Ed25519Sign { key: Location, msg: Vec<u8> },
 }
 
 #[allow(dead_code)]
@@ -75,6 +79,8 @@ pub enum ProcResult {
     BIP39Recover { status: StatusMessage },
     BIP39Generate { status: StatusMessage },
     BIP39MnemonicSentence { result: ResultMessage<String> },
+    Ed25519PublicKey { result: ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> },
+    Ed25519Sign { result: ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]> },
 }
 
 #[allow(dead_code)]
@@ -404,6 +410,8 @@ impl Receive<SHRequest> for Client {
                         )
                     }
                     Procedure::BIP39MnemonicSentence { .. } => todo!(),
+                    Procedure::Ed25519PublicKey { .. } => todo!(),
+                    Procedure::Ed25519Sign { .. } => todo!(),
                 }
             }
         }
