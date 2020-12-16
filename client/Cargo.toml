@@ -34,4 +34,10 @@ features = [ "ed25519", "sha", "hmac", "bip39" ]
 [dev-dependencies]
 hex = "0.4.2"
 
+criterion = "0.3.3"
+
+[[bench]]
+name = "benchmark"
+harness = false
+
 [workspace]
