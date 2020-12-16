@@ -450,7 +450,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, key.clone());
 
-                let mut raw = self.bucket.read_data(key.clone(), record_id);
+                let mut raw = self.bucket.read_data(key, record_id);
                 if raw.len() < 32 {
                     todo!("return error message: insufficient bytes")
                 }
@@ -459,7 +459,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 bs.copy_from_slice(&raw);
                 let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
                 let pk = sk.public_key();
-
 
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());

@@ -12,7 +12,7 @@ use crate::{
     client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
-    utils::{ask, index_of_unchecked, LoadFromPath, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{ask, index_of_unchecked, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     ClientId, Provider,
 };
 
@@ -397,7 +397,11 @@ mod tests {
 
     use super::*;
 
-    use crate::{actors::SLIP10DeriveInput, client::Location, utils::hd};
+    use crate::{
+        actors::SLIP10DeriveInput,
+        client::Location,
+        utils::{hd, ResultMessage},
+    };
 
     #[test]
     fn test_stronghold() {
@@ -481,10 +485,11 @@ mod tests {
         }
 
         let pk = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
-            key: slip10_key.clone()
+            key: slip10_key.clone(),
         })) {
-            ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) =>
-                crypto::ed25519::PublicKey::from_compressed_bytes(pk).expect(line_error!()),
+            ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) => {
+                crypto::ed25519::PublicKey::from_compressed_bytes(pk).expect(line_error!())
+            }
             r => panic!("unexpected result: {:?}", r),
         };
 
@@ -493,8 +498,7 @@ mod tests {
             key: slip10_key.clone(),
             msg: msg.to_vec(),
         })) {
-            ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) =>
-                crypto::ed25519::Signature::from_bytes(sig),
+            ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => crypto::ed25519::Signature::from_bytes(sig),
             r => panic!("unexpected result: {:?}", r),
         };
 
