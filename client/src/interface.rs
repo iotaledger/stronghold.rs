@@ -391,6 +391,7 @@ mod tests {
 
     use super::*;
 
+    use crate::actors::{SLIP10DeriveInput};
     use crate::utils::Chain;
 
     #[test]
@@ -398,8 +399,9 @@ mod tests {
         let sys = ActorSystem::new().unwrap();
         let vault_path = b"path".to_vec();
         let client_path = b"test".to_vec();
-        let sip_path = b"sip_10".to_vec();
-        let bip_path = b"bip_32".to_vec();
+        let seed_path = b"slip10 seed".to_vec();
+        let key_path = b"slip10 key".to_vec();
+        let bip39_path = b"bip39 seed".to_vec();
         let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
         let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
@@ -456,21 +458,24 @@ mod tests {
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
         futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
-            vault_path: sip_path.clone(),
+            vault_path: seed_path.clone(),
             hint: RecordHint::new(b"test_seed").expect(line_error!()),
         }));
 
-        futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Step {
+        futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
             chain: Chain::from_u32_hardened(vec![]),
-            seed_vault_path: sip_path.clone(),
+            input: SLIP10DeriveInput::Seed {
+                vault_path: seed_path.clone(),
+            },
+            vault_path: key_path.clone(),
             hint: RecordHint::new(b"test").expect(line_error!()),
         }));
 
-        futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP32 {
-            vault_path: bip_path.clone(),
+        futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Recover {
+            vault_path: bip39_path.clone(),
             hint: RecordHint::new(b"bip_seed").expect(line_error!()),
             mnemonic: "Some mnemonic value".into(),
-            passphrase: "a passphrase".into(),
+            passphrase: Some("a passphrase".into()),
         }));
 
         futures::executor::block_on(stronghold.garbage_collect(vault_path.clone()));
@@ -483,11 +488,11 @@ mod tests {
 
         println!("{:?}", ids);
 
-        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(bip_path));
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(bip39_path));
 
         println!("{:?}", ids);
 
-        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(sip_path));
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(seed_path));
 
         println!("{:?}", ids);
 

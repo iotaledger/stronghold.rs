@@ -11,7 +11,7 @@ pub use self::{
     ask::ask,
     hd::{Chain, Key, Seed, Segment},
     ids::{ClientId, LoadFromPath, VaultId},
-    types::{StatusMessage, StrongholdFlags, VaultFlags},
+    types::{ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
 #[allow(dead_code)]

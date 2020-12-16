@@ -5,7 +5,7 @@ use crate::{
     actors::{InternalMsg, InternalResults},
     client::{Client, ClientMsg},
     line_error,
-    utils::{Chain, ClientId, StatusMessage},
+    utils::{Chain, ClientId, ResultMessage, StatusMessage},
 };
 
 use engine::{snapshot, vault::RecordHint};
@@ -25,32 +25,60 @@ use std::path::PathBuf;
 /// Recover BIP39 SEED -> words checks seed against seed in vault.
 /// backup Words -> returns words
 
+#[derive(Debug, Clone)]
+pub enum SLIP10DeriveInput {
+    /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
+    Seed {
+        vault_path: Vec<u8>,
+    },
+    Key {
+        vault_path: Vec<u8>,
+    },
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Procedure {
-    SLIP10Generate {
-        vault_path: Vec<u8>,
-        hint: RecordHint,
-    },
-    SLIP10Step {
+    /// Generate a raw SLIP10 seed and store it in `vault_path`
+    ///
+    /// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
+    /// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
+    SLIP10Generate { vault_path: Vec<u8>, hint: RecordHint },
+    /// Derive a SLIP10 child key from a seed or a parent key and store it in `vault_path`
+    SLIP10Derive {
         chain: Chain,
-        seed_vault_path: Vec<u8>,
-        hint: RecordHint,
-    },
-    BIP32 {
-        mnemonic: String,
-        passphrase: String,
+        input: SLIP10DeriveInput,
         vault_path: Vec<u8>,
         hint: RecordHint,
     },
+    /// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
+    /// a BIP39 seed and store it in `vault_path`
+    BIP39Recover {
+        mnemonic: String,
+        passphrase: Option<String>,
+        vault_path: Vec<u8>,
+        hint: RecordHint,
+    },
+    /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
+    /// passphrase) and store them in `vault_path`
+    BIP39Generate {
+        passphrase: Option<String>,
+        vault_path: Vec<u8>,
+        hint: RecordHint,
+    },
+    /// Read a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
+    /// passphrase) and store them in `vault_path`
+    BIP39MnemonicSentence { vault_path: Vec<u8> },
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ProcResult {
     SLIP10Generate { status: StatusMessage },
-    SLIP10Step { status: StatusMessage },
-    BIP32 { status: StatusMessage },
+    SLIP10Derive { status: StatusMessage },
+    BIP39Recover { status: StatusMessage },
+    BIP39Generate { status: StatusMessage },
+    BIP39MnemonicSentence { result: ResultMessage<String> },
 }
 
 #[allow(dead_code)]
@@ -294,35 +322,22 @@ impl Receive<SHRequest> for Client {
                             sender,
                         )
                     }
-                    Procedure::SLIP10Step {
+                    Procedure::SLIP10Derive {
                         chain,
-                        seed_vault_path,
+                        input:
+                            SLIP10DeriveInput::Seed {
+                                vault_path: seed_vault_path,
+                            },
+                        vault_path: key_vault_path,
                         hint,
                     } => {
-                        let vid = self.derive_vault_id(seed_vault_path.clone());
-                        if self.vault_exist(vid) {
-                            let seed_rid = self.derive_record_id(seed_vault_path.clone(), Some(0));
-
-                            let ctr = self.get_counter(vid);
-
-                            let key_rid = self.derive_record_id(seed_vault_path, Some(ctr));
-
-                            internal.try_tell(
-                                InternalMsg::SLIP10Step {
-                                    chain,
-                                    seed_vault_id: vid,
-                                    seed_record_id: seed_rid,
-                                    key_record_id: key_rid,
-                                    hint,
-                                },
-                                sender,
-                            )
-                        } else {
+                        let seed_vault_id = self.derive_vault_id(seed_vault_path.clone());
+                        if !self.vault_exist(seed_vault_id) {
                             sender
                                 .as_ref()
                                 .expect(line_error!())
                                 .try_tell(
-                                    SHResults::ReturnControlRequest(ProcResult::SLIP10Step {
+                                    SHResults::ReturnControlRequest(ProcResult::SLIP10Derive {
                                         status: StatusMessage::Error(
                                             "Failed to find seed vault. Please generate one".into(),
                                         ),
@@ -330,9 +345,42 @@ impl Receive<SHRequest> for Client {
                                     None,
                                 )
                                 .expect(line_error!());
+                            return;
                         }
+
+                        let key_vault_id = self.derive_vault_id(key_vault_path.clone());
+                        if !self.vault_exist(key_vault_id) {
+                            sender
+                                .as_ref()
+                                .expect(line_error!())
+                                .try_tell(
+                                    SHResults::ReturnControlRequest(ProcResult::SLIP10Derive {
+                                        status: StatusMessage::Error(
+                                            "Failed to find key vault. Please generate one".into(),
+                                        ),
+                                    }),
+                                    None,
+                                )
+                                .expect(line_error!());
+                            return;
+                        }
+
+                        let seed_record_id = self.derive_record_id(seed_vault_path.clone(), Some(0));
+                        let key_record_id = self.derive_record_id(key_vault_path.clone(), Some(0));
+
+                        internal.try_tell(
+                            InternalMsg::SLIP10Derive {
+                                chain,
+                                seed_vault_id,
+                                seed_record_id,
+                                key_vault_id,
+                                key_record_id,
+                                hint,
+                            },
+                            sender,
+                        )
                     }
-                    Procedure::BIP32 {
+                    Procedure::BIP39Recover {
                         mnemonic,
                         passphrase,
                         vault_path,
@@ -346,9 +394,9 @@ impl Receive<SHRequest> for Client {
                         }
 
                         internal.try_tell(
-                            InternalMsg::BIP32 {
+                            InternalMsg::BIP39Recover {
                                 mnemonic,
-                                passphrase,
+                                passphrase: passphrase.unwrap_or_else(|| "".into()),
                                 vault_id: vid,
                                 record_id: rid,
                                 hint,
@@ -356,6 +404,16 @@ impl Receive<SHRequest> for Client {
                             sender,
                         )
                     }
+                    p => sender
+                        .as_ref()
+                        .expect(line_error!())
+                        .try_tell(
+                            SHResults::ReturnControlRequest(ProcResult::SLIP10Derive {
+                                status: StatusMessage::Error(format!("procedure not implemented: {:?}", p)),
+                            }),
+                            None,
+                        )
+                        .expect(line_error!()),
                 }
             }
         }

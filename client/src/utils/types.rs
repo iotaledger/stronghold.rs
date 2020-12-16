@@ -10,6 +10,12 @@ pub enum StatusMessage {
     Error(String),
 }
 
+#[derive(Debug, Clone)]
+pub enum ResultMessage<T> {
+    Ok(T),
+    Error(String),
+}
+
 pub enum StrongholdFlags {
     IsReadable(bool),
 }

@@ -47,14 +47,15 @@ pub enum InternalMsg {
         record_id: RecordId,
         hint: RecordHint,
     },
-    SLIP10Step {
+    SLIP10Derive {
         chain: Chain,
         seed_vault_id: VaultId,
         seed_record_id: RecordId,
+        key_vault_id: VaultId,
         key_record_id: RecordId,
         hint: RecordHint,
     },
-    BIP32 {
+    BIP39Recover {
         mnemonic: String,
         passphrase: String,
         vault_id: VaultId,
@@ -295,10 +296,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     sender,
                 );
             }
-            InternalMsg::SLIP10Step {
+            InternalMsg::SLIP10Derive {
                 chain,
                 seed_vault_id,
                 seed_record_id,
+                key_vault_id: _, // TODO: add test that fail because this isn't used
                 key_record_id,
                 hint,
             } => {
@@ -320,14 +322,14 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(seed_vault_id, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Step {
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Derive {
                             status: StatusMessage::Ok,
                         })),
                         sender,
                     );
                 }
             }
-            InternalMsg::BIP32 {
+            InternalMsg::BIP39Recover {
                 mnemonic,
                 passphrase,
                 vault_id,
@@ -347,7 +349,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
 
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP32 {
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Recover {
                         status: StatusMessage::Ok,
                     })),
                     sender,
