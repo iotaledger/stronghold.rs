@@ -1,0 +1,81 @@
+name: Release Stronghold CLI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            ext: ''
+          - os: macos-latest
+            ext: ''
+          - os: windows-latest
+            ext: .exe
+    defaults:
+      run:
+        working-directory: products/commandline
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install stable toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+    
+    - name: Install gon (macOS)
+      # https://github.com/mitchellh/gon
+      run: brew install mitchellh/gon/gon
+      if: matrix.os == 'macos-latest'
+
+    - name: Build Stronghold CLI
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --manifest-path=products/commandline/Cargo.toml --release
+    
+    - name: Import code signing assets (macOS)
+      # Based on https://github.com/Apple-Actions/import-codesign-certs/blob/master/src/security.ts
+      run: |
+        security create-keychain -p $KEYCHAIN_PASSWORD signing.keychain
+        security set-keychain-settings -lut 3600 signing.keychain
+        security unlock-keychain -p $KEYCHAIN_PASSWORD signing.keychain
+        echo $MAC_CERT_BASE64 | base64 -D -o signing.p12
+        security import signing.p12 -k signing.keychain -f pkcs12 -T "/usr/bin/codesign" -T "/usr/bin/security" -P $MAC_CERT_PASSWORD
+        rm signing.p12
+        security -q set-key-partition-list -S apple-tool:,apple: -k $KEYCHAIN_PASSWORD signing.keychain > /dev/null
+        security -v list-keychains -s signing.keychain
+        security find-identity -vp codesigning
+      env:
+        KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
+        MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+      if: matrix.os == 'macos-latest'
+
+    - name: Sign and notarize Stronghold CLI binary (macOS)
+      run: |
+        gon gon-config.json
+        unzip stronghold.zip
+        mv -f stronghold target/release/stronghold
+      env:
+        AC_USERNAME: ${{ secrets.ASC_APPLE_ID }}
+        AC_PASSWORD: ${{ secrets.ASC_PASSWORD }}
+      if: matrix.os == 'macos-latest'
+    
+    - name: Delete keychain (macOS)
+      run: security delete-keychain signing.keychain
+      # Run even if previous steps fail
+      if: ${{ matrix.os == 'macos-latest' && always() }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: stronghold-cli-${{ matrix.os }}
+        path: ${{ format('./products/commandline/target/release/stronghold{0}', matrix.ext ) }}
