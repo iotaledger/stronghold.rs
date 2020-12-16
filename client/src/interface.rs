@@ -480,12 +480,25 @@ mod tests {
             r => panic!("unexpected result: {:?}", r),
         }
 
-        match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
+        let pk = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
             key: slip10_key.clone()
         })) {
-            ProcResult::Ed25519PublicKey(ResultMessage::Ok(_)) => (),
+            ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) =>
+                crypto::ed25519::PublicKey::from_compressed_bytes(pk).expect(line_error!()),
             r => panic!("unexpected result: {:?}", r),
-        }
+        };
+
+        let msg = b"foobar";
+        let sig = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
+            key: slip10_key.clone(),
+            msg: msg.to_vec(),
+        })) {
+            ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) =>
+                crypto::ed25519::Signature::from_bytes(sig),
+            r => panic!("unexpected result: {:?}", r),
+        };
+
+        assert!(crypto::ed25519::verify(&pk, &sig, msg));
 
         match futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Recover {
             output: bip39_seed.clone(),
