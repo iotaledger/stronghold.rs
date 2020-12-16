@@ -63,27 +63,13 @@ pub enum Procedure {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ProcResult {
-    SLIP10Generate {
-        status: StatusMessage,
-    },
-    SLIP10Derive {
-        status: StatusMessage,
-    },
-    BIP39Recover {
-        status: StatusMessage,
-    },
-    BIP39Generate {
-        status: StatusMessage,
-    },
-    BIP39MnemonicSentence {
-        result: ResultMessage<String>,
-    },
-    Ed25519PublicKey {
-        result: ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>,
-    },
-    Ed25519Sign {
-        result: ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>,
-    },
+    SLIP10Generate(StatusMessage),
+    SLIP10Derive(StatusMessage),
+    BIP39Recover(StatusMessage),
+    BIP39Generate(StatusMessage),
+    BIP39MnemonicSentence(ResultMessage<String>),
+    Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+    Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
 }
 
 #[allow(dead_code)]
@@ -172,12 +158,10 @@ impl Receive<SHRequest> for Client {
                         .as_ref()
                         .expect(line_error!())
                         .try_tell(
-                            SHResults::ReturnControlRequest(ProcResult::$V {
-                                status: StatusMessage::Error(format!(
-                                    "Failed to find {} vault. Please generate one",
-                                    $k
-                                )),
-                            }),
+                            SHResults::ReturnControlRequest(ProcResult::$V(StatusMessage::Error(format!(
+                                "Failed to find {} vault. Please generate one",
+                                $k
+                            )))),
                             None,
                         )
                         .expect(line_error!());

@@ -316,9 +316,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
 
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Generate {
-                        status: StatusMessage::OK,
-                    })),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Generate(
+                        StatusMessage::OK,
+                    ))),
                     sender,
                 );
             }
@@ -344,9 +344,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                ProcResult::SLIP10Derive {
-                                    status: StatusMessage::OK,
-                                },
+                                ProcResult::SLIP10Derive(StatusMessage::OK),
                             )),
                             sender,
                         );
@@ -377,9 +375,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                ProcResult::SLIP10Derive {
-                                    status: StatusMessage::OK,
-                                },
+                                ProcResult::SLIP10Derive(StatusMessage::OK),
                             )),
                             sender,
                         );
@@ -415,9 +411,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Generate {
-                        status: StatusMessage::OK,
-                    })),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Generate(
+                        StatusMessage::OK,
+                    ))),
                     sender,
                 );
             }
@@ -441,9 +437,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Recover {
-                        status: StatusMessage::OK,
-                    })),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Recover(
+                        StatusMessage::OK,
+                    ))),
                     sender,
                 );
             }
@@ -465,9 +461,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519PublicKey {
-                        result: ResultMessage::Ok(pk.to_compressed_bytes()),
-                    })),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519PublicKey(
+                        ResultMessage::Ok(pk.to_compressed_bytes()),
+                    ))),
                     sender,
                 );
             }
@@ -493,9 +489,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign {
-                        result: ResultMessage::Ok(sig.to_bytes()),
-                    })),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
+                        ResultMessage::Ok(sig.to_bytes()),
+                    ))),
                     sender,
                 );
             }

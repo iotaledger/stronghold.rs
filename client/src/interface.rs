@@ -8,11 +8,11 @@ use std::{collections::HashMap, path::PathBuf, time::Duration};
 use engine::vault::RecordHint;
 
 use crate::{
-    actors::{InternalActor, InternalMsg, Procedure, SHRequest, SHResults, ProcResult},
+    actors::{InternalActor, InternalMsg, ProcResult, Procedure, SHRequest, SHResults},
     client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
-    utils::{ask, index_of_unchecked, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags, ResultMessage},
+    utils::{ask, index_of_unchecked, LoadFromPath, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
     ClientId, Provider,
 };
 
@@ -466,7 +466,7 @@ mod tests {
             output: slip10_seed.clone(),
             hint: RecordHint::new(b"test_seed").expect(line_error!()),
         })) {
-            ProcResult::SLIP10Generate { status: StatusMessage::OK } => (),
+            ProcResult::SLIP10Generate(StatusMessage::OK) => (),
             r => panic!("unexpected result: {:?}", r),
         }
 
@@ -476,7 +476,7 @@ mod tests {
             output: slip10_key.clone(),
             hint: RecordHint::new(b"test").expect(line_error!()),
         })) {
-            ProcResult::SLIP10Derive { status: StatusMessage::OK } => (),
+            ProcResult::SLIP10Derive(StatusMessage::OK) => (),
             r => panic!("unexpected result: {:?}", r),
         }
 
@@ -486,7 +486,7 @@ mod tests {
             mnemonic: "Some mnemonic value".into(),
             passphrase: Some("a passphrase".into()),
         })) {
-            ProcResult::BIP39Recover { status: StatusMessage::OK } => (),
+            ProcResult::BIP39Recover(StatusMessage::OK) => (),
             r => panic!("unexpected result: {:?}", r),
         }
 
