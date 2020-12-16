@@ -3,7 +3,7 @@
 
 mod ask;
 #[allow(non_snake_case, dead_code)]
-mod hd;
+pub mod hd;
 mod ids;
 mod types;
 

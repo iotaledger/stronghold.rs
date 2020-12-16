@@ -29,7 +29,7 @@ stronghold-runtime = {path = "../runtime"}
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
 rev = "cf6b842d33926ed0a5b177e7b079c03d8804be09"
-features = [ "ed25519", "sha", "hmac", "bip39" ]
+features = [ "random", "ed25519", "sha", "hmac", "bip39" ]
 
 [dev-dependencies]
 hex = "0.4.2"
