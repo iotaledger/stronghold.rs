@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [engine, client, runtime, products/commandline]
+        project: [engine, client, runtime, communication, products/commandline]
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
@@ -73,10 +73,10 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: build
-        args: --manifest-path=${{ matrix.project }}/Cargo.toml --all --release
+        args: --manifest-path=${{ matrix.project }}/Cargo.toml --release
 
     - name: Run tests for ${{ matrix.project }}
       uses: actions-rs/cargo@v1
       with:
         command: test
-        args: --manifest-path=${{ matrix.project }}/Cargo.toml --all --release
+        args: --manifest-path=${{ matrix.project }}/Cargo.toml --release
