@@ -47,12 +47,20 @@ pub enum InternalMsg {
         record_id: RecordId,
         hint: RecordHint,
     },
-    SLIP10Derive {
+    SLIP10DeriveFromSeed {
         chain: Chain,
         seed_vault_id: VaultId,
         seed_record_id: RecordId,
         key_vault_id: VaultId,
         key_record_id: RecordId,
+        hint: RecordHint,
+    },
+    SLIP10DeriveFromKey {
+        chain: Chain,
+        parent_vault_id: VaultId,
+        parent_record_id: RecordId,
+        child_vault_id: VaultId,
+        child_record_id: RecordId,
         hint: RecordHint,
     },
     BIP39Recover {
@@ -296,7 +304,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     sender,
                 );
             }
-            InternalMsg::SLIP10Derive {
+            InternalMsg::SLIP10DeriveFromSeed {
                 chain,
                 seed_vault_id,
                 seed_record_id,
@@ -329,6 +337,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
+            InternalMsg::SLIP10DeriveFromKey { .. } => todo!(),
             InternalMsg::BIP39Recover {
                 mnemonic,
                 passphrase,

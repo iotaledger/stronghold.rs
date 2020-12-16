@@ -158,10 +158,27 @@ impl Receive<SHResults> for Client {
     fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: SHResults, _sender: Sender) {}
 }
 
+
 impl Receive<SHRequest> for Client {
     type Msg = ClientMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, sender: Sender) {
+        macro_rules! ensure_vault_exists {
+            ( $x:expr, $V:tt, $k:expr ) => {
+                if !self.vault_exist($x) {
+                    sender.as_ref().expect(line_error!())
+                        .try_tell(
+                            SHResults::ReturnControlRequest(
+                                ProcResult::$V { status: StatusMessage::Error(format!("Failed to find {} vault. Please generate one", $k)) }
+                            ),
+                            None,
+                        )
+                        .expect(line_error!());
+                    return;
+                }
+            };
+        }
+
         match msg {
             SHRequest::CheckVault(vpath) => {
                 let vid = self.derive_vault_id(vpath);
@@ -329,42 +346,13 @@ impl Receive<SHRequest> for Client {
                         hint,
                     } => {
                         let (seed_vault_id, seed_record_id) = self.resolve_location(seed);
+                        ensure_vault_exists!(seed_vault_id, SLIP10Derive, "seed");
+
                         let (key_vault_id, key_record_id) = self.resolve_location(output);
-
-                        if !self.vault_exist(seed_vault_id) {
-                            sender
-                                .as_ref()
-                                .expect(line_error!())
-                                .try_tell(
-                                    SHResults::ReturnControlRequest(ProcResult::SLIP10Derive {
-                                        status: StatusMessage::Error(
-                                            "Failed to find seed vault. Please generate one".into(),
-                                        ),
-                                    }),
-                                    None,
-                                )
-                                .expect(line_error!());
-                            return;
-                        }
-
-                        if !self.vault_exist(key_vault_id) {
-                            sender
-                                .as_ref()
-                                .expect(line_error!())
-                                .try_tell(
-                                    SHResults::ReturnControlRequest(ProcResult::SLIP10Derive {
-                                        status: StatusMessage::Error(
-                                            "Failed to find key vault. Please generate one".into(),
-                                        ),
-                                    }),
-                                    None,
-                                )
-                                .expect(line_error!());
-                            return;
-                        }
+                        ensure_vault_exists!(key_vault_id, SLIP10Derive, "key");
 
                         internal.try_tell(
-                            InternalMsg::SLIP10Derive {
+                            InternalMsg::SLIP10DeriveFromSeed {
                                 chain,
                                 seed_vault_id,
                                 seed_record_id,
@@ -377,15 +365,38 @@ impl Receive<SHRequest> for Client {
                     }
                     Procedure::SLIP10Derive {
                         chain,
-                        input: SLIP10DeriveInput::Key(parent_key),
+                        input: SLIP10DeriveInput::Key(parent),
                         output,
                         hint,
-                    } => todo!(),
+                    } => {
+                        let (parent_vault_id, parent_record_id) = self.resolve_location(parent);
+                        ensure_vault_exists!(parent_vault_id, SLIP10Derive, "parent key");
+
+                        let (child_vault_id, child_record_id) = self.resolve_location(output);
+                        ensure_vault_exists!(child_vault_id, SLIP10Derive, "child key");
+
+                        internal.try_tell(
+                            InternalMsg::SLIP10DeriveFromKey {
+                                chain,
+                                parent_vault_id,
+                                parent_record_id,
+                                child_vault_id,
+                                child_record_id,
+                                hint,
+                            },
+                            sender,
+                        )
+                    }
                     Procedure::BIP39Generate {
                         passphrase,
                         output,
                         hint,
-                    } => todo!(),
+                    } => {
+                        let (vid, rid) = self.resolve_location(output);
+                        ensure_vault_exists!(vid, BIP39Generate, "seed");
+
+                        todo!()
+                    }
                     Procedure::BIP39Recover {
                         mnemonic,
                         passphrase,
