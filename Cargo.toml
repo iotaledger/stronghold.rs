@@ -7,10 +7,22 @@ members = [
   "engine/crypto",
   "engine/snapshot",
   "runtime",
+  "client",
+  "communication",
 ]
 exclude = [
   "products/commandline",
   "products/desktop",
   "products/SHaaS",
-  "client",
 ]
+
+[profile.release]
+overflow-checks = true
+panic = "abort"
+
+[profile.dev]
+overflow-checks = true
+panic = "abort"
+
+[profile.bench]
+overflow-checks = true

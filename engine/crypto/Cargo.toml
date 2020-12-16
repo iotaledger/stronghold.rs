@@ -6,7 +6,7 @@ edition = "2018"
 readme = "README.md"
 
 [dependencies]
-primitives = {path = "../primitives", version = "0.1"}
+primitives = {path = "../primitives"}
 thiserror = "1.0"
 anyhow = "1.0"
 

@@ -40,4 +40,3 @@ criterion = "0.3.3"
 name = "benchmark"
 harness = false
 
-[workspace]
