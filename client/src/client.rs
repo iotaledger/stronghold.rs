@@ -155,7 +155,10 @@ impl Client {
 
     pub fn resolve_location<L: AsRef<Location>>(&self, l: L) -> (VaultId, RecordId) {
         match l.as_ref() {
-            Location::Generic { vault_path, record_path } => {
+            Location::Generic {
+                vault_path,
+                record_path,
+            } => {
                 let vid = self.derive_vault_id(vault_path);
                 let rid = RecordId::load_from_path(vid.as_ref(), record_path).expect(line_error!(""));
                 (vid, rid)

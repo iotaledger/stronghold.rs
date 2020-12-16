@@ -3,7 +3,7 @@
 
 use riker::actors::*;
 
-use std::{fmt::Debug, path::PathBuf, convert::TryFrom};
+use std::{convert::TryFrom, fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, RecordHint, RecordId};
 
@@ -335,7 +335,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 match self.keystore.get_key(seed_vault_id) {
                     Some(seed_key) => {
-                        let plain = self.bucket.read_data(seed_key.clone(), seed_record_id);
+                        let plain = self.bucket.read_data(seed_key, seed_record_id);
                         let dk = hd::Seed::from_bytes(&plain).derive(&chain).expect(line_error!());
 
                         let dk_key = self.keystore.create_key(key_vault_id);
@@ -343,13 +343,15 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         self.bucket.write_payload(dk_key, krid, dk.into(), hint);
 
                         client.try_tell(
-                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Derive {
-                                status: StatusMessage::Ok,
-                            })),
+                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                ProcResult::SLIP10Derive {
+                                    status: StatusMessage::Ok,
+                                },
+                            )),
                             sender,
                         );
                     }
-                    _ => todo!("return error message")
+                    _ => todo!("return error message"),
                 }
             }
             InternalMsg::SLIP10DeriveFromKey {
@@ -365,7 +367,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 match self.keystore.get_key(parent_vault_id) {
                     Some(parent_key) => {
-                        let parent = self.bucket.read_data(parent_key.clone(), parent_record_id);
+                        let parent = self.bucket.read_data(parent_key, parent_record_id);
                         let parent = hd::Key::try_from(parent.as_slice()).expect(line_error!());
                         let dk = parent.derive(&chain).expect(line_error!());
 
@@ -374,13 +376,15 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         self.bucket.write_payload(child_key, krid, dk.into(), hint);
 
                         client.try_tell(
-                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Derive {
-                                status: StatusMessage::Ok,
-                            })),
+                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                ProcResult::SLIP10Derive {
+                                    status: StatusMessage::Ok,
+                                },
+                            )),
                             sender,
                         );
                     }
-                    _ => todo!("return error message")
+                    _ => todo!("return error message"),
                 }
             }
             InternalMsg::BIP39Generate {
@@ -395,7 +399,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let mnemonic = crypto::bip39::wordlist::encode(
                     &entropy,
                     crypto::bip39::wordlist::ENGLISH, // TODO: make this user configurable
-                ).expect(line_error!());
+                )
+                .expect(line_error!());
 
                 let mut seed = [0u8; 64];
                 crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
@@ -442,10 +447,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     sender,
                 );
             }
-            InternalMsg::Ed25519PublicKey {
-                vault_id,
-                record_id,
-            } => {
+            InternalMsg::Ed25519PublicKey { vault_id, record_id } => {
                 let key = match self.keystore.get_key(vault_id) {
                     Some(key) => key,
                     None => todo!("return error message"),
@@ -464,7 +466,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519PublicKey {
-                        result: ResultMessage::Ok(pk.to_compressed_bytes())
+                        result: ResultMessage::Ok(pk.to_compressed_bytes()),
                     })),
                     sender,
                 );
@@ -492,7 +494,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign {
-                        result: ResultMessage::Ok(sig.to_bytes())
+                        result: ResultMessage::Ok(sig.to_bytes()),
                     })),
                     sender,
                 );

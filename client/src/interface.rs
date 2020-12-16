@@ -9,7 +9,7 @@ use engine::vault::RecordHint;
 
 use crate::{
     actors::{InternalActor, InternalMsg, Procedure, SHRequest, SHResults},
-    client::{Client, ClientMsg, Location},
+    client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
     utils::{ask, index_of_unchecked, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
@@ -261,12 +261,17 @@ impl Stronghold {
         }
     }
 
-    pub async fn list_hints_and_ids<V: Into<Vec<u8>>>(&self, vault_path: V) -> (Vec<(usize, RecordHint)>, StatusMessage) {
+    pub async fn list_hints_and_ids<V: Into<Vec<u8>>>(
+        &self,
+        vault_path: V,
+    ) -> (Vec<(usize, RecordHint)>, StatusMessage) {
         let idx = self.current_target;
 
         let client = &self.actors[idx];
 
-        if let SHResults::ReturnList(ids, status) = ask(&self.system, client, SHRequest::ListIds(vault_path.into())).await {
+        if let SHResults::ReturnList(ids, status) =
+            ask(&self.system, client, SHRequest::ListIds(vault_path.into())).await
+        {
             (ids, status)
         } else {
             (
@@ -391,7 +396,7 @@ mod tests {
 
     use super::*;
 
-    use crate::{actors::SLIP10DeriveInput, utils::Chain};
+    use crate::{actors::SLIP10DeriveInput, client::Location, utils::Chain};
 
     #[test]
     fn test_stronghold() {
