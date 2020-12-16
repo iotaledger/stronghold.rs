@@ -45,13 +45,12 @@ impl Snapshot {
     }
 
     /// Reads the data from the specified `&PathBuf` when given a `&str` password.  Returns a new `Snapshot`.
-    pub fn read_from_snapshot(path: &Path, key: Key) -> Self {
-        let state = read_from(path, &key, &[])
-            .expect("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.");
+    pub fn read_from_snapshot(path: &Path, key: Key) -> crate::Result<Self> {
+        let state = read_from(path, &key, &[])?;
 
         let data = SnapshotData::deserialize(state);
 
-        Self::new(Some(data))
+        Ok(Self::new(Some(data)))
     }
 
     /// Writes the data to the specified `&PathBuf` when given a `&str` password creating a new snapshot file.

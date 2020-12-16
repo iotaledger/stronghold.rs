@@ -8,7 +8,7 @@ use std::{fmt::Debug, path::PathBuf};
 use engine::snapshot;
 
 use crate::{
-    actors::{InternalMsg, InternalResults},
+    actors::{InternalMsg, InternalResults, SHResults},
     client::ClientMsg,
     line_error,
     snapshot::{Snapshot, SnapshotData},
@@ -68,21 +68,34 @@ impl Receive<SMsg> for Snapshot {
                 );
             }
             SMsg::ReadSnapshot(key, name, path, cid) => {
+                let internal = ctx.select(&format!("/user/internal-{}/", cid)).expect(line_error!());
                 let path = if let Some(p) = path {
                     p
                 } else {
                     Snapshot::get_snapshot_path(name)
                 };
 
-                let snapshot = Snapshot::read_from_snapshot(&path, key);
+                match Snapshot::read_from_snapshot(&path, key) {
+                    Ok(snapshot) => {
+                        let data: SnapshotData = snapshot.get_state();
+                        let cache: Vec<u8> = data.get_cache();
+                        let store: Vec<u8> = data.get_store();
 
-                let internal = ctx.select(&format!("/user/internal-{}/", cid)).expect(line_error!());
-
-                let data: SnapshotData = snapshot.get_state();
-                let cache: Vec<u8> = data.get_cache();
-                let store: Vec<u8> = data.get_store();
-
-                internal.try_tell(InternalMsg::ReloadData(cache, store, StatusMessage::Ok), sender);
+                        internal.try_tell(InternalMsg::ReloadData(cache, store, StatusMessage::Ok), sender);
+                    }
+                    Err(e) => {
+                        sender
+                            .as_ref()
+                            .expect(line_error!())
+                            .try_tell(
+                                SHResults::ReturnReadSnap(StatusMessage::Error(
+                                    format!("{}, Unable to read snapshot. Please try another password.", e).into(),
+                                )),
+                                None,
+                            )
+                            .expect(line_error!());
+                    }
+                };
             }
         }
     }

@@ -24,7 +24,7 @@ pub struct Stronghold {
 
     actors: Vec<ActorRef<ClientMsg>>,
 
-    derive_data: HashMap<Vec<u8>, ClientId>,
+    derive_data: HashMap<Vec<u8>, Vec<u8>>,
 
     // current index of the client.
     current_target: usize,
@@ -33,14 +33,13 @@ pub struct Stronghold {
 impl Stronghold {
     /// Initializes a new instance of the system.  Sets up the first client actor.
     pub fn init_stronghold_system(system: ActorSystem, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> Self {
-        let random = ClientId::random::<Provider>().expect(line_error!());
-        let client_id = ClientId::load_from_path(&random.as_ref(), &client_path.clone()).expect(line_error!());
+        let client_id = ClientId::load_from_path(&client_path.clone(), &client_path.clone()).expect(line_error!());
         let id_str: String = client_id.into();
         let client_ids = vec![client_id];
 
         let mut derive_data = HashMap::new();
 
-        derive_data.insert(client_path, random);
+        derive_data.insert(client_path.clone(), client_path);
 
         let client = system
             .actor_of_args::<Client, _>(&id_str, client_id)
@@ -66,8 +65,7 @@ impl Stronghold {
     /// Starts actor model and sets current_target actor.  Can be used to add another stronghold actor to the system if
     /// called a 2nd time.
     pub fn spawn_stronghold_actor(&mut self, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> StatusMessage {
-        let random = ClientId::random::<Provider>().expect(line_error!());
-        let client_id = ClientId::load_from_path(&random.as_ref(), &client_path).expect(line_error!());
+        let client_id = ClientId::load_from_path(&client_path.clone(), &client_path.clone()).expect(line_error!());
         let id_str: String = client_id.into();
         let counter = self.actors.len();
 
@@ -84,7 +82,7 @@ impl Stronghold {
 
             self.actors.push(client);
             self.client_ids.push(client_id);
-            self.derive_data.insert(client_path, random);
+            self.derive_data.insert(client_path.clone(), client_path);
             self.current_target = counter;
         }
 
@@ -295,7 +293,8 @@ impl Stronghold {
         name: Option<String>,
         path: Option<PathBuf>,
     ) -> StatusMessage {
-        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+        let data = self.derive_data.get(&client_path).expect(line_error!());
+        let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
 
         let idx = self.client_ids.iter().position(|id| id == &client_id);
         if let Some(idx) = idx {
@@ -325,7 +324,8 @@ impl Stronghold {
         path: Option<PathBuf>,
         _duration: Option<Duration>,
     ) -> StatusMessage {
-        let client_id = ClientId::load_from_path(&keydata, &client_path).expect(line_error!());
+        let data = self.derive_data.get(&client_path).expect(line_error!());
+        let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
 
         let idx = self.client_ids.iter().position(|id| id == &client_id);
         if let Some(idx) = idx {
@@ -406,7 +406,7 @@ mod tests {
         futures::executor::block_on(stronghold.write_data(
             b"test".to_vec(),
             vault_path.clone(),
-            Some(0),
+            None,
             RecordHint::new(b"first hint").expect(line_error!()),
             vec![],
         ));
@@ -437,6 +437,10 @@ mod tests {
         let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), None));
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
+
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(1)));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
 
@@ -485,7 +489,8 @@ mod tests {
 
         println!("{:?}", ids);
 
-        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), None));
+        // Can't sync head anymore if record was revoked.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(vault_path.clone(), Some(2)));
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 

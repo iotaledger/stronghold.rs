@@ -63,7 +63,7 @@ impl Client {
             heads.push(rid);
         }
 
-        if self.counters.len() <= *idx {
+        if self.counters.len() == *idx {
             self.counters.push(0);
         }
 
@@ -82,7 +82,14 @@ impl Client {
         if let Some(idx) = idx {
             self.heads[idx]
         } else {
-            self.derive_record_id_next(vault_path)
+            let ctr = self.get_counter(vid);
+            let path = if ctr == 0 {
+                format!("{:?}{}", vault_path, "first_record")
+            } else {
+                format!("{:?}{}", vault_path, ctr)
+            };
+
+            RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
         }
     }
 
@@ -99,12 +106,9 @@ impl Client {
         let iter = vids.iter().zip(rids.iter());
 
         for (v, rs) in iter {
-            let mut counter = 0;
             rs.iter().for_each(|r| {
                 self.add_vault_insert_record(*v, *r);
-                counter += 1;
             });
-            self.counters.push(counter);
         }
     }
 
@@ -115,10 +119,24 @@ impl Client {
     }
 
     pub fn derive_record_id(&self, vault_path: Vec<u8>, ctr: Option<usize>) -> RecordId {
+        let vid = self.derive_vault_id(vault_path.clone());
         if let Some(ctr) = ctr {
-            self.derive_record_id_from_ctr(vault_path, ctr)
+            let path = if ctr == 0 {
+                format!("{:?}{}", vault_path, "first_record")
+            } else {
+                format!("{:?}{}", vault_path, ctr)
+            };
+
+            RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
         } else {
-            self.derive_record_id_next(vault_path)
+            let ctr = self.get_counter(vid);
+            let path = if ctr == 0 {
+                format!("{:?}{}", vault_path, "first_record")
+            } else {
+                format!("{:?}{}", vault_path, ctr)
+            };
+
+            RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
         }
     }
 
@@ -139,24 +157,14 @@ impl Client {
         self.vaults.contains_key(&vid)
     }
 
-    pub fn get_counter_index(&self, vid: VaultId) -> usize {
-        let opt = self.get_counter(vid);
-
-        if let Some(ctr) = opt {
-            ctr
-        } else {
-            0
-        }
-    }
-
     pub fn get_index_from_record_id(&self, vault_path: Vec<u8>, record_id: RecordId) -> usize {
         let mut ctr = 0;
         let vault_id = self.derive_vault_id(vault_path.clone());
 
-        let vctr = self.get_counter_index(vault_id);
+        let vctr = self.get_counter(vault_id);
 
-        while ctr < vctr {
-            let rid = self.derive_record_id_from_ctr(vault_path.clone(), ctr);
+        while ctr <= vctr {
+            let rid = self.derive_record_id(vault_path.clone(), Some(ctr));
             if record_id == rid {
                 break;
             }
@@ -166,30 +174,30 @@ impl Client {
         ctr
     }
 
-    fn derive_record_id_from_ctr(&self, vault_path: Vec<u8>, ctr: usize) -> RecordId {
-        let vault_id = self.derive_vault_id(vault_path.clone());
+    // fn derive_record_id_from_ctr(&self, vault_path: Vec<u8>, ctr: usize) -> RecordId {
+    //     let vault_id = self.derive_vault_id(vault_path.clone());
 
-        let vctr = self.get_counter_index(vault_id);
+    //     let vctr = self.get_counter_index(vault_id);
 
-        if ctr > vctr {
-            let path_counter = format!("{:?}{}", vault_path, vctr - 1);
-            RecordId::load_from_path(&path_counter.as_bytes(), &vec![(vctr - 1) as u8]).expect(line_error!(""))
-        } else {
-            let path_counter = format!("{:?}{}", vault_path, ctr);
+    //     if ctr >= vctr {
+    //         let path_counter = format!("{:?}{}", vault_path, vctr);
+    //         RecordId::load_from_path(&path_counter.as_bytes(), &path_counter.as_bytes()).expect(line_error!(""))
+    //     } else {
+    //         let path_counter = format!("{:?}{}", vault_path, ctr);
 
-            RecordId::load_from_path(&path_counter.as_bytes(), &vec![ctr as u8]).expect(line_error!(""))
-        }
-    }
+    //         RecordId::load_from_path(&path_counter.as_bytes(), &path_counter.as_bytes()).expect(line_error!(""))
+    //     }
+    // }
 
-    fn derive_record_id_next(&self, vault_path: Vec<u8>) -> RecordId {
-        let vault_id = self.derive_vault_id(vault_path.clone());
+    // fn derive_record_id_next(&self, vault_path: Vec<u8>) -> RecordId {
+    //     let vault_id = self.derive_vault_id(vault_path.clone());
 
-        let vctr = self.get_counter_index(vault_id);
+    //     let vctr = self.get_counter_index(vault_id);
 
-        let path_counter = format!("{:?}{}", vault_path, vctr);
+    //     let path_counter = format!("{:?}{}", vault_path, vctr);
 
-        RecordId::load_from_path(&path_counter.as_bytes(), &vec![vctr as u8]).expect(line_error!(""))
-    }
+    //     RecordId::load_from_path(&path_counter.as_bytes(), &path_counter.as_bytes()).expect(line_error!(""))
+    // }
 
     fn get_index(&self, vid: VaultId) -> Option<usize> {
         let idx = self.vaults.get(&vid);
@@ -201,13 +209,10 @@ impl Client {
         }
     }
 
-    fn get_counter(&self, vid: VaultId) -> Option<usize> {
-        let idx = self.get_index(vid);
-
-        if let Some(idx) = idx {
-            Some(self.counters[idx])
-        } else {
-            None
+    pub fn get_counter(&self, vid: VaultId) -> usize {
+        match self.get_index(vid) {
+            Some(idx) => self.counters[idx],
+            None => 0,
         }
     }
 }
@@ -319,8 +324,8 @@ mod test {
         let mut ctr = 0;
         let mut ctr2 = 0;
 
-        let rid = client.derive_record_id_from_ctr(vault_path.clone(), ctr);
-        let rid2 = client.derive_record_id_from_ctr(vault_path.clone(), ctr2);
+        let rid = client.derive_record_id(vault_path.clone(), Some(ctr));
+        let rid2 = client.derive_record_id(vault_path.clone(), Some(ctr2));
 
         client.add_vault_insert_record(vid, rid);
         client.add_vault_insert_record(vid2, rid2);
@@ -328,19 +333,19 @@ mod test {
         ctr += 1;
         ctr2 += 1;
 
-        let rid = client.derive_record_id_from_ctr(vault_path.clone(), ctr);
-        let rid2 = client.derive_record_id_from_ctr(vault_path.clone(), ctr2);
+        let rid = client.derive_record_id(vault_path.clone(), Some(ctr));
+        let rid2 = client.derive_record_id(vault_path.clone(), Some(ctr2));
 
         client.add_vault_insert_record(vid, rid);
         client.add_vault_insert_record(vid2, rid2);
 
         ctr += 1;
 
-        let rid = client.derive_record_id_from_ctr(vault_path.clone(), ctr);
+        let rid = client.derive_record_id(vault_path.clone(), Some(ctr));
 
         client.add_vault_insert_record(vid, rid);
 
-        let test_ctr = client.get_counter_index(vid);
+        let test_ctr = client.get_counter(vid);
         let test_rid = client.derive_record_id(vault_path, Some(test_ctr - 1));
 
         assert_eq!(test_rid, rid);
@@ -374,7 +379,7 @@ mod test {
 
         client.add_vault_insert_record(vid, rid);
 
-        let test_ctr = client.get_counter_index(vid);
+        let test_ctr = client.get_counter(vid);
         let test_rid = client.derive_record_id(vault_path, None);
 
         assert!(client.record_exists_in_vault(vid, test_rid));

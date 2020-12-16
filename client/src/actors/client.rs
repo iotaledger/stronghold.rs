@@ -173,7 +173,7 @@ impl Receive<SHRequest> for Client {
                 let rid = if let Some(idx) = idx {
                     self.derive_record_id(vpath, Some(idx))
                 } else {
-                    let ctr = self.get_counter_index(vid);
+                    let ctr = self.get_counter(vid);
                     self.derive_record_id(vpath, Some(ctr - 1))
                 };
 
@@ -203,7 +203,7 @@ impl Receive<SHRequest> for Client {
                 let rid = if let Some(idx) = idx {
                     self.derive_record_id(vpath, Some(idx))
                 } else {
-                    let ctr = self.get_counter_index(vid);
+                    let ctr = self.get_counter(vid);
 
                     self.derive_record_id(vpath, Some(ctr - 1))
                 };
@@ -303,7 +303,7 @@ impl Receive<SHRequest> for Client {
                         if self.vault_exist(vid) {
                             let seed_rid = self.derive_record_id(seed_vault_path.clone(), Some(0));
 
-                            let ctr = self.get_counter_index(vid);
+                            let ctr = self.get_counter(vid);
 
                             let key_rid = self.derive_record_id(seed_vault_path.clone(), Some(ctr));
 
@@ -377,7 +377,7 @@ impl Receive<InternalResults> for Client {
             InternalResults::ReturnInitRecord(vid, rid, status) => {
                 self.add_vault_insert_record(vid, rid);
 
-                let ctr = self.get_counter_index(vid);
+                let ctr = self.get_counter(vid);
 
                 sender
                     .as_ref()

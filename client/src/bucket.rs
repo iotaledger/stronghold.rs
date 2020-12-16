@@ -174,8 +174,8 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
             cache.insert(k, v);
         });
 
-        self.cache = cache;
         self.vaults = vaults;
+        self.cache = cache;
 
         (keystore_keys, rids)
     }
@@ -190,21 +190,6 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
 
         bincode::serialize(&cache).expect(line_error!())
     }
-
-    // pub fn reseed_vault(&mut self, key: Key<P>, new_rids: Vec<RecordId>) {
-    //     let mut buffer: Vec<(Vec<u8>, RecordHint)> = vec![];
-    //     let old_rids = self.list_ids(key.clone());
-
-    //     old_rids.into_iter().for_each(|(rid, hint)| {
-    //         buffer.push((self.read_data(key.clone(), rid), hint));
-    //     });
-
-    //     new_rids.into_iter().enumerate().for_each(|(idx, rid)| {
-    //         let (data, hint) = &buffer[idx];
-
-    //         self.write_payload(key.clone(), rid, data.to_vec(), *hint);
-    //     });
-    // }
 
     pub fn clear_cache(&mut self) {
         self.vaults.clear();

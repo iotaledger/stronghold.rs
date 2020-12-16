@@ -25,12 +25,17 @@ mod key_store;
 mod snapshot;
 mod utils;
 
+use crate::utils::{ClientId, VaultId};
+
 pub use crate::{
+    interface::Stronghold,
     internals::Provider,
-    utils::{ClientId, VaultId},
+    utils::{StatusMessage, StrongholdFlags, VaultFlags},
 };
 
-pub use engine::vault::{RecordHint, RecordId};
+pub use engine::snapshot::{home_dir, naive_kdf, snapshot_dir, Key};
+
+pub use engine::vault::RecordHint;
 
 #[macro_export]
 macro_rules! line_error {
@@ -50,4 +55,6 @@ pub enum Error {
     IDError,
     #[error("Vault Error: {0}")]
     VaultError(#[from] engine::vault::Error),
+    #[error("Snapshot Error: {0}")]
+    SnapshotError(#[from] engine::snapshot::Error),
 }
