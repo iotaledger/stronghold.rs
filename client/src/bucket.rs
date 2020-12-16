@@ -65,16 +65,8 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
 
             let res = reader.prepare_read(&id).expect(line_error!());
 
-            match res {
-                PreparedRead::CacheHit(mut v) => {
-                    buffer.append(&mut v);
-                }
-                PreparedRead::CacheMiss(v) => {
-                    println!("{:?}", v.id());
-                }
-                _ => {
-                    println!("no data");
-                }
+            if let PreparedRead::CacheHit(mut v) = res {
+                buffer.append(&mut v);
             }
 
             reads
