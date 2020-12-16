@@ -1,3 +1,6 @@
+// Copyright 2020 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use iota_stronghold::{RecordHint, Stronghold};
