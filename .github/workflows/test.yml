@@ -1,4 +1,4 @@
-name: Build and run tests
+name: Test
 
 on:
   push:
@@ -68,12 +68,6 @@ jobs:
         # Restore from outdated cache for speed
         restore-keys: |
           ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.toml') }}
-
-    - name: Build ${{ matrix.project }}
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --manifest-path=${{ matrix.project }}/Cargo.toml --release
 
     - name: Run tests for ${{ matrix.project }}
       uses: actions-rs/cargo@v1
