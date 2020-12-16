@@ -391,8 +391,7 @@ mod tests {
 
     use super::*;
 
-    use crate::actors::{SLIP10DeriveInput};
-    use crate::utils::Chain;
+    use crate::{actors::SLIP10DeriveInput, utils::Chain};
 
     #[test]
     fn test_stronghold() {

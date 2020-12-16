@@ -112,14 +112,15 @@ impl Client {
         }
     }
 
-    pub fn derive_vault_id(&self, path: Vec<u8>) -> VaultId {
+    pub fn derive_vault_id<P: AsRef<Vec<u8>>>(&self, path: P) -> VaultId {
         let data: Vec<u8> = self.client_id.into();
 
-        VaultId::load_from_path(&data, &path).expect(line_error!(""))
+        VaultId::load_from_path(&data, &path.as_ref()).expect(line_error!(""))
     }
 
-    pub fn derive_record_id(&self, vault_path: Vec<u8>, ctr: Option<usize>) -> RecordId {
-        let vid = self.derive_vault_id(vault_path.clone());
+    pub fn derive_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, ctr: Option<usize>) -> RecordId {
+        let vault_path = vault_path.as_ref();
+        let vid = self.derive_vault_id(vault_path);
         if let Some(ctr) = ctr {
             let path = if ctr == 0 {
                 format!("{:?}{}", vault_path, "first_record")
@@ -157,14 +158,15 @@ impl Client {
         self.vaults.contains_key(&vid)
     }
 
-    pub fn get_index_from_record_id(&self, vault_path: Vec<u8>, record_id: RecordId) -> usize {
+    pub fn get_index_from_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, record_id: RecordId) -> usize {
         let mut ctr = 0;
-        let vault_id = self.derive_vault_id(vault_path.clone());
+        let vault_path = vault_path.as_ref();
+        let vault_id = self.derive_vault_id(vault_path);
 
         let vctr = self.get_counter(vault_id);
 
         while ctr <= vctr {
-            let rid = self.derive_record_id(vault_path.clone(), Some(ctr));
+            let rid = self.derive_record_id(vault_path, Some(ctr));
             if record_id == rid {
                 break;
             }
