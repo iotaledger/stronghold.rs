@@ -1,5 +1,6 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
 #![allow(unused_imports)]
 
 use iota_stronghold::{home_dir, naive_kdf, RecordHint, StatusMessage, Stronghold, StrongholdFlags, VaultFlags};
@@ -112,12 +113,7 @@ fn list_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<
             let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
             if snapshot.exists() {
-                block_on(stronghold.read_snapshot(
-                    client_path,
-                    key.to_vec(),
-                    Some("commandline".to_string()),
-                    None,
-                ));
+                block_on(stronghold.read_snapshot(client_path, key.to_vec(), Some("commandline".to_string()), None));
 
                 let (list, status) = block_on(stronghold.list_hints_and_ids(b"testvault".to_vec()));
 
@@ -213,12 +209,7 @@ fn garbage_collect_vault_command(matches: &ArgMatches, stronghold: &Stronghold, 
             let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
             if snapshot.exists() {
-                block_on(stronghold.read_snapshot(
-                    client_path,
-                    key.to_vec(),
-                    Some("commandline".to_string()),
-                    None,
-                ));
+                block_on(stronghold.read_snapshot(client_path, key.to_vec(), Some("commandline".to_string()), None));
 
                 let status = block_on(stronghold.garbage_collect(b"testvault".to_vec()));
 
