@@ -377,8 +377,9 @@ mod test {
             {
                 self.has_received_response = true;
             } else if let CommunicationEvent::ConnectPeerResult { addr: _, result } = msg {
+                let peer_id = result.expect("Panic due to no network connection");
                 let request = CommunicationEvent::<Request, Response>::Message(P2PReqResEvent::Req {
-                    peer_id: result.unwrap(),
+                    peer_id,
                     request_id: None,
                     request: Request::Ping,
                 });
