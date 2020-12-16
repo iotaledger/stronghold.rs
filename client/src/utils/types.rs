@@ -6,7 +6,7 @@ use zeroize::Zeroize;
 
 pub type StatusMessage = ResultMessage<()>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResultMessage<T> {
     Ok(T),
     Error(String),
