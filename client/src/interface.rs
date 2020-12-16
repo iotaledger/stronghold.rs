@@ -385,6 +385,8 @@ impl Stronghold {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::all)]
+
     use riker::actors::*;
 
     use super::*;
