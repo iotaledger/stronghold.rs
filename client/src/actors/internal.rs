@@ -137,7 +137,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnCreateVault(StatusMessage::Ok)),
+                    ClientMsg::InternalResults(InternalResults::ReturnCreateVault(StatusMessage::OK)),
                     sender,
                 );
             }
@@ -151,7 +151,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnReadData(plain, StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnReadData(plain, StatusMessage::OK)),
                         sender,
                     );
                 } else {
@@ -174,7 +174,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::OK)),
                         sender,
                     );
                 } else {
@@ -195,7 +195,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnInitRecord(vid, rid, StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnInitRecord(vid, rid, StatusMessage::OK)),
                         sender,
                     );
                 }
@@ -209,7 +209,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnRevoke(StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnRevoke(StatusMessage::OK)),
                         sender,
                     );
                 } else {
@@ -230,7 +230,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnGarbage(StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnGarbage(StatusMessage::OK)),
                         sender,
                     );
                 } else {
@@ -251,7 +251,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnList(vault_path, ids, StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnList(vault_path, ids, StatusMessage::OK)),
                         sender,
                     );
                 } else {
@@ -317,7 +317,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Generate {
-                        status: StatusMessage::Ok,
+                        status: StatusMessage::OK,
                     })),
                     sender,
                 );
@@ -345,7 +345,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
                                 ProcResult::SLIP10Derive {
-                                    status: StatusMessage::Ok,
+                                    status: StatusMessage::OK,
                                 },
                             )),
                             sender,
@@ -378,7 +378,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
                                 ProcResult::SLIP10Derive {
-                                    status: StatusMessage::Ok,
+                                    status: StatusMessage::OK,
                                 },
                             )),
                             sender,
@@ -416,7 +416,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Generate {
-                        status: StatusMessage::Ok,
+                        status: StatusMessage::OK,
                     })),
                     sender,
                 );
@@ -442,7 +442,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Recover {
-                        status: StatusMessage::Ok,
+                        status: StatusMessage::OK,
                     })),
                     sender,
                 );

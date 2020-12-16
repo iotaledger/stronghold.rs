@@ -86,7 +86,7 @@ impl Stronghold {
             self.current_target = counter;
         }
 
-        StatusMessage::Ok
+        StatusMessage::OK
     }
 
     pub async fn write_data(
@@ -183,7 +183,7 @@ impl Stronghold {
             }
         };
 
-        StatusMessage::Ok
+        StatusMessage::OK
     }
 
     pub async fn read_data(
@@ -288,7 +288,7 @@ impl Stronghold {
         let request: SHResults = ask(&self.system, client, SHRequest::ControlRequest(control_request)).await;
 
         println!("{:?}", request);
-        StatusMessage::Ok
+        StatusMessage::OK
     }
 
     pub async fn read_snapshot(
@@ -372,7 +372,7 @@ impl Stronghold {
                     .expect(line_error!());
                 internal.try_tell(InternalMsg::KillInternal, None);
 
-                StatusMessage::Ok
+                StatusMessage::OK
             } else {
                 // clear data from actor.
                 unimplemented!();

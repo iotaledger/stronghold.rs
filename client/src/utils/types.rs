@@ -4,16 +4,16 @@
 use serde::{de, ser, Deserialize, Serialize};
 use zeroize::Zeroize;
 
-#[derive(Debug, Clone)]
-pub enum StatusMessage {
-    Ok,
-    Error(String),
-}
+pub type StatusMessage = ResultMessage<()>;
 
 #[derive(Debug, Clone)]
 pub enum ResultMessage<T> {
     Ok(T),
     Error(String),
+}
+
+impl ResultMessage<()> {
+    pub const OK: Self = ResultMessage::Ok(());
 }
 
 pub enum StrongholdFlags {

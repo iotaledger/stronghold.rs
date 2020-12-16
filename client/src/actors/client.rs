@@ -520,7 +520,7 @@ impl Receive<InternalResults> for Client {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnCreateVault(StatusMessage::Ok), None)
+                    .try_tell(SHResults::ReturnCreateVault(StatusMessage::OK), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnRevoke(status) => {
