@@ -1,5 +1,6 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+#![allow(unused_imports)]
 
 use iota_stronghold::{home_dir, naive_kdf, RecordHint, StatusMessage, Stronghold, StrongholdFlags, VaultFlags};
 
@@ -112,7 +113,7 @@ fn list_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<
 
             if snapshot.exists() {
                 block_on(stronghold.read_snapshot(
-                    client_path.clone(),
+                    client_path,
                     key.to_vec(),
                     Some("commandline".to_string()),
                     None,
@@ -145,7 +146,7 @@ fn read_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<
 
                 if snapshot.exists() {
                     block_on(stronghold.read_snapshot(
-                        client_path.clone(),
+                        client_path,
                         key.to_vec(),
                         Some("commandline".to_string()),
                         None,
@@ -180,7 +181,7 @@ fn revoke_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Ve
 
                 if snapshot.exists() {
                     block_on(stronghold.read_snapshot(
-                        client_path.clone(),
+                        client_path,
                         key.to_vec(),
                         Some("commandline".to_string()),
                         None,
@@ -213,7 +214,7 @@ fn garbage_collect_vault_command(matches: &ArgMatches, stronghold: &Stronghold, 
 
             if snapshot.exists() {
                 block_on(stronghold.read_snapshot(
-                    client_path.clone(),
+                    client_path,
                     key.to_vec(),
                     Some("commandline".to_string()),
                     None,
@@ -245,7 +246,7 @@ fn purge_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec
 
                 if snapshot.exists() {
                     block_on(stronghold.read_snapshot(
-                        client_path.clone(),
+                        client_path,
                         key.to_vec(),
                         Some("commandline".to_string()),
                         None,
@@ -278,5 +279,5 @@ fn main() {
     list_command(&matches, &stronghold, client_path.clone());
     revoke_command(&matches, &stronghold, client_path.clone());
     garbage_collect_vault_command(&matches, &stronghold, client_path.clone());
-    purge_command(&matches, &stronghold, client_path.clone());
+    purge_command(&matches, &stronghold, client_path);
 }

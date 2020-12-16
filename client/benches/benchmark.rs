@@ -11,9 +11,7 @@ use futures::executor::block_on;
 
 fn init_stronghold_system_write() -> Stronghold {
     let system = ActorSystem::new().unwrap();
-    let stronghold = Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![]);
-
-    stronghold
+    Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![])
 }
 
 fn bench_stronghold_write(c: &mut Criterion) {
