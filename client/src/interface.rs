@@ -8,7 +8,7 @@ use std::{collections::HashMap, path::PathBuf, time::Duration};
 use engine::vault::RecordHint;
 
 use crate::{
-    actors::{InternalActor, InternalMsg, Procedure, SHRequest, SHResults},
+    actors::{InternalActor, InternalMsg, ProcResult, Procedure, SHRequest, SHResults},
     client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
@@ -86,7 +86,7 @@ impl Stronghold {
             self.current_target = counter;
         }
 
-        StatusMessage::Ok
+        StatusMessage::OK
     }
 
     pub async fn write_data(
@@ -183,7 +183,7 @@ impl Stronghold {
             }
         };
 
-        StatusMessage::Ok
+        StatusMessage::OK
     }
 
     pub async fn read_data(
@@ -261,12 +261,17 @@ impl Stronghold {
         }
     }
 
-    pub async fn list_hints_and_ids(&self, vault_path: Vec<u8>) -> (Vec<(usize, RecordHint)>, StatusMessage) {
+    pub async fn list_hints_and_ids<V: Into<Vec<u8>>>(
+        &self,
+        vault_path: V,
+    ) -> (Vec<(usize, RecordHint)>, StatusMessage) {
         let idx = self.current_target;
 
         let client = &self.actors[idx];
 
-        if let SHResults::ReturnList(ids, status) = ask(&self.system, client, SHRequest::ListIds(vault_path)).await {
+        if let SHResults::ReturnList(ids, status) =
+            ask(&self.system, client, SHRequest::ListIds(vault_path.into())).await
+        {
             (ids, status)
         } else {
             (
@@ -276,14 +281,15 @@ impl Stronghold {
         }
     }
 
-    pub async fn runtime_exec(&self, control_request: Procedure) -> StatusMessage {
+    pub async fn runtime_exec(&self, control_request: Procedure) -> ProcResult {
         let idx = self.current_target;
 
         let client = &self.actors[idx];
-        let request: SHResults = ask(&self.system, client, SHRequest::ControlRequest(control_request)).await;
-
-        println!("{:?}", request);
-        StatusMessage::Ok
+        let shr = ask(&self.system, client, SHRequest::ControlRequest(control_request)).await;
+        match shr {
+            SHResults::ReturnControlRequest(pr) => pr,
+            _ => todo!("return a proper error: unexpected result"),
+        }
     }
 
     pub async fn read_snapshot(
@@ -367,7 +373,7 @@ impl Stronghold {
                     .expect(line_error!());
                 internal.try_tell(InternalMsg::KillInternal, None);
 
-                StatusMessage::Ok
+                StatusMessage::OK
             } else {
                 // clear data from actor.
                 unimplemented!();
@@ -391,15 +397,21 @@ mod tests {
 
     use super::*;
 
-    use crate::utils::Chain;
+    use crate::{
+        actors::SLIP10DeriveInput,
+        client::Location,
+        utils::{hd, ResultMessage},
+    };
 
     #[test]
     fn test_stronghold() {
         let sys = ActorSystem::new().unwrap();
         let vault_path = b"path".to_vec();
         let client_path = b"test".to_vec();
-        let sip_path = b"sip_10".to_vec();
-        let bip_path = b"bip_32".to_vec();
+
+        let slip10_seed = Location::generic("slip10", "seed");
+        let slip10_key = Location::generic("slip10", "key");
+        let bip39_seed = Location::generic("bip39", "seed");
         let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
         let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
@@ -445,7 +457,6 @@ mod tests {
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
-
         println!("{:?}", ids);
 
         futures::executor::block_on(stronghold.delete_data(vault_path.clone(), 0, false));
@@ -455,23 +466,53 @@ mod tests {
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
-        futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
-            vault_path: sip_path.clone(),
+        match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
+            output: slip10_seed.clone(),
             hint: RecordHint::new(b"test_seed").expect(line_error!()),
-        }));
+        })) {
+            ProcResult::SLIP10Generate(StatusMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
 
-        futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Step {
-            chain: Chain::from_u32_hardened(vec![]),
-            seed_vault_path: sip_path.clone(),
+        match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
+            chain: hd::Chain::from_u32_hardened(vec![]),
+            input: SLIP10DeriveInput::Seed(slip10_seed.clone()),
+            output: slip10_key.clone(),
             hint: RecordHint::new(b"test").expect(line_error!()),
-        }));
+        })) {
+            ProcResult::SLIP10Derive(StatusMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
 
-        futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP32 {
-            vault_path: bip_path.clone(),
+        let pk = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
+            key: slip10_key.clone(),
+        })) {
+            ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) => {
+                crypto::ed25519::PublicKey::from_compressed_bytes(pk).expect(line_error!())
+            }
+            r => panic!("unexpected result: {:?}", r),
+        };
+
+        let msg = b"foobar";
+        let sig = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
+            key: slip10_key.clone(),
+            msg: msg.to_vec(),
+        })) {
+            ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => crypto::ed25519::Signature::from_bytes(sig),
+            r => panic!("unexpected result: {:?}", r),
+        };
+
+        assert!(crypto::ed25519::verify(&pk, &sig, msg));
+
+        match futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Recover {
+            output: bip39_seed.clone(),
             hint: RecordHint::new(b"bip_seed").expect(line_error!()),
             mnemonic: "Some mnemonic value".into(),
-            passphrase: "a passphrase".into(),
-        }));
+            passphrase: Some("a passphrase".into()),
+        })) {
+            ProcResult::BIP39Recover(StatusMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
 
         futures::executor::block_on(stronghold.garbage_collect(vault_path.clone()));
 
@@ -480,15 +521,12 @@ mod tests {
         futures::executor::block_on(stronghold.read_snapshot(client_path.clone(), key_data, None, None));
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
-
         println!("{:?}", ids);
 
-        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(bip_path));
-
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(slip10_seed.vault_path()));
         println!("{:?}", ids);
 
-        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(sip_path));
-
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(bip39_seed.vault_path()));
         println!("{:?}", ids);
 
         // Can't sync head anymore if record was revoked.

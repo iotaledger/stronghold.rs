@@ -17,12 +17,12 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
         Self { store: HashMap::new() }
     }
 
-    /// gets the key from the `KeyStore` by removing it.  Returns an `Option<Key<P>>`
+    /// Gets the key from the `KeyStore` and removes it.  Returns an `Option<Key<P>>`
     pub fn get_key(&mut self, id: VaultId) -> Option<Key<P>> {
         self.store.remove(&id)
     }
 
-    /// Creates a new key for the `VaultId` and returns it.
+    /// Returns an existing key for the `id` or creates one.
     pub fn create_key(&mut self, id: VaultId) -> Key<P> {
         let key = self
             .store

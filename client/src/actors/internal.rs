@@ -3,7 +3,7 @@
 
 use riker::actors::*;
 
-use std::{fmt::Debug, path::PathBuf};
+use std::{convert::TryFrom, fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, RecordHint, RecordId};
 
@@ -16,7 +16,7 @@ use crate::{
     internals::Provider,
     key_store::KeyStore,
     line_error,
-    utils::{Chain, Seed, StatusMessage, VaultId},
+    utils::{hd, ResultMessage, StatusMessage, VaultId},
     ClientId,
 };
 
@@ -47,19 +47,43 @@ pub enum InternalMsg {
         record_id: RecordId,
         hint: RecordHint,
     },
-    SLIP10Step {
-        chain: Chain,
+    SLIP10DeriveFromSeed {
+        chain: hd::Chain,
         seed_vault_id: VaultId,
         seed_record_id: RecordId,
+        key_vault_id: VaultId,
         key_record_id: RecordId,
         hint: RecordHint,
     },
-    BIP32 {
+    SLIP10DeriveFromKey {
+        chain: hd::Chain,
+        parent_vault_id: VaultId,
+        parent_record_id: RecordId,
+        child_vault_id: VaultId,
+        child_record_id: RecordId,
+        hint: RecordHint,
+    },
+    BIP39Generate {
+        passphrase: String,
+        vault_id: VaultId,
+        record_id: RecordId,
+        hint: RecordHint,
+    },
+    BIP39Recover {
         mnemonic: String,
         passphrase: String,
         vault_id: VaultId,
         record_id: RecordId,
         hint: RecordHint,
+    },
+    Ed25519PublicKey {
+        vault_id: VaultId,
+        record_id: RecordId,
+    },
+    Ed25519Sign {
+        vault_id: VaultId,
+        record_id: RecordId,
+        msg: Vec<u8>,
     },
 }
 
@@ -113,7 +137,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnCreateVault(StatusMessage::Ok)),
+                    ClientMsg::InternalResults(InternalResults::ReturnCreateVault(StatusMessage::OK)),
                     sender,
                 );
             }
@@ -127,7 +151,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnReadData(plain, StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnReadData(plain, StatusMessage::OK)),
                         sender,
                     );
                 } else {
@@ -150,7 +174,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::OK)),
                         sender,
                     );
                 } else {
@@ -171,7 +195,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnInitRecord(vid, rid, StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnInitRecord(vid, rid, StatusMessage::OK)),
                         sender,
                     );
                 }
@@ -185,7 +209,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnRevoke(StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnRevoke(StatusMessage::OK)),
                         sender,
                     );
                 } else {
@@ -206,7 +230,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnGarbage(StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnGarbage(StatusMessage::OK)),
                         sender,
                     );
                 } else {
@@ -227,7 +251,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnList(vault_path, ids, StatusMessage::Ok)),
+                        ClientMsg::InternalResults(InternalResults::ReturnList(vault_path, ids, StatusMessage::OK)),
                         sender,
                     );
                 } else {
@@ -271,6 +295,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 self.bucket.clear_cache();
                 self.keystore.clear_keys();
             }
+            InternalMsg::KillInternal => {
+                ctx.stop(ctx.myself());
+            }
             InternalMsg::SLIP10Generate {
                 vault_id,
                 record_id,
@@ -283,78 +310,194 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 self.bucket.create_and_init_vault(key.clone(), record_id);
 
-                let mut seed_entropy = [0u8; 64];
-                Provider::random_buf(&mut seed_entropy).expect(line_error!());
+                let mut seed = [0u8; 64];
+                crypto::rand::fill(&mut seed).expect(line_error!());
 
-                self.bucket.write_payload(key, record_id, seed_entropy.to_vec(), hint);
+                self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
 
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Generate {
-                        status: StatusMessage::Ok,
-                    })),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Generate(
+                        StatusMessage::OK,
+                    ))),
                     sender,
                 );
             }
-            InternalMsg::SLIP10Step {
+            InternalMsg::SLIP10DeriveFromSeed {
                 chain,
                 seed_vault_id,
                 seed_record_id,
+                key_vault_id,
                 key_record_id,
                 hint,
             } => {
                 let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
-                if let Some(key) = self.keystore.get_key(seed_vault_id) {
-                    let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                match self.keystore.get_key(seed_vault_id) {
+                    Some(seed_key) => {
+                        let plain = self.bucket.read_data(seed_key, seed_record_id);
+                        let dk = hd::Seed::from_bytes(&plain).derive(&chain).expect(line_error!());
 
-                    let plain = self.bucket.read_data(key.clone(), seed_record_id);
+                        let dk_key = self.keystore.create_key(key_vault_id);
+                        let krid = self.bucket.init_record(dk_key.clone(), key_record_id);
+                        self.bucket.write_payload(dk_key, krid, dk.into(), hint);
 
-                    let krid = self.bucket.init_record(key.clone(), key_record_id);
-
-                    let seed = Seed::from_bytes(&plain);
-
-                    let skey = seed.derive(&chain).expect(line_error!());
-
-                    self.bucket.write_payload(key.clone(), krid, skey.into(), hint);
-
-                    self.keystore.insert_key(seed_vault_id, key);
-
-                    client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Step {
-                            status: StatusMessage::Ok,
-                        })),
-                        sender,
-                    );
+                        client.try_tell(
+                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                ProcResult::SLIP10Derive(StatusMessage::OK),
+                            )),
+                            sender,
+                        );
+                    }
+                    _ => todo!("return error message"),
                 }
             }
-            InternalMsg::BIP32 {
+            InternalMsg::SLIP10DeriveFromKey {
+                chain,
+                parent_vault_id,
+                parent_record_id,
+                child_vault_id,
+                child_record_id,
+                hint,
+            } => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                match self.keystore.get_key(parent_vault_id) {
+                    Some(parent_key) => {
+                        let parent = self.bucket.read_data(parent_key, parent_record_id);
+                        let parent = hd::Key::try_from(parent.as_slice()).expect(line_error!());
+                        let dk = parent.derive(&chain).expect(line_error!());
+
+                        let child_key = self.keystore.create_key(child_vault_id);
+                        let krid = self.bucket.init_record(child_key.clone(), child_record_id);
+                        self.bucket.write_payload(child_key, krid, dk.into(), hint);
+
+                        client.try_tell(
+                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                ProcResult::SLIP10Derive(StatusMessage::OK),
+                            )),
+                            sender,
+                        );
+                    }
+                    _ => todo!("return error message"),
+                }
+            }
+            InternalMsg::BIP39Generate {
+                passphrase,
+                vault_id,
+                record_id,
+                hint,
+            } => {
+                let mut entropy = [0u8; 32];
+                crypto::rand::fill(&mut entropy).expect(line_error!());
+
+                let mnemonic = crypto::bip39::wordlist::encode(
+                    &entropy,
+                    crypto::bip39::wordlist::ENGLISH, // TODO: make this user configurable
+                )
+                .expect(line_error!());
+
+                let mut seed = [0u8; 64];
+                crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+
+                let key = self.keystore.create_key(vault_id);
+                self.bucket.create_and_init_vault(key.clone(), record_id);
+
+                // TODO: also store the mnemonic to be able to export it in the
+                // BIP39MnemonicSentence message
+                self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
+
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Generate(
+                        StatusMessage::OK,
+                    ))),
+                    sender,
+                );
+            }
+            InternalMsg::BIP39Recover {
                 mnemonic,
                 passphrase,
                 vault_id,
                 record_id,
                 hint,
             } => {
-                let cstr: String = self.client_id.into();
-                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-
                 let key = self.keystore.create_key(vault_id);
-
                 self.bucket.create_and_init_vault(key.clone(), record_id);
 
                 let mut seed = [0u8; 64];
-                crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed).expect(line_error!());
+                crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
 
+                // TODO: also store the mnemonic to be able to export it in the
+                // BIP39MnemonicSentence message
                 self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
 
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP32 {
-                        status: StatusMessage::Ok,
-                    })),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Recover(
+                        StatusMessage::OK,
+                    ))),
                     sender,
                 );
             }
-            InternalMsg::KillInternal => {
-                ctx.stop(ctx.myself());
+            InternalMsg::Ed25519PublicKey { vault_id, record_id } => {
+                let key = match self.keystore.get_key(vault_id) {
+                    Some(key) => key,
+                    None => todo!("return error message"),
+                };
+                self.keystore.insert_key(vault_id, key.clone());
+
+                let mut raw = self.bucket.read_data(key, record_id);
+                if raw.len() < 32 {
+                    todo!("return error message: insufficient bytes")
+                }
+                raw.truncate(32);
+                let mut bs = [0; 32];
+                bs.copy_from_slice(&raw);
+                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                let pk = sk.public_key();
+
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519PublicKey(
+                        ResultMessage::Ok(pk.to_compressed_bytes()),
+                    ))),
+                    sender,
+                );
+            }
+            InternalMsg::Ed25519Sign {
+                vault_id,
+                record_id,
+                msg,
+            } => {
+                let key = match self.keystore.get_key(vault_id) {
+                    Some(key) => key,
+                    None => todo!("return error message"),
+                };
+                self.keystore.insert_key(vault_id, key.clone()); // TODO: why keep removing and adding back the keys?
+
+                let mut raw = self.bucket.read_data(key, record_id);
+                if raw.len() < 32 {
+                    todo!("return error message: insufficient bytes")
+                }
+                raw.truncate(32);
+                let mut bs = [0; 32];
+                bs.copy_from_slice(&raw);
+                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                let sig = sk.sign(&msg);
+
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
+                        ResultMessage::Ok(sig.to_bytes()),
+                    ))),
+                    sender,
+                );
             }
         }
     }

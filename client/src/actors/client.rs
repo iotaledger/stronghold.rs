@@ -3,9 +3,9 @@
 
 use crate::{
     actors::{InternalMsg, InternalResults},
-    client::{Client, ClientMsg},
+    client::{Client, ClientMsg, Location},
     line_error,
-    utils::{Chain, ClientId, StatusMessage},
+    utils::{hd, ClientId, ResultMessage, StatusMessage},
 };
 
 use engine::{snapshot, vault::RecordHint};
@@ -14,43 +14,62 @@ use riker::actors::*;
 
 use std::path::PathBuf;
 
-/// TODO: Bip39: words -> seed
-/// TODO: SLIP10: seed -> public key
-/// TODO: SLIP10: add argument for subtree.
-/// TODO: Ed25519 SIGN method.
-/// TODO: Add feature flags
-/// GENERATE SLIP10 SEED -> Sticks seed in vault -> return chaincode
-/// GENERATE BIP39 words -> generates entropy then creates words and the slip10 seed (optionally store entropy).
-/// DERIVE SLIP10 Key
-/// Recover BIP39 SEED -> words checks seed against seed in vault.
-/// backup Words -> returns words
+#[derive(Debug, Clone)]
+pub enum SLIP10DeriveInput {
+    /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
+    Seed(Location),
+    Key(Location),
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Procedure {
-    SLIP10Generate {
-        vault_path: Vec<u8>,
+    /// Generate a raw SLIP10 seed and store it in the `output` location
+    ///
+    /// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
+    /// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
+    SLIP10Generate { output: Location, hint: RecordHint },
+    /// Derive a SLIP10 child key from a seed or a parent key and store it in output location
+    SLIP10Derive {
+        chain: hd::Chain,
+        input: SLIP10DeriveInput,
+        output: Location,
         hint: RecordHint,
     },
-    SLIP10Step {
-        chain: Chain,
-        seed_vault_path: Vec<u8>,
-        hint: RecordHint,
-    },
-    BIP32 {
+    /// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
+    /// a BIP39 seed and store it in the `output` location
+    BIP39Recover {
         mnemonic: String,
-        passphrase: String,
-        vault_path: Vec<u8>,
+        passphrase: Option<String>,
+        output: Location,
         hint: RecordHint,
     },
+    /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
+    /// passphrase) and store them in the `output` location
+    BIP39Generate {
+        passphrase: Option<String>,
+        output: Location,
+        hint: RecordHint,
+    },
+    /// Read a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
+    /// passphrase) and store them in the `output` location
+    BIP39MnemonicSentence { seed: Location },
+    /// Derive the Ed25519 public key of the key stored at the specified location
+    Ed25519PublicKey { key: Location },
+    /// Generate the Ed25519 signature of the given message signed by the specified key
+    Ed25519Sign { key: Location, msg: Vec<u8> },
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ProcResult {
-    SLIP10Generate { status: StatusMessage },
-    SLIP10Step { status: StatusMessage },
-    BIP32 { status: StatusMessage },
+    SLIP10Generate(StatusMessage),
+    SLIP10Derive(StatusMessage),
+    BIP39Recover(StatusMessage),
+    BIP39Generate(StatusMessage),
+    BIP39MnemonicSentence(ResultMessage<String>),
+    Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+    Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
 }
 
 #[allow(dead_code)]
@@ -132,6 +151,25 @@ impl Receive<SHRequest> for Client {
     type Msg = ClientMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, sender: Sender) {
+        macro_rules! ensure_vault_exists {
+            ( $x:expr, $V:tt, $k:expr ) => {
+                if !self.vault_exist($x) {
+                    sender
+                        .as_ref()
+                        .expect(line_error!())
+                        .try_tell(
+                            SHResults::ReturnControlRequest(ProcResult::$V(StatusMessage::Error(format!(
+                                "Failed to find {} vault. Please generate one",
+                                $k
+                            )))),
+                            None,
+                        )
+                        .expect(line_error!());
+                    return;
+                }
+            };
+        }
+
         match msg {
             SHRequest::CheckVault(vpath) => {
                 let vid = self.derive_vault_id(vpath);
@@ -144,7 +182,7 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
             }
             SHRequest::CheckRecord(vpath, ctr) => {
-                let vid = self.derive_vault_id(vpath.clone());
+                let vid = self.derive_vault_id(&vpath);
                 let rid = self.derive_record_id(vpath, ctr);
 
                 let res = self.record_exists_in_vault(vid, rid);
@@ -155,7 +193,7 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
             }
             SHRequest::CreateNewVault(vpath) => {
-                let vid = self.derive_vault_id(vpath.clone());
+                let vid = self.derive_vault_id(&vpath);
                 let rid = self.derive_record_id(vpath, None);
                 let client_str = self.get_client_str();
 
@@ -168,7 +206,7 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::CreateVault(vid, rid), sender);
             }
             SHRequest::WriteData(vpath, idx, data, hint) => {
-                let vid = self.derive_vault_id(vpath.clone());
+                let vid = self.derive_vault_id(&vpath);
 
                 let rid = if let Some(idx) = idx {
                     self.derive_record_id(vpath, Some(idx))
@@ -186,7 +224,7 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::WriteData(vid, rid, data, hint), sender);
             }
             SHRequest::InitRecord(vpath) => {
-                let vid = self.derive_vault_id(vpath.clone());
+                let vid = self.derive_vault_id(&vpath);
                 let rid = self.derive_record_id(vpath, None);
 
                 let client_str = self.get_client_str();
@@ -198,7 +236,7 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::InitRecord(vid, rid), sender);
             }
             SHRequest::ReadData(vpath, idx) => {
-                let vid = self.derive_vault_id(vpath.clone());
+                let vid = self.derive_vault_id(&vpath);
 
                 let rid = if let Some(idx) = idx {
                     self.derive_record_id(vpath, Some(idx))
@@ -217,7 +255,7 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::ReadData(vid, rid), sender);
             }
             SHRequest::RevokeData(vpath, idx) => {
-                let vid = self.derive_vault_id(vpath.clone());
+                let vid = self.derive_vault_id(&vpath);
                 let rid = self.derive_record_id(vpath, Some(idx));
 
                 let client_str = self.get_client_str();
@@ -240,7 +278,7 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::GarbageCollect(vid), sender);
             }
             SHRequest::ListIds(vpath) => {
-                let vid = self.derive_vault_id(vpath.clone());
+                let vid = self.derive_vault_id(&vpath);
 
                 let client_str = self.get_client_str();
 
@@ -276,10 +314,8 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
 
                 match procedure {
-                    Procedure::SLIP10Generate { vault_path, hint } => {
-                        let vid = self.derive_vault_id(vault_path.clone());
-
-                        let rid = self.derive_record_id(vault_path, None);
+                    Procedure::SLIP10Generate { output, hint } => {
+                        let (vid, rid) = self.resolve_location(output);
 
                         if !self.vault_exist(vid) {
                             self.add_vault_insert_record(vid, rid);
@@ -294,64 +330,110 @@ impl Receive<SHRequest> for Client {
                             sender,
                         )
                     }
-                    Procedure::SLIP10Step {
+                    Procedure::SLIP10Derive {
                         chain,
-                        seed_vault_path,
+                        input: SLIP10DeriveInput::Seed(seed),
+                        output,
                         hint,
                     } => {
-                        let vid = self.derive_vault_id(seed_vault_path.clone());
-                        if self.vault_exist(vid) {
-                            let seed_rid = self.derive_record_id(seed_vault_path.clone(), Some(0));
+                        let (seed_vault_id, seed_record_id) = self.resolve_location(seed);
+                        ensure_vault_exists!(seed_vault_id, SLIP10Derive, "seed");
 
-                            let ctr = self.get_counter(vid);
+                        let (key_vault_id, key_record_id) = self.resolve_location(output);
+                        ensure_vault_exists!(key_vault_id, SLIP10Derive, "key");
 
-                            let key_rid = self.derive_record_id(seed_vault_path, Some(ctr));
-
-                            internal.try_tell(
-                                InternalMsg::SLIP10Step {
-                                    chain,
-                                    seed_vault_id: vid,
-                                    seed_record_id: seed_rid,
-                                    key_record_id: key_rid,
-                                    hint,
-                                },
-                                sender,
-                            )
-                        } else {
-                            sender
-                                .as_ref()
-                                .expect(line_error!())
-                                .try_tell(
-                                    SHResults::ReturnControlRequest(ProcResult::SLIP10Step {
-                                        status: StatusMessage::Error(
-                                            "Failed to find seed vault. Please generate one".into(),
-                                        ),
-                                    }),
-                                    None,
-                                )
-                                .expect(line_error!());
-                        }
+                        internal.try_tell(
+                            InternalMsg::SLIP10DeriveFromSeed {
+                                chain,
+                                seed_vault_id,
+                                seed_record_id,
+                                key_vault_id,
+                                key_record_id,
+                                hint,
+                            },
+                            sender,
+                        )
                     }
-                    Procedure::BIP32 {
-                        mnemonic,
-                        passphrase,
-                        vault_path,
+                    Procedure::SLIP10Derive {
+                        chain,
+                        input: SLIP10DeriveInput::Key(parent),
+                        output,
                         hint,
                     } => {
-                        let vid = self.derive_vault_id(vault_path.clone());
-                        let rid = self.derive_record_id(vault_path, None);
+                        let (parent_vault_id, parent_record_id) = self.resolve_location(parent);
+                        ensure_vault_exists!(parent_vault_id, SLIP10Derive, "parent key");
 
-                        if !self.vault_exist(vid) {
-                            self.add_vault_insert_record(vid, rid);
+                        let (child_vault_id, child_record_id) = self.resolve_location(output);
+                        ensure_vault_exists!(child_vault_id, SLIP10Derive, "child key");
+
+                        internal.try_tell(
+                            InternalMsg::SLIP10DeriveFromKey {
+                                chain,
+                                parent_vault_id,
+                                parent_record_id,
+                                child_vault_id,
+                                child_record_id,
+                                hint,
+                            },
+                            sender,
+                        )
+                    }
+                    Procedure::BIP39Generate {
+                        passphrase,
+                        output,
+                        hint,
+                    } => {
+                        let (vault_id, record_id) = self.resolve_location(output);
+
+                        if !self.vault_exist(vault_id) {
+                            self.add_vault_insert_record(vault_id, record_id);
                         }
 
                         internal.try_tell(
-                            InternalMsg::BIP32 {
-                                mnemonic,
-                                passphrase,
-                                vault_id: vid,
-                                record_id: rid,
+                            InternalMsg::BIP39Generate {
+                                passphrase: passphrase.unwrap_or_else(|| "".into()),
+                                vault_id,
+                                record_id,
                                 hint,
+                            },
+                            sender,
+                        )
+                    }
+                    Procedure::BIP39Recover {
+                        mnemonic,
+                        passphrase,
+                        output,
+                        hint,
+                    } => {
+                        let (vault_id, record_id) = self.resolve_location(output);
+
+                        if !self.vault_exist(vault_id) {
+                            self.add_vault_insert_record(vault_id, record_id);
+                        }
+
+                        internal.try_tell(
+                            InternalMsg::BIP39Recover {
+                                mnemonic,
+                                passphrase: passphrase.unwrap_or_else(|| "".into()),
+                                vault_id,
+                                record_id,
+                                hint,
+                            },
+                            sender,
+                        )
+                    }
+                    Procedure::BIP39MnemonicSentence { .. } => todo!(),
+                    Procedure::Ed25519PublicKey { key } => {
+                        let (vault_id, record_id) = self.resolve_location(key);
+                        internal.try_tell(InternalMsg::Ed25519PublicKey { vault_id, record_id }, sender)
+                    }
+                    Procedure::Ed25519Sign { key, msg } => {
+                        let (vault_id, record_id) = self.resolve_location(key);
+                        internal.try_tell(
+                            InternalMsg::Ed25519Sign {
+                                vault_id,
+                                record_id,
+                                msg,
                             },
                             sender,
                         )
@@ -396,7 +478,7 @@ impl Receive<InternalResults> for Client {
                 let ids: Vec<(usize, RecordHint)> = list
                     .into_iter()
                     .map(|(rid, hint)| {
-                        let idx = self.get_index_from_record_id(vpath.clone(), rid);
+                        let idx = self.get_index_from_record_id(&vpath, rid);
                         (idx, hint)
                     })
                     .collect();
@@ -422,7 +504,7 @@ impl Receive<InternalResults> for Client {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnCreateVault(StatusMessage::Ok), None)
+                    .try_tell(SHResults::ReturnCreateVault(StatusMessage::OK), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnRevoke(status) => {

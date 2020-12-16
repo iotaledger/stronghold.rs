@@ -4,6 +4,7 @@
 // TODO: this module should probably not reside in the client
 
 use crypto::{ed25519::SecretKey, macs::hmac::HMAC_SHA512};
+use std::convert::TryFrom;
 
 // https://github.com/satoshilabs/slips/blob/master/slip-0010.md
 // https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki
@@ -12,6 +13,7 @@ use crypto::{ed25519::SecretKey, macs::hmac::HMAC_SHA512};
 #[derive(Debug)]
 pub enum Error {
     NotSupported,
+    InvalidLength(usize),
     CryptoError(crypto::Error),
 }
 
@@ -73,6 +75,20 @@ impl Key {
             k = k.child_key(c)?;
         }
         Ok(k)
+    }
+}
+
+impl TryFrom<&[u8]> for Key {
+    type Error = Error;
+
+    fn try_from(bs: &[u8]) -> Result<Self, Self::Error> {
+        if bs.len() != 64 {
+            return Err(Error::InvalidLength(bs.len()));
+        }
+
+        let mut ds = [0; 64];
+        ds.copy_from_slice(bs);
+        Ok(Self(ds))
     }
 }
 

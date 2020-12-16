@@ -63,7 +63,7 @@ impl Receive<SMsg> for Snapshot {
                 let internal = ctx.select(&format!("/user/{}/", cid)).expect(line_error!());
 
                 internal.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnWriteSnap(StatusMessage::Ok)),
+                    ClientMsg::InternalResults(InternalResults::ReturnWriteSnap(StatusMessage::OK)),
                     sender,
                 );
             }
@@ -81,7 +81,7 @@ impl Receive<SMsg> for Snapshot {
                         let cache: Vec<u8> = data.get_cache();
                         let store: Vec<u8> = data.get_store();
 
-                        internal.try_tell(InternalMsg::ReloadData(cache, store, StatusMessage::Ok), sender);
+                        internal.try_tell(InternalMsg::ReloadData(cache, store, StatusMessage::OK), sender);
                     }
                     Err(e) => {
                         sender
