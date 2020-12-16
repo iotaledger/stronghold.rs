@@ -12,7 +12,9 @@ use engine::vault::RecordId;
 
 use riker::actors::*;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub enum Location {
@@ -57,11 +59,11 @@ impl AsRef<Location> for Location {
 
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
 #[actor(SHResults, SHRequest, InternalResults)]
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Client {
     client_id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
-    vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
+    vaults: BTreeMap<VaultId, (usize, Vec<RecordId>)>,
     // Contains the Record Ids for the most recent Record in each vault.
     heads: Vec<RecordId>,
     counters: Vec<usize>,
@@ -70,7 +72,7 @@ pub struct Client {
 impl Client {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
     pub fn new(client_id: ClientId) -> Self {
-        let vaults = HashMap::new();
+        let vaults = BTreeMap::new();
         let heads = Vec::new();
         let counters = vec![0];
 
@@ -80,6 +82,10 @@ impl Client {
             heads,
             counters,
         }
+    }
+
+    pub fn offload_client(&self) -> Vec<u8> {
+        bincode::serialize(&self).expect(line_error!())
     }
 
     /// Insert a new Record into the Stronghold on the Vault based on the given RecordId.
@@ -137,20 +143,16 @@ impl Client {
     /// Empty the Client Cache.
     pub fn clear_cache(&mut self) -> Option<()> {
         self.heads = vec![];
-        self.vaults = HashMap::default();
+        self.vaults = BTreeMap::default();
         self.counters = vec![0];
 
         Some(())
     }
 
-    pub fn rebuild_cache(&mut self, vids: Vec<VaultId>, rids: Vec<Vec<RecordId>>) {
-        let iter = vids.iter().zip(rids.iter());
+    pub fn rebuild_cache(&mut self, state: Vec<u8>) {
+        let client: Client = bincode::deserialize(&state).expect(line_error!());
 
-        for (v, rs) in iter {
-            rs.iter().for_each(|r| {
-                self.add_vault_insert_record(*v, *r);
-            });
-        }
+        *self = client;
     }
 
     pub fn resolve_location<L: AsRef<Location>>(&self, l: L) -> (VaultId, RecordId) {
@@ -233,31 +235,6 @@ impl Client {
         ctr
     }
 
-    // fn derive_record_id_from_ctr(&self, vault_path: Vec<u8>, ctr: usize) -> RecordId {
-    //     let vault_id = self.derive_vault_id(vault_path.clone());
-
-    //     let vctr = self.get_counter_index(vault_id);
-
-    //     if ctr >= vctr {
-    //         let path_counter = format!("{:?}{}", vault_path, vctr);
-    //         RecordId::load_from_path(&path_counter.as_bytes(), &path_counter.as_bytes()).expect(line_error!(""))
-    //     } else {
-    //         let path_counter = format!("{:?}{}", vault_path, ctr);
-
-    //         RecordId::load_from_path(&path_counter.as_bytes(), &path_counter.as_bytes()).expect(line_error!(""))
-    //     }
-    // }
-
-    // fn derive_record_id_next(&self, vault_path: Vec<u8>) -> RecordId {
-    //     let vault_id = self.derive_vault_id(vault_path.clone());
-
-    //     let vctr = self.get_counter_index(vault_id);
-
-    //     let path_counter = format!("{:?}{}", vault_path, vctr);
-
-    //     RecordId::load_from_path(&path_counter.as_bytes(), &path_counter.as_bytes()).expect(line_error!(""))
-    // }
-
     fn get_index(&self, vid: VaultId) -> Option<usize> {
         let idx = self.vaults.get(&vid);
 
@@ -275,8 +252,6 @@ impl Client {
         }
     }
 }
-
-/// Actor Factor for the Client Struct.
 
 #[cfg(test)]
 mod test {

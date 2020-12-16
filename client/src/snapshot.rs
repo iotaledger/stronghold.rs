@@ -17,6 +17,7 @@ pub struct Snapshot {
 pub struct SnapshotData {
     pub cache: Vec<u8>,
     pub store: Vec<u8>,
+    pub client: Vec<u8>,
 }
 
 impl Snapshot {
@@ -63,8 +64,8 @@ impl Snapshot {
 }
 
 impl SnapshotData {
-    pub fn new(cache: Vec<u8>, store: Vec<u8>) -> Self {
-        SnapshotData { cache, store }
+    pub fn new(cache: Vec<u8>, store: Vec<u8>, client: Vec<u8>) -> Self {
+        SnapshotData { cache, store, client }
     }
 
     pub fn get_cache(&self) -> Vec<u8> {
@@ -73,6 +74,10 @@ impl SnapshotData {
 
     pub fn get_store(&self) -> Vec<u8> {
         self.store.clone()
+    }
+
+    pub fn get_client(&self) -> Vec<u8> {
+        self.client.clone()
     }
 
     pub fn serialize(&self) -> Vec<u8> {

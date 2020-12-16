@@ -10,7 +10,7 @@ use engine::random::{
 
 use engine::vault::{BoxProvider, Error, Key, Result};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Ord, PartialOrd, PartialEq, Eq)]
 pub struct Provider;
 
 impl Provider {

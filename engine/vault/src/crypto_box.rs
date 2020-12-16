@@ -11,7 +11,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
-pub trait BoxProvider: Sized {
+pub trait BoxProvider: Sized + Ord + PartialOrd {
     /// function for the key length of the crypto box
     fn box_key_len() -> usize;
     /// gets the crypto box's overhead
@@ -102,6 +102,18 @@ impl<T: BoxProvider> Eq for Key<T> {}
 impl<T: BoxProvider> PartialEq for Key<T> {
     fn eq(&self, other: &Self) -> bool {
         self.key == other.key && self._box_provider == other._box_provider
+    }
+}
+
+impl<T: BoxProvider> PartialOrd for Key<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(&other))
+    }
+}
+
+impl<T: BoxProvider> Ord for Key<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key.cmp(&other.key)
     }
 }
 
