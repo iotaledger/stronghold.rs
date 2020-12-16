@@ -396,7 +396,7 @@ mod tests {
 
     use super::*;
 
-    use crate::{actors::SLIP10DeriveInput, client::Location, utils::Chain};
+    use crate::{actors::SLIP10DeriveInput, client::Location, utils::hd};
 
     #[test]
     fn test_stronghold() {
@@ -467,7 +467,7 @@ mod tests {
         }));
 
         futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
-            chain: Chain::from_u32_hardened(vec![]),
+            chain: hd::Chain::from_u32_hardened(vec![]),
             input: SLIP10DeriveInput::Seed(slip10_seed.clone()),
             output: slip10_key.clone(),
             hint: RecordHint::new(b"test").expect(line_error!()),

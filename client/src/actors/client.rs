@@ -5,7 +5,7 @@ use crate::{
     actors::{InternalMsg, InternalResults},
     client::{Client, ClientMsg, Location},
     line_error,
-    utils::{Chain, ClientId, ResultMessage, StatusMessage},
+    utils::{hd, ClientId, ResultMessage, StatusMessage},
 };
 
 use engine::{snapshot, vault::RecordHint};
@@ -31,7 +31,7 @@ pub enum Procedure {
     SLIP10Generate { output: Location, hint: RecordHint },
     /// Derive a SLIP10 child key from a seed or a parent key and store it in output location
     SLIP10Derive {
-        chain: Chain,
+        chain: hd::Chain,
         input: SLIP10DeriveInput,
         output: Location,
         hint: RecordHint,
