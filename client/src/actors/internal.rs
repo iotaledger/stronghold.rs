@@ -74,6 +74,11 @@ pub enum InternalMsg {
         vault_id: VaultId,
         record_id: RecordId,
     },
+    Ed25519Sign {
+        vault_id: VaultId,
+        record_id: RecordId,
+        msg: Vec<u8>,
+    },
 }
 
 /// Messages used internally by the client.
@@ -423,6 +428,34 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519PublicKey {
                         result: ResultMessage::Ok(pk.to_compressed_bytes())
+                    })),
+                    sender,
+                );
+            }
+            InternalMsg::Ed25519Sign {
+                vault_id,
+                record_id,
+                msg,
+            } => {
+                let key = match self.keystore.get_key(vault_id) {
+                    Some(key) => key,
+                    None => todo!("return error message"),
+                };
+
+                let raw = self.bucket.read_data(key, record_id);
+                if raw.len() < 32 {
+                    todo!("return error message: insufficient bytes")
+                }
+                let mut bs = [0; 32];
+                bs.copy_from_slice(&raw);
+                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                let sig = sk.sign(&msg);
+
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign {
+                        result: ResultMessage::Ok(sig.to_bytes())
                     })),
                     sender,
                 );

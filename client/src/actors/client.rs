@@ -403,18 +403,18 @@ impl Receive<SHRequest> for Client {
                         output,
                         hint,
                     } => {
-                        let (vid, rid) = self.resolve_location(output);
+                        let (vault_id, record_id) = self.resolve_location(output);
 
-                        if !self.vault_exist(vid) {
-                            self.add_vault_insert_record(vid, rid);
+                        if !self.vault_exist(vault_id) {
+                            self.add_vault_insert_record(vault_id, record_id);
                         }
 
                         internal.try_tell(
                             InternalMsg::BIP39Recover {
                                 mnemonic,
                                 passphrase: passphrase.unwrap_or_else(|| "".into()),
-                                vault_id: vid,
-                                record_id: rid,
+                                vault_id,
+                                record_id,
                                 hint,
                             },
                             sender,
@@ -422,16 +422,18 @@ impl Receive<SHRequest> for Client {
                     }
                     Procedure::BIP39MnemonicSentence { .. } => todo!(),
                     Procedure::Ed25519PublicKey { key } => {
-                        let (vid, rid) = self.resolve_location(key);
+                        let (vault_id, record_id) = self.resolve_location(key);
                         internal.try_tell(
-                            InternalMsg::Ed25519PublicKey {
-                                vault_id: vid,
-                                record_id: rid,
-                            },
+                            InternalMsg::Ed25519PublicKey { vault_id, record_id }, sender,
+                        )
+                    }
+                    Procedure::Ed25519Sign { key, msg } => {
+                        let (vault_id, record_id) = self.resolve_location(key);
+                        internal.try_tell(
+                            InternalMsg::Ed25519Sign { vault_id, record_id, msg },
                             sender,
                         )
                     }
-                    Procedure::Ed25519Sign { .. } => todo!(),
                 }
             }
         }
