@@ -36,9 +36,9 @@ pub enum InternalMsg {
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
     ListIds(Vec<u8>, VaultId),
-    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String),
+    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String, Vec<u8>),
     ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String),
-    ReloadData(Vec<u8>, Vec<u8>, StatusMessage),
+    ReloadData((Vec<u8>, Vec<u8>, Vec<u8>), StatusMessage),
     ClearCache,
     KillInternal,
 
@@ -92,14 +92,15 @@ pub enum InternalMsg {
 pub enum InternalResults {
     ReturnCreateVault(StatusMessage),
     ReturnWriteData(StatusMessage),
-    ReturnInitRecord(VaultId, RecordId, StatusMessage),
+    ReturnInitRecord(StatusMessage),
     ReturnReadData(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
     ReturnList(Vec<u8>, Vec<(RecordId, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnControlRequest(ProcResult),
-    RebuildCache(Vec<VaultId>, Vec<Vec<RecordId>>, StatusMessage),
+    RebuildCache(Vec<u8>, StatusMessage),
+    ReturnClearCache(StatusMessage),
 }
 
 impl ActorFactoryArgs<ClientId> for InternalActor<Provider> {
@@ -180,7 +181,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 } else {
                     client.try_tell(
                         ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::Error(
-                            "Vault doesn't exist".into(),
+                            "Vault does not exist".into(),
                         ))),
                         sender,
                     );
@@ -190,12 +191,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
-                    let rid = self.bucket.init_record(key.clone(), rid);
+                    let _rid = self.bucket.init_record(key.clone(), rid);
 
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnInitRecord(vid, rid, StatusMessage::OK)),
+                        ClientMsg::InternalResults(InternalResults::ReturnInitRecord(StatusMessage::OK)),
                         sender,
                     );
                 }
@@ -265,25 +266,25 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::ReloadData(cache, keystore, status) => {
-                let (_, rids) = self.bucket.repopulate_data(cache);
+            InternalMsg::ReloadData((cache, keystore, state), status) => {
+                self.bucket.repopulate_data(cache);
 
-                let vids = self.keystore.rebuild_keystore(keystore);
+                self.keystore.rebuild_keystore(keystore);
 
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::RebuildCache(vids, rids, status)),
+                    ClientMsg::InternalResults(InternalResults::RebuildCache(state, status)),
                     sender,
                 );
             }
-            InternalMsg::WriteSnapshot(pass, name, path, client_str) => {
+            InternalMsg::WriteSnapshot(pass, name, path, client_str, counters) => {
                 let cache = self.bucket.offload_data();
                 let store = self.keystore.offload_data();
 
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
                 snapshot.try_tell(
-                    SMsg::WriteSnapshot(pass, name, path, (cache, store), client_str),
+                    SMsg::WriteSnapshot(pass, name, path, (cache, store, counters), client_str),
                     sender,
                 );
             }
@@ -294,6 +295,13 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
             InternalMsg::ClearCache => {
                 self.bucket.clear_cache();
                 self.keystore.clear_keys();
+
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnClearCache(StatusMessage::OK)),
+                    sender,
+                );
             }
             InternalMsg::KillInternal => {
                 ctx.stop(ctx.myself());

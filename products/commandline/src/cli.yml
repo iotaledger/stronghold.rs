@@ -12,6 +12,12 @@ subcommands:
             about: a plaintext value that you want to encrypt.
             required: true
             takes_value: true
+        - rpath:
+            short: r
+            long: record_path
+            value_name: Record Path value
+            required: true
+            takes_value: true
         - password:
             short: w
             long: pass

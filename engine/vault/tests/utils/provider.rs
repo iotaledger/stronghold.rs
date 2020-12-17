@@ -9,7 +9,7 @@ use random::{
 };
 
 use vault::{BoxProvider, Key};
-
+#[derive(Ord, PartialEq, Eq, PartialOrd)]
 pub struct Provider;
 impl Provider {
     const NONCE_LEN: usize = 24;

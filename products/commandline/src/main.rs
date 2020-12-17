@@ -3,7 +3,9 @@
 
 #![allow(unused_imports)]
 
-use iota_stronghold::{home_dir, naive_kdf, RecordHint, StatusMessage, Stronghold, StrongholdFlags, VaultFlags};
+use iota_stronghold::{
+    home_dir, naive_kdf, Location, RecordHint, StatusMessage, Stronghold, StrongholdFlags, VaultFlags,
+};
 
 use futures::executor::block_on;
 
@@ -29,37 +31,38 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: V
     if let Some(matches) = matches.subcommand_matches("encrypt") {
         if let Some(pass) = matches.value_of("password") {
             if let Some(plain) = matches.value_of("plain") {
-                let mut key = [0u8; 32];
-                let salt = [0u8; 32];
-                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+                if let Some(rid) = matches.value_of("rpath") {
+                    let mut key = [0u8; 32];
+                    let salt = [0u8; 32];
+                    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-                let home_dir = home_dir().expect(line_error!());
-                let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+                    let home_dir = home_dir().expect(line_error!());
+                    let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
-                if snapshot.exists() {
-                    block_on(stronghold.read_snapshot(
-                        client_path.clone(),
+                    if snapshot.exists() {
+                        block_on(stronghold.read_snapshot(
+                            client_path.clone(),
+                            key.to_vec(),
+                            Some("commandline".to_string()),
+                            None,
+                        ));
+                    }
+
+                    block_on(stronghold.write_data(
+                        Location::counter::<_, usize>("test", Some(rid.parse::<usize>().unwrap())),
+                        plain.as_bytes().to_vec(),
+                        RecordHint::new(b"some hint").expect(line_error!()),
+                        vec![],
+                    ));
+
+                    block_on(stronghold.write_snapshot(
+                        client_path,
                         key.to_vec(),
                         Some("commandline".to_string()),
                         None,
+                        None,
                     ));
-                }
-
-                block_on(stronghold.write_data(
-                    plain.as_bytes().to_vec(),
-                    b"testvault".to_vec(),
-                    None,
-                    RecordHint::new(b"some hint").expect(line_error!()),
-                    vec![],
-                ));
-
-                block_on(stronghold.write_snapshot(
-                    client_path,
-                    key.to_vec(),
-                    Some("commandline".to_string()),
-                    None,
-                    None,
-                ));
+                };
             };
         };
     }
@@ -115,7 +118,7 @@ fn list_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<
             if snapshot.exists() {
                 block_on(stronghold.read_snapshot(client_path, key.to_vec(), Some("commandline".to_string()), None));
 
-                let (list, status) = block_on(stronghold.list_hints_and_ids(b"testvault".to_vec()));
+                let (list, status) = block_on(stronghold.list_hints_and_ids(b"test".to_vec()));
 
                 println!("{:?}", status);
                 println!("{:?}", list);
@@ -148,8 +151,10 @@ fn read_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<
                         None,
                     ));
 
-                    let (data, status) =
-                        block_on(stronghold.read_data(b"testvault".to_vec(), Some(id.parse::<usize>().unwrap())));
+                    let (data, status) = block_on(stronghold.read_data(Location::counter::<_, usize>(
+                        "test",
+                        Some(id.parse::<usize>().unwrap()),
+                    )));
 
                     println!("{:?}", status);
                     println!("Data: {:?}", std::str::from_utf8(&data.unwrap()).unwrap());
@@ -183,8 +188,10 @@ fn revoke_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Ve
                         None,
                     ));
 
-                    let status =
-                        block_on(stronghold.delete_data(b"testvault".to_vec(), id.parse::<usize>().unwrap(), false));
+                    let status = block_on(stronghold.delete_data(
+                        Location::counter::<_, usize>("test", Some(id.parse::<usize>().unwrap())),
+                        false,
+                    ));
 
                     println!("{:?}", status);
                 } else {
@@ -211,7 +218,7 @@ fn garbage_collect_vault_command(matches: &ArgMatches, stronghold: &Stronghold, 
             if snapshot.exists() {
                 block_on(stronghold.read_snapshot(client_path, key.to_vec(), Some("commandline".to_string()), None));
 
-                let status = block_on(stronghold.garbage_collect(b"testvault".to_vec()));
+                let status = block_on(stronghold.garbage_collect(b"test".to_vec()));
 
                 println!("{:?}", status);
             } else {
@@ -243,8 +250,10 @@ fn purge_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec
                         None,
                     ));
 
-                    let status =
-                        block_on(stronghold.delete_data(b"testvault".to_vec(), id.parse::<usize>().unwrap(), true));
+                    let status = block_on(stronghold.delete_data(
+                        Location::counter::<_, usize>(b"test".to_vec(), Some(id.parse::<usize>().unwrap())),
+                        true,
+                    ));
 
                     println!("{:?}", status);
                 } else {

@@ -22,7 +22,7 @@ pub enum SMsg {
         snapshot::Key,
         Option<String>,
         Option<PathBuf>,
-        (Vec<u8>, Vec<u8>),
+        (Vec<u8>, Vec<u8>, Vec<u8>),
         String,
     ),
     ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String),
@@ -48,8 +48,8 @@ impl Receive<SMsg> for Snapshot {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         match msg {
-            SMsg::WriteSnapshot(key, name, path, (cache, store), cid) => {
-                let snapshotdata = SnapshotData::new(cache, store);
+            SMsg::WriteSnapshot(key, name, path, (cache, store, counters), cid) => {
+                let snapshotdata = SnapshotData::new(cache, store, counters);
                 let snapshot = Snapshot::new(Some(snapshotdata));
 
                 let path = if let Some(p) = path {
@@ -80,8 +80,12 @@ impl Receive<SMsg> for Snapshot {
                         let data: SnapshotData = snapshot.get_state();
                         let cache: Vec<u8> = data.get_cache();
                         let store: Vec<u8> = data.get_store();
+                        let client: Vec<u8> = data.get_client();
 
-                        internal.try_tell(InternalMsg::ReloadData(cache, store, StatusMessage::OK), sender);
+                        internal.try_tell(
+                            InternalMsg::ReloadData((cache, store, client), StatusMessage::OK),
+                            sender,
+                        );
                     }
                     Err(e) => {
                         sender
