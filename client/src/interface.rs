@@ -630,6 +630,7 @@ mod tests {
         let client_path1 = b"test b".to_vec();
         let client_path2 = b"test c".to_vec();
 
+        let loc0 = Location::counter::<_, usize>("path", Some(0));
         let lochead = Location::counter::<_, usize>("path", None);
 
         let mut stronghold = Stronghold::init_stronghold_system(&sys, client_path0.clone(), vec![]);
@@ -641,7 +642,7 @@ mod tests {
         futures::executor::block_on(stronghold.write_data(
             lochead.clone(),
             b"test".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"1").expect(line_error!()),
             vec![],
         ));
 
@@ -656,7 +657,7 @@ mod tests {
         futures::executor::block_on(stronghold.write_data(
             lochead.clone(),
             b"another test".to_vec(),
-            RecordHint::new(b"another hint").expect(line_error!()),
+            RecordHint::new(b"1").expect(line_error!()),
             vec![],
         ));
 
@@ -670,7 +671,7 @@ mod tests {
         futures::executor::block_on(stronghold.write_data(
             lochead.clone(),
             b"yet another test".to_vec(),
-            RecordHint::new(b"yet another hint").expect(line_error!()),
+            RecordHint::new(b"2").expect(line_error!()),
             vec![],
         ));
 
@@ -711,6 +712,10 @@ mod tests {
             None,
         ));
 
+        let (p, _) = futures::executor::block_on(stronghold.read_data(loc0));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
+
         futures::executor::block_on(stronghold.write_data(
             lochead.clone(),
             b"a new actor test".to_vec(),
@@ -735,5 +740,12 @@ mod tests {
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
         println!("{:?}", ids);
+
+        stronghold.switch_actor_target(client_path1.clone());
+
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+        println!("{:?}", ids);
+
+        stronghold.system.print_tree();
     }
 }

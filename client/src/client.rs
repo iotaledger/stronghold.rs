@@ -49,6 +49,10 @@ impl Client {
         }
     }
 
+    pub fn set_client_id(&mut self, client_id: ClientId) {
+        self.client_id = client_id
+    }
+
     pub fn offload_client(&self) -> Vec<u8> {
         bincode::serialize(&self).expect(line_error!())
     }
@@ -126,7 +130,10 @@ impl Client {
     pub fn rebuild_cache(&mut self, state: Vec<u8>) {
         let client: Client = bincode::deserialize(&state).expect(line_error!());
 
-        *self = client;
+        *self = Self {
+            client_id: self.client_id,
+            ..client
+        }
     }
 
     pub fn resolve_location<L: AsRef<Location>>(&self, l: L, rw: ReadWrite) -> (VaultId, RecordId) {
@@ -158,7 +165,7 @@ impl Client {
     }
 
     pub fn derive_vault_id<P: AsRef<Vec<u8>>>(&self, path: P) -> VaultId {
-        VaultId::load_from_path(self.client_id.as_ref(), path.as_ref()).expect(line_error!(""))
+        VaultId::load_from_path(path.as_ref(), path.as_ref()).expect(line_error!(""))
     }
 
     pub fn derive_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, ctr: usize) -> RecordId {
