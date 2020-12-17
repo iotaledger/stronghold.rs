@@ -1,8 +1,8 @@
-name: covector version or publish
+name: publish
 on:
   push:
     branches:
-    - dev
+    - main
 
 jobs:
   version-or-publish:
