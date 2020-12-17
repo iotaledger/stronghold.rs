@@ -7,7 +7,7 @@ on:
 
 jobs:
 
-  update changelog:
+  update-changelog:
     runs-on: ubuntu-latest
     timeout-minutes: 65
     outputs:
