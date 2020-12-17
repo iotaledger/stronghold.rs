@@ -450,6 +450,11 @@ mod tests {
             vec![],
         ));
 
+        // read head.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
+
         // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
         futures::executor::block_on(stronghold.write_data(
             loc1.clone(),
@@ -458,12 +463,22 @@ mod tests {
             vec![],
         ));
 
+        // read head.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
+
         futures::executor::block_on(stronghold.write_data(
             loc2.clone(),
             b"yet another test".to_vec(),
             RecordHint::new(b"yet another hint").expect(line_error!()),
             vec![],
         ));
+
+        // read head.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
         // Read the first record of the vault.
         let (p, _) = futures::executor::block_on(stronghold.read_data(loc0.clone()));
@@ -552,10 +567,10 @@ mod tests {
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(bip39_seed.vault_path()));
         println!("{:?}", ids);
 
-        // Can't sync head anymore if record was revoked.
+        // read head after reading snapshot.
         let (p, _) = futures::executor::block_on(stronghold.read_data(lochead));
 
-        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
         let (p, _) = futures::executor::block_on(stronghold.read_data(loc2.clone()));
 

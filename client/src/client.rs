@@ -16,6 +16,11 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+pub enum ReadWrite {
+    Read,
+    Write,
+}
+
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
 #[actor(SHResults, SHRequest, InternalResults)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -32,7 +37,7 @@ impl Client {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
     pub fn new(client_id: ClientId) -> Self {
         let vaults = BTreeMap::new();
-        let heads = Vec::new();
+        let heads = vec![];
         let counters = vec![0];
 
         Self {
@@ -47,9 +52,14 @@ impl Client {
         bincode::serialize(&self).expect(line_error!())
     }
 
-    /// Insert a new Record into the Stronghold on the Vault based on the given RecordId.
-    pub fn add_vault_insert_record(&mut self, vid: VaultId, rid: RecordId) -> (VaultId, RecordId) {
-        let mut heads: Vec<RecordId> = self.heads.clone();
+    pub fn add_new_vault(&mut self, vid: VaultId) {
+        let head = self.heads.len();
+
+        self.vaults.insert(vid, (head, vec![]));
+    }
+
+    pub fn add_record_to_vault(&mut self, vid: VaultId, rid: RecordId) {
+        let mut heads = self.heads.clone();
 
         let (idx, _) = self
             .vaults
@@ -65,19 +75,23 @@ impl Client {
             heads[*idx] = rid;
         }
 
-        if !heads.contains(&rid) {
-            heads.push(rid);
-        }
-
         if self.counters.len() == *idx {
             self.counters.push(0);
         }
 
-        self.counters[*idx] += 1;
-
         self.heads = heads;
+    }
 
-        (vid, rid)
+    pub fn increment_counter(&mut self, vid: VaultId) {
+        let opt = self.vaults.get(&vid);
+
+        if let Some((idx, _)) = opt {
+            if self.counters.len() == *idx {
+                self.counters.push(0);
+            }
+
+            self.counters[*idx] += 1;
+        }
     }
 
     /// Get the head of a vault.
@@ -114,7 +128,7 @@ impl Client {
         *self = client;
     }
 
-    pub fn resolve_location<L: AsRef<Location>>(&self, l: L) -> (VaultId, RecordId) {
+    pub fn resolve_location<L: AsRef<Location>>(&self, l: L, rw: ReadWrite) -> (VaultId, RecordId) {
         match l.as_ref() {
             Location::Generic {
                 vault_path,
@@ -126,7 +140,17 @@ impl Client {
             }
             Location::Counter { vault_path, counter } => {
                 let vid = self.derive_vault_id(vault_path);
-                let rid = self.derive_record_id(vault_path, *counter);
+
+                let rid = if let Some(ctr) = counter {
+                    self.derive_record_id(vault_path, *ctr)
+                } else {
+                    let ctr = self.get_counter(vid);
+                    match rw {
+                        ReadWrite::Read => self.derive_record_id(vault_path, ctr - 1),
+                        ReadWrite::Write => self.derive_record_id(vault_path, ctr),
+                    }
+                };
+
                 (vid, rid)
             }
         }
@@ -136,27 +160,16 @@ impl Client {
         VaultId::load_from_path(self.client_id.as_ref(), path.as_ref()).expect(line_error!(""))
     }
 
-    pub fn derive_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, ctr: Option<usize>) -> RecordId {
+    pub fn derive_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, ctr: usize) -> RecordId {
         let vault_path = vault_path.as_ref();
-        let vid = self.derive_vault_id(vault_path);
-        if let Some(ctr) = ctr {
-            let path = if ctr == 0 {
-                format!("{:?}{}", vault_path, "first_record")
-            } else {
-                format!("{:?}{}", vault_path, ctr)
-            };
 
-            RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
+        let path = if ctr == 0 {
+            format!("{:?}{}", vault_path, "first_record")
         } else {
-            let ctr = self.get_counter(vid);
-            let path = if ctr == 0 {
-                format!("{:?}{}", vault_path, "first_record")
-            } else {
-                format!("{:?}{}", vault_path, ctr)
-            };
+            format!("{:?}{}", vault_path, ctr)
+        };
 
-            RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
-        }
+        RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
     }
 
     pub fn get_client_str(&self) -> String {
@@ -184,7 +197,7 @@ impl Client {
         let vctr = self.get_counter(vault_id);
 
         while ctr <= vctr {
-            let rid = self.derive_record_id(vault_path, Some(ctr));
+            let rid = self.derive_record_id(vault_path, ctr);
             if record_id == rid {
                 break;
             }
@@ -225,7 +238,9 @@ mod test {
 
         let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
 
-        cache.add_vault_insert_record(vid, rid);
+        cache.add_new_vault(vid);
+        cache.add_record_to_vault(vid, rid);
+        cache.increment_counter(vid);
 
         assert_eq!(cache.heads.len(), 1);
         assert_eq!(cache.heads[0], rid);
@@ -234,7 +249,8 @@ mod test {
         let vid = VaultId::random::<Provider>().expect(line_error!());
         let rid = RecordId::random::<Provider>().expect(line_error!());
 
-        cache.add_vault_insert_record(vid, rid);
+        cache.add_record_to_vault(vid, rid);
+        cache.increment_counter(vid);
 
         assert_eq!(cache.heads.len(), 2);
         assert_eq!(cache.heads[1], rid);
@@ -248,7 +264,9 @@ mod test {
 
         let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
 
-        cache.add_vault_insert_record(vid, rid);
+        cache.add_new_vault(vid);
+        cache.add_record_to_vault(vid, rid);
+        cache.increment_counter(vid);
 
         assert_eq!(cache.heads.len(), 1);
         assert_eq!(cache.heads[0], rid);
@@ -256,7 +274,8 @@ mod test {
 
         let rid2 = RecordId::random::<Provider>().expect(line_error!());
 
-        cache.add_vault_insert_record(vid, rid2);
+        cache.add_record_to_vault(vid, rid2);
+        cache.increment_counter(vid);
 
         assert_eq!(cache.heads.len(), 1);
         assert_eq!(cache.heads[0], rid2);
@@ -267,8 +286,11 @@ mod test {
         let rid3 = RecordId::random::<Provider>().expect(line_error!());
         let rid4 = RecordId::random::<Provider>().expect(line_error!());
 
-        cache.add_vault_insert_record(vid2, rid3);
-        cache.add_vault_insert_record(vid2, rid4);
+        cache.add_new_vault(vid2);
+        cache.add_record_to_vault(vid2, rid3);
+        cache.increment_counter(vid2);
+        cache.add_record_to_vault(vid2, rid4);
+        cache.increment_counter(vid2);
 
         assert_eq!(cache.heads.len(), 2);
         assert_eq!(cache.heads[1], rid4);
@@ -293,10 +315,19 @@ mod test {
 
         let mut cache = Client::new(cid);
 
-        cache.add_vault_insert_record(vid, rid);
-        cache.add_vault_insert_record(vid, rid2);
-        cache.add_vault_insert_record(vid2, rid3);
-        cache.add_vault_insert_record(vid2, rid4);
+        cache.add_new_vault(vid);
+        cache.add_record_to_vault(vid, rid);
+        cache.add_new_vault(vid2);
+        cache.add_record_to_vault(vid2, rid3);
+
+        cache.increment_counter(vid);
+        cache.increment_counter(vid2);
+
+        cache.add_record_to_vault(vid, rid2);
+        cache.add_record_to_vault(vid2, rid4);
+
+        cache.increment_counter(vid);
+        cache.increment_counter(vid2);
 
         let head0 = cache.get_head(vault_path);
         let head1 = cache.get_head(vault_path2);
@@ -317,29 +348,36 @@ mod test {
         let mut ctr = 0;
         let mut ctr2 = 0;
 
-        let rid = client.derive_record_id(vault_path.clone(), Some(ctr));
-        let rid2 = client.derive_record_id(vault_path.clone(), Some(ctr2));
+        let rid = client.derive_record_id(vault_path.clone(), ctr);
+        let rid2 = client.derive_record_id(vault_path.clone(), ctr2);
 
-        client.add_vault_insert_record(vid, rid);
-        client.add_vault_insert_record(vid2, rid2);
+        client.add_new_vault(vid);
+        client.add_record_to_vault(vid, rid);
+        client.add_new_vault(vid2);
+        client.add_record_to_vault(vid2, rid2);
+        client.increment_counter(vid);
+        client.increment_counter(vid2);
 
         ctr += 1;
         ctr2 += 1;
 
-        let rid = client.derive_record_id(vault_path.clone(), Some(ctr));
-        let rid2 = client.derive_record_id(vault_path.clone(), Some(ctr2));
+        let rid = client.derive_record_id(vault_path.clone(), ctr);
+        let rid2 = client.derive_record_id(vault_path.clone(), ctr2);
 
-        client.add_vault_insert_record(vid, rid);
-        client.add_vault_insert_record(vid2, rid2);
+        client.add_record_to_vault(vid, rid);
+        client.add_record_to_vault(vid2, rid2);
+        client.increment_counter(vid);
+        client.increment_counter(vid2);
 
         ctr += 1;
 
-        let rid = client.derive_record_id(vault_path.clone(), Some(ctr));
+        let rid = client.derive_record_id(vault_path.clone(), ctr);
 
-        client.add_vault_insert_record(vid, rid);
+        client.add_record_to_vault(vid, rid);
+        client.increment_counter(vid);
 
         let test_ctr = client.get_counter(vid);
-        let test_rid = client.derive_record_id(vault_path, Some(test_ctr - 1));
+        let test_rid = client.derive_record_id(vault_path, test_ctr - 1);
 
         assert_eq!(test_rid, rid);
         assert_eq!(Some(test_ctr), Some(3));
@@ -347,39 +385,42 @@ mod test {
     }
 
     #[test]
-    fn test_rid_derive() {
+    fn test_location_counter_api() {
         let clientid = ClientId::random::<Provider>().expect(line_error!());
 
-        let vid = VaultId::random::<Provider>().expect(line_error!());
-        let vid2 = VaultId::random::<Provider>().expect(line_error!());
-        let vault_path = b"some_vault".to_vec();
+        let vidlochead = Location::counter::<_, usize>("some_vault", None);
+        let vidlochead2 = Location::counter::<_, usize>("some_vault 2", None);
 
         let mut client = Client::new(clientid);
 
-        let rid = client.derive_record_id(vault_path.clone(), None);
-        let rid2 = client.derive_record_id(vault_path.clone(), None);
+        let (vid, rid) = client.resolve_location(vidlochead.clone(), ReadWrite::Write);
+        let (vid2, rid2) = client.resolve_location(vidlochead2.clone(), ReadWrite::Write);
 
-        client.add_vault_insert_record(vid, rid);
-        client.add_vault_insert_record(vid2, rid2);
+        client.add_new_vault(vid);
+        client.add_record_to_vault(vid, rid);
+        client.add_new_vault(vid2);
+        client.add_record_to_vault(vid2, rid2);
+        client.increment_counter(vid);
+        client.increment_counter(vid2);
 
-        let rid = client.derive_record_id(vault_path.clone(), None);
-        let rid2 = client.derive_record_id(vault_path.clone(), None);
+        let (_, rid_head) = client.resolve_location(vidlochead.clone(), ReadWrite::Read);
+        let (_, rid_head_2) = client.resolve_location(vidlochead2.clone(), ReadWrite::Read);
 
-        client.add_vault_insert_record(vid, rid);
-        client.add_vault_insert_record(vid2, rid2);
+        assert_eq!(rid, rid_head);
+        assert_eq!(rid2, rid_head_2);
 
-        let rid = client.derive_record_id(vault_path.clone(), None);
+        let (vid, rid) = client.resolve_location(vidlochead.clone(), ReadWrite::Write);
+        let (vid2, rid2) = client.resolve_location(vidlochead2.clone(), ReadWrite::Write);
 
-        client.add_vault_insert_record(vid, rid);
+        client.add_record_to_vault(vid, rid);
+        client.add_record_to_vault(vid2, rid2);
+        client.increment_counter(vid);
+        client.increment_counter(vid2);
 
-        let test_ctr = client.get_counter(vid);
-        let test_rid = client.derive_record_id(vault_path, None);
+        let (_, rid_head) = client.resolve_location(vidlochead, ReadWrite::Read);
+        let (_, rid_head_2) = client.resolve_location(vidlochead2, ReadWrite::Read);
 
-        assert!(client.record_exists_in_vault(vid, test_rid));
-        assert!(client.vault_exist(vid));
-
-        assert_eq!(test_rid, rid);
-        assert_eq!(Some(test_ctr), Some(3));
-        assert_eq!(client.counters, vec![3, 2])
+        assert_eq!(rid, rid_head);
+        assert_eq!(rid2, rid_head_2);
     }
 }
