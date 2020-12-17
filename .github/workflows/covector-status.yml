@@ -1,17 +1,18 @@
-name: version
+
+name: status
 on:
   push:
     branches:
       - dev
 
 jobs:
-  version-or-publish:
+
+  update changelog:
     runs-on: ubuntu-latest
     timeout-minutes: 65
     outputs:
       change: ${{ steps.covector.outputs.change }}
       commandRan: ${{ steps.covector.outputs.commandRan }}
-      successfulPublish: ${{ steps.covector.outputs.successfulPublish }}
 
     steps:
       - uses: actions/checkout@v2
@@ -21,8 +22,7 @@ jobs:
         with:
           node-version: 14
           registry-url: 'https://registry.npmjs.org'
-      - name: cargo login
-        run: cargo login ${{ secrets.crate_token }}
+
       - name: git config
         run: |
           git config --global user.name "${{ github.event.pusher.name }}"
@@ -36,7 +36,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           command: 'version-or-publish'
-          createRelease: true
+
       - name: Create Pull Request With Versions Bumped
         if: steps.covector.outputs.commandRan == 'version'
         uses: tauri-apps/create-pull-request@v3.4.1
