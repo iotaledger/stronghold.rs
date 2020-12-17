@@ -3,14 +3,16 @@ name = "crypto"
 version = "0.1.0"
 authors = ["tensor-programming <tensordeveloper@gmail.com>"]
 edition = "2018"
+license = "Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-primitives = {path = "../primitives"}
 thiserror = "1.0"
 anyhow = "1.0"
+
+[dependencies.primitives]
+path = "../primitives"
 
 [dev-dependencies]
 json = "0.12"
 hex = "0.4"
-

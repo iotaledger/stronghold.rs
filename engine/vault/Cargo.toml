@@ -14,5 +14,9 @@ serde = {version = "1.0", features = ["derive"]}
 [dev-dependencies]
 json = "0.12"
 rand = "0.7.3"
-crypto = {path = "../crypto", version = "0.1"}
-random = {path = "../random", version = "0.1"}
+
+[dev-dependencies.random]
+path = "../random"
+
+[dev-dependencies.crypto]
+path = "../crypto"
