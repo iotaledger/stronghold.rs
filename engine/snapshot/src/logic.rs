@@ -10,10 +10,10 @@ use std::{
 use crypto::ciphers::chacha::xchacha20poly1305;
 
 /// Magic bytes (bytes 0-4 in a snapshot file)
-const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
+pub const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
 
 /// Current version bytes (bytes 5-6 in a snapshot file)
-const VERSION: [u8; 2] = [0x1, 0x0];
+pub const VERSION: [u8; 2] = [0x1, 0x0];
 
 const KEY_SIZE: usize = 32;
 pub type Key = [u8; KEY_SIZE];
