@@ -12,8 +12,6 @@ homepage = "https://iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
 
 [dependencies]
-stronghold-engine = {path = "../engine"}
-
 bincode = "1.3"
 serde = {version = "1.0", features = ["derive"]}
 zeroize = "1.1"
@@ -21,10 +19,13 @@ zeroize_derive = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
 futures = "0.3"
-
 riker = "0.4"
 
-stronghold-runtime = {path = "../runtime"}
+[dependencies.stronghold-engine]
+path = "../engine"
+
+[dependencies.stronghold-runtime]
+path = "../runtime"
 
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
@@ -33,10 +34,8 @@ features = [ "random", "ed25519", "sha", "hmac", "bip39-en" ]
 
 [dev-dependencies]
 hex = "0.4.2"
-
 criterion = "0.3.3"
 
 [[bench]]
 name = "benchmark"
 harness = false
-

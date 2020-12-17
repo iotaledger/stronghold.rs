@@ -38,6 +38,7 @@ impl Client {
     pub fn new(client_id: ClientId) -> Self {
         let vaults = BTreeMap::new();
         let heads = vec![];
+
         let counters = vec![0];
 
         Self {

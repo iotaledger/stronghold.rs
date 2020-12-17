@@ -14,9 +14,17 @@ repository = "https://github.com/iotaledger/stronghold.rs"
 [lib]
 name = "engine"
 
-[dependencies]
-crypto = { path = "crypto" }
-vault = { path = "vault" }
-primitives = { path = "primitives" }
-random = { path = "random" }
-snapshot = { path = "snapshot" }
+[dependencies.crypto]
+path = "crypto"
+
+[dependencies.vault]
+path = "vault"
+
+[dependencies.primitives]
+path = "primitives"
+
+[dependencies.random]
+path = "random"
+
+[dependencies.snapshot]
+path = "snapshot"
