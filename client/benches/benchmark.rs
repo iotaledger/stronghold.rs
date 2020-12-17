@@ -12,7 +12,7 @@ use futures::executor::block_on;
 fn bench_stronghold_write_create(c: &mut Criterion) {
     let system = ActorSystem::new().unwrap();
 
-    let stronghold = Stronghold::init_stronghold_system(&system, b"path".to_vec(), vec![]);
+    let stronghold = Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![]);
 
     c.bench_function("write to stronghold while creating vaults", |b| {
         b.iter(|| {
@@ -28,7 +28,7 @@ fn bench_stronghold_write_create(c: &mut Criterion) {
 
 fn bench_stronghold_write_init(c: &mut Criterion) {
     let system = ActorSystem::new().unwrap();
-    let stronghold = Stronghold::init_stronghold_system(&system, b"path".to_vec(), vec![]);
+    let stronghold = Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![]);
 
     for i in 0..5 {
         block_on(stronghold.write_data(
@@ -53,7 +53,7 @@ fn bench_stronghold_write_init(c: &mut Criterion) {
 
 fn bench_stronghold_read(c: &mut Criterion) {
     let system = ActorSystem::new().unwrap();
-    let stronghold = Stronghold::init_stronghold_system(&system, b"path".to_vec(), vec![]);
+    let stronghold = Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![]);
 
     for i in 0..10 {
         block_on(stronghold.write_data(
