@@ -1,8 +1,9 @@
-name: covector version or publish
+name: version or publish
+
 on:
   push:
     branches:
-    - main
+      - dev
 
 jobs:
   version-or-publish:
@@ -58,10 +59,10 @@ jobs:
         package:
           - name: iota-stronghold
             registryName: iota-stronghold
-          - name: stronghold-engine
-            registryName: stronghold-engine
           - name: stronghold-runtime
             registryName: stronghold-runtime
+          - name: stronghold-engine
+            registryName: stronghold-engine
           - name: stronghold-communication
             registryName: stronghold-communication
 
