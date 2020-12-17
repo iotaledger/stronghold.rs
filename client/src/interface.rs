@@ -70,7 +70,7 @@ impl Stronghold {
         let counter = self.actors.len();
 
         if self.client_ids.contains(&client_id) {
-            self.current_target = index_of_unchecked(&self.client_ids, &client_id);
+            self.switch_actor_target(client_path);
         } else {
             let client = self
                 .system
