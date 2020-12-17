@@ -12,7 +12,7 @@ use crate::{
     client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
-    utils::{ask, index_of_unchecked, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{ask, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     ClientId, Location, Provider,
 };
 
