@@ -426,13 +426,11 @@ impl<'a> Stronghold<'a> {
 
     pub async fn write_all_actors_to_snapshot(
         &mut self,
-        keydata: Vec<u8>,
-        filename: Option<String>,
-        path: Option<PathBuf>,
+        _keydata: Vec<u8>,
+        _filename: Option<String>,
+        _path: Option<PathBuf>,
     ) -> StatusMessage {
-        let client_ids = self.client_ids.clone();
-
-        StatusMessage::OK
+        unimplemented!();
     }
 
     #[allow(dead_code)]
@@ -738,13 +736,12 @@ mod tests {
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test again"));
 
-        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
-        println!("{:?}", ids);
+        let (ids3, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
 
         stronghold.switch_actor_target(client_path1.clone());
 
-        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
-        println!("{:?}", ids);
+        let (ids1, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+        assert_ne!(ids3, ids1);
 
         stronghold.system.print_tree();
     }
