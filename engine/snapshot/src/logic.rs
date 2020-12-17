@@ -9,35 +9,37 @@ use std::{
 
 use crypto::ciphers::chacha::xchacha20poly1305;
 
-/// PARTI in binary
+/// Magic bytes (bytes 0-4 in a snapshot file)
 const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
 
-/// version 1.0 in binary
+/// Current version bytes (bytes 5-6 in a snapshot file)
 const VERSION: [u8; 2] = [0x1, 0x0];
 
 const KEY_SIZE: usize = 32;
 pub type Key = [u8; KEY_SIZE];
 
-/// encrypt and write a serialized snapshot
-pub fn write<O: Write>(input: &[u8], out: &mut O, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
-    out.write_all(&MAGIC)?;
-    out.write_all(&VERSION)?;
+/// Encrypt the opaque plaintext bytestring using the specified key and optional associated data
+/// and writes the ciphertext to the specifed output
+pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
+    output.write_all(&MAGIC)?;
+    output.write_all(&VERSION)?;
 
     let mut nonce = [0; xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE];
     crypto::rand::fill(&mut nonce)?;
-    out.write_all(&nonce)?;
+    output.write_all(&nonce)?;
 
     let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
-    let mut ct = vec![0; input.len()];
-    xchacha20poly1305::encrypt(&mut ct, &mut tag, input, key, &nonce, associated_data)?;
+    let mut ct = vec![0; plain.len()];
+    xchacha20poly1305::encrypt(&mut ct, &mut tag, plain, key, &nonce, associated_data)?;
 
-    out.write_all(&tag)?;
-    out.write_all(&ct)?;
+    output.write_all(&tag)?;
+    output.write_all(&ct)?;
 
     Ok(())
 }
 
-/// decrypt a snapshot and return its serialized bytes
+/// Read ciphertext from the input, decrypts it using the specified key and the associated data
+/// specified during encryption and returns the plaintext
 pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate::Result<Vec<u8>> {
     // check the header
     check_header(input)?;
@@ -57,7 +59,12 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
     Ok(pt)
 }
 
-pub fn write_to(input: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
+/// Atomically encrypt and [`write`](fn.write.html) the specified plaintext to the specified path
+///
+/// This is achieved by creating a temporary file in the same directory as the specified path (same
+/// filename with a salted suffix). This is currently known to be problematic if the path is a
+/// symlink and/or if the target path resides in a directory withouth user write permission.
+pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
     // TODO: if path exists and is a symlink, resolve it and then append the salt
     // TODO: if the sibling tempfile isn't writeable (e.g. directory permissions), write to
     // env::temp_dir()
@@ -71,7 +78,7 @@ pub fn write_to(input: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     let tmp = Path::new(&s);
 
     let mut f = OpenOptions::new().write(true).create_new(true).open(tmp)?;
-    write(input, &mut f, key, associated_data)?;
+    write(plain, &mut f, key, associated_data)?;
     f.sync_all()?;
 
     rename(tmp, path)?;
@@ -79,6 +86,7 @@ pub fn write_to(input: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     Ok(())
 }
 
+/// [`read`](fn.read.html) and decrypt the ciphertext from the specified path
 pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<Vec<u8>> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
     check_min_file_len(&mut f)?;
