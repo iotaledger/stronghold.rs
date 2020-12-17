@@ -216,7 +216,7 @@ impl Receive<SHRequest> for Client {
             }
             SHRequest::CreateNewVault(vpath) => {
                 let vid = self.derive_vault_id(&vpath);
-                let rid = self.derive_record_id(vpath.clone(), None);
+                let rid = self.derive_record_id(vpath, None);
                 let client_str = self.get_client_str();
 
                 self.add_vault_insert_record(vid, rid);
