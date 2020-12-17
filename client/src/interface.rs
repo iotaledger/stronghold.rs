@@ -149,7 +149,7 @@ impl<'a> Stronghold<'a> {
                         )
                         .await
                         {
-                            status
+                            return status;
                         } else {
                             return StatusMessage::Error("Error Writing data".into());
                         };
@@ -179,27 +179,11 @@ impl<'a> Stronghold<'a> {
                         )
                         .await
                         {
-                            status
+                            return status;
                         } else {
                             return StatusMessage::Error("Error Writing data".into());
                         };
                     }
-                };
-
-                if let SHResults::ReturnWriteData(status) = ask(
-                    self.system,
-                    client,
-                    SHRequest::WriteData {
-                        location,
-                        payload,
-                        hint,
-                    },
-                )
-                .await
-                {
-                    status
-                } else {
-                    return StatusMessage::Error("Error Writing data".into());
                 };
             } else {
                 // no vault so create new one before writing.
@@ -222,14 +206,14 @@ impl<'a> Stronghold<'a> {
                 )
                 .await
                 {
-                    status
+                    return status;
                 } else {
                     return StatusMessage::Error("Error Writing data".into());
                 };
             }
         };
 
-        StatusMessage::OK
+        StatusMessage::Error("Failed to write the data".into())
     }
 
     pub async fn read_data(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
