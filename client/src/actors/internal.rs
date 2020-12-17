@@ -92,7 +92,7 @@ pub enum InternalMsg {
 pub enum InternalResults {
     ReturnCreateVault(StatusMessage),
     ReturnWriteData(StatusMessage),
-    ReturnInitRecord(VaultId, RecordId, StatusMessage),
+    ReturnInitRecord(StatusMessage),
     ReturnReadData(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
@@ -191,12 +191,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
-                    let rid = self.bucket.init_record(key.clone(), rid);
+                    let _rid = self.bucket.init_record(key.clone(), rid);
 
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnInitRecord(vid, rid, StatusMessage::OK)),
+                        ClientMsg::InternalResults(InternalResults::ReturnInitRecord(StatusMessage::OK)),
                         sender,
                     );
                 }

@@ -7,12 +7,12 @@
 // TODO: Encrypted Return Channel
 // TODO: Handshake
 // TODO: O(1) comparison for IDS.
-// TODO: Remove #[allow(dead_code)]s.
 // TODO: ~~Add ability to name snapshots~~
 // TODO: ~~Add ability to read and revoke records not on the head of the chain.~~
 // TODO: Add Reference types for the RecordIds and VaultIds to expose to the External programs.
 // TODO: Add Handshake Messages.
 // TODO: Add Responses for each Message.
+// TODO: Remove #[allow(dead_code)]
 
 #![allow(dead_code)]
 

@@ -134,7 +134,7 @@ impl Stronghold {
                             return StatusMessage::Error("Error Writing data".into());
                         };
                     } else {
-                        let (_idx, _) = if let SHResults::ReturnInitRecord(idx, status) = ask(
+                        let (_idx, _) = if let SHResults::ReturnInitRecord(status) = ask(
                             &self.system,
                             client,
                             SHRequest::InitRecord {

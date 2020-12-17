@@ -135,7 +135,7 @@ pub enum SHResults {
     ReturnCreateVault(StatusMessage),
 
     ReturnWriteData(StatusMessage),
-    ReturnInitRecord(usize, StatusMessage),
+    ReturnInitRecord(StatusMessage),
     ReturnReadData(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
@@ -245,6 +245,8 @@ impl Receive<SHRequest> for Client {
                 let (vid, rid) = self.resolve_location(location);
 
                 let client_str = self.get_client_str();
+
+                self.add_vault_insert_record(vid, rid);
 
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
@@ -479,15 +481,11 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnCreateVault(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnInitRecord(vid, rid, status) => {
-                self.add_vault_insert_record(vid, rid);
-
-                let ctr = self.get_counter(vid);
-
+            InternalResults::ReturnInitRecord(status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnInitRecord(ctr - 1, status), None)
+                    .try_tell(SHResults::ReturnInitRecord(status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnReadData(payload, status) => {
