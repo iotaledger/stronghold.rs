@@ -85,7 +85,6 @@ pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> crate::Resul
     read(&mut f, key, associated_data)
 }
 
-/// check to see if the file is long enough.
 fn check_min_file_len(input: &mut File) -> crate::Result<()> {
     let min = MAGIC.len()
         + VERSION.len()
