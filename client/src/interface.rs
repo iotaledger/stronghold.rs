@@ -93,6 +93,22 @@ impl<'a> Stronghold<'a> {
         StatusMessage::OK
     }
 
+    pub fn switch_actor_target(&mut self, client_path: Vec<u8>) -> StatusMessage {
+        let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
+
+        if self.client_ids.contains(&client_id) {
+            let idx = self.client_ids.iter().position(|cid| cid == &client_id);
+
+            if let Some(idx) = idx {
+                self.current_target = idx;
+            }
+
+            StatusMessage::OK
+        } else {
+            StatusMessage::Error("Unable to find the actor with that client path".into())
+        }
+    }
+
     pub async fn write_data(
         &self,
         location: Location,
@@ -604,5 +620,69 @@ mod tests {
         futures::executor::block_on(stronghold.kill_stronghold(client_path, true));
 
         stronghold.system.print_tree();
+    }
+
+    #[test]
+    fn run_stronghold_multi_actors() {
+        let sys = ActorSystem::new().unwrap();
+
+        let client_path0 = b"test a".to_vec();
+        let client_path1 = b"test b".to_vec();
+
+        let lochead = Location::counter::<_, usize>("path", None);
+
+        let mut stronghold = Stronghold::init_stronghold_system(&sys, client_path0.clone(), vec![]);
+
+        stronghold.spawn_stronghold_actor(client_path1.clone(), vec![]);
+
+        stronghold.switch_actor_target(client_path0.clone());
+
+        futures::executor::block_on(stronghold.write_data(
+            lochead.clone(),
+            b"test".to_vec(),
+            RecordHint::new(b"first hint").expect(line_error!()),
+            vec![],
+        ));
+
+        // read head.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
+
+        stronghold.switch_actor_target(client_path1.clone());
+
+        // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
+        futures::executor::block_on(stronghold.write_data(
+            lochead.clone(),
+            b"another test".to_vec(),
+            RecordHint::new(b"another hint").expect(line_error!()),
+            vec![],
+        ));
+
+        // read head.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
+
+        stronghold.switch_actor_target(client_path0);
+
+        futures::executor::block_on(stronghold.write_data(
+            lochead.clone(),
+            b"yet another test".to_vec(),
+            RecordHint::new(b"yet another hint").expect(line_error!()),
+            vec![],
+        ));
+
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
+
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+        println!("{:?}", ids);
+
+        stronghold.switch_actor_target(client_path1);
+
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+        println!("{:?}", ids);
     }
 }
