@@ -16,6 +16,47 @@ impl ResultMessage<()> {
     pub const OK: Self = ResultMessage::Ok(());
 }
 
+#[derive(Debug, Clone)]
+pub enum Location {
+    Generic {
+        vault_path: Vec<u8>,
+        record_path: Vec<u8>,
+    },
+    Counter {
+        vault_path: Vec<u8>,
+        counter: Option<usize>,
+    },
+}
+
+impl Location {
+    pub fn vault_path(&self) -> &[u8] {
+        match self {
+            Self::Generic { vault_path, .. } => vault_path,
+            Self::Counter { vault_path, .. } => vault_path,
+        }
+    }
+
+    pub fn generic<V: Into<Vec<u8>>, R: Into<Vec<u8>>>(vault_path: V, record_path: R) -> Self {
+        Self::Generic {
+            vault_path: vault_path.into(),
+            record_path: record_path.into(),
+        }
+    }
+
+    pub fn counter<V: Into<Vec<u8>>, C: Into<usize>>(vault_path: V, counter: Option<C>) -> Self {
+        Self::Counter {
+            vault_path: vault_path.into(),
+            counter: counter.map(|c| c.into()),
+        }
+    }
+}
+
+impl AsRef<Location> for Location {
+    fn as_ref(&self) -> &Location {
+        self
+    }
+}
+
 pub enum StrongholdFlags {
     IsReadable(bool),
 }

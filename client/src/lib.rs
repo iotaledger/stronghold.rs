@@ -32,7 +32,7 @@ use crate::utils::{ClientId, VaultId};
 pub use crate::{
     interface::Stronghold,
     internals::Provider,
-    utils::{StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{Location, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
 pub use engine::snapshot::{home_dir, naive_kdf, snapshot_dir, Key};

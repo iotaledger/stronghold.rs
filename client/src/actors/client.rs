@@ -3,9 +3,10 @@
 
 use crate::{
     actors::{InternalMsg, InternalResults},
-    client::{Client, ClientMsg, Location},
+    client::{Client, ClientMsg},
     line_error,
     utils::{hd, ClientId, ResultMessage, StatusMessage},
+    Location,
 };
 
 use engine::{snapshot, vault::RecordHint};

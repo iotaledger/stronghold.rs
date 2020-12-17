@@ -9,11 +9,11 @@ use engine::vault::RecordHint;
 
 use crate::{
     actors::{InternalActor, InternalMsg, ProcResult, Procedure, SHRequest, SHResults},
-    client::{Client, ClientMsg, Location},
+    client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
     utils::{ask, index_of_unchecked, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
-    ClientId, Provider,
+    ClientId, Location, Provider,
 };
 
 pub struct Stronghold {
@@ -420,8 +420,8 @@ mod tests {
 
     use crate::{
         actors::SLIP10DeriveInput,
-        client::Location,
         utils::{hd, ResultMessage},
+        Location,
     };
 
     #[test]
