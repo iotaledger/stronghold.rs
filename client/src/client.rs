@@ -309,12 +309,12 @@ mod test {
     #[test]
     fn test_get_head_and_vault() {
         let cid = ClientId::random::<Provider>().expect(line_error!());
-        let data: Vec<u8> = cid.into();
+
         let vault_path = b"some_vault".to_vec();
         let vault_path2 = b"some_vault2".to_vec();
 
-        let vid = VaultId::load_from_path(&data, &vault_path).expect(line_error!(""));
-        let vid2 = VaultId::load_from_path(&data, &vault_path2).expect(line_error!(""));
+        let vid = VaultId::load_from_path(&vault_path, &vault_path).expect(line_error!(""));
+        let vid2 = VaultId::load_from_path(&vault_path2, &vault_path2).expect(line_error!(""));
 
         let rid = RecordId::random::<Provider>().expect(line_error!());
         let rid2 = RecordId::random::<Provider>().expect(line_error!());

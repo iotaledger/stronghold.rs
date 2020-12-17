@@ -558,11 +558,11 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnReadSnap(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnWriteData(_status) => {
+            InternalResults::ReturnWriteData(status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnCreateVault(StatusMessage::OK), None)
+                    .try_tell(SHResults::ReturnWriteData(status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnRevoke(status) => {
