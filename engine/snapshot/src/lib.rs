@@ -21,16 +21,14 @@
 //! snapshot sizes and/or random access is desired one might consider encrypting
 //! smaller chunks (B-trees?) or similar using derived ephemeral keys.
 
-mod files;
-mod kdf;
-mod logic;
+pub mod files;
+pub mod kdf;
 
 #[cfg(test)]
 mod test_utils;
 
-pub use files::{home_dir, snapshot_dir};
-pub use kdf::{naive_kdf, recommended_kdf};
-pub use logic::{read, read_from, write, write_to, Key};
+mod logic;
+pub use logic::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

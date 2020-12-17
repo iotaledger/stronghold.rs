@@ -9,7 +9,8 @@ use std::{
 /// Get the preferred Stronghold home directory
 ///
 /// Defaults to a sub-directory named `.stronghold` under the users home directory (see
-/// [`dirs_next::home_dir`](../dirs_next/fn.home_dir.html), but can be overridden by the `STRONGHOLD` environment variable.
+/// [`dirs_next::home_dir`](../dirs_next/fn.home_dir.html), but can be overridden by the `STRONGHOLD` environment
+/// variable.
 pub fn home_dir() -> crate::Result<PathBuf> {
     let home = match std::env::var("STRONGHOLD") {
         Ok(h) => h.into(),
@@ -40,4 +41,10 @@ fn verify_or_create(dir: &Path) -> crate::Result<()> {
         return Ok(());
     }
     Ok(fs::create_dir_all(dir)?)
+}
+
+/// Construct the path to a snapshot file with the specifed name (defaults to `main`) under
+/// the directory specified by the (`snapshot_dir`)[fn.snapshot_dir.html] function.
+pub fn get_path(name: Option<&str>) -> crate::Result<PathBuf> {
+    snapshot_dir().map(|p| p.join(format!("{}.stronghold", name.unwrap_or("main"))))
 }

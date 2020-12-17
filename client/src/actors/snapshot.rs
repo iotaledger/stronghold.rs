@@ -77,13 +77,9 @@ impl Receive<SMsg> for Snapshot {
                 self.state.add_data(id, data);
 
                 if is_final {
-                    let path = if let Some(p) = path {
-                        p
-                    } else {
-                        Snapshot::get_snapshot_path(filename)
-                    };
-
-                    self.clone().write_to_snapshot(&path, key);
+                    self.clone()
+                        .write_to_snapshot(filename.as_deref(), path.as_deref(), key)
+                        .expect(line_error!());
 
                     self.state = SnapshotState::default();
 
@@ -116,13 +112,7 @@ impl Receive<SMsg> for Snapshot {
 
                     internal.try_tell(InternalMsg::ReloadData(data, StatusMessage::OK), sender);
                 } else {
-                    let path = if let Some(p) = path {
-                        p
-                    } else {
-                        Snapshot::get_snapshot_path(filename)
-                    };
-
-                    match Snapshot::read_from_snapshot(&path, key) {
+                    match Snapshot::read_from_snapshot(filename.as_deref(), path.as_deref(), key) {
                         Ok(mut snapshot) => {
                             let data = snapshot.get_state(cid);
 

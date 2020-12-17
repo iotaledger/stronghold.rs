@@ -36,7 +36,10 @@ pub use crate::{
     utils::{hd, Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
-pub use engine::snapshot::{home_dir, naive_kdf, snapshot_dir, Key};
+pub use engine::snapshot::{
+    files::{home_dir, snapshot_dir},
+    Key,
+};
 
 pub use engine::vault::RecordHint;
 
