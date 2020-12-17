@@ -16,9 +16,9 @@ use crate::{
     ClientId, Location, Provider,
 };
 
-pub struct Stronghold {
+pub struct Stronghold<'a> {
     // actor system.
-    system: ActorSystem,
+    system: &'a ActorSystem,
     // clients in the system.
     client_ids: Vec<ClientId>,
 
@@ -30,9 +30,13 @@ pub struct Stronghold {
     current_target: usize,
 }
 
-impl Stronghold {
+impl<'a> Stronghold<'a> {
     /// Initializes a new instance of the system.  Sets up the first client actor.
-    pub fn init_stronghold_system(system: ActorSystem, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> Self {
+    pub fn init_stronghold_system(
+        system: &'a ActorSystem,
+        client_path: Vec<u8>,
+        _options: Vec<StrongholdFlags>,
+    ) -> Self {
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
         let id_str: String = client_id.into();
         let client_ids = vec![client_id];
@@ -104,12 +108,12 @@ impl Stronghold {
         let vault_path = vault_path.to_vec();
 
         if let SHResults::ReturnExistsVault(b) =
-            ask(&self.system, client, SHRequest::CheckVault(vault_path.clone())).await
+            ask(self.system, client, SHRequest::CheckVault(vault_path.clone())).await
         {
             // check if vault exists
             if b {
                 if let SHResults::ReturnExistsRecord(b) = ask(
-                    &self.system,
+                    self.system,
                     client,
                     SHRequest::CheckRecord {
                         location: location.clone(),
@@ -119,7 +123,7 @@ impl Stronghold {
                 {
                     if b {
                         if let SHResults::ReturnWriteData(status) = ask(
-                            &self.system,
+                            self.system,
                             client,
                             SHRequest::WriteData {
                                 location: location.clone(),
@@ -135,7 +139,7 @@ impl Stronghold {
                         };
                     } else {
                         let (_idx, _) = if let SHResults::ReturnInitRecord(status) = ask(
-                            &self.system,
+                            self.system,
                             client,
                             SHRequest::InitRecord {
                                 location: location.clone(),
@@ -149,7 +153,7 @@ impl Stronghold {
                         };
 
                         if let SHResults::ReturnWriteData(status) = ask(
-                            &self.system,
+                            self.system,
                             client,
                             SHRequest::WriteData {
                                 location: location.clone(),
@@ -167,7 +171,7 @@ impl Stronghold {
                 };
 
                 if let SHResults::ReturnWriteData(status) = ask(
-                    &self.system,
+                    self.system,
                     client,
                     SHRequest::WriteData {
                         location,
@@ -184,7 +188,7 @@ impl Stronghold {
             } else {
                 // no vault so create new one before writing.
                 if let SHResults::ReturnCreateVault(status) =
-                    ask(&self.system, client, SHRequest::CreateNewVault(vault_path.clone())).await
+                    ask(self.system, client, SHRequest::CreateNewVault(vault_path.clone())).await
                 {
                     status
                 } else {
@@ -192,7 +196,7 @@ impl Stronghold {
                 };
 
                 if let SHResults::ReturnWriteData(status) = ask(
-                    &self.system,
+                    self.system,
                     client,
                     SHRequest::WriteData {
                         location,
@@ -217,7 +221,7 @@ impl Stronghold {
 
         let client = &self.actors[idx];
 
-        let res: SHResults = ask(&self.system, client, SHRequest::ReadData { location }).await;
+        let res: SHResults = ask(self.system, client, SHRequest::ReadData { location }).await;
 
         if let SHResults::ReturnReadData(payload, status) = res {
             (Some(payload), status)
@@ -234,7 +238,7 @@ impl Stronghold {
 
         if should_gc {
             let _ = if let SHResults::ReturnRevoke(status) =
-                ask(&self.system, client, SHRequest::RevokeData { location }).await
+                ask(self.system, client, SHRequest::RevokeData { location }).await
             {
                 status
             } else {
@@ -242,7 +246,7 @@ impl Stronghold {
             };
 
             status = if let SHResults::ReturnGarbage(status) =
-                ask(&self.system, client, SHRequest::GarbageCollect(vault_path.clone())).await
+                ask(self.system, client, SHRequest::GarbageCollect(vault_path.clone())).await
             {
                 status
             } else {
@@ -252,7 +256,7 @@ impl Stronghold {
             status
         } else {
             status = if let SHResults::ReturnRevoke(status) =
-                ask(&self.system, client, SHRequest::RevokeData { location }).await
+                ask(self.system, client, SHRequest::RevokeData { location }).await
             {
                 status
             } else {
@@ -268,7 +272,7 @@ impl Stronghold {
 
         let client = &self.actors[idx];
 
-        if let SHResults::ReturnGarbage(status) = ask(&self.system, client, SHRequest::GarbageCollect(vault_path)).await
+        if let SHResults::ReturnGarbage(status) = ask(self.system, client, SHRequest::GarbageCollect(vault_path)).await
         {
             status
         } else {
@@ -285,7 +289,7 @@ impl Stronghold {
         let client = &self.actors[idx];
 
         if let SHResults::ReturnList(ids, status) =
-            ask(&self.system, client, SHRequest::ListIds(vault_path.into())).await
+            ask(self.system, client, SHRequest::ListIds(vault_path.into())).await
         {
             (ids, status)
         } else {
@@ -300,7 +304,7 @@ impl Stronghold {
         let idx = self.current_target;
 
         let client = &self.actors[idx];
-        let shr = ask(&self.system, client, SHRequest::ControlRequest(control_request)).await;
+        let shr = ask(self.system, client, SHRequest::ControlRequest(control_request)).await;
         match shr {
             SHResults::ReturnControlRequest(pr) => pr,
             _ => todo!("return a proper error: unexpected result"),
@@ -326,7 +330,7 @@ impl Stronghold {
             key.copy_from_slice(&keydata);
 
             if let SHResults::ReturnReadSnap(status) =
-                ask(&self.system, client, SHRequest::ReadSnapshot { key, filename, path }).await
+                ask(self.system, client, SHRequest::ReadSnapshot { key, filename, path }).await
             {
                 status
             } else {
@@ -357,7 +361,7 @@ impl Stronghold {
             key.copy_from_slice(&keydata);
 
             if let SHResults::ReturnWriteSnap(status) =
-                ask(&self.system, client, SHRequest::WriteSnapshot { key, filename, path }).await
+                ask(self.system, client, SHRequest::WriteSnapshot { key, filename, path }).await
             {
                 status
             } else {
@@ -393,7 +397,7 @@ impl Stronghold {
             } else {
                 let client = &self.actors[idx];
 
-                if let SHResults::ReturnClearCache(status) = ask(&self.system, client, SHRequest::ClearCache).await {
+                if let SHResults::ReturnClearCache(status) = ask(self.system, client, SHRequest::ClearCache).await {
                     status
                 } else {
                     StatusMessage::Error("Unable to clear the cache".into())
@@ -402,6 +406,17 @@ impl Stronghold {
         } else {
             StatusMessage::Error("Unable to find client actor".into())
         }
+    }
+
+    pub async fn write_all_actors_to_snapshot(
+        &mut self,
+        keydata: Vec<u8>,
+        filename: Option<String>,
+        path: Option<PathBuf>,
+    ) -> StatusMessage {
+        let client_ids = self.client_ids.clone();
+
+        StatusMessage::OK
     }
 
     #[allow(dead_code)]
@@ -440,7 +455,7 @@ mod tests {
         let bip39_seed = Location::generic("bip39", "seed");
         let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
-        let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
+        let mut stronghold = Stronghold::init_stronghold_system(&sys, client_path.clone(), vec![]);
 
         // Write at the first record of the vault using Some(0).  Also creates the new vault.
         futures::executor::block_on(stronghold.write_data(
