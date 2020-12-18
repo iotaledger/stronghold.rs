@@ -244,14 +244,14 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEven
     // Called when `identify` produces an event.
     fn inject_event(&mut self, event: IdentifyEvent) {
         if let IdentifyEvent::Received {
-            ref peer_id,
+            peer_id,
             ref info,
             observed_addr: _,
         } = event
         {
-            if self.get_peer_addr(peer_id).is_none() {
+            if self.get_peer_addr(&peer_id).is_none() {
                 if let Some(addr) = info.listen_addrs.clone().pop() {
-                    self.add_peer(peer_id.clone(), addr);
+                    self.add_peer(peer_id, addr);
                 }
             }
         }
@@ -305,7 +305,7 @@ mod test {
         let mut swarm = mock_swarm();
         let peer_id = PeerId::random();
         let addr = mock_addr();
-        swarm.add_peer(peer_id.clone(), addr.clone());
+        swarm.add_peer(peer_id, addr.clone());
         assert!(swarm.get_peer_addr(&peer_id).is_some());
         assert!(swarm.get_all_peers().contains(&(&peer_id, &addr)));
         assert_eq!(swarm.remove_peer(&peer_id).unwrap(), addr);
@@ -340,7 +340,7 @@ mod test {
     fn request_respose() {
         let mut remote = mock_swarm();
         let listener_id = Swarm::listen_on(&mut remote, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
-        let remote_peer_id = Swarm::local_peer_id(&remote).clone();
+        let remote_peer_id = *Swarm::local_peer_id(&remote);
         let remote_addr = task::block_on(async {
             loop {
                 match remote.next_event().await {
@@ -357,7 +357,7 @@ mod test {
         let remote_addr_clone = remote_addr.clone();
 
         let mut local = mock_swarm();
-        let local_peer_id = Swarm::local_peer_id(&local).clone();
+        let local_peer_id = *Swarm::local_peer_id(&local);
 
         let remote_handle = task::spawn(async move {
             loop {
@@ -469,7 +469,7 @@ mod test {
     #[test]
     fn identify_event() {
         let mut remote = mock_swarm();
-        let remote_peer_id = Swarm::local_peer_id(&remote).clone();
+        let remote_peer_id = *Swarm::local_peer_id(&remote);
         let remote_listener_id = Swarm::listen_on(&mut remote, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
         let remote_addr = task::block_on(async {
             loop {
@@ -486,7 +486,7 @@ mod test {
         });
 
         let mut local = mock_swarm();
-        let local_peer_id = Swarm::local_peer_id(&local).clone();
+        let local_peer_id = *Swarm::local_peer_id(&local);
         let local_listener_id = Swarm::listen_on(&mut local, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
         let local_addr = task::block_on(async {
             loop {

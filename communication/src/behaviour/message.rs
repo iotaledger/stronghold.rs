@@ -100,6 +100,8 @@ pub enum P2PInboundFailure {
     /// due to the [`ResponseChannel`] being dropped instead of
     /// being passed to [`RequestResponse::send_response`].
     ResponseOmission,
+    /// The connection closed before a response could be send.
+    ConnectionClosed,
 }
 
 /// Event emitted  by the `RequestResponse` behaviour.
@@ -244,6 +246,7 @@ impl<T, U> From<RequestResponseEvent<T, U>> for P2PEvent<T, U> {
                     InboundFailure::Timeout => P2PInboundFailure::Timeout,
                     InboundFailure::ResponseOmission => P2PInboundFailure::ResponseOmission,
                     InboundFailure::UnsupportedProtocols => P2PInboundFailure::UnsupportedProtocols,
+                    InboundFailure::ConnectionClosed => P2PInboundFailure::ConnectionClosed,
                 };
                 P2PEvent::RequestResponse(Box::new(P2PReqResEvent::InboundFailure {
                     peer_id: peer,
