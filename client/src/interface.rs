@@ -358,10 +358,10 @@ impl Stronghold {
 
     pub async fn write_snapshot(
         &self,
-        client_path: Vec<u8>,
-        keydata: Vec<u8>,
-        filename: Option<String>,
-        path: Option<PathBuf>,
+        _client_path: Vec<u8>,
+        _keydata: Vec<u8>,
+        _filename: Option<String>,
+        _path: Option<PathBuf>,
         _duration: Option<Duration>,
     ) -> StatusMessage {
         // let data = self.derive_data.get(&client_path).expect(line_error!());
@@ -451,24 +451,22 @@ impl Stronghold {
                         },
                     )
                     .await;
+                } else if let SHResults::ReturnWriteSnap(status) = ask(
+                    &self.system,
+                    actor,
+                    SHRequest::WriteSnapshotAll {
+                        key,
+                        filename: filename.clone(),
+                        path: path.clone(),
+                        is_final: true,
+                    },
+                )
+                .await
+                {
+                    return status;
                 } else {
-                    if let SHResults::ReturnWriteSnap(status) = ask(
-                        &self.system,
-                        actor,
-                        SHRequest::WriteSnapshotAll {
-                            key,
-                            filename: filename.clone(),
-                            path: path.clone(),
-                            is_final: true,
-                        },
-                    )
-                    .await
-                    {
-                        return status;
-                    } else {
-                        return StatusMessage::Error("Unable to write snapshot without any actors.".into());
-                    };
-                }
+                    return StatusMessage::Error("Unable to write snapshot without any actors.".into());
+                };
             }
         } else {
             return StatusMessage::Error("Unable to write snapshot without any actors.".into());
