@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This crate defines and implements the encrypted offline storage format used by
-//! Stronghold ecosystem.
+//! the Stronghold ecosystem.
 //!
 //! The format has a header with version and magic bytes to appease applications
 //! wishing to provide file-type detection.
 //!
-//! The data stored within a snapshot is considered opaque and can uses 256 bit keys.
+//! The data stored within a snapshot is considered opaque and uses 256 bit keys.
 //! It provides recommended ways to derive the snapshot encryption key from a user
 //! provided password. The format also allows using an authenticated data
 //! bytestring to further protect the offline snapshot files (one might consider

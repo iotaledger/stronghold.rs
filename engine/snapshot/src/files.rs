@@ -8,7 +8,7 @@ use std::{
 
 /// Get the preferred Stronghold home directory
 ///
-/// Defaults to a sub-directory named `.stronghold` under the users home directory (see
+/// Defaults to a sub-directory named `.stronghold` under the user's home directory (see
 /// [`dirs_next::home_dir`](../dirs_next/fn.home_dir.html), but can be overridden by the `STRONGHOLD` environment
 /// variable.
 pub fn home_dir() -> crate::Result<PathBuf> {

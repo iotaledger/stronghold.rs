@@ -63,7 +63,7 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
 ///
 /// This is achieved by creating a temporary file in the same directory as the specified path (same
 /// filename with a salted suffix). This is currently known to be problematic if the path is a
-/// symlink and/or if the target path resides in a directory withouth user write permission.
+/// symlink and/or if the target path resides in a directory without user write permission.
 pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
     // TODO: if path exists and is a symlink, resolve it and then append the salt
     // TODO: if the sibling tempfile isn't writeable (e.g. directory permissions), write to
