@@ -23,7 +23,7 @@ use crate::line_error;
 /// HMAC(Key, VaultId + Path1) = RecordId
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Default, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ClientId(ID);
 
 #[repr(transparent)]
@@ -31,7 +31,7 @@ pub struct ClientId(ID);
 pub struct VaultId(ID);
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Hash, Default, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 struct ID([u8; 24]);
 
 impl AsRef<[u8]> for ID {

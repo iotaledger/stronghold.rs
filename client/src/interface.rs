@@ -12,13 +12,13 @@ use crate::{
     client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
-    utils::{ask, index_of_unchecked, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{ask, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     ClientId, Location, Provider,
 };
 
 pub struct Stronghold {
     // actor system.
-    system: ActorSystem,
+    pub system: ActorSystem,
     // clients in the system.
     client_ids: Vec<ClientId>,
 
@@ -70,7 +70,7 @@ impl Stronghold {
         let counter = self.actors.len();
 
         if self.client_ids.contains(&client_id) {
-            self.current_target = index_of_unchecked(&self.client_ids, &client_id);
+            self.switch_actor_target(client_path);
         } else {
             let client = self
                 .system
@@ -87,6 +87,22 @@ impl Stronghold {
         }
 
         StatusMessage::OK
+    }
+
+    pub fn switch_actor_target(&mut self, client_path: Vec<u8>) -> StatusMessage {
+        let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
+
+        if self.client_ids.contains(&client_id) {
+            let idx = self.client_ids.iter().position(|cid| cid == &client_id);
+
+            if let Some(idx) = idx {
+                self.current_target = idx;
+            }
+
+            StatusMessage::OK
+        } else {
+            StatusMessage::Error("Unable to find the actor with that client path".into())
+        }
     }
 
     pub async fn write_data(
@@ -129,7 +145,7 @@ impl Stronghold {
                         )
                         .await
                         {
-                            status
+                            return status;
                         } else {
                             return StatusMessage::Error("Error Writing data".into());
                         };
@@ -159,32 +175,16 @@ impl Stronghold {
                         )
                         .await
                         {
-                            status
+                            return status;
                         } else {
                             return StatusMessage::Error("Error Writing data".into());
                         };
                     }
                 };
-
-                if let SHResults::ReturnWriteData(status) = ask(
-                    &self.system,
-                    client,
-                    SHRequest::WriteData {
-                        location,
-                        payload,
-                        hint,
-                    },
-                )
-                .await
-                {
-                    status
-                } else {
-                    return StatusMessage::Error("Error Writing data".into());
-                };
             } else {
                 // no vault so create new one before writing.
                 if let SHResults::ReturnCreateVault(status) =
-                    ask(&self.system, client, SHRequest::CreateNewVault(vault_path.clone())).await
+                    ask(&self.system, client, SHRequest::CreateNewVault(location.clone())).await
                 {
                     status
                 } else {
@@ -202,14 +202,14 @@ impl Stronghold {
                 )
                 .await
                 {
-                    status
+                    return status;
                 } else {
                     return StatusMessage::Error("Error Writing data".into());
                 };
             }
         };
 
-        StatusMessage::OK
+        StatusMessage::Error("Failed to write the data".into())
     }
 
     pub async fn read_data(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
@@ -404,6 +404,15 @@ impl Stronghold {
         }
     }
 
+    pub async fn write_all_actors_to_snapshot(
+        &mut self,
+        _keydata: Vec<u8>,
+        _filename: Option<String>,
+        _path: Option<PathBuf>,
+    ) -> StatusMessage {
+        unimplemented!();
+    }
+
     #[allow(dead_code)]
     fn check_config_flags() {
         unimplemented!()
@@ -450,6 +459,11 @@ mod tests {
             vec![],
         ));
 
+        // read head.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
+
         // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
         futures::executor::block_on(stronghold.write_data(
             loc1.clone(),
@@ -458,12 +472,22 @@ mod tests {
             vec![],
         ));
 
+        // read head.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
+
         futures::executor::block_on(stronghold.write_data(
             loc2.clone(),
             b"yet another test".to_vec(),
             RecordHint::new(b"yet another hint").expect(line_error!()),
             vec![],
         ));
+
+        // read head.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
         // Read the first record of the vault.
         let (p, _) = futures::executor::block_on(stronghold.read_data(loc0.clone()));
@@ -552,10 +576,10 @@ mod tests {
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(bip39_seed.vault_path()));
         println!("{:?}", ids);
 
-        // Can't sync head anymore if record was revoked.
+        // read head after reading snapshot.
         let (p, _) = futures::executor::block_on(stronghold.read_data(lochead));
 
-        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
         let (p, _) = futures::executor::block_on(stronghold.read_data(loc2.clone()));
 
@@ -574,5 +598,151 @@ mod tests {
         futures::executor::block_on(stronghold.kill_stronghold(client_path, true));
 
         stronghold.system.print_tree();
+    }
+
+    #[test]
+    fn run_stronghold_multi_actors() {
+        let sys = ActorSystem::new().unwrap();
+        let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
+        let client_path0 = b"test a".to_vec();
+        let client_path1 = b"test b".to_vec();
+        let client_path2 = b"test c".to_vec();
+
+        let loc0 = Location::counter::<_, usize>("path", Some(0));
+        let lochead = Location::counter::<_, usize>("path", None);
+
+        let mut stronghold = Stronghold::init_stronghold_system(sys, client_path0.clone(), vec![]);
+
+        stronghold.spawn_stronghold_actor(client_path1.clone(), vec![]);
+
+        stronghold.switch_actor_target(client_path0.clone());
+
+        futures::executor::block_on(stronghold.write_data(
+            lochead.clone(),
+            b"test".to_vec(),
+            RecordHint::new(b"1").expect(line_error!()),
+            vec![],
+        ));
+
+        // read head.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
+
+        stronghold.switch_actor_target(client_path1.clone());
+
+        // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
+        futures::executor::block_on(stronghold.write_data(
+            lochead.clone(),
+            b"another test".to_vec(),
+            RecordHint::new(b"1").expect(line_error!()),
+            vec![],
+        ));
+
+        // read head.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
+
+        stronghold.switch_actor_target(client_path0.clone());
+
+        futures::executor::block_on(stronghold.write_data(
+            lochead.clone(),
+            b"yet another test".to_vec(),
+            RecordHint::new(b"2").expect(line_error!()),
+            vec![],
+        ));
+
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
+
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+        println!("{:?}", ids);
+
+        futures::executor::block_on(stronghold.write_snapshot(
+            client_path0,
+            key_data.clone(),
+            Some("test_1".into()),
+            None,
+            None,
+        ));
+
+        stronghold.switch_actor_target(client_path1.clone());
+
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+        println!("{:?}", ids);
+
+        futures::executor::block_on(stronghold.write_snapshot(
+            client_path1.clone(),
+            key_data.clone(),
+            Some("test_2".into()),
+            None,
+            None,
+        ));
+
+        stronghold.spawn_stronghold_actor(client_path2.clone(), vec![]);
+
+        futures::executor::block_on(stronghold.read_snapshot(
+            client_path2.clone(),
+            key_data,
+            Some("test_2".into()),
+            None,
+        ));
+
+        let (p, _) = futures::executor::block_on(stronghold.read_data(loc0));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
+
+        futures::executor::block_on(stronghold.write_data(
+            lochead.clone(),
+            b"a new actor test".to_vec(),
+            RecordHint::new(b"first hint").expect(line_error!()),
+            vec![],
+        ));
+
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test"));
+
+        futures::executor::block_on(stronghold.write_data(
+            lochead.clone(),
+            b"a new actor test again".to_vec(),
+            RecordHint::new(b"first hint").expect(line_error!()),
+            vec![],
+        ));
+
+        let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test again"));
+
+        let (ids3, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+
+        stronghold.switch_actor_target(client_path1.clone());
+
+        let (ids1, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+        assert_ne!(ids3, ids1);
+
+        stronghold.system.print_tree();
+    }
+
+    #[test]
+    fn test_stronghold_generics() {
+        let sys = ActorSystem::new().unwrap();
+
+        let client_path = b"test a".to_vec();
+
+        let slip10_seed = Location::generic("slip10", "seed");
+
+        let stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
+
+        futures::executor::block_on(stronghold.write_data(
+            slip10_seed.clone(),
+            b"AAAAAA".to_vec(),
+            RecordHint::new(b"first hint").expect(line_error!()),
+            vec![],
+        ));
+        let (p, _) = futures::executor::block_on(stronghold.read_data(slip10_seed.clone()));
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
     }
 }

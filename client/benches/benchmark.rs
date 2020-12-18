@@ -9,45 +9,10 @@ use riker::actors::*;
 
 use futures::executor::block_on;
 
-fn init_stronghold_system_write_create() -> Stronghold {
-    let system = ActorSystem::new().unwrap();
-    Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![])
-}
-
-fn init_stronghold_system_write_init() -> Stronghold {
-    let system = ActorSystem::new().unwrap();
-    let stronghold = Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![]);
-
-    for i in 0..5 {
-        block_on(stronghold.write_data(
-            Location::counter::<_, usize>("test", Some(i)),
-            format!("test data {}", i).as_bytes().to_vec(),
-            RecordHint::new(b"test").unwrap(),
-            vec![],
-        ));
-    }
-
-    stronghold
-}
-
-fn init_stronghold_system_read() -> Stronghold {
-    let system = ActorSystem::new().unwrap();
-    let stronghold = Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![]);
-
-    for i in 0..10 {
-        block_on(stronghold.write_data(
-            Location::generic("test", format!("some_record {}", i)),
-            format!("test data {}", i).as_bytes().to_vec(),
-            RecordHint::new(b"test").unwrap(),
-            vec![],
-        ));
-    }
-
-    stronghold
-}
-
 fn bench_stronghold_write_create(c: &mut Criterion) {
-    let stronghold = init_stronghold_system_write_create();
+    let system = ActorSystem::new().unwrap();
+
+    let stronghold = Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![]);
 
     c.bench_function("write to stronghold while creating vaults", |b| {
         b.iter(|| {
@@ -62,7 +27,17 @@ fn bench_stronghold_write_create(c: &mut Criterion) {
 }
 
 fn bench_stronghold_write_init(c: &mut Criterion) {
-    let stronghold = init_stronghold_system_write_init();
+    let system = ActorSystem::new().unwrap();
+    let stronghold = Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![]);
+
+    for i in 0..5 {
+        block_on(stronghold.write_data(
+            Location::counter::<_, usize>("test", Some(i)),
+            format!("test data {}", i).as_bytes().to_vec(),
+            RecordHint::new(b"test").unwrap(),
+            vec![],
+        ));
+    }
 
     c.bench_function("write to stronghold while initializing records", |b| {
         b.iter(|| {
@@ -77,7 +52,17 @@ fn bench_stronghold_write_init(c: &mut Criterion) {
 }
 
 fn bench_stronghold_read(c: &mut Criterion) {
-    let stronghold = init_stronghold_system_read();
+    let system = ActorSystem::new().unwrap();
+    let stronghold = Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![]);
+
+    for i in 0..10 {
+        block_on(stronghold.write_data(
+            Location::generic("test", format!("some_record {}", i)),
+            format!("test data {}", i).as_bytes().to_vec(),
+            RecordHint::new(b"test").unwrap(),
+            vec![],
+        ));
+    }
 
     c.bench_function("read from stronghold", |b| {
         b.iter(|| {
