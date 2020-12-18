@@ -10,8 +10,8 @@ use engine::snapshot;
 use engine::vault::{Key, ReadResult};
 
 use crate::{
-    actors::{InternalMsg, InternalResults, SHResults},
-    client::{Client, ClientMsg},
+    actors::{InternalMsg, SHResults},
+    client::Client,
     line_error,
     snapshot::{Snapshot, SnapshotState},
     utils::StatusMessage,

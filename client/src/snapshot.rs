@@ -19,7 +19,7 @@ pub struct Snapshot {
     pub state: SnapshotState,
 }
 
-#[derive(Deserialize, Serialize, Clone, Default, Debug)]
+#[derive(Deserialize, Serialize, Clone, Default)]
 pub struct SnapshotState {
     pub ids: Vec<ClientId>,
     pub clients: Vec<Client>,
