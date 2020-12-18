@@ -215,7 +215,7 @@ fn poll_swarm<T: MessageEvent, U: MessageEvent>(
             }
             CommunicationEvent::GetSwarmInfo => {
                 if let Some(sender) = sender_opt {
-                    let peer_id = Swarm::local_peer_id(&swarm).clone();
+                    let peer_id = *Swarm::local_peer_id(&swarm);
                     let listeners = Swarm::listeners(&swarm).cloned().collect();
                     let swarm_info = CommunicationEvent::<T, U>::SwarmInfo { peer_id, listeners };
                     let _ = sender.try_tell(swarm_info, self_ref.clone());
@@ -377,8 +377,9 @@ mod test {
             {
                 self.has_received_response = true;
             } else if let CommunicationEvent::ConnectPeerResult { addr: _, result } = msg {
+                let peer_id = result.expect("Panic due to no network connection");
                 let request = CommunicationEvent::<Request, Response>::Message(P2PReqResEvent::Req {
-                    peer_id: result.unwrap(),
+                    peer_id,
                     request_id: None,
                     request: Request::Ping,
                 });

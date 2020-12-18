@@ -96,7 +96,11 @@ pub enum P2PInboundFailure {
     Timeout,
     /// The local peer supports none of the requested protocols.
     UnsupportedProtocols,
-    /// The connection closed before a response was delivered.
+    /// The local peer failed to respond to an inbound request
+    /// due to the [`ResponseChannel`] being dropped instead of
+    /// being passed to [`RequestResponse::send_response`].
+    ResponseOmission,
+    /// The connection closed before a response could be send.
     ConnectionClosed,
 }
 
@@ -134,6 +138,10 @@ pub enum P2PReqResEvent<T, U> {
         peer_id: PeerId,
         request_id: RequestId,
         error: P2POutboundFailure,
+    },
+    ResponseSent {
+        peer_id: PeerId,
+        request_id: RequestId,
     },
 }
 
@@ -236,13 +244,20 @@ impl<T, U> From<RequestResponseEvent<T, U>> for P2PEvent<T, U> {
             } => {
                 let error = match error {
                     InboundFailure::Timeout => P2PInboundFailure::Timeout,
-                    InboundFailure::ConnectionClosed => P2PInboundFailure::ConnectionClosed,
+                    InboundFailure::ResponseOmission => P2PInboundFailure::ResponseOmission,
                     InboundFailure::UnsupportedProtocols => P2PInboundFailure::UnsupportedProtocols,
+                    InboundFailure::ConnectionClosed => P2PInboundFailure::ConnectionClosed,
                 };
                 P2PEvent::RequestResponse(Box::new(P2PReqResEvent::InboundFailure {
                     peer_id: peer,
                     request_id,
                     error,
+                }))
+            }
+            RequestResponseEvent::ResponseSent { peer, request_id } => {
+                P2PEvent::RequestResponse(Box::new(P2PReqResEvent::ResponseSent {
+                    peer_id: peer,
+                    request_id,
                 }))
             }
         }
