@@ -147,23 +147,18 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
     /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.  Returns a `Vec<Key<P>,
     /// Vec<Vec<RecordId>>`.
-    pub fn repopulate_data(&mut self, state: Vec<u8>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
+    pub fn repopulate_data(&mut self, cache: BTreeMap<Key<P>, Vec<ReadResult>>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
         let mut vaults = BTreeMap::new();
-        let mut cache = BTreeMap::new();
         let mut rids: Vec<Vec<RecordId>> = Vec::new();
         let mut keystore_keys: Vec<Key<P>> = Vec::new();
 
-        let state: BTreeMap<Key<P>, Vec<ReadResult>> = bincode::deserialize(&state).expect(line_error!());
-
-        state.into_iter().for_each(|(k, v)| {
+        cache.clone().into_iter().for_each(|(k, v)| {
             keystore_keys.push(k.clone());
             let view = DBView::load(k.clone(), v.iter()).expect(line_error!());
 
             rids.push(view.all().collect());
 
             vaults.insert(k.clone(), Some(view));
-
-            cache.insert(k, v);
         });
 
         self.vaults = vaults;
@@ -181,6 +176,16 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         });
 
         bincode::serialize(&cache).expect(line_error!())
+    }
+
+    pub fn get_data(&mut self) -> BTreeMap<Key<P>, Vec<ReadResult>> {
+        let mut cache: BTreeMap<Key<P>, Vec<ReadResult>> = BTreeMap::new();
+
+        self.cache.iter().for_each(|(k, v)| {
+            cache.insert(k.clone(), v.clone());
+        });
+
+        cache
     }
 
     pub fn clear_cache(&mut self) {

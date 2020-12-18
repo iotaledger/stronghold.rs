@@ -40,17 +40,8 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
 
     /// Rebuilds the `KeyStore` while throwing out any existing `VauldId`, `Key<P>` pairs.  Accepts a `Vec<Key<P>>` and
     /// returns the a `Vec<VaultId>` containing all of the new `VaultId`s
-    pub fn rebuild_keystore(&mut self, keys: Vec<u8>) -> Vec<VaultId> {
-        let mut vaults: Vec<VaultId> = Vec::new();
-        let key_store: BTreeMap<VaultId, Key<P>> = bincode::deserialize(&keys).expect(line_error!());
-
-        key_store.iter().for_each(|(v, _)| {
-            vaults.push(*v);
-        });
-
-        self.store = key_store;
-
-        vaults
+    pub fn rebuild_keystore(&mut self, keys: BTreeMap<VaultId, Key<P>>) {
+        self.store = keys;
     }
 
     pub fn offload_data(&mut self) -> Vec<u8> {
@@ -61,6 +52,16 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
         });
 
         bincode::serialize(&key_store).expect(line_error!())
+    }
+
+    pub fn get_data(&mut self) -> BTreeMap<VaultId, Key<P>> {
+        let mut key_store: BTreeMap<VaultId, Key<P>> = BTreeMap::new();
+
+        self.store.iter().for_each(|(v, k)| {
+            key_store.insert(*v, k.clone());
+        });
+
+        key_store
     }
 
     pub fn clear_keys(&mut self) {
