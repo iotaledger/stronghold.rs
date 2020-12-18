@@ -76,8 +76,7 @@ impl Stronghold {
                 .system
                 .actor_of_args::<Client, _>(&id_str, client_id)
                 .expect(line_error!());
-            &self
-                .system
+            self.system
                 .actor_of_args::<InternalActor<Provider>, _>(&format!("internal-{}", id_str), client_id)
                 .expect(line_error!());
 
@@ -383,7 +382,7 @@ impl Stronghold {
                 self.client_ids.remove(idx);
                 self.derive_data.remove(&client_path).expect(line_error!());
 
-                &self.system.stop(client);
+                self.system.stop(client);
                 let internal = self
                     .system
                     .select(&format!("/user/internal-{}/", client_str))
@@ -730,12 +729,12 @@ mod tests {
     #[test]
     fn test_stronghold_generics() {
         let sys = ActorSystem::new().unwrap();
-        let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
+
         let client_path = b"test a".to_vec();
 
         let slip10_seed = Location::generic("slip10", "seed");
 
-        let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
+        let stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
 
         futures::executor::block_on(stronghold.write_data(
             slip10_seed.clone(),

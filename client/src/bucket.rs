@@ -44,7 +44,7 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     /// Creates and initializes a new Vault given a `Key<P>`.  Returns a tuple of `(Key<P>, RecordId)`. The returned
     /// `Key<P>` is the Key associated with the Vault and the `RecordId` is the ID for its first record.
     pub fn create_and_init_vault(&mut self, key: Key<P>, rid: RecordId) -> RecordId {
-        self.take(key.clone(), |view, mut reads| {
+        self.take(key, |view, mut reads| {
             let mut writer = view.writer(rid);
 
             let truncate = writer.truncate().expect(line_error!());
