@@ -43,7 +43,7 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
     /// Creates and initializes a new Vault given a `Key<P>`.  Returns a tuple of `(Key<P>, RecordId)`. The returned
     /// `Key<P>` is the Key associated with the Vault and the `RecordId` is the ID for its first record.
-    pub fn create_and_init_vault(&mut self, key: Key<P>, rid: RecordId) -> (Key<P>, RecordId) {
+    pub fn create_and_init_vault(&mut self, key: Key<P>, rid: RecordId) -> RecordId {
         self.take(key.clone(), |view, mut reads| {
             let mut writer = view.writer(rid);
 
@@ -54,7 +54,7 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
             reads
         });
 
-        (key, rid)
+        rid
     }
 
     /// Reads data from a Record in the Vault given a `RecordId`.  Returns the data as a `Vec<u8>` of utf8 bytes.
@@ -241,8 +241,8 @@ mod tests {
 
         let mut bucket = Bucket::<Provider>::new();
 
-        let (key1, rid1) = bucket.create_and_init_vault(key1, rid1);
-        let (key2, rid2) = bucket.create_and_init_vault(key2, rid2);
+        let rid1 = bucket.create_and_init_vault(key1.clone(), rid1);
+        let rid2 = bucket.create_and_init_vault(key2.clone(), rid2);
         println!("vault1 id1: {:?}", rid1);
         println!("vault2 id1: {:?}", rid2);
 

@@ -84,7 +84,7 @@ pub enum SHRequest {
     },
 
     // Creates a new Vault.
-    CreateNewVault(Vec<u8>),
+    CreateNewVault(Location),
 
     WriteData {
         location: Location,
@@ -214,9 +214,8 @@ impl Receive<SHRequest> for Client {
                     .try_tell(SHResults::ReturnExistsRecord(res), None)
                     .expect(line_error!());
             }
-            SHRequest::CreateNewVault(vpath) => {
-                let vid = self.derive_vault_id(&vpath);
-                let rid = self.derive_record_id(vpath, 0);
+            SHRequest::CreateNewVault(location) => {
+                let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
                 let client_str = self.get_client_str();
 
                 self.add_new_vault(vid);

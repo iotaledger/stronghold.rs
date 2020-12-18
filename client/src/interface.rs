@@ -185,7 +185,7 @@ impl Stronghold {
             } else {
                 // no vault so create new one before writing.
                 if let SHResults::ReturnCreateVault(status) =
-                    ask(&self.system, client, SHRequest::CreateNewVault(vault_path.clone())).await
+                    ask(&self.system, client, SHRequest::CreateNewVault(location.clone())).await
                 {
                     status
                 } else {
@@ -725,5 +725,25 @@ mod tests {
         assert_ne!(ids3, ids1);
 
         stronghold.system.print_tree();
+    }
+
+    #[test]
+    fn test_stronghold_generics() {
+        let sys = ActorSystem::new().unwrap();
+        let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
+        let client_path = b"test a".to_vec();
+
+        let slip10_seed = Location::generic("slip10", "seed");
+
+        let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
+
+        futures::executor::block_on(stronghold.write_data(
+            slip10_seed.clone(),
+            b"AAAAAA".to_vec(),
+            RecordHint::new(b"first hint").expect(line_error!()),
+            vec![],
+        ));
+        let (p, _) = futures::executor::block_on(stronghold.read_data(slip10_seed.clone()));
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
     }
 }
