@@ -127,7 +127,7 @@ impl Receive<SMsg> for Snapshot {
                     Ok(mut snapshot) => {
                         let data = snapshot.get_state(cid);
 
-                        *self = snapshot.clone();
+                        *self = snapshot;
 
                         internal.try_tell(InternalMsg::ReloadData(data, StatusMessage::OK), sender);
                     }
