@@ -21,3 +21,10 @@ name = "stronghold"
 path = "src/main.rs"
 
 [workspace]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+incremental = false
+opt-level = "z"

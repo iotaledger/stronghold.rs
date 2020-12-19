@@ -27,7 +27,7 @@ macro_rules! line_error {
 }
 
 // handle the encryption command.
-fn encrypt_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
+fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("encrypt") {
         if let Some(pass) = matches.value_of("password") {
             if let Some(plain) = matches.value_of("plain") {
@@ -42,6 +42,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: V
                     if snapshot.exists() {
                         block_on(stronghold.read_snapshot(
                             client_path.clone(),
+                            None,
                             key.to_vec(),
                             Some("commandline".to_string()),
                             None,
@@ -69,7 +70,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: V
 }
 
 // handle the snapshot command.
-fn snapshot_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
+fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("snapshot") {
         if let Some(ref pass) = matches.value_of("password") {
             if let Some(ref path) = matches.value_of("path") {
@@ -88,7 +89,7 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: 
 
                 if input.exists() {
                     let status =
-                        block_on(stronghold.read_snapshot(client_path.clone(), key.to_vec(), None, Some(input)));
+                        block_on(stronghold.read_snapshot(client_path.clone(), None, key.to_vec(), None, Some(input)));
 
                     if let StatusMessage::Error(error) = status {
                         println!("{:?}", error);
@@ -105,7 +106,7 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: 
 }
 
 // handle the list command.
-fn list_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
+fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("list") {
         if let Some(ref pass) = matches.value_of("password") {
             let mut key = [0u8; 32];
@@ -116,7 +117,13 @@ fn list_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<
             let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
             if snapshot.exists() {
-                block_on(stronghold.read_snapshot(client_path, key.to_vec(), Some("commandline".to_string()), None));
+                block_on(stronghold.read_snapshot(
+                    client_path,
+                    None,
+                    key.to_vec(),
+                    Some("commandline".to_string()),
+                    None,
+                ));
 
                 let (list, status) = block_on(stronghold.list_hints_and_ids(b"test".to_vec()));
 
@@ -132,7 +139,7 @@ fn list_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<
 }
 
 // handle the read command.
-fn read_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
+fn read_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("read") {
         if let Some(ref pass) = matches.value_of("password") {
             if let Some(ref id) = matches.value_of("id") {
@@ -146,6 +153,7 @@ fn read_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<
                 if snapshot.exists() {
                     block_on(stronghold.read_snapshot(
                         client_path,
+                        None,
                         key.to_vec(),
                         Some("commandline".to_string()),
                         None,
@@ -169,7 +177,7 @@ fn read_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<
 }
 
 // create a record with a revoke transaction.  Data isn't actually deleted until it is garbage collected.
-fn revoke_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
+fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("revoke") {
         if let Some(ref pass) = matches.value_of("password") {
             if let Some(ref id) = matches.value_of("id") {
@@ -183,6 +191,7 @@ fn revoke_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Ve
                 if snapshot.exists() {
                     block_on(stronghold.read_snapshot(
                         client_path,
+                        None,
                         key.to_vec(),
                         Some("commandline".to_string()),
                         None,
@@ -205,7 +214,11 @@ fn revoke_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Ve
 }
 
 // garbage collect the chain.  Remove any revoked data from the chain.
-fn garbage_collect_vault_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
+fn garbage_collect_vault_command(
+    matches: &ArgMatches,
+    stronghold: &mut iota_stronghold::Stronghold,
+    client_path: Vec<u8>,
+) {
     if let Some(matches) = matches.subcommand_matches("garbage_collect") {
         if let Some(ref pass) = matches.value_of("password") {
             let mut key = [0u8; 32];
@@ -216,7 +229,13 @@ fn garbage_collect_vault_command(matches: &ArgMatches, stronghold: &Stronghold, 
             let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
             if snapshot.exists() {
-                block_on(stronghold.read_snapshot(client_path, key.to_vec(), Some("commandline".to_string()), None));
+                block_on(stronghold.read_snapshot(
+                    client_path,
+                    None,
+                    key.to_vec(),
+                    Some("commandline".to_string()),
+                    None,
+                ));
 
                 let status = block_on(stronghold.garbage_collect(b"test".to_vec()));
 
@@ -231,7 +250,7 @@ fn garbage_collect_vault_command(matches: &ArgMatches, stronghold: &Stronghold, 
 }
 
 // Purge a record from the chain: revoke and then garbage collect.
-fn purge_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec<u8>) {
+fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("purge") {
         if let Some(ref pass) = matches.value_of("password") {
             if let Some(ref id) = matches.value_of("id") {
@@ -245,6 +264,7 @@ fn purge_command(matches: &ArgMatches, stronghold: &Stronghold, client_path: Vec
                 if snapshot.exists() {
                     block_on(stronghold.read_snapshot(
                         client_path,
+                        None,
                         key.to_vec(),
                         Some("commandline".to_string()),
                         None,
@@ -271,13 +291,13 @@ fn main() {
     let matches = App::from(yaml).get_matches();
     let system = ActorSystem::new().expect(line_error!());
     let client_path = b"actor_path".to_vec();
-    let stronghold = Stronghold::init_stronghold_system(system, client_path.clone(), vec![]);
+    let mut stronghold = Stronghold::init_stronghold_system(system, client_path.clone(), vec![]);
 
-    encrypt_command(&matches, &stronghold, client_path.clone());
-    snapshot_command(&matches, &stronghold, client_path.clone());
-    read_command(&matches, &stronghold, client_path.clone());
-    list_command(&matches, &stronghold, client_path.clone());
-    revoke_command(&matches, &stronghold, client_path.clone());
-    garbage_collect_vault_command(&matches, &stronghold, client_path.clone());
-    purge_command(&matches, &stronghold, client_path);
+    encrypt_command(&matches, &mut stronghold, client_path.clone());
+    snapshot_command(&matches, &mut stronghold, client_path.clone());
+    read_command(&matches, &mut stronghold, client_path.clone());
+    list_command(&matches, &mut stronghold, client_path.clone());
+    revoke_command(&matches, &mut stronghold, client_path.clone());
+    garbage_collect_vault_command(&matches, &mut stronghold, client_path.clone());
+    purge_command(&matches, &mut stronghold, client_path);
 }

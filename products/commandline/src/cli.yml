@@ -1,9 +1,10 @@
-name: Engine POC CLI
-version: '1.0'
+name: Stronghold CLI
+version: '2.0'
 author: Tensor Programming <tensordeveloper@gmail.com>
 about: Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
 subcommands:
   - encrypt:
+      about: Encrypt data in a snapshot
       args:
         - plain:
             short: p
