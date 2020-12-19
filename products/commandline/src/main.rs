@@ -82,8 +82,7 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
                 out.push(Path::new("recompute.stronghold"));
 
                 if input.exists() {
-                    let status =
-                        block_on(stronghold.read_snapshot(client_path, None, key.to_vec(), None, Some(input)));
+                    let status = block_on(stronghold.read_snapshot(client_path, None, key.to_vec(), None, Some(input)));
 
                     if let StatusMessage::Error(error) = status {
                         println!("{:?}", error);
