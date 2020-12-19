@@ -158,7 +158,7 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
             rids.push(view.all().collect());
 
-            vaults.insert(k.clone(), Some(view));
+            vaults.insert(k, Some(view));
         });
 
         self.vaults = vaults;
