@@ -809,6 +809,14 @@ mod tests {
 
         let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
 
+        // let (p, _) = futures::executor::block_on(stronghold.read_data(loc0.clone()));
+
+        // println!("{:?}", std::str::from_utf8(&p.unwrap()));
+
+        // let (p, _) = futures::executor::block_on(stronghold.read_data(loc1.clone()));
+
+        // println!("{:?}", std::str::from_utf8(&p.unwrap()));
+
         futures::executor::block_on(stronghold.write_data(
             loc0.clone(),
             b"test".to_vec(),
@@ -819,11 +827,20 @@ mod tests {
         // read 0.
         let (p, _) = futures::executor::block_on(stronghold.read_data(loc0.clone()));
 
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
+
         futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
 
-        futures::executor::block_on(stronghold.read_snapshot(client_path.clone(), None, key_data.clone(), None, None));
+        futures::executor::block_on(stronghold.read_snapshot(
+            client_path.clone(),
+            Some(client_path.clone()),
+            key_data.clone(),
+            None,
+            None,
+        ));
 
-        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(loc0.vault_path()));
+        println!("{:?}", ids);
 
         futures::executor::block_on(stronghold.write_data(
             loc1.clone(),
@@ -839,7 +856,16 @@ mod tests {
 
         futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
 
-        futures::executor::block_on(stronghold.read_snapshot(client_path, None, key_data.clone(), None, None));
+        futures::executor::block_on(stronghold.read_snapshot(
+            client_path.clone(),
+            Some(client_path.clone()),
+            key_data.clone(),
+            None,
+            None,
+        ));
+
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(loc0.vault_path()));
+        println!("{:?}", ids);
 
         futures::executor::block_on(stronghold.write_data(
             loc2.clone(),
@@ -852,5 +878,20 @@ mod tests {
         let (p, _) = futures::executor::block_on(stronghold.read_data(loc2.clone()));
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
+
+        futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
+
+        futures::executor::block_on(stronghold.read_snapshot(
+            client_path.clone(),
+            Some(client_path.clone()),
+            key_data.clone(),
+            None,
+            None,
+        ));
+
+        futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
+
+        let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(loc0.vault_path()));
+        println!("{:?}", ids);
     }
 }

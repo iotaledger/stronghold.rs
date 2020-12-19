@@ -53,10 +53,6 @@ impl Client {
         self.client_id = client_id
     }
 
-    pub fn offload_client(&self) -> Vec<u8> {
-        bincode::serialize(&self).expect(line_error!())
-    }
-
     pub fn add_new_vault(&mut self, vid: VaultId) {
         let head = self.heads.len();
 
