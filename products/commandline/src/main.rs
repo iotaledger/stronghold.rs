@@ -41,7 +41,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
 
                     if snapshot.exists() {
                         block_on(stronghold.read_snapshot(
-                            client_path.clone(),
+                            client_path,
                             None,
                             key.to_vec(),
                             Some("commandline".to_string()),
@@ -83,7 +83,7 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
 
                 if input.exists() {
                     let status =
-                        block_on(stronghold.read_snapshot(client_path.clone(), None, key.to_vec(), None, Some(input)));
+                        block_on(stronghold.read_snapshot(client_path, None, key.to_vec(), None, Some(input)));
 
                     if let StatusMessage::Error(error) = status {
                         println!("{:?}", error);
