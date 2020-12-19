@@ -1,18 +1,20 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(clippy::type_complexity)]
+
 use riker::actors::*;
 
-use std::{convert::TryFrom, fmt::Debug, path::PathBuf};
+use std::{collections::BTreeMap, convert::TryFrom, fmt::Debug, path::PathBuf};
 
-use engine::vault::{BoxProvider, RecordHint, RecordId};
+use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
 use engine::snapshot;
 
 use crate::{
     actors::{ProcResult, SMsg},
     bucket::Bucket,
-    client::ClientMsg,
+    client::{Client, ClientMsg},
     internals::Provider,
     key_store::KeyStore,
     line_error,
@@ -36,11 +38,32 @@ pub enum InternalMsg {
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
     ListIds(Vec<u8>, VaultId),
-    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String, Vec<u8>),
-    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>, String),
-    ReloadData((Vec<u8>, Vec<u8>, Vec<u8>), StatusMessage),
+
+    ReadSnapshot(
+        snapshot::Key,
+        Option<String>,
+        Option<PathBuf>,
+        ClientId,
+        Option<ClientId>,
+    ),
+    ReloadData(
+        (
+            crate::client::Client,
+            BTreeMap<Key<Provider>, Vec<ReadResult>>,
+            BTreeMap<VaultId, Key<Provider>>,
+        ),
+        StatusMessage,
+    ),
     ClearCache,
     KillInternal,
+    WriteSnapshotAll {
+        key: snapshot::Key,
+        filename: Option<String>,
+        path: Option<PathBuf>,
+        data: Client,
+        id: ClientId,
+        is_final: bool,
+    },
 
     SLIP10Generate {
         vault_id: VaultId,
@@ -99,7 +122,7 @@ pub enum InternalResults {
     ReturnList(Vec<u8>, Vec<(RecordId, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnControlRequest(ProcResult),
-    RebuildCache(Vec<u8>, StatusMessage),
+    RebuildCache(Client, StatusMessage),
     ReturnClearCache(StatusMessage),
 }
 
@@ -266,31 +289,31 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::ReloadData((cache, keystore, state), status) => {
-                self.bucket.repopulate_data(cache);
-
-                self.keystore.rebuild_keystore(keystore);
-
+            InternalMsg::ReloadData((client_data, state, keystore), status) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                self.keystore.rebuild_keystore(keystore);
+                self.bucket.repopulate_data(state);
+
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::RebuildCache(state, status)),
+                    ClientMsg::InternalResults(InternalResults::RebuildCache(client_data, status)),
                     sender,
                 );
             }
-            InternalMsg::WriteSnapshot(pass, name, path, client_str, counters) => {
-                let cache = self.bucket.offload_data();
-                let store = self.keystore.offload_data();
 
+            InternalMsg::ReadSnapshot(key, filename, path, id, fid) => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
                 snapshot.try_tell(
-                    SMsg::WriteSnapshot(pass, name, path, (cache, store, counters), client_str),
+                    SMsg::ReadFromSnapshot {
+                        key,
+                        filename,
+                        path,
+                        id,
+                        fid,
+                    },
                     sender,
                 );
-            }
-            InternalMsg::ReadSnapshot(pass, name, path, client_str) => {
-                let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
-                snapshot.try_tell(SMsg::ReadSnapshot(pass, name, path, client_str), sender);
             }
             InternalMsg::ClearCache => {
                 self.bucket.clear_cache();
@@ -504,6 +527,28 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
                         ResultMessage::Ok(sig.to_bytes()),
                     ))),
+                    sender,
+                );
+            }
+            InternalMsg::WriteSnapshotAll {
+                key,
+                filename,
+                path,
+                data,
+                id,
+                is_final,
+            } => {
+                let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
+
+                snapshot.try_tell(
+                    SMsg::WriteSnapshotAll {
+                        key,
+                        filename,
+                        path,
+                        id,
+                        is_final,
+                        data: (data, self.keystore.get_data(), self.bucket.get_data()),
+                    },
                     sender,
                 );
             }

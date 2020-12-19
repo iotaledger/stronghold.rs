@@ -25,7 +25,7 @@ pub enum ReadWrite {
 #[actor(SHResults, SHRequest, InternalResults)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Client {
-    client_id: ClientId,
+    pub client_id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
     vaults: BTreeMap<VaultId, (usize, Vec<RecordId>)>,
     // Contains the Record Ids for the most recent Record in each vault.
@@ -51,10 +51,6 @@ impl Client {
 
     pub fn set_client_id(&mut self, client_id: ClientId) {
         self.client_id = client_id
-    }
-
-    pub fn offload_client(&self) -> Vec<u8> {
-        bincode::serialize(&self).expect(line_error!())
     }
 
     pub fn add_new_vault(&mut self, vid: VaultId) {
@@ -127,12 +123,10 @@ impl Client {
         Some(())
     }
 
-    pub fn rebuild_cache(&mut self, state: Vec<u8>) {
-        let client: Client = bincode::deserialize(&state).expect(line_error!());
-
+    pub fn rebuild_cache(&mut self, state: Client) {
         *self = Self {
             client_id: self.client_id,
-            ..client
+            ..state
         }
     }
 

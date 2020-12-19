@@ -110,19 +110,22 @@ pub enum SHRequest {
     // Lists all of the record ids and the record hints for the records in a vault.  Accepts a vault id and returns
     // with `ReturnList`.
     ListIds(Vec<u8>),
-    // Writes to the snapshot file.  Accepts the snapshot key, an optional filename and an optional filepath.
-    // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
-    WriteSnapshot {
-        key: snapshot::Key,
-        filename: Option<String>,
-        path: Option<PathBuf>,
-    },
+
     // Reads from the snapshot file.  Accepts the snapshot key, an optional filename and an optional filepath.
     // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
     ReadSnapshot {
         key: snapshot::Key,
         filename: Option<String>,
         path: Option<PathBuf>,
+        cid: ClientId,
+        former_cid: Option<ClientId>,
+    },
+
+    WriteSnapshotAll {
+        key: snapshot::Key,
+        filename: Option<String>,
+        path: Option<PathBuf>,
+        is_final: bool,
     },
 
     ClearCache,
@@ -301,27 +304,21 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::ListIds(vpath, vid), sender);
             }
-            SHRequest::WriteSnapshot { key, filename, path } => {
-                let client_str = self.get_client_str();
-                let cache = self.offload_client();
 
-                let internal = ctx
-                    .select(&format!("/user/internal-{}/", client_str))
-                    .expect(line_error!());
-
-                internal.try_tell(
-                    InternalMsg::WriteSnapshot(key, filename, path, client_str, cache),
-                    sender,
-                );
-            }
-            SHRequest::ReadSnapshot { key, filename, path } => {
+            SHRequest::ReadSnapshot {
+                key,
+                filename,
+                path,
+                cid,
+                former_cid,
+            } => {
                 let client_str = self.get_client_str();
 
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::ReadSnapshot(key, filename, path, client_str), sender);
+                internal.try_tell(InternalMsg::ReadSnapshot(key, filename, path, cid, former_cid), sender);
             }
             SHRequest::ClearCache => {
                 self.clear_cache();
@@ -500,6 +497,30 @@ impl Receive<SHRequest> for Client {
                         )
                     }
                 }
+            }
+            SHRequest::WriteSnapshotAll {
+                key,
+                filename,
+                path,
+                is_final,
+            } => {
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(
+                    InternalMsg::WriteSnapshotAll {
+                        key,
+                        path,
+                        filename,
+                        id: self.client_id,
+                        data: self.clone(),
+                        is_final,
+                    },
+                    sender,
+                )
             }
         }
     }
