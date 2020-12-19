@@ -14,7 +14,7 @@ use crate::{client::Client, line_error, ClientId, Provider, VaultId};
 
 use std::path::{Path, PathBuf};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone)]
 pub struct Snapshot {
@@ -28,6 +28,18 @@ pub struct SnapshotState {
     pub clients: Vec<Client>,
     pub caches: Vec<BTreeMap<PKey<Provider>, Vec<ReadResult>>>,
     pub stores: Vec<BTreeMap<VaultId, PKey<Provider>>>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default, Debug)]
+pub struct State {
+    state: HashMap<
+        ClientId,
+        (
+            Vec<Client>,
+            Vec<BTreeMap<PKey<Provider>, Vec<ReadResult>>>,
+            Vec<BTreeMap<VaultId, PKey<Provider>>>,
+        ),
+    >,
 }
 
 impl Snapshot {

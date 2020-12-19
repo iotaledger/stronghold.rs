@@ -669,6 +669,7 @@ mod tests {
         let client_path0 = b"test a".to_vec();
         let client_path1 = b"test b".to_vec();
         let client_path2 = b"test c".to_vec();
+        let client_path3 = b"test d".to_vec();
 
         let loc0 = Location::counter::<_, usize>("path", Some(0));
         let lochead = Location::counter::<_, usize>("path", None);
@@ -720,21 +721,21 @@ mod tests {
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
-        println!("{:?}", ids);
+        println!("actor 0: {:?}", ids);
 
         futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.to_vec(), Some("megasnap".into()), None));
 
         stronghold.switch_actor_target(client_path1.clone());
 
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
-        println!("{:?}", ids);
+        println!("actor 1: {:?}", ids);
 
         stronghold.spawn_stronghold_actor(client_path2.clone(), vec![]);
 
         futures::executor::block_on(stronghold.read_snapshot(
             client_path2.clone(),
             Some(client_path1.clone()),
-            key_data,
+            key_data.clone(),
             Some("megasnap".into()),
             None,
         ));
@@ -746,7 +747,7 @@ mod tests {
         futures::executor::block_on(stronghold.write_data(
             lochead.clone(),
             b"a new actor test".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"2").expect(line_error!()),
             vec![],
         ));
 
@@ -757,7 +758,7 @@ mod tests {
         futures::executor::block_on(stronghold.write_data(
             lochead.clone(),
             b"a new actor test again".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"3").expect(line_error!()),
             vec![],
         ));
 
@@ -765,10 +766,35 @@ mod tests {
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test again"));
 
-        let (ids3, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+        let (ids2, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+
+        stronghold.switch_actor_target(client_path1.clone());
 
         let (ids1, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
-        assert_ne!(ids3, ids1);
+        assert_ne!(ids2, ids1);
+
+        println!("actor 2: {:?}", ids2);
+        println!("actor 1: {:?}", ids1);
+
+        stronghold.spawn_stronghold_actor(client_path3.clone(), vec![]);
+
+        futures::executor::block_on(stronghold.read_snapshot(
+            client_path3.clone(),
+            Some(client_path0.clone()),
+            key_data,
+            Some("megasnap".into()),
+            None,
+        ));
+
+        let (mut ids3, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+        println!("actor 3: {:?}", ids3);
+
+        stronghold.switch_actor_target(client_path0.clone());
+
+        let (mut ids0, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
+        println!("actor 0: {:?}", ids0);
+
+        assert_eq!(ids0.sort(), ids3.sort());
 
         stronghold.system.print_tree();
     }
