@@ -21,6 +21,7 @@ pub struct Snapshot {
     pub state: SnapshotState,
 }
 
+// TODO: Make a hashmap or btreemap instead of a set of vectors.
 #[derive(Deserialize, Serialize, Clone, Default, Debug)]
 pub struct SnapshotState {
     pub ids: Vec<ClientId>,
