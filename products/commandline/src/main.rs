@@ -37,7 +37,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                     naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
                     let home_dir = home_dir().expect(line_error!());
-                    let mut snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+                    let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                     if snapshot.exists() {
                         block_on(stronghold.read_snapshot(

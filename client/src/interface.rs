@@ -795,4 +795,62 @@ mod tests {
 
         futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.to_vec(), Some("megasnap".into()), None));
     }
+
+    #[test]
+    fn test_counters() {
+        let sys = ActorSystem::new().unwrap();
+
+        let client_path = b"test".to_vec();
+        let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
+
+        let loc0 = Location::counter::<_, usize>("path", Some(0));
+        let loc1 = Location::counter::<_, usize>("path", Some(1));
+        let loc2 = Location::counter::<_, usize>("path", Some(2));
+
+        let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
+
+        futures::executor::block_on(stronghold.write_data(
+            loc0.clone(),
+            b"test".to_vec(),
+            RecordHint::new(b"first hint").expect(line_error!()),
+            vec![],
+        ));
+
+        // read 0.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(loc0.clone()));
+
+        futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
+
+        futures::executor::block_on(stronghold.read_snapshot(client_path.clone(), None, key_data.clone(), None, None));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
+
+        futures::executor::block_on(stronghold.write_data(
+            loc1.clone(),
+            b"another test".to_vec(),
+            RecordHint::new(b"second hint").expect(line_error!()),
+            vec![],
+        ));
+
+        // read 1.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(loc1.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
+
+        futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
+
+        futures::executor::block_on(stronghold.read_snapshot(client_path, None, key_data.clone(), None, None));
+
+        futures::executor::block_on(stronghold.write_data(
+            loc2.clone(),
+            b"yet another test".to_vec(),
+            RecordHint::new(b"third hint").expect(line_error!()),
+            vec![],
+        ));
+
+        // read 2.
+        let (p, _) = futures::executor::block_on(stronghold.read_data(loc2.clone()));
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
+    }
 }
