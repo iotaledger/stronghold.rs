@@ -21,7 +21,7 @@ pub struct Snapshot {
     pub state: SnapshotState,
 }
 
-#[derive(Deserialize, Serialize, Clone, Default)]
+#[derive(Deserialize, Serialize, Clone, Default, Debug)]
 pub struct SnapshotState {
     pub ids: Vec<ClientId>,
     pub clients: Vec<Client>,
@@ -36,7 +36,7 @@ impl Snapshot {
     }
 
     pub fn get_state(
-        self,
+        &mut self,
         id: ClientId,
     ) -> (
         Client,
@@ -47,9 +47,9 @@ impl Snapshot {
 
         if let Some(idx) = idx {
             (
-                self.state.clients[idx].clone(),
-                self.state.caches[idx].clone(),
-                self.state.stores[idx].clone(),
+                self.state.clients.remove(idx),
+                self.state.caches.remove(idx),
+                self.state.stores.remove(idx),
             )
         } else {
             (Client::new(id), BTreeMap::new(), BTreeMap::new())

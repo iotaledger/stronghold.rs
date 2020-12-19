@@ -124,10 +124,10 @@ impl Receive<SMsg> for Snapshot {
                 let cid = if let Some(fid) = fid { fid } else { id };
 
                 match Snapshot::read_from_snapshot(&path, key) {
-                    Ok(snapshot) => {
-                        *self = snapshot.clone();
-
+                    Ok(mut snapshot) => {
                         let data = snapshot.get_state(cid);
+
+                        *self = snapshot.clone();
 
                         internal.try_tell(InternalMsg::ReloadData(data, StatusMessage::OK), sender);
                     }
