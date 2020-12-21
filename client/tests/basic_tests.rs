@@ -133,6 +133,7 @@ fn test_revoke_with_gc() {
     assert_eq!(ids, (vec![], ResultMessage::Ok(())));
 }
 
+/// Test writing to a snapshot and reading back.
 #[test]
 fn test_write_read_snapshot() {
     let mut stronghold = setup_stronghold();
@@ -174,6 +175,9 @@ fn test_write_read_snapshot() {
     }
 }
 
+/// Makes 11 actors and writes one record into each of the child actors.  Writes the data from all of the actors into a
+/// snapshot. Clears the cache of the actors and then rebuilds them before re-reading the snapshot data back and
+/// checking it for consistency.
 #[test]
 fn test_write_read_multi_snapshot() {
     let mut stronghold = setup_stronghold();
