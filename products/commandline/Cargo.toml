@@ -1,0 +1,30 @@
+[package]
+name = "commandline"
+version = "0.1.0"
+authors = ["tensor-programming <tensordeveloper@gmail.com>"]
+edition = "2018"
+license = "Apache-2.0"
+readme = "README.md"
+
+[dependencies]
+clap = { version = "3.0.0-beta.1", features = ["yaml"] }
+futures = "0.3"
+riker = "0.4"
+bincode = "1.3.1"
+serde = {version = "1.0.114", features = ["derive"]}
+
+[dependencies.iota-stronghold]
+path = "../../client/"
+
+[[bin]]
+name = "stronghold"
+path = "src/main.rs"
+
+[workspace]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+incremental = false
+opt-level = "z"
