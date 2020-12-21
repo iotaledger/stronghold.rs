@@ -920,4 +920,55 @@ mod tests {
         let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(loc0.vault_path()));
         println!("{:?}", ids);
     }
+
+    #[test]
+    fn test_unlock_block() {
+        let sys = ActorSystem::new().unwrap();
+
+        let client_path = b"test".to_vec();
+
+        let slip10_seed = Location::generic("slip10", "seed");
+        let slip10_key = Location::generic("slip10", "key");
+
+        let stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
+
+        match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
+            output: slip10_seed.clone(),
+            hint: RecordHint::new(b"test_seed").expect(line_error!()),
+        })) {
+            ProcResult::SLIP10Generate(StatusMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
+
+        match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
+            chain: hd::Chain::from_u32_hardened(vec![]),
+            input: SLIP10DeriveInput::Seed(slip10_seed.clone()),
+            output: slip10_key.clone(),
+            hint: RecordHint::new(b"test").expect(line_error!()),
+        })) {
+            ProcResult::SLIP10Derive(StatusMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
+
+        let essence = b"blahblahblah";
+        let (slipsig, slipkey) = if let ProcResult::SignUnlockBlock(ResultMessage::Ok(sig), ResultMessage::Ok(pk)) =
+            futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
+                key: slip10_key.clone(),
+                path: hd::Chain::from_u32_hardened(vec![]),
+                essence: essence.to_vec(),
+            })) {
+            (
+                crypto::ed25519::Signature::from_bytes(sig),
+                crypto::ed25519::PublicKey::from_compressed_bytes(pk).expect(line_error!()),
+            )
+        } else {
+            let empty64 = [0u8; 64];
+            let empty32 = [0u8; 32];
+            (
+                crypto::ed25519::Signature::from_bytes(empty64),
+                crypto::ed25519::PublicKey::from_compressed_bytes(empty32).expect(line_error!()),
+            )
+        };
+        assert!(crypto::ed25519::verify(&slipkey, &slipsig, essence));
+    }
 }

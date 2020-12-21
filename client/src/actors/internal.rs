@@ -108,6 +108,12 @@ pub enum InternalMsg {
         record_id: RecordId,
         msg: Vec<u8>,
     },
+    SignUnlockBlock {
+        vault_id: VaultId,
+        record_id: RecordId,
+        path: hd::Chain,
+        essence: Vec<u8>,
+    },
 }
 
 /// Messages used internally by the client.
@@ -526,6 +532,42 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
                         ResultMessage::Ok(sig.to_bytes()),
+                    ))),
+                    sender,
+                );
+            }
+            InternalMsg::SignUnlockBlock {
+                vault_id,
+                record_id,
+                path,
+                essence,
+            } => {
+                let key = match self.keystore.get_key(vault_id) {
+                    Some(key) => key,
+                    None => todo!("return error message"),
+                };
+                self.keystore.insert_key(vault_id, key.clone()); // TODO: why keep removing and adding back the keys?
+
+                let raw = self.bucket.read_data(key, record_id);
+
+                if raw.len() < 32 {
+                    todo!("return error message: insufficient bytes")
+                }
+                let mut bs = [0; 32];
+                bs.copy_from_slice(&raw[0..32]);
+
+                let dk = hd::Seed::from_bytes(&bs).derive(&path).expect(line_error!());
+
+                let sk = dk.secret_key().expect(line_error!());
+
+                let sig = sk.sign(&essence);
+
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SignUnlockBlock(
+                        ResultMessage::Ok(sig.to_bytes()),
+                        ResultMessage::Ok(sk.public_key().to_compressed_bytes()),
                     ))),
                     sender,
                 );
