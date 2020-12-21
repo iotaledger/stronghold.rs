@@ -49,8 +49,8 @@ pub enum InternalMsg {
     ReloadData(
         (
             crate::client::Client,
-            BTreeMap<Key<Provider>, Vec<ReadResult>>,
             BTreeMap<VaultId, Key<Provider>>,
+            BTreeMap<Key<Provider>, Vec<ReadResult>>,
         ),
         StatusMessage,
     ),
@@ -289,7 +289,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::ReloadData((client_data, state, keystore), status) => {
+            InternalMsg::ReloadData((client_data, keystore, state), status) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 

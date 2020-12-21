@@ -30,9 +30,10 @@ mod utils;
 use crate::utils::{ClientId, VaultId};
 
 pub use crate::{
+    actors::{ProcResult, Procedure, SLIP10DeriveInput},
     interface::Stronghold,
     internals::Provider,
-    utils::{Location, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{hd, Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
 pub use engine::snapshot::{home_dir, naive_kdf, snapshot_dir, Key};

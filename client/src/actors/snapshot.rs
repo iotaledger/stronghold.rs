@@ -74,12 +74,7 @@ impl Receive<SMsg> for Snapshot {
                 id,
                 is_final,
             } => {
-                let (client, store, cache) = data;
-
-                self.state.ids.push(id);
-                self.state.clients.push(client);
-                self.state.stores.push(store);
-                self.state.caches.push(cache);
+                self.state.add_data(id, data);
 
                 if is_final {
                     let path = if let Some(p) = path {
