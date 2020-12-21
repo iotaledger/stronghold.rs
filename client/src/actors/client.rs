@@ -60,7 +60,11 @@ pub enum Procedure {
     /// Generate the Ed25519 signature of the given message signed by the specified key
     Ed25519Sign { key: Location, msg: Vec<u8> },
     /// Derive a new private key from a path, sign the essence, return public key and sig
-    SignUnlockBlock { key: Location, path: Vec<u8>, essence: Vec<u8> },
+    SignUnlockBlock {
+        key: Location,
+        path: Vec<u8>,
+        essence: Vec<u8>,
+    },
 }
 
 #[allow(dead_code)]
@@ -73,9 +77,10 @@ pub enum ProcResult {
     BIP39MnemonicSentence(ResultMessage<String>),
     Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
     Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
-    SignUnlockBlock(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>, 
-        ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>
-    )
+    SignUnlockBlock(
+        ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>,
+        ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>,
+    ),
 }
 
 #[allow(dead_code)]
