@@ -109,35 +109,40 @@ impl Receive<SMsg> for Snapshot {
             } => {
                 let id_str: String = id.into();
                 let internal = ctx.select(&format!("/user/internal-{}/", id_str)).expect(line_error!());
-
-                let path = if let Some(p) = path {
-                    p
-                } else {
-                    Snapshot::get_snapshot_path(filename)
-                };
-
                 let cid = if let Some(fid) = fid { fid } else { id };
 
-                match Snapshot::read_from_snapshot(&path, key) {
-                    Ok(mut snapshot) => {
-                        let data = snapshot.get_state(cid);
+                if self.has_data(cid) {
+                    let data = self.get_state(cid);
 
-                        *self = snapshot;
+                    internal.try_tell(InternalMsg::ReloadData(data, StatusMessage::OK), sender);
+                } else {
+                    let path = if let Some(p) = path {
+                        p
+                    } else {
+                        Snapshot::get_snapshot_path(filename)
+                    };
 
-                        internal.try_tell(InternalMsg::ReloadData(data, StatusMessage::OK), sender);
-                    }
-                    Err(e) => {
-                        sender
-                            .as_ref()
-                            .expect(line_error!())
-                            .try_tell(
-                                SHResults::ReturnReadSnap(StatusMessage::Error(format!(
-                                    "{}, Unable to read snapshot. Please try another password.",
-                                    e
-                                ))),
-                                None,
-                            )
-                            .expect(line_error!());
+                    match Snapshot::read_from_snapshot(&path, key) {
+                        Ok(mut snapshot) => {
+                            let data = snapshot.get_state(cid);
+
+                            *self = snapshot;
+
+                            internal.try_tell(InternalMsg::ReloadData(data, StatusMessage::OK), sender);
+                        }
+                        Err(e) => {
+                            sender
+                                .as_ref()
+                                .expect(line_error!())
+                                .try_tell(
+                                    SHResults::ReturnReadSnap(StatusMessage::Error(format!(
+                                        "{}, Unable to read snapshot. Please try another password.",
+                                        e
+                                    ))),
+                                    None,
+                                )
+                                .expect(line_error!());
+                        }
                     }
                 };
             }

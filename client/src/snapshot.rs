@@ -57,6 +57,10 @@ impl Snapshot {
         }
     }
 
+    pub fn has_data(&self, cid: ClientId) -> bool {
+        self.state.0.contains_key(&cid)
+    }
+
     /// Gets the `Snapshot` path given a `Option<String>` as the snapshot name.  Defaults to
     /// `$HOME/.engine/snapshot/backup.snapshot` and returns a `PathBuf`.
     pub fn get_snapshot_path(name: Option<String>) -> PathBuf {

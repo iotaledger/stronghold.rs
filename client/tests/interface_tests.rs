@@ -90,9 +90,15 @@ fn test_stronghold() {
 
     futures::executor::block_on(stronghold.garbage_collect(vault_path));
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), Some("test0".into()), None));
 
-    futures::executor::block_on(stronghold.read_snapshot(client_path.clone(), None, key_data, None, None));
+    futures::executor::block_on(stronghold.read_snapshot(
+        client_path.clone(),
+        None,
+        key_data,
+        Some("test0".into()),
+        None,
+    ));
 
     // read head after reading snapshot.
     let (p, _) = futures::executor::block_on(stronghold.read_data(lochead));
