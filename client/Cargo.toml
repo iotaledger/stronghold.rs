@@ -36,6 +36,8 @@ features = [ "random", "ed25519", "sha", "hmac", "bip39-en", "blake2b" ]
 hex = "0.4.2"
 criterion = "0.3.3"
 
+# proptest = "0.10.1"
+
 clap = { version = "3.0.0-beta.1", features = ["yaml"] }
 
 [[bench]]

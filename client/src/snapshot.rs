@@ -85,8 +85,11 @@ impl Snapshot {
     pub fn write_to_snapshot(self, path: &Path, key: Key) {
         let data = self.state.serialize();
 
-        write_to(&data, path, &key, &[])
-            .expect("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.");
+        // TODO: This is a hack and probably should be removed when we add proper error handling.
+        match write_to(&data, path, &key, &[]) {
+            Ok(()) => (),
+            Err(_) => write_to(&data, path, &key, &[]).expect("Failed to write to snapshot."),
+        };
     }
 }
 
