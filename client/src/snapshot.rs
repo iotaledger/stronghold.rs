@@ -31,10 +31,10 @@ pub struct SnapshotState(
             BTreeMap<PKey<Provider>, Vec<ReadResult>>,
         ),
     >,
-    // pub ids: Vec<ClientId>,
-    // pub clients: Vec<Client>,
-    // pub caches: Vec<BTreeMap<PKey<Provider>, Vec<ReadResult>>>,
-    // pub stores: Vec<BTreeMap<VaultId, PKey<Provider>>>,
+    /* pub ids: Vec<ClientId>,
+     * pub clients: Vec<Client>,
+     * pub caches: Vec<BTreeMap<PKey<Provider>, Vec<ReadResult>>>,
+     * pub stores: Vec<BTreeMap<VaultId, PKey<Provider>>>, */
 );
 
 impl Snapshot {

@@ -64,7 +64,7 @@ fn test_stronghold() {
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
     // Read the head record of the vault.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc1.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_data(loc1));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
@@ -85,7 +85,7 @@ fn test_stronghold() {
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
     println!("{:?}", ids);
 
-    futures::executor::block_on(stronghold.garbage_collect(vault_path.clone()));
+    futures::executor::block_on(stronghold.garbage_collect(vault_path));
 
     futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
 
@@ -186,7 +186,7 @@ fn run_stronghold_multi_actors() {
     stronghold.spawn_stronghold_actor(client_path2.clone(), vec![]);
 
     futures::executor::block_on(stronghold.read_snapshot(
-        client_path2.clone(),
+        client_path2,
         Some(client_path1.clone()),
         key_data.clone(),
         Some("megasnap".into()),
@@ -221,7 +221,7 @@ fn run_stronghold_multi_actors() {
 
     let (ids2, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
 
-    stronghold.switch_actor_target(client_path1.clone());
+    stronghold.switch_actor_target(client_path1);
 
     let (ids1, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
     assert_ne!(ids2, ids1);
@@ -232,7 +232,7 @@ fn run_stronghold_multi_actors() {
     stronghold.spawn_stronghold_actor(client_path3.clone(), vec![]);
 
     futures::executor::block_on(stronghold.read_snapshot(
-        client_path3.clone(),
+        client_path3,
         Some(client_path0.clone()),
         key_data,
         Some("megasnap".into()),
@@ -242,12 +242,15 @@ fn run_stronghold_multi_actors() {
     let (mut ids3, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
     println!("actor 3: {:?}", ids3);
 
-    stronghold.switch_actor_target(client_path0.clone());
+    stronghold.switch_actor_target(client_path0);
 
     let (mut ids0, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
     println!("actor 0: {:?}", ids0);
 
-    assert_eq!(ids0.sort(), ids3.sort());
+    ids0.sort();
+    ids3.sort();
+
+    assert_eq!(ids0, ids3);
 
     stronghold.system.print_tree();
 }
@@ -261,7 +264,7 @@ fn test_stronghold_generics() {
 
     let slip10_seed = Location::generic("slip10", "seed");
 
-    let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
+    let mut stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
 
     futures::executor::block_on(stronghold.write_data(
         slip10_seed.clone(),
@@ -269,7 +272,7 @@ fn test_stronghold_generics() {
         RecordHint::new(b"first hint").expect(line_error!()),
         vec![],
     ));
-    let (p, _) = futures::executor::block_on(stronghold.read_data(slip10_seed.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_data(slip10_seed));
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
     futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.to_vec(), Some("megasnap".into()), None));
@@ -329,7 +332,7 @@ fn test_counters() {
     ));
 
     // read 1.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc1.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_data(loc1));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
@@ -354,7 +357,7 @@ fn test_counters() {
     ));
 
     // read 2.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc2.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_data(loc2));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
@@ -362,13 +365,13 @@ fn test_counters() {
 
     futures::executor::block_on(stronghold.read_snapshot(
         client_path.clone(),
-        Some(client_path.clone()),
+        Some(client_path),
         key_data.clone(),
         None,
         None,
     ));
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data, None, None));
 
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(loc0.vault_path()));
     println!("{:?}", ids);
@@ -384,7 +387,7 @@ fn test_crypto() {
     let slip10_key = Location::generic("slip10", "key");
     let bip39_seed = Location::generic("bip39", "seed");
 
-    let stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
+    let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
 
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
         output: slip10_seed.clone(),
@@ -415,7 +418,7 @@ fn test_crypto() {
 
     let msg = b"foobar";
     let sig = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
-        key: slip10_key.clone(),
+        key: slip10_key,
         msg: msg.to_vec(),
     })) {
         ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => crypto::ed25519::Signature::from_bytes(sig),
