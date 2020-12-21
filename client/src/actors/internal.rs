@@ -111,7 +111,7 @@ pub enum InternalMsg {
     SignUnlockBlock {
         vault_id: VaultId,
         record_id: RecordId,
-        path: Vec<u8>,
+        path: hd::Chain,
         essence: Vec<u8>,
     },
 }
@@ -552,12 +552,13 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 if raw.len() < 32 {
                     todo!("return error message: insufficient bytes")
                 }
-                // this is NOT spec compliant, but will always reproduce verifiably.
-                let npath = [&raw[..], &path[..]].concat();
-                let mut result: [u8; 32] = [0; 32];
-                crypto::blake2b::hash(&npath, &mut result);
+                let mut bs = [0; 32];
+                bs.copy_from_slice(&raw);
 
-                let sk = crypto::ed25519::SecretKey::from_le_bytes(result).expect(line_error!());
+                let dk = hd::Seed::from_bytes(&bs).derive(&path).expect(line_error!());
+
+                let sk = dk.secret_key().expect(line_error!());
+
                 let sig = sk.sign(&essence);
 
                 let cstr: String = self.client_id.into();

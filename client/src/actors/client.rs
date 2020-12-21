@@ -62,7 +62,7 @@ pub enum Procedure {
     /// Derive a new private key from a path, sign the essence, return public key and sig
     SignUnlockBlock {
         key: Location,
-        path: Vec<u8>,
+        path: hd::Chain,
         essence: Vec<u8>,
     },
 }
