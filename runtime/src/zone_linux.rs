@@ -21,6 +21,14 @@ pub struct ZoneSpec {
     seccomp: Option<crate::seccomp::Spec>,
 }
 
+impl Default for ZoneSpec {
+    fn default() -> Self {
+        Self {
+            seccomp: Some(crate::seccomp::Spec::strict()),
+        }
+    }
+}
+
 impl ZoneSpec {
     pub fn run<F, T>(&self, f: F) -> crate::Result<T>
     where

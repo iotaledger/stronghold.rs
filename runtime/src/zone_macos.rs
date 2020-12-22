@@ -17,6 +17,14 @@ impl Error {
     }
 }
 
+struct ZoneSpec {}
+
+impl Default for ZoneSpec {
+    fn default() -> Self {
+        Self { }
+    }
+}
+
 impl ZoneSpec {
     pub fn run<F, T>(&self, f: F) -> crate::Result<T>
     where

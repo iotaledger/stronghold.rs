@@ -107,7 +107,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+mod fork_tests {
     use super::*;
     use rand::{rngs::OsRng, RngCore};
 
