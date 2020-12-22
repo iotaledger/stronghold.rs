@@ -49,6 +49,17 @@ impl Location {
             counter: counter.map(|c| c.into()),
         }
     }
+
+    pub const fn const_generic(vault_path: Vec<u8>, record_path: Vec<u8>) -> Self {
+        Self::Generic {
+            vault_path,
+            record_path,
+        }
+    }
+
+    pub const fn const_counter(vault_path: Vec<u8>, counter: Option<usize>) -> Self {
+        Self::Counter { vault_path, counter }
+    }
 }
 
 impl AsRef<Location> for Location {
