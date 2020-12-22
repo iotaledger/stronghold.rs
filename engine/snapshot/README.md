@@ -1,6 +1,21 @@
 # Snapshot
 
-This crate defines a method for storing the state of the system into a file format. This file can be transferred between different Engine devices. This file format can be extended and changed as needed to make it more secure and more appropriate for the system being used. The snapshot layer currently also uses sodiumoxide’s secretstream algorithm which uses XChaCha20-Poly1305 to encrypt and decrypt the data.  A user’s password is required to encrypt and decrypt the snapshot.
+This crate defines and implements the encrypted offline storage format used by
+the Stronghold ecosystem.
 
-Data is read into the snapshot crate by way of a byte buffer.  A single hexadecimal signature is written to the file’s head along with the file’s version number. A salt is generated and it is used along with the user’s inputted password to derive a unique key. The Key is used to create a header and a push stream; the header is written to the file and the push stream is used to encrypt the incoming data. The databuffer’s data is read in as 256 byte chunks and it is encrypted in the stream before it is written to the file. Decryption of the snapshot follows the opposite steps: a user supplies a password, the salt is read from the file and the password and salt are used to derive a key.  The header is then read from the file and used with the key to generate a pull stream.  As the data is fed through this stream and it is decrypted back into a plaintext format.
+The format has a header with version and magic bytes to appease applications
+wishing to provide media-type (MIME) detection of the snapshot artifact.
 
+The data stored within a snapshot is considered opaque and uses 256 bit keys.
+It provides recommended ways to derive the snapshot encryption key from a user
+provided password. The format also allows using an authenticated data
+bytestring to further protect the offline snapshot files (one might consider
+using a secondary user password strengthened by an HSM).
+
+The current version of the format is using the symmetric XChaCha20 cipher with
+the Poly1305 message authentication algorithm.
+
+Future versions will consider using X25519 to encrypt using an ephemeral key
+instead of directly using the user's key. When the demands for larger
+snapshot sizes and/or random access is desired, one might consider encrypting
+smaller chunks (B-trees?) or similar using derived ephemeral keys.

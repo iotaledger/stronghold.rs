@@ -6,13 +6,14 @@
 use serde::{Deserialize, Serialize};
 
 use engine::{
-    snapshot::{read_from, snapshot_dir, write_to, Key},
+    snapshot,
+    snapshot::{read_from, write_to, Key},
     vault::{Key as PKey, ReadResult},
 };
 
 use crate::{client::Client, line_error, ClientId, Provider, VaultId};
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -61,35 +62,34 @@ impl Snapshot {
         self.state.0.contains_key(&cid)
     }
 
-    /// Gets the `Snapshot` path given a `Option<String>` as the snapshot name.  Defaults to
-    /// `$HOME/.engine/snapshot/backup.snapshot` and returns a `PathBuf`.
-    pub fn get_snapshot_path(name: Option<String>) -> PathBuf {
-        let path = snapshot_dir().expect("Unable to get the snapshot directory");
-        if let Some(name) = name {
-            path.join(format!("{}.stronghold", name))
-        } else {
-            path.join("snapshot.stronghold")
-        }
-    }
-
-    /// Reads the data from the specified `&PathBuf` when given a `&str` password.  Returns a new `Snapshot`.
-    pub fn read_from_snapshot(path: &Path, key: Key) -> crate::Result<Self> {
-        let state = read_from(path, &key, &[])?;
+    /// Reads state from the specified named snapshot or the specified path
+    pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<Self> {
+        let state = match path {
+            Some(p) => read_from(p, &key, &[])?,
+            None => read_from(&snapshot::files::get_path(name)?, &key, &[])?,
+        };
 
         let data = SnapshotState::deserialize(state);
 
         Ok(Self::new(data))
     }
 
-    /// Writes the data to the specified `&PathBuf` when given a `&str` password creating a new snapshot file.
-    pub fn write_to_snapshot(self, path: &Path, key: Key) {
+    /// Writes state to the specified named snapshot or the specified path
+    pub fn write_to_snapshot(self, name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<()> {
         let data = self.state.serialize();
 
         // TODO: This is a hack and probably should be removed when we add proper error handling.
-        match write_to(&data, path, &key, &[]) {
-            Ok(()) => (),
-            Err(_) => write_to(&data, path, &key, &[]).expect("Failed to write to snapshot."),
+        let f = move || {
+            match path {
+                Some(p) => write_to(&data, p, &key, &[])?,
+                None => write_to(&data, &snapshot::files::get_path(name)?, &key, &[])?,
+            }
+            Ok(())
         };
+        match f() {
+            Ok(()) => Ok(()),
+            Err(_) => f(),
+        }
     }
 }
 
