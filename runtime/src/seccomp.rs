@@ -276,7 +276,7 @@ mod tests {
     use core::fmt::Debug;
 
     fn harness<T: PartialEq + Debug, F: FnOnce() -> T>(f: F) -> crate::Result<T> {
-        crate::zone::soft(f)
+        crate::zone::fork(f)
     }
 
     fn expect_sigsys<T: PartialEq + Debug, F: FnOnce() -> T>(f: F) {

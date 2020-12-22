@@ -3,23 +3,7 @@
 
 use core::mem;
 
-#[derive(PartialEq, Debug)]
-pub enum Error {
-    UnexpectedExitCode { exit_code: libc::c_int },
-    Signal { signo: libc::c_int },
-}
-
-impl Error {
-    fn unexpected_exit_code(exit_code: libc::c_int) -> crate::Error {
-        Self::UnexpectedExitCode { exit_code }.into()
-    }
-
-    fn signal(signo: libc::c_int) -> crate::Error {
-        Self::Signal { signo }.into()
-    }
-}
-
-pub fn soft<F, T>(f: F) -> crate::Result<T>
+pub fn fork<F, T>(f: F) -> crate::Result<T>
 where
     F: FnOnce() -> T,
 {
@@ -129,7 +113,7 @@ mod tests {
 
     #[test]
     fn pure() -> crate::Result<()> {
-        assert_eq!(soft(|| 7)?, 7);
+        assert_eq!(fork(|| 7)?, 7);
         Ok(())
     }
 
@@ -137,7 +121,7 @@ mod tests {
     fn pure_buffer() -> crate::Result<()> {
         let mut bs = [0u8; 128];
         OsRng.fill_bytes(&mut bs);
-        assert_eq!(soft(|| bs)?, bs);
+        assert_eq!(fork(|| bs)?, bs);
         Ok(())
     }
 
@@ -146,14 +130,14 @@ mod tests {
     fn pure_large_buffer() -> crate::Result<()> {
         let mut bs = [0u8; 1024*128];
         OsRng.fill_bytes(&mut bs);
-        assert_eq!(soft(|| bs)?, bs);
+        assert_eq!(fork(|| bs)?, bs);
         Ok(())
     }
 
     #[test]
     fn unexpected_exit_code() -> crate::Result<()> {
         assert_eq!(
-            soft(|| unsafe {
+            fork(|| unsafe {
                 libc::exit(1);
             }),
             Err(Error::unexpected_exit_code(1))
@@ -164,7 +148,7 @@ mod tests {
     #[test]
     fn signal() -> crate::Result<()> {
         assert_eq!(
-            soft(|| unsafe {
+            fork(|| unsafe {
                 let _ = libc::kill(libc::getpid(), libc::SIGKILL);
             }),
             Err(Error::signal(libc::SIGKILL))
@@ -174,7 +158,7 @@ mod tests {
 
     #[test]
     fn panic() -> crate::Result<()> {
-        assert_eq!(soft(|| panic!("oopsie")), Err(Error::unexpected_exit_code(101)));
+        assert_eq!(fork(|| panic!("oopsie")), Err(Error::unexpected_exit_code(101)));
         Ok(())
     }
 }

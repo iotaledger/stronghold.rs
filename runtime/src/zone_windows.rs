@@ -5,9 +5,14 @@
 pub enum Error {
 }
 
-pub fn soft<F, T>(f: F) -> crate::Result<T>
-where
-    F: FnOnce() -> T,
-{
-    Ok(f())
+struct ZoneSpec {
+}
+
+impl ZoneSpec {
+    pub fn run<F, T>(&self, f: F) -> crate::Result<T>
+    where
+        F: FnOnce() -> T,
+    {
+        Ok(f())
+    }
 }
