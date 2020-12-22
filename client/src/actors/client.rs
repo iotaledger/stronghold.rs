@@ -15,6 +15,7 @@ use riker::actors::*;
 
 use std::path::PathBuf;
 
+/// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
 #[derive(Debug, Clone)]
 pub enum SLIP10DeriveInput {
     /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
@@ -22,6 +23,7 @@ pub enum SLIP10DeriveInput {
     Key(Location),
 }
 
+/// Procedure type used to call to the runtime via `Strongnhold.runtime_exec(...)`.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Procedure {
@@ -67,16 +69,26 @@ pub enum Procedure {
     },
 }
 
+/// A Procedure return result type.  Contains the different return values for the `Procedure` type calls used with
+/// `Stronghold.runtime_exec(...)`.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ProcResult {
+    /// Return from generating a `SLIP10` seed.
     SLIP10Generate(StatusMessage),
-    SLIP10Derive(StatusMessage),
+    /// Returns the public key derived from the `SLIP10Derive` call.
+    SLIP10Derive(ResultMessage<hd::Key>),
+    /// `BIP39Recover` return value.
     BIP39Recover(StatusMessage),
+    /// `BIP39Generate` return value.
     BIP39Generate(StatusMessage),
+    /// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.  
     BIP39MnemonicSentence(ResultMessage<String>),
+    /// Return value for `Ed25519PublicKey`. Returns a Ed25519 public key.
     Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+    /// Return value for `Ed25519Sign`. Returns a Ed25519 signature.
     Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
+    /// Return value for `SignUnlockBlock`. Returns a Ed25519 signature and a Ed25519 public key.
     SignUnlockBlock(
         ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>,
         ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>,
@@ -194,7 +206,7 @@ impl Receive<SHRequest> for Client {
                         .as_ref()
                         .expect(line_error!())
                         .try_tell(
-                            SHResults::ReturnControlRequest(ProcResult::$V(StatusMessage::Error(format!(
+                            SHResults::ReturnControlRequest(ProcResult::$V(ResultMessage::Error(format!(
                                 "Failed to find {} vault. Please generate one",
                                 $k
                             )))),

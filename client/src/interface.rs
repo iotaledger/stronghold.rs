@@ -3,7 +3,7 @@
 
 use riker::actors::*;
 
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf};
 
 use engine::vault::RecordHint;
 
@@ -16,14 +16,19 @@ use crate::{
     ClientId, Location, Provider,
 };
 
+/// Main Interface for the Stronghold System. Contains the Riker Actor System, a vector of the current attached
+/// ClientIds and ActorRefs, a HashMap of the derive data (SHA512 of the client_path) and an index for the Current
+/// target actor.
 pub struct Stronghold {
     // actor system.
     pub system: ActorSystem,
     // clients in the system.
     client_ids: Vec<ClientId>,
 
+    // Actor references in the system.
     actors: Vec<ActorRef<ClientMsg>>,
 
+    // data derived from the client_paths.
     derive_data: HashMap<Vec<u8>, Vec<u8>>,
 
     // current index of the client.
@@ -31,7 +36,8 @@ pub struct Stronghold {
 }
 
 impl Stronghold {
-    /// Initializes a new instance of the system.  Sets up the first client actor.
+    /// Initializes a new instance of the system.  Sets up the first client actor. Accepts a `ActorSystem`, the first
+    /// client_path: `Vec<u8>` and any `StrongholdFlags` which pertain to the first actor.
     pub fn init_stronghold_system(system: ActorSystem, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> Self {
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
         let id_str: String = client_id.into();
@@ -62,8 +68,8 @@ impl Stronghold {
         }
     }
 
-    /// Starts actor model and sets current_target actor.  Can be used to add another stronghold actor to the system if
-    /// called a 2nd time.
+    /// Spawns a new set of actors for the Stronghold system. Accepts the client_path: `Vec<u8>` and the options:
+    /// `StrongholdFlags`
     pub fn spawn_stronghold_actor(&mut self, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
         let id_str: String = client_id.into();
@@ -89,6 +95,7 @@ impl Stronghold {
         StatusMessage::OK
     }
 
+    /// Switches the actor target to another actor in the system specified by the client_path: `Vec<u8>`.
     pub fn switch_actor_target(&mut self, client_path: Vec<u8>) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
 
@@ -105,6 +112,9 @@ impl Stronghold {
         }
     }
 
+    /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified
+    /// location of `Location` type. The payload must be specified as a `Vec<u8>` and a `RecordHint` can be provided.
+    /// Also accepts `VaultFlags` for when a new Vault is created.
     pub async fn write_data(
         &self,
         location: Location,
@@ -212,6 +222,8 @@ impl Stronghold {
         StatusMessage::Error("Failed to write the data".into())
     }
 
+    /// Reads data from the specified location of type `Location` from the current target.  Returns the data if the
+    /// vault is readable.
     pub async fn read_data(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
         let idx = self.current_target;
 
@@ -226,6 +238,9 @@ impl Stronghold {
         }
     }
 
+    /// Revokes the data from the specified location of type `Location`. Revoked data is not readable and can be removed
+    /// from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call with
+    /// automatically cleanup the revoke. Otherwise, the data is just marked as revoked.
     pub async fn delete_data(&self, location: Location, should_gc: bool) -> StatusMessage {
         let idx = self.current_target;
         let status;
@@ -263,6 +278,7 @@ impl Stronghold {
         }
     }
 
+    /// Garbage collects any revokes in a Vault based on the given vault_path and the current target actor.
     pub async fn garbage_collect(&self, vault_path: Vec<u8>) -> StatusMessage {
         let idx = self.current_target;
 
@@ -276,6 +292,9 @@ impl Stronghold {
         }
     }
 
+    /// Returns a list of the available records and their `RecordHint` values in a vault by the given vault_path.
+    /// Records are returned as `usize` based on their index if they are written with counter `Locations`.  Generic
+    /// `Locations` will not return a readable index.
     pub async fn list_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
         vault_path: V,
@@ -296,6 +315,8 @@ impl Stronghold {
         }
     }
 
+    /// Executes a runtime command given a `Procedure`.  Returns a `ProcResult` based off of the control_request
+    /// specified.
     pub async fn runtime_exec(&self, control_request: Procedure) -> ProcResult {
         let idx = self.current_target;
 
@@ -307,6 +328,9 @@ impl Stronghold {
         }
     }
 
+    /// Reads data from a given snapshot file.  Can only read the data for a single `client_path` at a time. If the new
+    /// actor uses a new `client_path` the former client path may be passed into the function call to read the data into
+    /// that actor. Also requires keydata to unlock the snapshot. A filename and filepath can be specified.
     pub async fn read_snapshot(
         &mut self,
         client_path: Vec<u8>,
@@ -356,75 +380,42 @@ impl Stronghold {
         }
     }
 
-    pub async fn write_snapshot(
-        &self,
-        _client_path: Vec<u8>,
-        _keydata: Vec<u8>,
-        _filename: Option<String>,
-        _path: Option<PathBuf>,
-        _duration: Option<Duration>,
-    ) -> StatusMessage {
-        // let data = self.derive_data.get(&client_path).expect(line_error!());
-        // let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
+    // pub async fn write_snapshot(
+    //     &self,
+    //     _client_path: Vec<u8>,
+    //     _keydata: Vec<u8>,
+    //     _filename: Option<String>,
+    //     _path: Option<PathBuf>,
+    //     _duration: Option<Duration>,
+    // ) -> StatusMessage {
+    //     // let data = self.derive_data.get(&client_path).expect(line_error!());
+    //     // let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
 
-        // let idx = self.client_ids.iter().position(|id| id == &client_id);
-        // if let Some(idx) = idx {
-        //     let client = &self.actors[idx];
+    //     // let idx = self.client_ids.iter().position(|id| id == &client_id);
+    //     // if let Some(idx) = idx {
+    //     //     let client = &self.actors[idx];
 
-        //     let mut key: [u8; 32] = [0u8; 32];
+    //     //     let mut key: [u8; 32] = [0u8; 32];
 
-        //     key.copy_from_slice(&keydata);
+    //     //     key.copy_from_slice(&keydata);
 
-        //     if let SHResults::ReturnWriteSnap(status) =
-        //         ask(&self.system, client, SHRequest::WriteSnapshot { key, filename, path }).await
-        //     {
-        //         status
-        //     } else {
-        //         StatusMessage::Error("Unable to read snapshot".into())
-        //     }
-        // } else {
-        //     StatusMessage::Error("Unable to find client actor".into())
-        // }
+    //     //     if let SHResults::ReturnWriteSnap(status) =
+    //     //         ask(&self.system, client, SHRequest::WriteSnapshot { key, filename, path }).await
+    //     //     {
+    //     //         status
+    //     //     } else {
+    //     //         StatusMessage::Error("Unable to read snapshot".into())
+    //     //     }
+    //     // } else {
+    //     //     StatusMessage::Error("Unable to find client actor".into())
+    //     // }
 
-        unimplemented!()
-    }
+    //     unimplemented!()
+    // }
 
-    pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StatusMessage {
-        let data = self.derive_data.get(&client_path).expect(line_error!());
-        let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
-
-        let idx = self.client_ids.iter().position(|id| id == &client_id);
-
-        let client_str: String = client_id.into();
-
-        if let Some(idx) = idx {
-            if kill_actor {
-                let client = &self.actors.remove(idx);
-                self.client_ids.remove(idx);
-                self.derive_data.remove(&client_path).expect(line_error!());
-
-                self.system.stop(client);
-                let internal = self
-                    .system
-                    .select(&format!("/user/internal-{}/", client_str))
-                    .expect(line_error!());
-                internal.try_tell(InternalMsg::KillInternal, None);
-
-                StatusMessage::OK
-            } else {
-                let client = &self.actors[idx];
-
-                if let SHResults::ReturnClearCache(status) = ask(&self.system, client, SHRequest::ClearCache).await {
-                    status
-                } else {
-                    StatusMessage::Error("Unable to clear the cache".into())
-                }
-            }
-        } else {
-            StatusMessage::Error("Unable to find client actor".into())
-        }
-    }
-
+    /// Writes the entire state of the `Stronghold` into a snapshot.  All Actors and their associated data will be
+    /// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be
+    /// specified.
     pub async fn write_all_to_snapshot(
         &mut self,
         keydata: Vec<u8>,
@@ -473,6 +464,45 @@ impl Stronghold {
         }
 
         StatusMessage::Error("Unable to write snapshot".into())
+    }
+
+    /// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If
+    /// `kill_actor` is `true` both the internal actor and the client actor will be killed.  Otherwise, the cache of the
+    /// current target actor will be cleared.
+    pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StatusMessage {
+        let data = self.derive_data.get(&client_path).expect(line_error!());
+        let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
+
+        let idx = self.client_ids.iter().position(|id| id == &client_id);
+
+        let client_str: String = client_id.into();
+
+        if let Some(idx) = idx {
+            if kill_actor {
+                let client = &self.actors.remove(idx);
+                self.client_ids.remove(idx);
+                self.derive_data.remove(&client_path).expect(line_error!());
+
+                self.system.stop(client);
+                let internal = self
+                    .system
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+                internal.try_tell(InternalMsg::KillInternal, None);
+
+                StatusMessage::OK
+            } else {
+                let client = &self.actors[idx];
+
+                if let SHResults::ReturnClearCache(status) = ask(&self.system, client, SHRequest::ClearCache).await {
+                    status
+                } else {
+                    StatusMessage::Error("Unable to clear the cache".into())
+                }
+            }
+        } else {
+            StatusMessage::Error("Unable to find client actor".into())
+        }
     }
 
     #[allow(dead_code)]

@@ -15,8 +15,18 @@ serde = {version = "1.0", features = ["derive"]}
 json = "0.12"
 rand = "0.7.3"
 
+criterion = "0.3.3"
+
+
+
+
 [dev-dependencies.random]
 path = "../random"
 
 [dev-dependencies.crypto]
 path = "../crypto"
+
+
+[[bench]]
+name = "benchmark"
+harness = false
