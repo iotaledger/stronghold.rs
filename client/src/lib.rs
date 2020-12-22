@@ -38,6 +38,7 @@ pub use crate::{
 
 pub use engine::snapshot::{
     files::{home_dir, snapshot_dir},
+    kdf::{naive_kdf, recommended_kdf},
     Key,
 };
 
