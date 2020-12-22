@@ -313,7 +313,7 @@ mod tests {
         let a = GuardedAllocation::aligned(l)?;
 
         assert_eq!(
-            crate::zone::soft(|| {
+            crate::zone::fork(|| {
                 for i in 0..page_size() {
                     unsafe {
                         assert_eq!(0u8, core::ptr::read_unaligned(a.data().offset(-(i as isize))));
@@ -332,7 +332,7 @@ mod tests {
         let a = GuardedAllocation::aligned(l)?;
 
         assert_eq!(
-            crate::zone::soft(|| {
+            crate::zone::fork(|| {
                 for i in 0..page_size() {
                     unsafe {
                         core::ptr::write_unaligned(a.data().offset(-(i as isize)), OsRng.gen());
@@ -351,7 +351,7 @@ mod tests {
         let a = GuardedAllocation::aligned(l)?;
 
         assert_eq!(
-            crate::zone::soft(|| {
+            crate::zone::fork(|| {
                 for i in 0..page_size() {
                     unsafe {
                         assert_eq!(0u8, core::ptr::read_unaligned(a.data().add(l.size() + i)));
@@ -370,7 +370,7 @@ mod tests {
         let a = GuardedAllocation::aligned(l)?;
 
         assert_eq!(
-            crate::zone::soft(|| {
+            crate::zone::fork(|| {
                 for i in 0..page_size() {
                     unsafe {
                         core::ptr::write_unaligned(a.data().add(l.size() + i), OsRng.gen());
@@ -401,7 +401,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn inside_zone_linux() -> crate::Result<()> {
         let l = fresh_layout();
-        crate::zone::soft(|| {
+        crate::zone::fork(|| {
             seccomp_spec().with_getrandom().apply().unwrap();
             let a = GuardedAllocation::aligned(l).unwrap();
             do_test_write(a.data(), l.size());
@@ -413,7 +413,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn inside_zone_macos() -> crate::Result<()> {
         let l = fresh_layout();
-        crate::zone::soft(|| {
+        crate::zone::fork(|| {
             let a = GuardedAllocation::aligned(l).unwrap();
             do_test_write(a.data(), l.size());
             a.free().unwrap();
