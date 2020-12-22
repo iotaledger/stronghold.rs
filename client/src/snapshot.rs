@@ -21,26 +21,21 @@ pub struct Snapshot {
     pub state: SnapshotState,
 }
 
-// TODO: Make a hashmap or btreemap instead of a set of vectors.
 #[derive(Deserialize, Serialize, Clone, Default, Debug)]
-pub struct SnapshotState {
-    pub ids: Vec<ClientId>,
-    pub clients: Vec<Client>,
-    pub caches: Vec<BTreeMap<PKey<Provider>, Vec<ReadResult>>>,
-    pub stores: Vec<BTreeMap<VaultId, PKey<Provider>>>,
-}
-
-#[derive(Deserialize, Serialize, Clone, Default, Debug)]
-pub struct State {
-    state: HashMap<
+pub struct SnapshotState(
+    HashMap<
         ClientId,
         (
-            Vec<Client>,
-            Vec<BTreeMap<PKey<Provider>, Vec<ReadResult>>>,
-            Vec<BTreeMap<VaultId, PKey<Provider>>>,
+            Client,
+            BTreeMap<VaultId, PKey<Provider>>,
+            BTreeMap<PKey<Provider>, Vec<ReadResult>>,
         ),
     >,
-}
+    /* pub ids: Vec<ClientId>,
+     * pub clients: Vec<Client>,
+     * pub caches: Vec<BTreeMap<PKey<Provider>, Vec<ReadResult>>>,
+     * pub stores: Vec<BTreeMap<VaultId, PKey<Provider>>>, */
+);
 
 impl Snapshot {
     /// Creates a new `Snapshot` from a buffer of `Vec<u8>` state.
@@ -53,20 +48,17 @@ impl Snapshot {
         id: ClientId,
     ) -> (
         Client,
-        BTreeMap<PKey<Provider>, Vec<ReadResult>>,
         BTreeMap<VaultId, PKey<Provider>>,
+        BTreeMap<PKey<Provider>, Vec<ReadResult>>,
     ) {
-        let idx = self.state.ids.iter().position(|cid| cid == &id);
-
-        if let Some(idx) = idx {
-            (
-                self.state.clients.remove(idx),
-                self.state.caches.remove(idx),
-                self.state.stores.remove(idx),
-            )
-        } else {
-            (Client::new(id), BTreeMap::new(), BTreeMap::new())
+        match self.state.0.remove(&id) {
+            Some(t) => t,
+            None => (Client::new(id), BTreeMap::default(), BTreeMap::default()),
         }
+    }
+
+    pub fn has_data(&self, cid: ClientId) -> bool {
+        self.state.0.contains_key(&cid)
     }
 
     /// Gets the `Snapshot` path given a `Option<String>` as the snapshot name.  Defaults to
@@ -93,24 +85,39 @@ impl Snapshot {
     pub fn write_to_snapshot(self, path: &Path, key: Key) {
         let data = self.state.serialize();
 
-        write_to(&data, path, &key, &[])
-            .expect("Unable to access snapshot. Make sure that it exists or run encrypt to build a new one.");
+        // TODO: This is a hack and probably should be removed when we add proper error handling.
+        match write_to(&data, path, &key, &[]) {
+            Ok(()) => (),
+            Err(_) => write_to(&data, path, &key, &[]).expect("Failed to write to snapshot."),
+        };
     }
 }
 
 impl SnapshotState {
     pub fn new(
-        ids: Vec<ClientId>,
-        clients: Vec<Client>,
-        stores: Vec<BTreeMap<VaultId, PKey<Provider>>>,
-        caches: Vec<BTreeMap<PKey<Provider>, Vec<ReadResult>>>,
+        id: ClientId,
+        data: (
+            Client,
+            BTreeMap<VaultId, PKey<Provider>>,
+            BTreeMap<PKey<Provider>, Vec<ReadResult>>,
+        ),
     ) -> Self {
-        Self {
-            ids,
-            clients,
-            stores,
-            caches,
-        }
+        let mut state = HashMap::new();
+        state.insert(id, data);
+
+        Self(state)
+    }
+
+    pub fn add_data(
+        &mut self,
+        id: ClientId,
+        data: (
+            Client,
+            BTreeMap<VaultId, PKey<Provider>>,
+            BTreeMap<PKey<Provider>, Vec<ReadResult>>,
+        ),
+    ) {
+        self.0.insert(id, data);
     }
 
     pub fn serialize(&self) -> Vec<u8> {
