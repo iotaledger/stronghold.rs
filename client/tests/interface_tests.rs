@@ -402,7 +402,7 @@ fn test_crypto() {
         output: slip10_seed.clone(),
         hint: RecordHint::new(b"test_seed").expect(line_error!()),
     })) {
-        ProcResult::SLIP10Generate(StatusMessage::OK) => (),
+        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
         r => panic!("unexpected result: {:?}", r),
     }
 
@@ -412,7 +412,9 @@ fn test_crypto() {
         output: slip10_key.clone(),
         hint: RecordHint::new(b"test").expect(line_error!()),
     })) {
-        ProcResult::SLIP10Derive(StatusMessage::OK) => (),
+        ProcResult::SLIP10Derive(ResultMessage::Ok(key)) => {
+            println!("public key: {:?}", key);
+        }
         r => panic!("unexpected result: {:?}", r),
     }
 

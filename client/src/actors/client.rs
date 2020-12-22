@@ -71,7 +71,7 @@ pub enum Procedure {
 #[derive(Debug, Clone)]
 pub enum ProcResult {
     SLIP10Generate(StatusMessage),
-    SLIP10Derive(StatusMessage),
+    SLIP10Derive(ResultMessage<hd::Key>),
     BIP39Recover(StatusMessage),
     BIP39Generate(StatusMessage),
     BIP39MnemonicSentence(ResultMessage<String>),
@@ -194,7 +194,7 @@ impl Receive<SHRequest> for Client {
                         .as_ref()
                         .expect(line_error!())
                         .try_tell(
-                            SHResults::ReturnControlRequest(ProcResult::$V(StatusMessage::Error(format!(
+                            SHResults::ReturnControlRequest(ProcResult::$V(ResultMessage::Error(format!(
                                 "Failed to find {} vault. Please generate one",
                                 $k
                             )))),
