@@ -6,7 +6,7 @@ use libp2p::core::identity::Keypair;
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use stronghold_communication::{
-    actor::{CommunicationActor, CommunicationEvent},
+    actor::{CommsActorConfig, CommunicationActor, CommunicationEvent},
     behaviour::message::P2PReqResEvent,
 };
 
@@ -64,14 +64,12 @@ impl Actor for TestActor {
 }
 
 fn main() {
-    let local_keys = Keypair::generate_ed25519();
     let sys = ActorSystem::new().unwrap();
+    let local_keys = Keypair::generate_ed25519();
     let chan: ChannelRef<CommunicationEvent<Request, Response>> = channel("p2p", &sys).unwrap();
-    sys.actor_of_args::<CommunicationActor<Request, Response>, _>(
-        "communication-actor",
-        (local_keys, chan.clone(), None),
-    )
-    .unwrap();
+    let config = CommsActorConfig::new(local_keys, None, Some(chan.clone()), None);
+    sys.actor_of_args::<CommunicationActor<Request, Response>, _>("communication-actor", config)
+        .unwrap();
     sys.actor_of_args::<TestActor, _>("test-actor", chan).unwrap();
     std::thread::sleep(Duration::from_secs(600));
 }
