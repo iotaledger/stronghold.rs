@@ -29,7 +29,7 @@ path = "../runtime"
 
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
-rev = "46128fc8ea08e251ab2506a3f591295a9673c7fc"
+rev = "9259a0617ca3b72e2bb2f63d5b7197247f85061c"
 features = [ "random", "ed25519", "sha", "hmac", "bip39-en", "blake2b" ]
 
 [dev-dependencies]

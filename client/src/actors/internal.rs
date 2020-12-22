@@ -431,7 +431,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 let mnemonic = crypto::bip39::wordlist::encode(
                     &entropy,
-                    crypto::bip39::wordlist::ENGLISH, // TODO: make this user configurable
+                    &crypto::bip39::wordlist::ENGLISH, // TODO: make this user configurable
                 )
                 .expect(line_error!());
 
