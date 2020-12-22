@@ -17,7 +17,7 @@ hex = "0.4.2"
 
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
-rev = "bc35d38561efcf20a50aeb0f0b08028b4b4fda46"
+rev = "9259a0617ca3b72e2bb2f63d5b7197247f85061c"
 
 # TODO: remove hmac and sha when a proper kdf is chosen
 features = [ "random", "chacha", "hmac", "sha" ]
