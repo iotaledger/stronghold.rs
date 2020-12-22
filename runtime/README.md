@@ -35,7 +35,7 @@ username  hard  memlock 1048576
 Note also that the tests in the crate allocates *a lot* more memory than an
 application using these runtime utilities are expected to allocate: by the
 principle of least priviledge only the necessary sensitive/cryptographic
-operations should be preformed in the most restricted sandbox.
+operations should be performed in the most restricted sandbox.
 
 ## Low-hanging fruit
 - [ ] extend the memory allocator to write canary values in the padding around
