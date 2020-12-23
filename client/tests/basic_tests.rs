@@ -251,7 +251,6 @@ fn test_unlock_block() {
     let client_path = b"test".to_vec();
 
     let blip39_seed = Location::generic("blip39", "seed");
-    let slip10_key = Location::generic("slip10", "key");
 
     let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
 
@@ -266,23 +265,13 @@ fn test_unlock_block() {
         r => panic!("unexpected result: {:?}", r),
     }
 
-    match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
-        chain: hd::Chain::from_u32_hardened(vec![44, 4218]),
-        input: SLIP10DeriveInput::Key(blip39_seed.clone()),
-        output: slip10_key.clone(),
-        hint: RecordHint::new(b"test").expect(line_error!()),
-    })) {
-        ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => {}
-        r => panic!("unexpected result: {:?}", r),
-    }
-
-    let (seed_data, _) = futures::executor::block_on(stronghold.read_data(slip10_key.clone()));
+    let (seed_data, _) = futures::executor::block_on(stronghold.read_data(blip39_seed.clone()));
 
     let mut seed_data = seed_data.expect(line_error!());
 
     let key0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
         path: "".into(),
-        key: slip10_key.clone(),
+        key: blip39_seed.clone(),
     })) {
         ProcResult::Ed25519PublicKey(ResultMessage::Ok(key)) => key,
         r => panic!("unexpected result: {:?}", r),
@@ -290,7 +279,7 @@ fn test_unlock_block() {
 
     let sig0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
         path: "".into(),
-        key: slip10_key.clone(),
+        key: blip39_seed.clone(),
         msg: essence.to_vec().clone(),
     })) {
         ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => sig,
@@ -298,7 +287,7 @@ fn test_unlock_block() {
     };
 
     let (sig1, key1) = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
-        seed: slip10_key.clone(),
+        seed: blip39_seed.clone(),
         path: "".into(),
         essence: essence.to_vec().clone(),
     })) {
