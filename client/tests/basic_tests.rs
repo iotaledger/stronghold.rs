@@ -267,25 +267,33 @@ fn test_unlock_block() {
         r => panic!("unexpected result: {:?}", r),
     }
 
-    if let ProcResult::SignUnlockBlock(ResultMessage::Ok(sig), ResultMessage::Ok(key)) =
-        futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
-            seed: slip10_key.clone(),
-            path: hd::Chain::from_u32_hardened(vec![]),
-            essence: essence.to_vec().clone(),
-        }))
-    {
-        println!("{:?}", sig);
-        let sig = crypto::ed25519::Signature::from_bytes(sig);
-        let key = crypto::ed25519::PublicKey::from_compressed_bytes(key).unwrap();
-        assert!(crypto::ed25519::verify(&key, &sig, essence));
+    let (sig1, key1) = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
+        seed: slip10_key.clone(),
+        path: hd::Chain::from_u32_hardened(vec![]),
+        essence: essence.to_vec().clone(),
+    })) {
+        ProcResult::SignUnlockBlock(ResultMessage::Ok(sig), ResultMessage::Ok(key)) => {
+            let sig = crypto::ed25519::Signature::from_bytes(sig);
+            let key = crypto::ed25519::PublicKey::from_compressed_bytes(key).unwrap();
+
+            (sig, key)
+        }
+        r => panic!("unexpected result: {:?}", r),
     };
 
-    if let ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) =
-        futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
-            key: slip10_key.clone(),
-            msg: essence.to_vec(),
-        }))
-    {
-        println!("{:?}", sig);
-    }
+    let sig2 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
+        key: slip10_key.clone(),
+        msg: essence.to_vec(),
+    })) {
+        ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => {
+            let sig = crypto::ed25519::Signature::from_bytes(sig);
+
+            sig
+        }
+        r => panic!("unexpected result: {:?}", r),
+    };
+
+    println!("{:?}", sig1.to_bytes());
+    println!("{:?}", sig2.to_bytes());
+    assert!(crypto::ed25519::verify(&key1, &sig1, essence));
 }

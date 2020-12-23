@@ -382,7 +382,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                ProcResult::SLIP10Derive(ResultMessage::Ok(dk)),
+                                ProcResult::SLIP10Derive(StatusMessage::Ok(())),
                             )),
                             sender,
                         );
@@ -416,7 +416,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                ProcResult::SLIP10Derive(ResultMessage::Ok(dk)),
+                                ProcResult::SLIP10Derive(StatusMessage::Ok(())),
                             )),
                             sender,
                         );
