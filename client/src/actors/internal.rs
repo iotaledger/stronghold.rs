@@ -343,9 +343,15 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
-                let key = self.keystore.create_key(vault_id);
+                let key = if !self.keystore.vault_exists(vault_id) {
+                    self.keystore.create_key(vault_id)
+                } else {
+                    self.keystore.get_key(vault_id).expect(line_error!())
+                };
 
-                self.bucket.create_and_init_vault(key.clone(), record_id);
+                if !self.bucket.record_exists_in_vault(key.clone(), record_id) {
+                    self.bucket.create_and_init_vault(key.clone(), record_id);
+                }
 
                 let mut seed = [0u8; 64];
                 crypto::rand::fill(&mut seed).expect(line_error!());
@@ -376,9 +382,17 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         self.keystore.insert_key(seed_vault_id, seed_key);
                         let dk = hd::Seed::from_bytes(&plain).derive(&chain).expect(line_error!());
 
-                        let dk_key = self.keystore.create_key(key_vault_id);
-                        let krid = self.bucket.init_record(dk_key.clone(), key_record_id);
-                        self.bucket.write_payload(dk_key, krid, dk.into(), hint);
+                        let dk_key = if !self.keystore.vault_exists(key_vault_id) {
+                            self.keystore.create_key(key_vault_id)
+                        } else {
+                            self.keystore.get_key(key_vault_id).expect(line_error!())
+                        };
+
+                        if !self.bucket.record_exists_in_vault(dk_key.clone(), key_record_id) {
+                            self.bucket.create_and_init_vault(dk_key.clone(), key_record_id);
+                        }
+
+                        self.bucket.write_payload(dk_key, key_record_id, dk.into(), hint);
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
@@ -409,10 +423,17 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         let parent = hd::Key::try_from(parent.as_slice()).expect(line_error!());
                         let dk = parent.derive(&chain).expect(line_error!());
 
-                        let child_key = self.keystore.create_key(child_vault_id);
-                        let krid = self.bucket.init_record(child_key.clone(), child_record_id);
+                        let child_key = if !self.keystore.vault_exists(child_vault_id) {
+                            self.keystore.create_key(child_vault_id)
+                        } else {
+                            self.keystore.get_key(child_vault_id).expect(line_error!())
+                        };
 
-                        self.bucket.write_payload(child_key, krid, dk.into(), hint);
+                        if !self.bucket.record_exists_in_vault(child_key.clone(), child_record_id) {
+                            self.bucket.create_and_init_vault(child_key.clone(), child_record_id);
+                        }
+
+                        self.bucket.write_payload(child_key, child_record_id, dk.into(), hint);
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
@@ -442,8 +463,17 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let mut seed = [0u8; 64];
                 crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
 
-                let key = self.keystore.create_key(vault_id);
-                self.bucket.create_and_init_vault(key.clone(), record_id);
+                let key = if !self.keystore.vault_exists(vault_id) {
+                    self.keystore.create_key(vault_id)
+                } else {
+                    self.keystore.get_key(vault_id).expect(line_error!())
+                };
+
+                self.keystore.insert_key(vault_id, key.clone());
+
+                if !self.bucket.record_exists_in_vault(key.clone(), record_id) {
+                    self.bucket.create_and_init_vault(key.clone(), record_id);
+                }
 
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
@@ -465,8 +495,15 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 record_id,
                 hint,
             } => {
-                let key = self.keystore.create_key(vault_id);
-                self.bucket.create_and_init_vault(key.clone(), record_id);
+                let key = if !self.keystore.vault_exists(vault_id) {
+                    self.keystore.create_key(vault_id)
+                } else {
+                    self.keystore.get_key(vault_id).expect(line_error!())
+                };
+
+                if !self.bucket.record_exists_in_vault(key.clone(), record_id) {
+                    self.bucket.create_and_init_vault(key.clone(), record_id);
+                }
 
                 let mut seed = [0u8; 64];
                 crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
@@ -519,7 +556,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     Some(key) => key,
                     None => todo!("return error message"),
                 };
-                self.keystore.insert_key(vault_id, key.clone()); // TODO: why keep removing and adding back the keys?
+                self.keystore.insert_key(vault_id, key.clone());
 
                 let mut raw = self.bucket.read_data(key, record_id);
                 if raw.len() < 32 {
@@ -550,13 +587,18 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     Some(key) => key,
                     None => todo!("return error message"),
                 };
-                self.keystore.insert_key(vault_id, key.clone()); // TODO: why keep removing and adding back the keys?
 
-                let bs = self.bucket.read_data(key, record_id);
+                self.keystore.insert_key(vault_id, key.clone());
 
-                let dk = hd::Seed::from_bytes(&bs).derive(&path).expect(line_error!());
+                let mut raw = self.bucket.read_data(key, record_id);
+                if raw.len() < 32 {
+                    todo!("return error message: insufficient bytes")
+                }
+                raw.truncate(32);
+                let mut bs = [0; 32];
+                bs.copy_from_slice(&raw);
 
-                let sk = dk.secret_key().expect(line_error!());
+                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
 
                 let sig = sk.sign(&essence);
 
