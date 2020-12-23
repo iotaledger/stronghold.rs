@@ -61,7 +61,8 @@ pub enum Procedure {
     Ed25519PublicKey { key: Location },
     /// Generate the Ed25519 signature of the given message signed by the specified key
     Ed25519Sign { key: Location, msg: Vec<u8> },
-    /// Derive a SLIP10 key from a SLIP10/BIP39 seed using path, sign the essence using Ed25519, return the signature and the corresponding public key
+    /// Derive a SLIP10 key from a SLIP10/BIP39 seed using path, sign the essence using Ed25519, return the signature
+    /// and the corresponding public key
     ///
     /// This is equivalent to separate calls to SLIP10Derive, Ed25519PublicKey, and Ed25519Sign but
     /// does not store the derived key.
