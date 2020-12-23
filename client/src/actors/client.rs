@@ -68,7 +68,7 @@ pub enum Procedure {
     /// does not store the derived key.
     SignUnlockBlock {
         seed: Location,
-        path: hd::Chain,
+        path: String,
         essence: Vec<u8>,
     },
 }
@@ -94,8 +94,10 @@ pub enum ProcResult {
     Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
     /// Return value for `SignUnlockBlock`. Returns a Ed25519 signature and a Ed25519 public key.
     SignUnlockBlock(
-        ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>,
-        ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>,
+        ResultMessage<(
+            [u8; crypto::ed25519::SIGNATURE_LENGTH],
+            [u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH],
+        )>,
     ),
 }
 

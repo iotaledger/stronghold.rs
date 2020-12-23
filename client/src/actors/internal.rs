@@ -11,6 +11,14 @@ use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
 use engine::snapshot;
 
+use bee_signing_ext::{
+    binary::{
+        ed25519::{Ed25519PrivateKey, Ed25519Seed},
+        BIP32Path,
+    },
+    Signer,
+};
+
 use crate::{
     actors::{ProcResult, SMsg},
     bucket::Bucket,
@@ -111,7 +119,7 @@ pub enum InternalMsg {
     SignUnlockBlock {
         vault_id: VaultId,
         record_id: RecordId,
-        path: hd::Chain,
+        path: String,
         essence: Vec<u8>,
     },
 }
@@ -590,34 +598,74 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 path,
                 essence,
             } => {
-                let key = match self.keystore.get_key(vault_id) {
-                    Some(key) => key,
-                    None => todo!("return error message"),
-                };
-
-                self.keystore.insert_key(vault_id, key.clone());
-
-                let mut raw = self.bucket.read_data(key, record_id);
-                if raw.len() < 32 {
-                    todo!("return error message: insufficient bytes")
-                }
-                raw.truncate(32);
-                let mut bs = [0; 32];
-                bs.copy_from_slice(&raw);
-
-                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
-
-                let sig = sk.sign(&essence);
-
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-                client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SignUnlockBlock(
-                        ResultMessage::Ok(sig.to_bytes()),
-                        ResultMessage::Ok(sk.public_key().to_compressed_bytes()),
-                    ))),
-                    sender,
-                );
+
+                match self.keystore.get_key(vault_id) {
+                    Some(key) => {
+                        self.keystore.insert_key(vault_id, key.clone());
+
+                        let mut raw = self.bucket.read_data(key, record_id);
+                        if raw.len() < 32 {
+                            todo!("return error message: insufficient bytes")
+                        }
+                        raw.truncate(32);
+                        let mut bs = [0; 32];
+                        bs.copy_from_slice(&raw);
+
+                        let seed = Ed25519Seed::from_bytes(&bs).expect(line_error!());
+
+                        let bip32path = BIP32Path::from_str(&path).expect(line_error!());
+
+                        let sk = Ed25519PrivateKey::generate_from_seed(&seed, &bip32path).expect(line_error!());
+                        let pk = sk.generate_public_key().to_bytes();
+
+                        let signature = sk.sign(&essence);
+
+                        client.try_tell(
+                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                ProcResult::SignUnlockBlock(ResultMessage::Ok((signature.to_bytes(), pk))),
+                            )),
+                            sender,
+                        );
+                    }
+                    None => {
+                        client.try_tell(
+                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                ProcResult::SignUnlockBlock(ResultMessage::Error("Failed to get the seed data".into())),
+                            )),
+                            sender,
+                        );
+                    }
+                };
+
+                // TODO: FIX ME
+                // let key = match self.keystore.get_key(vault_id) {
+                //     Some(key) => key,
+                //     None => todo!("return error message"),
+                // };
+
+                // self.keystore.insert_key(vault_id, key.clone());
+
+                // let mut raw = self.bucket.read_data(key, record_id);
+                // if raw.len() < 32 {
+                //     todo!("return error message: insufficient bytes")
+                // }
+                // raw.truncate(32);
+                // let mut bs = [0; 32];
+                // bs.copy_from_slice(&raw);
+
+                // let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+
+                // let sig = sk.sign(&essence);
+
+                // client.try_tell(
+                //     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SignUnlockBlock(
+                //         ResultMessage::Ok(sig.to_bytes()),
+                //         ResultMessage::Ok(sk.public_key().to_compressed_bytes()),
+                //     ))),
+                //     sender,
+                // );
             }
             InternalMsg::WriteSnapshotAll {
                 key,
