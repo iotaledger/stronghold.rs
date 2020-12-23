@@ -3,9 +3,7 @@
 
 use riker::actors::*;
 
-use iota_stronghold::{
-    hd, line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, SLIP10DeriveInput, Stronghold,
-};
+use iota_stronghold::{line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, Stronghold};
 
 use bee_signing_ext::{
     binary::{
