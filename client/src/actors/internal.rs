@@ -349,6 +349,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.get_key(vault_id).expect(line_error!())
                 };
 
+                self.keystore.insert_key(vault_id, key.clone());
+
                 if !self.bucket.record_exists_in_vault(key.clone(), record_id) {
                     self.bucket.create_and_init_vault(key.clone(), record_id);
                 }
@@ -387,6 +389,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         } else {
                             self.keystore.get_key(key_vault_id).expect(line_error!())
                         };
+                        self.keystore.insert_key(key_vault_id, dk_key.clone());
 
                         if !self.bucket.record_exists_in_vault(dk_key.clone(), key_record_id) {
                             self.bucket.create_and_init_vault(dk_key.clone(), key_record_id);
@@ -428,6 +431,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         } else {
                             self.keystore.get_key(child_vault_id).expect(line_error!())
                         };
+
+                        self.keystore.insert_key(child_vault_id, child_key.clone());
 
                         if !self.bucket.record_exists_in_vault(child_key.clone(), child_record_id) {
                             self.bucket.create_and_init_vault(child_key.clone(), child_record_id);
@@ -500,6 +505,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 } else {
                     self.keystore.get_key(vault_id).expect(line_error!())
                 };
+
+                self.keystore.insert_key(vault_id, key.clone());
 
                 if !self.bucket.record_exists_in_vault(key.clone(), record_id) {
                     self.bucket.create_and_init_vault(key.clone(), record_id);
