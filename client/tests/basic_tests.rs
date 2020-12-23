@@ -7,6 +7,14 @@ use iota_stronghold::{
     hd, line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, SLIP10DeriveInput, Stronghold,
 };
 
+use bee_signing_ext::{
+    binary::{
+        ed25519::{Ed25519PrivateKey, Ed25519Seed},
+        BIP32Path,
+    },
+    Signer,
+};
+
 fn setup_stronghold() -> Stronghold {
     let sys = ActorSystem::new().unwrap();
 
@@ -257,6 +265,10 @@ fn test_unlock_block() {
         r => panic!("unexpected result: {:?}", r),
     }
 
+    let (seed_data, _) = futures::executor::block_on(stronghold.read_data(slip10_seed.clone()));
+
+    let mut seed_data = seed_data.expect(line_error!());
+
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
         chain: hd::Chain::from_u32_hardened(vec![]),
         input: SLIP10DeriveInput::Seed(slip10_seed.clone()),
@@ -281,6 +293,15 @@ fn test_unlock_block() {
         r => panic!("unexpected result: {:?}", r),
     };
 
+    let key2 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
+        key: slip10_key.clone(),
+    })) {
+        ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) => {
+            crypto::ed25519::PublicKey::from_compressed_bytes(pk).expect(line_error!())
+        }
+        r => panic!("unexpected result: {:?}", r),
+    };
+
     let sig2 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
         key: slip10_key.clone(),
         msg: essence.to_vec(),
@@ -293,7 +314,21 @@ fn test_unlock_block() {
         r => panic!("unexpected result: {:?}", r),
     };
 
+    if seed_data.len() < 32 {
+        todo!("return error message: insufficient bytes")
+    }
+    seed_data.truncate(32);
+    let mut bs = [0; 32];
+    bs.copy_from_slice(&seed_data);
+    let seed = Ed25519Seed::from_bytes(&seed_data).expect(line_error!());
+    let sk = Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("").unwrap()).expect(line_error!());
+    let pk = sk.generate_public_key().to_bytes();
+
     println!("{:?}", sig1.to_bytes());
     println!("{:?}", sig2.to_bytes());
+
+    println!("{:?}", key1.to_compressed_bytes());
+    println!("{:?}", key2.to_compressed_bytes());
+    println!("{:?}", pk);
     assert!(crypto::ed25519::verify(&key1, &sig1, essence));
 }

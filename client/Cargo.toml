@@ -39,6 +39,7 @@ criterion = "0.3.3"
 # proptest = "0.10.1"
 
 clap = { version = "3.0.0-beta.1", features = ["yaml"] }
+bee-signing-ext = { git = "https://github.com/wusyong/bee-p.git", branch = "sign-ext", version = "^0.1.0-alpha" }
 
 [[bench]]
 name = "benchmark"
