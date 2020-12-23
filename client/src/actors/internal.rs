@@ -548,13 +548,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, key.clone()); // TODO: why keep removing and adding back the keys?
 
-                let raw = self.bucket.read_data(key, record_id);
-
-                if raw.len() < 32 {
-                    todo!("return error message: insufficient bytes")
-                }
-                let mut bs = [0; 32];
-                bs.copy_from_slice(&raw[0..32]);
+                let bs = self.bucket.read_data(key, record_id);
 
                 let dk = hd::Seed::from_bytes(&bs).derive(&path).expect(line_error!());
 
