@@ -3,7 +3,9 @@
 
 use riker::actors::*;
 
-use iota_stronghold::{line_error, Location, RecordHint, ResultMessage, Stronghold};
+use iota_stronghold::{
+    hd, line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, SLIP10DeriveInput, Stronghold,
+};
 
 fn setup_stronghold() -> Stronghold {
     let sys = ActorSystem::new().unwrap();
@@ -232,5 +234,58 @@ fn test_write_read_multi_snapshot() {
 
             assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));
         });
+    }
+}
+#[test]
+fn test_unlock_block() {
+    let sys = ActorSystem::new().unwrap();
+
+    let client_path = b"test".to_vec();
+
+    let slip10_seed = Location::generic("slip10", "seed");
+    let slip10_key = Location::generic("slip10", "key");
+
+    let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
+
+    let essence = b"blahblahblah";
+
+    match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
+        output: slip10_seed.clone(),
+        hint: RecordHint::new(b"test_seed").expect(line_error!()),
+    })) {
+        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
+        r => panic!("unexpected result: {:?}", r),
+    }
+
+    match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
+        chain: hd::Chain::from_u32_hardened(vec![]),
+        input: SLIP10DeriveInput::Seed(slip10_seed.clone()),
+        output: slip10_key.clone(),
+        hint: RecordHint::new(b"test").expect(line_error!()),
+    })) {
+        ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => {}
+        r => panic!("unexpected result: {:?}", r),
+    }
+
+    if let ProcResult::SignUnlockBlock(ResultMessage::Ok(sig), ResultMessage::Ok(key)) =
+        futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
+            seed: slip10_key.clone(),
+            path: hd::Chain::from_u32_hardened(vec![]),
+            essence: essence.to_vec().clone(),
+        }))
+    {
+        println!("{:?}", sig);
+        let sig = crypto::ed25519::Signature::from_bytes(sig);
+        let key = crypto::ed25519::PublicKey::from_compressed_bytes(key).unwrap();
+        assert!(crypto::ed25519::verify(&key, &sig, essence));
+    };
+
+    if let ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) =
+        futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
+            key: slip10_key.clone(),
+            msg: essence.to_vec(),
+        }))
+    {
+        println!("{:?}", sig);
     }
 }
