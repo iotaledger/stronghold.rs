@@ -43,21 +43,16 @@ use async_std::{
     io::{stdin, BufReader},
     task,
 };
-use core::{
-    ops::Deref,
-    str::FromStr,
-    task::{Context, Poll},
-};
+use core::{ops::Deref, str::FromStr};
 use stronghold_communication::behaviour::{
-    error::{QueryError, QueryResult},
     message::{P2PEvent, P2PIdentifyEvent, P2PReqResEvent},
     P2PNetworkBehaviour,
 };
 
-use futures::{future, prelude::*};
+use futures::{prelude::*, select};
 use libp2p::{
     core::{identity::Keypair, Multiaddr, PeerId},
-    swarm::Swarm,
+    swarm::{Swarm, SwarmEvent},
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -74,6 +69,7 @@ pub enum Response {
     Msg(String),
 }
 
+// Parse the user input line and handle the commands
 fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, line: &str) {
     let target_regex = "(?:\\s+\"(?P<target>[^\"]+)\")?";
     let msg_regex = "(?:\\s+\"(?P<msg>[^\"]+)\")?";
@@ -88,6 +84,8 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                 }
             }
             "DIAL" => {
+                // Dial a multiaddress to establish a connection, if this was successfull the identify protocol will
+                // cause the two peers to send `P2PEvent::Identify` events to each other.
                 if let Some(peer_addr) = captures
                     .name("target")
                     .and_then(|peer_match| Multiaddr::from_str(peer_match.as_str()).ok())
@@ -100,6 +98,8 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                 }
             }
             "PING" => {
+                // Pings a peer by it's peer address, this will only be successful if the peer is
+                // known to the local peer either my mDNS or by previously dialing it.
                 if let Some(peer_id) = captures
                     .name("target")
                     .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
@@ -111,6 +111,8 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                 }
             }
             "MSG" => {
+                // Messages a peer by it's peer address, this will only be successful if the peer is
+                // known to the local peer either my mDNS or by previously dialing it.
                 if let Some(peer_id) = captures
                     .name("target")
                     .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
@@ -130,9 +132,13 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
     }
 }
 
+// Handle an event that was polled from the swarm.
+// these events are either messages from remote peers or events from the protocol i.g.
+// `P2PEvent::Identify`
 fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2PEvent<Request, Response>) {
     match e {
         P2PEvent::RequestResponse(event) => match event.deref().clone() {
+            // Request from a remote peer
             P2PReqResEvent::Req {
                 peer_id,
                 request_id: Some(request_id),
@@ -143,33 +149,40 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                     Request::Ping => {
                         let response = swarm.send_response(Response::Pong, request_id);
                         if response.is_ok() {
-                            println!("Send Pong back");
+                            println!("Send Pong back\n");
                         } else {
-                            println!("Error sending pong: {:?}", response.unwrap_err());
+                            println!("Error sending pong: {:?}\n", response.unwrap_err());
                         }
                     }
                     Request::Msg(msg) => {
                         let response = swarm.send_response(Response::Msg(format!("echo: {}", msg)), request_id);
                         if response.is_ok() {
-                            println!("Echoed message");
+                            println!("Echoed message\n");
                         } else {
-                            println!("Error sending echo: {:?}", response.unwrap_err());
+                            println!("Error sending echo: {:?}\n", response.unwrap_err());
                         }
                     }
                 }
             }
+            // Response to an request that out local peer send before
             P2PReqResEvent::Res {
                 peer_id,
                 request_id,
                 response,
             } => println!(
-                "Response from peer {:?} for Request {:?}:\n{:?}",
+                "Response from peer {:?} for Request {:?}:\n{:?}\n",
                 peer_id, request_id, response
             ),
+            P2PReqResEvent::ResSent {
+                peer_id: _,
+                request_id: _,
+            } => {}
             error => {
                 println!("Error {:?}", error)
             }
         },
+        // Identify event that is send by the identify-protocol once two peer establish a
+        // connection
         P2PEvent::Identify(event) => {
             if let P2PIdentifyEvent::Received {
                 peer_id,
@@ -187,58 +200,53 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
     }
 }
 
-fn listen() -> QueryResult<()> {
+// Create a swarm and poll for events from that swarm
+fn listen() {
     let local_keys = Keypair::generate_ed25519();
-    // Create a Swarm that implementes the Request-Reponse Protocl and mDNS
-    let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys)?;
-    if let Err(err) = Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()) {
-        return Err(QueryError::ConnectionError(format!("{}", err)));
+
+    // Create a Swarm that implementes the Request-Reponse-, Identify-, and mDNS-Protocol
+    let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).expect("Could not create swarm.");
+    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).expect("Listening Error.");
+
+    println!(
+        "Local PeerId: {:?}\ncommands:\nPING <peer_id>\nMSG <peer_id>\nDIAL <peer_addr>\nLIST",
+        Swarm::local_peer_id(&swarm)
+    );
+    if cfg!(not(feature = "mdns")) {
+        println!("Since mdns is not enabled, peers have to be DIALed first to connect before PING / MSG them");
     }
-    println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
-    let mut listening = false;
+
     let mut stdin = BufReader::new(stdin()).lines();
     // Start polling for user input and events in the network
-    task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
+    task::block_on(async {
         loop {
-            match stdin.poll_next_unpin(cx) {
-                Poll::Ready(Some(line)) => handle_input_line(&mut swarm, &line.unwrap()),
-                Poll::Ready(None) => panic!("Stdin closed"),
-                Poll::Pending => {}
-            }
-            // poll for events from the swarm
-            match swarm.poll_next_unpin(cx) {
-                Poll::Ready(Some(e)) => handle_event(&mut swarm, e),
-                Poll::Ready(None) => {
-                    return Poll::Ready(());
-                }
-                Poll::Pending => {
-                    if !listening {
-                        let mut listeners = Swarm::listeners(&swarm).peekable();
-                        if listeners.peek() == None {
-                            println!("No listeners. The port may already be occupied.")
-                        } else {
-                            println!("Listening on:");
-                            for a in listeners {
-                                println!("{:?}", a);
-                            }
-                        }
-                        println!("commands:");
-                        println!("PING <peer_id>");
-                        println!("MSG <peer_id>");
-                        println!("DIAL <peer_addr>");
-                        println!("LIST");
-                        if cfg!(not(feature = "mdns")) {
-                            println!("Since mdns is not enabled, peers have to be DIALed first to connect before PING / MSG them");
-                        }
-                        listening = true;
+            select! {
+                // User input from stdin
+                stdin_input = stdin.next().fuse()=> {
+                    if let Some(Ok(command)) = stdin_input {
+                        handle_input_line(&mut swarm, &command);
+                    } else {
+                        // stdin closed
+                        break;
                     }
-                }
-            }
+                },
+                // Events from the swarm
+                swarm_event = swarm.next_event().fuse() => {
+                    match swarm_event {
+                        SwarmEvent::Behaviour(event) => handle_event(&mut swarm, event),
+                        SwarmEvent::NewListenAddr(addr) => println!("Listen on {:?}", addr),
+                        SwarmEvent::ListenerError{error} => {
+                            eprintln!("ListenerError: {:?}", error);
+                            return;
+                        },
+                        event => println!("Swarm Event: {:?}", event),
+                    }
+                },
+            };
         }
-    }));
-    Ok(())
+    });
 }
 
-fn main() -> QueryResult<()> {
+fn main() {
     listen()
 }

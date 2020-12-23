@@ -1,6 +1,9 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+//! This example create a very test actor in the same actor system as the communication actor, and
+//! a channel that the actors then can use for communication, in this case to send a Ping-Pong message.
+
 use core::time::Duration;
 use libp2p::core::identity::Keypair;
 use riker::actors::*;
@@ -9,12 +12,15 @@ use stronghold_communication::{
     actor::{CommsActorConfig, CommunicationActor, CommunicationEvent},
     behaviour::message::P2PReqResEvent,
 };
-
+/// The request that the `CommunicationActor` would send over the swarm to a remote
+/// peer. In this example, this is only used for communication between the local actors.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Request {
     Ping,
 }
 
+/// The response that the `CommunicationActor` would send over the swarm to a remote
+/// peer. In this example, this is only used for communication between the local actors.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     Pong,
@@ -71,5 +77,5 @@ fn main() {
     sys.actor_of_args::<CommunicationActor<Request, Response>, _>("communication-actor", config)
         .unwrap();
     sys.actor_of_args::<TestActor, _>("test-actor", chan).unwrap();
-    std::thread::sleep(Duration::from_secs(600));
+    std::thread::sleep(Duration::from_secs(60));
 }

@@ -19,7 +19,7 @@ use std::io::{Error as IOError, ErrorKind as IOErrorKind, Result as IOResult};
 pub trait MessageEvent: Serialize + DeserializeOwned + Debug + Send + Clone + Sync + 'static {}
 impl<T: Serialize + DeserializeOwned + Debug + Send + Clone + Sync + 'static> MessageEvent for T {}
 
-/// Custom protocol that extends libp2p's RequestReponseProtocol
+/// Custom protocol that extends libp2ps RequestResponseProtocol
 #[derive(Debug, Clone)]
 pub struct MessageProtocol();
 
@@ -58,7 +58,7 @@ where
     where
         R: AsyncRead + Unpin + Send,
     {
-        read_one(io, 1024)
+        read_one(io, usize::MAX)
             .map(|req| match req {
                 Ok(bytes) => {
                     serde_json::from_slice(bytes.as_slice()).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))
@@ -73,7 +73,7 @@ where
     where
         R: AsyncRead + Unpin + Send,
     {
-        read_one(io, 1024)
+        read_one(io, usize::MAX)
             .map(|res| match res {
                 Ok(bytes) => {
                     serde_json::from_slice(bytes.as_slice()).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))

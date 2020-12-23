@@ -1,17 +1,16 @@
 // Copyright 2020 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod error;
 pub mod message;
 mod protocol;
 use async_std::task;
 use core::{
     iter,
     marker::PhantomData,
+    result::Result,
     task::{Context, Poll},
     time::Duration,
 };
-use error::{QueryError, QueryResult};
 #[cfg(feature = "mdns")]
 use libp2p::mdns::{Mdns, MdnsEvent};
 use libp2p::{
@@ -35,11 +34,38 @@ use message::P2PMdnsEvent;
 use message::{P2PEvent, P2PReqResEvent};
 pub use protocol::MessageEvent;
 use protocol::{MessageCodec, MessageProtocol};
-// TODO: support no_std
 use std::collections::BTreeMap;
+use thiserror::Error as DeriveError;
 
 type ReqIdStr = String;
 
+/// Error upon creating a new NetworkBehaviour
+#[derive(Debug, DeriveError)]
+pub enum BehaviourError {
+    /// Error on the transport layer
+    #[error("Transport error: `{0}`")]
+    TransportError(String),
+
+    /// Error on upgrading the transport with noise authentication
+    #[error("Noise authentic error: `{0}")]
+    NoiseAuthenticError(String),
+
+    /// Error creating new mDNS behaviour
+    #[error("Mdns error: `{0}`")]
+    MdnsError(String),
+}
+
+/// The `P2PNetworkBehaviour` determines the behaviour of the p2p-network.
+/// It combines the following protocols from libp2p
+/// - mDNS for peer discovery within the local network
+/// - identify-protocol to receive identifying information of the remote peer
+/// - RequestResponse Protocol for sending generic request `T` and response `U` messages
+///
+/// The P2PNetworkBehaviour itself is only useful when a new `Swarm` is created for it, and this
+/// swarm is the entry point for all communication to remote peers, and contains the current state.
+///
+/// The `P2PNetworkBehaviour` implements a custom poll method that creates `P2PEvent`s from the events of the different
+/// protocols, it can be polled with the `next()` or `next_event()` methods of `libp2p::swarm::ExpandedSwarm`.
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "P2PEvent<T, U>", poll_method = "poll")]
 pub struct P2PNetworkBehaviour<T: MessageEvent, U: MessageEvent> {
@@ -56,11 +82,12 @@ pub struct P2PNetworkBehaviour<T: MessageEvent, U: MessageEvent> {
 }
 
 impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
-    /// Creates a new P2PNetworkbehaviour that defines the communication with the libp2p swarm.
-    /// It combines the following protocols from libp2p:
-    /// - mDNS for peer discovery within the local network
-    /// - identify-protocol to receive identifying information of the remote peer
-    /// - RequestResponse Protocol for sending generic request `T` and response `U` messages
+    /// Creates a new `P2PNetworkBehaviour` and returns the swarm for it.
+    /// The returned `Swarm<P2PNetworkBehaviour>` is the entry point for all communication with
+    /// remote peers, i.g. to send requests and responses.
+    /// Additionally to the methods of the `P2PNetworkBehaviour` there is a range of `libp2p::Swarm`
+    /// functions for swarm interaction, like dialing a new peer, that can be used.
+    ///
     ///
     /// # Example
     /// ```no_run
@@ -70,7 +97,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     ///     request_response::{RequestId, RequestResponseEvent, ResponseChannel},
     /// };
     /// use serde::{Deserialize, Serialize};
-    /// use stronghold_communication::behaviour::{error::QueryResult, MessageEvent, P2PNetworkBehaviour};
+    /// use stronghold_communication::behaviour::{MessageEvent, P2PNetworkBehaviour};
     ///
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// pub enum Request {
@@ -85,18 +112,18 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     /// let local_keys = Keypair::generate_ed25519();
     /// let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).unwrap();
     /// ```
-    pub fn init_swarm(local_keys: Keypair) -> QueryResult<Swarm<P2PNetworkBehaviour<T, U>>> {
+    pub fn init_swarm(local_keys: Keypair) -> Result<Swarm<P2PNetworkBehaviour<T, U>>, BehaviourError> {
         #[allow(unused_variables)]
         let local_peer_id = PeerId::from(local_keys.public());
 
         let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
             .into_authentic(&local_keys)
-            .map_err(|e| QueryError::NoiseAuthenticError(format!("Could not create authentic keypair: {:?}", e)))?;
+            .map_err(|e| BehaviourError::NoiseAuthenticError(format!("Could not create authentic keypair: {:?}", e)))?;
         // Use XX handshake pattern
         let noise = NoiseConfig::xx(noise_keys).into_authenticated();
         // Tcp layer with wrapper to resolve dns addresses
         let dns_transport = DnsConfig::new(TcpConfig::new())
-            .map_err(|e| QueryError::TransportError(format!("Could not create transport: {:?}", e)))?;
+            .map_err(|e| BehaviourError::TransportError(format!("Could not create transport: {:?}", e)))?;
         // The configured transport establishes connections via tcp with websockets as fallback, and
         // negotiates authentification and multiplexing on all connections
         let transport = dns_transport
@@ -109,8 +136,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
 
         // multicast DNS for peer discovery within a local network
         #[cfg(feature = "mdns")]
-        let mdns = task::block_on(Mdns::new())
-            .map_err(|e| QueryError::ConnectionError(format!("Could not build mdns behaviour: {:?}", e)))?;
+        let mdns = task::block_on(Mdns::new()).map_err(|e| BehaviourError::MdnsError(e.to_string()))?;
         // Identify protocol to receive identifying information of a remote peer once a connection
         // was established
         let identify = Identify::new(
