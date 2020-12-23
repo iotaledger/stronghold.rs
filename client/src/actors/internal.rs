@@ -372,7 +372,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 match self.keystore.get_key(seed_vault_id) {
                     Some(seed_key) => {
-                        let plain = self.bucket.read_data(seed_key, seed_record_id);
+                        let plain = self.bucket.read_data(seed_key.clone(), seed_record_id);
+                        self.keystore.insert_key(seed_vault_id, seed_key);
                         let dk = hd::Seed::from_bytes(&plain).derive(&chain).expect(line_error!());
 
                         let dk_key = self.keystore.create_key(key_vault_id);
@@ -402,12 +403,15 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 match self.keystore.get_key(parent_vault_id) {
                     Some(parent_key) => {
-                        let parent = self.bucket.read_data(parent_key, parent_record_id);
+                        let parent = self.bucket.read_data(parent_key.clone(), parent_record_id);
+                        self.keystore.insert_key(parent_vault_id, parent_key);
+
                         let parent = hd::Key::try_from(parent.as_slice()).expect(line_error!());
                         let dk = parent.derive(&chain).expect(line_error!());
 
                         let child_key = self.keystore.create_key(child_vault_id);
                         let krid = self.bucket.init_record(child_key.clone(), child_record_id);
+
                         self.bucket.write_payload(child_key, krid, dk.into(), hint);
 
                         client.try_tell(
@@ -548,13 +552,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, key.clone()); // TODO: why keep removing and adding back the keys?
 
-                let raw = self.bucket.read_data(key, record_id);
-
-                if raw.len() < 32 {
-                    todo!("return error message: insufficient bytes")
-                }
-                let mut bs = [0; 32];
-                bs.copy_from_slice(&raw[0..32]);
+                let bs = self.bucket.read_data(key, record_id);
 
                 let dk = hd::Seed::from_bytes(&bs).derive(&path).expect(line_error!());
 

@@ -61,9 +61,13 @@ pub enum Procedure {
     Ed25519PublicKey { key: Location },
     /// Generate the Ed25519 signature of the given message signed by the specified key
     Ed25519Sign { key: Location, msg: Vec<u8> },
-    /// Derive a new private key from a path, sign the essence, return public key and sig
+    /// Derive a SLIP10 key from a SLIP10/BIP39 seed using path, sign the essence using Ed25519, return the signature
+    /// and the corresponding public key
+    ///
+    /// This is equivalent to separate calls to SLIP10Derive, Ed25519PublicKey, and Ed25519Sign but
+    /// does not store the derived key.
     SignUnlockBlock {
-        key: Location,
+        seed: Location,
         path: hd::Chain,
         essence: Vec<u8>,
     },
@@ -518,8 +522,8 @@ impl Receive<SHRequest> for Client {
                             sender,
                         )
                     }
-                    Procedure::SignUnlockBlock { key, path, essence } => {
-                        let (vault_id, record_id) = self.resolve_location(key, ReadWrite::Read);
+                    Procedure::SignUnlockBlock { seed, path, essence } => {
+                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
                         internal.try_tell(
                             InternalMsg::SignUnlockBlock {
                                 vault_id,
