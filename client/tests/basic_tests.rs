@@ -250,24 +250,25 @@ fn test_unlock_block() {
 
     let client_path = b"test".to_vec();
 
-    let slip10_seed = Location::generic("slip10", "seed");
+    let blip39_seed = Location::generic("blip39", "seed");
     let slip10_key = Location::generic("slip10", "key");
 
     let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
 
     let essence = b"blahblahblah";
 
-    match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
-        output: slip10_seed.clone(),
+    match futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Generate {
+        passphrase: None,
+        output: blip39_seed.clone(),
         hint: RecordHint::new(b"test_seed").expect(line_error!()),
     })) {
-        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
+        ProcResult::BIP39Generate(ResultMessage::OK) => (),
         r => panic!("unexpected result: {:?}", r),
     }
 
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
-        chain: hd::Chain::from_u32_hardened(vec![]),
-        input: SLIP10DeriveInput::Seed(slip10_key.clone()),
+        chain: hd::Chain::from_u32_hardened(vec![44, 4218]),
+        input: SLIP10DeriveInput::Key(blip39_seed.clone()),
         output: slip10_key.clone(),
         hint: RecordHint::new(b"test").expect(line_error!()),
     })) {
@@ -278,6 +279,23 @@ fn test_unlock_block() {
     let (seed_data, _) = futures::executor::block_on(stronghold.read_data(slip10_key.clone()));
 
     let mut seed_data = seed_data.expect(line_error!());
+
+    let key0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
+        path: "".into(),
+        key: slip10_key.clone(),
+    })) {
+        ProcResult::Ed25519PublicKey(ResultMessage::Ok(key)) => key,
+        r => panic!("unexpected result: {:?}", r),
+    };
+
+    let sig0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
+        path: "".into(),
+        key: slip10_key.clone(),
+        msg: essence.to_vec().clone(),
+    })) {
+        ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => sig,
+        r => panic!("unexpected result: {:?}", r),
+    };
 
     let (sig1, key1) = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
         seed: slip10_key.clone(),
@@ -307,6 +325,8 @@ fn test_unlock_block() {
 
     assert_eq!(key1.to_compressed_bytes(), pk);
     assert_eq!(sig2.to_bytes(), sig1.to_bytes());
+    assert_eq!(sig0, sig1.to_bytes());
+    assert_eq!(key0, pk);
 
     assert!(crypto::ed25519::verify(&key1, &sig1, essence));
 }

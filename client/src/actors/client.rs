@@ -58,9 +58,9 @@ pub enum Procedure {
     /// passphrase) and store them in the `output` location
     BIP39MnemonicSentence { seed: Location },
     /// Derive the Ed25519 public key of the key stored at the specified location
-    Ed25519PublicKey { key: Location },
+    Ed25519PublicKey { path: String, key: Location },
     /// Generate the Ed25519 signature of the given message signed by the specified key
-    Ed25519Sign { key: Location, msg: Vec<u8> },
+    Ed25519Sign { path: String, key: Location, msg: Vec<u8> },
     /// Derive a SLIP10 key from a SLIP10/BIP39 seed using path, sign the essence using Ed25519, return the signature
     /// and the corresponding public key
     ///
@@ -398,7 +398,6 @@ impl Receive<SHRequest> for Client {
                         ensure_vault_exists!(seed_vault_id, SLIP10Derive, "seed");
 
                         let (key_vault_id, key_record_id) = self.resolve_location(output, ReadWrite::Write);
-                        ensure_vault_exists!(key_vault_id, SLIP10Derive, "key");
 
                         if !self.vault_exist(key_vault_id) {
                             self.add_new_vault(key_vault_id);
@@ -431,7 +430,6 @@ impl Receive<SHRequest> for Client {
                         ensure_vault_exists!(parent_vault_id, SLIP10Derive, "parent key");
 
                         let (child_vault_id, child_record_id) = self.resolve_location(output, ReadWrite::Write);
-                        ensure_vault_exists!(child_vault_id, SLIP10Derive, "child key");
 
                         if !self.vault_exist(child_vault_id) {
                             self.add_new_vault(child_vault_id);
@@ -509,14 +507,22 @@ impl Receive<SHRequest> for Client {
                         )
                     }
                     Procedure::BIP39MnemonicSentence { .. } => todo!(),
-                    Procedure::Ed25519PublicKey { key } => {
+                    Procedure::Ed25519PublicKey { path, key } => {
                         let (vault_id, record_id) = self.resolve_location(key, ReadWrite::Read);
-                        internal.try_tell(InternalMsg::Ed25519PublicKey { vault_id, record_id }, sender)
+                        internal.try_tell(
+                            InternalMsg::Ed25519PublicKey {
+                                path,
+                                vault_id,
+                                record_id,
+                            },
+                            sender,
+                        )
                     }
-                    Procedure::Ed25519Sign { key, msg } => {
+                    Procedure::Ed25519Sign { path, key, msg } => {
                         let (vault_id, record_id) = self.resolve_location(key, ReadWrite::Read);
                         internal.try_tell(
                             InternalMsg::Ed25519Sign {
+                                path,
                                 vault_id,
                                 record_id,
                                 msg,

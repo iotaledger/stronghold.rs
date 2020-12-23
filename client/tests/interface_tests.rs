@@ -419,6 +419,7 @@ fn test_crypto() {
     }
 
     let pk = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
+        path: "".into(),
         key: slip10_key.clone(),
     })) {
         ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) => {
@@ -429,6 +430,7 @@ fn test_crypto() {
 
     let msg = b"foobar";
     let sig = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
+        path: "".into(),
         key: slip10_key,
         msg: msg.to_vec(),
     })) {
@@ -441,7 +443,7 @@ fn test_crypto() {
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Recover {
         output: bip39_seed.clone(),
         hint: RecordHint::new(b"bip_seed").expect(line_error!()),
-        mnemonic: "Some mnemonic value".into(),
+        mnemonic: "loyal arctic acid useless problem season gate token bunker want human laptop humble gold brand near attract wine arena very vague summer discover pass".into(),
         passphrase: Some("a passphrase".into()),
     })) {
         ProcResult::BIP39Recover(StatusMessage::OK) => (),

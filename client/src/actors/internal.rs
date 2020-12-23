@@ -108,10 +108,12 @@ pub enum InternalMsg {
         hint: RecordHint,
     },
     Ed25519PublicKey {
+        path: String,
         vault_id: VaultId,
         record_id: RecordId,
     },
     Ed25519Sign {
+        path: String,
         vault_id: VaultId,
         record_id: RecordId,
         msg: Vec<u8>,
@@ -536,7 +538,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     sender,
                 );
             }
-            InternalMsg::Ed25519PublicKey { vault_id, record_id } => {
+            InternalMsg::Ed25519PublicKey {
+                path,
+                vault_id,
+                record_id,
+            } => {
                 let key = match self.keystore.get_key(vault_id) {
                     Some(key) => key,
                     None => todo!("return error message"),
@@ -550,19 +556,24 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 raw.truncate(32);
                 let mut bs = [0; 32];
                 bs.copy_from_slice(&raw);
-                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
-                let pk = sk.public_key();
+                let seed = Ed25519Seed::from_bytes(&bs).expect(line_error!());
+
+                let bip32path = BIP32Path::from_str(&path).expect(line_error!());
+
+                let sk = Ed25519PrivateKey::generate_from_seed(&seed, &bip32path).expect(line_error!());
+                let pk = sk.generate_public_key().to_bytes();
 
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519PublicKey(
-                        ResultMessage::Ok(pk.to_compressed_bytes()),
+                        ResultMessage::Ok(pk),
                     ))),
                     sender,
                 );
             }
             InternalMsg::Ed25519Sign {
+                path,
                 vault_id,
                 record_id,
                 msg,
@@ -580,7 +591,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 raw.truncate(32);
                 let mut bs = [0; 32];
                 bs.copy_from_slice(&raw);
-                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                let seed = Ed25519Seed::from_bytes(&bs).expect(line_error!());
+                let bip32path = BIP32Path::from_str(&path).expect(line_error!());
+
+                let sk = Ed25519PrivateKey::generate_from_seed(&seed, &bip32path).expect(line_error!());
+
                 let sig = sk.sign(&msg);
 
                 let cstr: String = self.client_id.into();
