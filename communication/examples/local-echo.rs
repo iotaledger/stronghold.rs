@@ -11,11 +11,10 @@
 //! For each peer it will print its unique PeerId and the listening addresses within the local network.
 //! ```sh
 //! Local PeerId: PeerId("12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA")
-//! Listening on:
-//! "/ip4/127.0.0.1/tcp/41807"
-//! "/ip4/192.168.178.25/tcp/41807"
-//! "/ip4/172.17.0.1/tcp/41807"
-//! "/ip6/::1/tcp/41807"
+//! Listen on: "/ip4/127.0.0.1/tcp/41807"
+//! Listen on: "/ip4/192.168.178.25/tcp/41807"
+//! Listen on: "/ip4/172.17.0.1/tcp/41807"
+//! Listen on: "/ip6/::1/tcp/41807"
 //! ```
 //!
 //! The ping command is available to test the connection to another peers:
@@ -84,7 +83,7 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                 }
             }
             "DIAL" => {
-                // Dial a multiaddress to establish a connection, if this was successfull the identify protocol will
+                // Dial a multiaddress to establish a connection, if this was successful the identify protocol will
                 // cause the two peers to send `P2PEvent::Identify` events to each other.
                 if let Some(peer_addr) = captures
                     .name("target")
@@ -239,7 +238,7 @@ fn listen() {
                             eprintln!("ListenerError: {:?}", error);
                             return;
                         },
-                        event => println!("Swarm Event: {:?}", event),
+                        _ => {},
                     }
                 },
             };
