@@ -97,7 +97,7 @@ impl Actor for TestActor {
 fn main() {
     // Create the two actor within the same actor system
     let sys = ActorSystem::new().unwrap();
-    // The key pair for transport level and noise encryption
+    // The key pair for encryption
     let local_keys = Keypair::generate_ed25519();
     // configure the CommunicationActor to use the channel.
     let chan: ChannelRef<CommunicationEvent<Request, Response>> = channel("p2p", &sys).unwrap();

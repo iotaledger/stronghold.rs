@@ -110,7 +110,7 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                 }
             }
             "MSG" => {
-                // Messages a peer by it's peer address, this will only be successful if the peer is
+                // Messages a peer by its peer address, this will only be successful if the peer is
                 // known to the local peer either my mDNS or by previously dialing it.
                 if let Some(peer_id) = captures
                     .name("target")
@@ -132,7 +132,7 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
 }
 
 // Handle an event that was polled from the swarm.
-// these events are either messages from remote peers or events from the protocol i.g.
+// These events are either messages from remote peers or events from the protocols i.g.
 // `P2PEvent::Identify`
 fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2PEvent<Request, Response>) {
     match e {
@@ -148,17 +148,17 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                     Request::Ping => {
                         let response = swarm.send_response(Response::Pong, request_id);
                         if response.is_ok() {
-                            println!("Send Pong back\n");
+                            println!("Send Pong back");
                         } else {
-                            println!("Error sending pong: {:?}\n", response.unwrap_err());
+                            println!("Error sending pong: {:?}", response.unwrap_err());
                         }
                     }
                     Request::Msg(msg) => {
                         let response = swarm.send_response(Response::Msg(format!("echo: {}", msg)), request_id);
                         if response.is_ok() {
-                            println!("Echoed message\n");
+                            println!("Echoed message");
                         } else {
-                            println!("Error sending echo: {:?}\n", response.unwrap_err());
+                            println!("Error sending echo: {:?}", response.unwrap_err());
                         }
                     }
                 }

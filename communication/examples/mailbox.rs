@@ -5,7 +5,7 @@
 //! that can not be dialed directly, e.g. because they are not listening to a public IP address.
 //! Records for remote peers are sent to the mailbox that stores them.
 //! The remote peer can then connect to the same mailbox and query it for the record.
-//! This example is only a PoC for the mailbox-concept and doesnt implement any security measure yet.
+//! This example is only a PoC for the mailbox-concept and doesn't implement any security measure yet.
 //!
 //! In order for it to work, the peer that serves as a mailbox has to obtain a public IP e.g. by running on
 //! a server or by configuring port forwarding.
@@ -13,7 +13,7 @@
 //! # Starting the mailbox
 //!
 //! The mailbox can run either with the provided `Dockerfile`, or directly from the command line. Per default, the
-//! mailbox runs on port 16384, if multiple mailboxes should run on the same device, the port has to be configured to be
+//! mailbox runs on port 16384, if multiple mailboxes should run on the same device the port has to be configured to be
 //! different.
 //! ```sh
 //! mailbox-start-mailbox
