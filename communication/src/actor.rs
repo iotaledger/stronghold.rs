@@ -18,18 +18,23 @@ use futures::{
 };
 use libp2p::{
     core::{connection::PendingConnectionError, identity::Keypair, ConnectedPoint, Multiaddr, PeerId},
-    swarm::{DialError, Swarm, SwarmEvent},
+    swarm::{Swarm, SwarmEvent},
 };
 use riker::actors::*;
 
+/// Errors that can occur in the context of a pending `Connection`.
 #[derive(Debug, Clone)]
 pub enum ConnectPeerError {
+    /// An error occurred while negotiating the transport protocol(s).
     Transport,
+    /// The peer identity obtained on the connection did not
+    /// match the one that was expected or is otherwise invalid.
     InvalidPeerId,
+    /// The connection was dropped because the connection limit
+    /// for a peer has been reached.
     ConnectionLimit,
+    /// An I/O error occurred on the connection.
     IO,
-    Banned,
-    NoAddresses,
 }
 
 impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
@@ -43,37 +48,46 @@ impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
     }
 }
 
-impl From<DialError> for ConnectPeerError {
-    fn from(error: DialError) -> Self {
-        match error {
-            DialError::Banned => ConnectPeerError::Banned,
-            DialError::ConnectionLimit(_) => ConnectPeerError::ConnectionLimit,
-            DialError::NoAddresses => ConnectPeerError::NoAddresses,
-        }
-    }
-}
-
+/// Events for communication with the [`CommunicationActor`].
+///
+/// T and U are the request and response types of the messages to remote peers,
+/// and should implement Serialize and Deserialize since this is required by the protocol.
 #[derive(Debug, Clone)]
 pub enum CommunicationEvent<T, U> {
+    /// Message that is send via the swarm to or from a remote peer
+    ///
+    /// The CommunicationActor only forwards these messages between the local actor/channel and
+    /// remote peer.
     Message(P2PReqResEvent<T, U>),
+    /// Dial a new peer on the address.
     ConnectPeer(Multiaddr),
+    /// Outcome of [`ConnectPeer`].
     ConnectPeerResult {
         addr: Multiaddr,
         result: Result<PeerId, ConnectPeerError>,
     },
+    /// Get information about the local peer.
     GetSwarmInfo,
-    SwarmInfo {
-        peer_id: PeerId,
-        listeners: Vec<Multiaddr>,
-    },
+    /// Information about the local peer.
+    /// Outcome of [`GetSwarmInfo`].
+    SwarmInfo { peer_id: PeerId, listeners: Vec<Multiaddr> },
+    /// Shutdown the swarm task that is handling the swarm and all communication to remote peers.
     Shutdown,
 }
 
+/// Configure the `CommunicationActor` upon creation.
 #[derive(Clone)]
 pub struct CommsActorConfig<T: MessageEvent, U: MessageEvent> {
+    /// The keypair that will be used to build and authenticate the transport.
     keypair: Keypair,
+    /// Specific address that the peer should listen on, per default this is assigned by the OS.
     listen_addr: Option<Multiaddr>,
+    /// Optional Channel where the `CommunicationActor` will publish all its events to
+    /// the topic `from_swarm`, and subscribes to the topic `to_swarm`.
     chan: Option<ChannelRef<CommunicationEvent<T, U>>>,
+    /// If a actor ref is provided, the `CommunicationActor` will try to directly tell this actor
+    /// the events.
+    /// This is independently of the `chan` attribute.
     client_ref: Option<BasicActorRef>,
 }
 
@@ -93,11 +107,11 @@ impl<T: MessageEvent, U: MessageEvent> CommsActorConfig<T, U> {
     }
 }
 
-/// Actor for the communication to a remote actor over the swarm
+/// Actor for the communication to a remote peer over the swarm.
 ///
-/// Publishes incoming request- and response-messages from the swarm in the given channel to the "swarm_inbound"
-/// topic and subscribes to the "swarm_outbound".  
-/// Received `CommunicationEvent::Message` are send to the associated Peer.
+/// Publishes incoming request- and response-messages from the swarm to a channel and/ or a client
+/// actor, depending on the [`CommsActorConfig`].
+/// Received [`CommunicationEvent::Message`]s are send to the associated Peer.
 ///
 ///
 /// ```no_run
@@ -153,7 +167,7 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
         }
     }
 
-    // Start a seperate task to manage the communication from and to the swarm
+    // Start a separate task to manage the communication from and to the swarm
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         let (swarm_tx, swarm_rx) = unbounded();
         self.swarm_tx = Some(swarm_tx);
@@ -179,6 +193,7 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
 }
 
 impl<T: MessageEvent, U: MessageEvent> CommunicationActor<T, U> {
+    // Uses the mpsc channel to send messages to the swarm task.
     fn tx_to_swarm_task(&mut self, msg: CommunicationEvent<T, U>) {
         let tx = &mut self.swarm_tx.as_mut().unwrap();
         task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
@@ -192,6 +207,7 @@ impl<T: MessageEvent, U: MessageEvent> CommunicationActor<T, U> {
     }
 }
 
+// Separate task that manages the swarm communication.
 struct SwarmTask<T: MessageEvent, U: MessageEvent> {
     swarm: Swarm<P2PNetworkBehaviour<T, U>>,
     chan: Option<ChannelRef<CommunicationEvent<T, U>>>,
@@ -222,8 +238,8 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
         }
     }
 
-    // Poll from the swarm for events from remote peers and from the `swarm_tx` channel for events from the local actor,
-    // and forward them
+    // Poll from the swarm for events from remote peers, and from the `swarm_tx` channel for events from the local
+    // actor, and forward them.
     async fn poll_swarm(mut self) {
         loop {
             select! {
@@ -237,7 +253,7 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
         }
     }
 
-    // Poll for request that are forwarded through the swarm_tx channel and send them over the swarm to remote peers.
+    // Handle the messages that are received from other actors in the system..
     fn handle_actor_event(&mut self, event: CommunicationEvent<T, U>) -> Option<()> {
         match event {
             CommunicationEvent::Message(message) => match message {
@@ -278,7 +294,7 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
         Some(())
     }
 
-    // Poll from the swarm for requests and responses from remote peers and publish them in the channel.
+    // Poll from the swarm for requests and responses from remote peers, and publish them in the channel.
     fn handle_swarm_event<HandleErr>(&mut self, event: SwarmEvent<P2PEvent<T, U>, HandleErr>) {
         let msg = match event {
             SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
@@ -312,6 +328,7 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
         }
     }
 
+    // Publish a message to the channel and/ or tell an actor, depending on the config.
     fn tell_actor(&mut self, msg: CommunicationEvent<T, U>) {
         if let Some(chan) = self.chan.as_ref() {
             chan.tell(
