@@ -81,7 +81,7 @@ pub enum ProcResult {
     /// Return from generating a `SLIP10` seed.
     SLIP10Generate(StatusMessage),
     /// Returns the public key derived from the `SLIP10Derive` call.
-    SLIP10Derive(ResultMessage<hd::Key>),
+    SLIP10Derive(StatusMessage),
     /// `BIP39Recover` return value.
     BIP39Recover(StatusMessage),
     /// `BIP39Generate` return value.
