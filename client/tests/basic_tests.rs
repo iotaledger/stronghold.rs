@@ -278,16 +278,16 @@ fn test_unlock_block() {
     let sig0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
         path: "".into(),
         key: blip39_seed.clone(),
-        msg: essence.to_vec().clone(),
+        msg: essence.to_vec(),
     })) {
         ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => sig,
         r => panic!("unexpected result: {:?}", r),
     };
 
     let (sig1, key1) = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
-        seed: blip39_seed.clone(),
+        seed: blip39_seed,
         path: "".into(),
-        essence: essence.to_vec().clone(),
+        essence: essence.to_vec(),
     })) {
         ProcResult::SignUnlockBlock(ResultMessage::Ok((sig, key))) => {
             let sig = crypto::ed25519::Signature::from_bytes(sig);
