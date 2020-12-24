@@ -3,7 +3,7 @@
 
 #![no_std]
 #![allow(clippy::many_single_char_names)]
-
+#![allow(dead_code)]
 use core::fmt;
 
 #[macro_use]
