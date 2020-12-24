@@ -8,6 +8,7 @@ readme = "README.md"
 
 [dependencies.primitives]
 path = "../primitives"
+version = "0.2"
 
 [build-dependencies]
 cc = "1.0"

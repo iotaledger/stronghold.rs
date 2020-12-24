@@ -10,10 +10,10 @@ thiserror = "1.0"
 dirs-next = "2.0"
 hex = "0.4.2"
 
-  [dependencies.iota-crypto]
-  git = "https://github.com/iotaledger/crypto.rs"
-  rev = "9259a0617ca3b72e2bb2f63d5b7197247f85061c"
-  features = [ "random", "chacha", "hmac", "sha" ]
+[dependencies.iota-crypto]
+git = "https://github.com/iotaledger/crypto.rs"
+rev = "9259a0617ca3b72e2bb2f63d5b7197247f85061c"
+features = [ "random", "chacha", "hmac", "sha" ]
 
 [dev-dependencies]
 tempfile = "3.1.0"

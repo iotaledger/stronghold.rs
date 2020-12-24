@@ -15,6 +15,7 @@ serde = {version = "1.0.114", features = ["derive"]}
 
 [dependencies.iota-stronghold]
 path = "../../client/"
+version = "0.2"
 
 [[bin]]
 name = "stronghold"
