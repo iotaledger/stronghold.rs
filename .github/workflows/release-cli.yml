@@ -1,7 +1,9 @@
 name: Release Stronghold CLI
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+    - main
 
 jobs:
   build:
