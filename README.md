@@ -27,6 +27,7 @@ Nevertheless, we are very interested in feedback about the design and implementa
 ## Roadmap
 Here are some of the features and tasks that we are working on.
 
+
 #### Components
 - [x] Engine
 - [x] Client (with dual interfaces)
@@ -73,4 +74,4 @@ cargo test --all
 ## Joining the discussion
 If you want to get involved in discussions about this technology, or you're looking for support, go to the #stronghold-discussion channel on [Discord](https://discord.iota.org/).
 
-If you wish to join the Stronghld X-Team, please fill out [this form](https://forms.gle/AUdjcp4kCRLgG3Qd9).
+If you wish to join the Stronghold X-Team, please fill out [this form](https://forms.gle/AUdjcp4kCRLgG3Qd9).
