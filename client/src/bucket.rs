@@ -75,6 +75,20 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         buffer
     }
 
+    pub fn record_exists_in_vault(&mut self, key: Key<P>, rid: RecordId) -> bool {
+        let mut res = false;
+
+        self.take(key, |view, reads| {
+            let reader = view.reader();
+
+            res = reader.exists(rid);
+
+            reads
+        });
+
+        res
+    }
+
     /// Initializes a new Record in the Vault based on the inserted `Key<P>`. Returns a `RecordId` for the new Record.
     pub fn init_record(&mut self, key: Key<P>, rid: RecordId) -> RecordId {
         self.take(key, |view, mut reads| {

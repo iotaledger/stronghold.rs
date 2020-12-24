@@ -3,7 +3,15 @@
 
 use riker::actors::*;
 
-use iota_stronghold::{line_error, Location, RecordHint, ResultMessage, Stronghold};
+use iota_stronghold::{line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, Stronghold};
+
+use bee_signing_ext::{
+    binary::{
+        ed25519::{Ed25519PrivateKey, Ed25519Seed},
+        BIP32Path,
+    },
+    Signer,
+};
 
 fn setup_stronghold() -> Stronghold {
     let sys = ActorSystem::new().unwrap();
@@ -233,4 +241,79 @@ fn test_write_read_multi_snapshot() {
             assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));
         });
     }
+}
+#[test]
+fn test_unlock_block() {
+    let sys = ActorSystem::new().unwrap();
+
+    let client_path = b"test".to_vec();
+
+    let blip39_seed = Location::generic("blip39", "seed");
+
+    let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
+
+    let essence = b"blahblahblah";
+
+    match futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Generate {
+        passphrase: None,
+        output: blip39_seed.clone(),
+        hint: RecordHint::new(b"test_seed").expect(line_error!()),
+    })) {
+        ProcResult::BIP39Generate(ResultMessage::OK) => (),
+        r => panic!("unexpected result: {:?}", r),
+    }
+
+    let (seed_data, _) = futures::executor::block_on(stronghold.read_data(blip39_seed.clone()));
+
+    let mut seed_data = seed_data.expect(line_error!());
+
+    let key0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
+        path: "".into(),
+        key: blip39_seed.clone(),
+    })) {
+        ProcResult::Ed25519PublicKey(ResultMessage::Ok(key)) => key,
+        r => panic!("unexpected result: {:?}", r),
+    };
+
+    let sig0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
+        path: "".into(),
+        key: blip39_seed.clone(),
+        msg: essence.to_vec(),
+    })) {
+        ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => sig,
+        r => panic!("unexpected result: {:?}", r),
+    };
+
+    let (sig1, key1) = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
+        seed: blip39_seed,
+        path: "".into(),
+        essence: essence.to_vec(),
+    })) {
+        ProcResult::SignUnlockBlock(ResultMessage::Ok((sig, key))) => {
+            let sig = crypto::ed25519::Signature::from_bytes(sig);
+            let key = crypto::ed25519::PublicKey::from_compressed_bytes(key).unwrap();
+
+            (sig, key)
+        }
+        r => panic!("unexpected result: {:?}", r),
+    };
+
+    if seed_data.len() < 32 {
+        todo!("return error message: insufficient bytes")
+    }
+    seed_data.truncate(32);
+    let mut bs = [0; 32];
+    bs.copy_from_slice(&seed_data);
+    let seed = Ed25519Seed::from_bytes(&seed_data).expect(line_error!());
+
+    let sk = Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("").unwrap()).expect(line_error!());
+    let pk = sk.generate_public_key().to_bytes();
+    let sig2 = sk.sign(essence);
+
+    assert_eq!(key1.to_compressed_bytes(), pk);
+    assert_eq!(sig2.to_bytes(), sig1.to_bytes());
+    assert_eq!(sig0, sig1.to_bytes());
+    assert_eq!(key0, pk);
+
+    assert!(crypto::ed25519::verify(&key1, &sig1, essence));
 }

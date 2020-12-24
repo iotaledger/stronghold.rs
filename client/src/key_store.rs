@@ -22,6 +22,10 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
         self.store.remove(&id)
     }
 
+    pub fn vault_exists(&self, id: VaultId) -> bool {
+        self.store.contains_key(&id)
+    }
+
     /// Returns an existing key for the `id` or creates one.
     pub fn create_key(&mut self, id: VaultId) -> Key<P> {
         let key = self
