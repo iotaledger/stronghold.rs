@@ -10,4 +10,4 @@
 "primitives": minor
 ---
 
-Alpha release of Stronghold.
+Alpha release of Stronghold: "Saint-Malo"
