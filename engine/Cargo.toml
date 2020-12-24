@@ -1,11 +1,11 @@
 [package]
 name = "stronghold-engine"
-version = "0.1.0"
-authors = ["tensorprogramming <tensordeveloper@gmail.com>"]
+version = "0.2.0"
+authors = [ "tensorprogramming <tensordeveloper@gmail.com>" ]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
-keywords = ["iota", "stronghold", "cryptography", "security"]
+keywords = [ "iota", "stronghold", "cryptography", "security" ]
 categories = [ "security" ]
 description = "A rust implementation of the IOTA Stronghold low-level libraries"
 homepage = "https://iota.org"
@@ -14,9 +14,22 @@ repository = "https://github.com/iotaledger/stronghold.rs"
 [lib]
 name = "engine"
 
-[dependencies]
-crypto = { path = "crypto" }
-vault = { path = "vault" }
-primitives = { path = "primitives" }
-random = { path = "random" }
-snapshot = { path = "snapshot" }
+[dependencies.crypto]
+path = "crypto"
+version = "0.2"
+
+[dependencies.vault]
+path = "vault"
+version = "0.2"
+
+[dependencies.primitives]
+path = "primitives"
+version = "0.2"
+
+[dependencies.random]
+path = "random"
+version = "0.2"
+
+[dependencies.snapshot]
+path = "snapshot"
+version = "0.2"

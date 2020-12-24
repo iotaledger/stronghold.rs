@@ -3,7 +3,7 @@
 
 use engine::vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest};
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::line_error;
 
@@ -11,15 +11,15 @@ use crate::line_error;
 /// `Key<P>` and the vault `DBView<P>` together. Also contains a `HashMap<Key<P>, Vec<ReadResult>>` which pairs the
 /// backing data with the associated `Key<P>`.
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
-    vaults: HashMap<Key<P>, Option<DBView<P>>>,
-    cache: HashMap<Key<P>, Vec<ReadResult>>,
+    vaults: BTreeMap<Key<P>, Option<DBView<P>>>,
+    cache: BTreeMap<Key<P>, Vec<ReadResult>>,
 }
 
-impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
+impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 'static> Bucket<P> {
     /// Creates a new `Bucket`.
     pub fn new() -> Self {
-        let cache = HashMap::new();
-        let vaults = HashMap::new();
+        let cache = BTreeMap::new();
+        let vaults = BTreeMap::new();
 
         Self { cache, vaults }
     }
@@ -43,8 +43,8 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
 
     /// Creates and initializes a new Vault given a `Key<P>`.  Returns a tuple of `(Key<P>, RecordId)`. The returned
     /// `Key<P>` is the Key associated with the Vault and the `RecordId` is the ID for its first record.
-    pub fn create_and_init_vault(&mut self, key: Key<P>, rid: RecordId) -> (Key<P>, RecordId) {
-        self.take(key.clone(), |view, mut reads| {
+    pub fn create_and_init_vault(&mut self, key: Key<P>, rid: RecordId) -> RecordId {
+        self.take(key, |view, mut reads| {
             let mut writer = view.writer(rid);
 
             let truncate = writer.truncate().expect(line_error!());
@@ -54,7 +54,7 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
             reads
         });
 
-        (key, rid)
+        rid
     }
 
     /// Reads data from a Record in the Vault given a `RecordId`.  Returns the data as a `Vec<u8>` of utf8 bytes.
@@ -73,6 +73,20 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
         });
 
         buffer
+    }
+
+    pub fn record_exists_in_vault(&mut self, key: Key<P>, rid: RecordId) -> bool {
+        let mut res = false;
+
+        self.take(key, |view, reads| {
+            let reader = view.reader();
+
+            res = reader.exists(rid);
+
+            reads
+        });
+
+        res
     }
 
     /// Initializes a new Record in the Vault based on the inserted `Key<P>`. Returns a `RecordId` for the new Record.
@@ -147,23 +161,18 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
 
     /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.  Returns a `Vec<Key<P>,
     /// Vec<Vec<RecordId>>`.
-    pub fn repopulate_data(&mut self, state: Vec<u8>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
-        let mut vaults = HashMap::new();
-        let mut cache = HashMap::new();
+    pub fn repopulate_data(&mut self, cache: BTreeMap<Key<P>, Vec<ReadResult>>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
+        let mut vaults = BTreeMap::new();
         let mut rids: Vec<Vec<RecordId>> = Vec::new();
         let mut keystore_keys: Vec<Key<P>> = Vec::new();
 
-        let state: HashMap<Key<P>, Vec<ReadResult>> = bincode::deserialize(&state).expect(line_error!());
-
-        state.into_iter().for_each(|(k, v)| {
+        cache.clone().into_iter().for_each(|(k, v)| {
             keystore_keys.push(k.clone());
             let view = DBView::load(k.clone(), v.iter()).expect(line_error!());
 
             rids.push(view.all().collect());
 
-            vaults.insert(k.clone(), Some(view));
-
-            cache.insert(k, v);
+            vaults.insert(k, Some(view));
         });
 
         self.vaults = vaults;
@@ -174,13 +183,23 @@ impl<P: BoxProvider + Send + Sync + Clone + 'static> Bucket<P> {
 
     /// Deserialize the data in the cache of the bucket into bytes to be passed into a snapshot.  Returns a `Vec<u8>`.
     pub fn offload_data(&mut self) -> Vec<u8> {
-        let mut cache: HashMap<Key<P>, Vec<ReadResult>> = HashMap::new();
+        let mut cache: BTreeMap<Key<P>, Vec<ReadResult>> = BTreeMap::new();
 
         self.cache.iter().for_each(|(k, v)| {
             cache.insert(k.clone(), v.clone());
         });
 
         bincode::serialize(&cache).expect(line_error!())
+    }
+
+    pub fn get_data(&mut self) -> BTreeMap<Key<P>, Vec<ReadResult>> {
+        let mut cache: BTreeMap<Key<P>, Vec<ReadResult>> = BTreeMap::new();
+
+        self.cache.iter().for_each(|(k, v)| {
+            cache.insert(k.clone(), v.clone());
+        });
+
+        cache
     }
 
     pub fn clear_cache(&mut self) {
@@ -241,8 +260,8 @@ mod tests {
 
         let mut bucket = Bucket::<Provider>::new();
 
-        let (key1, rid1) = bucket.create_and_init_vault(key1, rid1);
-        let (key2, rid2) = bucket.create_and_init_vault(key2, rid2);
+        let rid1 = bucket.create_and_init_vault(key1.clone(), rid1);
+        let rid2 = bucket.create_and_init_vault(key2.clone(), rid2);
         println!("vault1 id1: {:?}", rid1);
         println!("vault2 id1: {:?}", rid2);
 

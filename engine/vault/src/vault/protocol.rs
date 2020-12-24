@@ -8,6 +8,8 @@ use crate::types::{
 
 use serde::{Deserialize, Serialize};
 
+use std::fmt::{self, Debug, Formatter};
+
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Kind {
     Transaction = 1,
@@ -93,6 +95,12 @@ impl ReadResult {
 impl AsRef<ReadResult> for ReadResult {
     fn as_ref(&self) -> &Self {
         &self
+    }
+}
+
+impl Debug for ReadResult {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "ReadResult")
     }
 }
 

@@ -3,7 +3,7 @@
 
 #![no_std]
 #![allow(clippy::many_single_char_names)]
-
+#![allow(dead_code)]
 use core::fmt;
 
 #[macro_use]
@@ -20,15 +20,7 @@ pub mod mem;
 #[cfg(target_os = "linux")]
 pub mod seccomp;
 
-#[cfg(unix)]
-pub mod zone {
-    include!("zone_unix.rs");
-}
-
-#[cfg(windows)]
-pub mod zone {
-    include!("zone_windows.rs");
-}
+pub mod zone;
 
 #[derive(PartialEq)]
 pub enum Error {

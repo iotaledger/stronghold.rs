@@ -104,11 +104,19 @@ impl Spec {
         );
 
         if self.anonymous_mmap {
+            #[cfg(not(target_arch = "arm"))]
             p.jmp(
                 bindings::BPF_JEQ | bindings::BPF_K,
                 0,
                 6,
                 libc::SYS_mmap as bindings::__u32,
+            );
+            #[cfg(target_arch = "arm")]
+            p.jmp(
+                bindings::BPF_JEQ | bindings::BPF_K,
+                0,
+                6,
+                libc::SYS_mmap2 as bindings::__u32,
             );
 
             p.op(
@@ -268,7 +276,7 @@ mod tests {
     use core::fmt::Debug;
 
     fn harness<T: PartialEq + Debug, F: FnOnce() -> T>(f: F) -> crate::Result<T> {
-        crate::zone::soft(f)
+        crate::zone::fork(f)
     }
 
     fn expect_sigsys<T: PartialEq + Debug, F: FnOnce() -> T>(f: F) {

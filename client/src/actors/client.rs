@@ -3,9 +3,10 @@
 
 use crate::{
     actors::{InternalMsg, InternalResults},
-    client::{Client, ClientMsg, Location},
+    client::{Client, ClientMsg, ReadWrite},
     line_error,
     utils::{hd, ClientId, ResultMessage, StatusMessage},
+    Location,
 };
 
 use engine::{snapshot, vault::RecordHint};
@@ -14,6 +15,7 @@ use riker::actors::*;
 
 use std::path::PathBuf;
 
+/// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
 #[derive(Debug, Clone)]
 pub enum SLIP10DeriveInput {
     /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
@@ -21,6 +23,7 @@ pub enum SLIP10DeriveInput {
     Key(Location),
 }
 
+/// Procedure type used to call to the runtime via `Strongnhold.runtime_exec(...)`.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Procedure {
@@ -55,21 +58,47 @@ pub enum Procedure {
     /// passphrase) and store them in the `output` location
     BIP39MnemonicSentence { seed: Location },
     /// Derive the Ed25519 public key of the key stored at the specified location
-    Ed25519PublicKey { key: Location },
+    Ed25519PublicKey { path: String, key: Location },
     /// Generate the Ed25519 signature of the given message signed by the specified key
-    Ed25519Sign { key: Location, msg: Vec<u8> },
+    Ed25519Sign { path: String, key: Location, msg: Vec<u8> },
+    /// Derive a SLIP10 key from a SLIP10/BIP39 seed using path, sign the essence using Ed25519, return the signature
+    /// and the corresponding public key
+    ///
+    /// This is equivalent to separate calls to SLIP10Derive, Ed25519PublicKey, and Ed25519Sign but
+    /// does not store the derived key.
+    SignUnlockBlock {
+        seed: Location,
+        path: String,
+        essence: Vec<u8>,
+    },
 }
 
+/// A Procedure return result type.  Contains the different return values for the `Procedure` type calls used with
+/// `Stronghold.runtime_exec(...)`.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ProcResult {
+    /// Return from generating a `SLIP10` seed.
     SLIP10Generate(StatusMessage),
+    /// Returns the public key derived from the `SLIP10Derive` call.
     SLIP10Derive(StatusMessage),
+    /// `BIP39Recover` return value.
     BIP39Recover(StatusMessage),
+    /// `BIP39Generate` return value.
     BIP39Generate(StatusMessage),
+    /// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.  
     BIP39MnemonicSentence(ResultMessage<String>),
+    /// Return value for `Ed25519PublicKey`. Returns a Ed25519 public key.
     Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+    /// Return value for `Ed25519Sign`. Returns a Ed25519 signature.
     Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
+    /// Return value for `SignUnlockBlock`. Returns a Ed25519 signature and a Ed25519 public key.
+    SignUnlockBlock(
+        ResultMessage<(
+            [u8; crypto::ed25519::SIGNATURE_LENGTH],
+            [u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH],
+        )>,
+    ),
 }
 
 #[allow(dead_code)]
@@ -78,31 +107,56 @@ pub enum SHRequest {
     // check if vault exists.
     CheckVault(Vec<u8>),
     // check if record exists.
-    CheckRecord(Vec<u8>, Option<usize>),
+    CheckRecord {
+        location: Location,
+    },
 
     // Creates a new Vault.
-    CreateNewVault(Vec<u8>),
+    CreateNewVault(Location),
 
-    WriteData(Vec<u8>, Option<usize>, Vec<u8>, RecordHint),
+    WriteData {
+        location: Location,
+        payload: Vec<u8>,
+        hint: RecordHint,
+    },
     // Moves the head forward in the specified Vault and opens a new record.  Returns `ReturnInit`.
-    InitRecord(Vec<u8>),
+    InitRecord {
+        location: Location,
+    },
     // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not
     // specified, it reads the head.  Returns with `ReturnRead`.
-    ReadData(Vec<u8>, Option<usize>),
+    ReadData {
+        location: Location,
+    },
     // Marks a Record for deletion.  Accepts a vault id and a record id.  Deletion only occurs after a
     // `GarbageCollect` is called.
-    RevokeData(Vec<u8>, usize),
+    RevokeData {
+        location: Location,
+    },
     // Garbages collects any marked records on a Vault. Accepts the vault id.
     GarbageCollect(Vec<u8>),
     // Lists all of the record ids and the record hints for the records in a vault.  Accepts a vault id and returns
     // with `ReturnList`.
     ListIds(Vec<u8>),
-    // Writes to the snapshot file.  Accepts the snapshot key, an optional filename and an optional filepath.
-    // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
-    WriteSnapshot(snapshot::Key, Option<String>, Option<PathBuf>),
+
     // Reads from the snapshot file.  Accepts the snapshot key, an optional filename and an optional filepath.
     // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
-    ReadSnapshot(snapshot::Key, Option<String>, Option<PathBuf>),
+    ReadSnapshot {
+        key: snapshot::Key,
+        filename: Option<String>,
+        path: Option<PathBuf>,
+        cid: ClientId,
+        former_cid: Option<ClientId>,
+    },
+
+    WriteSnapshotAll {
+        key: snapshot::Key,
+        filename: Option<String>,
+        path: Option<PathBuf>,
+        is_final: bool,
+    },
+
+    ClearCache,
 
     ControlRequest(Procedure),
 }
@@ -113,14 +167,14 @@ pub enum SHResults {
     ReturnCreateVault(StatusMessage),
 
     ReturnWriteData(StatusMessage),
-    ReturnInitRecord(usize, StatusMessage),
+    ReturnInitRecord(StatusMessage),
     ReturnReadData(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
     ReturnList(Vec<(usize, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
-
+    ReturnClearCache(StatusMessage),
     ReturnControlRequest(ProcResult),
     ReturnExistsVault(bool),
     ReturnExistsRecord(bool),
@@ -158,7 +212,7 @@ impl Receive<SHRequest> for Client {
                         .as_ref()
                         .expect(line_error!())
                         .try_tell(
-                            SHResults::ReturnControlRequest(ProcResult::$V(StatusMessage::Error(format!(
+                            SHResults::ReturnControlRequest(ProcResult::$V(ResultMessage::Error(format!(
                                 "Failed to find {} vault. Please generate one",
                                 $k
                             )))),
@@ -181,9 +235,8 @@ impl Receive<SHRequest> for Client {
                     .try_tell(SHResults::ReturnExistsVault(res), None)
                     .expect(line_error!());
             }
-            SHRequest::CheckRecord(vpath, ctr) => {
-                let vid = self.derive_vault_id(&vpath);
-                let rid = self.derive_record_id(vpath, ctr);
+            SHRequest::CheckRecord { location } => {
+                let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
 
                 let res = self.record_exists_in_vault(vid, rid);
                 sender
@@ -192,12 +245,12 @@ impl Receive<SHRequest> for Client {
                     .try_tell(SHResults::ReturnExistsRecord(res), None)
                     .expect(line_error!());
             }
-            SHRequest::CreateNewVault(vpath) => {
-                let vid = self.derive_vault_id(&vpath);
-                let rid = self.derive_record_id(vpath, None);
+            SHRequest::CreateNewVault(location) => {
+                let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
                 let client_str = self.get_client_str();
 
-                self.add_vault_insert_record(vid, rid);
+                self.add_new_vault(vid);
+                self.add_record_to_vault(vid, rid);
 
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
@@ -205,29 +258,29 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::CreateVault(vid, rid), sender);
             }
-            SHRequest::WriteData(vpath, idx, data, hint) => {
-                let vid = self.derive_vault_id(&vpath);
-
-                let rid = if let Some(idx) = idx {
-                    self.derive_record_id(vpath, Some(idx))
-                } else {
-                    let ctr = self.get_counter(vid);
-                    self.derive_record_id(vpath, Some(ctr - 1))
-                };
+            SHRequest::WriteData {
+                location,
+                payload,
+                hint,
+            } => {
+                let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
 
                 let client_str = self.get_client_str();
+
+                self.increment_counter(vid);
 
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::WriteData(vid, rid, data, hint), sender);
+                internal.try_tell(InternalMsg::WriteData(vid, rid, payload, hint), sender);
             }
-            SHRequest::InitRecord(vpath) => {
-                let vid = self.derive_vault_id(&vpath);
-                let rid = self.derive_record_id(vpath, None);
+            SHRequest::InitRecord { location } => {
+                let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
 
                 let client_str = self.get_client_str();
+
+                self.add_record_to_vault(vid, rid);
 
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
@@ -235,16 +288,8 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::InitRecord(vid, rid), sender);
             }
-            SHRequest::ReadData(vpath, idx) => {
-                let vid = self.derive_vault_id(&vpath);
-
-                let rid = if let Some(idx) = idx {
-                    self.derive_record_id(vpath, Some(idx))
-                } else {
-                    let ctr = self.get_counter(vid);
-
-                    self.derive_record_id(vpath, Some(ctr - 1))
-                };
+            SHRequest::ReadData { location } => {
+                let (vid, rid) = self.resolve_location(location, ReadWrite::Read);
 
                 let client_str = self.get_client_str();
 
@@ -254,9 +299,8 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::ReadData(vid, rid), sender);
             }
-            SHRequest::RevokeData(vpath, idx) => {
-                let vid = self.derive_vault_id(&vpath);
-                let rid = self.derive_record_id(vpath, Some(idx));
+            SHRequest::RevokeData { location } => {
+                let (vid, rid) = self.resolve_location(location, ReadWrite::Read);
 
                 let client_str = self.get_client_str();
 
@@ -288,23 +332,32 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::ListIds(vpath, vid), sender);
             }
-            SHRequest::WriteSnapshot(data, name, path) => {
+
+            SHRequest::ReadSnapshot {
+                key,
+                filename,
+                path,
+                cid,
+                former_cid,
+            } => {
                 let client_str = self.get_client_str();
 
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::WriteSnapshot(data, name, path, client_str), sender);
+                internal.try_tell(InternalMsg::ReadSnapshot(key, filename, path, cid, former_cid), sender);
             }
-            SHRequest::ReadSnapshot(data, name, path) => {
+            SHRequest::ClearCache => {
+                self.clear_cache();
+
                 let client_str = self.get_client_str();
 
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::ReadSnapshot(data, name, path, client_str), sender);
+                internal.try_tell(InternalMsg::ClearCache, sender);
             }
             SHRequest::ControlRequest(procedure) => {
                 let client_str = self.get_client_str();
@@ -315,10 +368,15 @@ impl Receive<SHRequest> for Client {
 
                 match procedure {
                     Procedure::SLIP10Generate { output, hint } => {
-                        let (vid, rid) = self.resolve_location(output);
+                        let (vid, rid) = self.resolve_location(output, ReadWrite::Write);
 
                         if !self.vault_exist(vid) {
-                            self.add_vault_insert_record(vid, rid);
+                            self.add_new_vault(vid);
+                            self.add_record_to_vault(vid, rid);
+                            self.increment_counter(vid);
+                        } else {
+                            self.add_record_to_vault(vid, rid);
+                            self.increment_counter(vid);
                         }
 
                         internal.try_tell(
@@ -336,11 +394,19 @@ impl Receive<SHRequest> for Client {
                         output,
                         hint,
                     } => {
-                        let (seed_vault_id, seed_record_id) = self.resolve_location(seed);
+                        let (seed_vault_id, seed_record_id) = self.resolve_location(seed, ReadWrite::Write);
                         ensure_vault_exists!(seed_vault_id, SLIP10Derive, "seed");
 
-                        let (key_vault_id, key_record_id) = self.resolve_location(output);
-                        ensure_vault_exists!(key_vault_id, SLIP10Derive, "key");
+                        let (key_vault_id, key_record_id) = self.resolve_location(output, ReadWrite::Write);
+
+                        if !self.vault_exist(key_vault_id) {
+                            self.add_new_vault(key_vault_id);
+                            self.add_record_to_vault(key_vault_id, key_record_id);
+                            self.increment_counter(key_vault_id);
+                        } else {
+                            self.add_record_to_vault(key_vault_id, key_record_id);
+                            self.increment_counter(key_vault_id);
+                        }
 
                         internal.try_tell(
                             InternalMsg::SLIP10DeriveFromSeed {
@@ -360,11 +426,19 @@ impl Receive<SHRequest> for Client {
                         output,
                         hint,
                     } => {
-                        let (parent_vault_id, parent_record_id) = self.resolve_location(parent);
+                        let (parent_vault_id, parent_record_id) = self.resolve_location(parent, ReadWrite::Read);
                         ensure_vault_exists!(parent_vault_id, SLIP10Derive, "parent key");
 
-                        let (child_vault_id, child_record_id) = self.resolve_location(output);
-                        ensure_vault_exists!(child_vault_id, SLIP10Derive, "child key");
+                        let (child_vault_id, child_record_id) = self.resolve_location(output, ReadWrite::Write);
+
+                        if !self.vault_exist(child_vault_id) {
+                            self.add_new_vault(child_vault_id);
+                            self.add_record_to_vault(child_vault_id, child_record_id);
+                            self.increment_counter(child_vault_id);
+                        } else {
+                            self.add_record_to_vault(child_vault_id, child_record_id);
+                            self.increment_counter(child_vault_id);
+                        }
 
                         internal.try_tell(
                             InternalMsg::SLIP10DeriveFromKey {
@@ -383,10 +457,15 @@ impl Receive<SHRequest> for Client {
                         output,
                         hint,
                     } => {
-                        let (vault_id, record_id) = self.resolve_location(output);
+                        let (vault_id, record_id) = self.resolve_location(output, ReadWrite::Read);
 
                         if !self.vault_exist(vault_id) {
-                            self.add_vault_insert_record(vault_id, record_id);
+                            self.add_new_vault(vault_id);
+                            self.add_record_to_vault(vault_id, record_id);
+                            self.increment_counter(vault_id);
+                        } else {
+                            self.add_record_to_vault(vault_id, record_id);
+                            self.increment_counter(vault_id);
                         }
 
                         internal.try_tell(
@@ -405,10 +484,15 @@ impl Receive<SHRequest> for Client {
                         output,
                         hint,
                     } => {
-                        let (vault_id, record_id) = self.resolve_location(output);
+                        let (vault_id, record_id) = self.resolve_location(output, ReadWrite::Write);
 
                         if !self.vault_exist(vault_id) {
-                            self.add_vault_insert_record(vault_id, record_id);
+                            self.add_new_vault(vault_id);
+                            self.add_record_to_vault(vault_id, record_id);
+                            self.increment_counter(vault_id);
+                        } else {
+                            self.add_record_to_vault(vault_id, record_id);
+                            self.increment_counter(vault_id);
                         }
 
                         internal.try_tell(
@@ -423,14 +507,22 @@ impl Receive<SHRequest> for Client {
                         )
                     }
                     Procedure::BIP39MnemonicSentence { .. } => todo!(),
-                    Procedure::Ed25519PublicKey { key } => {
-                        let (vault_id, record_id) = self.resolve_location(key);
-                        internal.try_tell(InternalMsg::Ed25519PublicKey { vault_id, record_id }, sender)
+                    Procedure::Ed25519PublicKey { path, key } => {
+                        let (vault_id, record_id) = self.resolve_location(key, ReadWrite::Read);
+                        internal.try_tell(
+                            InternalMsg::Ed25519PublicKey {
+                                path,
+                                vault_id,
+                                record_id,
+                            },
+                            sender,
+                        )
                     }
-                    Procedure::Ed25519Sign { key, msg } => {
-                        let (vault_id, record_id) = self.resolve_location(key);
+                    Procedure::Ed25519Sign { path, key, msg } => {
+                        let (vault_id, record_id) = self.resolve_location(key, ReadWrite::Read);
                         internal.try_tell(
                             InternalMsg::Ed25519Sign {
+                                path,
                                 vault_id,
                                 record_id,
                                 msg,
@@ -438,7 +530,43 @@ impl Receive<SHRequest> for Client {
                             sender,
                         )
                     }
+                    Procedure::SignUnlockBlock { seed, path, essence } => {
+                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
+                        internal.try_tell(
+                            InternalMsg::SignUnlockBlock {
+                                vault_id,
+                                record_id,
+                                path,
+                                essence,
+                            },
+                            sender,
+                        )
+                    }
                 }
+            }
+            SHRequest::WriteSnapshotAll {
+                key,
+                filename,
+                path,
+                is_final,
+            } => {
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(
+                    InternalMsg::WriteSnapshotAll {
+                        key,
+                        path,
+                        filename,
+                        id: self.client_id,
+                        data: self.clone(),
+                        is_final,
+                    },
+                    sender,
+                )
             }
         }
     }
@@ -456,15 +584,11 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnCreateVault(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnInitRecord(vid, rid, status) => {
-                self.add_vault_insert_record(vid, rid);
-
-                let ctr = self.get_counter(vid);
-
+            InternalResults::ReturnInitRecord(status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnInitRecord(ctr - 1, status), None)
+                    .try_tell(SHResults::ReturnInitRecord(status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnReadData(payload, status) => {
@@ -489,10 +613,10 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnList(ids, status), None)
                     .expect(line_error!());
             }
-            InternalResults::RebuildCache(vids, rids, status) => {
+            InternalResults::RebuildCache(state, status) => {
                 self.clear_cache();
 
-                self.rebuild_cache(vids, rids);
+                self.rebuild_cache(state);
 
                 sender
                     .as_ref()
@@ -500,11 +624,11 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnReadSnap(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnWriteData(_status) => {
+            InternalResults::ReturnWriteData(status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnCreateVault(StatusMessage::OK), None)
+                    .try_tell(SHResults::ReturnWriteData(status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnRevoke(status) => {
@@ -534,6 +658,13 @@ impl Receive<InternalResults> for Client {
                     .as_ref()
                     .expect(line_error!())
                     .try_tell(SHResults::ReturnControlRequest(result), None)
+                    .expect(line_error!());
+            }
+            InternalResults::ReturnClearCache(status) => {
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnClearCache(status), None)
                     .expect(line_error!());
             }
         }

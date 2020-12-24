@@ -10,7 +10,8 @@ use engine::random::{
 
 use engine::vault::{BoxProvider, Error, Key, Result};
 
-#[derive(Debug, Clone)]
+/// Provider for the xchacha20poly1305 encryption engine.  Encrypts the data in the stronghold.
+#[derive(Debug, Clone, Ord, PartialOrd, PartialEq, Eq)]
 pub struct Provider;
 
 impl Provider {

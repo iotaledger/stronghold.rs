@@ -1,4 +1,8 @@
-![banner](./.meta/stronghold_banner.jpg)
+![banner](./.meta/stronghold_alpha.png)
+
+[![status](https://img.shields.io/badge/Status-Alpha-yellow.svg)](https://github.com/iotaledger/stronghold.rs)
+![Audit](https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev)
+![Test](https://github.com/iotaledger/stronghold.rs/workflows/Test/badge.svg)
 
 ## Introduction
 [summary]: #summary
@@ -11,18 +15,21 @@ There are four main components of Stronghold:
 3. **Runtime**: Is a process fork with limited permissions within which cryptographic operations take place
 4. **Communication**: Enables Strongholds in different processes or on different devices to communicate with each other securely.
 
-## WARNING
-This library has not yet been audited for security, so use at your own peril. Until a formal third-party security audit has taken place, the IOTA Foundation makes no guarantees to the fitness of this library for any purposes.
+Read more about the [Alpha Release](https://blog.iota.org/stronghold-alpha-release/).
 
-As such they are to be seen as **experimental** and not ready for real-world applications.
+## WARNING
+These libraries are being prepared for a number of external security audits in early 2021, so they are not yet verifiably safe. Until this warning is removed, the IOTA Foundation makes no guarantees to the fitness of these libraries for any purposes.
+
+As such, they are to be seen as **experimental** and not ready for real-world applications.
 
 Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out with any concerns or suggestions you may have.
 
 ## Roadmap
 Here are some of the features and tasks that we are working on.
 
+
 #### Components
-- [x] Engine (beta quality, fuzzed)
+- [x] Engine
 - [x] Client (with dual interfaces)
 - [x] peer-to-peer communications
 - [x] Secure runtime zone 
@@ -37,7 +44,7 @@ Here are some of the features and tasks that we are working on.
 - [x] Unit Tests
 - [x] Lowlevel Library Fuzzing
 - [ ] Realworld tests
-- [ ] Multiplatform benchmarks
+- [x] Multiplatform benchmarks
 - [ ] Continuous Fuzzing
 
 #### Applications
@@ -48,7 +55,7 @@ Here are some of the features and tasks that we are working on.
 - [ ] C FFI bindings
 
 ### Hardware Integrations
-- [ ] Works with USB Armory Mk II
+- [x] Works with USB Armory Mk II
 - [ ] Works with Yubikey
 - [ ] Works with Ledger Nano X
 - [ ] Use Secure Element to generate private keys for decryption
@@ -66,3 +73,5 @@ cargo test --all
 
 ## Joining the discussion
 If you want to get involved in discussions about this technology, or you're looking for support, go to the #stronghold-discussion channel on [Discord](https://discord.iota.org/).
+
+If you wish to join the Stronghold X-Team, please fill out [this form](https://forms.gle/AUdjcp4kCRLgG3Qd9).

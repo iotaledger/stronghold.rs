@@ -10,7 +10,7 @@ mod types;
 pub use self::{
     ask::ask,
     ids::{ClientId, LoadFromPath, VaultId},
-    types::{ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+    types::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
 #[allow(dead_code)]

@@ -27,14 +27,14 @@ pub enum P2PMdnsEvent {
 pub struct P2PIdentifyInfo {
     /// The public key underlying the peer's `PeerId`.
     pub public_key: PublicKey,
-    /// Version of the protocol family used by the peer, e.g. `ipfs/1.0.0`
+    /// Version of the protocol family used by the peer, e.g. `p2p/1.0.0`
     pub protocol_version: String,
     /// Name and version of the peer, similar to the `User-Agent` header in
     /// the HTTP protocol.
     pub agent_version: String,
     /// The addresses that the peer is listening on.
     pub listen_addrs: Vec<Multiaddr>,
-    /// The list of protocols supported by the peer, e.g. `/ipfs/ping/1.0.0`.
+    /// The list of protocols supported by the peer, e.g. `/p2p/ping/1.0.0`.
     pub protocols: Vec<String>,
 }
 
@@ -96,7 +96,11 @@ pub enum P2PInboundFailure {
     Timeout,
     /// The local peer supports none of the requested protocols.
     UnsupportedProtocols,
-    /// The connection closed before a response was delivered.
+    /// The local peer failed to respond to an inbound request
+    /// due to the [`ResponseChannel`] being dropped instead of
+    /// being passed to [`RequestResponse::send_response`].
+    ResponseOmission,
+    /// The connection closed before a response could be send.
     ConnectionClosed,
 }
 
@@ -115,7 +119,7 @@ pub enum P2PReqResEvent<T, U> {
     },
     /// Response Message to a received `Req`.
     ///
-    /// The `ResponseChannel` for the request is stored by the `P2PNetwokBehaviour` in
+    /// The `ResponseChannel` for the request is stored by the `P2PNetworkBehaviour` in
     /// a Hashmap and identified by the  `request_id` that can be used to send the response.
     /// If the `ResponseChannel` for the `request_id`is already closed
     /// due to a timeout, the response is discarded and eventually
@@ -135,14 +139,18 @@ pub enum P2PReqResEvent<T, U> {
         request_id: RequestId,
         error: P2POutboundFailure,
     },
+    /// A response to an inbound request has been sent.
+    ///
+    /// When this event is received, the response has been flushed on the underlying transport connection.
+    ResSent { peer_id: PeerId, request_id: RequestId },
 }
 
-/// Event that was emitted by one of the protocols of the `P2PNetwokBehaviour`
+/// Event that was emitted by one of the protocols of the `P2PNetworkBehaviour`
 #[derive(Debug, Clone, PartialEq)]
 pub enum P2PEvent<T, U> {
     /// Events from the libp2p mDNS protocol
     Mdns(P2PMdnsEvent),
-    /// Events from the libp2p identify protocl
+    /// Events from the libp2p identify protocol
     Identify(Box<P2PIdentifyEvent>),
     /// Events from the custom request-response protocol
     ///
@@ -236,13 +244,20 @@ impl<T, U> From<RequestResponseEvent<T, U>> for P2PEvent<T, U> {
             } => {
                 let error = match error {
                     InboundFailure::Timeout => P2PInboundFailure::Timeout,
-                    InboundFailure::ConnectionClosed => P2PInboundFailure::ConnectionClosed,
+                    InboundFailure::ResponseOmission => P2PInboundFailure::ResponseOmission,
                     InboundFailure::UnsupportedProtocols => P2PInboundFailure::UnsupportedProtocols,
+                    InboundFailure::ConnectionClosed => P2PInboundFailure::ConnectionClosed,
                 };
                 P2PEvent::RequestResponse(Box::new(P2PReqResEvent::InboundFailure {
                     peer_id: peer,
                     request_id,
                     error,
+                }))
+            }
+            RequestResponseEvent::ResponseSent { peer, request_id } => {
+                P2PEvent::RequestResponse(Box::new(P2PReqResEvent::ResSent {
+                    peer_id: peer,
+                    request_id,
                 }))
             }
         }

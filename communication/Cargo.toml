@@ -1,7 +1,7 @@
 [package]
 name = "stronghold-communication"
-version = "0.1.0"
-authors = ["Elena Frank <elena.frank@iota.org>"]
+version = "0.2.0"
+authors = [ "Elena Frank <elena.frank@iota.org>" ]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
@@ -10,20 +10,29 @@ readme = "README.md"
 async-std = "1.6.2"
 async-trait = "0.1.40"
 bytes = "0.5.6"
-clap = { version = "3.0.0-beta.1", features = ["yaml"] }
+clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
 futures = "0.3.1"
-libp2p = {version = "0.28.1", default-features = false, features = ["dns", "identify", "mdns-async-std", "mplex", "noise", "request-response", "tcp-async-std", "yamux", "websocket"]}
-prost = {version = "0.6.1", default-features = false, features = ["prost-derive"] }
+libp2p = { version = "0.33", default-features = false, features = [
+  "dns",
+  "identify",
+  "mdns",
+  "mplex",
+  "noise",
+  "request-response",
+  "tcp-async-std",
+  "yamux",
+  "websocket"
+] }
+prost = { version = "0.6.1", default-features = false, features = [ "prost-derive" ] }
 regex = "1.3.9"
 thiserror = "1.0.21"
-serde = { version = "1.0.117", default-features = false, features = ["alloc", "derive"] }
-serde_json = { version = "1.0.59", default-features = false, features = ["alloc"] }
+serde = { version = "1.0.117", default-features = false, features = [ "alloc", "derive" ] }
+serde_json = { version = "1.0.59", default-features = false, features = [ "alloc" ] }
 riker = "0.4"
 
 [features]
-default = ["mdns"]
-
-mdns = []
+default = [ "mdns" ]
+mdns = [ ]
 
 [build-dependencies]
 prost-build = "0.6.1"
