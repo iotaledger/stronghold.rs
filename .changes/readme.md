@@ -8,7 +8,7 @@
 | iota-stronghold | The Client | Rust | Yes | Yes |
 | stronghold-engine | The Engine | Rust | Yes | Yes |
 | stronghold-runtime | Secure Zone | Rust | Yes | No |
-| stronghold-communicaton | Communication Subsystem | Rust | Yes | No |
+| stronghold-communication | Communication Subsystem | Rust | Yes | No |
 | crypto | Engine's internal Crypto | Rust | No | No |
 | vault | Engine's memory Store | Rust | No | No |
 | snapshot | Engine's Persistence | Rust | No | No |
