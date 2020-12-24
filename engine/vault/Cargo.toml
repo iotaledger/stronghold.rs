@@ -15,11 +15,13 @@ json = "0.12"
 rand = "0.7.3"
 criterion = "0.3.3"
 
-  [dev-dependencies.random]
-  path = "../random"
+[dev-dependencies.random]
+path = "../random"
+version = "0.2"
 
-  [dev-dependencies.crypto]
-  path = "../crypto"
+[dev-dependencies.crypto]
+path = "../crypto"
+version = "0.2"
 
 [[bench]]
 name = "benchmark"

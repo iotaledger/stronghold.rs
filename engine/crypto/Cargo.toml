@@ -10,8 +10,9 @@ readme = "README.md"
 thiserror = "1.0"
 anyhow = "1.0"
 
-  [dependencies.primitives]
-  path = "../primitives"
+[dependencies.primitives]
+path = "../primitives"
+version = "0.2"
 
 [dev-dependencies]
 json = "0.12"

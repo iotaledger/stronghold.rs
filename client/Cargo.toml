@@ -27,9 +27,11 @@ bee-signing-ext = { git = "https://github.com/wusyong/bee-p.git", branch = "sign
 
   [dependencies.stronghold-engine]
   path = "../engine"
+  version = "0.2"
 
   [dependencies.stronghold-runtime]
   path = "../runtime"
+  version = "0.2"
 
   [dependencies.iota-crypto]
   git = "https://github.com/iotaledger/crypto.rs"
