@@ -1,10 +1,9 @@
+dependencies = { }
+
 [package]
 name = "primitives"
-version = "0.1.0"
-authors = ["tensor-programming <tensordeveloper@gmail.com>"]
+version = "0.2.0"
+authors = [ "tensor-programming <tensordeveloper@gmail.com>" ]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
-
-[dependencies]
-

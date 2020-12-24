@@ -1,31 +1,25 @@
 [package]
 name = "vault"
-version = "0.1.0"
-authors = ["tensor-programming <tensordeveloper@gmail.com>"]
+version = "0.2.0"
+authors = [ "tensor-programming <tensordeveloper@gmail.com>" ]
 edition = "2018"
 readme = "README.md"
 
 [dependencies]
 thiserror = "1.0"
 anyhow = "1.0"
-
-serde = {version = "1.0", features = ["derive"]}
+serde = { version = "1.0", features = [ "derive" ] }
 
 [dev-dependencies]
 json = "0.12"
 rand = "0.7.3"
-
 criterion = "0.3.3"
 
+  [dev-dependencies.random]
+  path = "../random"
 
-
-
-[dev-dependencies.random]
-path = "../random"
-
-[dev-dependencies.crypto]
-path = "../crypto"
-
+  [dev-dependencies.crypto]
+  path = "../crypto"
 
 [[bench]]
 name = "benchmark"
