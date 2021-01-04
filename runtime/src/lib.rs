@@ -75,6 +75,7 @@ impl From<zone::Error> for Error {
 
 #[cfg(unix)]
 fn strerror(errno: libc::c_int) -> &'static str {
+    #[allow(clippy::unnecessary_cast)]
     static mut BUF: [libc::c_char; 1024] = [0 as libc::c_char; 1024];
     unsafe {
         let res = libc::strerror_r(errno, BUF.as_mut_ptr(), BUF.len());
