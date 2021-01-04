@@ -8,6 +8,7 @@ where
     F: FnOnce() -> T,
 {
     unsafe {
+        #[allow(clippy::unnecessary_cast)]
         let mut fds: [libc::c_int; 2] = [-1 as libc::c_int; 2];
         let r = libc::pipe(fds.as_mut_ptr());
         if r != 0 {

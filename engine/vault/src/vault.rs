@@ -127,7 +127,7 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     /// Creates an iterator over all valid record identifiers and their corresponding record hints
-    pub fn records<'a>(&'a self) -> impl Iterator<Item = (RecordId, RecordHint)> + 'a {
+    pub fn records(&self) -> impl Iterator<Item = (RecordId, RecordHint)> + '_ {
         self.chains.values().filter_map(move |r| {
             r.data()
                 .as_ref()
@@ -138,7 +138,7 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     /// Creates an iterator over all valid records ids.
-    pub fn all<'a>(&'a self) -> impl ExactSizeIterator<Item = RecordId> + 'a {
+    pub fn all(&self) -> impl ExactSizeIterator<Item = RecordId> + '_ {
         self.chains.keys().map(|k| RecordId(*k))
     }
 
