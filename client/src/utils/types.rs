@@ -8,7 +8,7 @@ use zeroize::Zeroize;
 pub type StatusMessage = ResultMessage<()>;
 
 /// Return value used for Actor Messages.  Can specify an Error or an Ok result.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ResultMessage<T> {
     Ok(T),
     Error(String),
@@ -23,7 +23,7 @@ impl ResultMessage<()> {
 /// be used to get the head of the version chain by passing in `None` as the counter index. Otherwise, counter records
 /// are referenced through their associated index.  On Read, the `None` location is the latest record in the version
 /// chain while on Write, the `None` location is the next record in the version chain.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Location {
     Generic {
         vault_path: Vec<u8>,

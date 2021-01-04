@@ -39,6 +39,13 @@ features = [ "random", "ed25519", "sha", "hmac", "bip39-en" ]
 version = "*"
 # Note: We are only adding a version so that we can publish to crates.io
 
+[dependencies.stronghold-communication]
+path = "../communication"
+optional = true
+
+[features]
+communication = ["stronghold-communication"]
+
 [dev-dependencies]
 hex = "0.4.2"
 criterion = "0.3.3"

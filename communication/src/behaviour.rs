@@ -3,6 +3,8 @@
 
 pub mod message;
 mod protocol;
+
+#[cfg(feature = "mdns")]
 use async_std::task;
 use core::{
     iter,
