@@ -3,6 +3,8 @@
 
 use std::str;
 
+use proptest::proptest;
+
 use snapshot::{compress, decompress};
 
 const LOREM_STR: &str = include_str!("lorem.txt");
@@ -30,4 +32,11 @@ fn test_compression_lorem_ipsum() {
 #[test]
 fn test_compression_zappa() {
     invert(ZAPPA_STR);
+}
+
+proptest! {
+    #[test]
+    fn prop_check_encode_decode(s in "[a-zA-Z0-9._!~$&'()*+;,=/?:@-]+[a-zA-Z0-9._!~$&'()*+;,=/?:@-]+") {
+        invert(&s);
+    }
 }

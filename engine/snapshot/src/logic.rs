@@ -31,10 +31,9 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     output.write_all(&nonce)?;
 
     let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
-    let compressed = compress(plain);
 
-    let mut ct = vec![0; compressed.len()];
-    xchacha20poly1305::encrypt(&mut ct, &mut tag, &compressed, key, &nonce, associated_data)?;
+    let mut ct = vec![0; plain.len()];
+    xchacha20poly1305::encrypt(&mut ct, &mut tag, &plain, key, &nonce, associated_data)?;
 
     output.write_all(&tag)?;
     output.write_all(&ct)?;
@@ -60,8 +59,6 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
     let mut pt = vec![0; ct.len()];
     xchacha20poly1305::decrypt(&mut pt, &ct, key, &tag, &nonce, associated_data)?;
 
-    let pt = decompress(&pt)?;
-
     Ok(pt)
 }
 
@@ -75,6 +72,8 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     // TODO: if the sibling tempfile isn't writeable (e.g. directory permissions), write to
     // env::temp_dir()
 
+    let compressed_plain = compress(plain);
+
     let mut salt = [0u8; 6];
     crypto::rand::fill(&mut salt)?;
 
@@ -84,7 +83,7 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     let tmp = Path::new(&s);
 
     let mut f = OpenOptions::new().write(true).create_new(true).open(tmp)?;
-    write(plain, &mut f, key, associated_data)?;
+    write(&compressed_plain, &mut f, key, associated_data)?;
     f.sync_all()?;
 
     rename(tmp, path)?;
@@ -96,7 +95,9 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
 pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<Vec<u8>> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
     check_min_file_len(&mut f)?;
-    read(&mut f, key, associated_data)
+    let pt = read(&mut f, key, associated_data)?;
+
+    decompress(&pt)
 }
 
 fn check_min_file_len(input: &mut File) -> crate::Result<()> {
