@@ -25,13 +25,13 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     /// creates a new empty `Cache`
     /// # Example
     /// ```
-    /// use store::Cache;
     /// use std::time::Duration;
+    /// use store::Cache;
     ///
     /// let mut cache = Cache::new();
     ///
     /// let key: Vec<u8> = b"key".to_vec();
-    /// let value: Vec<u8>  = b"value".to_vec();
+    /// let value: Vec<u8> = b"value".to_vec();
     ///
     /// cache.insert(key.clone(), value.clone(), None);
     ///
@@ -50,8 +50,8 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     ///
     /// # Example
     /// ```
-    /// use store::Cache;
     /// use std::time::Duration;
+    /// use store::Cache;
     ///
     /// let scan_freq = Duration::from_secs(60);
     ///
@@ -77,8 +77,8 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     ///
     /// # Example
     /// ```
-    /// use store::Cache;
     /// use std::time::Duration;
+    /// use store::Cache;
     ///
     /// let mut cache = Cache::new();
     ///
@@ -101,8 +101,8 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     /// Gets the value associated with the specified key.  If the key could not be found in the `Cache`, creates and
     /// inserts the value using a specified `func` function. # Example
     /// ```
-    /// use store::Cache;
     /// use std::time::Duration;
+    /// use store::Cache;
     ///
     /// let mut cache = Cache::new();
     ///
@@ -137,8 +137,8 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     ///
     /// # Example
     /// ```
-    /// use store::Cache;
     /// use std::time::Duration;
+    /// use store::Cache;
     ///
     /// let mut cache = Cache::new();
     ///
@@ -166,8 +166,8 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     /// # Example
     ///
     /// ```
-    /// use store::Cache;
     /// use std::time::Duration;
+    /// use store::Cache;
     ///
     /// let mut cache = Cache::new();
     ///
@@ -205,8 +205,8 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     ///
     /// # Example
     /// ```
-    /// use store::Cache;
     /// use std::time::Duration;
+    /// use store::Cache;
     ///
     /// let scan_freq = Duration::from_secs(60);
     ///
