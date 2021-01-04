@@ -44,17 +44,17 @@ impl<'a> LZ4Encoder<'a> {
     }
 
     fn insert_cursor(&mut self) {
-        if self.remaining_batch() {
+        if self.remaining() {
             self.dict[self.get_cursor_hash()] = self.cursor;
         }
     }
 
-    fn remaining_batch(&self) -> bool {
+    fn remaining(&self) -> bool {
         self.cursor + 4 < self.input.len()
     }
 
     fn get_cursor_hash(&self) -> usize {
-        let mut x = self.get_batch_at_cursor().wrapping_mul(0xa4d94a4f);
+        let mut x = self.get_at_cursor().wrapping_mul(0xa4d94a4f);
         let a = x >> 16;
         let b = x >> 30;
         x ^= a >> b;
@@ -63,27 +63,24 @@ impl<'a> LZ4Encoder<'a> {
         x as usize % DICT_SIZE
     }
 
-    fn get_batch(&self, n: usize) -> u32 {
-        debug_assert!(self.remaining_batch(), "Reading a partial batch.");
+    fn get(&self, n: usize) -> u32 {
+        debug_assert!(self.remaining(), "Reading a partial batch.");
 
         u32::from_ne_bytes(self.input[n..n + 4].try_into().unwrap())
     }
 
-    fn get_batch_at_cursor(&self) -> u32 {
-        self.get_batch(self.cursor)
+    fn get_at_cursor(&self) -> u32 {
+        self.get(self.cursor)
     }
 
     fn find_duplicate(&self) -> Option<Duplicate> {
-        if !self.remaining_batch() {
+        if !self.remaining() {
             return None;
         }
 
         let candidate = self.dict[self.get_cursor_hash()];
 
-        if candidate != !0
-            && self.get_batch(candidate) == self.get_batch_at_cursor()
-            && self.cursor - candidate <= 0xFFFF
-        {
+        if candidate != !0 && self.get(candidate) == self.get_at_cursor() && self.cursor - candidate <= 0xFFFF {
             let padding = self.input[self.cursor + 4..]
                 .iter()
                 .zip(&self.input[candidate + 4..])
@@ -99,7 +96,7 @@ impl<'a> LZ4Encoder<'a> {
         }
     }
 
-    fn write_integer(&mut self, mut n: usize) {
+    fn write_int(&mut self, mut n: usize) {
         while n >= 0xFF {
             n -= 0xFF;
             self.output.push(0xFF);
@@ -150,7 +147,7 @@ impl<'a> LZ4Encoder<'a> {
             self.output.push(token);
 
             if block.literal_length >= 0xF {
-                self.write_integer(block.literal_length - 0xF);
+                self.write_int(block.literal_length - 0xF);
             }
 
             self.output
@@ -161,7 +158,7 @@ impl<'a> LZ4Encoder<'a> {
                 self.output.push((offset >> 8) as u8);
 
                 if dup_extra_len >= 0xF {
-                    self.write_integer(dup_extra_len - 0xF);
+                    self.write_int(dup_extra_len - 0xF);
                 }
             } else {
                 break;

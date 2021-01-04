@@ -1,0 +1,21 @@
+[package]
+name = "fuzz"
+version = "0.1.0"
+authors = ["tensor-programming <tensordeveloper@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.3"
+snapshot = {path = ".."}
+
+[workspace]
+
+[[bin]]
+name = "compression"
+path = "src/compression.rs"
+
