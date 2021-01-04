@@ -163,3 +163,16 @@ mod fork_tests {
         Ok(())
     }
 }
+
+#[cfg(not(feature = "stdalloc"))]
+fn with_guarded_allocator<A, F: FnOnce() -> A>(f: F) -> A {
+    f()
+}
+
+#[cfg(feature = "stdalloc")]
+fn with_guarded_allocator<A, F: FnOnce() -> A>(f: F) -> A {
+    unsafe { crate::mem::stdalloc::guarded() };
+    let a = f();
+    unsafe { crate::mem::stdalloc::std() };
+    a
+}

@@ -14,6 +14,10 @@ extern crate memoffset;
 #[cfg(unix)]
 extern crate lazy_static;
 
+#[macro_use]
+#[cfg(feature = "stdalloc")]
+extern crate std;
+
 #[cfg(unix)]
 pub mod mem;
 
