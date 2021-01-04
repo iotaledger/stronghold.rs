@@ -17,11 +17,24 @@ impl Error {
     }
 }
 
-struct ZoneSpec {}
+#[derive(Clone)]
+struct ZoneSpec {
+    guarded_allocator: bool,
+}
 
 impl Default for ZoneSpec {
     fn default() -> Self {
-        Self { }
+        Self {
+            guarded_allocator: false,
+        }
+    }
+}
+
+impl ZoneSpec {
+    pub fn secure_memory(&self) -> Self {
+        let mut s = self.clone();
+        s.guarded_allocator = true;
+        s
     }
 }
 
@@ -30,6 +43,12 @@ impl ZoneSpec {
     where
         F: FnOnce() -> T,
     {
-        fork(f)
+        fork(|| {
+            if self.guarded_allocator {
+                with_guarded_allocator(f)
+            } else {
+                f()
+            }
+        })
     }
 }

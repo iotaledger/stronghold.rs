@@ -76,7 +76,7 @@ impl Program {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Spec {
     pub write_stdout: bool,
     pub write_stderr: bool,
@@ -87,7 +87,25 @@ pub struct Spec {
     pub getrandom: bool,
 }
 
+impl AsRef<Spec> for Spec {
+    fn as_ref(&self) -> &Self {
+        &self
+    }
+}
+
 impl Spec {
+    pub fn join<O: AsRef<Self>>(&self, other: O) -> Self {
+        Self {
+            write_stdout: self.write_stdout || other.as_ref().write_stdout,
+            write_stderr: self.write_stderr || other.as_ref().write_stderr,
+            anonymous_mmap: self.anonymous_mmap || other.as_ref().anonymous_mmap,
+            munmap: self.munmap || other.as_ref().munmap,
+            mprotect: self.mprotect || other.as_ref().mprotect,
+            mlock: self.mlock || other.as_ref().mlock,
+            getrandom: self.getrandom || other.as_ref().getrandom,
+        }
+    }
+
     pub fn strict() -> Self {
         Self {
             write_stdout: true,

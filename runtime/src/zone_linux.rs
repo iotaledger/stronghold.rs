@@ -17,15 +17,30 @@ impl Error {
     }
 }
 
+#[derive(Clone)]
 pub struct ZoneSpec {
+    guarded_allocator: bool,
     seccomp: Option<crate::seccomp::Spec>,
 }
 
 impl Default for ZoneSpec {
     fn default() -> Self {
         Self {
+            guarded_allocator: false,
             seccomp: Some(crate::seccomp::Spec::strict()),
         }
+    }
+}
+
+impl ZoneSpec {
+    pub fn secure_memory(&self) -> Self {
+        let mut s = self.clone();
+        s.guarded_allocator = true;
+        s.seccomp = match self.seccomp {
+            None => Some(crate::mem::seccomp_spec()),
+            Some(ref s) => Some(s.join(crate::mem::seccomp_spec())),
+        };
+        s
     }
 }
 
@@ -39,7 +54,11 @@ impl ZoneSpec {
                 s.apply().unwrap();
             }
 
-            f()
+            if self.guarded_allocator {
+                with_guarded_allocator(f)
+            } else {
+                f()
+            }
         })
     }
 }

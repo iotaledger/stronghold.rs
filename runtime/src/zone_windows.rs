@@ -4,11 +4,18 @@
 #[derive(PartialEq, Debug)]
 pub enum Error {}
 
+#[derive(Clone)]
 struct ZoneSpec {}
 
 impl Default for ZoneSpec {
     fn default() -> Self {
         Self {}
+    }
+}
+
+impl ZoneSpec {
+    pub fn secure_memory(&self) -> Self {
+        self.clone()
     }
 }
 

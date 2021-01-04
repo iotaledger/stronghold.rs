@@ -199,7 +199,7 @@ unsafe impl GlobalAlloc for GuardedAllocator {
 }
 
 #[cfg(feature = "stdalloc")]
-mod stdalloc {
+pub mod stdalloc {
     use super::*;
     use core::cell::Cell;
 

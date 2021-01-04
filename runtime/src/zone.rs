@@ -31,4 +31,19 @@ mod common_tests {
         assert_eq!(ZoneSpec::default().run(|| bs)?, bs);
         Ok(())
     }
+
+    #[test]
+    fn heap() -> crate::Result<()> {
+        assert_eq!(
+            ZoneSpec::default().secure_memory().run(|| {
+                extern crate alloc;
+                use alloc::boxed::Box;
+
+                let b = Box::new(7);
+                *b
+            })?,
+            7
+        );
+        Ok(())
+    }
 }
