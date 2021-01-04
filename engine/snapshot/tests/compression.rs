@@ -14,6 +14,12 @@ fn invert(s: &str) {
     let decompressed = decompress(&compressed).unwrap();
     // println!("Decompressed into {:?}", str::from_utf8(&decompressed).unwrap());
     assert_eq!(decompressed, s.as_bytes());
+    println!(
+        "original size: {}, compressed size: {}",
+        decompressed.len(),
+        compressed.len()
+    );
+    assert_eq!(decompressed.len(), s.as_bytes().len());
 }
 
 #[test]

@@ -9,6 +9,8 @@ use std::{
 
 use crypto::ciphers::chacha::xchacha20poly1305;
 
+use crate::{compress, decompress};
+
 /// Magic bytes (bytes 0-4 in a snapshot file)
 pub const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
 
@@ -29,8 +31,10 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     output.write_all(&nonce)?;
 
     let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
-    let mut ct = vec![0; plain.len()];
-    xchacha20poly1305::encrypt(&mut ct, &mut tag, plain, key, &nonce, associated_data)?;
+    let compressed = compress(plain);
+
+    let mut ct = vec![0; compressed.len()];
+    xchacha20poly1305::encrypt(&mut ct, &mut tag, &compressed, key, &nonce, associated_data)?;
 
     output.write_all(&tag)?;
     output.write_all(&ct)?;
@@ -55,6 +59,8 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
 
     let mut pt = vec![0; ct.len()];
     xchacha20poly1305::decrypt(&mut pt, &ct, key, &tag, &nonce, associated_data)?;
+
+    let pt = decompress(&pt)?;
 
     Ok(pt)
 }
