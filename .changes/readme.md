@@ -14,6 +14,7 @@
 | snapshot | Engine's Persistence | Rust | No | No |
 | random | Engine's Random | Rust | No | No |
 | primitives | Engine's Crypto Primitives | Rust | No | No |
+| store | Engine's Readable Dtorage Interface | Rust | No | No |
 
 
 As you create PRs and make changes that require a version bump, please add a new markdown file in this folder. You do not note the version _number_, but rather the type of bump that you expect: major, minor, or patch. The filename is not important, as long as it is a `.md`, but we recommend it represents the overall change for our sanity.
