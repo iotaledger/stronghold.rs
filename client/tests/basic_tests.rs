@@ -268,7 +268,7 @@ fn test_unlock_block() {
     let mut seed_data = seed_data.expect(line_error!());
 
     let key0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
-        path: "".into(),
+        path: "m/1'".into(),
         key: blip39_seed.clone(),
     })) {
         ProcResult::Ed25519PublicKey(ResultMessage::Ok(key)) => key,
@@ -276,7 +276,7 @@ fn test_unlock_block() {
     };
 
     let sig0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
-        path: "".into(),
+        path: "m/1'".into(),
         key: blip39_seed.clone(),
         msg: essence.to_vec(),
     })) {
@@ -286,7 +286,7 @@ fn test_unlock_block() {
 
     let (sig1, key1) = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
         seed: blip39_seed,
-        path: "".into(),
+        path: "m/1'".into(),
         essence: essence.to_vec(),
     })) {
         ProcResult::SignUnlockBlock(ResultMessage::Ok((sig, key))) => {
@@ -306,7 +306,7 @@ fn test_unlock_block() {
     bs.copy_from_slice(&seed_data);
     let seed = Ed25519Seed::from_bytes(&seed_data).expect(line_error!());
 
-    let sk = Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("").unwrap()).expect(line_error!());
+    let sk = Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("m/1'").unwrap()).expect(line_error!());
     let pk = sk.generate_public_key().to_bytes();
     let sig2 = sk.sign(essence);
 
@@ -318,7 +318,8 @@ fn test_unlock_block() {
     assert!(crypto::ed25519::verify(&key1, &sig1, essence));
 
     let sc = iota_stronghold::hd::Seed::from_bytes(&seed_data);
-    let skc = sc.to_master_key().secret_key().unwrap();
+    let mkc = sc.to_master_key();
+    let skc = mkc.derive(&iota_stronghold::hd::Chain::from_u32_hardened(vec![1])).unwrap().secret_key().unwrap();
     let pkc = skc.public_key();
     assert_eq!(pkc.to_compressed_bytes(), pk);
     let sigc = skc.sign(essence);
