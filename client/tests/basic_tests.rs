@@ -316,4 +316,11 @@ fn test_unlock_block() {
     assert_eq!(key0, pk);
 
     assert!(crypto::ed25519::verify(&key1, &sig1, essence));
+
+    let sc = iota_stronghold::hd::Seed::from_bytes(&seed_data);
+    let skc = sc.to_master_key().secret_key().unwrap();
+    let pkc = skc.public_key();
+    assert_eq!(pkc.to_compressed_bytes(), pk);
+    let sigc = skc.sign(essence);
+    assert_eq!(sigc.to_bytes(), sig0);
 }
