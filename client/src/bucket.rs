@@ -12,13 +12,15 @@ use std::collections::HashMap;
 
 use crate::line_error;
 
+type Store = Cache<Vec<u8>, Vec<u8>>;
+
 /// A `Bucket` cache of the Data for stronghold. Contains a `HashMap<Key<P>, Option<DBView<P>>>` pairing the vault
 /// `Key<P>` and the vault `DBView<P>` together. Also contains a `HashMap<Key<P>, Vec<ReadResult>>` which pairs the
 /// backing data with the associated `Key<P>`.
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
     vaults: HashMap<Key<P>, Option<DBView<P>>>,
     cache: HashMap<Key<P>, Vec<ReadResult>>,
-    store: Cache<Vec<u8>, Vec<u8>>,
+    store: Store,
 }
 
 impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 'static> Bucket<P> {
@@ -171,7 +173,7 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     pub fn repopulate_data(
         &mut self,
         cache: HashMap<Key<P>, Vec<ReadResult>>,
-        store: Cache<Vec<u8>, Vec<u8>>,
+        store: Store,
     ) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
         let mut vaults = HashMap::new();
         let mut rids: Vec<Vec<RecordId>> = Vec::new();
@@ -193,7 +195,7 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         (keystore_keys, rids)
     }
 
-    pub fn get_data(&mut self) -> (HashMap<Key<P>, Vec<ReadResult>>, Cache<Vec<u8>, Vec<u8>>) {
+    pub fn get_data(&mut self) -> (HashMap<Key<P>, Vec<ReadResult>>, Store) {
         let mut cache: HashMap<Key<P>, Vec<ReadResult>> = HashMap::new();
 
         self.cache.iter().for_each(|(k, v)| {
