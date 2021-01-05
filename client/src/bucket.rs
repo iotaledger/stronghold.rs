@@ -168,7 +168,11 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
     /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.  Returns a `Vec<Key<P>,
     /// Vec<Vec<RecordId>>`.
-    pub fn repopulate_data(&mut self, cache: HashMap<Key<P>, Vec<ReadResult>>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
+    pub fn repopulate_data(
+        &mut self,
+        cache: HashMap<Key<P>, Vec<ReadResult>>,
+        store: Cache<Vec<u8>, Vec<u8>>,
+    ) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
         let mut vaults = HashMap::new();
         let mut rids: Vec<Vec<RecordId>> = Vec::new();
         let mut keystore_keys: Vec<Key<P>> = Vec::new();
@@ -184,29 +188,19 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
         self.vaults = vaults;
         self.cache = cache;
+        self.store = store;
 
         (keystore_keys, rids)
     }
 
-    /// Deserialize the data in the cache of the bucket into bytes to be passed into a snapshot.  Returns a `Vec<u8>`.
-    pub fn offload_data(&mut self) -> Vec<u8> {
+    pub fn get_data(&mut self) -> (HashMap<Key<P>, Vec<ReadResult>>, Cache<Vec<u8>, Vec<u8>>) {
         let mut cache: HashMap<Key<P>, Vec<ReadResult>> = HashMap::new();
 
         self.cache.iter().for_each(|(k, v)| {
             cache.insert(k.clone(), v.clone());
         });
 
-        bincode::serialize(&cache).expect(line_error!())
-    }
-
-    pub fn get_data(&mut self) -> HashMap<Key<P>, Vec<ReadResult>> {
-        let mut cache: HashMap<Key<P>, Vec<ReadResult>> = HashMap::new();
-
-        self.cache.iter().for_each(|(k, v)| {
-            cache.insert(k.clone(), v.clone());
-        });
-
-        cache
+        (cache, self.store.clone())
     }
 
     /// Write unencrypted data to the store.  Returns `None` if the key didn't already exist and `Some(Vec<u8>)` if the

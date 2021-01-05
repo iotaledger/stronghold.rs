@@ -48,16 +48,6 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
         self.store = keys;
     }
 
-    pub fn offload_data(&mut self) -> Vec<u8> {
-        let mut key_store: HashMap<VaultId, Key<P>> = HashMap::new();
-
-        self.store.iter().for_each(|(v, k)| {
-            key_store.insert(*v, k.clone());
-        });
-
-        bincode::serialize(&key_store).expect(line_error!())
-    }
-
     pub fn get_data(&mut self) -> HashMap<VaultId, Key<P>> {
         let mut key_store: HashMap<VaultId, Key<P>> = HashMap::new();
 

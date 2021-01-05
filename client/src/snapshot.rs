@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use engine::{
     snapshot,
     snapshot::{read_from, write_to, Key},
+    store::Cache,
     vault::{Key as PKey, ReadResult},
 };
 
@@ -30,6 +31,7 @@ pub struct SnapshotState(
             Client,
             HashMap<VaultId, PKey<Provider>>,
             HashMap<PKey<Provider>, Vec<ReadResult>>,
+            Cache<Vec<u8>, Vec<u8>>,
         ),
     >,
     /* pub ids: Vec<ClientId>,
@@ -51,10 +53,16 @@ impl Snapshot {
         Client,
         HashMap<VaultId, PKey<Provider>>,
         HashMap<PKey<Provider>, Vec<ReadResult>>,
+        Cache<Vec<u8>, Vec<u8>>,
     ) {
         match self.state.0.remove(&id) {
             Some(t) => t,
-            None => (Client::new(id), HashMap::default(), HashMap::default()),
+            None => (
+                Client::new(id),
+                HashMap::default(),
+                HashMap::default(),
+                Cache::default(),
+            ),
         }
     }
 
@@ -100,6 +108,7 @@ impl SnapshotState {
             Client,
             HashMap<VaultId, PKey<Provider>>,
             HashMap<PKey<Provider>, Vec<ReadResult>>,
+            Cache<Vec<u8>, Vec<u8>>,
         ),
     ) -> Self {
         let mut state = HashMap::new();
@@ -115,6 +124,7 @@ impl SnapshotState {
             Client,
             HashMap<VaultId, PKey<Provider>>,
             HashMap<PKey<Provider>, Vec<ReadResult>>,
+            Cache<Vec<u8>, Vec<u8>>,
         ),
     ) {
         self.0.insert(id, data);

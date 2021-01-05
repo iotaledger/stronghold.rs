@@ -11,6 +11,8 @@ use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
 use engine::snapshot;
 
+use engine::store::Cache;
+
 use bee_signing_ext::{
     binary::{
         ed25519::{Ed25519PrivateKey, Ed25519Seed},
@@ -59,6 +61,7 @@ pub enum InternalMsg {
             crate::client::Client,
             HashMap<VaultId, Key<Provider>>,
             HashMap<Key<Provider>, Vec<ReadResult>>,
+            Cache<Vec<u8>, Vec<u8>>,
         ),
         StatusMessage,
     ),
@@ -305,12 +308,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::ReloadData((client_data, keystore, state), status) => {
+            InternalMsg::ReloadData((client_data, keystore, state, store), status) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
                 self.keystore.rebuild_keystore(keystore);
-                self.bucket.repopulate_data(state);
+                self.bucket.repopulate_data(state, store);
 
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::RebuildCache(client_data, status)),
@@ -692,6 +695,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
             } => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
 
+                let (cache, store) = self.bucket.get_data();
+
                 snapshot.try_tell(
                     SMsg::WriteSnapshotAll {
                         key,
@@ -699,7 +704,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         path,
                         id,
                         is_final,
-                        data: (data, self.keystore.get_data(), self.bucket.get_data()),
+                        data: (data, self.keystore.get_data(), cache, store),
                     },
                     sender,
                 );

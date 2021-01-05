@@ -12,7 +12,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Cache<K, V>
 where
     K: Hash + Eq,
