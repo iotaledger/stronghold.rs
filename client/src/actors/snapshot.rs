@@ -113,7 +113,7 @@ impl Receive<SMsg> for Snapshot {
                 if self.has_data(cid) {
                     let data = self.get_state(cid);
 
-                    internal.try_tell(InternalMsg::ReloadData(data, StatusMessage::OK), sender);
+                    internal.try_tell(InternalMsg::ReloadData(Box::new(data), StatusMessage::OK), sender);
                 } else {
                     match Snapshot::read_from_snapshot(filename.as_deref(), path.as_deref(), key) {
                         Ok(mut snapshot) => {
@@ -121,7 +121,7 @@ impl Receive<SMsg> for Snapshot {
 
                             *self = snapshot;
 
-                            internal.try_tell(InternalMsg::ReloadData(data, StatusMessage::OK), sender);
+                            internal.try_tell(InternalMsg::ReloadData(Box::new(data), StatusMessage::OK), sender);
                         }
                         Err(e) => {
                             sender

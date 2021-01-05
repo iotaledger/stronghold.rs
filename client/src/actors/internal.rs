@@ -57,12 +57,12 @@ pub enum InternalMsg {
         Option<ClientId>,
     ),
     ReloadData(
-        (
+        Box<(
             crate::client::Client,
             HashMap<VaultId, Key<Provider>>,
             HashMap<Key<Provider>, Vec<ReadResult>>,
             Cache<Vec<u8>, Vec<u8>>,
-        ),
+        )>,
         StatusMessage,
     ),
     ClearCache,
@@ -308,9 +308,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::ReloadData((client_data, keystore, state, store), status) => {
+            InternalMsg::ReloadData(box_data, status) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                let (client_data, keystore, state, store) = *box_data;
 
                 self.keystore.rebuild_keystore(keystore);
                 self.bucket.repopulate_data(state, store);
