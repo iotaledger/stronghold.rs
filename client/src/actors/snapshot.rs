@@ -20,7 +20,7 @@ use crate::{
     ClientId, Provider, VaultId,
 };
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 /// Messages used for the Snapshot Actor.
 #[derive(Clone, Debug)]
@@ -31,8 +31,8 @@ pub enum SMsg {
         path: Option<PathBuf>,
         data: (
             Client,
-            BTreeMap<VaultId, Key<Provider>>,
-            BTreeMap<Key<Provider>, Vec<ReadResult>>,
+            HashMap<VaultId, Key<Provider>>,
+            HashMap<Key<Provider>, Vec<ReadResult>>,
         ),
         id: ClientId,
         is_final: bool,

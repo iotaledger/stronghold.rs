@@ -5,7 +5,7 @@
 
 use riker::actors::*;
 
-use std::{collections::BTreeMap, convert::TryFrom, fmt::Debug, path::PathBuf};
+use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
@@ -57,8 +57,8 @@ pub enum InternalMsg {
     ReloadData(
         (
             crate::client::Client,
-            BTreeMap<VaultId, Key<Provider>>,
-            BTreeMap<Key<Provider>, Vec<ReadResult>>,
+            HashMap<VaultId, Key<Provider>>,
+            HashMap<Key<Provider>, Vec<ReadResult>>,
         ),
         StatusMessage,
     ),

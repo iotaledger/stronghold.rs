@@ -3,6 +3,8 @@
 
 use crate::storage::Value;
 
+use serde::{Deserialize, Serialize};
+
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Debug,
@@ -10,6 +12,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+#[derive(Serialize, Deserialize)]
 pub struct Cache<K, V>
 where
     K: Hash + Eq,
@@ -221,6 +224,14 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     /// ```
     pub fn get_scan_freq(&self) -> Option<Duration> {
         self.scan_freq
+    }
+
+    /// Clear the stored cache and reset.
+    pub fn clear(&mut self) {
+        self.table.clear();
+        self.scan_freq = None;
+        self.created_at = SystemTime::now();
+        self.last_scan_at = None;
     }
 
     /// attempts to remove expired items based on the current system time provided.

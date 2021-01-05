@@ -10,7 +10,7 @@ use snapshot::{compress, decompress};
 const LOREM_STR: &str = include_str!("lorem.txt");
 const ZAPPA_STR: &str = include_str!("zappa.txt");
 
-fn invert(s: &str) {
+fn compression(s: &str) {
     let compressed = compress(s.as_bytes());
     // println!("Compressed {} into {:?}", s, compressed);
     let decompressed = decompress(&compressed).unwrap();
@@ -26,17 +26,17 @@ fn invert(s: &str) {
 
 #[test]
 fn test_compression_lorem_ipsum() {
-    invert(LOREM_STR);
+    compression(LOREM_STR);
 }
 
 #[test]
 fn test_compression_zappa() {
-    invert(ZAPPA_STR);
+    compression(ZAPPA_STR);
 }
 
 proptest! {
     #[test]
     fn prop_check_encode_decode(s in "[a-zA-Z0-9._!~$&'()*+;,=/?:@-]+[a-zA-Z0-9._!~$&'()*+;,=/?:@-]+") {
-        invert(&s);
+        compression(&s);
     }
 }

@@ -15,7 +15,7 @@ use crate::{client::Client, line_error, ClientId, Provider, VaultId};
 
 use std::path::Path;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct Snapshot {
@@ -28,14 +28,14 @@ pub struct SnapshotState(
         ClientId,
         (
             Client,
-            BTreeMap<VaultId, PKey<Provider>>,
-            BTreeMap<PKey<Provider>, Vec<ReadResult>>,
+            HashMap<VaultId, PKey<Provider>>,
+            HashMap<PKey<Provider>, Vec<ReadResult>>,
         ),
     >,
     /* pub ids: Vec<ClientId>,
      * pub clients: Vec<Client>,
-     * pub caches: Vec<BTreeMap<PKey<Provider>, Vec<ReadResult>>>,
-     * pub stores: Vec<BTreeMap<VaultId, PKey<Provider>>>, */
+     * pub caches: Vec<HashMap<PKey<Provider>, Vec<ReadResult>>>,
+     * pub stores: Vec<HashMap<VaultId, PKey<Provider>>>, */
 );
 
 impl Snapshot {
@@ -49,12 +49,12 @@ impl Snapshot {
         id: ClientId,
     ) -> (
         Client,
-        BTreeMap<VaultId, PKey<Provider>>,
-        BTreeMap<PKey<Provider>, Vec<ReadResult>>,
+        HashMap<VaultId, PKey<Provider>>,
+        HashMap<PKey<Provider>, Vec<ReadResult>>,
     ) {
         match self.state.0.remove(&id) {
             Some(t) => t,
-            None => (Client::new(id), BTreeMap::default(), BTreeMap::default()),
+            None => (Client::new(id), HashMap::default(), HashMap::default()),
         }
     }
 
@@ -98,8 +98,8 @@ impl SnapshotState {
         id: ClientId,
         data: (
             Client,
-            BTreeMap<VaultId, PKey<Provider>>,
-            BTreeMap<PKey<Provider>, Vec<ReadResult>>,
+            HashMap<VaultId, PKey<Provider>>,
+            HashMap<PKey<Provider>, Vec<ReadResult>>,
         ),
     ) -> Self {
         let mut state = HashMap::new();
@@ -113,8 +113,8 @@ impl SnapshotState {
         id: ClientId,
         data: (
             Client,
-            BTreeMap<VaultId, PKey<Provider>>,
-            BTreeMap<PKey<Provider>, Vec<ReadResult>>,
+            HashMap<VaultId, PKey<Provider>>,
+            HashMap<PKey<Provider>, Vec<ReadResult>>,
         ),
     ) {
         self.0.insert(id, data);

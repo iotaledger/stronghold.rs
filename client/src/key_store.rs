@@ -3,18 +3,18 @@
 
 use engine::vault::{BoxProvider, Key};
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use crate::{line_error, VaultId};
 
 pub struct KeyStore<P: BoxProvider + Clone + Send + Sync + 'static> {
-    store: BTreeMap<VaultId, Key<P>>,
+    store: HashMap<VaultId, Key<P>>,
 }
 
 impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
     /// Creates a new `KeyStore`.
     pub fn new() -> Self {
-        Self { store: BTreeMap::new() }
+        Self { store: HashMap::new() }
     }
 
     /// Gets the key from the `KeyStore` and removes it.  Returns an `Option<Key<P>>`
@@ -44,12 +44,12 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
 
     /// Rebuilds the `KeyStore` while throwing out any existing `VauldId`, `Key<P>` pairs.  Accepts a `Vec<Key<P>>` and
     /// returns the a `Vec<VaultId>` containing all of the new `VaultId`s
-    pub fn rebuild_keystore(&mut self, keys: BTreeMap<VaultId, Key<P>>) {
+    pub fn rebuild_keystore(&mut self, keys: HashMap<VaultId, Key<P>>) {
         self.store = keys;
     }
 
     pub fn offload_data(&mut self) -> Vec<u8> {
-        let mut key_store: BTreeMap<VaultId, Key<P>> = BTreeMap::new();
+        let mut key_store: HashMap<VaultId, Key<P>> = HashMap::new();
 
         self.store.iter().for_each(|(v, k)| {
             key_store.insert(*v, k.clone());
@@ -58,8 +58,8 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
         bincode::serialize(&key_store).expect(line_error!())
     }
 
-    pub fn get_data(&mut self) -> BTreeMap<VaultId, Key<P>> {
-        let mut key_store: BTreeMap<VaultId, Key<P>> = BTreeMap::new();
+    pub fn get_data(&mut self) -> HashMap<VaultId, Key<P>> {
+        let mut key_store: HashMap<VaultId, Key<P>> = HashMap::new();
 
         self.store.iter().for_each(|(v, k)| {
             key_store.insert(*v, k.clone());

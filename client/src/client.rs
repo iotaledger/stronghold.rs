@@ -12,7 +12,7 @@ use engine::vault::RecordId;
 
 use riker::actors::*;
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +27,7 @@ pub enum ReadWrite {
 pub struct Client {
     pub client_id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
-    vaults: BTreeMap<VaultId, (usize, Vec<RecordId>)>,
+    vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
     // Contains the Record Ids for the most recent Record in each vault.
     heads: Vec<RecordId>,
     counters: Vec<usize>,
@@ -36,7 +36,7 @@ pub struct Client {
 impl Client {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
     pub fn new(client_id: ClientId) -> Self {
-        let vaults = BTreeMap::new();
+        let vaults = HashMap::new();
         let heads = vec![];
 
         let counters = vec![0];
@@ -117,7 +117,7 @@ impl Client {
     /// Empty the Client Cache.
     pub fn clear_cache(&mut self) -> Option<()> {
         self.heads = vec![];
-        self.vaults = BTreeMap::default();
+        self.vaults = HashMap::default();
         self.counters = vec![0];
 
         Some(())
