@@ -1,4 +1,4 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 /// Vault is an in-memory database specification which is designed to work without a central server. The data in

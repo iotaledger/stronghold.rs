@@ -1,4 +1,4 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 //! This example create a very basic test actor in the same actor system as the communication actor, and

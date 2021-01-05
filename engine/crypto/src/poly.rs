@@ -1,4 +1,4 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::internal::poly::{poly1305_finish, poly1305_init, poly1305_update};
