@@ -21,6 +21,8 @@ extern crate std;
 #[cfg(unix)]
 pub mod mem;
 
+pub mod secret;
+
 #[cfg(target_os = "linux")]
 pub mod seccomp;
 
