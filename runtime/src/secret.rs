@@ -17,12 +17,12 @@ pub trait ProtectionNewSelf<A>: Protection<A> {
 
 pub trait Access<A, P: Protection<A>> {
     type Accessor;
-    fn access<R: AsRef<P::AtRest>>(&self, r: R) -> Self::Accessor;
+    fn access<R: AsRef<P::AtRest>>(&self, r: R) -> crate::Result<Self::Accessor>;
 }
 
 pub trait AccessSelf<'a, A>: Protection<A> {
     type Accessor;
-    fn access(&'a self) -> Self::Accessor;
+    fn access(&'a self) -> crate::Result<Self::Accessor>;
 }
 
 mod X25519XChaCha20Poly1305 {
@@ -56,7 +56,7 @@ mod X25519XChaCha20Poly1305 {
     impl<A> Access<A, PublicKey> for PrivateKey {
         type Accessor = GuardedBox<A>;
 
-        fn access<CT: AsRef<Ciphertext<A>>>(&self, _ct: CT) -> Self::Accessor {
+        fn access<CT: AsRef<Ciphertext<A>>>(&self, _ct: CT) -> crate::Result<Self::Accessor> {
             unimplemented!()
         }
     }
@@ -91,7 +91,7 @@ mod AES {
     impl<A> Access<A, Key> for Key {
         type Accessor = GuardedBox<A>;
 
-        fn access<CT: AsRef<Ciphertext<A>>>(&self, _ct: CT) -> Self::Accessor {
+        fn access<CT: AsRef<Ciphertext<A>>>(&self, _ct: CT) -> crate::Result<Self::Accessor> {
             unimplemented!()
         }
     }
@@ -107,8 +107,8 @@ mod tests {
         let public = X25519XChaCha20Poly1305::PublicKey {};
         let private = X25519XChaCha20Poly1305::PrivateKey {};
         let ct = public.protect(17)?;
-        let gb = private.access(&ct);
-        assert_eq!(*gb.access(), 17);
+        let gb = private.access(&ct)?;
+        assert_eq!(*gb.access()?, 17);
         Ok(())
     }
 }
