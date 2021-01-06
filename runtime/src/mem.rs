@@ -3,8 +3,12 @@
 
 use core::{
     alloc::{GlobalAlloc, Layout, LayoutErr},
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
     ptr,
 };
+
+use crate::secret::{AccessSelf, Protection, ProtectionNew};
 
 use zeroize::Zeroize;
 
@@ -177,6 +181,104 @@ impl GuardedAllocation {
             0 => Ok(()),
             _ => Err(crate::Error::os("mlock")),
         }
+    }
+}
+
+pub struct GuardedBox<A> {
+    alloc: GuardedAllocation,
+    a: PhantomData<A>,
+}
+
+impl<A> GuardedBox<A> {
+    fn new(a: A) -> crate::Result<Self> {
+        let l = Layout::new::<A>();
+        let alloc = GuardedAllocation::aligned(l)?;
+        unsafe { (alloc.data() as *mut A).write(a) }
+        Ok(Self { alloc, a: PhantomData })
+    }
+}
+
+impl<A> Deref for GuardedBox<A> {
+    type Target = A;
+
+    fn deref(&self) -> &A {
+        unsafe {
+            // TODO: do we actually have any guarantees that mmap can't return a valid mapping at
+            // the NULL pointer?
+            (self.alloc.data() as *const A).as_ref().unwrap()
+        }
+    }
+}
+
+impl<A> DerefMut for GuardedBox<A> {
+    fn deref_mut(&mut self) -> &mut A {
+        unsafe {
+            // TODO: do we actually have any guarantees that mmap can't return a valid mapping at
+            // the NULL pointer?
+            (self.alloc.data() as *mut A).as_mut().unwrap()
+        }
+    }
+}
+
+impl<A> Protection<A> for GuardedBox<A> {
+    type AtRest = Self;
+}
+
+impl<A> ProtectionNew<A> for GuardedBox<A> {
+    fn protect(a: A) -> crate::Result<Self::AtRest> {
+        GuardedBox::new(a)
+    }
+}
+
+pub struct GuardedBoxAccess<'a, A> {
+    alloc: &'a GuardedAllocation,
+    a: PhantomData<A>,
+}
+
+impl<A> Deref for GuardedBoxAccess<'_, A> {
+    type Target = A;
+
+    fn deref(&self) -> &A {
+        unsafe {
+            // TODO: do we actually have any guarantees that mmap can't return a valid mapping at
+            // the NULL pointer?
+            (self.alloc.data() as *const A).as_ref().unwrap()
+        }
+    }
+}
+
+impl<A> DerefMut for GuardedBoxAccess<'_, A> {
+    fn deref_mut(&mut self) -> &mut A {
+        unsafe {
+            // TODO: do we actually have any guarantees that mmap can't return a valid mapping at
+            // the NULL pointer?
+            (self.alloc.data() as *mut A).as_mut().unwrap()
+        }
+    }
+}
+
+impl<'a, A: 'a> AccessSelf<'a, A> for GuardedBox<A> {
+    type Accessor = GuardedBoxAccess<'a, A>;
+
+    fn access(&'a self) -> Self::Accessor {
+        GuardedBoxAccess {
+            alloc: &self.alloc,
+            a: PhantomData,
+        }
+    }
+}
+
+#[cfg(test)]
+mod guarded_box_tests {
+    use super::*;
+
+    #[test]
+    fn read() -> crate::Result<()> {
+        let mut gb = GuardedBox::new(7)?;
+        assert_eq!(*gb, 7);
+        *gb = 8;
+        assert_eq!(*gb, 8);
+        Ok(())
     }
 }
 
