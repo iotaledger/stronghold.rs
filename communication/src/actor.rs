@@ -18,9 +18,11 @@ use futures::{
 };
 use libp2p::{
     core::{connection::PendingConnectionError, identity::Keypair, ConnectedPoint, Multiaddr, PeerId},
+    request_response::RequestId,
     swarm::{Swarm, SwarmEvent},
 };
 use riker::actors::*;
+use std::collections::HashMap;
 
 /// Errors that can occur in the context of a pending `Connection`.
 #[derive(Debug, Clone)]
@@ -138,7 +140,7 @@ impl<T: MessageEvent, U: MessageEvent> CommsActorConfig<T, U> {
 /// ```
 pub struct CommunicationActor<T: MessageEvent, U: MessageEvent> {
     config: Option<CommsActorConfig<T, U>>,
-    swarm_tx: Option<UnboundedSender<CommunicationEvent<T, U>>>,
+    swarm_tx: Option<UnboundedSender<(CommunicationEvent<T, U>, Sender)>>,
     poll_swarm_handle: Option<future::RemoteHandle<()>>,
 }
 
@@ -180,25 +182,25 @@ impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
 
     // Send shutdown event over tx to swarm task and wait for the swarm to stop listening.
     fn post_stop(&mut self) {
-        self.tx_to_swarm_task(CommunicationEvent::Shutdown);
+        self.tx_to_swarm_task(CommunicationEvent::Shutdown, None);
         if let Some(handle) = self.poll_swarm_handle.as_mut() {
             task::block_on(handle);
         }
     }
 
     // Forward the received events to the task that is managing the swarm communication.
-    fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
-        self.tx_to_swarm_task(msg);
+    fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        self.tx_to_swarm_task(msg, sender);
     }
 }
 
 impl<T: MessageEvent, U: MessageEvent> CommunicationActor<T, U> {
     // Uses the mpsc channel to send messages to the swarm task.
-    fn tx_to_swarm_task(&mut self, msg: CommunicationEvent<T, U>) {
+    fn tx_to_swarm_task(&mut self, msg: CommunicationEvent<T, U>, sender: Sender) {
         let tx = &mut self.swarm_tx.as_mut().unwrap();
         task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
             match tx.poll_ready(tcx) {
-                Poll::Ready(Ok(())) => Poll::Ready(tx.start_send(msg.clone())),
+                Poll::Ready(Ok(())) => Poll::Ready(tx.start_send((msg.clone(), sender.clone()))),
                 Poll::Ready(err) => Poll::Ready(err),
                 _ => Poll::Pending,
             }
@@ -212,14 +214,15 @@ struct SwarmTask<T: MessageEvent, U: MessageEvent> {
     swarm: Swarm<P2PNetworkBehaviour<T, U>>,
     chan: Option<ChannelRef<CommunicationEvent<T, U>>>,
     client_ref: Option<BasicActorRef>,
-    swarm_rx: UnboundedReceiver<CommunicationEvent<T, U>>,
+    swarm_rx: UnboundedReceiver<(CommunicationEvent<T, U>, Sender)>,
     self_ref: BasicActorRef,
+    requests: HashMap<RequestId, Sender>,
 }
 
 impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
     fn new(
         config: CommsActorConfig<T, U>,
-        swarm_rx: UnboundedReceiver<CommunicationEvent<T, U>>,
+        swarm_rx: UnboundedReceiver<(CommunicationEvent<T, U>, Sender)>,
         self_ref: BasicActorRef,
     ) -> Self {
         // Create a P2PNetworkBehaviour for the swarm communication.
@@ -235,6 +238,7 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
             client_ref: config.client_ref,
             swarm_rx,
             self_ref,
+            requests: HashMap::new(),
         }
     }
 
@@ -243,8 +247,12 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
     async fn poll_swarm(mut self) {
         loop {
             select! {
-                actor_event = self.swarm_rx.next().fuse()=> {
-                    if actor_event.is_none() || self.handle_actor_event(actor_event.unwrap()).is_none(){
+                actor_event = self.swarm_rx.next().fuse() => {
+                    if let Some((message, sender)) = actor_event {
+                        if self.handle_actor_event(message, sender).is_none() {
+                            return
+                        }
+                    } else {
                         return
                     }
                 },
@@ -254,7 +262,7 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
     }
 
     // Handle the messages that are received from other actors in the system..
-    fn handle_actor_event(&mut self, event: CommunicationEvent<T, U>) -> Option<()> {
+    fn handle_actor_event(&mut self, event: CommunicationEvent<T, U>, sender: Sender) -> Option<()> {
         match event {
             CommunicationEvent::Message(message) => match message {
                 P2PReqResEvent::Req {
@@ -262,7 +270,8 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
                     request_id: _,
                     request,
                 } => {
-                    self.swarm.send_request(&peer_id, request);
+                    let request_id = self.swarm.send_request(&peer_id, request);
+                    self.requests.insert(request_id, sender);
                 }
                 P2PReqResEvent::Res {
                     peer_id: _,
@@ -330,6 +339,34 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
 
     // Publish a message to the channel and/ or tell an actor, depending on the config.
     fn tell_actor(&mut self, msg: CommunicationEvent<T, U>) {
+        // directly respond to the actor that initiated the request message
+        if let CommunicationEvent::Message(req_res_event) = msg.clone() {
+            match req_res_event {
+                P2PReqResEvent::Res {
+                    peer_id: _,
+                    request_id,
+                    response: _,
+                }
+                | P2PReqResEvent::InboundFailure {
+                    peer_id: _,
+                    request_id,
+                    error: _,
+                }
+                | P2PReqResEvent::OutboundFailure {
+                    peer_id: _,
+                    request_id,
+                    error: _,
+                } => {
+                    if let Some(sender) = self.requests.remove(&request_id) {
+                        if let Some(actor_ref) = sender {
+                            actor_ref.try_tell(req_res_event, self.self_ref.clone()).unwrap();
+                            return;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
         if let Some(chan) = self.chan.as_ref() {
             chan.tell(
                 Publish {
@@ -340,7 +377,7 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
             )
         }
         if let Some(client) = self.client_ref.as_ref() {
-            let _ = client.try_tell(msg, self.self_ref.clone());
+            client.try_tell(msg, self.self_ref.clone()).unwrap();
         }
     }
 }
