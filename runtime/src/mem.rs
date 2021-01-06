@@ -193,8 +193,16 @@ impl<A> GuardedBox<A> {
     fn new(a: A) -> crate::Result<Self> {
         let l = Layout::new::<A>();
         let alloc = GuardedAllocation::aligned(l)?;
+        // NB no need to run forget(a) since write takes ownership
         unsafe { (alloc.data() as *mut A).write(a) }
         Ok(Self { alloc, a: PhantomData })
+    }
+}
+
+impl<A> Drop for GuardedBox<A> {
+    fn drop(&mut self) {
+        unsafe { (self.alloc.data() as *mut A).drop_in_place(); }
+        self.alloc.free().unwrap();
     }
 }
 
@@ -278,6 +286,32 @@ mod guarded_box_tests {
         assert_eq!(*gb, 7);
         *gb = 8;
         assert_eq!(*gb, 8);
+        Ok(())
+    }
+
+    #[test]
+    fn drop() -> crate::Result<()> {
+        use core::cell::Cell;
+
+        struct Droplet<'a> {
+            dropped: &'a Cell<bool>,
+        }
+
+        impl Drop for Droplet<'_> {
+            fn drop(&mut self) {
+                self.dropped.set(true);
+            }
+        }
+
+        let b = Cell::new(false);
+
+        {
+            let _gb = GuardedBox::new(Droplet { dropped: &b });
+            assert_eq!(b.get(), false);
+        }
+
+        assert_eq!(b.get(), true);
+
         Ok(())
     }
 }
