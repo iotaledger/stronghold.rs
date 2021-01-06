@@ -36,10 +36,8 @@ use message::P2PMdnsEvent;
 use message::{P2PEvent, P2PReqResEvent};
 pub use protocol::MessageEvent;
 use protocol::{MessageCodec, MessageProtocol};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use thiserror::Error as DeriveError;
-
-type ReqIdStr = String;
 
 /// Error upon creating a new NetworkBehaviour
 #[derive(Debug, DeriveError)]
@@ -76,11 +74,11 @@ pub struct P2PNetworkBehaviour<T: MessageEvent, U: MessageEvent> {
     identify: Identify,
     msg_proto: RequestResponse<MessageCodec<T, U>>,
     #[behaviour(ignore)]
-    peers: BTreeMap<PeerId, Multiaddr>,
+    peers: HashMap<PeerId, Multiaddr>,
     #[behaviour(ignore)]
     events: Vec<P2PEvent<T, U>>,
     #[behaviour(ignore)]
-    response_channels: BTreeMap<ReqIdStr, ResponseChannel<U>>,
+    response_channels: HashMap<RequestId, ResponseChannel<U>>,
 }
 
 impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
@@ -161,9 +159,9 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
             mdns,
             msg_proto,
             identify,
-            peers: BTreeMap::new(),
+            peers: HashMap::new(),
             events: Vec::new(),
-            response_channels: BTreeMap::new(),
+            response_channels: HashMap::new(),
         };
 
         // The swarm manages a pool of connections established through the transport and drives the
@@ -206,7 +204,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     pub fn send_response(&mut self, response: U, request_id: RequestId) -> Result<(), U> {
         let channel = self
             .response_channels
-            .remove(&request_id.to_string())
+            .remove(&request_id)
             .ok_or_else(|| response.clone())?;
         self.msg_proto.send_response(channel, response)
     }
@@ -255,7 +253,7 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestRespo
                 },
         } = event
         {
-            self.response_channels.insert(request_id.to_string(), channel);
+            self.response_channels.insert(request_id, channel);
             P2PEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
                 peer_id: peer,
                 request_id: Some(request_id),
