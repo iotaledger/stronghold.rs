@@ -13,7 +13,7 @@ use engine::{snapshot, vault::RecordHint};
 
 use riker::actors::*;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
 #[derive(Debug, Clone)]
@@ -110,6 +110,14 @@ pub enum SHRequest {
     CheckRecord {
         location: Location,
     },
+    WriteToStore {
+        location: Location,
+        payload: Vec<u8>,
+        lifetime: Option<Duration>,
+    },
+    ReadFromStore {
+        location: Location,
+    },
 
     // Creates a new Vault.
     CreateNewVault(Location),
@@ -165,8 +173,9 @@ pub enum SHRequest {
 /// Messages that come from stronghold
 #[derive(Clone, Debug)]
 pub enum SHResults {
+    ReturnWriteStore(StatusMessage),
+    ReturnReadStore(Vec<u8>, StatusMessage),
     ReturnCreateVault(StatusMessage),
-
     ReturnWriteVault(StatusMessage),
     ReturnInitRecord(StatusMessage),
     ReturnReadVault(Vec<u8>, StatusMessage),
@@ -361,6 +370,63 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::ClearCache, sender);
             }
+            SHRequest::WriteSnapshotAll {
+                key,
+                filename,
+                path,
+                is_final,
+            } => {
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(
+                    InternalMsg::WriteSnapshotAll {
+                        key,
+                        path,
+                        filename,
+                        id: self.client_id,
+                        data: self.clone(),
+                        is_final,
+                    },
+                    sender,
+                )
+            }
+            SHRequest::WriteToStore {
+                location,
+                payload,
+                lifetime,
+            } => {
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                let (vid, _) = self.resolve_location(location, ReadWrite::Write);
+
+                internal.try_tell(
+                    InternalMsg::WriteToStore {
+                        key: vid,
+                        payload,
+                        lifetime,
+                    },
+                    sender,
+                )
+            }
+            SHRequest::ReadFromStore { location } => {
+                let client_str = self.get_client_str();
+
+                let (vid, _) = self.resolve_location(location, ReadWrite::Read);
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(InternalMsg::ReadFromStore { key: vid }, sender)
+            }
             SHRequest::ControlRequest(procedure) => {
                 let client_str = self.get_client_str();
 
@@ -546,30 +612,6 @@ impl Receive<SHRequest> for Client {
                     }
                 }
             }
-            SHRequest::WriteSnapshotAll {
-                key,
-                filename,
-                path,
-                is_final,
-            } => {
-                let client_str = self.get_client_str();
-
-                let internal = ctx
-                    .select(&format!("/user/internal-{}/", client_str))
-                    .expect(line_error!());
-
-                internal.try_tell(
-                    InternalMsg::WriteSnapshotAll {
-                        key,
-                        path,
-                        filename,
-                        id: self.client_id,
-                        data: self.clone(),
-                        is_final,
-                    },
-                    sender,
-                )
-            }
         }
     }
 }
@@ -667,6 +709,20 @@ impl Receive<InternalResults> for Client {
                     .as_ref()
                     .expect(line_error!())
                     .try_tell(SHResults::ReturnClearCache(status), None)
+                    .expect(line_error!());
+            }
+            InternalResults::ReturnWriteStore(status) => {
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnWriteStore(status), None)
+                    .expect(line_error!());
+            }
+            InternalResults::ReturnReadStore(payload, status) => {
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnReadStore(payload, status), None)
                     .expect(line_error!());
             }
         }

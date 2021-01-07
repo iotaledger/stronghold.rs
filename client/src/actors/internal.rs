@@ -5,7 +5,7 @@
 
 use riker::actors::*;
 
-use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
+use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf, time::Duration};
 
 use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
@@ -49,6 +49,14 @@ pub enum InternalMsg {
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
     ListIds(Vec<u8>, VaultId),
+    WriteToStore {
+        key: VaultId,
+        payload: Vec<u8>,
+        lifetime: Option<Duration>,
+    },
+    ReadFromStore {
+        key: VaultId,
+    },
 
     ReadSnapshot(
         snapshot::Key,
@@ -133,6 +141,8 @@ pub enum InternalMsg {
 /// Messages used internally by the client.
 #[derive(Clone, Debug)]
 pub enum InternalResults {
+    ReturnWriteStore(StatusMessage),
+    ReturnReadStore(Vec<u8>, StatusMessage),
     ReturnCreateVault(StatusMessage),
     ReturnWriteVault(StatusMessage),
     ReturnInitRecord(StatusMessage),
@@ -227,6 +237,36 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::Error(
                             "Vault does not exist".into(),
                         ))),
+                        sender,
+                    );
+                }
+            }
+            InternalMsg::WriteToStore { key, payload, lifetime } => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                self.bucket.write_to_store(key.into(), payload, lifetime);
+
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::OK)),
+                    sender,
+                );
+            }
+            InternalMsg::ReadFromStore { key } => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                if let Some(payload) = self.bucket.read_from_store(key.into()) {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnReadStore(payload, StatusMessage::OK)),
+                        sender,
+                    );
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnReadStore(
+                            vec![],
+                            StatusMessage::Error("Unable to find that data".into()),
+                        )),
                         sender,
                     );
                 }

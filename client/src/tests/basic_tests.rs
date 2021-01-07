@@ -317,3 +317,21 @@ fn test_unlock_block() {
 
     assert!(crypto::ed25519::verify(&key1, &sig1, essence));
 }
+
+#[test]
+fn test_store() {
+    let sys = ActorSystem::new().unwrap();
+
+    let client_path = b"test".to_vec();
+    let payload = b"test data";
+
+    let location = Location::generic("some_data", "location");
+
+    let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
+
+    futures::executor::block_on(stronghold.write_to_store(location.clone(), payload.to_vec(), None));
+
+    let (res, _) = futures::executor::block_on(stronghold.read_from_store(location));
+
+    assert_eq!(std::str::from_utf8(&res), Ok("test data"));
+}

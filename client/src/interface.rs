@@ -3,7 +3,7 @@
 
 use riker::actors::*;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use engine::vault::RecordHint;
 
@@ -237,12 +237,46 @@ impl Stronghold {
         }
     }
 
-    pub async fn write_to_store(&self, location: Location) -> StatusMessage {
+    pub async fn write_to_store(
+        &self,
+        location: Location,
+        payload: Vec<u8>,
+        lifetime: Option<Duration>,
+    ) -> StatusMessage {
         let idx = self.current_target;
 
         let client = &self.actors[idx];
 
-        StatusMessage::Ok(())
+        let res: SHResults = ask(
+            &self.system,
+            client,
+            SHRequest::WriteToStore {
+                location,
+                payload,
+                lifetime,
+            },
+        )
+        .await;
+
+        if let SHResults::ReturnWriteStore(status) = res {
+            status
+        } else {
+            StatusMessage::Error("Failed to write to the store".into())
+        }
+    }
+
+    pub async fn read_from_store(&self, location: Location) -> (Vec<u8>, StatusMessage) {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        let res: SHResults = ask(&self.system, client, SHRequest::ReadFromStore { location }).await;
+
+        if let SHResults::ReturnReadStore(payload, status) = res {
+            (payload, status)
+        } else {
+            (vec![], StatusMessage::Error("Failed to read from the store".into()))
+        }
     }
 
     /// Revokes the data from the specified location of type `Location`. Revoked data is not readable and can be removed
