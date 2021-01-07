@@ -10,10 +10,14 @@ use crate::{
 };
 
 use engine::{snapshot, vault::RecordHint};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 use riker::actors::*;
 
+use core::{
+    array::TryFromSliceError,
+    convert::{TryFrom, TryInto},
+};
 use std::{path::PathBuf, time::Duration};
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
@@ -78,6 +82,8 @@ pub enum Procedure {
 /// `Stronghold.runtime_exec(...)`.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "SerdeProcResult")]
+#[serde(into = "SerdeProcResult")]
 pub enum ProcResult {
     /// Return from generating a `SLIP10` seed.
     SLIP10Generate(StatusMessage),
@@ -95,107 +101,69 @@ pub enum ProcResult {
     Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
 }
 
-mod serde_sign_result {
-    use super::*;
-    use core::fmt;
-    use serde::de::{EnumAccess, Visitor};
+impl TryFrom<SerdeProcResult> for ProcResult {
+    type Error = TryFromSliceError;
 
-    pub fn serialize<S>(
-        result: &ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match result {
-            ResultMessage::Ok(message) => {
-                serializer.serialize_newtype_variant("ResultMessage", 0, "Ok", &message.to_vec())
+    fn try_from(serde_proc_result: SerdeProcResult) -> Result<Self, Self::Error> {
+        match serde_proc_result {
+            SerdeProcResult::SLIP10Generate(msg) => Ok(ProcResult::SLIP10Generate(msg)),
+            SerdeProcResult::SLIP10Derive(msg) => Ok(ProcResult::SLIP10Derive(msg)),
+            SerdeProcResult::BIP39Recover(msg) => Ok(ProcResult::BIP39Recover(msg)),
+            SerdeProcResult::BIP39Generate(msg) => Ok(ProcResult::BIP39Generate(msg)),
+            SerdeProcResult::BIP39MnemonicSentence(msg) => Ok(ProcResult::BIP39MnemonicSentence(msg)),
+            SerdeProcResult::Ed25519PublicKey(msg) => {
+                let msg: ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> = match msg {
+                    ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
+                    ResultMessage::Error(e) => ResultMessage::Error(e),
+                };
+                Ok(ProcResult::Ed25519PublicKey(msg))
             }
-            ResultMessage::Error(string) => serializer.serialize_newtype_variant("ResultMessage", 1, "Error", &string),
-        }
-    }
-
-    pub fn deserialize<'de, D>(
-        deserializer: D,
-    ) -> Result<ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        const LEN: usize = crypto::ed25519::SIGNATURE_LENGTH;
-
-        struct EnumVisitor;
-
-        impl<'de> Visitor<'de> for EnumVisitor {
-            type Value = ResultMessage<[u8; LEN]>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("ResultMessage")
-            }
-
-            fn visit_enum<A>(self, _data: A) -> Result<Self::Value, A::Error>
-            where
-                A: EnumAccess<'de>,
-            {
-                unimplemented!()
+            SerdeProcResult::Ed25519Sign(msg) => {
+                let msg: ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]> = match msg {
+                    ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
+                    ResultMessage::Error(e) => ResultMessage::Error(e),
+                };
+                Ok(ProcResult::Ed25519Sign(msg))
             }
         }
-
-        const VARIANTS: &[&str] = &["Ok", "Error"];
-        deserializer.deserialize_enum("ResultMessage", VARIANTS, EnumVisitor)
     }
 }
 
-mod serde_sign_unlock_result {
-    use super::*;
-    use core::fmt;
-    use serde::{
-        de::{EnumAccess, Visitor},
-        ser::SerializeTuple,
-    };
+// Replaces arrays in ProcResult with vectors to derive Serialize/ Deserialize
+#[derive(Clone, Serialize, Deserialize)]
+enum SerdeProcResult {
+    SLIP10Generate(StatusMessage),
+    SLIP10Derive(ResultMessage<hd::ChainCode>),
+    BIP39Recover(StatusMessage),
+    BIP39Generate(StatusMessage),
+    BIP39MnemonicSentence(ResultMessage<String>),
+    Ed25519PublicKey(ResultMessage<Vec<u8>>),
+    Ed25519Sign(ResultMessage<Vec<u8>>),
+}
 
-    type SignUnlockBlockResult = ResultMessage<(
-        [u8; crypto::ed25519::SIGNATURE_LENGTH],
-        [u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH],
-    )>;
-
-    pub fn serialize<S>(result: &SignUnlockBlockResult, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match result {
-            ResultMessage::Ok(message) => {
-                let mut tup = serializer.serialize_tuple(2)?;
-                tup.serialize_element(&message.0.to_vec())?;
-                tup.serialize_element(&message.1)?;
-                tup.end()
+impl From<ProcResult> for SerdeProcResult {
+    fn from(proc_result: ProcResult) -> Self {
+        match proc_result {
+            ProcResult::SLIP10Generate(msg) => SerdeProcResult::SLIP10Generate(msg),
+            ProcResult::SLIP10Derive(msg) => SerdeProcResult::SLIP10Derive(msg),
+            ProcResult::BIP39Recover(msg) => SerdeProcResult::BIP39Recover(msg),
+            ProcResult::BIP39Generate(msg) => SerdeProcResult::BIP39Generate(msg),
+            ProcResult::BIP39MnemonicSentence(msg) => SerdeProcResult::BIP39MnemonicSentence(msg),
+            ProcResult::Ed25519PublicKey(msg) => {
+                let msg = match msg {
+                    ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
+                    ResultMessage::Error(error) => ResultMessage::Error(error),
+                };
+                SerdeProcResult::Ed25519PublicKey(msg)
             }
-            ResultMessage::Error(string) => serializer.serialize_newtype_variant("ResultMessage", 1, "Error", &string),
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<SignUnlockBlockResult, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct EnumVisitor;
-
-        impl<'de> Visitor<'de> for EnumVisitor {
-            type Value = SignUnlockBlockResult;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("ResultMessage")
-            }
-
-            fn visit_enum<A>(self, _data: A) -> Result<Self::Value, A::Error>
-            where
-                A: EnumAccess<'de>,
-            {
-                unimplemented!()
+            ProcResult::Ed25519Sign(msg) => {
+                let msg = match msg {
+                    ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
+                    ResultMessage::Error(error) => ResultMessage::Error(error),
+                };
+                SerdeProcResult::Ed25519Sign(msg)
             }
         }
-
-        const VARIANTS: &[&str] = &["Ok", "Error"];
-        deserializer.deserialize_enum("ResultMessage", VARIANTS, EnumVisitor)
     }
 }
 
