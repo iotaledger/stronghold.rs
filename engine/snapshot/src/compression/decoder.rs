@@ -100,7 +100,6 @@ impl<'a> LZ4Decoder<'a> {
         let start = self.output.len().wrapping_sub(offset as usize);
 
         if start < self.output.len() {
-            // Write the duplicate segment to the output buffer.
             self.duplicate(start, length);
 
             Ok(())

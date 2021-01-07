@@ -114,7 +114,7 @@ pub enum SHRequest {
     // Creates a new Vault.
     CreateNewVault(Location),
 
-    WriteData {
+    WriteToVault {
         location: Location,
         payload: Vec<u8>,
         hint: RecordHint,
@@ -125,7 +125,8 @@ pub enum SHRequest {
     },
     // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not
     // specified, it reads the head.  Returns with `ReturnRead`.
-    ReadData {
+    #[cfg(test)]
+    ReadFromVault {
         location: Location,
     },
     // Marks a Record for deletion.  Accepts a vault id and a record id.  Deletion only occurs after a
@@ -166,9 +167,9 @@ pub enum SHRequest {
 pub enum SHResults {
     ReturnCreateVault(StatusMessage),
 
-    ReturnWriteData(StatusMessage),
+    ReturnWriteVault(StatusMessage),
     ReturnInitRecord(StatusMessage),
-    ReturnReadData(Vec<u8>, StatusMessage),
+    ReturnReadVault(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
     ReturnList(Vec<(usize, RecordHint)>, StatusMessage),
@@ -258,7 +259,7 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::CreateVault(vid, rid), sender);
             }
-            SHRequest::WriteData {
+            SHRequest::WriteToVault {
                 location,
                 payload,
                 hint,
@@ -273,7 +274,7 @@ impl Receive<SHRequest> for Client {
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::WriteData(vid, rid, payload, hint), sender);
+                internal.try_tell(InternalMsg::WriteToVault(vid, rid, payload, hint), sender);
             }
             SHRequest::InitRecord { location } => {
                 let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
@@ -288,7 +289,8 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::InitRecord(vid, rid), sender);
             }
-            SHRequest::ReadData { location } => {
+            #[cfg(test)]
+            SHRequest::ReadFromVault { location } => {
                 let (vid, rid) = self.resolve_location(location, ReadWrite::Read);
 
                 let client_str = self.get_client_str();
@@ -297,7 +299,7 @@ impl Receive<SHRequest> for Client {
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::ReadData(vid, rid), sender);
+                internal.try_tell(InternalMsg::ReadFromVault(vid, rid), sender);
             }
             SHRequest::RevokeData { location } => {
                 let (vid, rid) = self.resolve_location(location, ReadWrite::Read);
@@ -591,11 +593,11 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnInitRecord(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnReadData(payload, status) => {
+            InternalResults::ReturnReadVault(payload, status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnReadData(payload, status), None)
+                    .try_tell(SHResults::ReturnReadVault(payload, status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnList(vpath, list, status) => {
@@ -624,11 +626,11 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnReadSnap(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnWriteData(status) => {
+            InternalResults::ReturnWriteVault(status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnWriteData(status), None)
+                    .try_tell(SHResults::ReturnWriteVault(status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnRevoke(status) => {

@@ -34,10 +34,6 @@ pub struct SnapshotState(
             Cache<Vec<u8>, Vec<u8>>,
         ),
     >,
-    /* pub ids: Vec<ClientId>,
-     * pub clients: Vec<Client>,
-     * pub caches: Vec<HashMap<PKey<Provider>, Vec<ReadResult>>>,
-     * pub stores: Vec<HashMap<VaultId, PKey<Provider>>>, */
 );
 
 impl Snapshot {
@@ -71,6 +67,7 @@ impl Snapshot {
     }
 
     /// Reads state from the specified named snapshot or the specified path
+    /// TODO: Add associated data.
     pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<Self> {
         let state = match path {
             Some(p) => read_from(p, &key, &[])?,
@@ -83,6 +80,7 @@ impl Snapshot {
     }
 
     /// Writes state to the specified named snapshot or the specified path
+    /// TODO: Add associated data.
     pub fn write_to_snapshot(self, name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<()> {
         let data = self.state.serialize();
 

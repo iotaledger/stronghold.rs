@@ -45,7 +45,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                         ));
                     }
 
-                    block_on(stronghold.write_data(
+                    block_on(stronghold.write_to_vault(
                         Location::counter::<_, usize>("test", Some(rid.parse::<usize>().unwrap())),
                         plain.as_bytes().to_vec(),
                         RecordHint::new(b"some hint").expect(line_error!()),
@@ -132,34 +132,34 @@ fn read_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongho
     if let Some(matches) = matches.subcommand_matches("read") {
         if let Some(ref pass) = matches.value_of("password") {
             if let Some(ref id) = matches.value_of("id") {
-                let mut key = [0u8; 32];
-                let salt = [0u8; 32];
-                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+                //     let mut key = [0u8; 32];
+                //     let salt = [0u8; 32];
+                //     naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-                let home_dir = home_dir().expect(line_error!());
-                let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+                //     let home_dir = home_dir().expect(line_error!());
+                //     let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
-                if snapshot.exists() {
-                    block_on(stronghold.read_snapshot(
-                        client_path,
-                        None,
-                        key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ));
+                //     if snapshot.exists() {
+                //         block_on(stronghold.read_snapshot(
+                //             client_path,
+                //             None,
+                //             key.to_vec(),
+                //             Some("commandline".to_string()),
+                //             None,
+                //         ));
 
-                    let (data, status) = block_on(stronghold.read_data(Location::counter::<_, usize>(
-                        "test",
-                        Some(id.parse::<usize>().unwrap()),
-                    )));
+                //         // let (data, status) = block_on(stronghold.read_secret(Location::counter::<_, usize>(
+                //         //     "test",
+                //         //     Some(id.parse::<usize>().unwrap()),
+                //         // )));
 
-                    println!("{:?}", status);
-                    println!("Data: {:?}", std::str::from_utf8(&data.unwrap()).unwrap());
-                } else {
-                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+                //         println!("{:?}", status);
+                //         println!("Data: {:?}", std::str::from_utf8(&data.unwrap()).unwrap());
+                //     } else {
+                //         println!("Could not find a snapshot at the home path.  Try writing first. ");
 
-                    return;
-                }
+                //         return;
+                //     }
             }
         }
     }

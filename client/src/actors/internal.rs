@@ -42,8 +42,9 @@ pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
 #[derive(Clone, Debug)]
 pub enum InternalMsg {
     CreateVault(VaultId, RecordId),
-    ReadData(VaultId, RecordId),
-    WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
+    #[cfg(test)]
+    ReadFromVault(VaultId, RecordId),
+    WriteToVault(VaultId, RecordId, Vec<u8>, RecordHint),
     InitRecord(VaultId, RecordId),
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
@@ -133,9 +134,9 @@ pub enum InternalMsg {
 #[derive(Clone, Debug)]
 pub enum InternalResults {
     ReturnCreateVault(StatusMessage),
-    ReturnWriteData(StatusMessage),
+    ReturnWriteVault(StatusMessage),
     ReturnInitRecord(StatusMessage),
-    ReturnReadData(Vec<u8>, StatusMessage),
+    ReturnReadVault(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
     ReturnList(Vec<u8>, Vec<(RecordId, RecordHint)>, StatusMessage),
@@ -184,7 +185,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     sender,
                 );
             }
-            InternalMsg::ReadData(vid, rid) => {
+            #[cfg(test)]
+            InternalMsg::ReadFromVault(vid, rid) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
@@ -194,12 +196,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnReadData(plain, StatusMessage::OK)),
+                        ClientMsg::InternalResults(InternalResults::ReturnReadVault(plain, StatusMessage::OK)),
                         sender,
                     );
                 } else {
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnReadData(
+                        ClientMsg::InternalResults(InternalResults::ReturnReadVault(
                             vec![],
                             StatusMessage::Error("Vault does not exist.".into()),
                         )),
@@ -207,7 +209,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::WriteData(vid, rid, payload, hint) => {
+            InternalMsg::WriteToVault(vid, rid, payload, hint) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
@@ -217,12 +219,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::OK)),
+                        ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::OK)),
                         sender,
                     );
                 } else {
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::Error(
+                        ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::Error(
                             "Vault does not exist".into(),
                         ))),
                         sender,

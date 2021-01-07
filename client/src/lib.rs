@@ -27,6 +27,9 @@ mod key_store;
 mod snapshot;
 mod utils;
 
+#[cfg(test)]
+mod tests;
+
 use crate::utils::{ClientId, VaultId};
 
 pub use crate::{

@@ -3,7 +3,7 @@
 
 use riker::actors::*;
 
-use iota_stronghold::{
+use crate::{
     hd, line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, SLIP10DeriveInput, StatusMessage,
     Stronghold,
 };
@@ -24,7 +24,7 @@ fn test_stronghold() {
     let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
 
     // Write at the first record of the vault using Some(0).  Also creates the new vault.
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         loc0.clone(),
         b"test".to_vec(),
         RecordHint::new(b"first hint").expect(line_error!()),
@@ -32,12 +32,12 @@ fn test_stronghold() {
     ));
 
     // read head.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
     // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         loc1.clone(),
         b"another test".to_vec(),
         RecordHint::new(b"another hint").expect(line_error!()),
@@ -45,11 +45,11 @@ fn test_stronghold() {
     ));
 
     // read head.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         loc2.clone(),
         b"yet another test".to_vec(),
         RecordHint::new(b"yet another hint").expect(line_error!()),
@@ -57,21 +57,21 @@ fn test_stronghold() {
     ));
 
     // read head.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
     // Read the first record of the vault.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc0.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
     // Read the head record of the vault.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc1));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc1));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc2.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc2.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
@@ -81,7 +81,7 @@ fn test_stronghold() {
     futures::executor::block_on(stronghold.delete_data(loc0.clone(), false));
 
     // attempt to read the first record of the vault.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc0.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
@@ -101,21 +101,21 @@ fn test_stronghold() {
     ));
 
     // read head after reading snapshot.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc2.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc2.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc0));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
     futures::executor::block_on(stronghold.kill_stronghold(client_path.clone(), false));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc2));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc2));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
@@ -142,7 +142,7 @@ fn run_stronghold_multi_actors() {
 
     stronghold.switch_actor_target(client_path0.clone());
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
         b"test".to_vec(),
         RecordHint::new(b"1").expect(line_error!()),
@@ -150,14 +150,14 @@ fn run_stronghold_multi_actors() {
     ));
 
     // read head.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
     stronghold.switch_actor_target(client_path1.clone());
 
     // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
         b"another test".to_vec(),
         RecordHint::new(b"1").expect(line_error!()),
@@ -165,20 +165,20 @@ fn run_stronghold_multi_actors() {
     ));
 
     // read head.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
     stronghold.switch_actor_target(client_path0.clone());
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
         b"yet another test".to_vec(),
         RecordHint::new(b"2").expect(line_error!()),
         vec![],
     ));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
@@ -202,29 +202,29 @@ fn run_stronghold_multi_actors() {
         None,
     ));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc0));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
         b"a new actor test".to_vec(),
         RecordHint::new(b"2").expect(line_error!()),
         vec![],
     ));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test"));
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
         b"a new actor test again".to_vec(),
         RecordHint::new(b"3").expect(line_error!()),
         vec![],
     ));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test again"));
 
@@ -275,13 +275,13 @@ fn test_stronghold_generics() {
 
     let mut stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         slip10_seed.clone(),
         b"AAAAAA".to_vec(),
         RecordHint::new(b"first hint").expect(line_error!()),
         vec![],
     ));
-    let (p, _) = futures::executor::block_on(stronghold.read_data(slip10_seed));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(slip10_seed));
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
     futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.to_vec(), Some("megasnap".into()), None));
@@ -300,15 +300,15 @@ fn test_counters() {
 
     let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
 
-    // let (p, _) = futures::executor::block_on(stronghold.read_data(loc0.clone()));
+    // let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0.clone()));
 
     // println!("{:?}", std::str::from_utf8(&p.unwrap()));
 
-    // let (p, _) = futures::executor::block_on(stronghold.read_data(loc1.clone()));
+    // let (p, _) = futures::executor::block_on(stronghold.read_secret(loc1.clone()));
 
     // println!("{:?}", std::str::from_utf8(&p.unwrap()));
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         loc0.clone(),
         b"test".to_vec(),
         RecordHint::new(b"first hint").expect(line_error!()),
@@ -316,7 +316,7 @@ fn test_counters() {
     ));
 
     // read 0.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc0.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
@@ -333,7 +333,7 @@ fn test_counters() {
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(loc0.vault_path()));
     println!("{:?}", ids);
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         loc1.clone(),
         b"another test".to_vec(),
         RecordHint::new(b"second hint").expect(line_error!()),
@@ -341,7 +341,7 @@ fn test_counters() {
     ));
 
     // read 1.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc1));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc1));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
@@ -358,7 +358,7 @@ fn test_counters() {
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(loc0.vault_path()));
     println!("{:?}", ids);
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         loc2.clone(),
         b"yet another test".to_vec(),
         RecordHint::new(b"third hint").expect(line_error!()),
@@ -366,7 +366,7 @@ fn test_counters() {
     ));
 
     // read 2.
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc2));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc2));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 

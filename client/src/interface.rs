@@ -115,7 +115,7 @@ impl Stronghold {
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified
     /// location of `Location` type. The payload must be specified as a `Vec<u8>` and a `RecordHint` can be provided.
     /// Also accepts `VaultFlags` for when a new Vault is created.
-    pub async fn write_data(
+    pub async fn write_to_vault(
         &self,
         location: Location,
         payload: Vec<u8>,
@@ -144,10 +144,10 @@ impl Stronghold {
                 .await
                 {
                     if b {
-                        if let SHResults::ReturnWriteData(status) = ask(
+                        if let SHResults::ReturnWriteVault(status) = ask(
                             &self.system,
                             client,
-                            SHRequest::WriteData {
+                            SHRequest::WriteToVault {
                                 location: location.clone(),
                                 payload: payload.clone(),
                                 hint,
@@ -174,10 +174,10 @@ impl Stronghold {
                             (None, StatusMessage::Error("Unable to initialize record".into()))
                         };
 
-                        if let SHResults::ReturnWriteData(status) = ask(
+                        if let SHResults::ReturnWriteVault(status) = ask(
                             &self.system,
                             client,
-                            SHRequest::WriteData {
+                            SHRequest::WriteToVault {
                                 location: location.clone(),
                                 payload: payload.clone(),
                                 hint,
@@ -201,10 +201,10 @@ impl Stronghold {
                     return StatusMessage::Error("Invalid Message".into());
                 };
 
-                if let SHResults::ReturnWriteData(status) = ask(
+                if let SHResults::ReturnWriteVault(status) = ask(
                     &self.system,
                     client,
-                    SHRequest::WriteData {
+                    SHRequest::WriteToVault {
                         location,
                         payload,
                         hint,
@@ -222,20 +222,27 @@ impl Stronghold {
         StatusMessage::Error("Failed to write the data".into())
     }
 
-    /// Reads data from the specified location of type `Location` from the current target.  Returns the data if the
-    /// vault is readable.
-    pub async fn read_data(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
+    #[cfg(test)]
+    pub async fn read_secret(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
         let idx = self.current_target;
 
         let client = &self.actors[idx];
 
-        let res: SHResults = ask(&self.system, client, SHRequest::ReadData { location }).await;
+        let res: SHResults = ask(&self.system, client, SHRequest::ReadFromVault { location }).await;
 
-        if let SHResults::ReturnReadData(payload, status) = res {
+        if let SHResults::ReturnReadVault(payload, status) = res {
             (Some(payload), status)
         } else {
             (None, StatusMessage::Error("Unable to read data".into()))
         }
+    }
+
+    pub async fn write_to_store(&self, location: Location) -> StatusMessage {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        StatusMessage::Ok(())
     }
 
     /// Revokes the data from the specified location of type `Location`. Revoked data is not readable and can be removed
