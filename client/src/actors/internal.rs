@@ -107,6 +107,10 @@ pub enum InternalMsg {
         record_id: RecordId,
         hint: RecordHint,
     },
+    Ed25519PublicKey {
+        vault_id: VaultId,
+        record_id: RecordId,
+    },
     SLIP10DeriveAndEd25519PublicKey {
         path: String,
         vault_id: VaultId,
@@ -535,6 +539,35 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::BIP39Recover(
                         StatusMessage::OK,
                     ))),
+                    sender,
+                );
+            }
+            InternalMsg::Ed25519PublicKey {
+                vault_id,
+                record_id,
+            } => {
+                let key = match self.keystore.get_key(vault_id) {
+                    Some(key) => key,
+                    None => todo!("return error message"),
+                };
+                self.keystore.insert_key(vault_id, key.clone());
+
+                let mut raw = self.bucket.read_data(key, record_id);
+                if raw.len() < 32 {
+                    todo!("return error message: insufficient bytes")
+                }
+                raw.truncate(32);
+                let mut bs = [0; 32];
+                bs.copy_from_slice(&raw);
+                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                let pk = sk.public_key();
+
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                client.try_tell(
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                        ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk.to_compressed_bytes())),
+                    )),
                     sender,
                 );
             }

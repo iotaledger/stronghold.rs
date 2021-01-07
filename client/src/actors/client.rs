@@ -57,6 +57,9 @@ pub enum Procedure {
     /// Read a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
     /// passphrase) and store them in the `output` location
     BIP39MnemonicSentence { seed: Location },
+    /// Derive an Ed25519 public key from the corresponding private key stored at the specified
+    /// location
+    Ed25519PublicKey { private_key: Location },
     /// Derive an Ed25519 key using SLIP10 from the specified path and derive its public key
     SLIP10DeriveAndEd25519PublicKey { path: String, seed: Location },
     /// Derive an Ed25519 key using SLIP10 from the specified path and seed and use it to sign the given message
@@ -88,6 +91,8 @@ pub enum ProcResult {
     BIP39Generate(StatusMessage),
     /// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.
     BIP39MnemonicSentence(ResultMessage<String>),
+    /// Return value for `Ed25519PublicKey`. Returns an Ed25519 public key.
+    Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
     /// Return value for `SLIP10DeriveAndEd25519PublicKey`. Returns an Ed25519 public key.
     SLIP10DeriveAndEd25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
     /// Return value for `SLIP10DeriveAndEd25519Sign`. Returns an Ed25519 signature.
@@ -507,6 +512,16 @@ impl Receive<SHRequest> for Client {
                         )
                     }
                     Procedure::BIP39MnemonicSentence { .. } => todo!(),
+                    Procedure::Ed25519PublicKey { private_key } => {
+                        let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
+                        internal.try_tell(
+                            InternalMsg::Ed25519PublicKey {
+                                vault_id,
+                                record_id,
+                            },
+                            sender,
+                        )
+                    }
                     Procedure::SLIP10DeriveAndEd25519PublicKey { path, seed } => {
                         let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
                         internal.try_tell(

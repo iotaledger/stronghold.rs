@@ -3,7 +3,9 @@
 
 use riker::actors::*;
 
-use iota_stronghold::{line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, Stronghold};
+mod fresh;
+
+use iota_stronghold::{line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, Stronghold, StatusMessage, SLIP10DeriveInput};
 
 use bee_signing_ext::{
     binary::{
@@ -242,17 +244,18 @@ fn test_write_read_multi_snapshot() {
         });
     }
 }
+
 #[test]
 fn test_unlock_block() {
     let sys = ActorSystem::new().unwrap();
 
-    let client_path = b"test".to_vec();
+    let client_path = fresh::bytestring();
 
     let blip39_seed = Location::generic("blip39", "seed");
 
     let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
 
-    let essence = test_utils::fresh::bytestring();
+    let essence = fresh::bytestring();
 
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Generate {
         passphrase: None,
@@ -328,4 +331,63 @@ fn test_unlock_block() {
     assert_eq!(pkc.to_compressed_bytes(), pk);
     let sigc = skc.sign(&essence);
     assert_eq!(sigc.to_bytes(), sig0);
+}
+
+#[test]
+fn test_ed25519_public_key_equivalence() {
+    let sh = Stronghold::init_stronghold_system(ActorSystem::new().unwrap(), fresh::bytestring(), vec![]);
+
+    let seed = fresh::location();
+
+    if fresh::coinflip() {
+        match futures::executor::block_on(sh.runtime_exec(Procedure::BIP39Generate {
+            passphrase: fresh::passphrase(),
+            output: seed.clone(),
+            hint: fresh::record_hint(),
+        })) {
+            ProcResult::BIP39Generate(ResultMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
+    } else {
+        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Generate {
+            output: seed.clone(),
+            hint: fresh::record_hint(),
+        })) {
+            ProcResult::SLIP10Generate(ResultMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
+    }
+
+    let (path, chain) = fresh::hd_path();
+
+    let pk0 =
+        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10DeriveAndEd25519PublicKey {
+            path,
+            seed: seed.clone(),
+        })) {
+            ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(pk)) => pk,
+            r => panic!("unexpected result: {:?}", r),
+        };
+
+    let pk1 = {
+        let key = fresh::location();
+        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
+            chain,
+            input: SLIP10DeriveInput::Seed(seed),
+            output: key.clone(),
+            hint: fresh::record_hint(),
+        })) {
+            ProcResult::SLIP10Derive(StatusMessage::Ok(())) => (),
+            r => panic!("unexpected result: {:?}", r),
+        };
+
+        match futures::executor::block_on(sh.runtime_exec(Procedure::Ed25519PublicKey {
+            private_key: key
+        })) {
+            ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) => pk,
+            r => panic!("unexpected result: {:?}", r),
+        }
+    };
+
+    assert_eq!(pk0, pk1);
 }

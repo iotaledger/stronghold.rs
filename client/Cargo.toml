@@ -42,6 +42,7 @@ bee-signing-ext = { git = "https://github.com/wusyong/bee-p.git", branch = "sign
 hex = "0.4.2"
 criterion = "0.3.3"
 clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
+rand = "0.7.3"
 
   [dev-dependencies.stronghold-test-utils]
   path = "../test_utils"
