@@ -57,10 +57,10 @@ pub enum Procedure {
     /// Read a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
     /// passphrase) and store them in the `output` location
     BIP39MnemonicSentence { seed: Location },
-    /// Derive the Ed25519 public key of the key stored at the specified location
-    Ed25519PublicKey { path: String, key: Location },
-    /// Generate the Ed25519 signature of the given message signed by the specified key
-    Ed25519Sign { path: String, key: Location, msg: Vec<u8> },
+    /// Derive an Ed25519 key using SLIP10 from the specified path and derive its public key
+    SLIP10DeriveAndEd25519PublicKey { path: String, seed: Location },
+    /// Derive an Ed25519 key using SLIP10 from the specified path and seed and use it to sign the given message
+    SLIP10DeriveAndEd25519Sign { path: String, seed: Location, msg: Vec<u8> },
     /// Derive a SLIP10 key from a SLIP10/BIP39 seed using path, sign the essence using Ed25519, return the signature
     /// and the corresponding public key
     ///
@@ -86,12 +86,12 @@ pub enum ProcResult {
     BIP39Recover(StatusMessage),
     /// `BIP39Generate` return value.
     BIP39Generate(StatusMessage),
-    /// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.  
+    /// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.
     BIP39MnemonicSentence(ResultMessage<String>),
-    /// Return value for `Ed25519PublicKey`. Returns a Ed25519 public key.
-    Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
-    /// Return value for `Ed25519Sign`. Returns a Ed25519 signature.
-    Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
+    /// Return value for `SLIP10DeriveAndEd25519PublicKey`. Returns an Ed25519 public key.
+    SLIP10DeriveAndEd25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+    /// Return value for `SLIP10DeriveAndEd25519Sign`. Returns an Ed25519 signature.
+    SLIP10DeriveAndEd25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
     /// Return value for `SignUnlockBlock`. Returns a Ed25519 signature and a Ed25519 public key.
     SignUnlockBlock(
         ResultMessage<(
@@ -507,10 +507,10 @@ impl Receive<SHRequest> for Client {
                         )
                     }
                     Procedure::BIP39MnemonicSentence { .. } => todo!(),
-                    Procedure::Ed25519PublicKey { path, key } => {
-                        let (vault_id, record_id) = self.resolve_location(key, ReadWrite::Read);
+                    Procedure::SLIP10DeriveAndEd25519PublicKey { path, seed } => {
+                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
                         internal.try_tell(
-                            InternalMsg::Ed25519PublicKey {
+                            InternalMsg::SLIP10DeriveAndEd25519PublicKey {
                                 path,
                                 vault_id,
                                 record_id,
@@ -518,10 +518,10 @@ impl Receive<SHRequest> for Client {
                             sender,
                         )
                     }
-                    Procedure::Ed25519Sign { path, key, msg } => {
-                        let (vault_id, record_id) = self.resolve_location(key, ReadWrite::Read);
+                    Procedure::SLIP10DeriveAndEd25519Sign { path, seed, msg } => {
+                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
                         internal.try_tell(
-                            InternalMsg::Ed25519Sign {
+                            InternalMsg::SLIP10DeriveAndEd25519Sign {
                                 path,
                                 vault_id,
                                 record_id,

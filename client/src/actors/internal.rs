@@ -107,12 +107,12 @@ pub enum InternalMsg {
         record_id: RecordId,
         hint: RecordHint,
     },
-    Ed25519PublicKey {
+    SLIP10DeriveAndEd25519PublicKey {
         path: String,
         vault_id: VaultId,
         record_id: RecordId,
     },
-    Ed25519Sign {
+    SLIP10DeriveAndEd25519Sign {
         path: String,
         vault_id: VaultId,
         record_id: RecordId,
@@ -538,7 +538,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     sender,
                 );
             }
-            InternalMsg::Ed25519PublicKey {
+            InternalMsg::SLIP10DeriveAndEd25519PublicKey {
                 path,
                 vault_id,
                 record_id,
@@ -566,13 +566,13 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519PublicKey(
-                        ResultMessage::Ok(pk),
-                    ))),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                        ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(pk)),
+                    )),
                     sender,
                 );
             }
-            InternalMsg::Ed25519Sign {
+            InternalMsg::SLIP10DeriveAndEd25519Sign {
                 path,
                 vault_id,
                 record_id,
@@ -601,9 +601,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
-                        ResultMessage::Ok(sig.to_bytes()),
-                    ))),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                        ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig.to_bytes())),
+                    )),
                     sender,
                 );
             }

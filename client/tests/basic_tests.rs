@@ -267,20 +267,20 @@ fn test_unlock_block() {
 
     let mut seed_data = seed_data.expect(line_error!());
 
-    let key0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
+    let key0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519PublicKey {
         path: "m/1'".into(),
-        key: blip39_seed.clone(),
+        seed: blip39_seed.clone(),
     })) {
-        ProcResult::Ed25519PublicKey(ResultMessage::Ok(key)) => key,
+        ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(key)) => key,
         r => panic!("unexpected result: {:?}", r),
     };
 
-    let sig0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
+    let sig0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519Sign {
         path: "m/1'".into(),
-        key: blip39_seed.clone(),
+        seed: blip39_seed.clone(),
         msg: essence.to_vec(),
     })) {
-        ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => sig,
+        ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig)) => sig,
         r => panic!("unexpected result: {:?}", r),
     };
 
@@ -319,7 +319,11 @@ fn test_unlock_block() {
 
     let sc = iota_stronghold::hd::Seed::from_bytes(&seed_data);
     let mkc = sc.to_master_key();
-    let skc = mkc.derive(&iota_stronghold::hd::Chain::from_u32_hardened(vec![1])).unwrap().secret_key().unwrap();
+    let skc = mkc
+        .derive(&iota_stronghold::hd::Chain::from_u32_hardened(vec![1]))
+        .unwrap()
+        .secret_key()
+        .unwrap();
     let pkc = skc.public_key();
     assert_eq!(pkc.to_compressed_bytes(), pk);
     let sigc = skc.sign(essence);
