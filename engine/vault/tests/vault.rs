@@ -4,15 +4,25 @@
 mod utils;
 use utils::provider::Provider;
 
-mod fresh;
+use test_utils::fresh;
 
 use vault::{DBView, Encrypt, Key, Kind, PreparedRead, ReadResult, RecordId, Result, WriteRequest};
+use vault::RecordHint;
 
 use std::{collections::HashMap, iter::empty};
+
+use rand::Rng;
 
 fn write_to_read(wr: &WriteRequest) -> ReadResult {
     ReadResult::new(wr.kind(), wr.id(), wr.data())
 }
+
+fn fresh_record_hint() -> RecordHint {
+    let mut bs = [0; 24];
+    rand::thread_rng().fill(&mut bs);
+    bs.into()
+}
+
 
 #[test]
 fn test_empty() -> Result<()> {
@@ -70,8 +80,8 @@ fn test_write_cache_hit() -> Result<()> {
     let id = RecordId::random::<Provider>()?;
     let mut w = v0.writer(id);
     writes.push(w.truncate()?);
-    let data = fresh::data();
-    let hint = fresh::record_hint();
+    let data = fresh::bytestring();
+    let hint = fresh_record_hint();
     writes.append(&mut w.write(&data, hint)?);
 
     let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
@@ -97,8 +107,8 @@ fn test_write_cache_miss() -> Result<()> {
     let id = RecordId::random::<Provider>()?;
     let mut w = v0.writer(id);
     writes.push(w.truncate()?);
-    let data = fresh::data();
-    let hint = fresh::record_hint();
+    let data = fresh::bytestring();
+    let hint = fresh_record_hint();
     let (bid, blob) = match w.write(&data, hint)?.as_slice() {
         [w0, w1] => {
             assert_eq!(w0.kind(), Kind::Transaction);
@@ -136,9 +146,9 @@ fn test_write_twice() -> Result<()> {
     let id = RecordId::random::<Provider>()?;
     let mut w = v0.writer(id);
     writes.push(w.truncate()?);
-    let data0 = fresh::data();
-    let data1 = fresh::data();
-    let hint = fresh::record_hint();
+    let data0 = fresh::bytestring();
+    let data1 = fresh::bytestring();
+    let hint = fresh_record_hint();
     writes.append(&mut w.write(&data0, hint)?);
     writes.append(&mut w.write(&data1, hint)?);
 
@@ -216,8 +226,8 @@ fn test_rekove_then_write() -> Result<()> {
     let mut w = v0.writer(id);
     writes.push(w.truncate()?);
     writes.push(w.revoke()?);
-    let data = fresh::data();
-    let hint = fresh::record_hint();
+    let data = fresh::bytestring();
+    let hint = fresh_record_hint();
     writes.append(&mut w.write(&data, hint)?);
 
     let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
@@ -243,8 +253,8 @@ fn test_ensure_authenticty_of_blob() -> Result<()> {
     let id = RecordId::random::<Provider>()?;
     let mut w = v0.writer(id);
     writes.push(w.truncate()?);
-    let hint = fresh::record_hint();
-    let bid = match w.write(&fresh::data(), hint)?.as_slice() {
+    let hint = fresh_record_hint();
+    let bid = match w.write(&fresh::bytestring(), hint)?.as_slice() {
         [w0, w1] => {
             assert_eq!(w0.kind(), Kind::Transaction);
             writes.push(w0.clone());
@@ -259,7 +269,7 @@ fn test_ensure_authenticty_of_blob() -> Result<()> {
 
     let r = v1.reader();
     let res = match r.prepare_read(&id)? {
-        PreparedRead::CacheMiss(req) => req.result(fresh::data().encrypt(&k, bid)?.as_ref().to_vec()),
+        PreparedRead::CacheMiss(req) => req.result(fresh::bytestring().encrypt(&k, bid)?.as_ref().to_vec()),
         x => panic!("unexpected value: {:?}", x),
     };
 
@@ -281,9 +291,9 @@ fn test_storage_returns_stale_blob() -> Result<()> {
     let id = RecordId::random::<Provider>()?;
     let mut w = v0.writer(id);
     writes.push(w.truncate()?);
-    let hint = fresh::record_hint();
+    let hint = fresh_record_hint();
 
-    let (bid, blob) = match w.write(&fresh::data(), hint)?.as_slice() {
+    let (bid, blob) = match w.write(&fresh::bytestring(), hint)?.as_slice() {
         [w0, w1] => {
             assert_eq!(w0.kind(), Kind::Transaction);
             assert_eq!(w1.kind(), Kind::Blob);
@@ -292,7 +302,7 @@ fn test_storage_returns_stale_blob() -> Result<()> {
         ws => panic!("{} unexpected writes", ws.len()),
     };
 
-    match w.write(&fresh::data(), hint)?.as_slice() {
+    match w.write(&fresh::bytestring(), hint)?.as_slice() {
         [w0, w1] => {
             assert_eq!(w0.kind(), Kind::Transaction);
             writes.push(w0.clone());

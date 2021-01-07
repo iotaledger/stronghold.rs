@@ -252,7 +252,7 @@ fn test_unlock_block() {
 
     let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
 
-    let essence = b"blahblahblah";
+    let essence = test_utils::fresh::bytestring();
 
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Generate {
         passphrase: None,
@@ -308,14 +308,14 @@ fn test_unlock_block() {
 
     let sk = Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("m/1'").unwrap()).expect(line_error!());
     let pk = sk.generate_public_key().to_bytes();
-    let sig2 = sk.sign(essence);
+    let sig2 = sk.sign(&essence);
 
     assert_eq!(key1.to_compressed_bytes(), pk);
     assert_eq!(sig2.to_bytes(), sig1.to_bytes());
     assert_eq!(sig0, sig1.to_bytes());
     assert_eq!(key0, pk);
 
-    assert!(crypto::ed25519::verify(&key1, &sig1, essence));
+    assert!(crypto::ed25519::verify(&key1, &sig1, &essence));
 
     let sc = iota_stronghold::hd::Seed::from_bytes(&seed_data);
     let mkc = sc.to_master_key();
@@ -326,6 +326,6 @@ fn test_unlock_block() {
         .unwrap();
     let pkc = skc.public_key();
     assert_eq!(pkc.to_compressed_bytes(), pk);
-    let sigc = skc.sign(essence);
+    let sigc = skc.sign(&essence);
     assert_eq!(sigc.to_bytes(), sig0);
 }

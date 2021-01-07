@@ -128,7 +128,7 @@ fn check_header<I: Read>(input: &mut I) -> crate::Result<()> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{corrupt, corrupt_file_at, fresh};
+    use test_utils::{corrupt, corrupt_file_at, fresh};
 
     #[test]
     fn test_write_read() -> crate::Result<()> {

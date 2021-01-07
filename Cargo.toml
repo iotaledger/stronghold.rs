@@ -9,6 +9,7 @@ members = [
   "runtime",
   "client",
   "communication",
+  "test_utils",
 ]
 exclude = [
   "products/commandline",

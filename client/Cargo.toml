@@ -43,6 +43,9 @@ hex = "0.4.2"
 criterion = "0.3.3"
 clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
 
+  [dev-dependencies.stronghold-test-utils]
+  path = "../test_utils"
+
 [[bench]]
 name = "benchmark"
 harness = false
