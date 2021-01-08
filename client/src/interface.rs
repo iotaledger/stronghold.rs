@@ -3,6 +3,7 @@
 
 use riker::actors::*;
 
+use futures::future::RemoteHandle;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use engine::vault::RecordHint;
@@ -464,47 +465,34 @@ impl Stronghold {
         path: Option<PathBuf>,
     ) -> StatusMessage {
         let num_of_actors = self.actors.len();
+        let idx = self.current_target;
+        let client = &self.actors[idx];
+
+        let mut futures = vec![];
+        let mut key: [u8; 32] = [0u8; 32];
+
+        key.copy_from_slice(&keydata);
 
         if num_of_actors != 0 {
-            for (idx, actor) in self.actors.iter().enumerate() {
-                let mut key: [u8; 32] = [0u8; 32];
-
-                key.copy_from_slice(&keydata);
-
-                if idx < num_of_actors - 1 {
-                    let _: SHResults = ask(
-                        &self.system,
-                        actor,
-                        SHRequest::WriteSnapshotAll {
-                            key,
-                            filename: filename.clone(),
-                            path: path.clone(),
-                            is_final: false,
-                        },
-                    )
-                    .await;
-                } else if let SHResults::ReturnWriteSnap(status) = ask(
-                    &self.system,
-                    actor,
-                    SHRequest::WriteSnapshotAll {
-                        key,
-                        filename: filename.clone(),
-                        path: path.clone(),
-                        is_final: true,
-                    },
-                )
-                .await
-                {
-                    return status;
-                } else {
-                    return StatusMessage::Error("Unable to write snapshot without any actors.".into());
-                };
+            for (_, actor) in self.actors.iter().enumerate() {
+                let res: RemoteHandle<SHResults> = ask(&self.system, actor, SHRequest::FillSnapshot);
+                futures.push(res);
             }
         } else {
             return StatusMessage::Error("Unable to write snapshot without any actors.".into());
         }
 
-        StatusMessage::Error("Unable to write snapshot".into())
+        for fut in futures {
+            fut.await;
+        }
+
+        let res: SHResults = ask(&self.system, client, SHRequest::WriteSnapshot { key, filename, path }).await;
+
+        if let SHResults::ReturnWriteSnap(status) = res {
+            status
+        } else {
+            StatusMessage::Error("Unable to write snapshot".into())
+        }
     }
 
     /// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If

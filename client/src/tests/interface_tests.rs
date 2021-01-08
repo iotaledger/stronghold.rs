@@ -18,6 +18,7 @@ fn test_stronghold() {
     let loc1 = Location::counter::<_, usize>("path", Some(1));
     let loc2 = Location::counter::<_, usize>("path", Some(2));
     let lochead = Location::counter::<_, usize>("path", None);
+    let store_loc = Location::generic("some", "path");
 
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
@@ -88,6 +89,12 @@ fn test_stronghold() {
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(vault_path.clone()));
     println!("{:?}", ids);
 
+    futures::executor::block_on(stronghold.write_to_store(store_loc.clone(), b"test".to_vec(), None));
+
+    let (data, _) = futures::executor::block_on(stronghold.read_from_store(store_loc.clone()));
+
+    assert_eq!(std::str::from_utf8(&data), Ok("test"));
+
     futures::executor::block_on(stronghold.garbage_collect(vault_path));
 
     futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), Some("test0".into()), None));
@@ -109,7 +116,7 @@ fn test_stronghold() {
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0.clone()));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
@@ -118,6 +125,10 @@ fn test_stronghold() {
     let (p, _) = futures::executor::block_on(stronghold.read_secret(loc2));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
+
+    let (data, _) = futures::executor::block_on(stronghold.read_from_store(store_loc));
+
+    println!("{:?}", data);
 
     futures::executor::block_on(stronghold.kill_stronghold(client_path, true));
 
@@ -186,6 +197,8 @@ fn run_stronghold_multi_actors() {
     println!("actor 0: {:?}", ids);
 
     futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.to_vec(), Some("megasnap".into()), None));
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
 
     stronghold.switch_actor_target(client_path1.clone());
 

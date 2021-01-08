@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    actors::SMsg,
     actors::{InternalMsg, InternalResults},
     client::{Client, ClientMsg, ReadWrite},
     line_error,
@@ -173,13 +174,12 @@ pub enum SHRequest {
         cid: ClientId,
         former_cid: Option<ClientId>,
     },
-
-    WriteSnapshotAll {
+    WriteSnapshot {
         key: snapshot::Key,
         filename: Option<String>,
         path: Option<PathBuf>,
-        is_final: bool,
     },
+    FillSnapshot,
 
     ClearCache,
 
@@ -198,6 +198,7 @@ pub enum SHResults {
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
     ReturnList(Vec<(usize, RecordHint)>, StatusMessage),
+    ReturnFillSnap(StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
     ReturnClearCache(StatusMessage),
@@ -386,12 +387,7 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::ClearCache, sender);
             }
-            SHRequest::WriteSnapshotAll {
-                key,
-                filename,
-                path,
-                is_final,
-            } => {
+            SHRequest::FillSnapshot => {
                 let client_str = self.get_client_str();
 
                 let internal = ctx
@@ -399,16 +395,17 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
 
                 internal.try_tell(
-                    InternalMsg::WriteSnapshotAll {
-                        key,
-                        path,
-                        filename,
+                    InternalMsg::FillSnapshot {
                         id: self.client_id,
                         data: self.clone(),
-                        is_final,
                     },
                     sender,
                 )
+            }
+            SHRequest::WriteSnapshot { key, filename, path } => {
+                let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
+
+                snapshot.try_tell(SMsg::WriteSnapshot { key, filename, path }, sender);
             }
             SHRequest::WriteToStore {
                 location,

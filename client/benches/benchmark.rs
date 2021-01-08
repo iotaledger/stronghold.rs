@@ -15,7 +15,7 @@ fn init_stronghold() -> Stronghold {
     Stronghold::init_stronghold_system(system, b"path".to_vec(), vec![])
 }
 
-fn init_read(stronghold: Stronghold) -> Stronghold {
+fn init_read_vault(stronghold: Stronghold) -> Stronghold {
     for i in 0..30 {
         block_on(stronghold.write_to_vault(
             Location::generic("test", format!("some_record {}", i)),
@@ -28,7 +28,7 @@ fn init_read(stronghold: Stronghold) -> Stronghold {
     stronghold
 }
 
-fn init_write(stronghold: Stronghold) -> Stronghold {
+fn init_write_vault(stronghold: Stronghold) -> Stronghold {
     for i in 0..5 {
         block_on(stronghold.write_to_vault(
             Location::counter::<_, usize>("test", Some(i)),
@@ -42,7 +42,7 @@ fn init_write(stronghold: Stronghold) -> Stronghold {
 }
 
 fn init_read_snap(stronghold: Stronghold, key_data: Vec<u8>) -> Stronghold {
-    let mut stronghold = init_read(stronghold);
+    let mut stronghold = init_read_vault(stronghold);
 
     block_on(stronghold.write_all_to_snapshot(key_data, Some("bench_read".into()), None));
 
@@ -67,7 +67,7 @@ fn bench_stronghold_write_create(c: &mut Criterion) {
 fn bench_stronghold_write_init(c: &mut Criterion) {
     let stronghold = init_stronghold();
 
-    let stronghold = init_write(stronghold);
+    let stronghold = init_write_vault(stronghold);
 
     c.bench_function("write to stronghold while initializing records", |b| {
         b.iter(|| {
@@ -81,21 +81,9 @@ fn bench_stronghold_write_init(c: &mut Criterion) {
     });
 }
 
-// fn bench_stronghold_read(c: &mut Criterion) {
-//     let stronghold = init_stronghold();
-
-//     let stronghold = init_read(stronghold);
-
-//     c.bench_function("read from stronghold", |b| {
-//         b.iter(|| {
-//             block_on(stronghold.read_secret(Location::generic("test", "some_record 5")));
-//         });
-//     });
-// }
-
 fn bench_write_snapshot(c: &mut Criterion) {
     let stronghold = init_stronghold();
-    let mut stronghold = init_read(stronghold);
+    let mut stronghold = init_read_vault(stronghold);
 
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
@@ -124,11 +112,30 @@ fn bench_read_from_snapshot(c: &mut Criterion) {
     });
 }
 
+fn bench_write_store(c: &mut Criterion) {
+    let stronghold = init_stronghold();
+
+    c.bench_function("Bench write to store", |b| {
+        b.iter(|| block_on(stronghold.write_to_store(Location::generic("test", "some_key"), b"test".to_vec(), None)));
+    });
+}
+
+fn bench_read_store(c: &mut Criterion) {
+    let stronghold = init_stronghold();
+    block_on(stronghold.write_to_store(Location::generic("test", "some_key"), b"test".to_vec(), None));
+
+    c.bench_function("Bench read from store", |b| {
+        b.iter(|| block_on(stronghold.read_from_store(Location::generic("test", "some_key"))));
+    });
+}
+
 criterion_group!(
     benches,
     bench_stronghold_write_create,
     bench_stronghold_write_init,
     bench_write_snapshot,
     bench_read_from_snapshot,
+    bench_write_store,
+    bench_read_store
 );
 criterion_main!(benches);

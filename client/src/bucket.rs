@@ -179,6 +179,10 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         let mut rids: Vec<Vec<RecordId>> = Vec::new();
         let mut keystore_keys: Vec<Key<P>> = Vec::new();
 
+        println!("{:?}", store);
+
+        self.store = store;
+
         cache.clone().into_iter().for_each(|(k, v)| {
             keystore_keys.push(k.clone());
             let view = DBView::load(k.clone(), v.iter()).expect(line_error!());
@@ -190,7 +194,6 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
         self.vaults = vaults;
         self.cache = cache;
-        self.store = store;
 
         (keystore_keys, rids)
     }

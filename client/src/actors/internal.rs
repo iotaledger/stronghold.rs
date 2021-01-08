@@ -76,13 +76,9 @@ pub enum InternalMsg {
     ),
     ClearCache,
     KillInternal,
-    WriteSnapshotAll {
-        key: snapshot::Key,
-        filename: Option<String>,
-        path: Option<PathBuf>,
+    FillSnapshot {
         data: Client,
         id: ClientId,
-        is_final: bool,
     },
 
     SLIP10Generate {
@@ -767,25 +763,14 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     }
                 };
             }
-            InternalMsg::WriteSnapshotAll {
-                key,
-                filename,
-                path,
-                data,
-                id,
-                is_final,
-            } => {
+            InternalMsg::FillSnapshot { data, id } => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
 
                 let (cache, store) = self.bucket.get_data();
 
                 snapshot.try_tell(
-                    SMsg::WriteSnapshotAll {
-                        key,
-                        filename,
-                        path,
+                    SMsg::FillSnapshot {
                         id,
-                        is_final,
                         data: (data, self.keystore.get_data(), cache, store),
                     },
                     sender,
