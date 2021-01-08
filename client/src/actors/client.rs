@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::SMsg,
-    actors::{InternalMsg, InternalResults},
+    actors::{InternalMsg, InternalResults, SMsg},
     client::{Client, ClientMsg, ReadWrite},
     line_error,
     utils::{hd, ClientId, ResultMessage, StatusMessage},
