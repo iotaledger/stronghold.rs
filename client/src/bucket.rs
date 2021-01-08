@@ -179,8 +179,6 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         let mut rids: Vec<Vec<RecordId>> = Vec::new();
         let mut keystore_keys: Vec<Key<P>> = Vec::new();
 
-        println!("{:?}", store);
-
         self.store = store;
 
         cache.clone().into_iter().for_each(|(k, v)| {

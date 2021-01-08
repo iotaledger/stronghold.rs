@@ -198,8 +198,6 @@ fn run_stronghold_multi_actors() {
 
     futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.to_vec(), Some("megasnap".into()), None));
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
     stronghold.switch_actor_target(client_path1.clone());
 
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
@@ -297,7 +295,7 @@ fn test_stronghold_generics() {
     let (p, _) = futures::executor::block_on(stronghold.read_secret(slip10_seed));
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.to_vec(), Some("megasnap".into()), None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.to_vec(), Some("generic".into()), None));
 }
 
 #[test]
