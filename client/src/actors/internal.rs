@@ -758,7 +758,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 snapshot.try_tell(
                     SMsg::FillSnapshot {
                         id,
-                        data: (data, self.keystore.get_data(), cache),
+                        data: Box::from((data, self.keystore.get_data(), cache)),
                     },
                     sender,
                 );

@@ -31,11 +31,11 @@ pub enum SMsg {
         path: Option<PathBuf>,
     },
     FillSnapshot {
-        data: (
+        data: Box<(
             Client,
             HashMap<VaultId, Key<Provider>>,
             HashMap<Key<Provider>, Vec<ReadResult>>,
-        ),
+        )>,
         id: ClientId,
     },
     ReadFromSnapshot {
@@ -68,7 +68,7 @@ impl Receive<SMsg> for Snapshot {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         match msg {
             SMsg::FillSnapshot { data, id } => {
-                self.state.add_data(id, data);
+                self.state.add_data(id, *data);
 
                 sender
                     .as_ref()

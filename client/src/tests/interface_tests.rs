@@ -116,7 +116,7 @@ fn test_stronghold() {
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
