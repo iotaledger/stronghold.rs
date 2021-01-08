@@ -584,12 +584,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, key.clone());
 
-                let mut raw = self.bucket.read_data(key, record_id);
-                if raw.len() < 32 {
-                    todo!("return error message: insufficient bytes")
-                }
+                let raw = self.bucket.read_data(key, record_id);
                 // NB: bee_signing_ext only accepts 256 bit seeds
-                raw.truncate(32);
+                if raw.len() != 32 {
+                    todo!("return error message: incorrect amount of seed bytes")
+                }
                 let seed = Ed25519Seed::from_bytes(&raw).expect(line_error!());
 
                 let bip32path = BIP32Path::from_str(&path).expect(line_error!());
@@ -618,11 +617,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, seed_key.clone());
 
-                let mut raw = self.bucket.read_data(seed_key, record_id);
-                if raw.len() <= 32 {
+                let raw = self.bucket.read_data(seed_key, record_id);
+                // NB: bee_signing_ext only accepts 256 bit seeds
+                if raw.len() != 32 {
                     todo!("return error message: insufficient bytes")
                 }
-                raw.truncate(32);
                 let seed = Ed25519Seed::from_bytes(&raw).expect(line_error!());
 
                 let bip32path = BIP32Path::from_str(&path).expect(line_error!());

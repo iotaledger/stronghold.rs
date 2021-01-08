@@ -401,7 +401,7 @@ fn test_crypto() {
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
         output: slip10_seed.clone(),
         hint: RecordHint::new(b"test_seed").expect(line_error!()),
-        size_bytes: 64,
+        size_bytes: 32,
     })) {
         ProcResult::SLIP10Generate(ResultMessage::OK) => (),
         r => panic!("unexpected result: {:?}", r),
@@ -421,7 +421,7 @@ fn test_crypto() {
 
     let pk = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519PublicKey {
         path: "".into(),
-        seed: slip10_key.clone(),
+        seed: slip10_seed.clone(),
     })) {
         ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(pk)) => {
             crypto::ed25519::PublicKey::from_compressed_bytes(pk).expect(line_error!())
@@ -432,7 +432,7 @@ fn test_crypto() {
     let msg = b"foobar";
     let sig = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519Sign {
         path: "".into(),
-        seed: slip10_key,
+        seed: slip10_seed.clone(),
         msg: msg.to_vec(),
     })) {
         ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig)) => crypto::ed25519::Signature::from_bytes(sig),

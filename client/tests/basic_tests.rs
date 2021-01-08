@@ -251,28 +251,28 @@ fn test_unlock_block() {
 
     let client_path = fresh::bytestring();
 
-    let blip39_seed = Location::generic("blip39", "seed");
+    let seed = Location::generic("slip10", "seed");
 
     let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
 
     let essence = fresh::bytestring();
 
-    match futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Generate {
-        passphrase: None,
-        output: blip39_seed.clone(),
-        hint: RecordHint::new(b"test_seed").expect(line_error!()),
+    match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
+        output: seed.clone(),
+        hint: fresh::record_hint(),
+        size_bytes: 32,
     })) {
-        ProcResult::BIP39Generate(ResultMessage::OK) => (),
+        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
         r => panic!("unexpected result: {:?}", r),
     }
 
-    let (seed_data, _) = futures::executor::block_on(stronghold.read_data(blip39_seed.clone()));
+    let (seed_data, _) = futures::executor::block_on(stronghold.read_data(seed.clone()));
 
     let mut seed_data = seed_data.expect(line_error!());
 
     let key0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519PublicKey {
         path: "m/1'".into(),
-        seed: blip39_seed.clone(),
+        seed: seed.clone(),
     })) {
         ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(key)) => key,
         r => panic!("unexpected result: {:?}", r),
@@ -280,7 +280,7 @@ fn test_unlock_block() {
 
     let sig0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519Sign {
         path: "m/1'".into(),
-        seed: blip39_seed.clone(),
+        seed: seed.clone(),
         msg: essence.to_vec(),
     })) {
         ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig)) => sig,
@@ -288,7 +288,7 @@ fn test_unlock_block() {
     };
 
     let (sig1, key1) = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
-        seed: blip39_seed,
+        seed: seed,
         path: "m/1'".into(),
         essence: essence.to_vec(),
     })) {
@@ -327,6 +327,7 @@ fn test_unlock_block() {
         .unwrap()
         .secret_key()
         .unwrap();
+
     let pkc = skc.public_key();
     assert_eq!(pkc.to_compressed_bytes(), pk);
     let sigc = skc.sign(&essence);
