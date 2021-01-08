@@ -26,5 +26,12 @@ pub fn passphrase() -> Option<String> {
 }
 
 pub fn hd_path() -> (String, hd::Chain) {
-    ("m".to_string(), hd::Chain::empty())
+    let mut s = "m".to_string();
+    let mut is = vec![];
+    while coinflip() {
+        let i = rand::random::<u32>() & 0x7fffff;
+        s.push_str(&format!("/{}'", i.to_string()));
+        is.push(i);
+    }
+    (s, hd::Chain::from_u32_hardened(is))
 }
