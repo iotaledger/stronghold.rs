@@ -339,23 +339,13 @@ fn test_ed25519_public_key_equivalence() {
 
     let seed = fresh::location();
 
-    if fresh::coinflip() {
-        match futures::executor::block_on(sh.runtime_exec(Procedure::BIP39Generate {
-            passphrase: fresh::passphrase(),
-            output: seed.clone(),
-            hint: fresh::record_hint(),
-        })) {
-            ProcResult::BIP39Generate(ResultMessage::OK) => (),
-            r => panic!("unexpected result: {:?}", r),
-        }
-    } else {
-        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Generate {
-            output: seed.clone(),
-            hint: fresh::record_hint(),
-        })) {
-            ProcResult::SLIP10Generate(ResultMessage::OK) => (),
-            r => panic!("unexpected result: {:?}", r),
-        }
+    match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Generate {
+        output: seed.clone(),
+        hint: fresh::record_hint(),
+        size_bytes: 32,
+    })) {
+        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
+        r => panic!("unexpected result: {:?}", r),
     }
 
     let (path, chain) = fresh::hd_path();

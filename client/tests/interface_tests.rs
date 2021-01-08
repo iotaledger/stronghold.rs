@@ -401,6 +401,7 @@ fn test_crypto() {
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
         output: slip10_seed.clone(),
         hint: RecordHint::new(b"test_seed").expect(line_error!()),
+        size_bytes: 64,
     })) {
         ProcResult::SLIP10Generate(ResultMessage::OK) => (),
         r => panic!("unexpected result: {:?}", r),

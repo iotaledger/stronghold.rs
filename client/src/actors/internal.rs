@@ -77,6 +77,7 @@ pub enum InternalMsg {
         vault_id: VaultId,
         record_id: RecordId,
         hint: RecordHint,
+        size_bytes: usize,
     },
     SLIP10DeriveFromSeed {
         chain: hd::Chain,
@@ -353,6 +354,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 vault_id,
                 record_id,
                 hint,
+                size_bytes,
             } => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
@@ -369,7 +371,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.bucket.create_and_init_vault(key.clone(), record_id);
                 }
 
-                let mut seed = [0u8; 64];
+                let mut seed = vec![0u8; size_bytes];
                 crypto::rand::fill(&mut seed).expect(line_error!());
 
                 self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
@@ -586,10 +588,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 if raw.len() < 32 {
                     todo!("return error message: insufficient bytes")
                 }
+                // NB: bee_signing_ext only accepts 256 bit seeds
                 raw.truncate(32);
-                let mut bs = [0; 32];
-                bs.copy_from_slice(&raw);
-                let seed = Ed25519Seed::from_bytes(&bs).expect(line_error!());
+                let seed = Ed25519Seed::from_bytes(&raw).expect(line_error!());
 
                 let bip32path = BIP32Path::from_str(&path).expect(line_error!());
 
@@ -611,20 +612,19 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 record_id,
                 msg,
             } => {
-                let key = match self.keystore.get_key(vault_id) {
-                    Some(key) => key,
+                let seed_key = match self.keystore.get_key(vault_id) {
+                    Some(seed_key) => seed_key,
                     None => todo!("return error message"),
                 };
-                self.keystore.insert_key(vault_id, key.clone());
+                self.keystore.insert_key(vault_id, seed_key.clone());
 
-                let mut raw = self.bucket.read_data(key, record_id);
-                if raw.len() < 32 {
+                let mut raw = self.bucket.read_data(seed_key, record_id);
+                if raw.len() <= 32 {
                     todo!("return error message: insufficient bytes")
                 }
                 raw.truncate(32);
-                let mut bs = [0; 32];
-                bs.copy_from_slice(&raw);
-                let seed = Ed25519Seed::from_bytes(&bs).expect(line_error!());
+                let seed = Ed25519Seed::from_bytes(&raw).expect(line_error!());
+
                 let bip32path = BIP32Path::from_str(&path).expect(line_error!());
 
                 let sk = Ed25519PrivateKey::generate_from_seed(&seed, &bip32path).expect(line_error!());
