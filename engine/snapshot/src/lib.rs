@@ -25,9 +25,6 @@ mod compression;
 pub mod files;
 pub mod kdf;
 
-#[cfg(test)]
-mod test_utils;
-
 mod logic;
 pub use compression::{compress, decompress};
 pub use logic::*;

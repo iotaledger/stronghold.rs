@@ -18,9 +18,18 @@ features = [ "random", "chacha", "hmac", "sha" ]
 [dev-dependencies]
 tempfile = "3.1.0"
 rand = "0.7.3"
+
 proptest = "0.10.1"
 criterion = "0.3.3"
+
+[dev-dependencies.stronghold-test-utils]
+path = "../../test_utils"
+version = "0.1"
 
 [[bench]]
 name = "benchmark"
 harness = false
+
+
+
+

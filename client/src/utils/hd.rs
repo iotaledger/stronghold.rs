@@ -17,6 +17,15 @@ pub enum Error {
     CryptoError(crypto::Error),
 }
 
+/// A seed is an arbitrary bytestring used to create the root of the tree.
+///
+/// Several standards generate and/or restricts the size of the seed:
+/// BIP39: 512 bit seeds
+/// BIP32: between 128 and 512 bits; 256 bits is advised
+/// SLIP10: follows BIP32
+///
+/// But since the seed entropy is always passed through HMAC-SHA512 any bytesequence is acceptable,
+/// therefore formally the size requirement is context sensitive.
 pub struct Seed(Vec<u8>);
 
 impl Seed {

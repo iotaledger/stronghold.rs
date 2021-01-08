@@ -42,6 +42,11 @@ features = [ "random", "ed25519", "sha", "hmac", "bip39-en", "blake2b" ]
 hex = "0.4.2"
 criterion = "0.3.3"
 clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
+rand = "0.7.3"
+
+  [dev-dependencies.stronghold-test-utils]
+  path = "../test_utils"
+  version = "0.1"
 
 [[bench]]
 name = "benchmark"
