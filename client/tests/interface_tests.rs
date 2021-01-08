@@ -410,7 +410,7 @@ fn test_crypto() {
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
         chain: hd::Chain::from_u32_hardened(vec![]),
         input: SLIP10DeriveInput::Seed(slip10_seed.clone()),
-        output: slip10_key.clone(),
+        output: slip10_key,
         hint: RecordHint::new(b"test").expect(line_error!()),
     })) {
         ProcResult::SLIP10Derive(ResultMessage::Ok(key)) => {

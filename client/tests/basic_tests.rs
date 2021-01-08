@@ -3,6 +3,7 @@
 
 use riker::actors::*;
 
+#[allow(dead_code)]
 mod fresh;
 
 use iota_stronghold::{
@@ -291,7 +292,7 @@ fn test_unlock_block() {
     };
 
     let (sig1, key1) = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
-        seed: seed,
+        seed,
         path: "m/1'".into(),
         essence: essence.to_vec(),
     })) {
