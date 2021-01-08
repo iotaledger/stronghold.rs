@@ -60,6 +60,11 @@ pub enum Procedure {
     /// Derive an Ed25519 public key from the corresponding private key stored at the specified
     /// location
     Ed25519PublicKey { private_key: Location },
+    /// Use the specified Ed25519 compatible key to sign the given message
+    ///
+    /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
+    /// in particular SLIP10 keys are compatible.
+    Ed25519Sign { private_key: Location, msg: Vec<u8> },
     /// Derive an Ed25519 key using SLIP10 from the specified path and derive its public key
     SLIP10DeriveAndEd25519PublicKey { path: String, seed: Location },
     /// Derive an Ed25519 key using SLIP10 from the specified path and seed and use it to sign the given message
@@ -95,6 +100,8 @@ pub enum ProcResult {
     Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
     /// Return value for `SLIP10DeriveAndEd25519PublicKey`. Returns an Ed25519 public key.
     SLIP10DeriveAndEd25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+    /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
+    Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
     /// Return value for `SLIP10DeriveAndEd25519Sign`. Returns an Ed25519 signature.
     SLIP10DeriveAndEd25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
     /// Return value for `SignUnlockBlock`. Returns a Ed25519 signature and a Ed25519 public key.
@@ -530,6 +537,17 @@ impl Receive<SHRequest> for Client {
                                 path,
                                 vault_id,
                                 record_id,
+                            },
+                            sender,
+                        )
+                    }
+                    Procedure::Ed25519Sign { private_key, msg} => {
+                        let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
+                        internal.try_tell(
+                            InternalMsg::Ed25519Sign {
+                                vault_id,
+                                record_id,
+                                msg,
                             },
                             sender,
                         )

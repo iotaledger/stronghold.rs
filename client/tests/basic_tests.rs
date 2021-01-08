@@ -382,3 +382,55 @@ fn test_ed25519_public_key_equivalence() {
 
     assert_eq!(pk0, pk1);
 }
+
+#[test]
+fn test_ed25519_sign_equivalence() {
+    let sh = Stronghold::init_stronghold_system(ActorSystem::new().unwrap(), fresh::bytestring(), vec![]);
+
+    let seed = fresh::location();
+
+    match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Generate {
+        output: seed.clone(),
+        hint: fresh::record_hint(),
+        size_bytes: 32,
+    })) {
+        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
+        r => panic!("unexpected result: {:?}", r),
+    }
+
+    let (path, chain) = fresh::hd_path();
+    let msg = fresh::bytestring();
+
+    let sig0 =
+        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10DeriveAndEd25519Sign {
+            path,
+            seed: seed.clone(),
+            msg: msg.clone(),
+        })) {
+            ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig)) => sig,
+            r => panic!("unexpected result: {:?}", r),
+        };
+
+    let sig1 = {
+        let key = fresh::location();
+        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
+            chain,
+            input: SLIP10DeriveInput::Seed(seed),
+            output: key.clone(),
+            hint: fresh::record_hint(),
+        })) {
+            ProcResult::SLIP10Derive(StatusMessage::Ok(())) => (),
+            r => panic!("unexpected result: {:?}", r),
+        };
+
+        match futures::executor::block_on(sh.runtime_exec(Procedure::Ed25519Sign {
+            private_key: key,
+            msg,
+        })) {
+            ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => sig,
+            r => panic!("unexpected result: {:?}", r),
+        }
+    };
+
+    assert_eq!(sig0, sig1);
+}
