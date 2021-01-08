@@ -401,6 +401,7 @@ fn test_crypto() {
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
         output: slip10_seed.clone(),
         hint: RecordHint::new(b"test_seed").expect(line_error!()),
+        size_bytes: 32,
     })) {
         ProcResult::SLIP10Generate(ResultMessage::OK) => (),
         r => panic!("unexpected result: {:?}", r),
@@ -409,7 +410,7 @@ fn test_crypto() {
     match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
         chain: hd::Chain::from_u32_hardened(vec![]),
         input: SLIP10DeriveInput::Seed(slip10_seed.clone()),
-        output: slip10_key.clone(),
+        output: slip10_key,
         hint: RecordHint::new(b"test").expect(line_error!()),
     })) {
         ProcResult::SLIP10Derive(ResultMessage::Ok(key)) => {
@@ -418,23 +419,23 @@ fn test_crypto() {
         r => panic!("unexpected result: {:?}", r),
     }
 
-    let pk = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519PublicKey {
+    let pk = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519PublicKey {
         path: "".into(),
-        key: slip10_key.clone(),
+        seed: slip10_seed.clone(),
     })) {
-        ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) => {
+        ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(pk)) => {
             crypto::ed25519::PublicKey::from_compressed_bytes(pk).expect(line_error!())
         }
         r => panic!("unexpected result: {:?}", r),
     };
 
     let msg = b"foobar";
-    let sig = match futures::executor::block_on(stronghold.runtime_exec(Procedure::Ed25519Sign {
+    let sig = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519Sign {
         path: "".into(),
-        key: slip10_key,
+        seed: slip10_seed.clone(),
         msg: msg.to_vec(),
     })) {
-        ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => crypto::ed25519::Signature::from_bytes(sig),
+        ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig)) => crypto::ed25519::Signature::from_bytes(sig),
         r => panic!("unexpected result: {:?}", r),
     };
 
