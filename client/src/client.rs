@@ -8,13 +8,15 @@ use crate::{
     ClientId, Location, VaultId,
 };
 
-use engine::vault::RecordId;
+use engine::{store::Cache, vault::RecordId};
 
 use riker::actors::*;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use serde::{Deserialize, Serialize};
+
+type Store = Cache<Vec<u8>, Vec<u8>>;
 
 pub enum ReadWrite {
     Read,
@@ -31,6 +33,7 @@ pub struct Client {
     // Contains the Record Ids for the most recent Record in each vault.
     heads: Vec<RecordId>,
     counters: Vec<usize>,
+    store: Store,
 }
 
 impl Client {
@@ -40,13 +43,42 @@ impl Client {
         let heads = vec![];
 
         let counters = vec![0];
+        let store = Cache::new();
 
         Self {
             client_id,
             vaults,
             heads,
             counters,
+            store,
         }
+    }
+
+    /// Write unencrypted data to the store.  Returns `None` if the key didn't already exist and `Some(Vec<u8>)` if the
+    /// key was updated.
+    pub fn write_to_store(&mut self, key: Vec<u8>, data: Vec<u8>, lifetime: Option<Duration>) -> Option<Vec<u8>> {
+        self.store.insert(key, data, lifetime)
+    }
+
+    /// Attempts to read the data from the store.  Returns `Some(Vec<u8>)` if the key exists and `None` if it doesn't.
+    pub fn read_from_store(&mut self, key: Vec<u8>) -> Option<Vec<u8>> {
+        let res = self.store.get(&key);
+
+        if let Some(vec) = res {
+            Some(vec.to_vec())
+        } else {
+            None
+        }
+    }
+
+    /// Deletes an item from the store by the given key.
+    pub fn store_delete_item(&mut self, key: Vec<u8>) {
+        self.store.remove(&key);
+    }
+
+    /// Checks to see if the key exists in the store.
+    pub fn store_key_exists(&mut self, key: Vec<u8>) -> bool {
+        self.store.contains_key(&key)
     }
 
     pub fn set_client_id(&mut self, client_id: ClientId) {

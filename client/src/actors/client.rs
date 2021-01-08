@@ -412,33 +412,40 @@ impl Receive<SHRequest> for Client {
                 payload,
                 lifetime,
             } => {
-                let client_str = self.get_client_str();
-
-                let internal = ctx
-                    .select(&format!("/user/internal-{}/", client_str))
-                    .expect(line_error!());
-
                 let (vid, _) = self.resolve_location(location, ReadWrite::Write);
 
-                internal.try_tell(
-                    InternalMsg::WriteToStore {
-                        key: vid,
-                        payload,
-                        lifetime,
-                    },
-                    sender,
-                )
+                self.write_to_store(vid.into(), payload, lifetime);
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnWriteStore(StatusMessage::Ok(())), None)
+                    .expect(line_error!());
             }
             SHRequest::ReadFromStore { location } => {
-                let client_str = self.get_client_str();
-
                 let (vid, _) = self.resolve_location(location, ReadWrite::Read);
 
-                let internal = ctx
-                    .select(&format!("/user/internal-{}/", client_str))
-                    .expect(line_error!());
+                let payload = self.read_from_store(vid.into());
 
-                internal.try_tell(InternalMsg::ReadFromStore { key: vid }, sender)
+                if let Some(payload) = payload {
+                    sender
+                        .as_ref()
+                        .expect(line_error!())
+                        .try_tell(SHResults::ReturnReadStore(payload, StatusMessage::Ok(())), None)
+                        .expect(line_error!());
+                } else {
+                    sender
+                        .as_ref()
+                        .expect(line_error!())
+                        .try_tell(
+                            SHResults::ReturnReadStore(
+                                vec![],
+                                StatusMessage::Error("Unable to read from store".into()),
+                            ),
+                            None,
+                        )
+                        .expect(line_error!());
+                }
             }
             SHRequest::ControlRequest(procedure) => {
                 let client_str = self.get_client_str();
@@ -742,20 +749,6 @@ impl Receive<InternalResults> for Client {
                     .as_ref()
                     .expect(line_error!())
                     .try_tell(SHResults::ReturnClearCache(status), None)
-                    .expect(line_error!());
-            }
-            InternalResults::ReturnWriteStore(status) => {
-                sender
-                    .as_ref()
-                    .expect(line_error!())
-                    .try_tell(SHResults::ReturnWriteStore(status), None)
-                    .expect(line_error!());
-            }
-            InternalResults::ReturnReadStore(payload, status) => {
-                sender
-                    .as_ref()
-                    .expect(line_error!())
-                    .try_tell(SHResults::ReturnReadStore(payload, status), None)
                     .expect(line_error!());
             }
         }

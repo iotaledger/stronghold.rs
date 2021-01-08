@@ -128,7 +128,7 @@ fn test_stronghold() {
 
     let (data, _) = futures::executor::block_on(stronghold.read_from_store(store_loc));
 
-    println!("{:?}", data);
+    assert_eq!(std::str::from_utf8(&data), Ok("test"));
 
     futures::executor::block_on(stronghold.kill_stronghold(client_path, true));
 

@@ -5,13 +5,11 @@
 
 use riker::actors::*;
 
-use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf, time::Duration};
+use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
 use engine::snapshot;
-
-use engine::store::Cache;
 
 use bee_signing_ext::{
     binary::{
@@ -49,14 +47,6 @@ pub enum InternalMsg {
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
     ListIds(Vec<u8>, VaultId),
-    WriteToStore {
-        key: VaultId,
-        payload: Vec<u8>,
-        lifetime: Option<Duration>,
-    },
-    ReadFromStore {
-        key: VaultId,
-    },
 
     ReadSnapshot(
         snapshot::Key,
@@ -70,7 +60,6 @@ pub enum InternalMsg {
             crate::client::Client,
             HashMap<VaultId, Key<Provider>>,
             HashMap<Key<Provider>, Vec<ReadResult>>,
-            Cache<Vec<u8>, Vec<u8>>,
         )>,
         StatusMessage,
     ),
@@ -147,8 +136,6 @@ pub enum InternalMsg {
 /// Messages used internally by the client.
 #[derive(Clone, Debug)]
 pub enum InternalResults {
-    ReturnWriteStore(StatusMessage),
-    ReturnReadStore(Vec<u8>, StatusMessage),
     ReturnCreateVault(StatusMessage),
     ReturnWriteVault(StatusMessage),
     ReturnInitRecord(StatusMessage),
@@ -247,36 +234,36 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::WriteToStore { key, payload, lifetime } => {
-                let cstr: String = self.client_id.into();
-                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+            // InternalMsg::WriteToStore { key, payload, lifetime } => {
+            //     let cstr: String = self.client_id.into();
+            //     let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
-                self.bucket.write_to_store(key.into(), payload, lifetime);
+            //     self.bucket.write_to_store(key.into(), payload, lifetime);
 
-                client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::OK)),
-                    sender,
-                );
-            }
-            InternalMsg::ReadFromStore { key } => {
-                let cstr: String = self.client_id.into();
-                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+            //     client.try_tell(
+            //         ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::OK)),
+            //         sender,
+            //     );
+            // }
+            // InternalMsg::ReadFromStore { key } => {
+            //     let cstr: String = self.client_id.into();
+            //     let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
-                if let Some(payload) = self.bucket.read_from_store(key.into()) {
-                    client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnReadStore(payload, StatusMessage::OK)),
-                        sender,
-                    );
-                } else {
-                    client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnReadStore(
-                            vec![],
-                            StatusMessage::Error("Unable to find that data".into()),
-                        )),
-                        sender,
-                    );
-                }
-            }
+            //     if let Some(payload) = self.bucket.read_from_store(key.into()) {
+            //         client.try_tell(
+            //             ClientMsg::InternalResults(InternalResults::ReturnReadStore(payload, StatusMessage::OK)),
+            //             sender,
+            //         );
+            //     } else {
+            //         client.try_tell(
+            //             ClientMsg::InternalResults(InternalResults::ReturnReadStore(
+            //                 vec![],
+            //                 StatusMessage::Error("Unable to find that data".into()),
+            //             )),
+            //             sender,
+            //         );
+            //     }
+            // }
             InternalMsg::InitRecord(vid, rid) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
@@ -360,10 +347,10 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
-                let (client_data, keystore, state, store) = *box_data;
+                let (client_data, keystore, state) = *box_data;
 
                 self.keystore.rebuild_keystore(keystore);
-                self.bucket.repopulate_data(state, store);
+                self.bucket.repopulate_data(state);
 
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::RebuildCache(client_data, status)),
@@ -766,12 +753,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
             InternalMsg::FillSnapshot { data, id } => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
 
-                let (cache, store) = self.bucket.get_data();
+                let cache = self.bucket.get_data();
 
                 snapshot.try_tell(
                     SMsg::FillSnapshot {
                         id,
-                        data: (data, self.keystore.get_data(), cache, store),
+                        data: (data, self.keystore.get_data(), cache),
                     },
                     sender,
                 );

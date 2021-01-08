@@ -6,8 +6,6 @@ use engine::{
     vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest},
 };
 
-use std::time::Duration;
-
 use std::collections::HashMap;
 
 use crate::line_error;
@@ -20,7 +18,6 @@ type Store = Cache<Vec<u8>, Vec<u8>>;
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
     vaults: HashMap<Key<P>, Option<DBView<P>>>,
     cache: HashMap<Key<P>, Vec<ReadResult>>,
-    store: Store,
 }
 
 impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 'static> Bucket<P> {
@@ -28,9 +25,8 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     pub fn new() -> Self {
         let cache = HashMap::new();
         let vaults = HashMap::new();
-        let store = Cache::new();
 
-        Self { cache, vaults, store }
+        Self { cache, vaults }
     }
 
     #[allow(dead_code)]
@@ -170,16 +166,10 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
     /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.  Returns a `Vec<Key<P>,
     /// Vec<Vec<RecordId>>`.
-    pub fn repopulate_data(
-        &mut self,
-        cache: HashMap<Key<P>, Vec<ReadResult>>,
-        store: Store,
-    ) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
+    pub fn repopulate_data(&mut self, cache: HashMap<Key<P>, Vec<ReadResult>>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
         let mut vaults = HashMap::new();
         let mut rids: Vec<Vec<RecordId>> = Vec::new();
         let mut keystore_keys: Vec<Key<P>> = Vec::new();
-
-        self.store = store;
 
         cache.clone().into_iter().for_each(|(k, v)| {
             keystore_keys.push(k.clone());
@@ -196,47 +186,19 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         (keystore_keys, rids)
     }
 
-    pub fn get_data(&mut self) -> (HashMap<Key<P>, Vec<ReadResult>>, Store) {
+    pub fn get_data(&mut self) -> HashMap<Key<P>, Vec<ReadResult>> {
         let mut cache: HashMap<Key<P>, Vec<ReadResult>> = HashMap::new();
 
         self.cache.iter().for_each(|(k, v)| {
             cache.insert(k.clone(), v.clone());
         });
 
-        (cache, self.store.clone())
-    }
-
-    /// Write unencrypted data to the store.  Returns `None` if the key didn't already exist and `Some(Vec<u8>)` if the
-    /// key was updated.
-    pub fn write_to_store(&mut self, key: Vec<u8>, data: Vec<u8>, lifetime: Option<Duration>) -> Option<Vec<u8>> {
-        self.store.insert(key, data, lifetime)
-    }
-
-    /// Attempts to read the data from the store.  Returns `Some(Vec<u8>)` if the key exists and `None` if it doesn't.
-    pub fn read_from_store(&mut self, key: Vec<u8>) -> Option<Vec<u8>> {
-        let res = self.store.get(&key);
-
-        if let Some(vec) = res {
-            Some(vec.to_vec())
-        } else {
-            None
-        }
-    }
-
-    /// Deletes an item from the store by the given key.
-    pub fn store_delete_item(&mut self, key: Vec<u8>) {
-        self.store.remove(&key);
-    }
-
-    /// Checks to see if the key exists in the store.
-    pub fn store_key_exists(&mut self, key: Vec<u8>) -> bool {
-        self.store.contains_key(&key)
+        cache
     }
 
     pub fn clear_cache(&mut self) {
         self.vaults.clear();
         self.cache.clear();
-        self.store.clear();
     }
 
     /// Exposes the `DBView` of the current vault and the cache layer to allow transactions to occur.

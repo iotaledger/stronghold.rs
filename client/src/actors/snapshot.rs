@@ -11,8 +11,6 @@ use engine::snapshot;
 
 use engine::vault::{Key, ReadResult};
 
-use engine::store::Cache;
-
 use crate::{
     actors::{InternalMsg, SHResults},
     client::Client,
@@ -37,7 +35,6 @@ pub enum SMsg {
             Client,
             HashMap<VaultId, Key<Provider>>,
             HashMap<Key<Provider>, Vec<ReadResult>>,
-            Cache<Vec<u8>, Vec<u8>>,
         ),
         id: ClientId,
     },
