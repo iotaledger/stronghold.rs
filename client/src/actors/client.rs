@@ -134,6 +134,7 @@ pub enum SHRequest {
     ReadFromStore {
         location: Location,
     },
+    DeleteFromStore(Location),
 
     // Creates a new Vault.
     CreateNewVault(Location),
@@ -190,6 +191,7 @@ pub enum SHRequest {
 pub enum SHResults {
     ReturnWriteStore(StatusMessage),
     ReturnReadStore(Vec<u8>, StatusMessage),
+    ReturnDeleteStore(StatusMessage),
     ReturnCreateVault(StatusMessage),
     ReturnWriteVault(StatusMessage),
     ReturnInitRecord(StatusMessage),
@@ -405,6 +407,17 @@ impl Receive<SHRequest> for Client {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
 
                 snapshot.try_tell(SMsg::WriteSnapshot { key, filename, path }, sender);
+            }
+            SHRequest::DeleteFromStore(loc) => {
+                let (vid, _) = self.resolve_location(loc, ReadWrite::Read);
+
+                self.store_delete_item(vid.into());
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnDeleteStore(StatusMessage::Ok(())), None)
+                    .expect(line_error!());
             }
             SHRequest::WriteToStore {
                 location,

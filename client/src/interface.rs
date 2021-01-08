@@ -280,6 +280,20 @@ impl Stronghold {
         }
     }
 
+    pub async fn delete_from_store(&self, location: Location) -> StatusMessage {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        let res: SHResults = ask(&self.system, client, SHRequest::DeleteFromStore(location)).await;
+
+        if let SHResults::ReturnDeleteStore(status) = res {
+            status
+        } else {
+            StatusMessage::Error("Failed to delete from the store".into())
+        }
+    }
+
     /// Revokes the data from the specified location of type `Location`. Revoked data is not readable and can be removed
     /// from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call with
     /// automatically cleanup the revoke. Otherwise, the data is just marked as revoked.

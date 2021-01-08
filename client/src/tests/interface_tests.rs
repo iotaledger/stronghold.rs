@@ -126,9 +126,15 @@ fn test_stronghold() {
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
 
-    let (data, _) = futures::executor::block_on(stronghold.read_from_store(store_loc));
+    let (data, _) = futures::executor::block_on(stronghold.read_from_store(store_loc.clone()));
 
     assert_eq!(std::str::from_utf8(&data), Ok("test"));
+
+    futures::executor::block_on(stronghold.delete_from_store(store_loc.clone()));
+
+    let (data, _) = futures::executor::block_on(stronghold.read_from_store(store_loc));
+
+    assert_eq!(std::str::from_utf8(&data), Ok(""));
 
     futures::executor::block_on(stronghold.kill_stronghold(client_path, true));
 
