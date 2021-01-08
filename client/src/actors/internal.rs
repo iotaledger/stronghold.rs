@@ -549,10 +549,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     sender,
                 );
             }
-            InternalMsg::Ed25519PublicKey {
-                vault_id,
-                record_id,
-            } => {
+            InternalMsg::Ed25519PublicKey { vault_id, record_id } => {
                 let key = match self.keystore.get_key(vault_id) {
                     Some(key) => key,
                     None => todo!("return error message"),
@@ -572,9 +569,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                        ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk.to_compressed_bytes())),
-                    )),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519PublicKey(
+                        ResultMessage::Ok(pk.to_compressed_bytes()),
+                    ))),
                     sender,
                 );
             }
@@ -636,9 +633,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                        ProcResult::Ed25519Sign(ResultMessage::Ok(sig.to_bytes())),
-                    )),
+                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
+                        ResultMessage::Ok(sig.to_bytes()),
+                    ))),
                     sender,
                 );
             }

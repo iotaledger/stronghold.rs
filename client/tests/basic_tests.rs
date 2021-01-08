@@ -5,7 +5,10 @@ use riker::actors::*;
 
 mod fresh;
 
-use iota_stronghold::{line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, Stronghold, StatusMessage, SLIP10DeriveInput};
+use iota_stronghold::{
+    line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, SLIP10DeriveInput, StatusMessage,
+    Stronghold,
+};
 
 use bee_signing_ext::{
     binary::{
@@ -351,14 +354,13 @@ fn test_ed25519_public_key_equivalence() {
 
     let (path, chain) = fresh::hd_path();
 
-    let pk0 =
-        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10DeriveAndEd25519PublicKey {
-            path,
-            seed: seed.clone(),
-        })) {
-            ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(pk)) => pk,
-            r => panic!("unexpected result: {:?}", r),
-        };
+    let pk0 = match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10DeriveAndEd25519PublicKey {
+        path,
+        seed: seed.clone(),
+    })) {
+        ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(pk)) => pk,
+        r => panic!("unexpected result: {:?}", r),
+    };
 
     let pk1 = {
         let key = fresh::location();
@@ -372,9 +374,7 @@ fn test_ed25519_public_key_equivalence() {
             r => panic!("unexpected result: {:?}", r),
         };
 
-        match futures::executor::block_on(sh.runtime_exec(Procedure::Ed25519PublicKey {
-            private_key: key
-        })) {
+        match futures::executor::block_on(sh.runtime_exec(Procedure::Ed25519PublicKey { private_key: key })) {
             ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) => pk,
             r => panic!("unexpected result: {:?}", r),
         }
@@ -401,15 +401,14 @@ fn test_ed25519_sign_equivalence() {
     let (path, chain) = fresh::hd_path();
     let msg = fresh::bytestring();
 
-    let sig0 =
-        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10DeriveAndEd25519Sign {
-            path,
-            seed: seed.clone(),
-            msg: msg.clone(),
-        })) {
-            ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig)) => sig,
-            r => panic!("unexpected result: {:?}", r),
-        };
+    let sig0 = match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10DeriveAndEd25519Sign {
+        path,
+        seed: seed.clone(),
+        msg: msg.clone(),
+    })) {
+        ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig)) => sig,
+        r => panic!("unexpected result: {:?}", r),
+    };
 
     let sig1 = {
         let key = fresh::location();
@@ -423,10 +422,7 @@ fn test_ed25519_sign_equivalence() {
             r => panic!("unexpected result: {:?}", r),
         };
 
-        match futures::executor::block_on(sh.runtime_exec(Procedure::Ed25519Sign {
-            private_key: key,
-            msg,
-        })) {
+        match futures::executor::block_on(sh.runtime_exec(Procedure::Ed25519Sign { private_key: key, msg })) {
             ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => sig,
             r => panic!("unexpected result: {:?}", r),
         }

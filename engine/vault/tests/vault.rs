@@ -6,8 +6,7 @@ use utils::provider::Provider;
 
 use test_utils::fresh;
 
-use vault::{DBView, Encrypt, Key, Kind, PreparedRead, ReadResult, RecordId, Result, WriteRequest};
-use vault::RecordHint;
+use vault::{DBView, Encrypt, Key, Kind, PreparedRead, ReadResult, RecordHint, RecordId, Result, WriteRequest};
 
 use std::{collections::HashMap, iter::empty};
 
@@ -22,7 +21,6 @@ fn fresh_record_hint() -> RecordHint {
     rand::thread_rng().fill(&mut bs);
     bs.into()
 }
-
 
 #[test]
 fn test_empty() -> Result<()> {

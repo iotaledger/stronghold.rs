@@ -31,7 +31,11 @@ pub enum Procedure {
     ///
     /// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
     /// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
-    SLIP10Generate { output: Location, hint: RecordHint, size_bytes: usize },
+    SLIP10Generate {
+        output: Location,
+        hint: RecordHint,
+        size_bytes: usize,
+    },
     /// Derive a SLIP10 child key from a seed or a parent key and store it in output location
     SLIP10Derive {
         chain: hd::Chain,
@@ -379,7 +383,11 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
 
                 match procedure {
-                    Procedure::SLIP10Generate { output, hint, size_bytes } => {
+                    Procedure::SLIP10Generate {
+                        output,
+                        hint,
+                        size_bytes,
+                    } => {
                         let (vid, rid) = self.resolve_location(output, ReadWrite::Write);
 
                         if !self.vault_exist(vid) {
@@ -522,13 +530,7 @@ impl Receive<SHRequest> for Client {
                     Procedure::BIP39MnemonicSentence { .. } => todo!(),
                     Procedure::Ed25519PublicKey { private_key } => {
                         let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
-                        internal.try_tell(
-                            InternalMsg::Ed25519PublicKey {
-                                vault_id,
-                                record_id,
-                            },
-                            sender,
-                        )
+                        internal.try_tell(InternalMsg::Ed25519PublicKey { vault_id, record_id }, sender)
                     }
                     Procedure::SLIP10DeriveAndEd25519PublicKey { path, seed } => {
                         let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
@@ -541,7 +543,7 @@ impl Receive<SHRequest> for Client {
                             sender,
                         )
                     }
-                    Procedure::Ed25519Sign { private_key, msg} => {
+                    Procedure::Ed25519Sign { private_key, msg } => {
                         let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
                         internal.try_tell(
                             InternalMsg::Ed25519Sign {
