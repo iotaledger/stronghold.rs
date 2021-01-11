@@ -1,8 +1,8 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{InternalMsg, InternalResults},
+    actors::{InternalMsg, InternalResults, SMsg},
     client::{Client, ClientMsg, ReadWrite},
     line_error,
     utils::{hd, ClientId, ResultMessage, StatusMessage},
@@ -13,7 +13,7 @@ use engine::{snapshot, vault::RecordHint};
 
 use riker::actors::*;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
 #[derive(Debug, Clone)]
@@ -126,11 +126,20 @@ pub enum SHRequest {
     CheckRecord {
         location: Location,
     },
+    WriteToStore {
+        location: Location,
+        payload: Vec<u8>,
+        lifetime: Option<Duration>,
+    },
+    ReadFromStore {
+        location: Location,
+    },
+    DeleteFromStore(Location),
 
     // Creates a new Vault.
     CreateNewVault(Location),
 
-    WriteData {
+    WriteToVault {
         location: Location,
         payload: Vec<u8>,
         hint: RecordHint,
@@ -141,7 +150,8 @@ pub enum SHRequest {
     },
     // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not
     // specified, it reads the head.  Returns with `ReturnRead`.
-    ReadData {
+    #[cfg(test)]
+    ReadFromVault {
         location: Location,
     },
     // Marks a Record for deletion.  Accepts a vault id and a record id.  Deletion only occurs after a
@@ -164,13 +174,12 @@ pub enum SHRequest {
         cid: ClientId,
         former_cid: Option<ClientId>,
     },
-
-    WriteSnapshotAll {
+    WriteSnapshot {
         key: snapshot::Key,
         filename: Option<String>,
         path: Option<PathBuf>,
-        is_final: bool,
     },
+    FillSnapshot,
 
     ClearCache,
 
@@ -180,14 +189,17 @@ pub enum SHRequest {
 /// Messages that come from stronghold
 #[derive(Clone, Debug)]
 pub enum SHResults {
+    ReturnWriteStore(StatusMessage),
+    ReturnReadStore(Vec<u8>, StatusMessage),
+    ReturnDeleteStore(StatusMessage),
     ReturnCreateVault(StatusMessage),
-
-    ReturnWriteData(StatusMessage),
+    ReturnWriteVault(StatusMessage),
     ReturnInitRecord(StatusMessage),
-    ReturnReadData(Vec<u8>, StatusMessage),
+    ReturnReadVault(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
     ReturnList(Vec<(usize, RecordHint)>, StatusMessage),
+    ReturnFillSnap(StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
     ReturnClearCache(StatusMessage),
@@ -274,7 +286,7 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::CreateVault(vid, rid), sender);
             }
-            SHRequest::WriteData {
+            SHRequest::WriteToVault {
                 location,
                 payload,
                 hint,
@@ -289,7 +301,7 @@ impl Receive<SHRequest> for Client {
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::WriteData(vid, rid, payload, hint), sender);
+                internal.try_tell(InternalMsg::WriteToVault(vid, rid, payload, hint), sender);
             }
             SHRequest::InitRecord { location } => {
                 let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
@@ -304,7 +316,8 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::InitRecord(vid, rid), sender);
             }
-            SHRequest::ReadData { location } => {
+            #[cfg(test)]
+            SHRequest::ReadFromVault { location } => {
                 let (vid, rid) = self.resolve_location(location, ReadWrite::Read);
 
                 let client_str = self.get_client_str();
@@ -313,7 +326,7 @@ impl Receive<SHRequest> for Client {
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::ReadData(vid, rid), sender);
+                internal.try_tell(InternalMsg::ReadFromVault(vid, rid), sender);
             }
             SHRequest::RevokeData { location } => {
                 let (vid, rid) = self.resolve_location(location, ReadWrite::Read);
@@ -374,6 +387,77 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
 
                 internal.try_tell(InternalMsg::ClearCache, sender);
+            }
+            SHRequest::FillSnapshot => {
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(
+                    InternalMsg::FillSnapshot {
+                        id: self.client_id,
+                        data: self.clone(),
+                    },
+                    sender,
+                )
+            }
+            SHRequest::WriteSnapshot { key, filename, path } => {
+                let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
+
+                snapshot.try_tell(SMsg::WriteSnapshot { key, filename, path }, sender);
+            }
+            SHRequest::DeleteFromStore(loc) => {
+                let (vid, _) = self.resolve_location(loc, ReadWrite::Read);
+
+                self.store_delete_item(vid.into());
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnDeleteStore(StatusMessage::Ok(())), None)
+                    .expect(line_error!());
+            }
+            SHRequest::WriteToStore {
+                location,
+                payload,
+                lifetime,
+            } => {
+                let (vid, _) = self.resolve_location(location, ReadWrite::Write);
+
+                self.write_to_store(vid.into(), payload, lifetime);
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnWriteStore(StatusMessage::Ok(())), None)
+                    .expect(line_error!());
+            }
+            SHRequest::ReadFromStore { location } => {
+                let (vid, _) = self.resolve_location(location, ReadWrite::Read);
+
+                let payload = self.read_from_store(vid.into());
+
+                if let Some(payload) = payload {
+                    sender
+                        .as_ref()
+                        .expect(line_error!())
+                        .try_tell(SHResults::ReturnReadStore(payload, StatusMessage::Ok(())), None)
+                        .expect(line_error!());
+                } else {
+                    sender
+                        .as_ref()
+                        .expect(line_error!())
+                        .try_tell(
+                            SHResults::ReturnReadStore(
+                                vec![],
+                                StatusMessage::Error("Unable to read from store".into()),
+                            ),
+                            None,
+                        )
+                        .expect(line_error!());
+                }
             }
             SHRequest::ControlRequest(procedure) => {
                 let client_str = self.get_client_str();
@@ -580,30 +664,6 @@ impl Receive<SHRequest> for Client {
                     }
                 }
             }
-            SHRequest::WriteSnapshotAll {
-                key,
-                filename,
-                path,
-                is_final,
-            } => {
-                let client_str = self.get_client_str();
-
-                let internal = ctx
-                    .select(&format!("/user/internal-{}/", client_str))
-                    .expect(line_error!());
-
-                internal.try_tell(
-                    InternalMsg::WriteSnapshotAll {
-                        key,
-                        path,
-                        filename,
-                        id: self.client_id,
-                        data: self.clone(),
-                        is_final,
-                    },
-                    sender,
-                )
-            }
         }
     }
 }
@@ -627,11 +687,11 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnInitRecord(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnReadData(payload, status) => {
+            InternalResults::ReturnReadVault(payload, status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnReadData(payload, status), None)
+                    .try_tell(SHResults::ReturnReadVault(payload, status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnList(vpath, list, status) => {
@@ -660,11 +720,11 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnReadSnap(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnWriteData(status) => {
+            InternalResults::ReturnWriteVault(status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnWriteData(status), None)
+                    .try_tell(SHResults::ReturnWriteVault(status), None)
                     .expect(line_error!());
             }
             InternalResults::ReturnRevoke(status) => {

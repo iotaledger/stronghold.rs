@@ -1,12 +1,9 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 use riker::actors::*;
 
-#[allow(dead_code)]
-mod fresh;
-
-use iota_stronghold::{
+use crate::{
     line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, SLIP10DeriveInput, StatusMessage,
     Stronghold,
 };
@@ -18,6 +15,8 @@ use bee_signing_ext::{
     },
     Signer,
 };
+
+use super::fresh;
 
 fn setup_stronghold() -> Stronghold {
     let sys = ActorSystem::new().unwrap();
@@ -34,14 +33,14 @@ fn test_read_write() {
 
     let loc0 = Location::counter::<_, usize>("path", Some(0));
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         loc0.clone(),
         b"test".to_vec(),
         RecordHint::new(b"first hint").expect(line_error!()),
         vec![],
     ));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc0));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 }
@@ -53,21 +52,21 @@ fn test_head_read_write() {
 
     let lochead = Location::counter::<_, usize>("path", None);
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
         b"test".to_vec(),
         RecordHint::new(b"first hint").expect(line_error!()),
         vec![],
     ));
 
-    futures::executor::block_on(stronghold.write_data(
+    futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
         b"another test".to_vec(),
         RecordHint::new(b"second hint").expect(line_error!()),
         vec![],
     ));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 }
@@ -84,7 +83,7 @@ fn test_multi_write_read_counter_head() {
         futures::executor::block_on(async {
             let data = format!("test {:?}", i);
             stronghold
-                .write_data(
+                .write_to_vault(
                     lochead.clone(),
                     data.as_bytes().to_vec(),
                     RecordHint::new(data).expect(line_error!()),
@@ -94,15 +93,15 @@ fn test_multi_write_read_counter_head() {
         });
     }
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(lochead));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test 19"));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc5));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc5));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test 5"));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_data(loc15));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc15));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test 15"));
 }
@@ -118,7 +117,7 @@ fn test_revoke_with_gc() {
         futures::executor::block_on(async {
             let data = format!("test {:?}", i);
             stronghold
-                .write_data(
+                .write_to_vault(
                     lochead.clone(),
                     data.as_bytes().to_vec(),
                     RecordHint::new(data).expect(line_error!()),
@@ -134,7 +133,7 @@ fn test_revoke_with_gc() {
 
             stronghold.delete_data(loc.clone(), false).await;
 
-            let (p, _) = stronghold.read_data(loc).await;
+            let (p, _) = stronghold.read_secret(loc).await;
 
             assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
         })
@@ -161,7 +160,7 @@ fn test_write_read_snapshot() {
         futures::executor::block_on(async {
             let data = format!("test {:?}", i);
             stronghold
-                .write_data(
+                .write_to_vault(
                     lochead.clone(),
                     data.as_bytes().to_vec(),
                     RecordHint::new(data).expect(line_error!()),
@@ -180,7 +179,7 @@ fn test_write_read_snapshot() {
     for i in 0..20 {
         futures::executor::block_on(async {
             let loc = Location::counter::<_, usize>("path", Some(i));
-            let (p, _) = stronghold.read_data(loc).await;
+            let (p, _) = stronghold.read_secret(loc).await;
 
             let res = format!("test {:?}", i);
 
@@ -199,18 +198,18 @@ fn test_write_read_multi_snapshot() {
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
     let lochead = Location::counter::<_, usize>("path", None);
 
-    for i in 0..10 {
+    for i in 0..20 {
         stronghold.spawn_stronghold_actor(format!("test {:?}", i).as_bytes().to_vec(), vec![]);
     }
 
-    for i in 0..10 {
+    for i in 0..20 {
         futures::executor::block_on(async {
             let data = format!("test {:?}", i);
 
             stronghold.switch_actor_target(format!("test {:?}", i).as_bytes().to_vec());
 
             stronghold
-                .write_data(
+                .write_to_vault(
                     lochead.clone(),
                     data.as_bytes().to_vec(),
                     RecordHint::new(data).expect(line_error!()),
@@ -222,11 +221,11 @@ fn test_write_read_multi_snapshot() {
 
     futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), Some("test2".into()), None));
 
-    for i in 0..10 {
+    for i in 0..20 {
         futures::executor::block_on(stronghold.kill_stronghold(format!("test {:?}", i).as_bytes().to_vec(), false));
     }
 
-    for i in 0..10 {
+    for i in 0..20 {
         futures::executor::block_on(stronghold.read_snapshot(
             format!("test {:?}", i).as_bytes().to_vec(),
             None,
@@ -240,7 +239,7 @@ fn test_write_read_multi_snapshot() {
         futures::executor::block_on(async {
             stronghold.switch_actor_target(format!("test {:?}", i % 10).as_bytes().to_vec());
 
-            let (p, _) = stronghold.read_data(lochead.clone()).await;
+            let (p, _) = stronghold.read_secret(lochead.clone()).await;
 
             let res = format!("test {:?}", i);
 
@@ -270,7 +269,7 @@ fn test_unlock_block() {
         r => panic!("unexpected result: {:?}", r),
     }
 
-    let (seed_data, _) = futures::executor::block_on(stronghold.read_data(seed.clone()));
+    let (seed_data, _) = futures::executor::block_on(stronghold.read_secret(seed.clone()));
 
     let mut seed_data = seed_data.expect(line_error!());
 
@@ -324,10 +323,10 @@ fn test_unlock_block() {
 
     assert!(crypto::ed25519::verify(&key1, &sig1, &essence));
 
-    let sc = iota_stronghold::hd::Seed::from_bytes(&seed_data);
+    let sc = crate::hd::Seed::from_bytes(&seed_data);
     let mkc = sc.to_master_key();
     let skc = mkc
-        .derive(&iota_stronghold::hd::Chain::from_u32_hardened(vec![1]))
+        .derive(&crate::hd::Chain::from_u32_hardened(vec![1]))
         .unwrap()
         .secret_key()
         .unwrap();
@@ -430,4 +429,22 @@ fn test_ed25519_sign_equivalence() {
     };
 
     assert_eq!(sig0, sig1);
+}
+
+#[test]
+fn test_store() {
+    let sys = ActorSystem::new().unwrap();
+
+    let client_path = b"test".to_vec();
+    let payload = b"test data";
+
+    let location = Location::generic("some_data", "location");
+
+    let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
+
+    futures::executor::block_on(stronghold.write_to_store(location.clone(), payload.to_vec(), None));
+
+    let (res, _) = futures::executor::block_on(stronghold.read_from_store(location));
+
+    assert_eq!(std::str::from_utf8(&res), Ok("test data"));
 }

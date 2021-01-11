@@ -3,7 +3,7 @@
 
 pub use test_utils::fresh::*;
 
-use iota_stronghold::{hd, Location, RecordHint};
+use crate::{hd, Location, RecordHint};
 
 use rand::Rng;
 

@@ -1,4 +1,4 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::reversed_empty_ranges))]

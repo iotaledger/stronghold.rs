@@ -6,11 +6,18 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[package.metadata]
+cargo-fuzz = true
+
 [dependencies]
+libfuzzer-sys = "0.3"
+rand = "0.7.3"
+
 vault = {path = "../../vault"}
 crypto = {path = "../../crypto"}
 random = {path = "../../random"}
 primitives = {path = "../../primitives"}
+
 
 [profile.release]
 overflow-checks = true
@@ -21,3 +28,7 @@ overflow-checks = true
 panic = "abort"
 
 [workspace]
+
+[[bin]]
+name = "vault_fuzz"
+path = "src/vault_fuzz.rs"

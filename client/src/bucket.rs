@@ -1,25 +1,30 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use engine::vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest};
+use engine::{
+    store::Cache,
+    vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest},
+};
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use crate::line_error;
+
+type Store = Cache<Vec<u8>, Vec<u8>>;
 
 /// A `Bucket` cache of the Data for stronghold. Contains a `HashMap<Key<P>, Option<DBView<P>>>` pairing the vault
 /// `Key<P>` and the vault `DBView<P>` together. Also contains a `HashMap<Key<P>, Vec<ReadResult>>` which pairs the
 /// backing data with the associated `Key<P>`.
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
-    vaults: BTreeMap<Key<P>, Option<DBView<P>>>,
-    cache: BTreeMap<Key<P>, Vec<ReadResult>>,
+    vaults: HashMap<Key<P>, Option<DBView<P>>>,
+    cache: HashMap<Key<P>, Vec<ReadResult>>,
 }
 
 impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 'static> Bucket<P> {
     /// Creates a new `Bucket`.
     pub fn new() -> Self {
-        let cache = BTreeMap::new();
-        let vaults = BTreeMap::new();
+        let cache = HashMap::new();
+        let vaults = HashMap::new();
 
         Self { cache, vaults }
     }
@@ -161,8 +166,8 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
     /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.  Returns a `Vec<Key<P>,
     /// Vec<Vec<RecordId>>`.
-    pub fn repopulate_data(&mut self, cache: BTreeMap<Key<P>, Vec<ReadResult>>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
-        let mut vaults = BTreeMap::new();
+    pub fn repopulate_data(&mut self, cache: HashMap<Key<P>, Vec<ReadResult>>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
+        let mut vaults = HashMap::new();
         let mut rids: Vec<Vec<RecordId>> = Vec::new();
         let mut keystore_keys: Vec<Key<P>> = Vec::new();
 
@@ -181,19 +186,8 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         (keystore_keys, rids)
     }
 
-    /// Deserialize the data in the cache of the bucket into bytes to be passed into a snapshot.  Returns a `Vec<u8>`.
-    pub fn offload_data(&mut self) -> Vec<u8> {
-        let mut cache: BTreeMap<Key<P>, Vec<ReadResult>> = BTreeMap::new();
-
-        self.cache.iter().for_each(|(k, v)| {
-            cache.insert(k.clone(), v.clone());
-        });
-
-        bincode::serialize(&cache).expect(line_error!())
-    }
-
-    pub fn get_data(&mut self) -> BTreeMap<Key<P>, Vec<ReadResult>> {
-        let mut cache: BTreeMap<Key<P>, Vec<ReadResult>> = BTreeMap::new();
+    pub fn get_data(&mut self) -> HashMap<Key<P>, Vec<ReadResult>> {
+        let mut cache: HashMap<Key<P>, Vec<ReadResult>> = HashMap::new();
 
         self.cache.iter().for_each(|(k, v)| {
             cache.insert(k.clone(), v.clone());

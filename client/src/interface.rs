@@ -1,9 +1,10 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 use riker::actors::*;
 
-use std::{collections::HashMap, path::PathBuf};
+use futures::future::RemoteHandle;
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use engine::vault::RecordHint;
 
@@ -115,7 +116,7 @@ impl Stronghold {
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified
     /// location of `Location` type. The payload must be specified as a `Vec<u8>` and a `RecordHint` can be provided.
     /// Also accepts `VaultFlags` for when a new Vault is created.
-    pub async fn write_data(
+    pub async fn write_to_vault(
         &self,
         location: Location,
         payload: Vec<u8>,
@@ -144,10 +145,10 @@ impl Stronghold {
                 .await
                 {
                     if b {
-                        if let SHResults::ReturnWriteData(status) = ask(
+                        if let SHResults::ReturnWriteVault(status) = ask(
                             &self.system,
                             client,
-                            SHRequest::WriteData {
+                            SHRequest::WriteToVault {
                                 location: location.clone(),
                                 payload: payload.clone(),
                                 hint,
@@ -174,10 +175,10 @@ impl Stronghold {
                             (None, StatusMessage::Error("Unable to initialize record".into()))
                         };
 
-                        if let SHResults::ReturnWriteData(status) = ask(
+                        if let SHResults::ReturnWriteVault(status) = ask(
                             &self.system,
                             client,
-                            SHRequest::WriteData {
+                            SHRequest::WriteToVault {
                                 location: location.clone(),
                                 payload: payload.clone(),
                                 hint,
@@ -201,10 +202,10 @@ impl Stronghold {
                     return StatusMessage::Error("Invalid Message".into());
                 };
 
-                if let SHResults::ReturnWriteData(status) = ask(
+                if let SHResults::ReturnWriteVault(status) = ask(
                     &self.system,
                     client,
-                    SHRequest::WriteData {
+                    SHRequest::WriteToVault {
                         location,
                         payload,
                         hint,
@@ -222,19 +223,74 @@ impl Stronghold {
         StatusMessage::Error("Failed to write the data".into())
     }
 
-    /// Reads data from the specified location of type `Location` from the current target.  Returns the data if the
-    /// vault is readable.
-    pub async fn read_data(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
+    #[cfg(test)]
+    pub async fn read_secret(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
         let idx = self.current_target;
 
         let client = &self.actors[idx];
 
-        let res: SHResults = ask(&self.system, client, SHRequest::ReadData { location }).await;
+        let res: SHResults = ask(&self.system, client, SHRequest::ReadFromVault { location }).await;
 
-        if let SHResults::ReturnReadData(payload, status) = res {
+        if let SHResults::ReturnReadVault(payload, status) = res {
             (Some(payload), status)
         } else {
             (None, StatusMessage::Error("Unable to read data".into()))
+        }
+    }
+
+    pub async fn write_to_store(
+        &self,
+        location: Location,
+        payload: Vec<u8>,
+        lifetime: Option<Duration>,
+    ) -> StatusMessage {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        let res: SHResults = ask(
+            &self.system,
+            client,
+            SHRequest::WriteToStore {
+                location,
+                payload,
+                lifetime,
+            },
+        )
+        .await;
+
+        if let SHResults::ReturnWriteStore(status) = res {
+            status
+        } else {
+            StatusMessage::Error("Failed to write to the store".into())
+        }
+    }
+
+    pub async fn read_from_store(&self, location: Location) -> (Vec<u8>, StatusMessage) {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        let res: SHResults = ask(&self.system, client, SHRequest::ReadFromStore { location }).await;
+
+        if let SHResults::ReturnReadStore(payload, status) = res {
+            (payload, status)
+        } else {
+            (vec![], StatusMessage::Error("Failed to read from the store".into()))
+        }
+    }
+
+    pub async fn delete_from_store(&self, location: Location) -> StatusMessage {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        let res: SHResults = ask(&self.system, client, SHRequest::DeleteFromStore(location)).await;
+
+        if let SHResults::ReturnDeleteStore(status) = res {
+            status
+        } else {
+            StatusMessage::Error("Failed to delete from the store".into())
         }
     }
 
@@ -423,47 +479,34 @@ impl Stronghold {
         path: Option<PathBuf>,
     ) -> StatusMessage {
         let num_of_actors = self.actors.len();
+        let idx = self.current_target;
+        let client = &self.actors[idx];
+
+        let mut futures = vec![];
+        let mut key: [u8; 32] = [0u8; 32];
+
+        key.copy_from_slice(&keydata);
 
         if num_of_actors != 0 {
-            for (idx, actor) in self.actors.iter().enumerate() {
-                let mut key: [u8; 32] = [0u8; 32];
-
-                key.copy_from_slice(&keydata);
-
-                if idx < num_of_actors - 1 {
-                    let _: SHResults = ask(
-                        &self.system,
-                        actor,
-                        SHRequest::WriteSnapshotAll {
-                            key,
-                            filename: filename.clone(),
-                            path: path.clone(),
-                            is_final: false,
-                        },
-                    )
-                    .await;
-                } else if let SHResults::ReturnWriteSnap(status) = ask(
-                    &self.system,
-                    actor,
-                    SHRequest::WriteSnapshotAll {
-                        key,
-                        filename: filename.clone(),
-                        path: path.clone(),
-                        is_final: true,
-                    },
-                )
-                .await
-                {
-                    return status;
-                } else {
-                    return StatusMessage::Error("Unable to write snapshot without any actors.".into());
-                };
+            for (_, actor) in self.actors.iter().enumerate() {
+                let res: RemoteHandle<SHResults> = ask(&self.system, actor, SHRequest::FillSnapshot);
+                futures.push(res);
             }
         } else {
             return StatusMessage::Error("Unable to write snapshot without any actors.".into());
         }
 
-        StatusMessage::Error("Unable to write snapshot".into())
+        for fut in futures {
+            fut.await;
+        }
+
+        let res: SHResults = ask(&self.system, client, SHRequest::WriteSnapshot { key, filename, path }).await;
+
+        if let SHResults::ReturnWriteSnap(status) = res {
+            status
+        } else {
+            StatusMessage::Error("Unable to write snapshot".into())
+        }
     }
 
     /// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If

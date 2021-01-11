@@ -1,4 +1,4 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 //! This crate defines and implements the encrypted offline storage format used by
@@ -21,10 +21,12 @@
 //! snapshot sizes and/or random access is desired one might consider encrypting
 //! smaller chunks (B-trees?) or similar using derived ephemeral keys.
 
+mod compression;
 pub mod files;
 pub mod kdf;
 
 mod logic;
+pub use compression::{compress, decompress};
 pub use logic::*;
 
 #[derive(Debug, thiserror::Error)]
@@ -35,6 +37,10 @@ pub enum Error {
     SnapshotError(String),
     #[error("Crypto Error: `{0}`")]
     CryptoError(crypto::Error),
+    #[error("LZ4 Error: `{0}`")]
+    LZ4Error(String),
+    #[error("TryInto Error: `{0}`")]
+    TryIntoError(#[from] std::array::TryFromSliceError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

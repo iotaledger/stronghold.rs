@@ -1,4 +1,4 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 //! A system for securely managing secrets.
@@ -26,4 +26,5 @@ pub use crypto;
 pub use primitives;
 pub use random;
 pub use snapshot;
+pub use store;
 pub use vault;

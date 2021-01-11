@@ -1,4 +1,4 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
@@ -8,6 +8,8 @@ use std::{
 };
 
 use crypto::ciphers::chacha::xchacha20poly1305;
+
+use crate::{compress, decompress};
 
 /// Magic bytes (bytes 0-4 in a snapshot file)
 pub const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
@@ -29,8 +31,9 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     output.write_all(&nonce)?;
 
     let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
+
     let mut ct = vec![0; plain.len()];
-    xchacha20poly1305::encrypt(&mut ct, &mut tag, plain, key, &nonce, associated_data)?;
+    xchacha20poly1305::encrypt(&mut ct, &mut tag, &plain, key, &nonce, associated_data)?;
 
     output.write_all(&tag)?;
     output.write_all(&ct)?;
@@ -69,6 +72,8 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     // TODO: if the sibling tempfile isn't writeable (e.g. directory permissions), write to
     // env::temp_dir()
 
+    let compressed_plain = compress(plain);
+
     let mut salt = [0u8; 6];
     crypto::rand::fill(&mut salt)?;
 
@@ -78,7 +83,7 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     let tmp = Path::new(&s);
 
     let mut f = OpenOptions::new().write(true).create_new(true).open(tmp)?;
-    write(plain, &mut f, key, associated_data)?;
+    write(&compressed_plain, &mut f, key, associated_data)?;
     f.sync_all()?;
 
     rename(tmp, path)?;
@@ -90,7 +95,9 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
 pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<Vec<u8>> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
     check_min_file_len(&mut f)?;
-    read(&mut f, key, associated_data)
+    let pt = read(&mut f, key, associated_data)?;
+
+    decompress(&pt)
 }
 
 fn check_min_file_len(input: &mut File) -> crate::Result<()> {

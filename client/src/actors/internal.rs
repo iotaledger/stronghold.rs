@@ -1,11 +1,11 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 #![allow(clippy::type_complexity)]
 
 use riker::actors::*;
 
-use std::{collections::BTreeMap, convert::TryFrom, fmt::Debug, path::PathBuf};
+use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
@@ -40,8 +40,9 @@ pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
 #[derive(Clone, Debug)]
 pub enum InternalMsg {
     CreateVault(VaultId, RecordId),
-    ReadData(VaultId, RecordId),
-    WriteData(VaultId, RecordId, Vec<u8>, RecordHint),
+    #[cfg(test)]
+    ReadFromVault(VaultId, RecordId),
+    WriteToVault(VaultId, RecordId, Vec<u8>, RecordHint),
     InitRecord(VaultId, RecordId),
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
@@ -55,22 +56,18 @@ pub enum InternalMsg {
         Option<ClientId>,
     ),
     ReloadData(
-        (
+        Box<(
             crate::client::Client,
-            BTreeMap<VaultId, Key<Provider>>,
-            BTreeMap<Key<Provider>, Vec<ReadResult>>,
-        ),
+            HashMap<VaultId, Key<Provider>>,
+            HashMap<Key<Provider>, Vec<ReadResult>>,
+        )>,
         StatusMessage,
     ),
     ClearCache,
     KillInternal,
-    WriteSnapshotAll {
-        key: snapshot::Key,
-        filename: Option<String>,
-        path: Option<PathBuf>,
+    FillSnapshot {
         data: Client,
         id: ClientId,
-        is_final: bool,
     },
 
     SLIP10Generate {
@@ -140,9 +137,9 @@ pub enum InternalMsg {
 #[derive(Clone, Debug)]
 pub enum InternalResults {
     ReturnCreateVault(StatusMessage),
-    ReturnWriteData(StatusMessage),
+    ReturnWriteVault(StatusMessage),
     ReturnInitRecord(StatusMessage),
-    ReturnReadData(Vec<u8>, StatusMessage),
+    ReturnReadVault(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
     ReturnList(Vec<u8>, Vec<(RecordId, RecordHint)>, StatusMessage),
@@ -191,7 +188,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     sender,
                 );
             }
-            InternalMsg::ReadData(vid, rid) => {
+            #[cfg(test)]
+            InternalMsg::ReadFromVault(vid, rid) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
@@ -201,12 +199,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnReadData(plain, StatusMessage::OK)),
+                        ClientMsg::InternalResults(InternalResults::ReturnReadVault(plain, StatusMessage::OK)),
                         sender,
                     );
                 } else {
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnReadData(
+                        ClientMsg::InternalResults(InternalResults::ReturnReadVault(
                             vec![],
                             StatusMessage::Error("Vault does not exist.".into()),
                         )),
@@ -214,7 +212,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::WriteData(vid, rid, payload, hint) => {
+            InternalMsg::WriteToVault(vid, rid, payload, hint) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
@@ -224,18 +222,48 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::OK)),
+                        ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::OK)),
                         sender,
                     );
                 } else {
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnWriteData(StatusMessage::Error(
+                        ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::Error(
                             "Vault does not exist".into(),
                         ))),
                         sender,
                     );
                 }
             }
+            // InternalMsg::WriteToStore { key, payload, lifetime } => {
+            //     let cstr: String = self.client_id.into();
+            //     let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+            //     self.bucket.write_to_store(key.into(), payload, lifetime);
+
+            //     client.try_tell(
+            //         ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::OK)),
+            //         sender,
+            //     );
+            // }
+            // InternalMsg::ReadFromStore { key } => {
+            //     let cstr: String = self.client_id.into();
+            //     let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+            //     if let Some(payload) = self.bucket.read_from_store(key.into()) {
+            //         client.try_tell(
+            //             ClientMsg::InternalResults(InternalResults::ReturnReadStore(payload, StatusMessage::OK)),
+            //             sender,
+            //         );
+            //     } else {
+            //         client.try_tell(
+            //             ClientMsg::InternalResults(InternalResults::ReturnReadStore(
+            //                 vec![],
+            //                 StatusMessage::Error("Unable to find that data".into()),
+            //             )),
+            //             sender,
+            //         );
+            //     }
+            // }
             InternalMsg::InitRecord(vid, rid) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
@@ -315,9 +343,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::ReloadData((client_data, keystore, state), status) => {
+            InternalMsg::ReloadData(box_data, status) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                let (client_data, keystore, state) = *box_data;
 
                 self.keystore.rebuild_keystore(keystore);
                 self.bucket.repopulate_data(state);
@@ -720,24 +750,15 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     }
                 };
             }
-            InternalMsg::WriteSnapshotAll {
-                key,
-                filename,
-                path,
-                data,
-                id,
-                is_final,
-            } => {
+            InternalMsg::FillSnapshot { data, id } => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
 
+                let cache = self.bucket.get_data();
+
                 snapshot.try_tell(
-                    SMsg::WriteSnapshotAll {
-                        key,
-                        filename,
-                        path,
+                    SMsg::FillSnapshot {
                         id,
-                        is_final,
-                        data: (data, self.keystore.get_data(), self.bucket.get_data()),
+                        data: Box::from((data, self.keystore.get_data(), cache)),
                     },
                     sender,
                 );

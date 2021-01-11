@@ -1,4 +1,4 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 // TODO: Synchronization via 4th actor and status type.
@@ -26,6 +26,9 @@ mod internals;
 mod key_store;
 mod snapshot;
 mod utils;
+
+#[cfg(test)]
+mod tests;
 
 use crate::utils::{ClientId, VaultId};
 

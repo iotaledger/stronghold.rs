@@ -1,4 +1,4 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
@@ -8,13 +8,15 @@ use crate::{
     ClientId, Location, VaultId,
 };
 
-use engine::vault::RecordId;
+use engine::{store::Cache, vault::RecordId};
 
 use riker::actors::*;
 
-use std::collections::BTreeMap;
+use std::{collections::HashMap, time::Duration};
 
 use serde::{Deserialize, Serialize};
+
+type Store = Cache<Vec<u8>, Vec<u8>>;
 
 pub enum ReadWrite {
     Read,
@@ -27,26 +29,56 @@ pub enum ReadWrite {
 pub struct Client {
     pub client_id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
-    vaults: BTreeMap<VaultId, (usize, Vec<RecordId>)>,
+    vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
     // Contains the Record Ids for the most recent Record in each vault.
     heads: Vec<RecordId>,
     counters: Vec<usize>,
+    store: Store,
 }
 
 impl Client {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
     pub fn new(client_id: ClientId) -> Self {
-        let vaults = BTreeMap::new();
+        let vaults = HashMap::new();
         let heads = vec![];
 
         let counters = vec![0];
+        let store = Cache::new();
 
         Self {
             client_id,
             vaults,
             heads,
             counters,
+            store,
         }
+    }
+
+    /// Write unencrypted data to the store.  Returns `None` if the key didn't already exist and `Some(Vec<u8>)` if the
+    /// key was updated.
+    pub fn write_to_store(&mut self, key: Vec<u8>, data: Vec<u8>, lifetime: Option<Duration>) -> Option<Vec<u8>> {
+        self.store.insert(key, data, lifetime)
+    }
+
+    /// Attempts to read the data from the store.  Returns `Some(Vec<u8>)` if the key exists and `None` if it doesn't.
+    pub fn read_from_store(&mut self, key: Vec<u8>) -> Option<Vec<u8>> {
+        let res = self.store.get(&key);
+
+        if let Some(vec) = res {
+            Some(vec.to_vec())
+        } else {
+            None
+        }
+    }
+
+    /// Deletes an item from the store by the given key.
+    pub fn store_delete_item(&mut self, key: Vec<u8>) {
+        self.store.remove(&key);
+    }
+
+    /// Checks to see if the key exists in the store.
+    pub fn store_key_exists(&mut self, key: Vec<u8>) -> bool {
+        self.store.contains_key(&key)
     }
 
     pub fn set_client_id(&mut self, client_id: ClientId) {
@@ -117,7 +149,7 @@ impl Client {
     /// Empty the Client Cache.
     pub fn clear_cache(&mut self) -> Option<()> {
         self.heads = vec![];
-        self.vaults = BTreeMap::default();
+        self.vaults = HashMap::default();
         self.counters = vec![0];
 
         Some(())

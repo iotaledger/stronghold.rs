@@ -1,4 +1,4 @@
-// Copyright 2020 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 #![allow(clippy::type_complexity)]
@@ -20,22 +20,23 @@ use crate::{
     ClientId, Provider, VaultId,
 };
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 /// Messages used for the Snapshot Actor.
 #[derive(Clone, Debug)]
 pub enum SMsg {
-    WriteSnapshotAll {
+    WriteSnapshot {
         key: snapshot::Key,
         filename: Option<String>,
         path: Option<PathBuf>,
-        data: (
+    },
+    FillSnapshot {
+        data: Box<(
             Client,
-            BTreeMap<VaultId, Key<Provider>>,
-            BTreeMap<Key<Provider>, Vec<ReadResult>>,
-        ),
+            HashMap<VaultId, Key<Provider>>,
+            HashMap<Key<Provider>, Vec<ReadResult>>,
+        )>,
         id: ClientId,
-        is_final: bool,
     },
     ReadFromSnapshot {
         key: snapshot::Key,
@@ -66,35 +67,14 @@ impl Receive<SMsg> for Snapshot {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         match msg {
-            SMsg::WriteSnapshotAll {
-                key,
-                filename,
-                path,
-                data,
-                id,
-                is_final,
-            } => {
-                self.state.add_data(id, data);
+            SMsg::FillSnapshot { data, id } => {
+                self.state.add_data(id, *data);
 
-                if is_final {
-                    self.clone()
-                        .write_to_snapshot(filename.as_deref(), path.as_deref(), key)
-                        .expect(line_error!());
-
-                    self.state = SnapshotState::default();
-
-                    sender
-                        .as_ref()
-                        .expect(line_error!())
-                        .try_tell(SHResults::ReturnWriteSnap(StatusMessage::OK), None)
-                        .expect(line_error!());
-                } else {
-                    sender
-                        .as_ref()
-                        .expect(line_error!())
-                        .try_tell(SHResults::ReturnWriteSnap(StatusMessage::OK), None)
-                        .expect(line_error!());
-                }
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnFillSnap(StatusMessage::OK), None)
+                    .expect(line_error!());
             }
             SMsg::ReadFromSnapshot {
                 key,
@@ -110,7 +90,7 @@ impl Receive<SMsg> for Snapshot {
                 if self.has_data(cid) {
                     let data = self.get_state(cid);
 
-                    internal.try_tell(InternalMsg::ReloadData(data, StatusMessage::OK), sender);
+                    internal.try_tell(InternalMsg::ReloadData(Box::new(data), StatusMessage::OK), sender);
                 } else {
                     match Snapshot::read_from_snapshot(filename.as_deref(), path.as_deref(), key) {
                         Ok(mut snapshot) => {
@@ -118,7 +98,7 @@ impl Receive<SMsg> for Snapshot {
 
                             *self = snapshot;
 
-                            internal.try_tell(InternalMsg::ReloadData(data, StatusMessage::OK), sender);
+                            internal.try_tell(InternalMsg::ReloadData(Box::new(data), StatusMessage::OK), sender);
                         }
                         Err(e) => {
                             sender
@@ -135,6 +115,19 @@ impl Receive<SMsg> for Snapshot {
                         }
                     }
                 };
+            }
+            SMsg::WriteSnapshot { key, filename, path } => {
+                self.clone()
+                    .write_to_snapshot(filename.as_deref(), path.as_deref(), key)
+                    .expect(line_error!());
+
+                self.state = SnapshotState::default();
+
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnWriteSnap(StatusMessage::OK), None)
+                    .expect(line_error!());
             }
         }
     }
