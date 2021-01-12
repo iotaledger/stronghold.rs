@@ -1,6 +1,11 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)]
+
+/// An interface for implementing the stronghold engine.  Using the Riker Actor model, this library provides a
+/// mechanism to manage secret data between multiple users.  Stronghold may be accessed via the `Stronghold`
+/// object.  
 // TODO: Synchronization via 4th actor and status type.
 // TODO: Add supervisors
 // TODO: Add documentation
@@ -13,9 +18,6 @@
 // TODO: Add Handshake Messages.
 // TODO: Add Responses for each Message.
 // TODO: Remove #[allow(dead_code)]
-
-#![allow(dead_code)]
-
 use thiserror::Error as DeriveError;
 
 mod actors;
