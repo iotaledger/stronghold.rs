@@ -29,7 +29,7 @@ mod X25519XChaCha20Poly1305 {
     use super::*;
     use crate::mem::GuardedBox;
 
-    #[derive(Debug,Clone,Copy)]
+    #[derive(Debug)]
     pub struct Ciphertext<A> {
         // NB all we actually need is to have a byte array of the same size as A:
         // [u8; core::mem::size_of::<A>()], (this really is used as core::mem::AlwaysUninit<A>)
@@ -69,7 +69,7 @@ mod AES {
     use super::*;
     use crate::mem::GuardedBox;
 
-    #[derive(Debug,Clone,Copy)]
+    #[derive(Debug)]
     pub struct Ciphertext<A> {
         // NB all we actually need is to have a byte array of the same size as A:
         // [u8; core::mem::size_of::<A>()], (this really is used as core::mem::AlwaysUninit<A>)

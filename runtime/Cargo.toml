@@ -38,6 +38,11 @@ default-features = false
 version = "1.1.1"
 default-features = false
 
+[dependencies.iota-crypto]
+git = "https://github.com/iotaledger/crypto.rs"
+rev = "35610d2cf88f97c5a35e7e4f89ec23e5fb2226c9"
+features = [ "random", "chacha", "x25519", "blake2b", "aes" ]
+
 [build-dependencies]
 bindgen = "0.55.1"
 
