@@ -99,31 +99,30 @@ mod X25519XChaCha20Poly1305 {
     impl<A> Access<A, PublicKey> for PrivateKey {
         type Accessor = GuardedBox<A>;
 
-        fn access<CT: AsRef<Ciphertext<A>>>(&self, b: CT) -> crate::Result<Self::Accessor> {
-            let shared = x25519::X25519(&self.0, Some(&b.as_ref().ephemeral_pk));
+        fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<Self::Accessor> {
+            let shared = x25519::X25519(&self.0, Some(&ct.as_ref().ephemeral_pk));
 
             let pk = x25519::X25519(&self.0, None);
 
             let nonce = {
                 let mut h = [0; xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE];
-                let mut i = b.as_ref().ephemeral_pk.to_vec();
+                let mut i = ct.as_ref().ephemeral_pk.to_vec();
                 i.extend_from_slice(&pk);
                 blake2b::hash(&i, &mut h);
                 h
             };
 
-            let gb: GuardedBox<A> = GuardedBox::uninit()?;
-
-            let ct: &[u8] = unsafe {
-                core::slice::from_raw_parts(b.as_ref().bs.as_ptr() as *const u8, core::mem::size_of::<A>())
+            let bs: &[u8] = unsafe {
+                core::slice::from_raw_parts(ct.as_ref().bs.as_ptr() as *const u8, core::mem::size_of::<A>())
             };
 
+            let gb: GuardedBox<A> = GuardedBox::uninit()?;
             gb.with_mut_ptr(|p| {
                 let pt: &mut [u8] = unsafe {
                     core::slice::from_raw_parts_mut(p as *mut u8, core::mem::size_of::<A>())
                 };
 
-                xchacha20poly1305::decrypt(pt, ct, &shared, &b.as_ref().tag, &nonce, &[])
+                xchacha20poly1305::decrypt(pt, bs, &shared, &ct.as_ref().tag, &nonce, &[])
             })??;
 
             Ok(gb)
@@ -134,12 +133,15 @@ mod X25519XChaCha20Poly1305 {
 mod AES {
     use super::*;
     use crate::mem::GuardedBox;
+    use crypto::ciphers::aes::AES_256_GCM;
 
     #[derive(Debug)]
     pub struct Ciphertext<A> {
         // NB all we actually need is to have a byte array of the same size as A:
         // [u8; core::mem::size_of::<A>()], (this really is used as core::mem::AlwaysUninit<A>)
         bs: core::mem::MaybeUninit<A>,
+        iv: [u8; AES_256_GCM::IV_LENGTH],
+        tag: [u8; AES_256_GCM::TAG_LENGTH],
     }
 
     impl<A> AsRef<Ciphertext<A>> for Ciphertext<A> {
@@ -148,23 +150,61 @@ mod AES {
         }
     }
 
-    pub struct Key {}
+    pub struct Key([u8; AES_256_GCM::KEY_LENGTH]);
+
+    impl Key {
+        pub fn new() -> crate::Result<Self> {
+            let mut bs = [0; AES_256_GCM::KEY_LENGTH];
+            rand::fill(&mut bs)?;
+            Ok(Key(bs))
+        }
+    }
 
     impl<A> Protection<A> for Key {
         type AtRest = Ciphertext<A>;
     }
 
     impl<A> ProtectionNewSelf<A> for Key {
-        fn protect(&self, _a: A) -> crate::Result<Self::AtRest> {
-            unimplemented!()
+        fn protect(&self, a: A) -> crate::Result<Self::AtRest> {
+            let mut iv = [0; AES_256_GCM::IV_LENGTH];
+            rand::fill(&mut iv)?;
+
+            let mut tag = [0; AES_256_GCM::TAG_LENGTH];
+
+            let mut bs = core::mem::MaybeUninit::uninit();
+            let ct: &mut [u8] = unsafe {
+                core::slice::from_raw_parts_mut(bs.as_mut_ptr() as *mut u8, core::mem::size_of::<A>())
+            };
+
+            let pt: &[u8] = unsafe {
+                core::slice::from_raw_parts(&a as *const _ as *const u8, core::mem::size_of::<A>())
+            };
+
+            AES_256_GCM::encrypt(&self.0, &iv, &[], pt, ct, &mut tag)?;
+
+            Ok(Ciphertext { bs, iv, tag })
         }
     }
 
     impl<A> Access<A, Key> for Key {
         type Accessor = GuardedBox<A>;
 
-        fn access<CT: AsRef<Ciphertext<A>>>(&self, _ct: CT) -> crate::Result<Self::Accessor> {
-            unimplemented!()
+        fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<Self::Accessor> {
+
+            let bs: &[u8] = unsafe {
+                core::slice::from_raw_parts(ct.as_ref().bs.as_ptr() as *const u8, core::mem::size_of::<A>())
+            };
+
+            let gb: GuardedBox<A> = GuardedBox::uninit()?;
+            gb.with_mut_ptr(|p| {
+                let pt: &mut [u8] = unsafe {
+                    core::slice::from_raw_parts_mut(p as *mut u8, core::mem::size_of::<A>())
+                };
+
+                AES_256_GCM::decrypt(&self.0, &ct.as_ref().iv, &[], &ct.as_ref().tag, bs, pt)
+            })??;
+
+            Ok(gb)
         }
     }
 }
@@ -178,6 +218,15 @@ mod tests {
         let (private, public) = X25519XChaCha20Poly1305::keypair()?;
         let ct = public.protect(17)?;
         let gb = private.access(&ct)?;
+        assert_eq!(*gb.access()?, 17);
+        Ok(())
+    }
+
+    #[test]
+    fn AES() -> crate::Result<()> {
+        let key = AES::Key::new()?;
+        let ct = key.protect(17)?;
+        let gb = key.access(&ct)?;
         assert_eq!(*gb.access()?, 17);
         Ok(())
     }
