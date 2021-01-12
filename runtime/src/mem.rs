@@ -199,14 +199,24 @@ impl<A> GuardedBox<A> {
         // NB no need to run forget(a) since write takes ownership
         unsafe { (alloc.data() as *mut A).write(a) }
         alloc.protect(false, false)?;
-        Ok(Self { alloc, a: PhantomData, readers: Cell::new(0), writers: Cell::new(0) })
+        Ok(Self {
+            alloc,
+            a: PhantomData,
+            readers: Cell::new(0),
+            writers: Cell::new(0),
+        })
     }
 
     pub fn uninit() -> crate::Result<Self> {
         let l = Layout::new::<A>();
         let alloc = GuardedAllocation::aligned(l)?;
         alloc.protect(false, false)?;
-        Ok(Self { alloc, a: PhantomData, readers: Cell::new(0), writers: Cell::new(0) })
+        Ok(Self {
+            alloc,
+            a: PhantomData,
+            readers: Cell::new(0),
+            writers: Cell::new(0),
+        })
     }
 
     pub fn with_ptr<T, F: FnOnce(*const A) -> T>(&self, f: F) -> crate::Result<T> {
@@ -269,7 +279,9 @@ impl<A> Drop for GuardedBox<A> {
     fn drop(&mut self) {
         if core::mem::needs_drop::<A>() {
             self.alloc.protect(true, true).unwrap();
-            unsafe { (self.alloc.data() as *mut A).drop_in_place(); }
+            unsafe {
+                (self.alloc.data() as *mut A).drop_in_place();
+            }
         } else {
             self.alloc.protect(false, true).unwrap();
         }
@@ -298,7 +310,7 @@ impl<A> Deref for GuardedBoxAccess<'_, A> {
     type Target = A;
 
     fn deref(&self) -> &A {
-        if ! self.read.get() {
+        if !self.read.get() {
             self.inner.add_reader().unwrap();
             self.read.set(true);
         }
@@ -313,7 +325,7 @@ impl<A> Deref for GuardedBoxAccess<'_, A> {
 
 impl<A> DerefMut for GuardedBoxAccess<'_, A> {
     fn deref_mut(&mut self) -> &mut A {
-        if ! self.write.get() {
+        if !self.write.get() {
             self.inner.add_writer().unwrap();
             self.write.set(true);
         }
@@ -340,7 +352,11 @@ impl<'a, A: 'a> AccessSelf<'a, A> for GuardedBox<A> {
     type Accessor = GuardedBoxAccess<'a, A>;
 
     fn access(&'a self) -> crate::Result<Self::Accessor> {
-        Ok(GuardedBoxAccess { inner: &self, read: Cell::new(false), write: Cell::new(false) })
+        Ok(GuardedBoxAccess {
+            inner: &self,
+            read: Cell::new(false),
+            write: Cell::new(false),
+        })
     }
 }
 

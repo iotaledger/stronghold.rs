@@ -3,10 +3,7 @@
 
 #![allow(non_snake_case)]
 
-use crypto::rand;
-use crypto::x25519;
-use crypto::blake2b;
-use crypto::ciphers::chacha::xchacha20poly1305;
+use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, rand, x25519};
 
 pub trait Protection<A> {
     type AtRest;
@@ -73,13 +70,11 @@ mod X25519XChaCha20Poly1305 {
             let mut bs = core::mem::MaybeUninit::uninit();
             let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
 
-            let ct: &mut [u8] = unsafe {
-                core::slice::from_raw_parts_mut(bs.as_mut_ptr() as *mut u8, core::mem::size_of::<A>())
-            };
+            let ct: &mut [u8] =
+                unsafe { core::slice::from_raw_parts_mut(bs.as_mut_ptr() as *mut u8, core::mem::size_of::<A>()) };
 
-            let pt: &[u8] = unsafe {
-                core::slice::from_raw_parts(&a as *const _ as *const u8, core::mem::size_of::<A>())
-            };
+            let pt: &[u8] =
+                unsafe { core::slice::from_raw_parts(&a as *const _ as *const u8, core::mem::size_of::<A>()) };
 
             xchacha20poly1305::encrypt(ct, &mut tag, pt, &shared, &nonce, &[])?;
 
@@ -112,15 +107,12 @@ mod X25519XChaCha20Poly1305 {
                 h
             };
 
-            let bs: &[u8] = unsafe {
-                core::slice::from_raw_parts(ct.as_ref().bs.as_ptr() as *const u8, core::mem::size_of::<A>())
-            };
+            let bs: &[u8] =
+                unsafe { core::slice::from_raw_parts(ct.as_ref().bs.as_ptr() as *const u8, core::mem::size_of::<A>()) };
 
             let gb: GuardedBox<A> = GuardedBox::uninit()?;
             gb.with_mut_ptr(|p| {
-                let pt: &mut [u8] = unsafe {
-                    core::slice::from_raw_parts_mut(p as *mut u8, core::mem::size_of::<A>())
-                };
+                let pt: &mut [u8] = unsafe { core::slice::from_raw_parts_mut(p as *mut u8, core::mem::size_of::<A>()) };
 
                 xchacha20poly1305::decrypt(pt, bs, &shared, &ct.as_ref().tag, &nonce, &[])
             })??;
@@ -172,13 +164,11 @@ mod AES {
             let mut tag = [0; AES_256_GCM::TAG_LENGTH];
 
             let mut bs = core::mem::MaybeUninit::uninit();
-            let ct: &mut [u8] = unsafe {
-                core::slice::from_raw_parts_mut(bs.as_mut_ptr() as *mut u8, core::mem::size_of::<A>())
-            };
+            let ct: &mut [u8] =
+                unsafe { core::slice::from_raw_parts_mut(bs.as_mut_ptr() as *mut u8, core::mem::size_of::<A>()) };
 
-            let pt: &[u8] = unsafe {
-                core::slice::from_raw_parts(&a as *const _ as *const u8, core::mem::size_of::<A>())
-            };
+            let pt: &[u8] =
+                unsafe { core::slice::from_raw_parts(&a as *const _ as *const u8, core::mem::size_of::<A>()) };
 
             AES_256_GCM::encrypt(&self.0, &iv, &[], pt, ct, &mut tag)?;
 
@@ -190,16 +180,12 @@ mod AES {
         type Accessor = GuardedBox<A>;
 
         fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<Self::Accessor> {
-
-            let bs: &[u8] = unsafe {
-                core::slice::from_raw_parts(ct.as_ref().bs.as_ptr() as *const u8, core::mem::size_of::<A>())
-            };
+            let bs: &[u8] =
+                unsafe { core::slice::from_raw_parts(ct.as_ref().bs.as_ptr() as *const u8, core::mem::size_of::<A>()) };
 
             let gb: GuardedBox<A> = GuardedBox::uninit()?;
             gb.with_mut_ptr(|p| {
-                let pt: &mut [u8] = unsafe {
-                    core::slice::from_raw_parts_mut(p as *mut u8, core::mem::size_of::<A>())
-                };
+                let pt: &mut [u8] = unsafe { core::slice::from_raw_parts_mut(p as *mut u8, core::mem::size_of::<A>()) };
 
                 AES_256_GCM::decrypt(&self.0, &ct.as_ref().iv, &[], &ct.as_ref().tag, bs, pt)
             })??;
