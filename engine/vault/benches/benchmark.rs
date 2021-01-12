@@ -15,7 +15,7 @@ fn bench_write(c: &mut Criterion) {
     c.bench_function("write to engine", |b| {
         b.iter(|| {
             let k: Key<Provider> = Key::random().unwrap();
-            let v0 = DBView::load(k.clone(), empty::<ReadResult>()).unwrap();
+            let v0 = DBView::load(k, empty::<ReadResult>()).unwrap();
 
             let mut writes = vec![];
 
