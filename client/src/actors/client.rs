@@ -69,20 +69,6 @@ pub enum Procedure {
     /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
     /// in particular SLIP10 keys are compatible.
     Ed25519Sign { private_key: Location, msg: Vec<u8> },
-    /// Derive an Ed25519 key using SLIP10 from the specified path and derive its public key
-    SLIP10DeriveAndEd25519PublicKey { path: String, seed: Location },
-    /// Derive an Ed25519 key using SLIP10 from the specified path and seed and use it to sign the given message
-    SLIP10DeriveAndEd25519Sign { path: String, seed: Location, msg: Vec<u8> },
-    /// Derive a SLIP10 key from a SLIP10/BIP39 seed using path, sign the essence using Ed25519, return the signature
-    /// and the corresponding public key
-    ///
-    /// This is equivalent to separate calls to SLIP10Derive, Ed25519PublicKey, and Ed25519Sign but
-    /// does not store the derived key.
-    SignUnlockBlock {
-        seed: Location,
-        path: String,
-        essence: Vec<u8>,
-    },
 }
 
 /// A Procedure return result type.  Contains the different return values for the `Procedure` type calls used with
@@ -102,19 +88,8 @@ pub enum ProcResult {
     BIP39MnemonicSentence(ResultMessage<String>),
     /// Return value for `Ed25519PublicKey`. Returns an Ed25519 public key.
     Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
-    /// Return value for `SLIP10DeriveAndEd25519PublicKey`. Returns an Ed25519 public key.
-    SLIP10DeriveAndEd25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
     /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
     Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
-    /// Return value for `SLIP10DeriveAndEd25519Sign`. Returns an Ed25519 signature.
-    SLIP10DeriveAndEd25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
-    /// Return value for `SignUnlockBlock`. Returns a Ed25519 signature and a Ed25519 public key.
-    SignUnlockBlock(
-        ResultMessage<(
-            [u8; crypto::ed25519::SIGNATURE_LENGTH],
-            [u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH],
-        )>,
-    ),
 }
 
 #[allow(dead_code)]
@@ -616,17 +591,6 @@ impl Receive<SHRequest> for Client {
                         let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
                         internal.try_tell(InternalMsg::Ed25519PublicKey { vault_id, record_id }, sender)
                     }
-                    Procedure::SLIP10DeriveAndEd25519PublicKey { path, seed } => {
-                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
-                        internal.try_tell(
-                            InternalMsg::SLIP10DeriveAndEd25519PublicKey {
-                                path,
-                                vault_id,
-                                record_id,
-                            },
-                            sender,
-                        )
-                    }
                     Procedure::Ed25519Sign { private_key, msg } => {
                         let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
                         internal.try_tell(
@@ -634,30 +598,6 @@ impl Receive<SHRequest> for Client {
                                 vault_id,
                                 record_id,
                                 msg,
-                            },
-                            sender,
-                        )
-                    }
-                    Procedure::SLIP10DeriveAndEd25519Sign { path, seed, msg } => {
-                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
-                        internal.try_tell(
-                            InternalMsg::SLIP10DeriveAndEd25519Sign {
-                                path,
-                                vault_id,
-                                record_id,
-                                msg,
-                            },
-                            sender,
-                        )
-                    }
-                    Procedure::SignUnlockBlock { seed, path, essence } => {
-                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
-                        internal.try_tell(
-                            InternalMsg::SignUnlockBlock {
-                                vault_id,
-                                record_id,
-                                path,
-                                essence,
                             },
                             sender,
                         )
