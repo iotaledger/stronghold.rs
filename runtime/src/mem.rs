@@ -202,6 +202,28 @@ impl<A> GuardedBox<A> {
         Ok(Self { alloc, a: PhantomData, readers: Cell::new(0), writers: Cell::new(0) })
     }
 
+    pub fn uninit() -> crate::Result<Self> {
+        let l = Layout::new::<A>();
+        let alloc = GuardedAllocation::aligned(l)?;
+        alloc.protect(false, false)?;
+        Ok(Self { alloc, a: PhantomData, readers: Cell::new(0), writers: Cell::new(0) })
+    }
+
+    pub fn with_ptr<T, F: FnOnce(*const A) -> T>(&self, f: F) -> crate::Result<T> {
+        self.add_reader()?;
+        let t = f(self.alloc.data() as *const A);
+        self.remove(true, false)?;
+        Ok(t)
+    }
+
+    pub fn with_mut_ptr<T, F: FnOnce(*mut A) -> T>(&self, f: F) -> crate::Result<T> {
+        self.add_reader()?;
+        self.add_writer()?;
+        let t = f(self.alloc.data() as *mut A);
+        self.remove(true, true)?;
+        Ok(t)
+    }
+
     fn add_reader(&self) -> crate::Result<()> {
         let r = self.readers.get();
         if r == 0 {

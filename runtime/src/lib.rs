@@ -38,6 +38,7 @@ pub enum Error {
     #[cfg(unix)]
     MemError(mem::Error),
     ZoneError(zone::Error),
+    CryptoError(crypto::Error),
     #[allow(dead_code)]
     Unreachable(&'static str),
 }
@@ -80,6 +81,13 @@ impl From<zone::Error> for Error {
 }
 
 #[cfg(unix)]
+impl From<crypto::Error> for Error {
+    fn from(e: crypto::Error) -> Self {
+        Error::CryptoError(e)
+    }
+}
+
+#[cfg(unix)]
 fn strerror(errno: libc::c_int) -> &'static str {
     #[allow(clippy::unnecessary_cast)]
     static mut BUF: [libc::c_char; 1024] = [0 as libc::c_char; 1024];
@@ -105,6 +113,7 @@ impl fmt::Debug for Error {
             #[cfg(unix)]
             Self::MemError(me) => me.fmt(f),
             Self::ZoneError(ze) => ze.fmt(f),
+            Self::CryptoError(ce) => ce.fmt(f),
             Self::Unreachable(msg) => f.write_fmt(format_args!("unreachable state: {}", msg)),
         }
     }

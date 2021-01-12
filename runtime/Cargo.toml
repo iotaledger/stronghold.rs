@@ -40,7 +40,7 @@ default-features = false
 
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
-rev = "35610d2cf88f97c5a35e7e4f89ec23e5fb2226c9"
+rev = "2dc153079381bf7a87fac54555b26c230a5be593"
 features = [ "random", "chacha", "x25519", "blake2b", "aes" ]
 
 [build-dependencies]
