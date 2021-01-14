@@ -6,10 +6,13 @@ edition = "2018"
 
 
 [dependencies]
-crypto = { path = "../" }
 sodiumoxide = "0.2"
 num_cpus = "1"
 hex = "0.4"
+
+[dependencies.crypto]
+path = "../"
+version = "0.2"
 
 [profile.dev]
 overflow-checks = true
