@@ -11,7 +11,10 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.3"
-snapshot = {path = ".."}
+
+[dependencies.snapshot]
+path = ".."
+version = "0.2"
 
 [workspace]
 

@@ -13,11 +13,21 @@ cargo-fuzz = true
 libfuzzer-sys = "0.3"
 rand = "0.7.3"
 
-vault = {path = "../../vault"}
-crypto = {path = "../../crypto"}
-random = {path = "../../random"}
-primitives = {path = "../../primitives"}
+[dependencies.vault]
+path = "../../vault"
+version = "0.2"
 
+[dependencies.crypto]
+path = "../../crypto"
+version = "0.2"
+
+[dependencies.random]
+path = "../../random"
+version = "0.2"
+
+[dependencies.primitives]
+path = "../../primitives"
+version = "0.2"
 
 [profile.release]
 overflow-checks = true
