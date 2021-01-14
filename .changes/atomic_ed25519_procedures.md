@@ -1,5 +1,5 @@
 ---
-"iota-stronghold": client
+"iota-stronghold": patch
 ---
 
 Rename the previously incorrectly named combined SLIP10+Ed25519 procedures (now
