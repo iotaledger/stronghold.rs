@@ -1,5 +1,5 @@
 [book]
-authors = ["Project Docs Maintainer <xx@iota.org",  "Sebastian Heusser <sebastian.heusser@iota.org>"]
+authors = ["Daniel Thompson-Yvetot <daniel.yvetot@iota.org",  "Sebastian Heusser <sebastian.heusser@iota.org>"]
 language = "en"
 multilingual = false
 src = "./src"
