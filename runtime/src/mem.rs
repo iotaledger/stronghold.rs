@@ -185,6 +185,280 @@ impl GuardedAllocation {
     }
 }
 
+// TODO: figure out the correct name, "Cell" isn't really it?
+struct GuardedCell {
+    alloc: GuardedAllocation,
+    readers: Cell<usize>,
+    writers: Cell<usize>,
+}
+
+impl GuardedCell {
+    pub fn new(l: Layout) -> crate::Result<Self> {
+        let alloc = GuardedAllocation::aligned(l)?;
+        alloc.protect(false, false)?;
+        Ok(Self {
+            alloc,
+            readers: Cell::new(0),
+            writers: Cell::new(0),
+        })
+    }
+
+    pub fn with_ptr<T, F: FnOnce(*const u8) -> T>(&self, f: F) -> crate::Result<T> {
+        self.add_reader()?;
+        let t = f(self.alloc.data());
+        self.remove(true, false)?;
+        Ok(t)
+    }
+
+    pub fn with_mut_ptr<T, F: FnOnce(*mut u8) -> T>(&self, f: F) -> crate::Result<T> {
+        self.add_reader()?;
+        self.add_writer()?;
+        let t = f(self.alloc.data());
+        self.remove(true, true)?;
+        Ok(t)
+    }
+
+    fn add_reader(&self) -> crate::Result<()> {
+        let r = self.readers.get();
+        if r == 0 {
+            self.alloc.protect(true, 0 < self.writers.get())?;
+        }
+        self.readers.set(r + 1);
+
+        Ok(())
+    }
+
+    fn add_writer(&self) -> crate::Result<()> {
+        let w = self.writers.get();
+        if w == 0 {
+            self.alloc.protect(0 < self.readers.get(), true)?;
+        }
+        self.writers.set(w + 1);
+
+        Ok(())
+    }
+
+    fn remove(&self, read: bool, write: bool) -> crate::Result<()> {
+        let r = if read {
+            let r = self.readers.get();
+            self.readers.set(r - 1);
+            r - 1
+        } else {
+            self.readers.get()
+        };
+
+        let w = if write {
+            let w = self.writers.get();
+            self.writers.set(w - 1);
+            w - 1
+        } else {
+            self.writers.get()
+        };
+
+        self.alloc.protect(r > 0, w > 0)
+    }
+
+    fn access<'a>(&'a self) -> GuardedCellAccess<'a> {
+        GuardedCellAccess {
+            inner: self,
+            read: Cell::new(false),
+            write: Cell::new(false),
+        }
+    }
+}
+
+impl Drop for GuardedCell {
+    fn drop(&mut self) {
+        self.alloc.protect(false, true).unwrap();
+        self.alloc.free().unwrap();
+    }
+}
+
+pub struct GuardedCellAccess<'a> {
+    inner: &'a GuardedCell,
+    read: Cell<bool>,
+    write: Cell<bool>,
+}
+
+impl GuardedCellAccess<'_> {
+    fn read(&self) -> *const u8 {
+        if !self.read.get() {
+            self.inner.add_reader().unwrap();
+            self.read.set(true);
+        }
+
+        self.inner.alloc.data()
+    }
+
+    fn write(&self) -> *mut u8 {
+        if !self.write.get() {
+            self.inner.add_writer().unwrap();
+            self.write.set(true);
+        }
+
+        self.inner.alloc.data()
+    }
+}
+
+impl Drop for GuardedCellAccess<'_> {
+    fn drop(&mut self) {
+        let r = self.read.get();
+        let w = self.write.get();
+        if r || w {
+            self.inner.remove(r, w).unwrap();
+        }
+    }
+}
+
+pub struct GuardedVec<A> {
+    inner: GuardedCell,
+    n: usize,
+    a: PhantomData<A>,
+}
+
+impl<A: Copy> GuardedVec<A> {
+    pub fn copy(a: &[A]) -> crate::Result<Self> {
+        let n = a.len();
+        let l = Layout::array::<A>(n).map_err(|e| Error::Layout(e))?;
+        let inner = GuardedCell::new(l)?;
+
+        let gv = Self { inner, n, a: PhantomData };
+        (*gv.access()).copy_from_slice(a);
+
+        Ok(gv)
+    }
+}
+
+impl<A: Clone> GuardedVec<A> {
+    pub fn clone(a: &[A]) -> crate::Result<Self> {
+        let n = a.len();
+        let l = Layout::array::<A>(n).map_err(|e| Error::Layout(e))?;
+        let inner = GuardedCell::new(l)?;
+
+        inner.with_mut_ptr(|p| {
+            let p = p as *mut A;
+
+            for i in 0..n {
+                unsafe {
+                    p.add(i).write(a[i].clone());
+                }
+            }
+        })?;
+
+        Ok(Self { inner, n, a: PhantomData })
+    }
+}
+
+impl<A> GuardedVec<A> {
+    fn access<'a>(&'a self) -> GuardedVecAccess<'a, A> {
+        GuardedVecAccess {
+            inner: self.inner.access(),
+            n: self.n,
+            a: PhantomData,
+        }
+    }
+}
+
+impl<A> Drop for GuardedVec<A> {
+    fn drop(&mut self) {
+        if core::mem::needs_drop::<A>() {
+            self.inner.alloc.protect(true, true).unwrap();
+            let p = self.inner.alloc.data() as *mut A;
+            for i in 0..self.n {
+                unsafe {
+                    p.add(i).drop_in_place();
+                }
+            }
+        }
+    }
+}
+
+pub struct GuardedVecAccess<'a, A> {
+    inner: GuardedCellAccess<'a>,
+    n: usize,
+    a: PhantomData<A>,
+}
+
+impl<A> Deref for GuardedVecAccess<'_, A> {
+    type Target = [A];
+
+    fn deref(&self) -> &[A] {
+        let p = self.inner.read() as *const A;
+
+        unsafe {
+            core::slice::from_raw_parts(p, self.n)
+        }
+    }
+}
+
+impl<A> DerefMut for GuardedVecAccess<'_, A> {
+    fn deref_mut(&mut self) -> &mut [A] {
+        let p = self.inner.write() as *mut A;
+
+        unsafe {
+            core::slice::from_raw_parts_mut(p, self.n)
+        }
+    }
+}
+
+#[cfg(test)]
+mod guarded_vec_tests {
+    use super::*;
+
+    #[test]
+    fn copy() -> crate::Result<()> {
+        let gv = GuardedVec::copy(&[1, 2, 3])?;
+        assert_eq!(*gv.access(), [1, 2, 3]);
+        gv.access()[0] = 4;
+        gv.access()[1] = 5;
+        gv.access()[2] = 6;
+        assert_eq!(*gv.access(), [4, 5, 6]);
+        Ok(())
+    }
+
+    #[test]
+    fn clone() -> crate::Result<()> {
+        let gv = GuardedVec::clone(&[1, 2, 3])?;
+        assert_eq!(*gv.access(), [1, 2, 3]);
+        gv.access()[0] = 4;
+        gv.access()[1] = 5;
+        gv.access()[2] = 6;
+        assert_eq!(*gv.access(), [4, 5, 6]);
+        Ok(())
+    }
+
+    #[test]
+    fn drop() -> crate::Result<()> {
+        struct Droplet<'a> {
+            clones: &'a Cell<usize>,
+        }
+
+        impl Clone for Droplet<'_> {
+            fn clone(&self) -> Self {
+                self.clones.set(self.clones.get() + 1);
+                Self { clones: self.clones }
+            }
+        }
+
+        impl Drop for Droplet<'_> {
+            fn drop(&mut self) {
+                self.clones.set(self.clones.get() - 1);
+            }
+        }
+
+        let cs = Cell::new(1);
+
+        {
+            let _gv = GuardedVec::clone(&[ Droplet { clones: &cs }]);
+            assert_eq!(cs.get(), 1);
+        }
+
+        assert_eq!(cs.get(), 0);
+
+        Ok(())
+    }
+}
+
 pub struct GuardedBox<A> {
     alloc: GuardedAllocation,
     a: PhantomData<A>,
@@ -365,7 +639,7 @@ mod guarded_box_tests {
     use super::*;
 
     #[test]
-    fn read() -> crate::Result<()> {
+    fn access() -> crate::Result<()> {
         let gb = GuardedBox::new(7)?;
         assert_eq!(*gb.access()?, 7);
         *gb.access()? = 8;
