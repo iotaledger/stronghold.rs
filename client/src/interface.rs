@@ -18,7 +18,7 @@ use crate::{
     ClientId, Location, Provider,
 };
 #[cfg(feature = "communication")]
-use stronghold_communication::actor::{CommsActorConfig, CommunicationActor};
+use stronghold_communication::actor::{CommsActorConfig, CommunicationActor, CommunicationEvent};
 
 /// Main Interface for the Stronghold System. Contains the Riker Actor System, a vector of the current attached
 /// ClientIds and ActorRefs, a HashMap of the derive data (SHA512 of the client_path) and an index for the Current
@@ -37,6 +37,10 @@ pub struct Stronghold {
 
     // current index of the client.
     current_target: usize,
+
+    #[cfg(feature = "communication")]
+    // communication actor
+    communication_actor: ActorRef<CommunicationEvent<SHRequest, SHResults>>,
 }
 
 impl Stronghold {
@@ -60,14 +64,16 @@ impl Stronghold {
             .expect(line_error!());
 
         system.actor_of::<Snapshot>("snapshot").expect(line_error!());
+
         #[cfg(feature = "communication")]
-        {
+        let communication_actor = {
             let local_keys = stronghold_communication::generate_new_keypair();
-            let config = CommsActorConfig::new(local_keys, None, None, Some(BasicActorRef::from(client.clone())));
+            let client_ref = BasicActorRef::from(client.clone());
+            let config = CommsActorConfig::new(local_keys, None, client_ref);
             system
                 .actor_of_args::<CommunicationActor<SHRequest, SHResults>, _>("communicaton", config)
-                .expect(line_error!());
-        }
+                .expect(line_error!())
+        };
 
         let actors = vec![client];
 
@@ -77,6 +83,8 @@ impl Stronghold {
             derive_data,
             actors,
             current_target: 0,
+            #[cfg(feature = "communication")]
+            communication_actor,
         }
     }
 

@@ -19,6 +19,8 @@ use core::{
     convert::{TryFrom, TryInto},
 };
 use std::{path::PathBuf, time::Duration};
+#[cfg(feature = "communication")]
+use stronghold_communication::actor::CommunicationEvent;
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -285,6 +287,12 @@ impl Actor for Client {
 impl Receive<SHResults> for Client {
     type Msg = ClientMsg;
 
+    #[cfg(feature = "communication")]
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: SHResults, _sender: Sender) {
+        unimplemented!();
+    }
+
+    #[cfg(not(feature = "communication"))]
     fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: SHResults, _sender: Sender) {}
 }
 
@@ -787,6 +795,22 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnClearCache(status), None)
                     .expect(line_error!());
             }
+        }
+    }
+}
+
+#[cfg(feature = "communication")]
+impl Receive<CommunicationEvent<SHRequest, SHResults>> for Client {
+    type Msg = ClientMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: CommunicationEvent<SHRequest, SHResults>, _sender: Sender) {
+        if let CommunicationEvent::Request {
+            peer_id: _,
+            request_id: _,
+            request,
+        } = msg
+        {
+            self.receive(ctx, request, Some(BasicActorRef::from(ctx.myself())));
         }
     }
 }

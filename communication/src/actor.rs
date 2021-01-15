@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::behaviour::{
-    message::{P2PEvent, P2PReqResEvent},
+    message::{P2PEvent, P2PInboundFailure, P2POutboundFailure, P2PReqResEvent},
     MessageEvent, P2PNetworkBehaviour,
 };
 use async_std::task;
@@ -22,7 +22,7 @@ use libp2p::{
     swarm::{Swarm, SwarmEvent},
 };
 use riker::actors::*;
-use std::collections::HashMap;
+use std::{collections::HashMap, string::ToString};
 
 /// Errors that can occur in the context of a pending `Connection`.
 #[derive(Debug, Clone)]
@@ -50,24 +50,33 @@ impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum ResponseFailure {
+    Inbound(P2PInboundFailure),
+    Outbound(P2POutboundFailure),
+}
+
 /// Events for communication with the [`CommunicationActor`].
 ///
 /// T and U are the request and response types of the messages to remote peers,
 /// and should implement Serialize and Deserialize since this is required by the protocol.
 #[derive(Debug, Clone)]
 pub enum CommunicationEvent<T, U> {
-    /// Message that is send via the swarm to or from a remote peer
-    ///
-    /// The CommunicationActor only forwards these messages between the local actor/channel and
-    /// remote peer.
-    Message(P2PReqResEvent<T, U>),
-    /// Dial a new peer on the address.
-    ConnectPeer(Multiaddr),
-    /// Outcome of [`ConnectPeer`].
-    ConnectPeerResult {
-        addr: Multiaddr,
-        result: Result<PeerId, ConnectPeerError>,
+    /// Send request to remote peer.
+    Request {
+        peer_id: PeerId,
+        request_id: Option<RequestId>,
+        request: T,
     },
+    /// Response from remote peer
+    Response {
+        request_id: RequestId,
+        result: Result<U, ResponseFailure>,
+    },
+    /// Dial a new peer on the address.
+    ConnectPeer { addr: Multiaddr, peer_id: PeerId },
+    /// Outcome of [`ConnectPeer`].
+    ConnectPeerResult(Result<PeerId, ConnectPeerError>),
     /// Get information about the local peer.
     GetSwarmInfo,
     /// Information about the local peer.
@@ -79,31 +88,22 @@ pub enum CommunicationEvent<T, U> {
 
 /// Configure the `CommunicationActor` upon creation.
 #[derive(Clone)]
-pub struct CommsActorConfig<T: MessageEvent, U: MessageEvent> {
+pub struct CommsActorConfig {
     /// The keypair that will be used to build and authenticate the transport.
     keypair: Keypair,
     /// Specific address that the peer should listen on, per default this is assigned by the OS.
     listen_addr: Option<Multiaddr>,
-    /// Optional Channel where the `CommunicationActor` will publish all its events to
-    /// the topic `from_swarm`, and subscribes to the topic `to_swarm`.
-    chan: Option<ChannelRef<CommunicationEvent<T, U>>>,
     /// If a actor ref is provided, the `CommunicationActor` will try to directly tell this actor
     /// the events.
     /// This is independently of the `chan` attribute.
-    client_ref: Option<BasicActorRef>,
+    client_ref: BasicActorRef,
 }
 
-impl<T: MessageEvent, U: MessageEvent> CommsActorConfig<T, U> {
-    pub fn new(
-        keypair: Keypair,
-        listen_addr: Option<Multiaddr>,
-        chan: Option<ChannelRef<CommunicationEvent<T, U>>>,
-        client_ref: Option<BasicActorRef>,
-    ) -> CommsActorConfig<T, U> {
+impl CommsActorConfig {
+    pub fn new(keypair: Keypair, listen_addr: Option<Multiaddr>, client_ref: BasicActorRef) -> CommsActorConfig {
         CommsActorConfig {
             keypair,
             listen_addr,
-            chan,
             client_ref,
         }
     }
@@ -134,18 +134,17 @@ impl<T: MessageEvent, U: MessageEvent> CommsActorConfig<T, U> {
 ///
 /// let local_keys = Keypair::generate_ed25519();
 /// let sys = ActorSystem::new().unwrap();
-/// let chan: ChannelRef<CommunicationEvent<Request, Response>> = channel("remote-peer", &sys).unwrap();
-/// let config = CommsActorConfig::new(local_keys, None, Some(chan), None);
-/// sys.actor_of_args::<CommunicationActor<Request, Response>, _>("communication-actor", config);
+/// // let config = CommsActorConfig::new(local_keys, None);
+/// // sys.actor_of_args::<CommunicationActor<Request, Response>, _>("communication-actor", config);
 /// ```
 pub struct CommunicationActor<T: MessageEvent, U: MessageEvent> {
-    config: Option<CommsActorConfig<T, U>>,
+    config: Option<CommsActorConfig>,
     swarm_tx: Option<UnboundedSender<(CommunicationEvent<T, U>, Sender)>>,
     poll_swarm_handle: Option<future::RemoteHandle<()>>,
 }
 
-impl<T: MessageEvent, U: MessageEvent> ActorFactoryArgs<CommsActorConfig<T, U>> for CommunicationActor<T, U> {
-    fn create_args(config: CommsActorConfig<T, U>) -> Self {
+impl<T: MessageEvent, U: MessageEvent> ActorFactoryArgs<CommsActorConfig> for CommunicationActor<T, U> {
+    fn create_args(config: CommsActorConfig) -> Self {
         // Channel to communicate from the CommunicationActor with the swarm task.
         Self {
             config: Some(config),
@@ -157,17 +156,6 @@ impl<T: MessageEvent, U: MessageEvent> ActorFactoryArgs<CommsActorConfig<T, U>> 
 
 impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
     type Msg = CommunicationEvent<T, U>;
-
-    // Subscribe to swarm_outbound to trigger the recv method for them.
-    //
-    // The swarm_outbound topic can be used by other actors within the ActorSystem to publish messages for remote peers.
-    fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        if let Some(chan) = self.config.as_ref().unwrap().chan.clone() {
-            let topic = Topic::from("to_swarm");
-            let sub = Box::new(ctx.myself());
-            chan.tell(Subscribe { actor: sub, topic }, None);
-        }
-    }
 
     // Start a separate task to manage the communication from and to the swarm
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
@@ -209,19 +197,35 @@ impl<T: MessageEvent, U: MessageEvent> CommunicationActor<T, U> {
     }
 }
 
+struct SenderMap {
+    map: HashMap<String, Sender>,
+}
+
+impl SenderMap {
+    fn new() -> Self {
+        SenderMap { map: HashMap::new() }
+    }
+    fn insert<T: ToString>(&mut self, key: T, sender: Sender) {
+        self.map.insert(key.to_string(), sender);
+    }
+
+    fn take<T: ToString>(&mut self, key: T) -> Option<Sender> {
+        self.map.remove(&key.to_string())
+    }
+}
+
 // Separate task that manages the swarm communication.
 struct SwarmTask<T: MessageEvent, U: MessageEvent> {
     swarm: Swarm<P2PNetworkBehaviour<T, U>>,
-    chan: Option<ChannelRef<CommunicationEvent<T, U>>>,
-    client_ref: Option<BasicActorRef>,
+    client_ref: BasicActorRef,
     swarm_rx: UnboundedReceiver<(CommunicationEvent<T, U>, Sender)>,
     self_ref: BasicActorRef,
-    requests: HashMap<RequestId, Sender>,
+    sender_map: SenderMap,
 }
 
 impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
     fn new(
-        config: CommsActorConfig<T, U>,
+        config: CommsActorConfig,
         swarm_rx: UnboundedReceiver<(CommunicationEvent<T, U>, Sender)>,
         self_ref: BasicActorRef,
     ) -> Self {
@@ -234,11 +238,10 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
         Swarm::listen_on(&mut swarm, listen_addr).unwrap();
         SwarmTask {
             swarm,
-            chan: config.chan,
             client_ref: config.client_ref,
             swarm_rx,
             self_ref,
-            requests: HashMap::new(),
+            sender_map: SenderMap::new(),
         }
     }
 
@@ -264,38 +267,38 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
     // Handle the messages that are received from other actors in the system..
     fn handle_actor_event(&mut self, event: CommunicationEvent<T, U>, sender: Sender) -> Option<()> {
         match event {
-            CommunicationEvent::Message(message) => match message {
-                P2PReqResEvent::Req {
-                    peer_id,
-                    request_id: _,
-                    request,
-                } => {
-                    let request_id = self.swarm.send_request(&peer_id, request);
-                    self.requests.insert(request_id, sender);
-                }
-                P2PReqResEvent::Res {
-                    peer_id: _,
-                    request_id,
-                    response,
-                } => {
-                    let _ = self.swarm.send_response(response, request_id);
-                }
-                _ => {}
-            },
-            CommunicationEvent::ConnectPeer(addr) => {
-                if Swarm::dial_addr(&mut self.swarm, addr.clone()).is_err() {
-                    let response = CommunicationEvent::ConnectPeerResult {
-                        addr,
-                        result: Err(ConnectPeerError::ConnectionLimit),
-                    };
-                    self.tell_actor(response);
+            CommunicationEvent::Request {
+                peer_id,
+                request_id: _,
+                request,
+            } => {
+                let request_id = self.swarm.send_request(&peer_id, request);
+                self.sender_map.insert(request_id, sender);
+            }
+            CommunicationEvent::Response {
+                result: Ok(response),
+                request_id,
+            } => {
+                let _ = self.swarm.send_response(response, request_id);
+            }
+            CommunicationEvent::ConnectPeer { addr, peer_id } => {
+                if Swarm::dial(&mut self.swarm, &peer_id).is_ok()
+                    || Swarm::dial_addr(&mut self.swarm, addr.clone()).is_ok()
+                {
+                    self.sender_map.insert(addr, sender);
+                } else if let Some(sender) = sender {
+                    let response =
+                        CommunicationEvent::<T, U>::ConnectPeerResult(Err(ConnectPeerError::ConnectionLimit));
+                    sender.try_tell(response, self.self_ref.clone()).unwrap();
                 }
             }
             CommunicationEvent::GetSwarmInfo => {
-                let peer_id = *Swarm::local_peer_id(&self.swarm);
-                let listeners = Swarm::listeners(&self.swarm).cloned().collect();
-                let swarm_info = CommunicationEvent::<T, U>::SwarmInfo { peer_id, listeners };
-                self.tell_actor(swarm_info);
+                if let Some(sender) = sender {
+                    let peer_id = *Swarm::local_peer_id(&self.swarm);
+                    let listeners = Swarm::listeners(&self.swarm).cloned().collect();
+                    let swarm_info = CommunicationEvent::<T, U>::SwarmInfo { peer_id, listeners };
+                    sender.try_tell(swarm_info, self.self_ref.clone()).unwrap();
+                }
             }
             CommunicationEvent::Shutdown => return None,
             _ => {}
@@ -305,79 +308,84 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
 
     // Poll from the swarm for requests and responses from remote peers, and publish them in the channel.
     fn handle_swarm_event<HandleErr>(&mut self, event: SwarmEvent<P2PEvent<T, U>, HandleErr>) {
-        let msg = match event {
-            SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
-                Some(CommunicationEvent::Message(boxed_event.deref().clone()))
-            }
+        match event {
+            SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => match boxed_event.deref().clone() {
+                P2PReqResEvent::Res {
+                    peer_id: _,
+                    request_id,
+                    response,
+                } => {
+                    if let Some(Some(actor_ref)) = self.sender_map.take(&request_id) {
+                        let msg = CommunicationEvent::<T, U>::Response {
+                            request_id,
+                            result: Ok(response),
+                        };
+                        actor_ref.try_tell(msg, Some(self.self_ref.clone())).unwrap();
+                    }
+                }
+                P2PReqResEvent::Req {
+                    peer_id,
+                    request_id,
+                    request,
+                } => {
+                    let msg = CommunicationEvent::<T, U>::Request {
+                        peer_id,
+                        request_id,
+                        request,
+                    };
+                    self.client_ref.try_tell(msg, Some(self.self_ref.clone())).unwrap();
+                }
+                P2PReqResEvent::InboundFailure {
+                    peer_id: _,
+                    request_id,
+                    error,
+                } => {
+                    if let Some(Some(actor_ref)) = self.sender_map.take(&request_id) {
+                        let msg = CommunicationEvent::<T, U>::Response {
+                            request_id,
+                            result: Err(ResponseFailure::Inbound(error)),
+                        };
+                        actor_ref.try_tell(msg, Some(self.self_ref.clone())).unwrap();
+                    }
+                }
+                P2PReqResEvent::OutboundFailure {
+                    peer_id: _,
+                    request_id,
+                    error,
+                } => {
+                    if let Some(Some(actor_ref)) = self.sender_map.take(&request_id) {
+                        let msg = CommunicationEvent::<T, U>::Response {
+                            request_id,
+                            result: Err(ResponseFailure::Outbound(error)),
+                        };
+                        actor_ref.try_tell(msg, Some(self.self_ref.clone())).unwrap();
+                    }
+                }
+                _ => {}
+            },
             SwarmEvent::ConnectionEstablished {
                 peer_id,
                 endpoint: ConnectedPoint::Dialer { address },
                 num_established: _,
-            } => Some(CommunicationEvent::ConnectPeerResult {
-                addr: address,
-                result: Ok(peer_id),
-            }),
+            } => {
+                if let Some(Some(actor_ref)) = self.sender_map.take(address) {
+                    let msg = CommunicationEvent::<T, U>::ConnectPeerResult(Ok(peer_id));
+                    actor_ref.try_tell(msg, Some(self.self_ref.clone())).unwrap();
+                }
+            }
             SwarmEvent::UnreachableAddr {
                 peer_id: _,
                 address,
                 error,
                 attempts_remaining: 0,
-            } => Some(CommunicationEvent::ConnectPeerResult {
-                addr: address,
-                result: Err(ConnectPeerError::from(error)),
-            }),
-            SwarmEvent::UnknownPeerUnreachableAddr { address, error } => Some(CommunicationEvent::ConnectPeerResult {
-                addr: address,
-                result: Err(ConnectPeerError::from(error)),
-            }),
-            _ => None,
-        };
-        if let Some(msg) = msg {
-            self.tell_actor(msg);
-        }
-    }
-
-    // Publish a message to the channel and/ or tell an actor, depending on the config.
-    fn tell_actor(&mut self, msg: CommunicationEvent<T, U>) {
-        // directly respond to the actor that initiated the request message
-        if let CommunicationEvent::Message(req_res_event) = msg.clone() {
-            match req_res_event {
-                P2PReqResEvent::Res {
-                    peer_id: _,
-                    request_id,
-                    response: _,
-                }
-                | P2PReqResEvent::InboundFailure {
-                    peer_id: _,
-                    request_id,
-                    error: _,
-                }
-                | P2PReqResEvent::OutboundFailure {
-                    peer_id: _,
-                    request_id,
-                    error: _,
-                } => {
-                    if let Some(sender) = self.requests.remove(&request_id) {
-                        if let Some(actor_ref) = sender {
-                            actor_ref.try_tell(req_res_event, self.self_ref.clone()).unwrap();
-                            return;
-                        }
-                    }
-                }
-                _ => {}
             }
-        }
-        if let Some(chan) = self.chan.as_ref() {
-            chan.tell(
-                Publish {
-                    msg: msg.clone(),
-                    topic: Topic::from("from_swarm"),
-                },
-                Some(self.self_ref.clone()),
-            )
-        }
-        if let Some(client) = self.client_ref.as_ref() {
-            client.try_tell(msg, self.self_ref.clone()).unwrap();
+            | SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {
+                if let Some(Some(actor_ref)) = self.sender_map.take(address) {
+                    let msg = CommunicationEvent::<T, U>::ConnectPeerResult(Err(ConnectPeerError::from(error)));
+                    actor_ref.try_tell(msg, Some(self.self_ref.clone())).unwrap();
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -400,14 +408,14 @@ mod test {
     }
 
     struct LocalActor {
-        remote_peer_addr: Multiaddr,
+        remote_peer: (PeerId, Multiaddr),
         has_received_response: bool,
     }
 
-    impl ActorFactoryArgs<Multiaddr> for LocalActor {
-        fn create_args(remote_peer_addr: Multiaddr) -> Self {
+    impl ActorFactoryArgs<(PeerId, Multiaddr)> for LocalActor {
+        fn create_args(remote_peer: (PeerId, Multiaddr)) -> Self {
             LocalActor {
-                remote_peer_addr,
+                remote_peer,
                 has_received_response: false,
             }
         }
@@ -417,16 +425,19 @@ mod test {
         type Msg = CommunicationEvent<Request, Response>;
 
         fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-            let self_ref = BasicActorRef::from(ctx.myself());
             let local_keys = Keypair::generate_ed25519();
-            let config = CommsActorConfig::new(local_keys, None, None, Some(self_ref));
+            let self_ref = BasicActorRef::from(ctx.myself());
+            let config = CommsActorConfig::new(local_keys, None, self_ref);
             ctx.actor_of_args::<CommunicationActor<Request, Response>, _>("communication", config)
                 .unwrap();
         }
 
         fn post_start(&mut self, ctx: &Context<Self::Msg>) {
             let communication_actor = ctx.select("communication").unwrap();
-            let event = CommunicationEvent::<Request, Response>::ConnectPeer(self.remote_peer_addr.clone());
+            let event = CommunicationEvent::<Request, Response>::ConnectPeer {
+                addr: self.remote_peer.1.clone(),
+                peer_id: self.remote_peer.0,
+            };
             communication_actor.try_tell(event, ctx.myself());
         }
 
@@ -435,20 +446,19 @@ mod test {
         }
 
         fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
-            if let CommunicationEvent::Message(P2PReqResEvent::Res {
-                peer_id: _,
+            if let CommunicationEvent::Response {
                 request_id: _,
-                response: _,
-            }) = msg
+                result: _,
+            } = msg
             {
                 self.has_received_response = true;
-            } else if let CommunicationEvent::ConnectPeerResult { addr: _, result } = msg {
+            } else if let CommunicationEvent::ConnectPeerResult(result) = msg {
                 let peer_id = result.expect("Panic due to no network connection");
-                let request = CommunicationEvent::<Request, Response>::Message(P2PReqResEvent::Req {
+                let request = CommunicationEvent::<Request, Response>::Request {
                     peer_id,
                     request_id: None,
                     request: Request::Ping,
-                });
+                };
                 let communication_actor = ctx.select("*").unwrap();
                 communication_actor.try_tell(request, ctx.myself());
             }
@@ -473,14 +483,9 @@ mod test {
         type Msg = CommunicationEvent<Request, Response>;
 
         fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-            let self_ref = BasicActorRef::from(ctx.myself());
             let local_keys = Keypair::generate_ed25519();
-            let config = CommsActorConfig {
-                keypair: local_keys,
-                listen_addr: Some(self.listening_addr.clone()),
-                chan: None,
-                client_ref: Some(self_ref),
-            };
+            let self_ref = BasicActorRef::from(ctx.myself());
+            let config = CommsActorConfig::new(local_keys, Some(self.listening_addr.clone()), self_ref);
             ctx.actor_of_args::<CommunicationActor<Request, Response>, _>("communication", config)
                 .unwrap();
         }
@@ -489,20 +494,18 @@ mod test {
             Strategy::Escalate
         }
 
-        fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
-            if let CommunicationEvent::Message(P2PReqResEvent::Req {
-                peer_id,
+        fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+            if let CommunicationEvent::Request {
+                peer_id: _,
                 request_id: Some(request_id),
                 request: Request::Ping,
-            }) = msg
+            } = msg
             {
-                let response = CommunicationEvent::<Request, Response>::Message(P2PReqResEvent::Res {
-                    peer_id,
+                let response = CommunicationEvent::<Request, Response>::Response {
                     request_id,
-                    response: Response::Pong,
-                });
-                let communication_actor = ctx.select("*").unwrap();
-                communication_actor.try_tell(response, ctx.myself());
+                    result: Ok(Response::Pong),
+                };
+                sender.unwrap().try_tell(response, ctx.myself()).unwrap();
             }
         }
     }
@@ -520,7 +523,7 @@ mod test {
         // local actor system
         let local_sys = ActorSystem::new().unwrap();
         local_sys
-            .actor_of_args::<LocalActor, _>("local-actor", remote_addr)
+            .actor_of_args::<LocalActor, _>("local-actor", (PeerId::random(), remote_addr))
             .unwrap();
         std::thread::sleep(Duration::new(1, 0));
 
