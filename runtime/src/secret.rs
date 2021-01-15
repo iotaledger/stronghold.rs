@@ -3,7 +3,7 @@
 
 #![allow(non_snake_case)]
 
-use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, rand, x25519};
+use core::convert::TryInto;
 
 pub trait Protection<A> {
     type AtRest;
@@ -27,18 +27,44 @@ pub trait AccessSelf<'a, A>: Protection<A> {
     fn access(&'a self) -> crate::Result<Self::Accessor>;
 }
 
-mod X25519XChaCha20Poly1305 {
+use std::vec::Vec;
+
+pub trait Protectable {
+    fn into_plaintext(self) -> Vec<u8>;
+
+    type View;
+    fn view_plaintext(bs: &[u8]) -> Self::View;
+}
+
+impl Protectable for u32 {
+    fn into_plaintext(self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+
+    type View = Option<u32>;
+    fn view_plaintext(bs: &[u8]) -> Self::View {
+        if bs.len() == core::mem::size_of::<Self>() {
+            Some(Self::from_le_bytes(bs.try_into().unwrap()))
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(feature = "stdalloc")]
+pub mod X25519XChaCha20Poly1305 {
     use super::*;
     use crate::mem::GuardedBox;
+    use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, rand, x25519};
+    use core::marker::PhantomData;
+    use std::vec::Vec;
 
     #[derive(Debug)]
     pub struct Ciphertext<A> {
-        // NB all we actually need is to have a byte array of the same size as A:
-        // [u8; core::mem::size_of::<A>()], (this really is used as core::mem::AlwaysUninit<A>)
-        bs: core::mem::MaybeUninit<A>,
-
+        ct: Vec<u8>,
         ephemeral_pk: [u8; x25519::PUBLIC_KEY_LENGTH],
         tag: [u8; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE],
+        a: PhantomData<A>,
     }
 
     impl<A> AsRef<Ciphertext<A>> for Ciphertext<A> {
@@ -49,11 +75,11 @@ mod X25519XChaCha20Poly1305 {
 
     pub struct PublicKey([u8; x25519::PUBLIC_KEY_LENGTH]);
 
-    impl<A> Protection<A> for PublicKey {
+    impl<A: Protectable> Protection<A> for PublicKey {
         type AtRest = Ciphertext<A>;
     }
 
-    impl<A> ProtectionNewSelf<A> for PublicKey {
+    impl<A: Protectable> ProtectionNewSelf<A> for PublicKey {
         fn protect(&self, a: A) -> crate::Result<Self::AtRest> {
             let (PrivateKey(ephemeral_key), PublicKey(ephemeral_pk)) = keypair()?;
 
@@ -67,18 +93,13 @@ mod X25519XChaCha20Poly1305 {
                 h
             };
 
-            let mut bs = core::mem::MaybeUninit::uninit();
             let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
 
-            let ct: &mut [u8] =
-                unsafe { core::slice::from_raw_parts_mut(bs.as_mut_ptr() as *mut u8, core::mem::size_of::<A>()) };
+            let mut ct = vec![0; core::mem::size_of::<A>()];
 
-            let pt: &[u8] =
-                unsafe { core::slice::from_raw_parts(&a as *const _ as *const u8, core::mem::size_of::<A>()) };
+            xchacha20poly1305::encrypt(&mut ct, &mut tag, &a.into_plaintext(), &shared, &nonce, &[])?;
 
-            xchacha20poly1305::encrypt(ct, &mut tag, pt, &shared, &nonce, &[])?;
-
-            Ok(Ciphertext { bs, ephemeral_pk, tag })
+            Ok(Ciphertext { ct, ephemeral_pk, tag, a: PhantomData })
         }
     }
 
@@ -91,7 +112,7 @@ mod X25519XChaCha20Poly1305 {
         Ok((s, p))
     }
 
-    impl<A> Access<A, PublicKey> for PrivateKey {
+    impl<A: Protectable> Access<A, PublicKey> for PrivateKey {
         type Accessor = GuardedBox<A>;
 
         fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<Self::Accessor> {
@@ -107,25 +128,32 @@ mod X25519XChaCha20Poly1305 {
                 h
             };
 
-            let bs: &[u8] =
-                unsafe { core::slice::from_raw_parts(ct.as_ref().bs.as_ptr() as *const u8, core::mem::size_of::<A>()) };
-
             let gb: GuardedBox<A> = GuardedBox::uninit()?;
             gb.with_mut_ptr(|p| {
                 let pt: &mut [u8] = unsafe { core::slice::from_raw_parts_mut(p as *mut u8, core::mem::size_of::<A>()) };
 
-                xchacha20poly1305::decrypt(pt, bs, &shared, &ct.as_ref().tag, &nonce, &[])
+                xchacha20poly1305::decrypt(pt, &ct.as_ref().ct, &shared, &ct.as_ref().tag, &nonce, &[])
             })??;
 
             Ok(gb)
         }
     }
+
+    #[test]
+    fn X25519XChaCha20Poly1305() -> crate::Result<()> {
+        let (private, public) = X25519XChaCha20Poly1305::keypair()?;
+        let ct = public.protect(17)?;
+        let gb = private.access(&ct)?;
+        assert_eq!(*gb.access()?, 17);
+        Ok(())
+    }
 }
 
-mod AES {
+pub mod AES {
     use super::*;
     use crate::mem::GuardedBox;
     use crypto::ciphers::aes::AES_256_GCM;
+    use crypto::{rand};
 
     #[derive(Debug)]
     pub struct Ciphertext<A> {
@@ -152,11 +180,11 @@ mod AES {
         }
     }
 
-    impl<A> Protection<A> for Key {
+    impl<A: Protectable> Protection<A> for Key {
         type AtRest = Ciphertext<A>;
     }
 
-    impl<A> ProtectionNewSelf<A> for Key {
+    impl<A: Protectable> ProtectionNewSelf<A> for Key {
         fn protect(&self, a: A) -> crate::Result<Self::AtRest> {
             let mut iv = [0; AES_256_GCM::IV_LENGTH];
             rand::fill(&mut iv)?;
@@ -176,7 +204,7 @@ mod AES {
         }
     }
 
-    impl<A> Access<A, Key> for Key {
+    impl<A: Protectable> Access<A, Key> for Key {
         type Accessor = GuardedBox<A>;
 
         fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<Self::Accessor> {
@@ -192,20 +220,6 @@ mod AES {
 
             Ok(gb)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn X25519XChaCha20Poly1305() -> crate::Result<()> {
-        let (private, public) = X25519XChaCha20Poly1305::keypair()?;
-        let ct = public.protect(17)?;
-        let gb = private.access(&ct)?;
-        assert_eq!(*gb.access()?, 17);
-        Ok(())
     }
 
     #[test]
