@@ -41,3 +41,11 @@ pub fn string() -> String {
 pub fn coinflip() -> bool {
     rand::random()
 }
+
+pub fn usize(n: usize) -> usize {
+    if rand::random::<u8>() % 4 == 0 {
+        0
+    } else {
+        rand::random::<usize>() % n
+    }
+}

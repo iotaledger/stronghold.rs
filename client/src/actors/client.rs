@@ -27,14 +27,15 @@ pub enum SLIP10DeriveInput {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Procedure {
-    /// Generate a raw SLIP10 seed of the specified size and store it in the `output` location
+    /// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in the
+    /// `output` location
     ///
     /// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
     /// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
     SLIP10Generate {
         output: Location,
         hint: RecordHint,
-        size_bytes: usize,
+        size_bytes: Option<usize>,
     },
     /// Derive a SLIP10 child key from a seed or a parent key and store it in output location
     SLIP10Derive {
@@ -463,7 +464,7 @@ impl Receive<SHRequest> for Client {
                                 vault_id: vid,
                                 record_id: rid,
                                 hint,
-                                size_bytes,
+                                size_bytes: size_bytes.unwrap_or(64),
                             },
                             sender,
                         )
