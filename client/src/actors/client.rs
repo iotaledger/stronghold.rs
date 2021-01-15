@@ -37,7 +37,8 @@ pub enum Procedure {
         hint: RecordHint,
         size_bytes: Option<usize>,
     },
-    /// Derive a SLIP10 child key from a seed or a parent key and store it in output location
+    /// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
+    /// return the corresponding chain code
     SLIP10Derive {
         chain: hd::Chain,
         input: SLIP10DeriveInput,
@@ -80,7 +81,7 @@ pub enum ProcResult {
     /// Return from generating a `SLIP10` seed.
     SLIP10Generate(StatusMessage),
     /// Returns the public key derived from the `SLIP10Derive` call.
-    SLIP10Derive(StatusMessage),
+    SLIP10Derive(ResultMessage<hd::ChainCode>),
     /// `BIP39Recover` return value.
     BIP39Recover(StatusMessage),
     /// `BIP39Generate` return value.
