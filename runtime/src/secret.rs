@@ -29,25 +29,36 @@ pub trait AccessSelf<'a, A>: Protection<A> {
 
 use std::vec::Vec;
 
-pub trait Protectable {
+pub trait Protectable<'a> {
     fn into_plaintext(self) -> Vec<u8>;
 
     type View;
-    fn view_plaintext(bs: &[u8]) -> Self::View;
+    fn view_plaintext(bs: &'a [u8]) -> Self::View;
 }
 
-impl Protectable for u32 {
+impl<'a> Protectable<'a> for u32 {
     fn into_plaintext(self) -> Vec<u8> {
         self.to_le_bytes().to_vec()
     }
 
     type View = Option<u32>;
-    fn view_plaintext(bs: &[u8]) -> Self::View {
+    fn view_plaintext(bs: &'a [u8]) -> Self::View {
         if bs.len() == core::mem::size_of::<Self>() {
             Some(Self::from_le_bytes(bs.try_into().unwrap()))
         } else {
             None
         }
+    }
+}
+
+impl<'a> Protectable<'a> for std::string::String {
+    fn into_plaintext(self) -> Vec<u8> {
+        self.into_bytes()
+    }
+
+    type View = &'a str;
+    fn view_plaintext(bs: &'a[u8]) -> Self::View {
+        unsafe { core::str::from_utf8_unchecked(bs) }
     }
 }
 
@@ -75,11 +86,11 @@ pub mod X25519XChaCha20Poly1305 {
 
     pub struct PublicKey([u8; x25519::PUBLIC_KEY_LENGTH]);
 
-    impl<A: Protectable> Protection<A> for PublicKey {
+    impl<'a, A: Protectable<'a>> Protection<A> for PublicKey {
         type AtRest = Ciphertext<A>;
     }
 
-    impl<A: Protectable> ProtectionNewSelf<A> for PublicKey {
+    impl<'a, A: Protectable<'a>> ProtectionNewSelf<A> for PublicKey {
         fn protect(&self, a: A) -> crate::Result<Self::AtRest> {
             let (PrivateKey(ephemeral_key), PublicKey(ephemeral_pk)) = keypair()?;
 
@@ -112,7 +123,7 @@ pub mod X25519XChaCha20Poly1305 {
         Ok((s, p))
     }
 
-    impl<A: Protectable> Access<A, PublicKey> for PrivateKey {
+    impl<'a, A: Protectable<'a>> Access<A, PublicKey> for PrivateKey {
         type Accessor = GuardedBox<A>;
 
         fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<Self::Accessor> {
@@ -180,11 +191,11 @@ pub mod AES {
         }
     }
 
-    impl<A: Protectable> Protection<A> for Key {
+    impl<'a, A: Protectable<'a>> Protection<A> for Key {
         type AtRest = Ciphertext<A>;
     }
 
-    impl<A: Protectable> ProtectionNewSelf<A> for Key {
+    impl<'a, A: Protectable<'a>> ProtectionNewSelf<A> for Key {
         fn protect(&self, a: A) -> crate::Result<Self::AtRest> {
             let mut iv = [0; AES_256_GCM::IV_LENGTH];
             rand::fill(&mut iv)?;
@@ -204,7 +215,7 @@ pub mod AES {
         }
     }
 
-    impl<A: Protectable> Access<A, Key> for Key {
+    impl<'a, A: Protectable<'a>> Access<A, Key> for Key {
         type Accessor = GuardedBox<A>;
 
         fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<Self::Accessor> {
