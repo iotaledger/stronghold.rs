@@ -82,6 +82,8 @@ pub enum CommunicationEvent<T, U> {
     /// Information about the local peer.
     /// Outcome of [`GetSwarmInfo`].
     SwarmInfo { peer_id: PeerId, listeners: Vec<Multiaddr> },
+    /// Sets the actor ref for the that the communication actor talks to
+    SetClientRef(BasicActorRef),
     /// Shutdown the swarm task that is handling the swarm and all communication to remote peers.
     Shutdown,
 }
@@ -300,6 +302,7 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
                     sender.try_tell(swarm_info, self.self_ref.clone()).unwrap();
                 }
             }
+            CommunicationEvent::SetClientRef(actor_ref) => self.client_ref = actor_ref,
             CommunicationEvent::Shutdown => return None,
             _ => {}
         }
