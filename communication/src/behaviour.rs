@@ -91,13 +91,9 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     ///
     /// # Example
     /// ```no_run
-    /// use libp2p::{
-    ///     core::{Multiaddr, PeerId},
-    ///     identity::Keypair,
-    ///     request_response::{RequestId, RequestResponseEvent, ResponseChannel},
-    /// };
+    /// use libp2p::identity::Keypair;
     /// use serde::{Deserialize, Serialize};
-    /// use stronghold_communication::behaviour::{MessageEvent, P2PNetworkBehaviour};
+    /// use stronghold_communication::behaviour::P2PNetworkBehaviour;
     ///
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// pub enum Request {
@@ -363,7 +359,7 @@ mod test {
     }
 
     #[test]
-    fn request_respose() {
+    fn request_response() {
         let mut remote = mock_swarm();
         let listener_id = Swarm::listen_on(&mut remote, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
         let remote_peer_id = *Swarm::local_peer_id(&remote);

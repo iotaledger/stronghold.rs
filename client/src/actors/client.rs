@@ -288,8 +288,18 @@ impl Receive<SHResults> for Client {
     type Msg = ClientMsg;
 
     #[cfg(feature = "communication")]
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: SHResults, _sender: Sender) {
-        unimplemented!();
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {
+        if let Some((request_id, sender)) = self.current_request.take() {
+            let cmsg = CommunicationEvent::<SHRequest, _>::Response {
+                request_id,
+                result: Ok(msg),
+            };
+            sender
+                .as_ref()
+                .expect(line_error!())
+                .try_tell(cmsg, None)
+                .expect(line_error!());
+        }
     }
 
     #[cfg(not(feature = "communication"))]
@@ -803,13 +813,14 @@ impl Receive<InternalResults> for Client {
 impl Receive<CommunicationEvent<SHRequest, SHResults>> for Client {
     type Msg = ClientMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: CommunicationEvent<SHRequest, SHResults>, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: CommunicationEvent<SHRequest, SHResults>, sender: Sender) {
         if let CommunicationEvent::Request {
             peer_id: _,
-            request_id: _,
+            request_id,
             request,
         } = msg
         {
+            self.current_request = Some((request_id.expect(line_error!()), sender));
             self.receive(ctx, request, Some(BasicActorRef::from(ctx.myself())));
         }
     }

@@ -55,7 +55,7 @@ use libp2p::identity::Keypair;
 
 pub mod actor;
 pub mod behaviour;
-pub use libp2p::{Multiaddr, PeerId};
+pub use libp2p::{request_response::RequestId, Multiaddr, PeerId};
 
 pub fn generate_new_keypair() -> Keypair {
     Keypair::generate_ed25519()

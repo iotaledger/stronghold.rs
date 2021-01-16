@@ -10,7 +10,7 @@ use crate::{
 
 use engine::{store::Cache, vault::RecordId};
 #[cfg(feature = "communication")]
-use stronghold_communication::actor::CommunicationEvent;
+use stronghold_communication::{actor::CommunicationEvent, RequestId};
 
 use riker::actors::*;
 
@@ -51,6 +51,8 @@ pub struct Client {
     heads: Vec<RecordId>,
     counters: Vec<usize>,
     store: Store,
+    #[serde(skip)]
+    pub current_request: Option<(RequestId, Sender)>,
 }
 
 impl Client {
@@ -68,6 +70,8 @@ impl Client {
             heads,
             counters,
             store,
+            #[cfg(feature = "communication")]
+            current_request: None,
         }
     }
 
