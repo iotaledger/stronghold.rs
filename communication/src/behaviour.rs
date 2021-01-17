@@ -109,7 +109,6 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     /// let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).unwrap();
     /// ```
     pub fn init_swarm(local_keys: Keypair) -> Result<Swarm<P2PNetworkBehaviour<T, U>>, BehaviourError> {
-        #[allow(unused_variables)]
         let local_peer_id = PeerId::from(local_keys.public());
 
         let noise_keys = noise::Keypair::<noise::X25519Spec>::new()

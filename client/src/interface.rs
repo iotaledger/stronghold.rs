@@ -726,4 +726,243 @@ impl Stronghold {
     fn check_config_flags() {
         unimplemented!()
     }
+
+    #[cfg(feature = "communication")]
+    /// Switches the client target that responds to requests from remote strongholds.
+    pub fn switch_target_for_remote(&mut self, client_path: Vec<u8>) -> StatusMessage {
+        let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
+
+        if self.client_ids.contains(&client_id) {
+            let idx = self.client_ids.iter().position(|cid| cid == &client_id);
+            if let Some(idx) = idx {
+                let client = BasicActorRef::from(self.actors[idx].clone());
+                self.communication_actor
+                    .tell(CommunicationEvent::SetClientRef(client), None);
+                return StatusMessage::OK;
+            }
+        }
+        StatusMessage::Error("Unable to find the actor with that client path".into())
+    }
+
+    #[cfg(feature = "communication")]
+    // Create an error message for received CommunicationEvent.
+    // It assumes that a CommunicationEvent::Response was expected, and that the actual received
+    // event is some sort of failure.
+    // The return error messages depends on source of that failure:
+    // - Response is okay, but the request procedure at the remote stronghold was not successful.
+    // - Response is an error: request could not be send or no response was received.
+    // - Invalid event was returned from the communication actor.
+    fn handle_response_failure(res: CommunicationEvent<SHRequest, SHResults>, procedure: &str) -> StatusMessage {
+        match res {
+            CommunicationEvent::Response {
+                request_id: _,
+                result: Ok(_),
+            } => StatusMessage::Error(format!("Failed to {}", procedure)),
+            CommunicationEvent::Response {
+                request_id: _,
+                result: Err(error),
+            } => StatusMessage::Error(format!("Error messaging peer {:?}", error)),
+            _ => StatusMessage::Error("Invalid communication event".into()),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    // Wrap the SHRequest in an CommunicationEvent::Request, send it to the CommunicationActor and
+    // wait for it to return a result from the remote peer.
+    async fn ask_remote(&self, peer_id: PeerId, request: SHRequest) -> CommunicationEvent<SHRequest, SHResults> {
+        ask(
+            &self.system,
+            &self.communication_actor,
+            CommunicationEvent::<_, SHResults>::Request {
+                peer_id,
+                request_id: None,
+                request,
+            },
+        )
+        .await
+    }
+
+    #[cfg(feature = "communication")]
+    pub async fn write_remote_vault(
+        &self,
+        peer_id: PeerId,
+        addr: Multiaddr,
+        location: Location,
+        payload: Vec<u8>,
+        hint: RecordHint,
+        _options: Vec<VaultFlags>,
+    ) -> StatusMessage {
+        // connect remote peer
+        let peer_id = match ask::<_, _, CommunicationEvent<SHRequest, SHResults>, _>(
+            &self.system,
+            &self.communication_actor,
+            CommunicationEvent::ConnectPeer { addr, peer_id },
+        )
+        .await
+        {
+            CommunicationEvent::ConnectPeerResult(Ok(peer_id)) => peer_id,
+            CommunicationEvent::ConnectPeerResult(Err(reason)) => {
+                return StatusMessage::Error(format!("Error connecting peer: {:?}", reason))
+            }
+            _ => return StatusMessage::Error("Invalid communication event".into()),
+        };
+
+        let vault_path = &location.vault_path();
+        let vault_path = vault_path.to_vec();
+
+        // check if vault exists
+        let b = match self
+            .ask_remote(peer_id, SHRequest::CheckVault(vault_path.clone()))
+            .await
+        {
+            CommunicationEvent::Response {
+                request_id: _,
+                result: Ok(SHResults::ReturnExistsVault(b)),
+            } => b,
+            other => return Stronghold::handle_response_failure(other, "write data"),
+        };
+        if b {
+            // check if record exists
+            let b = match self
+                .ask_remote(
+                    peer_id,
+                    SHRequest::CheckRecord {
+                        location: location.clone(),
+                    },
+                )
+                .await
+            {
+                CommunicationEvent::Response {
+                    request_id: _,
+                    result: Ok(SHResults::ReturnExistsRecord(b)),
+                } => b,
+                other => return Stronghold::handle_response_failure(other, "check record"),
+            };
+            if !b {
+                // initialize a new record
+                match self
+                    .ask_remote(
+                        peer_id,
+                        SHRequest::InitRecord {
+                            location: location.clone(),
+                        },
+                    )
+                    .await
+                {
+                    CommunicationEvent::Response {
+                        request_id: _,
+                        result: Ok(SHResults::ReturnInitRecord(status)),
+                    } => status,
+                    other => return Stronghold::handle_response_failure(other, "initialize record"),
+                };
+            }
+        } else {
+            // no vault so create new one before writing.
+            match self
+                .ask_remote(peer_id, SHRequest::CreateNewVault(location.clone()))
+                .await
+            {
+                CommunicationEvent::Response {
+                    request_id: _,
+                    result: Ok(SHResults::ReturnCreateVault(_)),
+                } => {}
+                other => return Stronghold::handle_response_failure(other, "create vault"),
+            };
+        }
+        // write data
+        match self
+            .ask_remote(
+                peer_id,
+                SHRequest::WriteToVault {
+                    location: location.clone(),
+                    payload: payload.clone(),
+                    hint,
+                },
+            )
+            .await
+        {
+            CommunicationEvent::Response {
+                request_id: _,
+                result: Ok(SHResults::ReturnWriteVault(status)),
+            } => status,
+            other => Stronghold::handle_response_failure(other, "write data"),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    pub async fn write_to_remote_store(
+        &self,
+        peer_id: PeerId,
+        addr: Multiaddr,
+        location: Location,
+        payload: Vec<u8>,
+        lifetime: Option<Duration>,
+    ) -> StatusMessage {
+        // connect remote peer
+        let peer_id = match ask::<_, _, CommunicationEvent<SHRequest, SHResults>, _>(
+            &self.system,
+            &self.communication_actor,
+            CommunicationEvent::ConnectPeer { addr, peer_id },
+        )
+        .await
+        {
+            CommunicationEvent::ConnectPeerResult(Ok(peer_id)) => peer_id,
+            CommunicationEvent::ConnectPeerResult(Err(reason)) => {
+                return StatusMessage::Error(format!("Error connecting peer: {:?}", reason))
+            }
+            _ => return StatusMessage::Error("Invalid communication event".into()),
+        };
+
+        match self
+            .ask_remote(
+                peer_id,
+                SHRequest::WriteToStore {
+                    location,
+                    payload,
+                    lifetime,
+                },
+            )
+            .await
+        {
+            CommunicationEvent::Response {
+                request_id: _,
+                result: Ok(SHResults::ReturnWriteStore(status)),
+            } => status,
+            other => Stronghold::handle_response_failure(other, "write to the store"),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    pub async fn read_from_remote_store(
+        &self,
+        peer_id: PeerId,
+        addr: Multiaddr,
+        location: Location,
+    ) -> (Vec<u8>, StatusMessage) {
+        // connect remote peer
+        let peer_id = match ask::<_, _, CommunicationEvent<SHRequest, SHResults>, _>(
+            &self.system,
+            &self.communication_actor,
+            CommunicationEvent::ConnectPeer { addr, peer_id },
+        )
+        .await
+        {
+            CommunicationEvent::ConnectPeerResult(Ok(peer_id)) => peer_id,
+            CommunicationEvent::ConnectPeerResult(Err(reason)) => {
+                return (
+                    vec![],
+                    StatusMessage::Error(format!("Error connecting peer: {:?}", reason)),
+                )
+            }
+            _ => return (vec![], StatusMessage::Error("Invalid communication event".into())),
+        };
+
+        match self.ask_remote(peer_id, SHRequest::ReadFromStore { location }).await {
+            CommunicationEvent::Response {
+                request_id: _,
+                result: Ok(SHResults::ReturnReadStore(payload, status)),
+            } => (payload, status),
+            other => (vec![], Stronghold::handle_response_failure(other, "write to the store")),
+        }
+    }
 }
