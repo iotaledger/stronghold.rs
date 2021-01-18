@@ -570,6 +570,70 @@ mod guarded_box_tests {
     }
 }
 
+pub struct GuardedString {
+    inner: GuardedVec<u8>,
+    n: usize,
+}
+
+impl GuardedString {
+    pub fn new(s: &str) -> crate::Result<Self> {
+        Ok(Self {
+            inner: GuardedVec::copy(s.as_bytes())?,
+            n: s.len()
+        })
+    }
+
+    pub fn len(&self) -> usize { self.n }
+
+    pub fn access<'a>(&'a self) -> GuardedStringAccess<'a> {
+        GuardedStringAccess {
+            inner: self.inner.access()
+        }
+    }
+}
+
+pub struct GuardedStringAccess<'a> {
+    inner: GuardedVecAccess<'a, u8>,
+}
+
+impl Deref for GuardedStringAccess<'_> {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        unsafe {
+            core::str::from_utf8_unchecked(&self.inner)
+        }
+    }
+}
+
+impl DerefMut for GuardedStringAccess<'_> {
+    fn deref_mut(&mut self) -> &mut str {
+        unsafe {
+            core::str::from_utf8_unchecked_mut(&mut self.inner)
+        }
+    }
+}
+
+#[cfg(test)]
+mod guarded_string_tests {
+    use super::*;
+
+    #[test]
+    fn new() -> crate::Result<()> {
+        let gs = GuardedString::new("foo")?;
+        assert_eq!(*gs.access(), *"foo");
+
+        (*gs.access()).get_mut(..).map(|s| {
+            s.make_ascii_uppercase();
+            &*s
+        });
+
+        assert_eq!(*gs.access(), *"FOO");
+
+        Ok(())
+    }
+}
+
 pub struct GuardedAllocator {}
 
 impl GuardedAllocator {
