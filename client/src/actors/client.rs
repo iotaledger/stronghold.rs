@@ -126,19 +126,23 @@ pub enum SHRequest {
     CheckRecord {
         location: Location,
     },
+    // Write to the store.
     WriteToStore {
         location: Location,
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     },
+    // Read from the store.
     ReadFromStore {
         location: Location,
     },
+    // Delete a key/value pair from the store.
     DeleteFromStore(Location),
 
     // Creates a new Vault.
     CreateNewVault(Location),
 
+    // Write to the Vault.
     WriteToVault {
         location: Location,
         payload: Vec<u8>,
@@ -174,15 +178,20 @@ pub enum SHRequest {
         cid: ClientId,
         former_cid: Option<ClientId>,
     },
+    // Writes to the snapshot file. Accepts the snapshot key, an optional filename and an optional filepath.
+    // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
     WriteSnapshot {
         key: snapshot::Key,
         filename: Option<String>,
         path: Option<PathBuf>,
     },
+    // Helper to fill the snapshot state before the write operation.
     FillSnapshot,
 
+    // Clear the cache of the bucket.
     ClearCache,
 
+    // Interact with the runtime.
     ControlRequest(Procedure),
 }
 
