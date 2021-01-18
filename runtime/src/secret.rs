@@ -26,32 +26,33 @@ pub trait Access<'a, A: Protectable<'a>, P: Protection<'a, A>> {
     fn access<R: AsRef<P::AtRest>>(&self, r: R) -> crate::Result<A::Accessor>;
 }
 
-use std::vec::Vec;
-
 pub trait Protectable<'a> {
-    fn into_plaintext(self) -> Vec<u8>;
+    fn into_plaintext(&self) -> &[u8];
 
     type Accessor;
     fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor>;
 }
 
 impl<'a> Protectable<'a> for u32 {
-    fn into_plaintext(self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
+    fn into_plaintext(&self) -> &[u8] {
+        unsafe {
+            core::slice::from_raw_parts(self as *const _ as *const u8, core::mem::size_of::<Self>())
+        }
     }
 
     type Accessor = GuardedBox<u32>;
     fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor> {
         if bs.len() == core::mem::size_of::<Self>() {
-            GuardedBox::new(Self::from_le_bytes(bs.try_into().unwrap()))
+            let x = bs as *const _ as *const Self;
+            GuardedBox::new(unsafe { *x.as_ref().unwrap() })
         } else {
             Err(Error::view("can't interpret bytestring as a u32 in little endian"))
         }
     }
 }
 
-impl<'a> Protectable<'a> for Vec<u8> {
-    fn into_plaintext(self) -> Vec<u8> {
+impl<'a> Protectable<'a> for &[u8] {
+    fn into_plaintext(&self) -> &[u8] {
         self
     }
 
@@ -62,8 +63,8 @@ impl<'a> Protectable<'a> for Vec<u8> {
 }
 
 impl<'a> Protectable<'a> for &str {
-    fn into_plaintext(self) -> Vec<u8> {
-        self.as_bytes().to_vec()
+    fn into_plaintext(&self) -> &[u8] {
+        self.as_bytes()
     }
 
     type Accessor = GuardedString;
@@ -168,9 +169,10 @@ pub mod X25519XChaCha20Poly1305 {
     #[test]
     fn bytestring() -> crate::Result<()> {
         let (private, public) = X25519XChaCha20Poly1305::keypair()?;
-        let ct = public.protect(vec![0, 1, 2])?;
+        let pt: &[u8] = &[0, 1, 2];
+        let ct = public.protect(pt)?;
         let gv = private.access(&ct)?;
-        assert_eq!(*gv.access(), [0, 1, 2]);
+        assert_eq!(&*gv.access(), pt);
         Ok(())
     }
 
@@ -179,7 +181,7 @@ pub mod X25519XChaCha20Poly1305 {
         let (private, public) = X25519XChaCha20Poly1305::keypair()?;
         let ct = public.protect("foo")?;
         let gs = private.access(&ct)?;
-        assert_eq!(*gs.access(), *"foo");
+        assert_eq!(&*gs.access(), "foo");
         Ok(())
     }
 }
@@ -188,6 +190,7 @@ pub mod AES {
     use super::*;
     use core::marker::PhantomData;
     use crypto::{ciphers::aes::AES_256_GCM, rand};
+    use std::vec::Vec;
 
     #[derive(Debug)]
     pub struct Ciphertext<A> {
@@ -263,9 +266,10 @@ pub mod AES {
     #[test]
     fn bytestring() -> crate::Result<()> {
         let key = AES::Key::new()?;
-        let ct = key.protect(vec![0, 1, 2])?;
+        let pt: &[u8] = &[0, 1, 2];
+        let ct = key.protect(pt)?;
         let gv = key.access(&ct)?;
-        assert_eq!(*gv.access(), [0, 1, 2]);
+        assert_eq!(&*gv.access(), pt);
         Ok(())
     }
 
@@ -274,7 +278,7 @@ pub mod AES {
         let key = AES::Key::new()?;
         let ct = key.protect("foo")?;
         let gs = key.access(&ct)?;
-        assert_eq!(*gs.access(), *"foo");
+        assert_eq!(&*gs.access(), "foo");
         Ok(())
     }
 }
