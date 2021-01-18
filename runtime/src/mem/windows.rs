@@ -8,6 +8,9 @@ use winapi::{
         winnt::{MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE},
     },
 };
+
+use core::alloc::{GlobalAlloc, Layout};
+
 pub const PROT_NONE: u32 = winnt::PAGE_NOACCESS;
 pub const PROT_READ: u32 = winnt::PAGE_READONLY;
 pub const PROT_WRITE: u32 = winnt::PAGE_READWRITE;

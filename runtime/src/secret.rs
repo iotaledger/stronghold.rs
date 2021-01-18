@@ -183,6 +183,7 @@ pub mod X25519XChaCha20Poly1305 {
     }
 }
 
+#[cfg(feature = "stdalloc")]
 #[cfg(unix)]
 pub mod AES {
     use super::*;

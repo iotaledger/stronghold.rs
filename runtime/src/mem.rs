@@ -375,64 +375,6 @@ impl<A> DerefMut for GuardedVecAccess<'_, A> {
     }
 }
 
-#[cfg(test)]
-mod guarded_vec_tests {
-    use super::*;
-
-    #[test]
-    fn copy() -> crate::Result<()> {
-        let gv = GuardedVec::copy(&[1, 2, 3])?;
-        assert_eq!(*gv.access(), [1, 2, 3]);
-        gv.access()[0] = 4;
-        gv.access()[1] = 5;
-        gv.access()[2] = 6;
-        assert_eq!(*gv.access(), [4, 5, 6]);
-        Ok(())
-    }
-
-    #[test]
-    fn clone() -> crate::Result<()> {
-        let gv = GuardedVec::clone(&[1, 2, 3])?;
-        assert_eq!(*gv.access(), [1, 2, 3]);
-        gv.access()[0] = 4;
-        gv.access()[1] = 5;
-        gv.access()[2] = 6;
-        assert_eq!(*gv.access(), [4, 5, 6]);
-        Ok(())
-    }
-
-    #[test]
-    fn drop() -> crate::Result<()> {
-        struct Droplet<'a> {
-            clones: &'a Cell<usize>,
-        }
-
-        impl Clone for Droplet<'_> {
-            fn clone(&self) -> Self {
-                self.clones.set(self.clones.get() + 1);
-                Self { clones: self.clones }
-            }
-        }
-
-        impl Drop for Droplet<'_> {
-            fn drop(&mut self) {
-                self.clones.set(self.clones.get() - 1);
-            }
-        }
-
-        let cs = Cell::new(1);
-
-        {
-            let _gv = GuardedVec::clone(&[Droplet { clones: &cs }]);
-            assert_eq!(cs.get(), 1);
-        }
-
-        assert_eq!(cs.get(), 0);
-
-        Ok(())
-    }
-}
-
 pub struct GuardedBox<A> {
     inner: GuardedCell,
     a: PhantomData<A>,
@@ -504,44 +446,6 @@ impl<A> DerefMut for GuardedBoxAccess<'_, A> {
     }
 }
 
-#[cfg(test)]
-mod guarded_box_tests {
-    use super::*;
-
-    #[test]
-    fn access() -> crate::Result<()> {
-        let gb = GuardedBox::new(7)?;
-        assert_eq!(*gb.access(), 7);
-        *gb.access() = 8;
-        assert_eq!(*gb.access(), 8);
-        Ok(())
-    }
-
-    #[test]
-    fn drop() -> crate::Result<()> {
-        struct Droplet<'a> {
-            dropped: &'a Cell<bool>,
-        }
-
-        impl Drop for Droplet<'_> {
-            fn drop(&mut self) {
-                self.dropped.set(true);
-            }
-        }
-
-        let b = Cell::new(false);
-
-        {
-            let _gb = GuardedBox::new(Droplet { dropped: &b });
-            assert_eq!(b.get(), false);
-        }
-
-        assert_eq!(b.get(), true);
-
-        Ok(())
-    }
-}
-
 pub struct GuardedString {
     inner: GuardedVec<u8>,
     n: usize,
@@ -581,26 +485,6 @@ impl Deref for GuardedStringAccess<'_> {
 impl DerefMut for GuardedStringAccess<'_> {
     fn deref_mut(&mut self) -> &mut str {
         unsafe { core::str::from_utf8_unchecked_mut(&mut self.inner) }
-    }
-}
-
-#[cfg(test)]
-mod guarded_string_tests {
-    use super::*;
-
-    #[test]
-    fn new() -> crate::Result<()> {
-        let gs = GuardedString::new("foo")?;
-        assert_eq!(*gs.access(), *"foo");
-
-        (*gs.access()).get_mut(..).map(|s| {
-            s.make_ascii_uppercase();
-            &*s
-        });
-
-        assert_eq!(*gs.access(), *"FOO");
-
-        Ok(())
     }
 }
 
@@ -691,6 +575,122 @@ pub fn seccomp_spec() -> crate::seccomp::Spec {
         mprotect: true,
         mlock: true,
         ..crate::seccomp::Spec::default()
+    }
+}
+
+#[cfg(test)]
+mod guarded_box_tests {
+    use super::*;
+
+    #[test]
+    fn access() -> crate::Result<()> {
+        let gb = GuardedBox::new(7)?;
+        assert_eq!(*gb.access(), 7);
+        *gb.access() = 8;
+        assert_eq!(*gb.access(), 8);
+        Ok(())
+    }
+
+    #[test]
+    fn drop() -> crate::Result<()> {
+        struct Droplet<'a> {
+            dropped: &'a Cell<bool>,
+        }
+
+        impl Drop for Droplet<'_> {
+            fn drop(&mut self) {
+                self.dropped.set(true);
+            }
+        }
+
+        let b = Cell::new(false);
+
+        {
+            let _gb = GuardedBox::new(Droplet { dropped: &b });
+            assert_eq!(b.get(), false);
+        }
+
+        assert_eq!(b.get(), true);
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod guarded_vec_tests {
+    use super::*;
+
+    #[test]
+    fn copy() -> crate::Result<()> {
+        let gv = GuardedVec::copy(&[1, 2, 3])?;
+        assert_eq!(*gv.access(), [1, 2, 3]);
+        gv.access()[0] = 4;
+        gv.access()[1] = 5;
+        gv.access()[2] = 6;
+        assert_eq!(*gv.access(), [4, 5, 6]);
+        Ok(())
+    }
+
+    #[test]
+    fn clone() -> crate::Result<()> {
+        let gv = GuardedVec::clone(&[1, 2, 3])?;
+        assert_eq!(*gv.access(), [1, 2, 3]);
+        gv.access()[0] = 4;
+        gv.access()[1] = 5;
+        gv.access()[2] = 6;
+        assert_eq!(*gv.access(), [4, 5, 6]);
+        Ok(())
+    }
+
+    #[test]
+    fn drop() -> crate::Result<()> {
+        struct Droplet<'a> {
+            clones: &'a Cell<usize>,
+        }
+
+        impl Clone for Droplet<'_> {
+            fn clone(&self) -> Self {
+                self.clones.set(self.clones.get() + 1);
+                Self { clones: self.clones }
+            }
+        }
+
+        impl Drop for Droplet<'_> {
+            fn drop(&mut self) {
+                self.clones.set(self.clones.get() - 1);
+            }
+        }
+
+        let cs = Cell::new(1);
+
+        {
+            let _gv = GuardedVec::clone(&[Droplet { clones: &cs }]);
+            assert_eq!(cs.get(), 1);
+        }
+
+        assert_eq!(cs.get(), 0);
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod guarded_string_tests {
+    use super::*;
+
+    #[test]
+    fn new() -> crate::Result<()> {
+        let gs = GuardedString::new("foo")?;
+        assert_eq!(*gs.access(), *"foo");
+
+        (*gs.access()).get_mut(..).map(|s| {
+            s.make_ascii_uppercase();
+            &*s
+        });
+
+        assert_eq!(*gs.access(), *"FOO");
+
+        Ok(())
     }
 }
 
