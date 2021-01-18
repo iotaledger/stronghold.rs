@@ -41,6 +41,7 @@ pub enum Error {
     CryptoError(crypto::Error),
     #[allow(dead_code)]
     Unreachable(&'static str),
+    SecretError(secret::Error),
 }
 
 impl Error {
@@ -81,6 +82,13 @@ impl From<zone::Error> for Error {
 }
 
 #[cfg(unix)]
+impl From<secret::Error> for Error {
+    fn from(e: secret::Error) -> Self {
+        Error::SecretError(e)
+    }
+}
+
+#[cfg(unix)]
 impl From<crypto::Error> for Error {
     fn from(e: crypto::Error) -> Self {
         Error::CryptoError(e)
@@ -114,6 +122,7 @@ impl fmt::Debug for Error {
             Self::MemError(me) => me.fmt(f),
             Self::ZoneError(ze) => ze.fmt(f),
             Self::CryptoError(ce) => ce.fmt(f),
+            Self::SecretError(se) => se.fmt(f),
             Self::Unreachable(msg) => f.write_fmt(format_args!("unreachable state: {}", msg)),
         }
     }

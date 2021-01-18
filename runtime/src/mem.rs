@@ -9,8 +9,6 @@ use core::{
     ptr,
 };
 
-use crate::secret::{AccessSelf, Protection, ProtectionNew};
-
 use zeroize::Zeroize;
 
 #[derive(PartialEq, Debug)]
@@ -258,7 +256,7 @@ impl GuardedCell {
         self.alloc.protect(r > 0, w > 0)
     }
 
-    fn access<'a>(&'a self) -> GuardedCellAccess<'a> {
+    pub fn access<'a>(&'a self) -> GuardedCellAccess<'a> {
         GuardedCellAccess {
             inner: self,
             read: Cell::new(false),
@@ -350,7 +348,7 @@ impl<A: Clone> GuardedVec<A> {
 }
 
 impl<A> GuardedVec<A> {
-    fn access<'a>(&'a self) -> GuardedVecAccess<'a, A> {
+    pub fn access<'a>(&'a self) -> GuardedVecAccess<'a, A> {
         GuardedVecAccess {
             inner: self.inner.access(),
             n: self.n,
@@ -547,6 +545,14 @@ impl<A> GuardedBox<A> {
 
         self.alloc.protect(r > 0, w > 0)
     }
+
+    pub fn access<'a>(&'a self) -> GuardedBoxAccess<A> {
+        GuardedBoxAccess {
+            inner: &self,
+            read: Cell::new(false),
+            write: Cell::new(false),
+        }
+    }
 }
 
 impl<A> Drop for GuardedBox<A> {
@@ -561,16 +567,6 @@ impl<A> Drop for GuardedBox<A> {
         }
 
         self.alloc.free().unwrap();
-    }
-}
-
-impl<A> Protection<A> for GuardedBox<A> {
-    type AtRest = Self;
-}
-
-impl<A> ProtectionNew<A> for GuardedBox<A> {
-    fn protect(a: A) -> crate::Result<Self::AtRest> {
-        GuardedBox::new(a)
     }
 }
 
@@ -622,18 +618,6 @@ impl<'a, A> Drop for GuardedBoxAccess<'a, A> {
     }
 }
 
-impl<'a, A: 'a> AccessSelf<'a, A> for GuardedBox<A> {
-    type Accessor = GuardedBoxAccess<'a, A>;
-
-    fn access(&'a self) -> crate::Result<Self::Accessor> {
-        Ok(GuardedBoxAccess {
-            inner: &self,
-            read: Cell::new(false),
-            write: Cell::new(false),
-        })
-    }
-}
-
 #[cfg(test)]
 mod guarded_box_tests {
     use super::*;
@@ -641,9 +625,9 @@ mod guarded_box_tests {
     #[test]
     fn access() -> crate::Result<()> {
         let gb = GuardedBox::new(7)?;
-        assert_eq!(*gb.access()?, 7);
-        *gb.access()? = 8;
-        assert_eq!(*gb.access()?, 8);
+        assert_eq!(*gb.access(), 7);
+        *gb.access() = 8;
+        assert_eq!(*gb.access(), 8);
         Ok(())
     }
 

@@ -4,36 +4,36 @@
 #![allow(non_snake_case)]
 
 use core::convert::TryInto;
+use crate::mem::{GuardedBox, GuardedVec};
 
-pub trait Protection<A> {
+#[derive(Debug, PartialEq)]
+pub enum Error {
+    View { reason: &'static str },
+}
+
+impl Error {
+    fn view(reason: &'static str) -> crate::Error {
+        (Error::View { reason }).into()
+    }
+}
+
+pub trait Protection<'a, A: Protectable<'a>> {
     type AtRest;
-}
-
-pub trait ProtectionNew<A>: Protection<A> {
-    fn protect(a: A) -> crate::Result<Self::AtRest>;
-}
-
-pub trait ProtectionNewSelf<A>: Protection<A> {
     fn protect(&self, a: A) -> crate::Result<Self::AtRest>;
 }
 
-pub trait Access<A, P: Protection<A>> {
-    type Accessor;
-    fn access<R: AsRef<P::AtRest>>(&self, r: R) -> crate::Result<Self::Accessor>;
-}
-
-pub trait AccessSelf<'a, A>: Protection<A> {
-    type Accessor;
-    fn access(&'a self) -> crate::Result<Self::Accessor>;
+pub trait Access<'a, A: Protectable<'a>, P: Protection<'a, A>> {
+    fn access<R: AsRef<P::AtRest>>(&self, r: R) -> crate::Result<A::Accessor>;
 }
 
 use std::vec::Vec;
+use std::string::ToString;
 
 pub trait Protectable<'a> {
     fn into_plaintext(self) -> Vec<u8>;
 
-    type View;
-    fn view_plaintext(bs: &'a [u8]) -> Self::View;
+    type Accessor;
+    fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor>;
 }
 
 impl<'a> Protectable<'a> for u32 {
@@ -41,31 +41,30 @@ impl<'a> Protectable<'a> for u32 {
         self.to_le_bytes().to_vec()
     }
 
-    type View = Option<u32>;
-    fn view_plaintext(bs: &'a [u8]) -> Self::View {
+    type Accessor = GuardedBox<u32>;
+    fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor> {
         if bs.len() == core::mem::size_of::<Self>() {
-            Some(Self::from_le_bytes(bs.try_into().unwrap()))
+            GuardedBox::new(Self::from_le_bytes(bs.try_into().unwrap()))
         } else {
-            None
+            Err(Error::view("can't interpret bytestring as a u32 in little endian"))
         }
     }
 }
 
-impl<'a> Protectable<'a> for std::string::String {
+impl<'a> Protectable<'a> for Vec<u8> {
     fn into_plaintext(self) -> Vec<u8> {
-        self.into_bytes()
+        self
     }
 
-    type View = &'a str;
-    fn view_plaintext(bs: &'a[u8]) -> Self::View {
-        unsafe { core::str::from_utf8_unchecked(bs) }
+    type Accessor = GuardedVec<u8>;
+    fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor> {
+        GuardedVec::copy(bs)
     }
 }
 
 #[cfg(feature = "stdalloc")]
 pub mod X25519XChaCha20Poly1305 {
     use super::*;
-    use crate::mem::GuardedBox;
     use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, rand, x25519};
     use core::marker::PhantomData;
     use std::vec::Vec;
@@ -86,11 +85,9 @@ pub mod X25519XChaCha20Poly1305 {
 
     pub struct PublicKey([u8; x25519::PUBLIC_KEY_LENGTH]);
 
-    impl<'a, A: Protectable<'a>> Protection<A> for PublicKey {
+    impl<'a, A: Protectable<'a>> Protection<'a, A> for PublicKey {
         type AtRest = Ciphertext<A>;
-    }
 
-    impl<'a, A: Protectable<'a>> ProtectionNewSelf<A> for PublicKey {
         fn protect(&self, a: A) -> crate::Result<Self::AtRest> {
             let (PrivateKey(ephemeral_key), PublicKey(ephemeral_pk)) = keypair()?;
 
@@ -106,9 +103,9 @@ pub mod X25519XChaCha20Poly1305 {
 
             let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
 
-            let mut ct = vec![0; core::mem::size_of::<A>()];
-
-            xchacha20poly1305::encrypt(&mut ct, &mut tag, &a.into_plaintext(), &shared, &nonce, &[])?;
+            let pt = a.into_plaintext();
+            let mut ct = vec![0; pt.len()];
+            xchacha20poly1305::encrypt(&mut ct, &mut tag, &pt, &shared, &nonce, &[])?;
 
             Ok(Ciphertext { ct, ephemeral_pk, tag, a: PhantomData })
         }
@@ -123,10 +120,8 @@ pub mod X25519XChaCha20Poly1305 {
         Ok((s, p))
     }
 
-    impl<'a, A: Protectable<'a>> Access<A, PublicKey> for PrivateKey {
-        type Accessor = GuardedBox<A>;
-
-        fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<Self::Accessor> {
+    impl<'a, A: Protectable<'a>> Access<'a, A, PublicKey> for PrivateKey {
+        fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<A::Accessor> {
             let shared = x25519::X25519(&self.0, Some(&ct.as_ref().ephemeral_pk));
 
             let pk = x25519::X25519(&self.0, None);
@@ -139,40 +134,44 @@ pub mod X25519XChaCha20Poly1305 {
                 h
             };
 
-            let gb: GuardedBox<A> = GuardedBox::uninit()?;
-            gb.with_mut_ptr(|p| {
-                let pt: &mut [u8] = unsafe { core::slice::from_raw_parts_mut(p as *mut u8, core::mem::size_of::<A>()) };
+            let mut pt = vec![0; ct.as_ref().ct.len()];
+            xchacha20poly1305::decrypt(&mut pt, &ct.as_ref().ct, &shared, &ct.as_ref().tag, &nonce, &[])?;
 
-                xchacha20poly1305::decrypt(pt, &ct.as_ref().ct, &shared, &ct.as_ref().tag, &nonce, &[])
-            })??;
-
-            Ok(gb)
+            A::view_plaintext(&pt)
         }
     }
 
     #[test]
-    fn X25519XChaCha20Poly1305() -> crate::Result<()> {
+    fn int() -> crate::Result<()> {
         let (private, public) = X25519XChaCha20Poly1305::keypair()?;
         let ct = public.protect(17)?;
         let gb = private.access(&ct)?;
-        assert_eq!(*gb.access()?, 17);
+        assert_eq!(*gb.access(), 17);
+        Ok(())
+    }
+
+    #[test]
+    fn bytestring() -> crate::Result<()> {
+        let (private, public) = X25519XChaCha20Poly1305::keypair()?;
+        let ct = public.protect(vec![0, 1, 2])?;
+        let gb = private.access(&ct)?;
+        assert_eq!(*gb.access(), [0, 1, 2]);
         Ok(())
     }
 }
 
 pub mod AES {
     use super::*;
-    use crate::mem::GuardedBox;
     use crypto::ciphers::aes::AES_256_GCM;
     use crypto::{rand};
+    use core::marker::PhantomData;
 
     #[derive(Debug)]
     pub struct Ciphertext<A> {
-        // NB all we actually need is to have a byte array of the same size as A:
-        // [u8; core::mem::size_of::<A>()], (this really is used as core::mem::AlwaysUninit<A>)
-        bs: core::mem::MaybeUninit<A>,
+        ct: Vec<u8>,
         iv: [u8; AES_256_GCM::IV_LENGTH],
         tag: [u8; AES_256_GCM::TAG_LENGTH],
+        a: PhantomData<A>,
     }
 
     impl<A> AsRef<Ciphertext<A>> for Ciphertext<A> {
@@ -191,11 +190,9 @@ pub mod AES {
         }
     }
 
-    impl<'a, A: Protectable<'a>> Protection<A> for Key {
+    impl<'a, A: Protectable<'a>> Protection<'a, A> for Key {
         type AtRest = Ciphertext<A>;
-    }
 
-    impl<'a, A: Protectable<'a>> ProtectionNewSelf<A> for Key {
         fn protect(&self, a: A) -> crate::Result<Self::AtRest> {
             let mut iv = [0; AES_256_GCM::IV_LENGTH];
             rand::fill(&mut iv)?;
@@ -206,39 +203,38 @@ pub mod AES {
             let ct: &mut [u8] =
                 unsafe { core::slice::from_raw_parts_mut(bs.as_mut_ptr() as *mut u8, core::mem::size_of::<A>()) };
 
-            let pt: &[u8] =
-                unsafe { core::slice::from_raw_parts(&a as *const _ as *const u8, core::mem::size_of::<A>()) };
+            let pt = a.into_plaintext();
+            let mut ct = vec![0; pt.len()];
+            AES_256_GCM::encrypt(&self.0, &iv, &[], &pt, &mut ct, &mut tag)?;
 
-            AES_256_GCM::encrypt(&self.0, &iv, &[], pt, ct, &mut tag)?;
-
-            Ok(Ciphertext { bs, iv, tag })
+            Ok(Ciphertext { ct, iv, tag, a: PhantomData })
         }
     }
 
-    impl<'a, A: Protectable<'a>> Access<A, Key> for Key {
-        type Accessor = GuardedBox<A>;
+    impl<'a, A: Protectable<'a>> Access<'a, A, Key> for Key {
+        fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<A::Accessor> {
+            let mut pt = vec![0; ct.as_ref().ct.len()];
+            AES_256_GCM::decrypt(&self.0, &ct.as_ref().iv, &[], &ct.as_ref().tag, &ct.as_ref().ct, &mut pt)?;
 
-        fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<Self::Accessor> {
-            let bs: &[u8] =
-                unsafe { core::slice::from_raw_parts(ct.as_ref().bs.as_ptr() as *const u8, core::mem::size_of::<A>()) };
-
-            let gb: GuardedBox<A> = GuardedBox::uninit()?;
-            gb.with_mut_ptr(|p| {
-                let pt: &mut [u8] = unsafe { core::slice::from_raw_parts_mut(p as *mut u8, core::mem::size_of::<A>()) };
-
-                AES_256_GCM::decrypt(&self.0, &ct.as_ref().iv, &[], &ct.as_ref().tag, bs, pt)
-            })??;
-
-            Ok(gb)
+            A::view_plaintext(&pt)
         }
     }
 
     #[test]
-    fn AES() -> crate::Result<()> {
+    fn int() -> crate::Result<()> {
         let key = AES::Key::new()?;
         let ct = key.protect(17)?;
         let gb = key.access(&ct)?;
-        assert_eq!(*gb.access()?, 17);
+        assert_eq!(*gb.access(), 17);
+        Ok(())
+    }
+
+    #[test]
+    fn bytestring() -> crate::Result<()> {
+        let key = AES::Key::new()?;
+        let ct = key.protect(vec![0, 1, 2])?;
+        let gb = key.access(&ct)?;
+        assert_eq!(*gb.access(), [0, 1, 2]);
         Ok(())
     }
 }
