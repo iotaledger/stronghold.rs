@@ -320,7 +320,11 @@ impl<A: Copy> GuardedVec<A> {
         let l = Layout::array::<A>(n).map_err(|e| Error::Layout(e))?;
         let inner = GuardedCell::new(l)?;
 
-        let gv = Self { inner, n, a: PhantomData };
+        let gv = Self {
+            inner,
+            n,
+            a: PhantomData,
+        };
         (*gv.access()).copy_from_slice(a);
 
         Ok(gv)
@@ -343,7 +347,11 @@ impl<A: Clone> GuardedVec<A> {
             }
         })?;
 
-        Ok(Self { inner, n, a: PhantomData })
+        Ok(Self {
+            inner,
+            n,
+            a: PhantomData,
+        })
     }
 }
 
@@ -383,9 +391,7 @@ impl<A> Deref for GuardedVecAccess<'_, A> {
     fn deref(&self) -> &[A] {
         let p = self.inner.read() as *const A;
 
-        unsafe {
-            core::slice::from_raw_parts(p, self.n)
-        }
+        unsafe { core::slice::from_raw_parts(p, self.n) }
     }
 }
 
@@ -393,9 +399,7 @@ impl<A> DerefMut for GuardedVecAccess<'_, A> {
     fn deref_mut(&mut self) -> &mut [A] {
         let p = self.inner.write() as *mut A;
 
-        unsafe {
-            core::slice::from_raw_parts_mut(p, self.n)
-        }
+        unsafe { core::slice::from_raw_parts_mut(p, self.n) }
     }
 }
 
@@ -447,7 +451,7 @@ mod guarded_vec_tests {
         let cs = Cell::new(1);
 
         {
-            let _gv = GuardedVec::clone(&[ Droplet { clones: &cs }]);
+            let _gv = GuardedVec::clone(&[Droplet { clones: &cs }]);
             assert_eq!(cs.get(), 1);
         }
 
@@ -458,99 +462,29 @@ mod guarded_vec_tests {
 }
 
 pub struct GuardedBox<A> {
-    alloc: GuardedAllocation,
+    inner: GuardedCell,
     a: PhantomData<A>,
-    readers: Cell<usize>,
-    writers: Cell<usize>,
 }
 
 impl<A> GuardedBox<A> {
     pub fn new(a: A) -> crate::Result<Self> {
         let l = Layout::new::<A>();
-        let alloc = GuardedAllocation::aligned(l)?;
-        // NB no need to run forget(a) since write takes ownership
-        unsafe { (alloc.data() as *mut A).write(a) }
-        alloc.protect(false, false)?;
-        Ok(Self {
-            alloc,
-            a: PhantomData,
-            readers: Cell::new(0),
-            writers: Cell::new(0),
-        })
-    }
+        let inner = GuardedCell::new(l)?;
+        inner.with_mut_ptr(|p| {
+            let p = p as *mut A;
+            // NB no need to run forget(a) since write takes ownership
+            unsafe {
+                p.write(a);
+            }
+        })?;
 
-    pub fn uninit() -> crate::Result<Self> {
-        let l = Layout::new::<A>();
-        let alloc = GuardedAllocation::aligned(l)?;
-        alloc.protect(false, false)?;
-        Ok(Self {
-            alloc,
-            a: PhantomData,
-            readers: Cell::new(0),
-            writers: Cell::new(0),
-        })
-    }
-
-    pub fn with_ptr<T, F: FnOnce(*const A) -> T>(&self, f: F) -> crate::Result<T> {
-        self.add_reader()?;
-        let t = f(self.alloc.data() as *const A);
-        self.remove(true, false)?;
-        Ok(t)
-    }
-
-    pub fn with_mut_ptr<T, F: FnOnce(*mut A) -> T>(&self, f: F) -> crate::Result<T> {
-        self.add_reader()?;
-        self.add_writer()?;
-        let t = f(self.alloc.data() as *mut A);
-        self.remove(true, true)?;
-        Ok(t)
-    }
-
-    fn add_reader(&self) -> crate::Result<()> {
-        let r = self.readers.get();
-        if r == 0 {
-            self.alloc.protect(true, 0 < self.writers.get())?;
-        }
-        self.readers.set(r + 1);
-
-        Ok(())
-    }
-
-    fn add_writer(&self) -> crate::Result<()> {
-        let w = self.writers.get();
-        if w == 0 {
-            self.alloc.protect(0 < self.readers.get(), true)?;
-        }
-        self.writers.set(w + 1);
-
-        Ok(())
-    }
-
-    fn remove(&self, read: bool, write: bool) -> crate::Result<()> {
-        let r = if read {
-            let r = self.readers.get();
-            self.readers.set(r - 1);
-            r - 1
-        } else {
-            self.readers.get()
-        };
-
-        let w = if write {
-            let w = self.writers.get();
-            self.writers.set(w - 1);
-            w - 1
-        } else {
-            self.writers.get()
-        };
-
-        self.alloc.protect(r > 0, w > 0)
+        Ok(Self { inner, a: PhantomData })
     }
 
     pub fn access<'a>(&'a self) -> GuardedBoxAccess<A> {
         GuardedBoxAccess {
-            inner: &self,
-            read: Cell::new(false),
-            write: Cell::new(false),
+            inner: self.inner.access(),
+            a: PhantomData,
         }
     }
 }
@@ -558,62 +492,42 @@ impl<A> GuardedBox<A> {
 impl<A> Drop for GuardedBox<A> {
     fn drop(&mut self) {
         if core::mem::needs_drop::<A>() {
-            self.alloc.protect(true, true).unwrap();
-            unsafe {
-                (self.alloc.data() as *mut A).drop_in_place();
-            }
-        } else {
-            self.alloc.protect(false, true).unwrap();
+            self.inner
+                .with_mut_ptr(|p| unsafe {
+                    (p as *mut A).drop_in_place();
+                })
+                .unwrap();
         }
-
-        self.alloc.free().unwrap();
     }
 }
 
 pub struct GuardedBoxAccess<'a, A> {
-    inner: &'a GuardedBox<A>,
-    read: Cell<bool>,
-    write: Cell<bool>,
+    inner: GuardedCellAccess<'a>,
+    a: PhantomData<A>,
 }
 
 impl<A> Deref for GuardedBoxAccess<'_, A> {
     type Target = A;
 
     fn deref(&self) -> &A {
-        if !self.read.get() {
-            self.inner.add_reader().unwrap();
-            self.read.set(true);
-        }
+        let p = self.inner.read() as *const A;
 
         unsafe {
             // TODO: do we actually have any guarantees that mmap can't return a valid mapping at
             // the NULL pointer?
-            (self.inner.alloc.data() as *const A).as_ref().unwrap()
+            p.as_ref().unwrap()
         }
     }
 }
 
 impl<A> DerefMut for GuardedBoxAccess<'_, A> {
     fn deref_mut(&mut self) -> &mut A {
-        if !self.write.get() {
-            self.inner.add_writer().unwrap();
-            self.write.set(true);
-        }
+        let p = self.inner.write() as *mut A;
 
         unsafe {
             // TODO: do we actually have any guarantees that mmap can't return a valid mapping at
             // the NULL pointer?
-            (self.inner.alloc.data() as *mut A).as_mut().unwrap()
-        }
-    }
-}
-
-impl<'a, A> Drop for GuardedBoxAccess<'a, A> {
-    fn drop(&mut self) {
-        let r = self.read.get();
-        let w = self.write.get();
-        if r || w {
-            self.inner.remove(r, w).unwrap();
+            p.as_mut().unwrap()
         }
     }
 }

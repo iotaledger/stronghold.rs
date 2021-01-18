@@ -3,8 +3,8 @@
 
 #![allow(non_snake_case)]
 
-use core::convert::TryInto;
 use crate::mem::{GuardedBox, GuardedVec};
+use core::convert::TryInto;
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -26,8 +26,7 @@ pub trait Access<'a, A: Protectable<'a>, P: Protection<'a, A>> {
     fn access<R: AsRef<P::AtRest>>(&self, r: R) -> crate::Result<A::Accessor>;
 }
 
-use std::vec::Vec;
-use std::string::ToString;
+use std::{string::ToString, vec::Vec};
 
 pub trait Protectable<'a> {
     fn into_plaintext(self) -> Vec<u8>;
@@ -65,8 +64,8 @@ impl<'a> Protectable<'a> for Vec<u8> {
 #[cfg(feature = "stdalloc")]
 pub mod X25519XChaCha20Poly1305 {
     use super::*;
-    use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, rand, x25519};
     use core::marker::PhantomData;
+    use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, rand, x25519};
     use std::vec::Vec;
 
     #[derive(Debug)]
@@ -107,7 +106,12 @@ pub mod X25519XChaCha20Poly1305 {
             let mut ct = vec![0; pt.len()];
             xchacha20poly1305::encrypt(&mut ct, &mut tag, &pt, &shared, &nonce, &[])?;
 
-            Ok(Ciphertext { ct, ephemeral_pk, tag, a: PhantomData })
+            Ok(Ciphertext {
+                ct,
+                ephemeral_pk,
+                tag,
+                a: PhantomData,
+            })
         }
     }
 
@@ -162,9 +166,8 @@ pub mod X25519XChaCha20Poly1305 {
 
 pub mod AES {
     use super::*;
-    use crypto::ciphers::aes::AES_256_GCM;
-    use crypto::{rand};
     use core::marker::PhantomData;
+    use crypto::{ciphers::aes::AES_256_GCM, rand};
 
     #[derive(Debug)]
     pub struct Ciphertext<A> {
@@ -199,22 +202,30 @@ pub mod AES {
 
             let mut tag = [0; AES_256_GCM::TAG_LENGTH];
 
-            let mut bs = core::mem::MaybeUninit::uninit();
-            let ct: &mut [u8] =
-                unsafe { core::slice::from_raw_parts_mut(bs.as_mut_ptr() as *mut u8, core::mem::size_of::<A>()) };
-
             let pt = a.into_plaintext();
             let mut ct = vec![0; pt.len()];
             AES_256_GCM::encrypt(&self.0, &iv, &[], &pt, &mut ct, &mut tag)?;
 
-            Ok(Ciphertext { ct, iv, tag, a: PhantomData })
+            Ok(Ciphertext {
+                ct,
+                iv,
+                tag,
+                a: PhantomData,
+            })
         }
     }
 
     impl<'a, A: Protectable<'a>> Access<'a, A, Key> for Key {
         fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<A::Accessor> {
             let mut pt = vec![0; ct.as_ref().ct.len()];
-            AES_256_GCM::decrypt(&self.0, &ct.as_ref().iv, &[], &ct.as_ref().tag, &ct.as_ref().ct, &mut pt)?;
+            AES_256_GCM::decrypt(
+                &self.0,
+                &ct.as_ref().iv,
+                &[],
+                &ct.as_ref().tag,
+                &ct.as_ref().ct,
+                &mut pt,
+            )?;
 
             A::view_plaintext(&pt)
         }
