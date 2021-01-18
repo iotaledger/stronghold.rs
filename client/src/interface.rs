@@ -9,6 +9,8 @@ use zeroize::Zeroize;
 
 use engine::vault::RecordHint;
 
+#[cfg(feature = "communication")]
+use crate::utils::ResultMessage;
 use crate::{
     actors::{InternalActor, InternalMsg, ProcResult, Procedure, SHRequest, SHResults},
     client::{Client, ClientMsg},
@@ -62,21 +64,23 @@ impl Stronghold {
             .actor_of_args::<Client, _>(&id_str, client_id)
             .expect(line_error!());
 
-        system
-            .actor_of_args::<InternalActor<Provider>, _>(&format!("internal-{}", id_str), client_id)
-            .expect(line_error!());
-
-        system.actor_of::<Snapshot>("snapshot").expect(line_error!());
-
         #[cfg(feature = "communication")]
         let communication_actor = {
             let local_keys = stronghold_communication::generate_new_keypair();
             let client_ref = BasicActorRef::from(client.clone());
             let config = CommsActorConfig::new(local_keys, None, client_ref);
             system
-                .actor_of_args::<CommunicationActor<SHRequest, SHResults>, _>("communicaton", config)
+                .actor_of_args::<CommunicationActor<SHRequest, SHResults>, _>("communication", config)
                 .expect(line_error!())
         };
+        system
+            .actor_of_args::<InternalActor<Provider>, _>(&format!("internal-{}", id_str), client_id)
+            .expect(line_error!());
+
+        system.actor_of::<Snapshot>("snapshot").expect(line_error!());
+        println!("\n\n");
+        system.print_tree();
+        println!("\n\n");
 
         let actors = vec![client];
 
@@ -244,142 +248,7 @@ impl Stronghold {
 
         StatusMessage::Error("Failed to write the data".into())
     }
-
-    #[cfg(feature = "communication")]
-    fn handle_response_failure(res: CommunicationEvent<SHRequest, SHResults>, procedure: &str) -> StatusMessage {
-        match res {
-            CommunicationEvent::Response {
-                request_id: _,
-                result: Ok(_),
-            } => StatusMessage::Error(format!("Failed to {}", procedure)),
-            CommunicationEvent::Response {
-                request_id: _,
-                result: Err(error),
-            } => StatusMessage::Error(format!("Error messaging peer {:?}", error)),
-            _ => StatusMessage::Error("Invalid communication event".into()),
-        }
-    }
-
-    #[cfg(feature = "communication")]
-    async fn ask_remote(&self, peer_id: PeerId, request: SHRequest) -> CommunicationEvent<SHRequest, SHResults> {
-        ask(
-            &self.system,
-            &self.communication_actor,
-            CommunicationEvent::<_, SHResults>::Request {
-                peer_id,
-                request_id: None,
-                request,
-            },
-        )
-        .await
-    }
-
-    #[cfg(feature = "communication")]
-    pub async fn write_remote_vault(
-        &self,
-        location: Location,
-        payload: Vec<u8>,
-        hint: RecordHint,
-        _options: Vec<VaultFlags>,
-        peer_id: PeerId,
-        addr: Multiaddr,
-    ) -> StatusMessage {
-        // connect remote peer
-        let peer_id = match ask::<_, _, CommunicationEvent<SHRequest, SHResults>, _>(
-            &self.system,
-            &self.communication_actor,
-            CommunicationEvent::ConnectPeer { addr, peer_id },
-        )
-        .await
-        {
-            CommunicationEvent::ConnectPeerResult(Ok(peer_id)) => peer_id,
-            CommunicationEvent::ConnectPeerResult(Err(reason)) => {
-                return StatusMessage::Error(format!("Error connecting peer: {:?}", reason))
-            }
-            _ => return StatusMessage::Error("Invalid communication event".into()),
-        };
-
-        let vault_path = &location.vault_path();
-        let vault_path = vault_path.to_vec();
-
-        // check if vault exists
-        let b = match self
-            .ask_remote(peer_id, SHRequest::CheckVault(vault_path.clone()))
-            .await
-        {
-            CommunicationEvent::Response {
-                request_id: _,
-                result: Ok(SHResults::ReturnExistsVault(b)),
-            } => b,
-            event => return Stronghold::handle_response_failure(event, "write data"),
-        };
-        if b {
-            // check if record exists
-            let b = match self
-                .ask_remote(
-                    peer_id,
-                    SHRequest::CheckRecord {
-                        location: location.clone(),
-                    },
-                )
-                .await
-            {
-                CommunicationEvent::Response {
-                    request_id: _,
-                    result: Ok(SHResults::ReturnExistsRecord(b)),
-                } => b,
-                other => return Stronghold::handle_response_failure(other, "check record"),
-            };
-            if !b {
-                // initialize a new record
-                match self
-                    .ask_remote(
-                        peer_id,
-                        SHRequest::InitRecord {
-                            location: location.clone(),
-                        },
-                    )
-                    .await
-                {
-                    CommunicationEvent::Response {
-                        request_id: _,
-                        result: Ok(SHResults::ReturnInitRecord(status)),
-                    } => status,
-                    other => return Stronghold::handle_response_failure(other, "initialize record"),
-                };
-            }
-        } else {
-            // no vault so create new one before writing.
-            match self
-                .ask_remote(peer_id, SHRequest::CreateNewVault(location.clone()))
-                .await
-            {
-                CommunicationEvent::Response {
-                    request_id: _,
-                    result: Ok(SHResults::ReturnCreateVault(_)),
-                } => {}
-                other => return Stronghold::handle_response_failure(other, "create vault"),
-            };
-        }
-        // write data
-        match self
-            .ask_remote(
-                peer_id,
-                SHRequest::WriteToVault {
-                    location: location.clone(),
-                    payload: payload.clone(),
-                    hint,
-                },
-            )
-            .await
-        {
-            CommunicationEvent::Response {
-                request_id: _,
-                result: Ok(SHResults::ReturnWriteVault(status)),
-            } => status,
-            other => Stronghold::handle_response_failure(other, "write data"),
-        }
-    }
+   
 
     /// A test function for reading data from a vault.
     #[cfg(test)]
@@ -963,6 +832,21 @@ impl Stronghold {
                 result: Ok(SHResults::ReturnReadStore(payload, status)),
             } => (payload, status),
             other => (vec![], Stronghold::handle_response_failure(other, "write to the store")),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    /// Get the peer id and listening addresses of the local peer
+    pub async fn get_swarm_info(&self) -> ResultMessage<(PeerId, Vec<Multiaddr>)> {
+        match ask::<_, _, CommunicationEvent<SHRequest, SHResults>, _>(
+            &self.system,
+            &self.communication_actor,
+            CommunicationEvent::GetSwarmInfo,
+        )
+        .await
+        {
+            CommunicationEvent::SwarmInfo { peer_id, listeners } => ResultMessage::Ok((peer_id, listeners)),
+            _ => ResultMessage::Error("Failed to obtain swarm information".into()),
         }
     }
 }
