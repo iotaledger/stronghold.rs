@@ -236,7 +236,7 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
         let listen_addr = config
             .listen_addr
             .clone()
-            .unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().unwrap());
+            .unwrap_or_else(|| "/ip4/127.0.0.1/tcp/0".parse().unwrap());
         Swarm::listen_on(&mut swarm, listen_addr).unwrap();
         SwarmTask {
             swarm,
@@ -336,6 +336,7 @@ impl<T: MessageEvent, U: MessageEvent> SwarmTask<T, U> {
                         request_id,
                         request,
                     };
+                    println!("\nclient_ref: {}\n", self.client_ref);
                     self.client_ref.try_tell(msg, Some(self.self_ref.clone())).unwrap();
                 }
                 P2PReqResEvent::InboundFailure {
@@ -399,6 +400,13 @@ mod test {
     use super::*;
     use core::time::Duration;
     use serde::{Deserialize, Serialize};
+    use std::sync::{Arc, Mutex};
+
+    use futures::{
+        channel::oneshot::{channel, Sender as ChannelSender},
+        future::RemoteHandle,
+        FutureExt,
+    };
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     enum Request {
@@ -534,5 +542,180 @@ mod test {
             remote_sys.shutdown().await.unwrap();
             local_sys.shutdown().await.unwrap();
         });
+    }
+
+    #[derive(Clone)]
+    struct BlankActor;
+
+    impl ActorFactory for BlankActor {
+        fn create() -> Self {
+            BlankActor
+        }
+    }
+
+    impl Actor for BlankActor {
+        type Msg = String;
+
+        fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, _sender: Sender) {}
+    }
+
+    #[test]
+    fn ask_swarm_info() {
+        let sys = ActorSystem::new().unwrap();
+        let blank = sys.actor_of::<BlankActor>("blank").unwrap();
+
+        let local_keys = crate::generate_new_keypair();
+        let client_ref = BasicActorRef::from(blank);
+        let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8095".parse().unwrap();
+        let config = CommsActorConfig::new(local_keys.clone(), Some(addr.clone()), client_ref);
+        let communication_actor = sys
+            .actor_of_args::<CommunicationActor<String, String>, _>("communication", config)
+            .unwrap();
+        let result = task::block_on(ask::<_, _, CommunicationEvent<String, String>, _>(
+            &sys,
+            &communication_actor,
+            CommunicationEvent::GetSwarmInfo,
+        ));
+        match result {
+            CommunicationEvent::SwarmInfo { peer_id, listeners } => {
+                assert_eq!(PeerId::from(local_keys.public()), peer_id);
+                assert!(listeners.contains(&addr));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[derive(Clone)]
+    struct TargetActor;
+
+    impl ActorFactory for TargetActor {
+        fn create() -> Self {
+            TargetActor
+        }
+    }
+
+    impl Actor for TargetActor {
+        type Msg = CommunicationEvent<String, String>;
+
+        fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+            if let CommunicationEvent::Request {
+                peer_id: _,
+                request_id: Some(request_id),
+                request,
+            } = msg
+            {
+                let response = CommunicationEvent::<String, _>::Response {
+                    request_id,
+                    result: Ok(request),
+                };
+                sender.unwrap().try_tell(response, None).unwrap();
+            } else {
+                panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn ask_request() {
+        // start remote actor system
+        let remote_sys = ActorSystem::new().unwrap();
+        let target_actor = BasicActorRef::from(remote_sys.actor_of::<TargetActor>("target").unwrap());
+        let remote_config = CommsActorConfig::new(crate::generate_new_keypair(), None, target_actor);
+        let remote_comms = remote_sys
+            .actor_of_args::<CommunicationActor<String, String>, _>("communication", remote_config)
+            .unwrap();
+
+        // start local actor system
+        let local_sys = ActorSystem::new().unwrap();
+        let blank_actor = local_sys.actor_of::<BlankActor>("blank").unwrap();
+        let local_config = CommsActorConfig::new(crate::generate_new_keypair(), None, BasicActorRef::from(blank_actor));
+        let local_comms = local_sys
+            .actor_of_args::<CommunicationActor<String, String>, _>("communication", local_config)
+            .unwrap();
+
+        std::thread::sleep(Duration::new(1, 0));
+
+        // obtain information about the remote peer id and listeners
+        let result = task::block_on(ask::<_, _, CommunicationEvent<String, String>, _>(
+            &remote_sys,
+            &remote_comms,
+            CommunicationEvent::GetSwarmInfo,
+        ));
+        let (remote_peer_id, listeners) = match result {
+            CommunicationEvent::SwarmInfo { peer_id, listeners } => (peer_id, listeners),
+            _ => panic!(),
+        };
+
+        // connect remote peer
+        match task::block_on(ask::<_, _, CommunicationEvent<String, String>, _>(
+            &local_sys,
+            &local_comms,
+            CommunicationEvent::ConnectPeer {
+                addr: listeners.last().unwrap().clone(),
+                peer_id: remote_peer_id,
+            },
+        )) {
+            CommunicationEvent::ConnectPeerResult(Ok(peer_id)) => assert_eq!(peer_id, remote_peer_id),
+            _ => panic!(),
+        };
+
+        // send message to remote peer
+        let test_msg = String::from("test");
+        match task::block_on(ask::<_, _, CommunicationEvent<String, String>, _>(
+            &local_sys,
+            &local_comms,
+            CommunicationEvent::Request {
+                peer_id: remote_peer_id,
+                request_id: None,
+                request: test_msg.clone(),
+            },
+        )) {
+            CommunicationEvent::Response {
+                request_id: _,
+                result: Ok(echoed_msg),
+            } => assert_eq!(test_msg, echoed_msg),
+            _ => panic!(),
+        };
+        local_sys.stop(&local_comms);
+        remote_sys.stop(&remote_comms);
+    }
+
+    fn ask<Msg, Ctx, R, T>(ctx: &Ctx, receiver: &T, msg: Msg) -> RemoteHandle<R>
+    where
+        Msg: Message,
+        R: Message,
+        Ctx: TmpActorRefFactory + Run,
+        T: Tell<Msg>,
+    {
+        let (tx, rx) = channel::<R>();
+        let tx = Arc::new(Mutex::new(Some(tx)));
+
+        let props = Props::new_from_args(Box::new(AskActor::boxed), tx);
+        let actor = ctx.tmp_actor_of_props(props).unwrap();
+        receiver.tell(msg, Some(actor.into()));
+
+        ctx.run(rx.map(|r| r.unwrap())).unwrap()
+    }
+
+    struct AskActor<Msg> {
+        tx: Arc<Mutex<Option<ChannelSender<Msg>>>>,
+    }
+
+    impl<Msg: Message> AskActor<Msg> {
+        fn boxed(tx: Arc<Mutex<Option<ChannelSender<Msg>>>>) -> BoxActor<Msg> {
+            let ask = AskActor { tx };
+            Box::new(ask)
+        }
+    }
+
+    impl<Msg: Message> Actor for AskActor<Msg> {
+        type Msg = Msg;
+
+        fn recv(&mut self, ctx: &Context<Msg>, msg: Msg, _: Sender) {
+            if let Ok(mut tx) = self.tx.lock() {
+                tx.take().unwrap().send(msg).unwrap();
+            }
+            ctx.stop(&ctx.myself);
+        }
     }
 }

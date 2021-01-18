@@ -4,6 +4,8 @@
 use riker::actors::*;
 
 use crate::{line_error, Location, RecordHint, Stronghold};
+#[cfg(feature = "communication")]
+use core::time::Duration;
 
 #[test]
 fn test_stronghold() {
@@ -398,4 +400,43 @@ fn test_counters() {
 
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(loc0.vault_path()));
     println!("{:?}", ids);
+}
+
+#[cfg(feature = "communication")]
+#[test]
+fn test_stronghold_communication() {
+    let local_sys = ActorSystem::new().unwrap();
+    let local_client = b"local".to_vec();
+    let _local_stronghold = Stronghold::init_stronghold_system(local_sys, local_client, vec![]);
+
+    let remote_sys = ActorSystem::new().unwrap();
+    let remote_client = b"remote".to_vec();
+    let remote_stronghold = Stronghold::init_stronghold_system(remote_sys, remote_client, vec![]);
+
+    std::thread::sleep(Duration::new(1, 0));
+
+    let (_peer_id, _listeners) = match futures::executor::block_on(remote_stronghold.get_swarm_info()) {
+        ResultMessage::Ok((peer_id, listeners)) => (peer_id, listeners),
+        ResultMessage::Error(_) => panic!(),
+    };
+
+    let loc = Location::counter::<_, usize>("path", Some(0));
+    let original_data = b"some data".to_vec();
+
+    // write some data to the remote store
+    match futures::executor::block_on(remote_stronghold.write_to_store(loc, original_data, None)) {
+        StatusMessage::OK => {}
+        StatusMessage::Error(_) => panic!(),
+    }
+
+    // TODO
+    // let payload = match futures::executor::block_on(local_stronghold.read_from_remote_store(
+    // peer_id,
+    // listeners.last().unwrap().clone(),
+    // loc,
+    // )) {
+    // (payload, StatusMessage::OK) => payload,
+    // (_, StatusMessage::Error(_)) => panic!(),
+    // };
+    // assert_eq!(payload, original_data);
 }
