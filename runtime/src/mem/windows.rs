@@ -5,7 +5,7 @@ use winapi::{
     um::{
         memoryapi::{VirtualAlloc, VirtualFree, VirtualLock, VirtualProtect},
         sysinfoapi::{GetSystemInfo, SYSTEM_INFO},
-        winnt::{MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_NOACCESS},
+        winnt::{MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE},
     },
 };
 pub const PROT_NONE: u32 = winnt::PAGE_NOACCESS;
@@ -15,7 +15,7 @@ pub const PROT_READ_WRITE: u32 = winnt::PAGE_READWRITE;
 
 pub fn mmap(size: usize) -> crate::Result<*mut u8> {
     unsafe {
-        let ptr = VirtualAlloc(ptr::null_mut(), size as usize, MEM_RESERVE | MEM_COMMIT, PAGE_NOACCESS) as *mut u8;
+        let ptr = VirtualAlloc(ptr::null_mut(), size as usize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE) as *mut u8;
 
         if ptr.is_null() {
             Err(crate::Error::os("mmap"))
@@ -29,24 +29,19 @@ pub fn munmap(ptr: *mut u8, _n: usize) -> crate::Result<()> {
     let ret = unsafe { VirtualFree(ptr as *mut _, 0, MEM_RELEASE) };
 
     match ret {
-        0 => Ok(()),
-        _ => Err(crate::Error::os("munmap")),
+        0 => Err(crate::Error::os("munmap")),
+        _ => Ok(()),
     }
 }
 
 pub fn protect(ptr: *mut u8, size: usize, prots: u32) -> crate::Result<()> {
     let mut _old_prot: DWORD = 0;
 
-    #[cfg(target_pointer_width = "64")]
-    type U = u64;
-    #[cfg(target_pointer_width = "32")]
-    type U = u32;
-
     let ret = unsafe { VirtualProtect(ptr as *mut _, size as usize, prots, &mut _old_prot as *mut _) };
 
     match ret {
-        0 => Ok(()),
-        _ => Err(crate::Error::os("protect")),
+        0 => Err(crate::Error::os("protect")),
+        _ => Ok(()),
     }
 }
 
@@ -54,8 +49,8 @@ pub fn lock(addr: *mut u8, len: usize) -> crate::Result<()> {
     let ret = unsafe { VirtualLock(addr as LPVOID, len as usize) };
 
     match ret {
-        0 => Ok(()),
-        _ => Err(crate::Error::os("lock")),
+        0 => Err(crate::Error::os("lock")),
+        _ => Ok(()),
     }
 }
 

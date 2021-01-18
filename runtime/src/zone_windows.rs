@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[derive(PartialEq, Debug)]
-pub enum Error {}
+pub enum Error {
+    UnexpectedExitCode { exit_code: libc::c_int },
+    Signal { signo: libc::c_int },
+}
 
 #[derive(Clone)]
 struct ZoneSpec {}

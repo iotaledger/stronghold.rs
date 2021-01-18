@@ -694,7 +694,6 @@ pub fn seccomp_spec() -> crate::seccomp::Spec {
     }
 }
 
-#[cfg(unix)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -808,6 +807,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn guard_pages_pre_read() -> crate::Result<()> {
         let l = fresh_layout();
         let a = GuardedAllocation::aligned(l)?;
@@ -827,6 +827,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn guard_pages_pre_write() -> crate::Result<()> {
         let l = fresh_layout();
         let a = GuardedAllocation::aligned(l)?;
@@ -846,6 +847,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn guard_pages_post_read() -> crate::Result<()> {
         let l = fresh_layout();
         let a = GuardedAllocation::aligned(l)?;
@@ -865,6 +867,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn guard_pages_post_write() -> crate::Result<()> {
         let l = fresh_layout();
         let a = GuardedAllocation::aligned(l)?;

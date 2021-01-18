@@ -3,7 +3,7 @@
 
 #![allow(non_snake_case)]
 
-use crate::mem::{GuardedBox, GuardedVec, GuardedString};
+use crate::mem::{GuardedBox, GuardedString, GuardedVec};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -29,15 +29,12 @@ pub trait Protection<A: Protectable> {
 }
 
 pub trait Access<A: Protectable, P: Protection<A>> {
-
     fn access<R: AsRef<P::AtRest>>(&self, r: R) -> crate::Result<A::Accessor>;
 }
 
 impl Protectable for u32 {
     fn into_plaintext(&self) -> &[u8] {
-        unsafe {
-            core::slice::from_raw_parts(self as *const _ as *const u8, core::mem::size_of::<Self>())
-        }
+        unsafe { core::slice::from_raw_parts(self as *const _ as *const u8, core::mem::size_of::<Self>()) }
     }
 
     type Accessor = GuardedBox<u32>;
@@ -186,6 +183,7 @@ pub mod X25519XChaCha20Poly1305 {
     }
 }
 
+#[cfg(unix)]
 pub mod AES {
     use super::*;
     use core::marker::PhantomData;
