@@ -190,4 +190,3 @@ pub fn seccomp_spec() -> crate::seccomp::Spec {
         ..crate::seccomp::Spec::default()
     }
 }
-
