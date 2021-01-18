@@ -6,24 +6,26 @@ use core::{
     cell::Cell,
     marker::PhantomData,
     ops::{Deref, DerefMut},
-    ptr,
 };
 
 use zeroize::Zeroize;
+
+#[cfg(unix)]
+mod posix;
+
+#[cfg(windows)]
+mod windows;
+
+#[cfg(unix)]
+pub use self::posix::{lock, mmap, munmap, page_size, prot, protect};
+
+#[cfg(windows)]
+pub use self::windows::{lock, mmap, munmap, page_size, prot, protect};
 
 #[derive(PartialEq, Debug)]
 pub enum Error {
     ZeroAllocation,
     Layout(LayoutErr),
-}
-
-#[cfg(unix)]
-lazy_static! {
-    static ref PAGE_SIZE: usize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize };
-}
-#[cfg(unix)]
-fn page_size() -> usize {
-    *PAGE_SIZE
 }
 
 fn pad(x: usize, n: usize) -> usize {
@@ -43,30 +45,6 @@ fn pad_minimizer(a: usize, b: usize, c: usize) -> usize {
                 c / a - bc / a - 1
             }
         }
-    }
-}
-
-fn mmap(n: usize) -> crate::Result<*mut u8> {
-    let x = unsafe {
-        libc::mmap(
-            ptr::null_mut::<u8>() as *mut libc::c_void,
-            n,
-            libc::PROT_NONE,
-            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
-            -1,
-            0,
-        )
-    };
-    if x == libc::MAP_FAILED {
-        return Err(crate::Error::os("mmap"));
-    }
-    Ok(x as *mut u8)
-}
-
-fn munmap(p: *mut u8, n: usize) -> crate::Result<()> {
-    match unsafe { libc::munmap(p as *mut libc::c_void, n) } {
-        0 => Ok(()),
-        _ => Err(crate::Error::os("munmap")),
     }
 }
 
@@ -168,18 +146,12 @@ impl GuardedAllocation {
     }
 
     fn protect(&self, read: bool, write: bool) -> crate::Result<()> {
-        let prot = (read as i32 * libc::PROT_READ) | (write as i32 * libc::PROT_WRITE);
-        match unsafe { libc::mprotect(self.data_region_start as *mut libc::c_void, self.data_region_size, prot) } {
-            0 => Ok(()),
-            _ => Err(crate::Error::os("mprotect")),
-        }
+        let prot = prot(read, write);
+        protect(self.data_region_start, self.data_region_size, prot)
     }
 
     fn lock(&self) -> crate::Result<()> {
-        match unsafe { libc::mlock(self.data_region_start as *mut libc::c_void, self.data_region_size) } {
-            0 => Ok(()),
-            _ => Err(crate::Error::os("mlock")),
-        }
+        lock(self.data_region_start, self.data_region_size)
     }
 }
 
@@ -579,15 +551,17 @@ impl GuardedString {
     pub fn new(s: &str) -> crate::Result<Self> {
         Ok(Self {
             inner: GuardedVec::copy(s.as_bytes())?,
-            n: s.len()
+            n: s.len(),
         })
     }
 
-    pub fn len(&self) -> usize { self.n }
+    pub fn len(&self) -> usize {
+        self.n
+    }
 
     pub fn access<'a>(&'a self) -> GuardedStringAccess<'a> {
         GuardedStringAccess {
-            inner: self.inner.access()
+            inner: self.inner.access(),
         }
     }
 }
@@ -600,17 +574,13 @@ impl Deref for GuardedStringAccess<'_> {
     type Target = str;
 
     fn deref(&self) -> &str {
-        unsafe {
-            core::str::from_utf8_unchecked(&self.inner)
-        }
+        unsafe { core::str::from_utf8_unchecked(&self.inner) }
     }
 }
 
 impl DerefMut for GuardedStringAccess<'_> {
     fn deref_mut(&mut self) -> &mut str {
-        unsafe {
-            core::str::from_utf8_unchecked_mut(&mut self.inner)
-        }
+        unsafe { core::str::from_utf8_unchecked_mut(&mut self.inner) }
     }
 }
 
@@ -721,233 +691,5 @@ pub fn seccomp_spec() -> crate::seccomp::Spec {
         mprotect: true,
         mlock: true,
         ..crate::seccomp::Spec::default()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::{rngs::OsRng, Rng};
-
-    #[cfg(target_os = "linux")]
-    const MEM_ACCESS_ERR: crate::Error = crate::Error::ZoneError(crate::zone::Error::Signal { signo: libc::SIGSEGV });
-    #[cfg(target_os = "macos")]
-    const MEM_ACCESS_ERR: crate::Error = crate::Error::ZoneError(crate::zone::Error::Signal { signo: libc::SIGBUS });
-
-    #[cfg(not(feature = "stdalloc"))]
-    #[global_allocator]
-    static ALLOC: GuardedAllocator = GuardedAllocator::new();
-
-    #[cfg(not(feature = "stdalloc"))]
-    fn with_guarded_allocator<A, F: FnOnce() -> A>(f: F) -> A {
-        f()
-    }
-
-    #[cfg(feature = "stdalloc")]
-    fn with_guarded_allocator<A, F: FnOnce() -> A>(f: F) -> A {
-        unsafe { stdalloc::guarded() };
-        let a = f();
-        unsafe { stdalloc::std() };
-        a
-    }
-
-    fn page_size_exponent() -> u32 {
-        let mut p = 1;
-        let mut k = 0;
-        while p != page_size() {
-            p *= 2;
-            k += 1;
-        }
-        k as u32
-    }
-
-    fn fresh_non_zero_size(bound: usize) -> usize {
-        let mut n = 0;
-        while n == 0 {
-            n = OsRng.gen::<usize>() % bound;
-        }
-        n
-    }
-
-    fn fresh_layout() -> Layout {
-        let n = fresh_non_zero_size(3 * page_size());
-        let a = 2usize.pow(OsRng.gen::<u32>() % page_size_exponent() + 3);
-        Layout::from_size_align(n, a).unwrap()
-    }
-
-    fn do_test_write(p: *mut u8, n: usize) {
-        let bs = unsafe { core::slice::from_raw_parts_mut(p, n) };
-        for b in bs.iter() {
-            assert_eq!(*b, 0u8);
-        }
-
-        OsRng.fill(bs);
-    }
-
-    fn do_sized_alloc_test(n: usize) -> crate::Result<()> {
-        let a = GuardedAllocation::unaligned(n)?;
-
-        do_test_write(a.data(), n);
-
-        a.free()?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn allocate_whole_page() -> crate::Result<()> {
-        do_sized_alloc_test(page_size())
-    }
-
-    #[test]
-    fn allocate_less_than_a_whole_page() -> crate::Result<()> {
-        do_sized_alloc_test(1)
-    }
-
-    #[test]
-    fn allocate_little_more_than_a_whole_page() -> crate::Result<()> {
-        do_sized_alloc_test(page_size() + 1)
-    }
-
-    #[test]
-    fn allocate_random_sizes() -> crate::Result<()> {
-        for _ in 1..10 {
-            do_sized_alloc_test(fresh_non_zero_size(1024 * 1024))?
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn alignment() -> crate::Result<()> {
-        for _ in 1..100 {
-            let l = fresh_layout();
-            let a = GuardedAllocation::aligned(l)?;
-            assert_eq!((a.data() as usize) % l.align(), 0);
-            do_test_write(a.data(), l.size());
-            a.free()?;
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn zero_allocation() -> crate::Result<()> {
-        assert_eq!(GuardedAllocation::unaligned(0), Err(Error::ZeroAllocation.into()),);
-        Ok(())
-    }
-
-    #[test]
-    fn guard_pages_pre_read() -> crate::Result<()> {
-        let l = fresh_layout();
-        let a = GuardedAllocation::aligned(l)?;
-
-        assert_eq!(
-            crate::zone::fork(|| {
-                for i in 0..page_size() {
-                    unsafe {
-                        assert_eq!(0u8, core::ptr::read_unaligned(a.data().offset(-(i as isize))));
-                    }
-                }
-            }),
-            Err(MEM_ACCESS_ERR)
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn guard_pages_pre_write() -> crate::Result<()> {
-        let l = fresh_layout();
-        let a = GuardedAllocation::aligned(l)?;
-
-        assert_eq!(
-            crate::zone::fork(|| {
-                for i in 0..page_size() {
-                    unsafe {
-                        core::ptr::write_unaligned(a.data().offset(-(i as isize)), OsRng.gen());
-                    }
-                }
-            }),
-            Err(MEM_ACCESS_ERR)
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn guard_pages_post_read() -> crate::Result<()> {
-        let l = fresh_layout();
-        let a = GuardedAllocation::aligned(l)?;
-
-        assert_eq!(
-            crate::zone::fork(|| {
-                for i in 0..page_size() {
-                    unsafe {
-                        assert_eq!(0u8, core::ptr::read_unaligned(a.data().add(l.size() + i)));
-                    };
-                }
-            }),
-            Err(MEM_ACCESS_ERR)
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn guard_pages_post_write() -> crate::Result<()> {
-        let l = fresh_layout();
-        let a = GuardedAllocation::aligned(l)?;
-
-        assert_eq!(
-            crate::zone::fork(|| {
-                for i in 0..page_size() {
-                    unsafe {
-                        core::ptr::write_unaligned(a.data().add(l.size() + i), OsRng.gen());
-                    }
-                }
-            }),
-            Err(MEM_ACCESS_ERR)
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn vectors() -> crate::Result<()> {
-        with_guarded_allocator(|| {
-            extern crate alloc;
-            use alloc::vec::Vec;
-
-            let mut bs: Vec<u8> = Vec::with_capacity(10);
-            for _ in 1..100 {
-                bs.push(OsRng.gen());
-            }
-
-            Ok(())
-        })
-    }
-
-    // TODO: unify these apis, maybe a dedicated zone::Spec?
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn inside_zone_linux() -> crate::Result<()> {
-        let l = fresh_layout();
-        crate::zone::fork(|| {
-            seccomp_spec().with_getrandom().apply().unwrap();
-            let a = GuardedAllocation::aligned(l).unwrap();
-            do_test_write(a.data(), l.size());
-            a.free().unwrap();
-        })
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn inside_zone_macos() -> crate::Result<()> {
-        let l = fresh_layout();
-        crate::zone::fork(|| {
-            let a = GuardedAllocation::aligned(l).unwrap();
-            do_test_write(a.data(), l.size());
-            a.free().unwrap();
-        })
     }
 }
