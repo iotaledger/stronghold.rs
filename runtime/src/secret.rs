@@ -3,7 +3,7 @@
 
 #![allow(non_snake_case)]
 
-use crate::mem::{GuardedBox, GuardedVec};
+use crate::mem::{GuardedBox, GuardedVec, GuardedString};
 use core::convert::TryInto;
 
 #[derive(Debug, PartialEq)]
@@ -26,7 +26,7 @@ pub trait Access<'a, A: Protectable<'a>, P: Protection<'a, A>> {
     fn access<R: AsRef<P::AtRest>>(&self, r: R) -> crate::Result<A::Accessor>;
 }
 
-use std::{string::ToString, vec::Vec};
+use std::vec::Vec;
 
 pub trait Protectable<'a> {
     fn into_plaintext(self) -> Vec<u8>;
@@ -58,6 +58,17 @@ impl<'a> Protectable<'a> for Vec<u8> {
     type Accessor = GuardedVec<u8>;
     fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor> {
         GuardedVec::copy(bs)
+    }
+}
+
+impl<'a> Protectable<'a> for &str {
+    fn into_plaintext(self) -> Vec<u8> {
+        self.as_bytes().to_vec()
+    }
+
+    type Accessor = GuardedString;
+    fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor> {
+        GuardedString::new(unsafe { core::str::from_utf8_unchecked(bs) })
     }
 }
 
@@ -158,8 +169,17 @@ pub mod X25519XChaCha20Poly1305 {
     fn bytestring() -> crate::Result<()> {
         let (private, public) = X25519XChaCha20Poly1305::keypair()?;
         let ct = public.protect(vec![0, 1, 2])?;
-        let gb = private.access(&ct)?;
-        assert_eq!(*gb.access(), [0, 1, 2]);
+        let gv = private.access(&ct)?;
+        assert_eq!(*gv.access(), [0, 1, 2]);
+        Ok(())
+    }
+
+    #[test]
+    fn string() -> crate::Result<()> {
+        let (private, public) = X25519XChaCha20Poly1305::keypair()?;
+        let ct = public.protect("foo")?;
+        let gs = private.access(&ct)?;
+        assert_eq!(*gs.access(), *"foo");
         Ok(())
     }
 }
@@ -244,8 +264,17 @@ pub mod AES {
     fn bytestring() -> crate::Result<()> {
         let key = AES::Key::new()?;
         let ct = key.protect(vec![0, 1, 2])?;
-        let gb = key.access(&ct)?;
-        assert_eq!(*gb.access(), [0, 1, 2]);
+        let gv = key.access(&ct)?;
+        assert_eq!(*gv.access(), [0, 1, 2]);
+        Ok(())
+    }
+
+    #[test]
+    fn string() -> crate::Result<()> {
+        let key = AES::Key::new()?;
+        let ct = key.protect("foo")?;
+        let gs = key.access(&ct)?;
+        assert_eq!(*gs.access(), *"foo");
         Ok(())
     }
 }
