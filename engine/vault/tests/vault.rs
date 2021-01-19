@@ -48,7 +48,10 @@ fn test_truncate() -> Result<()> {
     assert_eq!(v1.chain_ctrs(), vec![(id, 0u64)].into_iter().collect());
     assert_eq!(v1.gc().len(), 0);
 
-    assert_eq!(v1.reader().prepare_read(&id, fresh::recipient())?, PreparedRead::RecordIsEmpty);
+    assert_eq!(
+        v1.reader().prepare_read(&id, fresh::recipient())?,
+        PreparedRead::RecordIsEmpty
+    );
 
     Ok(())
 }
@@ -59,7 +62,10 @@ fn test_read_non_existent_record() -> Result<()> {
     let v = DBView::load(k, empty::<ReadResult>())?;
 
     let id = RecordId::random::<Provider>()?;
-    assert_eq!(v.reader().prepare_read(&id, fresh::recipient())?, PreparedRead::NoSuchRecord);
+    assert_eq!(
+        v.reader().prepare_read(&id, fresh::recipient())?,
+        PreparedRead::NoSuchRecord
+    );
 
     Ok(())
 }
@@ -180,11 +186,17 @@ fn test_revoke() -> Result<()> {
     writes.push(v0.writer(id).truncate()?);
 
     let v1 = DBView::load(k.clone(), writes.iter().map(write_to_read))?;
-    assert_eq!(v1.reader().prepare_read(&id, fresh::recipient())?, PreparedRead::RecordIsEmpty);
+    assert_eq!(
+        v1.reader().prepare_read(&id, fresh::recipient())?,
+        PreparedRead::RecordIsEmpty
+    );
     writes.push(v1.writer(id).revoke()?);
 
     let v2 = DBView::load(k, writes.iter().map(write_to_read))?;
-    assert_eq!(v2.reader().prepare_read(&id, fresh::recipient())?, PreparedRead::NoSuchRecord);
+    assert_eq!(
+        v2.reader().prepare_read(&id, fresh::recipient())?,
+        PreparedRead::NoSuchRecord
+    );
 
     assert_eq!(v2.all().len(), 1);
     assert_eq!(v2.records().count(), 0);

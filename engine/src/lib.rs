@@ -28,3 +28,4 @@ pub use random;
 pub use snapshot;
 pub use store;
 pub use vault;
+pub use secret;

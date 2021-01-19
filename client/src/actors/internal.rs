@@ -9,7 +9,7 @@ use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
-use engine::snapshot;
+use engine::{secret, secret::Access, snapshot};
 
 use bee_signing_ext::{
     binary::{
@@ -194,7 +194,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
                 if let Some(key) = self.keystore.get_key(vid) {
-                    let plain = self.bucket.read_data(key.clone(), rid);
+                    let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+                    let plain = match self.bucket.read_data(key.clone(), rid, P) {
+                        Some(ct) => p.access(ct).expect(line_error!()).access().to_vec(),
+                        _ => vec![],
+                    };
 
                     self.keystore.insert_key(vid, key);
 
@@ -431,9 +435,15 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 match self.keystore.get_key(seed_vault_id) {
                     Some(seed_key) => {
-                        let plain = self.bucket.read_data(seed_key.clone(), seed_record_id);
+                        let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+                        let plain = match self.bucket.read_data(seed_key.clone(), seed_record_id, P) {
+                            Some(ct) => p.access(ct).expect(line_error!()),
+                            _ => todo!("no such record: {}", seed_record_id),
+                        };
                         self.keystore.insert_key(seed_vault_id, seed_key);
-                        let dk = hd::Seed::from_bytes(&plain).derive(&chain).expect(line_error!());
+                        let dk = hd::Seed::from_bytes(&plain.access())
+                            .derive(&chain)
+                            .expect(line_error!());
 
                         let dk_key = if !self.keystore.vault_exists(key_vault_id) {
                             self.keystore.create_key(key_vault_id)
@@ -471,10 +481,14 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 match self.keystore.get_key(parent_vault_id) {
                     Some(parent_key) => {
-                        let parent = self.bucket.read_data(parent_key.clone(), parent_record_id);
+                        let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+                        let parent = match self.bucket.read_data(parent_key.clone(), parent_record_id, P) {
+                            Some(ct) => p.access(ct).expect(line_error!()),
+                            _ => todo!("no such record: {}", parent_record_id),
+                        };
                         self.keystore.insert_key(parent_vault_id, parent_key);
 
-                        let parent = hd::Key::try_from(parent.as_slice()).expect(line_error!());
+                        let parent = hd::Key::try_from(&*parent.access()).expect(line_error!());
                         let dk = parent.derive(&chain).expect(line_error!());
 
                         let child_key = if !self.keystore.vault_exists(child_vault_id) {
@@ -586,13 +600,16 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, key.clone());
 
-                let mut raw = self.bucket.read_data(key, record_id);
+                let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+                let raw = match self.bucket.read_data(key, record_id, P) {
+                    Some(ct) => p.access(ct).expect(line_error!()),
+                    _ => todo!("no such record: {}", record_id),
+                };
                 if raw.len() < 32 {
                     todo!("return error message: insufficient bytes")
                 }
-                raw.truncate(32);
                 let mut bs = [0; 32];
-                bs.copy_from_slice(&raw);
+                bs.copy_from_slice(&raw.access()[..32]);
                 let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
                 let pk = sk.public_key();
 
@@ -616,12 +633,16 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, key.clone());
 
-                let raw = self.bucket.read_data(key, record_id);
+                let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+                let raw = match self.bucket.read_data(key, record_id, P) {
+                    Some(ct) => p.access(ct).expect(line_error!()),
+                    _ => todo!("no such record: {}", record_id),
+                };
                 // NB: bee_signing_ext only accepts 256 bit seeds
                 if raw.len() != 32 {
                     todo!("return error message: incorrect amount of seed bytes")
                 }
-                let seed = Ed25519Seed::from_bytes(&raw).expect(line_error!());
+                let seed = Ed25519Seed::from_bytes(&raw.access()).expect(line_error!());
 
                 let bip32path = BIP32Path::from_str(&path).expect(line_error!());
 
@@ -648,14 +669,17 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, key_key.clone());
 
-                let mut raw = self.bucket.read_data(key_key, record_id);
+                let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+                let raw = match self.bucket.read_data(key_key, record_id, P) {
+                    Some(ct) => p.access(ct).expect(line_error!()),
+                    _ => todo!("no such record: {}", record_id),
+                };
                 // NB we truncate here to accomodate SLIP10/BIP32 keys without explicit conversion
                 if raw.len() <= 32 {
                     todo!("return error message: incorrect number of key bytes")
                 }
-                raw.truncate(32);
                 let mut bs = [0; 32];
-                bs.copy_from_slice(&raw);
+                bs.copy_from_slice(&raw.access()[..32]);
                 let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
 
                 let sig = sk.sign(&msg);
@@ -681,12 +705,16 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, seed_key.clone());
 
-                let raw = self.bucket.read_data(seed_key, record_id);
+                let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+                let raw = match self.bucket.read_data(seed_key, record_id, P) {
+                    Some(ct) => p.access(ct).expect(line_error!()),
+                    _ => todo!("no such record: {}", record_id),
+                };
                 // NB: bee_signing_ext only accepts 256 bit seeds
                 if raw.len() != 32 {
                     todo!("return error message: insufficient bytes")
                 }
-                let seed = Ed25519Seed::from_bytes(&raw).expect(line_error!());
+                let seed = Ed25519Seed::from_bytes(&*raw.access()).expect(line_error!());
 
                 let bip32path = BIP32Path::from_str(&path).expect(line_error!());
 
@@ -716,15 +744,15 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     Some(key) => {
                         self.keystore.insert_key(vault_id, key.clone());
 
-                        let mut raw = self.bucket.read_data(key, record_id);
+                        let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+                        let raw = match self.bucket.read_data(key, record_id, P) {
+                            Some(ct) => p.access(ct).expect(line_error!()),
+                            _ => todo!("no such record: {}", record_id),
+                        };
                         if raw.len() < 32 {
                             todo!("return error message: insufficient bytes")
                         }
-                        raw.truncate(32);
-                        let mut bs = [0; 32];
-                        bs.copy_from_slice(&raw);
-
-                        let seed = Ed25519Seed::from_bytes(&bs).expect(line_error!());
+                        let seed = Ed25519Seed::from_bytes(&raw.access()[..32]).expect(line_error!());
 
                         let bip32path = BIP32Path::from_str(&path).expect(line_error!());
 

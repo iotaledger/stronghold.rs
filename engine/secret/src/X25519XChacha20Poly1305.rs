@@ -14,7 +14,7 @@ pub struct Ciphertext<A: ?Sized> {
     tag: [u8; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE],
     a: PhantomData<A>,
 }
- 
+
 impl<A: ?Sized> AsRef<Ciphertext<A>> for Ciphertext<A> {
     fn as_ref(&self) -> &Self {
         &self

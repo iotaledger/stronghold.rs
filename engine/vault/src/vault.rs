@@ -23,7 +23,7 @@ use std::{
 mod chain;
 mod protocol;
 
-pub use crate::vault::protocol::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest, Recipient, Secret};
+pub use crate::vault::protocol::{DeleteRequest, Kind, ReadRequest, ReadResult, Recipient, Secret, WriteRequest};
 
 use secret::Protection;
 

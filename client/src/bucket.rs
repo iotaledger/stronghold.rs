@@ -3,7 +3,9 @@
 
 use engine::{
     store::Cache,
-    vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest},
+    vault::{
+        BoxProvider, DBView, Key, PreparedRead, ReadResult, Recipient, RecordHint, RecordId, Secret, WriteRequest,
+    },
 };
 
 use std::collections::HashMap;
@@ -62,22 +64,22 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         rid
     }
 
-    /// Reads data from a Record in the Vault given a `RecordId`.  Returns the data as a `Vec<u8>` of utf8 bytes.
-    pub fn read_data(&mut self, key: Key<P>, id: RecordId) -> Vec<u8> {
-        let mut buffer: Vec<u8> = vec![];
+    /// Reads data from a Record in the Vault given a `RecordId` and returns it for access by the specified recipient
+    pub fn read_data<R: AsRef<Recipient>>(&mut self, key: Key<P>, id: RecordId, recipient: R) -> Option<Secret<[u8]>> {
+        let mut res = None;
         self.take(key, |view, reads| {
             let reader = view.reader();
 
-            let res = reader.prepare_read(&id).expect(line_error!());
+            let r = reader.prepare_read(&id, recipient).expect(line_error!());
 
-            if let PreparedRead::CacheHit(mut v) = res {
-                buffer.append(&mut v);
+            if let PreparedRead::CacheHit(ct) = r {
+                res = Some(ct);
             }
 
             reads
         });
 
-        buffer
+        res
     }
 
     pub fn record_exists_in_vault(&mut self, key: Key<P>, rid: RecordId) -> bool {
@@ -241,6 +243,7 @@ fn write_to_read(write: &WriteRequest) -> ReadResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine::{secret, secret::Access};
 
     #[test]
     fn test_bucket() {
@@ -285,11 +288,19 @@ mod tests {
 
         println!("vault1 rid2: {:?}", rid3);
 
-        let data = bucket.read_data(key1.clone(), rid1);
-        println!("{:?}", std::str::from_utf8(&data));
-        let data = bucket.read_data(key1, rid3);
+        let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+        let data = bucket.read_data(key1.clone(), rid1, P).expect(line_error!());
+        println!(
+            "{:?}",
+            std::str::from_utf8(&p.access(data).expect(line_error!()).access())
+        );
 
-        println!("{:?}", std::str::from_utf8(&data));
+        let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+        let data = bucket.read_data(key1, rid3, P).expect(line_error!());
+        println!(
+            "{:?}",
+            std::str::from_utf8(&p.access(data).expect(line_error!()).access())
+        );
     }
 
     fn write_to_read(write: &WriteRequest) -> ReadResult {
@@ -353,11 +364,13 @@ mod tests {
         bucket.take(key.clone(), |view, reads| {
             let reader = view.reader();
 
-            let res = reader.prepare_read(&id1).expect(line_error!());
+            let (p, P) = secret::X25519XChacha20Poly1305::keypair().expect(line_error!());
+            let res = reader.prepare_read(&id1, P).expect(line_error!());
 
             match res {
-                PreparedRead::CacheHit(v) => {
-                    println!("{:?}", std::str::from_utf8(&v));
+                PreparedRead::CacheHit(ct) => {
+                    let bs = p.access(ct).expect(line_error!());
+                    println!("{:?}", std::str::from_utf8(&*bs.access()));
                 }
                 PreparedRead::CacheMiss(v) => {
                     println!("{:?}", v.id());
