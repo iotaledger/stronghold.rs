@@ -138,7 +138,7 @@ pub mod vec {
     use super::*;
 
     pub struct GuardedVec<A> {
-        inner: GuardedCell,
+        inner: Option<GuardedCell>,
         n: usize,
         a: PhantomData<A>,
     }
@@ -146,35 +146,50 @@ pub mod vec {
     impl<A: Copy> GuardedVec<A> {
         pub fn copy(a: &[A]) -> crate::Result<Self> {
             let n = a.len();
-            let l = Layout::array::<A>(n).map_err(crate::mem::Error::Layout)?;
-            let inner = GuardedCell::new(l)?;
+            let inner = if n > 0 {
+                let l = Layout::array::<A>(n).map_err(crate::mem::Error::Layout)?;
+                let inner = GuardedCell::new(l)?;
 
-            let gv = Self {
+                inner.with_mut_ptr(|p| {
+                    for (i, a) in a.iter().enumerate() {
+                        unsafe {
+                            (p as *mut A).add(i).write(*a);
+                        }
+                    }
+                })?;
+
+                Some(inner)
+            } else {
+                None
+            };
+
+            Ok(Self {
                 inner,
                 n,
                 a: PhantomData,
-            };
-            (*gv.access()).copy_from_slice(a);
-
-            Ok(gv)
+            })
         }
     }
 
     impl<A: Clone> GuardedVec<A> {
         pub fn clone(a: &[A]) -> crate::Result<Self> {
             let n = a.len();
-            let l = Layout::array::<A>(n).map_err(crate::mem::Error::Layout)?;
-            let inner = GuardedCell::new(l)?;
+            let inner = if n > 0 {
+                let l = Layout::array::<A>(n).map_err(crate::mem::Error::Layout)?;
+                let inner = GuardedCell::new(l)?;
 
-            inner.with_mut_ptr(|p| {
-                let p = p as *mut A;
-
-                for (i, a) in a.iter().enumerate() {
-                    unsafe {
-                        p.add(i).write(a.clone());
+                inner.with_mut_ptr(|p| {
+                    for (i, a) in a.iter().enumerate() {
+                        unsafe {
+                            (p as *mut A).add(i).write(a.clone());
+                        }
                     }
-                }
-            })?;
+                })?;
+
+                Some(inner)
+            } else {
+                None
+            };
 
             Ok(Self {
                 inner,
@@ -185,9 +200,17 @@ pub mod vec {
     }
 
     impl<A> GuardedVec<A> {
+        pub fn len(&self) -> usize {
+            self.n
+        }
+
+        pub fn is_empty(&self) -> bool {
+            self.n == 0
+        }
+
         pub fn access(&self) -> GuardedVecAccess<A> {
             GuardedVecAccess {
-                inner: self.inner.access(),
+                inner: self.inner.as_ref().map(|gc| gc.access()),
                 n: self.n,
                 a: PhantomData,
             }
@@ -197,11 +220,13 @@ pub mod vec {
     impl<A> Drop for GuardedVec<A> {
         fn drop(&mut self) {
             if core::mem::needs_drop::<A>() {
-                self.inner.alloc.protect(true, true).unwrap();
-                let p = self.inner.alloc.data() as *mut A;
-                for i in 0..self.n {
-                    unsafe {
-                        p.add(i).drop_in_place();
+                if let Some(ref gc) = self.inner {
+                    gc.alloc.protect(true, true).unwrap();
+                    let p = gc.alloc.data() as *mut A;
+                    for i in 0..self.n {
+                        unsafe {
+                            p.add(i).drop_in_place();
+                        }
                     }
                 }
             }
@@ -209,7 +234,7 @@ pub mod vec {
     }
 
     pub struct GuardedVecAccess<'a, A> {
-        inner: GuardedCellAccess<'a>,
+        inner: Option<GuardedCellAccess<'a>>,
         n: usize,
         a: PhantomData<A>,
     }
@@ -218,23 +243,40 @@ pub mod vec {
         type Target = [A];
 
         fn deref(&self) -> &[A] {
-            let p = self.inner.read() as *const A;
-
-            unsafe { core::slice::from_raw_parts(p, self.n) }
+            if let Some(ref gca) = self.inner {
+                let p = gca.read() as *const A;
+                unsafe { core::slice::from_raw_parts(p, self.n) }
+            } else {
+                &[]
+            }
         }
     }
 
     impl<A> DerefMut for GuardedVecAccess<'_, A> {
         fn deref_mut(&mut self) -> &mut [A] {
-            let p = self.inner.write() as *mut A;
-
-            unsafe { core::slice::from_raw_parts_mut(p, self.n) }
+            if let Some(ref gca) = self.inner {
+                let p = gca.write() as *mut A;
+                unsafe { core::slice::from_raw_parts_mut(p, self.n) }
+            } else {
+                &mut []
+            }
         }
     }
 
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn empty() -> crate::Result<()> {
+            let gv = GuardedVec::<u8>::copy(&[])?;
+            assert_eq!(*gv.access(), []);
+
+            let gv = GuardedVec::<u8>::clone(&[])?;
+            assert_eq!(*gv.access(), []);
+
+            Ok(())
+        }
 
         #[test]
         fn copy() -> crate::Result<()> {
@@ -459,6 +501,13 @@ pub mod string {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn empty() -> crate::Result<()> {
+            let gs = GuardedString::new("")?;
+            assert_eq!(*gs.access(), *"");
+            Ok(())
+        }
 
         #[test]
         fn new() -> crate::Result<()> {
