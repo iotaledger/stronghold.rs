@@ -8,14 +8,14 @@ use crate::{Access, Protectable, Protection};
 use std::marker::PhantomData;
 
 #[derive(Debug)]
-pub struct Ciphertext<A> {
+pub struct Ciphertext<A: ?Sized> {
     ct: Vec<u8>,
     iv: [u8; AES_256_GCM::IV_LENGTH],
     tag: [u8; AES_256_GCM::TAG_LENGTH],
     a: PhantomData<A>,
 }
 
-impl<A> AsRef<Ciphertext<A>> for Ciphertext<A> {
+impl<A: ?Sized> AsRef<Ciphertext<A>> for Ciphertext<A> {
     fn as_ref(&self) -> &Self {
         &self
     }
@@ -31,10 +31,10 @@ impl Key {
     }
 }
 
-impl<A: Protectable> Protection<A> for Key {
+impl<A: Protectable + ?Sized> Protection<A> for Key {
     type AtRest = Ciphertext<A>;
 
-    fn protect(&self, a: A) -> crate::Result<Self::AtRest> {
+    fn protect(&self, a: &A) -> crate::Result<Self::AtRest> {
         let mut iv = [0; AES_256_GCM::IV_LENGTH];
         rand::fill(&mut iv)?;
 
@@ -53,7 +53,7 @@ impl<A: Protectable> Protection<A> for Key {
     }
 }
 
-impl<A: Protectable> Access<A, Key> for Key {
+impl<A: Protectable + ?Sized> Access<A, Key> for Key {
     fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<A::Accessor> {
         let mut pt = vec![0; ct.as_ref().ct.len()];
         AES_256_GCM::decrypt(
@@ -77,7 +77,7 @@ mod tests {
     #[test]
     fn int() -> crate::Result<()> {
         let key = Key::new()?;
-        let ct = key.protect(17)?;
+        let ct = key.protect(&17)?;
         let gb = key.access(&ct)?;
         assert_eq!(*gb.access(), 17);
         Ok(())

@@ -23,7 +23,9 @@ use std::{
 mod chain;
 mod protocol;
 
-pub use crate::vault::protocol::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
+pub use crate::vault::protocol::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest, Recipient, Secret};
+
+use secret::Protection;
 
 /// A record identifier
 #[repr(transparent)]
@@ -71,7 +73,7 @@ impl RecordId {
 
 /// A view over the records in a vault
 pub struct DBView<P: BoxProvider> {
-    key: Key<P>,
+    key: Key<P>, // TODO: GuardedBox<Key<P>> or similar, or do P::Key instead
     txs: HashMap<TransactionId, Transaction>,
     chains: HashMap<ChainId, chain::Chain>,
     blobs: HashMap<BlobId, Vec<TransactionId>>,
@@ -237,7 +239,7 @@ pub struct DBReader<'a, P: BoxProvider> {
 
 #[derive(Eq, PartialEq)]
 pub enum PreparedRead {
-    CacheHit(Vec<u8>),
+    CacheHit(Secret<[u8]>),
     CacheMiss(ReadRequest),
     RecordIsEmpty,
     NoSuchRecord,
@@ -257,7 +259,7 @@ impl Debug for PreparedRead {
 impl<'a, P: BoxProvider> DBReader<'a, P> {
     /// Prepare a record for reading. Create a `ReadRequest` to read the record with inputted `id`. Returns `None` if
     /// there was no record for that ID
-    pub fn prepare_read(&self, record: &RecordId) -> crate::Result<PreparedRead> {
+    pub fn prepare_read<R: AsRef<Recipient>>(&self, record: &RecordId, recipient: R) -> crate::Result<PreparedRead> {
         match self.view.chains.get(&record.0).map(|r| (r.init(), r.data())) {
             None | Some((None, _)) => Ok(PreparedRead::NoSuchRecord),
             Some((_, None)) => Ok(PreparedRead::RecordIsEmpty),
@@ -266,7 +268,12 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
                 // can be removed
                 let tx = self.view.txs.get(&tx_id).unwrap().typed::<DataTransaction>().unwrap();
                 match self.view.cache.get(&tx.blob) {
-                    Some(sb) => Ok(PreparedRead::CacheHit(sb.decrypt(&self.view.key, tx.blob)?)),
+                    Some(sb) => {
+                        // TODO: zone this computation
+                        let pt = sb.decrypt(&self.view.key, tx.blob)?;
+                        let ct = recipient.as_ref().protect(pt.as_slice())?;
+                        Ok(PreparedRead::CacheHit(ct))
+                    }
                     None => Ok(PreparedRead::CacheMiss(ReadRequest::blob(tx.blob))),
                 }
             }
@@ -274,12 +281,15 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
     }
 
     /// Open a record given a `ReadResult`.  Returns a vector of bytes.
-    pub fn read(&self, res: ReadResult) -> crate::Result<Vec<u8>> {
+    pub fn read<R: AsRef<Recipient>>(&self, res: ReadResult, recipient: R) -> crate::Result<Secret<[u8]>> {
         // TODO: add parameter to allow the vault to cache the result
         let b = BlobId::try_from(res.id())?;
 
         if self.is_active_blob(&b) {
-            SealedBlob::from(res.data()).decrypt(&self.view.key, b)
+            // TODO: zone this computation
+            let pt = SealedBlob::from(res.data()).decrypt(&self.view.key, b)?;
+            let ct = recipient.as_ref().protect(pt.as_slice())?;
+            Ok(ct)
         } else {
             Err(crate::Error::ProtocolError("invalid blob".to_string()))
         }

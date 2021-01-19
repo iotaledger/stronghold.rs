@@ -10,12 +10,12 @@ pub trait Protectable {
     fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor>;
 }
 
-pub trait Protection<A: Protectable> {
+pub trait Protection<A: Protectable + ?Sized> {
     type AtRest;
-    fn protect(&self, a: A) -> crate::Result<Self::AtRest>;
+    fn protect(&self, a: &A) -> crate::Result<Self::AtRest>;
 }
 
-pub trait Access<A: Protectable, P: Protection<A>> {
+pub trait Access<A: Protectable + ?Sized, P: Protection<A>> {
     fn access<R: AsRef<P::AtRest>>(&self, r: R) -> crate::Result<A::Accessor>;
 }
 
@@ -24,7 +24,7 @@ impl Protectable for u32 {
         unsafe { core::slice::from_raw_parts(self as *const _ as *const u8, core::mem::size_of::<Self>()) }
     }
 
-    type Accessor = GuardedBox<u32>;
+    type Accessor = GuardedBox<Self>;
     fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor> {
         if bs.len() == core::mem::size_of::<Self>() {
             let x = bs as *const _ as *const Self;
@@ -35,7 +35,7 @@ impl Protectable for u32 {
     }
 }
 
-impl Protectable for &[u8] {
+impl Protectable for [u8] {
     fn into_plaintext(&self) -> &[u8] {
         self
     }
@@ -46,7 +46,7 @@ impl Protectable for &[u8] {
     }
 }
 
-impl Protectable for &str {
+impl Protectable for str {
     fn into_plaintext(&self) -> &[u8] {
         self.as_bytes()
     }

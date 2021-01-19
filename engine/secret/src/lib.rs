@@ -9,10 +9,15 @@ pub use traits::*;
 pub mod AES;
 pub mod X25519XChacha20Poly1305;
 
-#[derive(Debug, PartialEq)]
+use thiserror::Error as DeriveError;
+
+#[derive(DeriveError, Debug, PartialEq)]
 pub enum Error {
+    #[error("{reason:?}")]
     ViewError { reason: &'static str },
+    #[error("{0:?}")]
     RuntimeError(runtime::Error),
+    #[error("{0:?}")]
     CryptoError(crypto::Error),
 }
 

@@ -40,7 +40,7 @@ pub use crate::{
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
     types::utils::{ChainId, RecordHint},
     vault::{
-        DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult, RecordId, WriteRequest,
+        DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult, RecordId, WriteRequest, Recipient,
     },
 };
 
@@ -67,6 +67,14 @@ pub enum Error {
     ValueError(String),
     #[error("Protocol Error: `{0}`")]
     ProtocolError(String),
+    #[error("Secret Error: `{0}`")]
+    SecretError(secret::Error),
+}
+
+impl From<secret::Error> for Error {
+    fn from(e: secret::Error) -> Self {
+        Self::SecretError(e)
+    }
 }
 
 // Crate result type

@@ -7,26 +7,44 @@ use crate::{Access, Protectable, Protection};
 
 use std::marker::PhantomData;
 
-#[derive(Debug)]
-pub struct Ciphertext<A> {
+#[derive(Debug, PartialEq, Eq)]
+pub struct Ciphertext<A: ?Sized> {
     ct: Vec<u8>,
     ephemeral_pk: [u8; x25519::PUBLIC_KEY_LENGTH],
     tag: [u8; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE],
     a: PhantomData<A>,
 }
-
-impl<A> AsRef<Ciphertext<A>> for Ciphertext<A> {
+ 
+impl<A: ?Sized> AsRef<Ciphertext<A>> for Ciphertext<A> {
     fn as_ref(&self) -> &Self {
         &self
     }
 }
 
+impl<A: ?Sized> Clone for Ciphertext<A> {
+    fn clone(&self) -> Self {
+        Self {
+            ct: self.ct.clone(),
+            ephemeral_pk: self.ephemeral_pk,
+            tag: self.tag,
+            a: PhantomData,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PublicKey([u8; x25519::PUBLIC_KEY_LENGTH]);
 
-impl<A: Protectable> Protection<A> for PublicKey {
+impl AsRef<PublicKey> for PublicKey {
+    fn as_ref(&self) -> &Self {
+        &self
+    }
+}
+
+impl<A: Protectable + ?Sized> Protection<A> for PublicKey {
     type AtRest = Ciphertext<A>;
 
-    fn protect(&self, a: A) -> crate::Result<Self::AtRest> {
+    fn protect(&self, a: &A) -> crate::Result<Self::AtRest> {
         let (PrivateKey(ephemeral_key), PublicKey(ephemeral_pk)) = keypair()?;
 
         let shared = x25519::X25519(&ephemeral_key, Some(&self.0));
@@ -63,7 +81,7 @@ pub fn keypair() -> crate::Result<(PrivateKey, PublicKey)> {
     Ok((s, p))
 }
 
-impl<A: Protectable> Access<A, PublicKey> for PrivateKey {
+impl<A: Protectable + ?Sized> Access<A, PublicKey> for PrivateKey {
     fn access<CT: AsRef<Ciphertext<A>>>(&self, ct: CT) -> crate::Result<A::Accessor> {
         let shared = x25519::X25519(&self.0, Some(&ct.as_ref().ephemeral_pk));
 
@@ -92,7 +110,7 @@ mod tests {
     #[test]
     fn int() -> crate::Result<()> {
         let (private, public) = keypair()?;
-        let ct = public.protect(17)?;
+        let ct = public.protect(&17)?;
         let gb = private.access(&ct)?;
         assert_eq!(*gb.access(), 17);
         Ok(())

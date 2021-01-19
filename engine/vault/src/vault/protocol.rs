@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use std::fmt::{self, Debug, Formatter};
 
+pub type Recipient = secret::X25519XChacha20Poly1305::PublicKey;
+pub type Secret<T> = secret::X25519XChacha20Poly1305::Ciphertext<T>;
+
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Kind {
     Transaction = 1,
