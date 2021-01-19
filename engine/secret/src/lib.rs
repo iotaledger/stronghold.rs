@@ -3,16 +3,34 @@
 
 #![allow(non_snake_case)]
 
-use crate::guarded::{r#box::GuardedBox, string::GuardedString, vec::GuardedVec};
+use runtime::guarded::{r#box::GuardedBox, string::GuardedString, vec::GuardedVec};
+
+use std::marker::PhantomData;
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    View { reason: &'static str },
+    ViewError { reason: &'static str },
+    RuntimeError(runtime::Error),
+    CryptoError(crypto::Error),
 }
 
+type Result<A> = std::result::Result<A, Error>;
+
 impl Error {
-    fn view(reason: &'static str) -> crate::Error {
-        (Error::View { reason }).into()
+    fn view(reason: &'static str) -> Error {
+        Error::ViewError { reason }
+    }
+}
+
+impl From<runtime::Error> for Error {
+    fn from(e: runtime::Error) -> Self {
+        Error::RuntimeError(e)
+    }
+}
+
+impl From<crypto::Error> for Error {
+    fn from(e: crypto::Error) -> Self {
+        Error::CryptoError(e)
     }
 }
 
@@ -41,9 +59,9 @@ impl Protectable for u32 {
     fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor> {
         if bs.len() == core::mem::size_of::<Self>() {
             let x = bs as *const _ as *const Self;
-            GuardedBox::new(unsafe { *x.as_ref().unwrap() })
+            GuardedBox::new(unsafe { *x.as_ref().unwrap() }).map_err(|e| e.into())
         } else {
-            Err(Error::view("can't interpret bytestring as a u32 in little endian"))
+            Err(Error::view("can't interpret bytestring as u32"))
         }
     }
 }
@@ -55,7 +73,7 @@ impl Protectable for &[u8] {
 
     type Accessor = GuardedVec<u8>;
     fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor> {
-        GuardedVec::copy(bs)
+        GuardedVec::copy(bs).map_err(|e| e.into())
     }
 }
 
@@ -66,16 +84,13 @@ impl Protectable for &str {
 
     type Accessor = GuardedString;
     fn view_plaintext(bs: &[u8]) -> crate::Result<Self::Accessor> {
-        GuardedString::new(unsafe { core::str::from_utf8_unchecked(bs) })
+        GuardedString::new(unsafe { core::str::from_utf8_unchecked(bs) }).map_err(|e| e.into())
     }
 }
 
-#[cfg(feature = "stdalloc")]
 pub mod X25519XChaCha20Poly1305 {
     use super::*;
-    use core::marker::PhantomData;
     use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, rand, x25519};
-    use std::vec::Vec;
 
     #[derive(Debug)]
     pub struct Ciphertext<A> {
@@ -185,9 +200,7 @@ pub mod X25519XChaCha20Poly1305 {
 
 pub mod AES {
     use super::*;
-    use core::marker::PhantomData;
     use crypto::{ciphers::aes::AES_256_GCM, rand};
-    use std::vec::Vec;
 
     #[derive(Debug)]
     pub struct Ciphertext<A> {

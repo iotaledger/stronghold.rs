@@ -37,3 +37,7 @@ version = "0.2"
 [dependencies.store]
 path = "store"
 version = "0.2"
+
+[dependencies.secret]
+path = "secret"
+version = "0.1"
