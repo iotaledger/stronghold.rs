@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![allow(non_snake_case)]
+#![allow(clippy::many_single_char_names)]
 
 mod utils;
 use utils::provider::Provider;
