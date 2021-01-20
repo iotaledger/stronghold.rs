@@ -9,7 +9,11 @@ use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
-use engine::{secret, secret::Access, snapshot};
+use engine::{
+    secret,
+    secret::{Access, Protection},
+    snapshot,
+};
 
 use bee_signing_ext::{
     binary::{
@@ -221,6 +225,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
                 if let Some(key) = self.keystore.get_key(vid) {
+                    let payload = self
+                        .bucket
+                        .recipient()
+                        .protect(payload.as_slice())
+                        .expect(line_error!());
+
                     self.bucket.write_payload(key.clone(), rid, payload, hint);
 
                     self.keystore.insert_key(vid, key);
@@ -412,8 +422,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 let mut seed = vec![0u8; size_bytes];
                 crypto::rand::fill(&mut seed).expect(line_error!());
+                let seed = self.bucket.recipient().protect(&seed[..]).expect(line_error!());
 
-                self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
+                self.bucket.write_payload(key, record_id, seed, hint);
 
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Generate(
@@ -456,7 +467,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             self.bucket.create_and_init_vault(dk_key.clone(), key_record_id);
                         }
 
-                        self.bucket.write_payload(dk_key, key_record_id, dk.into(), hint);
+                        let dk = self.bucket.recipient().protect(dk.as_slice()).expect(line_error!());
+
+                        self.bucket.write_payload(dk_key, key_record_id, dk, hint);
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
@@ -503,7 +516,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             self.bucket.create_and_init_vault(child_key.clone(), child_record_id);
                         }
 
-                        self.bucket.write_payload(child_key, child_record_id, dk.into(), hint);
+                        let dk = self.bucket.recipient().protect(dk.as_slice()).expect(line_error!());
+
+                        self.bucket.write_payload(child_key, child_record_id, dk, hint);
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
@@ -532,6 +547,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 let mut seed = [0u8; 64];
                 crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+                let seed = self.bucket.recipient().protect(&seed[..]).expect(line_error!());
 
                 let key = if !self.keystore.vault_exists(vault_id) {
                     self.keystore.create_key(vault_id)
@@ -547,7 +563,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
-                self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
+                self.bucket.write_payload(key, record_id, seed, hint);
 
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
@@ -580,9 +596,11 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let mut seed = [0u8; 64];
                 crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
 
+                let seed = self.bucket.recipient().protect(&seed[..]).expect(line_error!());
+
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
-                self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
+                self.bucket.write_payload(key, record_id, seed, hint);
 
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());

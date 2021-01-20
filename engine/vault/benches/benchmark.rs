@@ -11,6 +11,10 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use crate::provider::Provider;
 
+use runtime::guarded::r#box::GuardedBox;
+
+use secret::Protection;
+
 fn bench_write(c: &mut Criterion) {
     c.bench_function("write to engine", |b| {
         b.iter(|| {
@@ -23,10 +27,15 @@ fn bench_write(c: &mut Criterion) {
             let mut w = v0.writer(id);
             writes.push(w.truncate().unwrap());
 
+            let (rk, r) = vault::recipient_keypair().unwrap();
+            let rk = GuardedBox::new(rk).unwrap();
+
             writes.append(
                 &mut w
                     .write(
-                        black_box(b"abcdefghijklmnopqrstuvwxyz1234567890"),
+                        rk,
+                        r.protect(black_box("abcdefghijklmnopqrstuvwxyz1234567890".as_bytes()))
+                            .unwrap(),
                         RecordHint::new(b"test").unwrap(),
                     )
                     .unwrap(),

@@ -11,6 +11,10 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Formatter};
 
 pub type Recipient = secret::X25519XChacha20Poly1305::PublicKey;
+pub type RecipientKey = secret::X25519XChacha20Poly1305::PrivateKey;
+pub fn recipient_keypair() -> crate::Result<(RecipientKey, Recipient)> {
+    secret::X25519XChacha20Poly1305::keypair().map_err(|e| e.into())
+}
 pub type Secret<T> = secret::X25519XChacha20Poly1305::Ciphertext<T>;
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize, Debug)]

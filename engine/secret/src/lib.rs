@@ -21,7 +21,7 @@ pub enum Error {
     CryptoError(crypto::Error),
 }
 
-type Result<A> = std::result::Result<A, Error>;
+pub type Result<A> = std::result::Result<A, Error>;
 
 impl Error {
     fn view(reason: &'static str) -> Error {

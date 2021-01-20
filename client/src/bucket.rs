@@ -4,9 +4,12 @@
 use engine::{
     store::Cache,
     vault::{
-        BoxProvider, DBView, Key, PreparedRead, ReadResult, Recipient, RecordHint, RecordId, Secret, WriteRequest,
+        recipient_keypair, BoxProvider, DBView, Key, PreparedRead, ReadResult, Recipient, RecipientKey, RecordHint,
+        RecordId, Secret, WriteRequest,
     },
 };
+
+use runtime::guarded::r#box::GuardedBox;
 
 use std::collections::HashMap;
 
@@ -20,6 +23,7 @@ type Store = Cache<Vec<u8>, Vec<u8>>;
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
     vaults: HashMap<Key<P>, Option<DBView<P>>>,
     cache: HashMap<Key<P>, Vec<ReadResult>>,
+    recipient_keypair: (GuardedBox<RecipientKey>, Recipient),
 }
 
 impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 'static> Bucket<P> {
@@ -28,7 +32,14 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         let cache = HashMap::new();
         let vaults = HashMap::new();
 
-        Self { cache, vaults }
+        let (k, r) = recipient_keypair().expect(line_error!());
+        let k = GuardedBox::new(k).expect(line_error!());
+
+        Self {
+            cache,
+            vaults,
+            recipient_keypair: (k, r),
+        }
     }
 
     #[allow(dead_code)]
@@ -113,11 +124,11 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
     /// Writes a payload of `Vec<u8>` and a `RecordHint` into a Record. Record is specified with the inserted `RecordId`
     /// and the `Key<P>`
-    pub fn write_payload(&mut self, key: Key<P>, id: RecordId, payload: Vec<u8>, hint: RecordHint) {
-        self.take(key, |view, mut reads| {
+    pub fn write_payload<Pl: AsRef<Secret<[u8]>>>(&mut self, key: Key<P>, id: RecordId, payload: Pl, hint: RecordHint) {
+        self.take_with_recipient_keypair(key, |(k, _), view, mut reads| {
             let mut writer = view.writer(id);
 
-            let writes = writer.write(&payload, hint).expect(line_error!());
+            let writes = writer.write(k, payload, hint).expect(line_error!());
 
             let mut results: Vec<ReadResult> = writes.into_iter().map(|w| write_to_read(&w)).collect();
 
@@ -205,11 +216,19 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
     /// Exposes the `DBView` of the current vault and the cache layer to allow transactions to occur.
     fn take(&mut self, key: Key<P>, f: impl FnOnce(DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>) {
+        self.take_with_recipient_keypair(key, |_, v, rs| f(v, rs))
+    }
+
+    fn take_with_recipient_keypair(
+        &mut self,
+        key: Key<P>,
+        f: impl FnOnce(&(GuardedBox<RecipientKey>, Recipient), DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>,
+    ) {
         let mut _reads = self.get_reads(key.clone());
         let reads = _reads.take().expect(line_error!());
         let mut _view = self.get_view(key.clone(), reads.clone());
         let view = _view.take().expect(line_error!());
-        let res = f(view, reads);
+        let res = f(&self.recipient_keypair, view, reads);
         self.insert_reads(key.clone(), res);
         self.insert_view(key, _view);
     }
@@ -234,6 +253,10 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     fn insert_reads(&mut self, key: Key<P>, reads: Vec<ReadResult>) {
         self.cache.insert(key, reads);
     }
+
+    pub fn recipient(&self) -> &Recipient {
+        &self.recipient_keypair.1
+    }
 }
 
 fn write_to_read(write: &WriteRequest) -> ReadResult {
@@ -243,7 +266,10 @@ fn write_to_read(write: &WriteRequest) -> ReadResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine::{secret, secret::Access};
+    use engine::{
+        secret,
+        secret::{Access, Protection},
+    };
 
     #[test]
     fn test_bucket() {
@@ -265,14 +291,17 @@ mod tests {
         bucket.write_payload(
             key1.clone(),
             rid1,
-            b"some data".to_vec(),
+            bucket.recipient().protect("some data".as_bytes()).expect(line_error!()),
             RecordHint::new(b"").expect(line_error!()),
         );
 
         bucket.write_payload(
             key2,
             rid2,
-            b"some new data".to_vec(),
+            bucket
+                .recipient()
+                .protect("some new data".as_bytes())
+                .expect(line_error!()),
             RecordHint::new(b"").expect(line_error!()),
         );
 
@@ -282,7 +311,10 @@ mod tests {
         bucket.write_payload(
             key1.clone(),
             rid3,
-            b"some more data".to_vec(),
+            bucket
+                .recipient()
+                .protect("some more data".as_bytes())
+                .expect(line_error!()),
             RecordHint::new(b"").expect(line_error!()),
         );
 
@@ -327,11 +359,12 @@ mod tests {
             reads
         });
 
-        bucket.take(key.clone(), |view, mut reads| {
+        bucket.take_with_recipient_keypair(key.clone(), |(k, r), view, mut reads| {
             let mut writer = view.writer(id1);
 
+            let pl = r.protect("some data".as_bytes()).expect(line_error!());
             let wr = writer
-                .write(b"some data", RecordHint::new(b"").expect(line_error!()))
+                .write(k, pl, RecordHint::new(b"").expect(line_error!()))
                 .expect(line_error!());
 
             let mut wr: Vec<ReadResult> = wr.into_iter().map(|w| write_to_read(&w)).collect();

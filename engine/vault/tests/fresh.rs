@@ -3,12 +3,13 @@
 
 pub use test_utils::fresh::*;
 
-use secret::X25519XChacha20Poly1305;
+use runtime::guarded::r#box::GuardedBox;
 
 use rand::Rng;
 
-pub fn keypair() -> (X25519XChacha20Poly1305::PrivateKey, X25519XChacha20Poly1305::PublicKey) {
-    X25519XChacha20Poly1305::keypair().unwrap()
+pub fn keypair() -> (GuardedBox<vault::RecipientKey>, vault::Recipient) {
+    let (k, r) = vault::recipient_keypair().unwrap();
+    (GuardedBox::new(k).unwrap(), r)
 }
 
 pub fn recipient() -> vault::Recipient {

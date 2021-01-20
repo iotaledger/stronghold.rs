@@ -10,6 +10,10 @@ thiserror = "1.0"
 anyhow = "1.0"
 serde = { version = "1.0", features = [ "derive" ] }
 
+[dependencies.stronghold-runtime]
+path = "../../runtime"
+version = "0.2"
+
 [dependencies.secret]
 path = "../secret"
 version = "0.1"

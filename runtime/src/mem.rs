@@ -76,6 +76,9 @@ pub struct GuardedAllocation {
     mmapped_size: usize, // size of the memory mapping (including guard pages)
 }
 
+// TODO: is it really?
+unsafe impl Send for GuardedAllocation {}
+
 impl GuardedAllocation {
     pub fn unaligned(n: usize) -> crate::Result<Self> {
         Self::aligned(Layout::from_size_align(n, 1).map_err(Error::Layout)?)

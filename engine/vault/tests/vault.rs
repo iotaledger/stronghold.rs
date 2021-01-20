@@ -11,7 +11,7 @@ mod fresh;
 
 use vault::{DBView, Encrypt, Key, Kind, PreparedRead, ReadResult, RecordId, Result, WriteRequest};
 
-use secret::Access;
+use secret::{Access, Protection};
 
 use std::{collections::HashMap, iter::empty};
 
@@ -83,7 +83,8 @@ fn test_write_cache_hit() -> Result<()> {
     writes.push(w.truncate()?);
     let data = fresh::bytestring();
     let hint = fresh::record_hint();
-    writes.append(&mut w.write(&data, hint)?);
+    let (p, P) = fresh::keypair();
+    writes.append(&mut w.write(p, P.protect(data.as_slice())?, hint)?);
 
     let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
 
@@ -95,7 +96,7 @@ fn test_write_cache_hit() -> Result<()> {
 
     let (p, P) = fresh::keypair();
     match v1.reader().prepare_read(&id, P)? {
-        PreparedRead::CacheHit(ct) => assert_eq!(*p.access(ct)?.access(), data),
+        PreparedRead::CacheHit(ct) => assert_eq!(*p.access().access(ct)?.access(), data),
         _ => panic!("unexpected result"),
     }
 
@@ -114,7 +115,8 @@ fn test_write_cache_miss() -> Result<()> {
     writes.push(w.truncate()?);
     let data = fresh::bytestring();
     let hint = fresh::record_hint();
-    let (bid, blob) = match w.write(&data, hint)?.as_slice() {
+    let (p, P) = fresh::keypair();
+    let (bid, blob) = match w.write(p, P.protect(data.as_slice())?, hint)?.as_slice() {
         [w0, w1] => {
             assert_eq!(w0.kind(), Kind::Transaction);
             writes.push(w0.clone());
@@ -138,7 +140,7 @@ fn test_write_cache_miss() -> Result<()> {
         x => panic!("unexpected value: {:?}", x),
     };
 
-    assert_eq!(*p.access(r.read(res, P)?)?.access(), data);
+    assert_eq!(*p.access().access(r.read(res, P)?)?.access(), data);
 
     Ok(())
 }
@@ -156,8 +158,10 @@ fn test_write_twice() -> Result<()> {
     let data0 = fresh::bytestring();
     let data1 = fresh::bytestring();
     let hint = fresh::record_hint();
-    writes.append(&mut w.write(&data0, hint)?);
-    writes.append(&mut w.write(&data1, hint)?);
+    let (p, P) = fresh::keypair();
+    writes.append(&mut w.write(p, P.protect(data0.as_slice())?, hint)?);
+    let (p, P) = fresh::keypair();
+    writes.append(&mut w.write(p, P.protect(data1.as_slice())?, hint)?);
 
     let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
 
@@ -169,7 +173,7 @@ fn test_write_twice() -> Result<()> {
 
     let (p, P) = fresh::keypair();
     match v1.reader().prepare_read(&id, P)? {
-        PreparedRead::CacheHit(ct) => assert_eq!(*p.access(ct)?.access(), data1),
+        PreparedRead::CacheHit(ct) => assert_eq!(*p.access().access(ct)?.access(), data1),
         _ => panic!("unexpected result"),
     };
 
@@ -246,12 +250,13 @@ fn test_rekove_then_write() -> Result<()> {
     writes.push(w.revoke()?);
     let data = fresh::bytestring();
     let hint = fresh::record_hint();
-    writes.append(&mut w.write(&data, hint)?);
+    let (p, P) = fresh::keypair();
+    writes.append(&mut w.write(p, P.protect(data.as_slice())?, hint)?);
 
     let v1 = DBView::load(k, writes.iter().map(write_to_read))?;
     let (p, P) = fresh::keypair();
     match v1.reader().prepare_read(&id, P)? {
-        PreparedRead::CacheHit(ct) => assert_eq!(*p.access(ct)?.access(), data),
+        PreparedRead::CacheHit(ct) => assert_eq!(*p.access().access(ct)?.access(), data),
         _ => panic!("unexpected result"),
     };
 
@@ -276,7 +281,8 @@ fn test_ensure_authenticty_of_blob() -> Result<()> {
     let mut w = v0.writer(id);
     writes.push(w.truncate()?);
     let hint = fresh::record_hint();
-    let bid = match w.write(&fresh::bytestring(), hint)?.as_slice() {
+    let (p, P) = fresh::keypair();
+    let bid = match w.write(p, P.protect(fresh::bytestring().as_slice())?, hint)?.as_slice() {
         [w0, w1] => {
             assert_eq!(w0.kind(), Kind::Transaction);
             writes.push(w0.clone());
@@ -315,7 +321,8 @@ fn test_storage_returns_stale_blob() -> Result<()> {
     writes.push(w.truncate()?);
     let hint = fresh::record_hint();
 
-    let (bid, blob) = match w.write(&fresh::bytestring(), hint)?.as_slice() {
+    let (p, P) = fresh::keypair();
+    let (bid, blob) = match w.write(p, P.protect(fresh::bytestring().as_slice())?, hint)?.as_slice() {
         [w0, w1] => {
             assert_eq!(w0.kind(), Kind::Transaction);
             assert_eq!(w1.kind(), Kind::Blob);
@@ -324,7 +331,8 @@ fn test_storage_returns_stale_blob() -> Result<()> {
         ws => panic!("{} unexpected writes", ws.len()),
     };
 
-    match w.write(&fresh::bytestring(), hint)?.as_slice() {
+    let (p, P) = fresh::keypair();
+    match w.write(p, P.protect(fresh::bytestring().as_slice())?, hint)?.as_slice() {
         [w0, w1] => {
             assert_eq!(w0.kind(), Kind::Transaction);
             writes.push(w0.clone());

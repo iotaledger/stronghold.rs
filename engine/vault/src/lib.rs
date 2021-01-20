@@ -40,8 +40,8 @@ pub use crate::{
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
     types::utils::{ChainId, RecordHint},
     vault::{
-        DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult, Recipient, RecordId,
-        Secret, WriteRequest,
+        recipient_keypair, DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult,
+        Recipient, RecipientKey, RecordId, Secret, WriteRequest,
     },
 };
 
@@ -70,11 +70,19 @@ pub enum Error {
     ProtocolError(String),
     #[error("Secret Error: `{0}`")]
     SecretError(secret::Error),
+    #[error("Runtime Error: `{0:?}`")]
+    RuntimeError(runtime::Error),
 }
 
 impl From<secret::Error> for Error {
     fn from(e: secret::Error) -> Self {
         Self::SecretError(e)
+    }
+}
+
+impl From<runtime::Error> for Error {
+    fn from(e: runtime::Error) -> Self {
+        Self::RuntimeError(e)
     }
 }
 

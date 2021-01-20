@@ -23,9 +23,13 @@ use std::{
 mod chain;
 mod protocol;
 
-pub use crate::vault::protocol::{DeleteRequest, Kind, ReadRequest, ReadResult, Recipient, Secret, WriteRequest};
+pub use crate::vault::protocol::{
+    recipient_keypair, DeleteRequest, Kind, ReadRequest, ReadResult, Recipient, RecipientKey, Secret, WriteRequest,
+};
 
-use secret::Protection;
+use secret::{Access, Protection};
+
+use runtime::guarded::r#box::GuardedBox;
 
 /// A record identifier
 #[repr(transparent)]
@@ -270,8 +274,10 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
                 match self.view.cache.get(&tx.blob) {
                     Some(sb) => {
                         // TODO: zone this computation
-                        let pt = sb.decrypt(&self.view.key, tx.blob)?;
-                        let ct = recipient.as_ref().protect(pt.as_slice())?;
+                        let ct = {
+                            let pt = sb.decrypt(&self.view.key, tx.blob)?;
+                            recipient.as_ref().protect(pt.as_slice())?
+                        };
                         Ok(PreparedRead::CacheHit(ct))
                     }
                     None => Ok(PreparedRead::CacheMiss(ReadRequest::blob(tx.blob))),
@@ -287,8 +293,10 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
 
         if self.is_active_blob(&b) {
             // TODO: zone this computation
-            let pt = SealedBlob::from(res.data()).decrypt(&self.view.key, b)?;
-            let ct = recipient.as_ref().protect(pt.as_slice())?;
+            let ct = {
+                let pt = SealedBlob::from(res.data()).decrypt(&self.view.key, b)?;
+                recipient.as_ref().protect(pt.as_slice())?
+            };
             Ok(ct)
         } else {
             Err(crate::Error::ProtocolError("invalid blob".to_string()))
@@ -354,13 +362,25 @@ impl<'a, P: BoxProvider> DBWriter<'a, P> {
     }
 
     /// Write the `data` to the record, replaces existing data and undoes uncommitted revokes.
-    pub fn write(&mut self, data: &[u8], hint: RecordHint) -> crate::Result<Vec<WriteRequest>> {
+    pub fn write<R, D>(&mut self, recipient_key: R, data: D, hint: RecordHint) -> crate::Result<Vec<WriteRequest>>
+    where
+        D: AsRef<Secret<[u8]>>,
+        R: AsRef<GuardedBox<RecipientKey>>,
+    {
         let tx_id = TransactionId::random::<P>()?;
         let blob_id = BlobId::random::<P>()?;
         let transaction = DataTransaction::new(self.chain, self.next_ctr(), tx_id, blob_id, hint);
 
         let req = WriteRequest::transaction(&tx_id, &transaction.encrypt(&self.view.key, tx_id)?);
-        let blob = WriteRequest::blob(&blob_id, &data.encrypt(&self.view.key, blob_id)?);
+
+        // TODO: zone this computation
+        let ct = {
+            let pt = recipient_key.as_ref().access().access(data.as_ref())?;
+            let ct = (&*pt.access()).encrypt(&self.view.key, blob_id)?;
+            ct
+        };
+
+        let blob = WriteRequest::blob(&blob_id, &ct);
 
         Ok(vec![req, blob])
     }

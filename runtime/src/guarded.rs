@@ -199,6 +199,12 @@ pub mod vec {
         }
     }
 
+    impl<A> AsRef<GuardedVec<A>> for GuardedVec<A> {
+        fn as_ref(&self) -> &GuardedVec<A> {
+            &self
+        }
+    }
+
     impl<A> GuardedVec<A> {
         pub fn len(&self) -> usize {
             self.n
@@ -364,6 +370,12 @@ pub mod r#box {
         }
     }
 
+    impl<A> AsRef<GuardedBox<A>> for GuardedBox<A> {
+        fn as_ref(&self) -> &GuardedBox<A> {
+            &self
+        }
+    }
+
     impl<A> Drop for GuardedBox<A> {
         fn drop(&mut self) {
             if core::mem::needs_drop::<A>() {
@@ -477,6 +489,12 @@ pub mod string {
             GuardedStringAccess {
                 inner: self.inner.access(),
             }
+        }
+    }
+
+    impl AsRef<GuardedString> for GuardedString {
+        fn as_ref(&self) -> &GuardedString {
+            &self
         }
     }
 

@@ -85,6 +85,10 @@ impl Key {
         }
         Ok(k)
     }
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0[..]
+    }
 }
 
 impl TryFrom<&[u8]> for Key {
