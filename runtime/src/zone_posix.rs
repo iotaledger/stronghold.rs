@@ -3,13 +3,14 @@
 
 use core::mem;
 
-pub fn fork<F, T>(f: F) -> crate::Result<T>
+pub fn fork<'a, F, T>(f: F) -> crate::Result<Result<T::Out, T::Error>>
 where
     F: FnOnce() -> T,
+    T: Transferable<'a>,
 {
     unsafe {
         #[allow(clippy::unnecessary_cast)]
-        let mut fds: [libc::c_int; 2] = [-1 as libc::c_int; 2];
+        let mut fds = [-1 as libc::c_int; 2];
         let r = libc::pipe(fds.as_mut_ptr());
         if r != 0 {
             return Err(crate::Error::os("pipe"));
@@ -103,7 +104,7 @@ where
             return Err(crate::Error::os("close"));
         }
 
-        ret
+        todo!()
     }
 }
 
@@ -114,7 +115,7 @@ mod fork_tests {
 
     #[test]
     fn pure() -> crate::Result<()> {
-        assert_eq!(fork(|| 7)?, 7);
+        assert_eq!(fork(|| 7)?, Ok(7));
         Ok(())
     }
 
@@ -122,18 +123,18 @@ mod fork_tests {
     fn pure_buffer() -> crate::Result<()> {
         let mut bs = [0u8; 128];
         OsRng.fill_bytes(&mut bs);
-        assert_eq!(fork(|| bs)?, bs);
+        assert_eq!(fork(|| bs)?, Ok(bs));
         Ok(())
     }
 
-    #[test]
-    #[ignore = "TODO: read and waitpid non-blocking"]
-    fn pure_large_buffer() -> crate::Result<()> {
-        let mut bs = [0u8; 1024*128];
-        OsRng.fill_bytes(&mut bs);
-        assert_eq!(fork(|| bs)?, bs);
-        Ok(())
-    }
+    //#[test]
+    //#[ignore = "TODO: read and waitpid non-blocking"]
+    //fn pure_large_buffer() -> crate::Result<()> {
+        //let mut bs = [0u8; 1024*128];
+        //OsRng.fill_bytes(&mut bs);
+        //assert_eq!(fork(|| bs)?, bs);
+        //Ok(())
+    //}
 
     #[test]
     fn unexpected_exit_code() -> crate::Result<()> {

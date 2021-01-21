@@ -45,9 +45,10 @@ impl ZoneSpec {
 }
 
 impl ZoneSpec {
-    pub fn run<F, T>(&self, f: F) -> crate::Result<T>
+    pub fn run<'a, F, T>(&self, f: F) -> crate::Result<Result<T::Out, T::Error>>
     where
         F: FnOnce() -> T,
+        T: Transferable<'a>,
     {
         fork(|| {
             if let Some(ref s) = self.seccomp {

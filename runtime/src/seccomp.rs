@@ -293,11 +293,17 @@ mod tests {
     use super::*;
     use core::fmt::Debug;
 
-    fn harness<T: PartialEq + Debug, F: FnOnce() -> T>(f: F) -> crate::Result<T> {
+    fn harness<'a, T: crate::zone::Transferable<'a>, F: FnOnce() -> T>(f: F) -> crate::Result<Result<T::Out, T::Error>>
+        where T::Out: PartialEq + Debug,
+              T::Error: PartialEq + Debug,
+    {
         crate::zone::fork(f)
     }
 
-    fn expect_sigsys<T: PartialEq + Debug, F: FnOnce() -> T>(f: F) {
+    fn expect_sigsys<'a, T: crate::zone::Transferable<'a>, F: FnOnce() -> T>(f: F)
+        where T::Out: PartialEq + Debug,
+              T::Error: PartialEq + Debug,
+    {
         assert_eq!(
             harness(f),
             Err(crate::Error::ZoneError(crate::zone::Error::Signal {
@@ -320,7 +326,7 @@ mod tests {
                 Spec::strict().apply().unwrap();
                 7
             }),
-            Ok(7)
+            Ok(Ok(7))
         );
     }
 
@@ -333,7 +339,7 @@ mod tests {
                     libc::_exit(0);
                 }
             }),
-            Ok(())
+            Ok(Ok(()))
         );
     }
 
@@ -355,9 +361,9 @@ mod tests {
         assert_eq!(
             harness(|| {
                 s.apply().unwrap();
-                "hello"
+                7
             }),
-            Ok("hello")
+            Ok(Ok(7))
         );
 
         expect_sigsys(|| {
@@ -375,7 +381,7 @@ mod tests {
 
         expect_sigsys(|| {
             s.apply().unwrap();
-            "hello"
+            7
         });
 
         assert_eq!(
@@ -383,7 +389,7 @@ mod tests {
                 s.apply().unwrap();
                 unsafe { libc::write(2, "hello".as_ptr() as *const libc::c_void, 5) };
             }),
-            Ok(())
+            Ok(Ok(()))
         );
     }
 }

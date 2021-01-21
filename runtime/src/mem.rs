@@ -481,22 +481,24 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn inside_zone_linux() -> crate::Result<()> {
         let l = fresh_layout();
-        crate::zone::fork(|| {
+        assert_eq!(crate::zone::fork(|| {
             seccomp_spec().with_getrandom().apply().unwrap();
             let a = GuardedAllocation::aligned(l).unwrap();
             do_test_write(a.data(), l.size());
             a.free().unwrap();
-        })
+        })?, Ok(()));
+        Ok(())
     }
 
     #[test]
     #[cfg(target_os = "macos")]
     fn inside_zone_macos() -> crate::Result<()> {
         let l = fresh_layout();
-        crate::zone::fork(|| {
+        assert_eq!(crate::zone::fork(|| {
             let a = GuardedAllocation::aligned(l).unwrap();
             do_test_write(a.data(), l.size());
             a.free().unwrap();
-        })
+        })?, Ok(()));
+        Ok(())
     }
 }
