@@ -29,7 +29,7 @@ pub use crate::vault::protocol::{
 
 use secret::{Access, Protection};
 
-use runtime::guarded::r#box::GuardedBox;
+use runtime::{guarded::r#box::GuardedBox, zone::ZoneSpec};
 
 /// A record identifier
 #[repr(transparent)]
@@ -273,11 +273,10 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
                 let tx = self.view.txs.get(&tx_id).unwrap().typed::<DataTransaction>().unwrap();
                 match self.view.cache.get(&tx.blob) {
                     Some(sb) => {
-                        // TODO: zone this computation
-                        let ct = {
-                            let pt = sb.decrypt(&self.view.key, tx.blob)?;
-                            recipient.as_ref().protect(pt.as_slice())?
-                        };
+                        let ct = ZoneSpec::default().secure_memory().random().run(|| {
+                            let pt = sb.decrypt(&self.view.key, tx.blob).unwrap();
+                            recipient.as_ref().protect(pt.as_slice()).unwrap()
+                        })?;
                         Ok(PreparedRead::CacheHit(ct))
                     }
                     None => Ok(PreparedRead::CacheMiss(ReadRequest::blob(tx.blob))),
@@ -292,11 +291,10 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
         let b = BlobId::try_from(res.id())?;
 
         if self.is_active_blob(&b) {
-            // TODO: zone this computation
-            let ct = {
-                let pt = SealedBlob::from(res.data()).decrypt(&self.view.key, b)?;
-                recipient.as_ref().protect(pt.as_slice())?
-            };
+            let ct = ZoneSpec::default().secure_memory().random().run(|| {
+                let pt = SealedBlob::from(res.data()).decrypt(&self.view.key, b).unwrap();
+                recipient.as_ref().protect(pt.as_slice()).unwrap()
+            })?;
             Ok(ct)
         } else {
             Err(crate::Error::ProtocolError("invalid blob".to_string()))
@@ -373,12 +371,11 @@ impl<'a, P: BoxProvider> DBWriter<'a, P> {
 
         let req = WriteRequest::transaction(&tx_id, &transaction.encrypt(&self.view.key, tx_id)?);
 
-        // TODO: zone this computation
-        let ct = {
-            let pt = recipient_key.as_ref().access().access(data.as_ref())?;
-            let ct = (&*pt.access()).encrypt(&self.view.key, blob_id)?;
+        let ct = ZoneSpec::default().secure_memory().random().run(|| {
+            let pt = recipient_key.as_ref().access().access(data.as_ref()).unwrap();
+            let ct = (&*pt.access()).encrypt(&self.view.key, blob_id).unwrap();
             ct
-        };
+        })?;
 
         let blob = WriteRequest::blob(&blob_id, &ct);
 

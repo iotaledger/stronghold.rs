@@ -5,6 +5,9 @@
 pub enum Error {
     UnexpectedExitCode { exit_code: libc::c_int },
     Signal { signo: libc::c_int },
+    Timeout { runtime_ns: u64 },
+    UnexpectedEOF,
+    SuperfluousBytes,
 }
 
 impl Error {
@@ -14,6 +17,18 @@ impl Error {
 
     fn signal(signo: libc::c_int) -> crate::Error {
         Self::Signal { signo }.into()
+    }
+
+    fn timeout(runtime: &libc::timespec) -> crate::Error {
+        Self::Timeout { runtime_ns: runtime.tv_sec as u64 * 1_000_000_000 + runtime.tv_nsec as u64 }.into()
+    }
+
+    fn unexpected_eof() -> crate::Error {
+        Self::UnexpectedEOF.into()
+    }
+
+    fn superfluous_bytes() -> crate::Error {
+        Self::SuperfluousBytes.into()
     }
 }
 
