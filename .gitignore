@@ -20,3 +20,4 @@ package-lock.json
 */.vscode/
 proptest-regressions/
 TODO.md
+book

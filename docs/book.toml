@@ -1,0 +1,23 @@
+[book]
+authors = ["Daniel Thompson-Yvetot <daniel.yvetot@iota.org",  "Sebastian Heusser <sebastian.heusser@iota.org>"]
+language = "en"
+multilingual = false
+src = "./src"
+title = "IOTA Stronghold"
+
+[output.html]
+default-theme = "IOTA"
+git-repository-url = "https://github.com/iotaledger/stronghold.rs"
+git-repository-icon = "fa-github"
+
+[output.html.playpen]
+editable = false
+
+[output.html.search]
+limit-results = 20
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 2
+boost-paragraph = 1
+expand = true
+heading-split-level = 2
