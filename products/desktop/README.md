@@ -1,3 +1,25 @@
-# Desktop Application [RIP]
+# Stronghold (stronghold-tauri)
 
-This is an experimental Tauri-based application that provides an interface to Stronghold.
+Desktop App for Stronghold Systems Verification.
+
+In order to develop this system, you will have to have at least rustc 1.49.0 installed, nodejs 14+, and fulfilled all requirements for Tauri Development as you can see at https://tauri.studio/en/docs/getting-started/intro
+
+## Install the dependencies
+```bash
+yarn
+```
+
+### Start the app in development mode (hot-code reloading, error reporting, etc.)
+```bash
+yarn tauri dev
+```
+
+### Lint the files
+```bash
+yarn run lint
+```
+
+### Build the app for production
+```bash
+yarn tauri build
+```
