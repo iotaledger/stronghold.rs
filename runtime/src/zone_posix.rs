@@ -72,35 +72,7 @@ where
         let ret = if libc::WIFEXITED(st) {
             let ec = libc::WEXITSTATUS(st);
             if ec == 0 {
-
-                let mut st = None;
-                match T::receive(&mut st, core::iter::empty()) {
-                    TransferableState::Done(o) => {
-                        // TODO: ensure EOF
-                        Ok(Ok(o))
-                    }
-                    TransferableState::Err(e) => Ok(Err(e)),
-                    TransferableState::Continue => {
-                        let mut ret = None;
-                        while ret.is_none() {
-                            let mut bs = [0];
-                            let r = libc::read(fds[0], &mut bs as *mut _ as *mut libc::c_void, 1);
-                            if r < 0 {
-                                return Err(crate::Error::os("read"));
-                            }
-
-                            match T::receive(&mut st, bs.iter()) {
-                                TransferableState::Done(o) => {
-                                    // TODO: ensure EOF
-                                    ret = Some(Ok(o))
-                                }
-                                TransferableState::Err(e) => ret = Some(Err(e)),
-                                TransferableState::Continue => (),
-                            }
-                        }
-                        Ok(ret.unwrap())
-                    }
-                }
+                receive::<T>(fds[0])
             } else {
                 Err(Error::unexpected_exit_code(ec))
             }
@@ -121,6 +93,55 @@ where
     }
 }
 
+fn ensure_eof(fd: libc::c_int) -> crate::Result<()> {
+    let mut bs = [0];
+    let r = unsafe { libc::read(fd, &mut bs as *mut _ as *mut libc::c_void, 1) };
+    if r < 0 {
+        Err(crate::Error::os("read"))
+    } else if r != 0 {
+        Err(crate::Error::ZoneError(Error::SuperfluousBytes))
+    } else {
+        Ok(())
+    }
+}
+
+fn receive<'b, T>(fd: libc::c_int) -> crate::Result<Result<<T as Transferable<'b>>::Out, <T as Transferable<'b>>::Error>>
+where
+    T: for <'a> Transferable<'a>,
+{
+    let mut st = None;
+    match T::receive(&mut st, core::iter::empty()) {
+        TransferableState::Done(o) => {
+            ensure_eof(fd)?;
+            Ok(Ok(o))
+        }
+        TransferableState::Err(e) => Ok(Err(e)),
+        TransferableState::Continue => {
+            let mut ret = None;
+            while ret.is_none() {
+                let mut bs = [0];
+                let r = unsafe { libc::read(fd, &mut bs as *mut _ as *mut libc::c_void, 1) };
+                if r < 0 {
+                    return Err(crate::Error::os("read"));
+                }
+                if r == 0 {
+                    return Err(crate::Error::ZoneError(Error::UnexpectedEOF));
+                }
+
+                match T::receive(&mut st, bs.iter()) {
+                    TransferableState::Done(o) => {
+                        ensure_eof(fd)?;
+                        ret = Some(Ok(o))
+                    }
+                    TransferableState::Err(e) => ret = Some(Err(e)),
+                    TransferableState::Continue => (),
+                }
+            }
+            Ok(ret.unwrap())
+        }
+    }
+}
+
 #[cfg(test)]
 mod fork_tests {
     use super::*;
@@ -128,7 +149,9 @@ mod fork_tests {
 
     #[test]
     fn pure() -> crate::Result<()> {
-        assert_eq!(fork(|| 7)?, Ok(7));
+        assert_eq!(fork(|| 7u8)?, Ok(7u8));
+        assert_eq!(fork(|| 7u32)?, Ok(7u32));
+        assert_eq!(fork(|| -7i32)?, Ok(-7i32));
         Ok(())
     }
 
@@ -157,6 +180,40 @@ mod fork_tests {
             }),
             Err(Error::unexpected_exit_code(1))
         );
+        Ok(())
+    }
+
+    #[test]
+    #[allow(unreachable_code)]
+    fn unexpected_eof() -> crate::Result<()> {
+        assert_eq!(
+            fork(|| unsafe {
+                libc::exit(0);
+                7
+            }),
+            Err(crate::Error::ZoneError(Error::UnexpectedEOF))
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[allow(unreachable_code)]
+    fn superfluous_bytes() -> crate::Result<()> {
+        assert_eq!(
+            fork(|| unsafe {
+                libc::write(1, &[7u8] as *const _ as *const libc::c_void, 1);
+            }),
+            Err(crate::Error::ZoneError(Error::SuperfluousBytes))
+        );
+
+        assert_eq!(
+            fork(|| unsafe {
+                libc::write(1, &[7u8] as *const _ as *const libc::c_void, 1);
+                9u8
+            }),
+            Err(crate::Error::ZoneError(Error::SuperfluousBytes))
+        );
+
         Ok(())
     }
 

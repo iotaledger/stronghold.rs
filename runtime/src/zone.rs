@@ -7,9 +7,7 @@ pub enum TransferableState<T, Error> {
     Err(Error),
 }
 
-// TODO: split 'a into input and output lifetimes
 // TODO: use generic associated types when they are available
-
 pub trait Transferable<'a>: Sized {
     type IntoIter: Iterator<Item = &'a u8>;
     fn transfer(&'a self) -> Self::IntoIter;
@@ -19,7 +17,7 @@ pub trait Transferable<'a>: Sized {
     type Out;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         st: &mut Option<Self::State>,
-        _bs: I,
+        bs: I,
     ) -> TransferableState<Self::Out, Self::Error>;
 }
 
@@ -69,32 +67,42 @@ impl<'a> Transferable<'a> for [u8; 128] {
     }
 }
 
-impl<'a> Transferable<'a> for u32 {
-    type IntoIter = core::slice::Iter<'a, u8>;
-    fn transfer(&'a self) -> Self::IntoIter {
-        unsafe { core::slice::from_raw_parts(self as *const _ as *const u8, core::mem::size_of::<Self>()).iter() }
-    }
+macro_rules! transfer_primitive {
+    ( $t:tt ) => {
+        impl<'a> Transferable<'a> for $t {
+            type IntoIter = core::slice::Iter<'a, u8>;
+            fn transfer(&'a self) -> Self::IntoIter {
+                unsafe {
+                    core::slice::from_raw_parts(self as *const _ as *const u8, core::mem::size_of::<Self>()).iter()
+                }
+            }
 
-    type Error = ();
-    type State = (usize, [u8; mem::size_of::<Self>()]);
-    type Out = Self;
-    fn receive<'b, I: Iterator<Item = &'b u8>>(
-        st: &mut Option<Self::State>,
-        bs: I,
-    ) -> TransferableState<Self::Out, Self::Error> {
-        let (i, buf) = st.get_or_insert((0, [0; mem::size_of::<Self>()]));
-        for b in bs {
-            buf[*i] = *b;
-            *i += 1;
-        }
+            type Error = ();
+            type State = (usize, [u8; mem::size_of::<Self>()]);
+            type Out = Self;
+            fn receive<'b, I: Iterator<Item = &'b u8>>(
+                st: &mut Option<Self::State>,
+                bs: I,
+            ) -> TransferableState<Self::Out, Self::Error> {
+                let (i, buf) = st.get_or_insert((0, [0; mem::size_of::<Self>()]));
+                for b in bs {
+                    buf[*i] = *b;
+                    *i += 1;
+                }
 
-        if *i == mem::size_of::<Self>() {
-            TransferableState::Done(unsafe { *(buf as *const _ as *const Self).as_ref().unwrap() })
-        } else {
-            TransferableState::Continue
+                if *i == mem::size_of::<Self>() {
+                    TransferableState::Done(unsafe { *(buf as *const _ as *const Self).as_ref().unwrap() })
+                } else {
+                    TransferableState::Continue
+                }
+            }
         }
-    }
+    };
 }
+
+transfer_primitive!(u32);
+transfer_primitive!(u8);
+transfer_primitive!(i32);
 
 // TODO: impl<'a> Transferable<'a> for str { type Out = String }
 // TODO: impl<'a> Transferable<'a> for [u8] { type Out = Vec<u8>; }
@@ -118,7 +126,9 @@ mod common_tests {
 
     #[test]
     fn pure() -> crate::Result<()> {
-        assert_eq!(ZoneSpec::default().run(|| 7)?, Ok(7));
+        assert_eq!(ZoneSpec::default().run(|| 7u8)?, Ok(7u8));
+        assert_eq!(ZoneSpec::default().run(|| 7u32)?, Ok(7u32));
+        assert_eq!(ZoneSpec::default().run(|| -7i32)?, Ok(-7i32));
         Ok(())
     }
 

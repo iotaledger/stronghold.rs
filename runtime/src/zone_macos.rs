@@ -5,6 +5,8 @@
 pub enum Error {
     UnexpectedExitCode { exit_code: libc::c_int },
     Signal { signo: libc::c_int },
+    UnexpectedEOF,
+    SuperfluousBytes,
 }
 
 impl Error {
