@@ -291,18 +291,25 @@ impl Spec {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::zone::Transferable;
     use core::fmt::Debug;
 
-    fn harness<'a, T: crate::zone::Transferable<'a>, F: FnOnce() -> T>(f: F) -> crate::Result<Result<T::Out, T::Error>>
-        where T::Out: PartialEq + Debug,
-              T::Error: PartialEq + Debug,
+    fn harness<'b, T, F: FnOnce() -> T>(
+        f: F,
+    ) -> crate::Result<Result<<T as Transferable<'b>>::Out, <T as Transferable<'b>>::Error>>
+    where
+        T: for<'a> Transferable<'a>,
+        <T as Transferable<'b>>::Out: PartialEq + Debug,
+        <T as Transferable<'b>>::Error: PartialEq + Debug,
     {
         crate::zone::fork(f)
     }
 
-    fn expect_sigsys<'a, T: crate::zone::Transferable<'a>, F: FnOnce() -> T>(f: F)
-        where T::Out: PartialEq + Debug,
-              T::Error: PartialEq + Debug,
+    fn expect_sigsys<'b, T, F: FnOnce() -> T>(f: F)
+    where
+        T: for<'a> Transferable<'a>,
+        <T as Transferable<'b>>::Out: PartialEq + Debug,
+        <T as Transferable<'b>>::Error: PartialEq + Debug,
     {
         assert_eq!(
             harness(f),

@@ -9,27 +9,34 @@ pub enum TransferableState<T, Error> {
 
 // TODO: split 'a into input and output lifetimes
 // TODO: use generic associated types when they are available
+
 pub trait Transferable<'a>: Sized {
     type IntoIter: Iterator<Item = &'a u8>;
-    fn to_iter(&'a self) -> Self::IntoIter;
+    fn transfer(&'a self) -> Self::IntoIter;
 
     type Error;
     type State;
     type Out;
-    fn from_iter<I: Iterator<Item = &'a u8>>(st: &mut Option<Self::State>, _bs: I) -> TransferableState<Self::Out, Self::Error>;
+    fn receive<'b, I: Iterator<Item = &'b u8>>(
+        st: &mut Option<Self::State>,
+        _bs: I,
+    ) -> TransferableState<Self::Out, Self::Error>;
 }
 
 impl<'a> Transferable<'a> for () {
     type IntoIter = core::iter::Empty<&'a u8>;
 
-    fn to_iter(&'a self) -> Self::IntoIter {
+    fn transfer(&'a self) -> Self::IntoIter {
         core::iter::empty()
     }
 
     type Error = (); // TODO: use ! when it becomes stable
     type State = (); // TODO: use ! when it becomes stable
     type Out = Self;
-    fn from_iter<I: Iterator<Item = &'a u8>>(_st: &mut Option<Self::State>, _bs: I) ->  TransferableState<Self::Out, Self::Error> {
+    fn receive<'b, I: Iterator<Item = &'b u8>>(
+        _st: &mut Option<Self::State>,
+        _bs: I,
+    ) -> TransferableState<Self::Out, Self::Error> {
         TransferableState::Done(())
     }
 }
@@ -37,30 +44,55 @@ impl<'a> Transferable<'a> for () {
 impl<'a> Transferable<'a> for [u8; 128] {
     type IntoIter = core::slice::Iter<'a, u8>;
 
-    fn to_iter(&'a self) -> Self::IntoIter {
+    fn transfer(&'a self) -> Self::IntoIter {
         self.iter()
     }
 
     type Error = ();
-    type State = [u8; 128];
+    type State = (usize, [u8; 128]);
     type Out = Self;
-    fn from_iter<I: Iterator<Item = &'a u8>>(st: &mut Option<Self::State>, _bs: I) ->  TransferableState<Self::Out, Self::Error> {
-        let bs = st.get_or_insert([0; 128]);
-        TransferableState::Done(*bs)
+    fn receive<'b, I: Iterator<Item = &'b u8>>(
+        st: &mut Option<Self::State>,
+        bs: I,
+    ) -> TransferableState<Self::Out, Self::Error> {
+        let (i, buf) = st.get_or_insert((0, [0; 128]));
+        for b in bs {
+            buf[*i] = *b;
+            *i += 1;
+        }
+
+        if *i == mem::size_of::<Self>() {
+            TransferableState::Done(*buf)
+        } else {
+            TransferableState::Continue
+        }
     }
 }
 
 impl<'a> Transferable<'a> for u32 {
     type IntoIter = core::slice::Iter<'a, u8>;
-    fn to_iter(&'a self) -> Self::IntoIter {
-        todo!()
+    fn transfer(&'a self) -> Self::IntoIter {
+        unsafe { core::slice::from_raw_parts(self as *const _ as *const u8, core::mem::size_of::<Self>()).iter() }
     }
 
     type Error = ();
-    type State = [u8; mem::size_of::<Self>()];
+    type State = (usize, [u8; mem::size_of::<Self>()]);
     type Out = Self;
-    fn from_iter<I: Iterator<Item = &'a u8>>(st: &mut Option<Self::State>, _bs: I) ->  TransferableState<Self::Out, Self::Error> {
-        todo!()
+    fn receive<'b, I: Iterator<Item = &'b u8>>(
+        st: &mut Option<Self::State>,
+        bs: I,
+    ) -> TransferableState<Self::Out, Self::Error> {
+        let (i, buf) = st.get_or_insert((0, [0; mem::size_of::<Self>()]));
+        for b in bs {
+            buf[*i] = *b;
+            *i += 1;
+        }
+
+        if *i == mem::size_of::<Self>() {
+            TransferableState::Done(unsafe { *(buf as *const _ as *const Self).as_ref().unwrap() })
+        } else {
+            TransferableState::Continue
+        }
     }
 }
 

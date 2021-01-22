@@ -3,10 +3,10 @@
 
 use core::mem;
 
-pub fn fork<'a, F, T>(f: F) -> crate::Result<Result<T::Out, T::Error>>
+pub fn fork<'b, F, T>(f: F) -> crate::Result<Result<<T as Transferable<'b>>::Out, <T as Transferable<'b>>::Error>>
 where
     F: FnOnce() -> T,
-    T: Transferable<'a>,
+    T: for <'a> Transferable<'a>,
 {
     unsafe {
         #[allow(clippy::unnecessary_cast)]
@@ -46,17 +46,14 @@ where
                 std::panic::set_hook(std::boxed::Box::new(|_| libc::_exit(101)));
             }
 
-            let mut t = f();
+            let t = f();
 
-            let mut p = &mut t as *mut T as *mut u8;
-            let mut n = mem::size_of::<T>();
-            while n > 0 {
-                let r = libc::write(1, p as *mut libc::c_void, n);
+            for b in t.transfer() {
+                let mut bs = [*b];
+                let r = libc::write(1, &mut bs as *mut _ as *mut libc::c_void, 1);
                 if r < 0 {
                     libc::_exit(1)
                 }
-                n -= r as usize;
-                p = p.add(r as usize);
             }
 
             libc::_exit(0)
@@ -67,7 +64,6 @@ where
             return Err(crate::Error::os("close"));
         }
 
-
         let mut st = 0;
         let r = libc::waitpid(pid, &mut st, 0);
         if r < 0 {
@@ -76,18 +72,35 @@ where
         let ret = if libc::WIFEXITED(st) {
             let ec = libc::WEXITSTATUS(st);
             if ec == 0 {
-                let mut t: mem::MaybeUninit<T> = mem::MaybeUninit::uninit();
-                let mut n = mem::size_of::<T>();
-                let mut p = t.as_mut_ptr() as *mut u8;
-                while n > 0 {
-                    let r = libc::read(fds[0], p as *mut libc::c_void, n);
-                    if r < 0 {
-                        return Err(crate::Error::os("read"));
+
+                let mut st = None;
+                match T::receive(&mut st, core::iter::empty()) {
+                    TransferableState::Done(o) => {
+                        // TODO: ensure EOF
+                        Ok(Ok(o))
                     }
-                    n -= r as usize;
-                    p = p.add(r as usize);
+                    TransferableState::Err(e) => Ok(Err(e)),
+                    TransferableState::Continue => {
+                        let mut ret = None;
+                        while ret.is_none() {
+                            let mut bs = [0];
+                            let r = libc::read(fds[0], &mut bs as *mut _ as *mut libc::c_void, 1);
+                            if r < 0 {
+                                return Err(crate::Error::os("read"));
+                            }
+
+                            match T::receive(&mut st, bs.iter()) {
+                                TransferableState::Done(o) => {
+                                    // TODO: ensure EOF
+                                    ret = Some(Ok(o))
+                                }
+                                TransferableState::Err(e) => ret = Some(Err(e)),
+                                TransferableState::Continue => (),
+                            }
+                        }
+                        Ok(ret.unwrap())
+                    }
                 }
-                Ok(t.assume_init())
             } else {
                 Err(Error::unexpected_exit_code(ec))
             }
@@ -104,7 +117,7 @@ where
             return Err(crate::Error::os("close"));
         }
 
-        todo!()
+        ret
     }
 }
 
