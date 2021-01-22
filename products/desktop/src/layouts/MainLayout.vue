@@ -16,7 +16,14 @@
         <q-toolbar-title class="text-weight-bolder">
           Stronghold
         </q-toolbar-title>
-
+        <q-btn
+          flat
+          dense
+          class="float-right q-mr-sm"
+          :label="connectee"
+          to="/"
+        >
+        </q-btn>
       </q-toolbar>
     </q-header>
 
@@ -29,9 +36,22 @@
       <q-list>
         <q-item-label
           header
-          class="text-grey-8"
+          class="grey-1 text-weight-bolder"
         >
-          Essential Links
+          Tools
+        </q-item-label>
+        <InternalLink
+          v-for="link in actionLinks"
+          :key="link.title"
+          v-bind="link"
+        />
+      </q-list>
+      <q-list>
+        <q-item-label
+          header
+          class="grey-1 text-weight-bolder"
+        >
+          Documentation and Help
         </q-item-label>
         <EssentialLink
           v-for="link in essentialLinks"
@@ -54,8 +74,30 @@
 
 <script>
 import EssentialLink from 'components/EssentialLink.vue'
+import InternalLink from 'components/InternalLink.vue'
 const _package = require('../../package.json')
-
+const actionLinks = [
+  {
+    title: 'Dashboard',
+    icon: 'fa fa-book',
+    link: '/'
+  },
+  {
+    title: 'Connect to Remote',
+    icon: 'fa fa-wifi',
+    link: '/actions/connect'
+  },
+  {
+    title: 'Manage Coalition',
+    icon: 'fa fa-users',
+    link: '/actions/coalition'
+  },
+  {
+    title: 'Wipe Stronghold',
+    icon: 'fa fa-times',
+    link: '/actions/wipe'
+  }
+]
 const linksData = [
   {
     title: 'Docs',
@@ -85,9 +127,11 @@ const linksData = [
 
 export default {
   name: 'MainLayout',
-  components: { EssentialLink },
+  components: { EssentialLink, InternalLink },
   data () {
     return {
+      connectee: 'Not Connected',
+      actionLinks: actionLinks,
       essentialLinks: linksData,
       version: _package.version,
       leftDrawerOpen: false
