@@ -41,10 +41,7 @@ where
                 libc::_exit(1)
             }
 
-            if cfg!(test) {
-                extern crate std;
-                std::panic::set_hook(std::boxed::Box::new(|_| libc::_exit(101)));
-            }
+            restore_test_panic_hook();
 
             let t = f();
 
@@ -91,6 +88,16 @@ where
 
         ret
     }
+}
+
+#[cfg(test)]
+unsafe fn restore_test_panic_hook() {
+    extern crate std;
+    std::panic::set_hook(std::boxed::Box::new(|_| libc::_exit(101)));
+}
+
+#[cfg(not(test))]
+unsafe fn restore_test_panic_hook() {
 }
 
 fn ensure_eof(fd: libc::c_int) -> crate::Result<()> {
