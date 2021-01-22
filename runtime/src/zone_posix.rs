@@ -112,6 +112,8 @@ fn ensure_eof(fd: libc::c_int) -> crate::Result<()> {
     }
 }
 
+const RECEIVE_BUFFER: usize = 256;
+
 fn receive<'b, T>(fd: libc::c_int) -> crate::Result<Result<<T as Transferable<'b>>::Out, <T as Transferable<'b>>::Error>>
 where
     T: for <'a> Transferable<'a>,
@@ -126,8 +128,8 @@ where
         TransferableState::Continue => {
             let mut ret = None;
             while ret.is_none() {
-                let mut bs = [0];
-                let r = unsafe { libc::read(fd, &mut bs as *mut _ as *mut libc::c_void, 1) };
+                let mut bs = [0; RECEIVE_BUFFER];
+                let r = unsafe { libc::read(fd, &mut bs as *mut _ as *mut libc::c_void, bs.len()) };
                 if r < 0 {
                     return Err(crate::Error::os("read"));
                 }
@@ -135,7 +137,7 @@ where
                     return Err(crate::Error::ZoneError(Error::UnexpectedEOF));
                 }
 
-                match T::receive(&mut st, bs.iter()) {
+                match T::receive(&mut st, bs[..(r as usize)].iter()) {
                     TransferableState::Done(o) => {
                         ensure_eof(fd)?;
                         ret = Some(Ok(o))
@@ -164,9 +166,18 @@ mod fork_tests {
 
     #[test]
     fn pure_buffer() -> crate::Result<()> {
-        let mut bs = [0u8; 128];
+        let mut bs = [0u8; RECEIVE_BUFFER/2];
         OsRng.fill_bytes(&mut bs);
         assert_eq!(fork(|| bs)?, Ok(bs));
+
+        let mut bs = [0u8; RECEIVE_BUFFER];
+        OsRng.fill_bytes(&mut bs);
+        assert_eq!(fork(|| bs)?, Ok(bs));
+
+        let mut bs = [0u8; RECEIVE_BUFFER*2];
+        OsRng.fill_bytes(&mut bs);
+        assert_eq!(fork(|| bs)?, Ok(bs));
+
         Ok(())
     }
 
@@ -218,7 +229,15 @@ mod fork_tests {
                 libc::write(1, &[7u8] as *const _ as *const libc::c_void, 1);
                 9u8
             }),
-            Err(crate::Error::ZoneError(Error::SuperfluousBytes))
+            Ok(Err(Error::SuperfluousBytes))
+        );
+
+        assert_eq!(
+            fork(|| unsafe {
+                libc::write(1, &[7u8] as *const _ as *const libc::c_void, 1);
+                [1, 2, 3, 4]
+            }),
+            Ok(Err(Error::SuperfluousBytes))
         );
 
         Ok(())

@@ -28,47 +28,72 @@ impl<'a> Transferable<'a> for () {
         core::iter::empty()
     }
 
-    type Error = (); // TODO: use ! when it becomes stable
-    type State = (); // TODO: use ! when it becomes stable
+    type Error = Error;
+    type State = ();
     type Out = Self;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         _st: &mut Option<Self::State>,
-        _bs: I,
+        mut bs: I,
     ) -> TransferableState<Self::Out, Self::Error> {
-        TransferableState::Done(())
-    }
-}
-
-impl<'a> Transferable<'a> for [u8; 128] {
-    type IntoIter = core::slice::Iter<'a, u8>;
-
-    fn transfer(&'a self) -> Self::IntoIter {
-        self.iter()
-    }
-
-    type Error = ();
-    type State = (usize, [u8; 128]);
-    type Out = Self;
-    fn receive<'b, I: Iterator<Item = &'b u8>>(
-        st: &mut Option<Self::State>,
-        bs: I,
-    ) -> TransferableState<Self::Out, Self::Error> {
-        let (i, buf) = st.get_or_insert((0, [0; 128]));
-        for b in bs {
-            buf[*i] = *b;
-            *i += 1;
-        }
-
-        if *i == mem::size_of::<Self>() {
-            TransferableState::Done(*buf)
-        } else {
-            TransferableState::Continue
+        match bs.next() {
+            None => TransferableState::Done(()),
+            Some(_) => TransferableState::Err(Error::SuperfluousBytes)
         }
     }
 }
+
+macro_rules! transfer_slice_of_bytes {
+    ( $n:tt ) => {
+        impl<'a> Transferable<'a> for [u8; $n] {
+            type IntoIter = core::slice::Iter<'a, u8>;
+
+            fn transfer(&'a self) -> Self::IntoIter {
+                self.iter()
+            }
+
+            type Error = Error;
+            type State = (usize, [u8; $n]);
+            type Out = Self;
+            fn receive<'b, I: Iterator<Item = &'b u8>>(
+                st: &mut Option<Self::State>,
+                bs: I,
+            ) -> TransferableState<Self::Out, Self::Error> {
+                let (i, buf) = st.get_or_insert((0, [0; $n]));
+                for b in bs {
+                    if *i >= $n {
+                        return TransferableState::Err(Error::SuperfluousBytes);
+                    }
+
+                    buf[*i] = *b;
+                    *i += 1;
+                }
+
+                if *i == $n {
+                    TransferableState::Done(*buf)
+                } else {
+                    TransferableState::Continue
+                }
+            }
+        }
+    }
+}
+
+transfer_slice_of_bytes!(1);
+transfer_slice_of_bytes!(2);
+transfer_slice_of_bytes!(4);
+transfer_slice_of_bytes!(8);
+transfer_slice_of_bytes!(16);
+transfer_slice_of_bytes!(32);
+transfer_slice_of_bytes!(64);
+transfer_slice_of_bytes!(128);
+transfer_slice_of_bytes!(256);
+transfer_slice_of_bytes!(512);
+transfer_slice_of_bytes!(1024);
+transfer_slice_of_bytes!(2048);
+transfer_slice_of_bytes!(4096);
 
 macro_rules! transfer_primitive {
-    ( $t:tt ) => {
+    ( $t:ty ) => {
         impl<'a> Transferable<'a> for $t {
             type IntoIter = core::slice::Iter<'a, u8>;
             fn transfer(&'a self) -> Self::IntoIter {
@@ -77,7 +102,7 @@ macro_rules! transfer_primitive {
                 }
             }
 
-            type Error = ();
+            type Error = Error;
             type State = (usize, [u8; mem::size_of::<Self>()]);
             type Out = Self;
             fn receive<'b, I: Iterator<Item = &'b u8>>(
@@ -86,6 +111,10 @@ macro_rules! transfer_primitive {
             ) -> TransferableState<Self::Out, Self::Error> {
                 let (i, buf) = st.get_or_insert((0, [0; mem::size_of::<Self>()]));
                 for b in bs {
+                    if *i >= mem::size_of::<Self>() {
+                        return TransferableState::Err(Error::SuperfluousBytes);
+                    }
+
                     buf[*i] = *b;
                     *i += 1;
                 }
@@ -134,7 +163,7 @@ mod common_tests {
 
     #[test]
     fn pure_buffer() -> crate::Result<()> {
-        let mut bs = [0u8; 128];
+        let mut bs = [0u8; 256];
         OsRng.fill_bytes(&mut bs);
         assert_eq!(ZoneSpec::default().run(|| bs)?, Ok(bs));
         Ok(())
