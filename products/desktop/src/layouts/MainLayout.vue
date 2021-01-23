@@ -1,5 +1,6 @@
 <template>
-  <q-layout view="lHh Lpr lFf">
+  <q-layout view="hHh LpR lFf" style="max-height:100%">
+    <!--
     <q-header elevated>
       <q-toolbar dark>
         <q-btn
@@ -26,55 +27,102 @@
         </q-btn>
       </q-toolbar>
     </q-header>
-
-    <q-drawer
-      v-model="leftDrawerOpen"
-      dark
-      show-if-above
-      bordered
-    >
-      <q-list>
-        <q-item-label
-          header
-          class="grey-1 text-weight-bolder"
+    -->
+    <div class="row">
+      <div class="col-auto">
+        <q-scroll-area
+          :thumb-style="thumbStyle"
+          :bar-style="barStyle"
+          dark
+          :style="`height: ${$q.screen.height}px; width: 300px;border-right:solid 1px #333`"
         >
-          Tools
-        </q-item-label>
-        <InternalLink
-          v-for="link in actionLinks"
-          :key="link.title"
-          v-bind="link"
-        />
-      </q-list>
-      <q-list>
-        <q-item-label
-          header
-          class="grey-1 text-weight-bolder"
-        >
-          Documentation and Help
-        </q-item-label>
-        <EssentialLink
-          v-for="link in essentialLinks"
-          :key="link.title"
-          v-bind="link"
-        />
-      </q-list>
-    </q-drawer>
+          <q-item @click="lockCallback" clickable class="cursor-pointer bg-blue-grey-10" style="width: 300px" dark>
+            <q-item-section avatar class="sidebar-item" style="height:84px">
+              <lock-timer></lock-timer>
+            </q-item-section>
+            <q-item-section class="q-ml-md" v-if="!locked">
+              <q-item-label>Log Out</q-item-label>
+            </q-item-section>
+            <q-item-section class="q-ml-md" v-else>
 
-    <q-page-container>
-      <router-view />
-    </q-page-container>
-    <q-footer>
-      <div class="full-width text-center">
-        <div class="float-right q-mr-sm text-weight-light text-black">v{{ version }}</div>
+              <q-input
+                outlined
+                dense
+                v-model="pwd"
+                :type="isPwd ? 'password' : 'text'"
+                label="Decryption Phrase"
+                class="q-mb-sm"
+              >
+                <template v-slot:append>
+                  <q-icon
+                    :name="isPwd ? 'visibility_off' : 'visibility'"
+                    class="cursor-pointer"
+                    @click="isPwd = !isPwd"
+                  />
+                </template>
+              </q-input>
+              <q-input class="q-mb-sm" outlined dense v-model="path" label="Snapshot Path" />
+              <q-btn color="primary" class="q-mt-lg float-right" :disabled="!pwd" @click="unlock" label="unlock" />
+
+            </q-item-section>
+          </q-item>
+          <q-list v-if="loggedIn">
+            <q-item-label
+              header
+              class="grey-1 text-weight-bolder"
+            >
+              Tools
+            </q-item-label>
+            <InternalLink
+              v-for="link in actionLinks"
+              :key="link.title"
+              v-bind="link"
+            />
+          </q-list>
+          <q-list  class="q-my-xl">
+            <q-item-label
+              header
+              class="grey-1 text-weight-bolder"
+            >
+              Documentation and Help
+            </q-item-label>
+            <EssentialLink
+              v-for="link in essentialLinks"
+              :key="link.title"
+              v-bind="link"
+            />
+          </q-list>
+          <div class="bg-primary fixed-bottom z-top full-width">
+            <div class="q-mx-sm">
+              <div class="float-left text-weight-light text-black">Stronghold Verification App</div>
+              <div class="float-right text-weight-light text-black">v{{ version }}</div>
+            </div>
+          </div>
+        </q-scroll-area>
       </div>
-    </q-footer>
+      <div class="col">
+        <q-scroll-area
+          :thumb-style="thumbStyle"
+          :bar-style="barStyle"
+          dark
+          :style="`height: ${$q.screen.height}px;`"
+        >
+          <q-page-container>
+            <router-view />
+          </q-page-container>
+        </q-scroll-area>
+      </div>
+    </div>
   </q-layout>
 </template>
 
 <script>
 import EssentialLink from 'components/EssentialLink.vue'
 import InternalLink from 'components/InternalLink.vue'
+import LockTimer from 'components/LockTimer.vue'
+import { promisified } from 'tauri/api/tauri'
+
+import { mapState, mapActions } from 'vuex'
 const _package = require('../../package.json')
 const actionLinks = [
   {
@@ -127,14 +175,63 @@ const linksData = [
 
 export default {
   name: 'MainLayout',
-  components: { EssentialLink, InternalLink },
+  components: { EssentialLink, InternalLink, LockTimer },
   data () {
     return {
+      height: window.innerHeight,
       connectee: 'Not Connected',
       actionLinks: actionLinks,
       essentialLinks: linksData,
       version: _package.version,
-      leftDrawerOpen: false
+      loggedIn: true,
+      pwd: '',
+      isPwd: true,
+      path: '',
+      thumbStyle: {
+        right: '4px',
+        borderRadius: '5px',
+        backgroundColor: '#027be3',
+        width: '5px',
+        opacity: 0.75
+      },
+      barStyle: {
+        right: '2px',
+        borderRadius: '9px',
+        backgroundColor: '#027be3',
+        width: '9px',
+        opacity: 0.2
+      }
+    }
+  },
+  computed: {
+    ...mapState('lockdown', {
+      loading: 'configuring',
+      title: 'title',
+      locked (state) { return state.lock.enabled }
+    })
+  },
+  methods: {
+    ...mapActions('lockdown', ['lockdown']),
+    async lockCallback () {
+      if (!this.locked) {
+        await this.lockdown()
+      }
+    },
+    unlock () {
+      promisified({
+        cmd: 'unlock',
+        payload: {
+          pwd: this.pwd,
+          path: this.path
+        }
+      }).then(response => {
+        // do something with the Ok() response
+        const { message } = response
+        this.$q.notify(`${message}`)
+      }).catch(error => {
+        // do something with the Err() response string
+        this.$q.notify(error)
+      })
     }
   }
 }

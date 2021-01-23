@@ -1,24 +1,65 @@
 <template>
   <q-page class="flex flex-center">
-    <q-card class="q-pa-lg bg-grey-9" style="width: 480px">
-      <h2 class="float-left">Connect</h2>
-      <q-img class="float-right" src="peerid.png" height="128px" width="128px" />
-      <q-input class="q-mb-sm full-width" outlined dense v-model="thisPeerID" readonly label="This PeerID" />
-      <q-input class="q-mb-sm full-width" outlined dense v-model="remotePeerID" label="Remote PeerID" />
-      <div style="min-width: 250px; max-width: 300px">
-        <q-select
-          filled
-          v-model="modelMultiple"
-          multiple
-          :options="options"
-          use-chips
-          stack-label
-          label="Permissions"
-        />
-      </div>
+    <q-card class="q-pa-lg q-ma-md bg-grey-9" style="width: 480px;height:80%!important">
+      <q-tabs
+          v-model="tab"
+          dense
+          class="text-grey"
+          active-color="primary"
+          indicator-color="primary"
+          align="justify"
+          narrow-indicator
+        >
+          <q-tab name="incoming" label="Incoming" />
+          <q-tab name="outgoing" label="Outgoing" />
+          <q-tab name="groups" label="Groups" />
+        </q-tabs>
 
-      <q-btn color="primary" class="q-mt-lg float-right" :disabled="!remoteMultiaddress" @click="unlock" label="Add to Coalition" />
-    </q-card>
+        <q-separator />
+
+        <q-tab-panels v-model="tab" animated>
+          <q-tab-panel name="incoming">
+            <div class="text-h6 float-left">Incoming Offer</div>
+              <q-img class="float-right" src="peerid.png" height="128px" width="128px" />
+              <q-input class="q-mb-sm full-width" outlined dense v-model="thisPeerID" readonly label="This PeerID" />
+              <div class="full-width">
+                <q-select
+                  filled
+                  v-model="modelMultiple"
+                  multiple
+                  :options="options"
+                  use-chips
+                  stack-label
+                  label="Permissions"
+                />
+              </div>
+              <q-btn color="primary" class="q-mt-lg float-right" :disabled="!remoteMultiaddress" @click="unlock" label="Add to Coalition" />
+          </q-tab-panel>
+
+          <q-tab-panel name="outgoing">
+            <div class="text-h6">Outgoing Request</div>
+              <q-input class="q-mb-sm full-width" outlined dense v-model="remotePeerID" label="Remote PeerID" />
+              <div class="full-width">
+                <q-select
+                  filled
+                  v-model="modelMultiple"
+                  multiple
+                  :options="options"
+                  use-chips
+                  stack-label
+                  label="Permissions"
+                />
+              </div>
+              <q-btn color="primary" class="q-mt-lg float-right" :disabled="!remoteMultiaddress" @click="unlock" label="Add to Coalition" />
+
+          </q-tab-panel>
+
+          <q-tab-panel name="groups">
+            <div class="text-h6">Groups</div>
+            Lorem ipsum dolor sit amet consectetur adipisicing elit.
+          </q-tab-panel>
+        </q-tab-panels>
+      </q-card>
   </q-page>
 </template>
 
@@ -30,6 +71,7 @@ export default {
   name: 'Connect',
   data () {
     return {
+      tab: 'incoming',
       thisPeerID: '12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA',
       remotePeerID: '',
       path: '',
@@ -62,3 +104,8 @@ export default {
   }
 }
 </script>
+<style lang="sass">
+  .q-chip__content
+    font-size: 0.8em
+    padding: 0 3px 0 2px
+</style>
