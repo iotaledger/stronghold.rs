@@ -1,8 +1,0 @@
-comment_width = 120
-format_code_in_doc_comments = true
-license_template_path = ".license_template"
-max_width = 120
-merge_imports = true
-normalize_comments = true
-normalize_doc_attributes = true
-wrap_comments = true
