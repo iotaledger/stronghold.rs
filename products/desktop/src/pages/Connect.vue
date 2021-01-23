@@ -1,6 +1,6 @@
 <template>
   <q-page class="flex flex-center">
-    <q-card class="q-pa-lg q-ma-md bg-grey-9" style="width: 480px;height:80%!important">
+    <q-card class="q-pa-lg bg-grey-9 full-width absolute-top" style="top:0;bottom:0;min-height:100%">
       <q-tabs
           v-model="tab"
           dense
@@ -20,11 +20,11 @@
         <q-tab-panels v-model="tab" animated>
           <q-tab-panel name="incoming">
             <div class="text-h6 float-left">Incoming Offer</div>
-              <q-img class="float-right" src="peerid.png" height="128px" width="128px" />
-              <q-input class="q-mb-sm full-width" outlined dense v-model="thisPeerID" readonly label="This PeerID" />
+              <q-img class="q-mb-sm float-right" src="peerid.png" height="128px" width="128px" />
+              <q-input class="q-ma-sm full-width" outlined dense v-model="thisPeerID" readonly label="This PeerID" />
               <div class="full-width">
                 <q-select
-                  filled
+                  outlined
                   v-model="modelMultiple"
                   multiple
                   :options="options"
@@ -33,7 +33,7 @@
                   label="Permissions"
                 />
               </div>
-              <q-btn color="primary" class="q-mt-lg float-right" :disabled="!remoteMultiaddress" @click="unlock" label="Add to Coalition" />
+              <q-btn color="primary" class="q-mt-sm q-mb-md float-right" :disabled="!remoteMultiaddress" @click="unlock" label="Add to Coalition" />
           </q-tab-panel>
 
           <q-tab-panel name="outgoing">
@@ -50,7 +50,7 @@
                   label="Permissions"
                 />
               </div>
-              <q-btn color="primary" class="q-mt-lg float-right" :disabled="!remoteMultiaddress" @click="unlock" label="Add to Coalition" />
+              <q-btn color="primary" class="q-my-md float-right" :disabled="!remoteMultiaddress" @click="unlock" label="Add to Coalition" />
 
           </q-tab-panel>
 

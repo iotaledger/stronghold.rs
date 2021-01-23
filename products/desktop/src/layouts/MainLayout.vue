@@ -36,7 +36,7 @@
           dark
           :style="`height: ${$q.screen.height}px; width: 300px;border-right:solid 1px #333`"
         >
-          <q-item @click="lockCallback" clickable class="cursor-pointer bg-blue-grey-10" style="width: 300px" dark>
+          <q-item @click="lockCallback" clickable class="cursor-pointer bg-grey-10" style="width: 300px" dark>
             <q-item-section avatar class="sidebar-item" style="height:84px">
               <lock-timer></lock-timer>
             </q-item-section>
