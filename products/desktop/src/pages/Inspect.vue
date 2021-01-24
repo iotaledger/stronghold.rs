@@ -1,7 +1,7 @@
 <template>
   <q-page class="flex flex-center">
-    <q-card class="q-pa-lg bg-grey-9" style="width: 480px">
-      <h2>Wipe</h2>
+    <q-card class="q-pa-lg bg-grey-9 full-width absolute-top" style="top:0;bottom:0;min-height:100%">
+      <h3 class="q-my-sm text-right text-weight-thin">Inspector</h3>
     </q-card>
   </q-page>
 </template>

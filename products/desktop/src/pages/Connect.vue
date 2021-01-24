@@ -1,6 +1,7 @@
 <template>
   <q-page class="flex flex-center">
     <q-card class="q-pa-lg bg-grey-9 full-width absolute-top" style="top:0;bottom:0;min-height:100%">
+      <h3 class="q-my-sm text-right text-weight-thin">Connect</h3>
       <q-tabs
           v-model="tab"
           dense
@@ -10,16 +11,19 @@
           align="justify"
           narrow-indicator
         >
-          <q-tab name="incoming" label="Incoming" />
           <q-tab name="outgoing" label="Outgoing" />
+          <q-tab name="incoming" label="Incoming" />
           <q-tab name="groups" label="Groups" />
         </q-tabs>
 
         <q-separator />
 
         <q-tab-panels v-model="tab" animated>
-          <q-tab-panel name="incoming">
-            <div class="text-h6 float-left">Incoming Offer</div>
+          <q-tab-panel name="outgoing">
+            <div class="text-h6 float-left">Outgoing Offer</div>
+            <div class="text-p float-left">
+              On this page you can generate an outgoing offer QR code and text for easy scanning that will offer the receiver the ability to connect with your device.
+            </div>
               <q-img class="q-mb-sm float-right" src="peerid.png" height="128px" width="128px" />
               <q-input class="q-ma-sm full-width" outlined dense v-model="thisPeerID" readonly label="This PeerID" />
               <div class="full-width">
@@ -36,8 +40,8 @@
               <q-btn color="primary" class="q-mt-sm q-mb-md float-right" :disabled="!remoteMultiaddress" @click="unlock" label="Add to Coalition" />
           </q-tab-panel>
 
-          <q-tab-panel name="outgoing">
-            <div class="text-h6">Outgoing Request</div>
+          <q-tab-panel name="incoming">
+            <div class="text-h6">Incoming Request</div>
               <q-input class="q-mb-sm full-width" outlined dense v-model="remotePeerID" label="Remote PeerID" />
               <div class="full-width">
                 <q-select
@@ -71,7 +75,7 @@ export default {
   name: 'Connect',
   data () {
     return {
-      tab: 'incoming',
+      tab: 'outgoing',
       thisPeerID: '12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA',
       remotePeerID: '',
       path: '',
