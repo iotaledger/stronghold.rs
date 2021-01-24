@@ -1,13 +1,7 @@
 <template>
   <q-page class="flex flex-center">
     <q-card class="q-pa-lg bg-grey-9" style="width: 480px">
-      <h2 class="q-my-sm">Stronghold</h2>
-      <p>
-        This application is a demonstration app for verifying that a coalition of strongholds works as expected.
-      </p>
-      <p>
-        To use: Enter a decryption phrase and choose a path, then press unlock. If you are not actively using the interface, after 10 minutes the interface will be locked.
-      </p>
+      <h2>Wipe</h2>
     </q-card>
   </q-page>
 </template>
@@ -17,7 +11,7 @@ import { promisified } from 'tauri/api/tauri'
 // import { emit, listen } from 'tauri/api/event'
 
 export default {
-  name: 'PageIndex',
+  name: 'Inspect',
   data () {
     return {
       pwd: '',

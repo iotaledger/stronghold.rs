@@ -3,6 +3,7 @@
     clickable
     tag="a"
     :to="link"
+    exact
   >
     <q-item-section
       v-if="icon"

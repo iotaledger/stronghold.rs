@@ -13,7 +13,8 @@ const routes = [
     children: [
       { path: 'connect', component: () => import('pages/Connect.vue') },
       { path: 'wipe', component: () => import('pages/Wipe.vue') },
-      { path: 'coalition', component: () => import('pages/Coalition.vue') }
+      { path: 'coalition', component: () => import('pages/Coalition.vue') },
+      { path: 'inspect', component: () => import('pages/Inspect.vue') }
     ]
   },
   // Always leave this as last one,

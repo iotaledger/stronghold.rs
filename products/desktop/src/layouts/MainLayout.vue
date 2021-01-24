@@ -61,7 +61,15 @@
                   />
                 </template>
               </q-input>
-              <q-input class="q-mb-sm" outlined dense v-model="path" label="Snapshot Path" />
+              <q-input class="q-mb-sm" outlined dense v-model="path" label="Snapshot Path">
+                <template v-slot:append>
+                  <q-icon
+                    name="fa fa-file"
+                    class="cursor-pointer"
+                    @click="chooseFile"
+                  />
+                </template>
+              </q-input>
               <q-btn color="primary" class="q-mt-lg float-right" :disabled="!pwd" @click="unlock" label="unlock" />
 
             </q-item-section>
@@ -121,6 +129,7 @@ import EssentialLink from 'components/EssentialLink.vue'
 import InternalLink from 'components/InternalLink.vue'
 import LockTimer from 'components/LockTimer.vue'
 import { promisified } from 'tauri/api/tauri'
+import { save } from 'tauri/api/dialog'
 
 import { mapState, mapActions } from 'vuex'
 const _package = require('../../package.json')
@@ -129,6 +138,11 @@ const actionLinks = [
     title: 'Dashboard',
     icon: 'fa fa-book',
     link: '/'
+  },
+  {
+    title: 'Inspector',
+    icon: 'fa fa-search',
+    link: '/actions/inspect'
   },
   {
     title: 'Connect to Remote',
@@ -216,6 +230,11 @@ export default {
       if (!this.locked) {
         await this.lockdown()
       }
+    },
+    chooseFile () {
+      save().then(res => {
+        this.path = res
+      })
     },
     unlock () {
       promisified({
