@@ -140,7 +140,7 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
             // Request from a remote peer
             P2PReqResEvent::Req {
                 peer_id,
-                request_id: Some(request_id),
+                request_id,
                 request,
             } => {
                 println!("Received message from peer {:?}\n{:?}", peer_id, request);

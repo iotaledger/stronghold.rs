@@ -251,7 +251,7 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestRespo
             self.response_channels.insert(request_id, channel);
             P2PEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
                 peer_id: peer,
-                request_id: Some(request_id),
+                request_id,
                 request,
             }))
         } else {
@@ -391,7 +391,7 @@ mod test {
                         } = boxed_event.deref().clone()
                         {
                             if peer_id == local_peer_id {
-                                remote.send_response(Response::Pong, request_id.unwrap()).unwrap();
+                                remote.send_response(Response::Pong, request_id).unwrap();
                             }
                         }
                     }
