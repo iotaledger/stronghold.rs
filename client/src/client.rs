@@ -9,8 +9,6 @@ use crate::{
 };
 
 use engine::{store::Cache, vault::RecordId};
-#[cfg(feature = "communication")]
-use stronghold_communication::{actor::CommunicationEvent, RequestId};
 
 use riker::actors::*;
 
@@ -27,7 +25,6 @@ pub enum ReadWrite {
 
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
 
-#[cfg(not(feature = "communication"))]
 #[actor(SHResults, SHRequest, InternalResults)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Client {
@@ -38,21 +35,6 @@ pub struct Client {
     heads: Vec<RecordId>,
     counters: Vec<usize>,
     store: Store,
-}
-
-#[cfg(feature = "communication")]
-#[actor(SHResults, SHRequest, InternalResults, CommunicationEvent<SHRequest, SHResults>)]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Client {
-    pub client_id: ClientId,
-    // Contains the vault ids and the record ids with their associated indexes.
-    vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
-    // Contains the Record Ids for the most recent Record in each vault.
-    heads: Vec<RecordId>,
-    counters: Vec<usize>,
-    store: Store,
-    #[serde(skip)]
-    pub current_request: Option<(RequestId, Sender)>,
 }
 
 impl Client {
@@ -70,8 +52,6 @@ impl Client {
             heads,
             counters,
             store,
-            #[cfg(feature = "communication")]
-            current_request: None,
         }
     }
 

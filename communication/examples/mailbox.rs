@@ -183,7 +183,7 @@ fn run_mailbox(matches: &ArgMatches) {
                         if let P2PEvent::RequestResponse(event) = e {
                             if let P2PReqResEvent::Req {
                                 peer_id: _,
-                                request_id: Some(request_id),
+                                request_id,
                                 request,
                             } = event.deref().clone()
                             {

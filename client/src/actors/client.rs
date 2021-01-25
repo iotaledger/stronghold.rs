@@ -19,8 +19,6 @@ use core::{
     convert::{TryFrom, TryInto},
 };
 use std::{path::PathBuf, time::Duration};
-#[cfg(feature = "communication")]
-use stronghold_communication::actor::CommunicationEvent;
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -287,22 +285,6 @@ impl Actor for Client {
 impl Receive<SHResults> for Client {
     type Msg = ClientMsg;
 
-    #[cfg(feature = "communication")]
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: SHResults, _sender: Sender) {
-        if let Some((request_id, sender)) = self.current_request.take() {
-            let cmsg = CommunicationEvent::<SHRequest, _>::Response {
-                request_id,
-                result: Ok(msg),
-            };
-            sender
-                .as_ref()
-                .expect(line_error!())
-                .try_tell(cmsg, None)
-                .expect(line_error!());
-        }
-    }
-
-    #[cfg(not(feature = "communication"))]
     fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: SHResults, _sender: Sender) {}
 }
 
@@ -517,6 +499,11 @@ impl Receive<SHRequest> for Client {
                 let payload = self.read_from_store(vid.into());
 
                 if let Some(payload) = payload {
+                    println!(
+                        "\n\n{}\n{}\n\n",
+                        sender.clone().unwrap().name(),
+                        sender.clone().unwrap().path()
+                    );
                     sender
                         .as_ref()
                         .expect(line_error!())
@@ -805,23 +792,6 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnClearCache(status), None)
                     .expect(line_error!());
             }
-        }
-    }
-}
-
-#[cfg(feature = "communication")]
-impl Receive<CommunicationEvent<SHRequest, SHResults>> for Client {
-    type Msg = ClientMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: CommunicationEvent<SHRequest, SHResults>, sender: Sender) {
-        if let CommunicationEvent::Request {
-            peer_id: _,
-            request_id,
-            request,
-        } = msg
-        {
-            self.current_request = Some((request_id.expect(line_error!()), sender));
-            self.receive(ctx, request, Some(BasicActorRef::from(ctx.myself())));
         }
     }
 }
