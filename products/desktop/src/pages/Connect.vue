@@ -22,10 +22,11 @@
           <q-tab-panel name="outgoing">
             <div class="text-h6 float-left">Outgoing Offer</div>
             <div class="text-p float-left">
-              On this page you can generate an outgoing offer QR code and text for easy scanning that will offer the receiver the ability to connect with your device.
+              On this page you can generate an outgoing offer as a QR code for easy scanning that will offer the receiver the ability to connect with your device.
             </div>
-              <q-img class="q-mb-sm float-right" src="peerid.png" height="128px" width="128px" />
-              <q-input class="q-ma-sm full-width" outlined dense v-model="thisPeerID" readonly label="This PeerID" />
+              <!--<q-img class="q-mb-sm float-right" src="peerid.png" height="158px" width="158px" / -->
+              <VueQrcode class="q-mb-sm float-right" :value="thisPeerID" :options="{ width: 158 }" />
+              <q-input class="q-ma-sm full-width" outlined dense v-model="thisPeerID" readonly label="This PeerID + Permissions" />
               <div class="full-width">
                 <q-select
                   outlined
@@ -37,7 +38,8 @@
                   label="Permissions"
                 />
               </div>
-              <q-btn color="primary" class="q-mt-sm q-mb-md float-right" :disabled="!remoteMultiaddress" @click="unlock" label="Add to Coalition" />
+              <q-btn color="primary" class="q-mt-sm q-mb-md float-right" :disabled="!remotePeerID" @click="unlock" label="Send to Coalition" />
+              <p>{{ accessVerifier }}</p>
           </q-tab-panel>
 
           <q-tab-panel name="incoming">
@@ -54,8 +56,7 @@
                   label="Permissions"
                 />
               </div>
-              <q-btn color="primary" class="q-my-md float-right" :disabled="!remoteMultiaddress" @click="unlock" label="Add to Coalition" />
-
+              <q-btn color="primary" class="q-my-md float-right" :disabled="!remotePeerID" @click="unlock" label="Invite to Coalition" />
           </q-tab-panel>
 
           <q-tab-panel name="groups">
@@ -69,24 +70,77 @@
 
 <script>
 import { promisified } from 'tauri/api/tauri'
+import VueQrcode from '@chenfengyuan/vue-qrcode'
 // import { emit, listen } from 'tauri/api/event'
+
+const accessEnum = {
+  RequestAlways: 1,
+  ReadOnly: 2,
+  ReadWrite: 4,
+  Admin: 8,
+  Verify: 16,
+  Sign: 32,
+  Sync: 64,
+  Store: 128,
+  Vault: 256,
+  Runtime: 512
+}
+
+// decompose access code
+function decodeAccess (v) {
+  let access = 0
+  const accesses = []
+  while (v !== 0) {
+    if ((v & 1) !== 0) {
+      accesses.push(1 << access)
+    }
+    ++access
+    v >>>= 1
+  }
+  const accessList = []
+
+  accesses.forEach(v => {
+    accessList.push(Object.keys(accessEnum).find(key =>
+      accessEnum[key] === v))
+  })
+
+  return accessList
+}
+
+// create accessCode
+function computeAccess (arr) {
+  let access = 0
+  const keys = Object.keys(accessEnum)
+  arr.forEach(acc => {
+    if (keys.find(k => k === acc)) {
+      access = access + accessEnum[acc]
+    }
+  })
+  return access
+}
 
 export default {
   name: 'Connect',
+  components: { VueQrcode },
   data () {
     return {
       tab: 'outgoing',
-      thisPeerID: '12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA',
       remotePeerID: '',
       path: '',
-      modelMultiple: ['Readonly'],
-      options: [
-        'Readonly', 'Readwrite', 'Sync', 'Sign', 'Admin'
-      ]
+      modelMultiple: ['RequestAlways'],
+      options: Object.keys(accessEnum)
     }
   },
   mounted () {
 
+  },
+  computed: {
+    thisPeerID () {
+      return `12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA:${computeAccess(this.modelMultiple)}`
+    },
+    accessVerifier () {
+      return decodeAccess(computeAccess(this.modelMultiple))
+    }
   },
   methods: {
     unlock () {
