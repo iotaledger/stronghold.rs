@@ -296,11 +296,10 @@ mod tests {
 
     fn harness<'b, T, F: FnOnce() -> T>(
         f: F,
-    ) -> crate::Result<Result<<T as Transferable<'b>>::Out, <T as Transferable<'b>>::Error>>
+    ) -> crate::Result<<T as Transferable<'b>>::Out>
     where
         T: for<'a> Transferable<'a>,
         <T as Transferable<'b>>::Out: PartialEq + Debug,
-        <T as Transferable<'b>>::Error: PartialEq + Debug,
     {
         crate::zone::fork(f)
     }
@@ -309,7 +308,6 @@ mod tests {
     where
         T: for<'a> Transferable<'a>,
         <T as Transferable<'b>>::Out: PartialEq + Debug,
-        <T as Transferable<'b>>::Error: PartialEq + Debug,
     {
         assert_eq!(
             harness(f),

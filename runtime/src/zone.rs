@@ -1,10 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-pub enum TransferableState<T, Error> {
-    Continue,
-    Done(T),
-    Err(Error),
+#[derive(Debug, PartialEq)]
+pub enum TransferError {
+    UnexpectedEOF,
+    SuperfluousBytes,
 }
 
 // TODO: use generic associated types when they are available
@@ -12,13 +12,13 @@ pub trait Transferable<'a>: Sized {
     type IntoIter: Iterator<Item = &'a u8>;
     fn transfer(&'a self) -> Self::IntoIter;
 
-    type Error;
     type State;
     type Out;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         st: &mut Option<Self::State>,
         bs: I,
-    ) -> TransferableState<Self::Out, Self::Error>;
+        eof: bool,
+    ) -> Option<Self::Out>;
 }
 
 impl<'a> Transferable<'a> for () {
@@ -28,16 +28,16 @@ impl<'a> Transferable<'a> for () {
         core::iter::empty()
     }
 
-    type Error = Error;
     type State = ();
-    type Out = Self;
+    type Out = Result<Self, TransferError>;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         _st: &mut Option<Self::State>,
         mut bs: I,
-    ) -> TransferableState<Self::Out, Self::Error> {
+        _eof: bool,
+    ) -> Option<Self::Out> {
         match bs.next() {
-            None => TransferableState::Done(()),
-            Some(_) => TransferableState::Err(Error::SuperfluousBytes)
+            None => Some(Ok(())),
+            Some(_) => Some(Err(TransferError::SuperfluousBytes)),
         }
     }
 }
@@ -51,17 +51,17 @@ macro_rules! transfer_slice_of_bytes {
                 self.iter()
             }
 
-            type Error = Error;
             type State = (usize, [u8; $n]);
-            type Out = Self;
+            type Out = Result<Self, TransferError>;
             fn receive<'b, I: Iterator<Item = &'b u8>>(
                 st: &mut Option<Self::State>,
                 bs: I,
-            ) -> TransferableState<Self::Out, Self::Error> {
+                eof: bool,
+            ) -> Option<Self::Out> {
                 let (i, buf) = st.get_or_insert((0, [0; $n]));
                 for b in bs {
                     if *i >= $n {
-                        return TransferableState::Err(Error::SuperfluousBytes);
+                        return Some(Err(TransferError::SuperfluousBytes));
                     }
 
                     buf[*i] = *b;
@@ -69,13 +69,15 @@ macro_rules! transfer_slice_of_bytes {
                 }
 
                 if *i == $n {
-                    TransferableState::Done(*buf)
+                    Some(Ok(*buf))
+                } else if eof {
+                    Some(Err(TransferError::UnexpectedEOF))
                 } else {
-                    TransferableState::Continue
+                    None
                 }
             }
         }
-    }
+    };
 }
 
 transfer_slice_of_bytes!(1);
@@ -102,17 +104,17 @@ macro_rules! transfer_primitive {
                 }
             }
 
-            type Error = Error;
             type State = (usize, [u8; mem::size_of::<Self>()]);
-            type Out = Self;
+            type Out = Result<Self, TransferError>;
             fn receive<'b, I: Iterator<Item = &'b u8>>(
                 st: &mut Option<Self::State>,
                 bs: I,
-            ) -> TransferableState<Self::Out, Self::Error> {
+                eof: bool,
+            ) -> Option<Self::Out> {
                 let (i, buf) = st.get_or_insert((0, [0; mem::size_of::<Self>()]));
                 for b in bs {
                     if *i >= mem::size_of::<Self>() {
-                        return TransferableState::Err(Error::SuperfluousBytes);
+                        return Some(Err(TransferError::SuperfluousBytes));
                     }
 
                     buf[*i] = *b;
@@ -120,9 +122,11 @@ macro_rules! transfer_primitive {
                 }
 
                 if *i == mem::size_of::<Self>() {
-                    TransferableState::Done(unsafe { *(buf as *const _ as *const Self).as_ref().unwrap() })
+                    Some(Ok(unsafe { *(buf as *const _ as *const Self).as_ref().unwrap() }))
+                } else if eof {
+                    Some(Err(TransferError::UnexpectedEOF))
                 } else {
-                    TransferableState::Continue
+                    None
                 }
             }
         }
@@ -176,7 +180,7 @@ mod common_tests {
                 extern crate alloc;
                 use alloc::boxed::Box;
 
-                let b = Box::new(7);
+                let b = Box::new(7u32);
                 *b
             })?,
             Ok(7)

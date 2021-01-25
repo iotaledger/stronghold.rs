@@ -5,8 +5,6 @@
 pub enum Error {
     UnexpectedExitCode { exit_code: libc::c_int },
     Signal { signo: libc::c_int },
-    UnexpectedEOF,
-    SuperfluousBytes,
 }
 
 impl Error {
@@ -47,7 +45,7 @@ impl ZoneSpec {
 }
 
 impl ZoneSpec {
-    pub fn run<'b, F, T>(&self, f: F) -> crate::Result<Result<<T as Transferable<'b>>::Out, <T as Transferable<'b>>::Error>>
+    pub fn run<'b, F, T>(&self, f: F) -> crate::Result<<T as Transferable<'b>>::Out>
     where
         F: FnOnce() -> T,
         T: for<'a> Transferable<'a>,
