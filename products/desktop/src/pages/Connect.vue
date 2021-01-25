@@ -26,7 +26,7 @@
             </div>
               <!--<q-img class="q-mb-sm float-right" src="peerid.png" height="158px" width="158px" / -->
               <VueQrcode class="q-mb-sm float-right" :value="thisPeerID" :options="{ width: 158 }" />
-              <q-input class="q-ma-sm full-width" outlined dense v-model="thisPeerID" readonly label="This PeerID + Permissions" />
+              <q-input class="q-ma-sm full-width" outlined dense :value="thisPeerID" readonly label="This PeerID + Permissions" />
               <div class="full-width">
                 <q-select
                   outlined
@@ -38,8 +38,8 @@
                   label="Permissions"
                 />
               </div>
-              <q-btn color="primary" class="q-mt-sm q-mb-md float-right" :disabled="!remotePeerID" @click="unlock" label="Send to Coalition" />
-              <p>{{ accessVerifier }}</p>
+              <q-btn color="primary" class="q-mt-sm q-mb-md float-right" :disabled="!remotePeerID" @click="send" label="Send to Coalition" />
+              <!--<p>Enum debug: {{ accessVerifier }}</p>-->
           </q-tab-panel>
 
           <q-tab-panel name="incoming">
@@ -56,7 +56,7 @@
                   label="Permissions"
                 />
               </div>
-              <q-btn color="primary" class="q-my-md float-right" :disabled="!remotePeerID" @click="unlock" label="Invite to Coalition" />
+              <q-btn color="primary" class="q-my-md float-right" :disabled="!remotePeerID" @click="send" label="Invite to Coalition" />
           </q-tab-panel>
 
           <q-tab-panel name="groups">
@@ -70,6 +70,7 @@
 
 <script>
 import { promisified } from 'tauri/api/tauri'
+import { mapState } from 'vuex'
 import VueQrcode from '@chenfengyuan/vue-qrcode'
 // import { emit, listen } from 'tauri/api/event'
 
@@ -136,16 +137,19 @@ export default {
   },
   computed: {
     thisPeerID () {
-      return `12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA:${computeAccess(this.modelMultiple)}`
+      return `${this.$store.state.lockdown.peers.me}:${computeAccess(this.modelMultiple)}`
     },
     accessVerifier () {
       return decodeAccess(computeAccess(this.modelMultiple))
-    }
+    },
+    ...mapState('lockdown', {
+      myPeerID (state) { return state.myPeerID }
+    })
   },
   methods: {
-    unlock () {
+    send () {
       promisified({
-        cmd: 'unlock',
+        cmd: 'send',
         payload: {
           pwd: this.pwd,
           path: this.path
@@ -153,10 +157,11 @@ export default {
       }).then(response => {
         // do something with the Ok() response
         const { message } = response
-        this.$q.notify(`${message}`)
+        this.myPeerId = message
+        // this.$q.notify(`${message}`)
       }).catch(error => {
         // do something with the Err() response string
-        this.$q.notify(error)
+        this.$q.notify('error:', error)
       })
     }
   }

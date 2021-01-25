@@ -36,7 +36,7 @@
           dark
           :style="`height: ${$q.screen.height}px; width: 300px;border-right:solid 1px #333`"
         >
-          <q-item @click="lockCallback" clickable class="cursor-pointer bg-grey-10" style="width: 300px" dark>
+          <q-item v-if="locked" @click="lockCallback" clickable class="cursor-pointer bg-grey-10" style="width: 300px" dark>
             <q-item-section avatar class="sidebar-item" style="height:84px">
               <lock-timer></lock-timer>
             </q-item-section>
@@ -131,7 +131,7 @@ import LockTimer from 'components/LockTimer.vue'
 import { promisified } from 'tauri/api/tauri'
 import { save } from 'tauri/api/dialog'
 
-import { mapState, mapActions } from 'vuex'
+import { mapState, mapActions, mapMutations } from 'vuex'
 const _package = require('../../package.json')
 const actionLinks = [
   {
@@ -222,10 +222,12 @@ export default {
       loading: 'configuring',
       title: 'title',
       locked (state) { return state.lock.enabled }
+      // myPeerID (state) { return state.peers.me }
     })
   },
   methods: {
-    ...mapActions('lockdown', ['lockdown']),
+    ...mapActions('lockdown', ['lock', 'myPeerID']),
+    ...mapMutations('lockdown', ['setLocalPeerID']),
     async lockCallback () {
       if (!this.locked) {
         await this.lockdown()
@@ -246,10 +248,10 @@ export default {
       }).then(response => {
         // do something with the Ok() response
         const { message } = response
-        this.$q.notify(`${message}`)
+        this.setLocalPeerID(message) // this.myPeerID(message)
       }).catch(error => {
         // do something with the Err() response string
-        this.$q.notify(error)
+        this.$q.notify(`error: ${error}`)
       })
     }
   }

@@ -18,6 +18,10 @@ export default function () {
       value: Math.round(timer / delta),
       events: null
     },
+    peers: {
+      me: 'not registered',
+      groups: []
+    },
     locked: true
   }
 }

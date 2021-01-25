@@ -24,6 +24,10 @@ export function lockEvent (state, value) {
   state.lock.event = value
 }
 
-export function router (state, router) {
-  state.router = router
+export function router (state, value) {
+  state.router = value
+}
+
+export function setLocalPeerID (state, value) {
+  state.peers.me = value
 }

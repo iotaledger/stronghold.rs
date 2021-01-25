@@ -85,7 +85,7 @@ fn main() {
               _webview,
               move || {
                 let response = Response {
-                  message: "Response from Rust.",
+                  message: "12D3KooWLyEaoayajvfJktzjvvNCe9XLxNFMmPajsvrHeMkgajAA",
                 };
                 Ok(response)
               },
