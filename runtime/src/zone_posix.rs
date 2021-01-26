@@ -9,9 +9,48 @@ where
     T: for <'a> Transferable<'a>,
 {
     unsafe {
+        let start = now()?;
         let (pid, fd) = spawn_child(f)?;
-        wait_child::<T>(pid, fd)
+        wait_child::<T>(pid, fd, &start)
     }
+}
+
+unsafe fn now() -> crate::Result<libc::timespec> {
+    let mut start = mem::MaybeUninit::uninit();
+    let r = libc::clock_gettime(libc::CLOCK_MONOTONIC, start.as_mut_ptr());
+    if r == 0 {
+        Ok(start.assume_init())
+    } else {
+        Err(crate::Error::os("clock_gettime(CLOCK_MONOTONIC)"))
+    }
+}
+
+fn between(a: &libc::timespec, b: &libc::timespec) -> libc::timespec {
+    if a.tv_sec < b.tv_sec {
+        libc::timespec {
+            tv_sec: b.tv_sec - a.tv_sec,
+            tv_nsec: (1_000_000_000 - a.tv_nsec) + b.tv_nsec,
+        }
+    } else if a.tv_sec > b.tv_sec {
+        libc::timespec {
+            tv_sec: a.tv_sec - b.tv_sec,
+            tv_nsec: (1_000_000_000 - b.tv_nsec) + a.tv_nsec,
+        }
+    } else if a.tv_nsec < b.tv_nsec {
+        libc::timespec {
+            tv_sec: 0,
+            tv_nsec: b.tv_nsec - a.tv_nsec,
+        }
+    } else {
+        libc::timespec {
+            tv_sec: 0,
+            tv_nsec: a.tv_nsec - b.tv_nsec,
+        }
+    }
+}
+
+fn lt(a: &libc::timespec, b: &libc::timespec) -> bool {
+    a.tv_sec < b.tv_sec || (a.tv_sec == b.tv_sec && a.tv_nsec < b.tv_nsec)
 }
 
 unsafe fn spawn_child<'b, F, T>(f: F) -> crate::Result<(libc::pid_t, libc::c_int)>
@@ -58,8 +97,6 @@ where
         libc::_exit(1)
     }
 
-    restore_test_panic_hook();
-
     let t = f();
 
     for b in t.transfer() {
@@ -73,136 +110,131 @@ where
     libc::_exit(0)
 }
 
-unsafe fn wait_child<'b, T>(pid: libc::pid_t, fd: libc::c_int) -> crate::Result<<T as Transferable<'b>>::Out>
+const SOFT_TIMEOUT_LIMIT: libc::timespec = libc::timespec {
+    tv_sec: 3,
+    tv_nsec: 0,
+};
+const SOFT_TIMEOUT_SIGNAL: libc::c_int = libc::SIGINT;
+
+const HARD_TIMEOUT_LIMIT: libc::timespec = libc::timespec {
+    tv_sec: 4,
+    tv_nsec: 0,
+};
+const HARD_TIMEOUT_SIGNAL: libc::c_int = libc::SIGKILL;
+
+unsafe fn wait_child<'b, T>(pid: libc::pid_t, fd: libc::c_int, start: &libc::timespec) -> crate::Result<<T as Transferable<'b>>::Out>
 where
     T: for <'a> Transferable<'a>,
 {
-    let mut ss = mem::MaybeUninit::uninit();
-    if libc::sigemptyset(ss.as_mut_ptr()) != 0 {
-        return Err(crate::Error::os("sigemptyset"));
-    }
-    if libc::sigaddset(ss.as_mut_ptr(), libc::SIGCHLD) != 0 {
-        return Err(crate::Error::os("sigaddset"));
-    }
-
-    let mut oss = mem::MaybeUninit::uninit();
-    let r = libc::pthread_sigmask(libc::SIG_BLOCK, ss.as_ptr(), oss.as_mut_ptr());
-    if r == -1 {
-        return Err(crate::Error::os("pthread_sigmask(SIG_BLOCK)"));
-    }
-
-    let sfd = libc::signalfd(-1, ss.as_ptr(), libc::SFD_NONBLOCK);
-    if sfd < 0 {
-        return Err(crate::Error::os("signalfd"));
-    }
-
     set_non_blocking(fd)?;
 
-    let mut fds = [
-        libc::pollfd { fd, events: libc::POLLIN, revents: 0 },
-        libc::pollfd { fd: sfd, events: libc::POLLIN, revents: 0 },
-    ];
-
     let mut wait = None;
+    let mut hup = false;
     let mut st: Option<T::State> = None;
     let mut tst = T::receive(&mut st, core::iter::empty(), false);
 
     loop {
         match wait {
-            Some(Err(_)) => break,
-            Some(Ok(())) => if tst.is_some() {
-                break
+            Some(Err(e)) => {
+                let r = libc::close(fd);
+                if r != 0 {
+                    return Err(crate::Error::os("close"));
+                }
+
+                return Err(e);
             }
-            None => (),
+            Some(Ok(())) => if let Some(o) = tst {
+                let r = libc::close(fd);
+                if r != 0 {
+                    return Err(crate::Error::os("close"));
+                }
+
+                return Ok(o);
+            } else if hup {
+                // NB I suspect this can yield false negatives in the scenario that the process is
+                // succesfully waited for, the pipe is hung up but still has buffered data
+                if let Some(o) = T::receive(&mut st, core::iter::empty(), true) {
+                    let r = libc::close(fd);
+                    if r != 0 {
+                        return Err(crate::Error::os("close"));
+                    }
+
+                    return Ok(o);
+                }
+            }
+            None => wait = attempt_wait_child(pid)?,
         }
 
-        let r = libc::poll(fds.as_mut_ptr(), fds.len() as u64, -1);
+        let mut fds = [
+            libc::pollfd { fd, events: libc::POLLIN, revents: 0 },
+        ];
+
+        let r = libc::poll(fds.as_mut_ptr(), if hup { 0 } else { 1 }, 100);
         if r == -1 {
             return Err(crate::Error::os("poll"));
         }
         if r == 0 {
-            return Err(crate::Error::os("poll timed out unexpectedly"));
+            let n = now()?;
+
+            if !lt(&between(start, &n), &SOFT_TIMEOUT_LIMIT) {
+                if wait.is_none() {
+                    libc::kill(pid, SOFT_TIMEOUT_SIGNAL);
+                }
+            }
+
+            let rt = between(start, &n);
+            if !lt(&rt, &HARD_TIMEOUT_LIMIT) {
+                let r = libc::close(fd);
+                if r != 0 {
+                    return Err(crate::Error::os("close"));
+                }
+
+                if wait.is_none() {
+                    libc::kill(pid, HARD_TIMEOUT_SIGNAL);
+                }
+
+                return Err(Error::timeout(&rt));
+            }
         }
 
         if (fds[0].revents & libc::POLLHUP) > 0 {
-            // TODO: eof = true; ?
+            hup = true;
+            fds[0].revents &= !libc::POLLHUP;
         }
 
         if (fds[0].revents & libc::POLLIN) > 0 {
             tst = receive::<T>(&mut st, fds[0].fd)?;
+            fds[0].revents &= !libc::POLLIN;
         }
 
-        if (fds[1].revents & libc::POLLIN) > 0 {
-            loop {
-                let mut si: mem::MaybeUninit<libc::signalfd_siginfo> = mem::MaybeUninit::uninit();
-                let r = libc::read(fds[1].fd, si.as_mut_ptr() as *mut libc::c_void, mem::size_of::<libc::signalfd_siginfo>());
-                let errno = *libc::__errno_location();
-                if r < 0 && (errno == libc::EAGAIN || errno == libc::EWOULDBLOCK ) {
-                    break;
-                }
-                if r < 0 {
-                    return Err(crate::Error::os("read signalfd"));
-                } else if r != mem::size_of::<libc::signalfd_siginfo>() as isize {
-                    return Err(crate::Error::unreachable("incorrect amount of bytes read from a signalfd"));
-                }
-                let si = si.assume_init();
+        if fds[0].revents != 0 {
+            todo!("unhandled events: {}", fds[0].revents)
+        }
+    }
+}
 
-                if si.ssi_signo != libc::SIGCHLD as u32 {
-                    todo!("unexpected signal");
-                }
-
-                if si.ssi_pid != pid as u32 {
-                    //continue;
-                    todo!("unexpected pid: {} != {}", si.ssi_pid, pid);
-                }
-
-                let mut st = 0;
-                let r = libc::waitpid(pid, &mut st, libc::WNOHANG);
-                if r == 0 {
-                    todo!("unexpected hanging waitpid acll");
-                }
-                if r < 0 {
-                    return Err(crate::Error::os("waitpid"));
-                }
-                if libc::WIFEXITED(st) {
-                    let ec = libc::WEXITSTATUS(st);
-                    if ec == 0 {
-                        wait = Some(Ok(()));
-                    } else {
-                        wait = Some(Err(Error::unexpected_exit_code(ec)));
-                    }
-                } else if libc::WIFSIGNALED(st) {
-                    wait = Some(Err(Error::signal(libc::WTERMSIG(st))));
-                } else {
-                    return Err(crate::Error::unreachable(
-                        "waitpid returned but: !WIFEXITED(st) && !WIFSIGNALED(st)",
-                    ));
-                }
+unsafe fn attempt_wait_child(pid: libc::pid_t) -> crate::Result<Option<crate::Result<()>>> {
+    let mut st = 0;
+    let r = libc::waitpid(pid, &mut st, libc::WNOHANG);
+    if r < 0 {
+        Err(crate::Error::os("waitpid"))
+    } else if r == 0 {
+        Ok(None)
+    } else {
+        if libc::WIFEXITED(st) {
+            let ec = libc::WEXITSTATUS(st);
+            if ec == 0 {
+                Ok(Some(Ok(())))
+            } else {
+                Ok(Some(Err(Error::unexpected_exit_code(ec))))
             }
+        } else if libc::WIFSIGNALED(st) {
+            Ok(Some(Err(Error::signal(libc::WTERMSIG(st)))))
+        } else {
+            Err(crate::Error::unreachable(
+                    "waitpid returned but: !WIFEXITED(st) && !WIFSIGNALED(st)"))
         }
     }
-
-    let r = libc::close(fd);
-    if r != 0 {
-        return Err(crate::Error::os("close"));
-    }
-
-    let r = libc::close(sfd);
-    if r != 0 {
-        return Err(crate::Error::os("close"));
-    }
-
-    let r = libc::pthread_sigmask(libc::SIG_SETMASK, oss.as_ptr(), core::ptr::null_mut());
-    if r == -1 {
-        return Err(crate::Error::os("pthread_sigmask(SIG_SETMASK)"));
-    }
-
-    match wait {
-        Some(r) => r?,
-        None => return Err(crate::Error::unreachable("wait == None")),
-    }
-
-    Ok(tst.unwrap())
 }
 
 unsafe fn set_non_blocking(fd: libc::c_int) -> crate::Result<()> {
@@ -217,16 +249,6 @@ unsafe fn set_non_blocking(fd: libc::c_int) -> crate::Result<()> {
     } else {
         Err(crate::Error::os("fcntl(F_SETFL)"))
     }
-}
-
-#[cfg(test)]
-unsafe fn restore_test_panic_hook() {
-    extern crate std;
-    std::panic::set_hook(std::boxed::Box::new(|_| libc::_exit(101)));
-}
-
-#[cfg(not(test))]
-unsafe fn restore_test_panic_hook() {
 }
 
 const RECEIVE_BUFFER: usize = 256;
@@ -255,7 +277,7 @@ where
 #[cfg(test)]
 mod fork_tests {
     use super::*;
-    use rand::{rngs::OsRng, RngCore};
+    use rand::{rngs::StdRng, RngCore, SeedableRng};
 
     #[test]
     fn pure() -> crate::Result<()> {
@@ -267,29 +289,33 @@ mod fork_tests {
 
     #[test]
     fn pure_buffer() -> crate::Result<()> {
+        let mut rng = StdRng::from_entropy();
+
         let mut bs = [0u8; RECEIVE_BUFFER/2];
-        OsRng.fill_bytes(&mut bs);
+        rng.fill_bytes(&mut bs);
         assert_eq!(fork(|| bs)?, Ok(bs));
 
         let mut bs = [0u8; RECEIVE_BUFFER];
-        OsRng.fill_bytes(&mut bs);
+        rng.fill_bytes(&mut bs);
         assert_eq!(fork(|| bs)?, Ok(bs));
 
         let mut bs = [0u8; RECEIVE_BUFFER*2];
-        OsRng.fill_bytes(&mut bs);
+        rng.fill_bytes(&mut bs);
         assert_eq!(fork(|| bs)?, Ok(bs));
 
         Ok(())
     }
 
-    //#[test]
-    //#[ignore = "TODO: read and waitpid non-blocking"]
-    //fn pure_large_buffer() -> crate::Result<()> {
-        //let mut bs = [0u8; 1024*128];
-        //OsRng.fill_bytes(&mut bs);
-        //assert_eq!(fork(|| bs)?, bs);
-        //Ok(())
-    //}
+    #[test]
+    #[cfg(feature = "stdalloc")]
+    fn vec() -> crate::Result<()> {
+        let mut bs = vec![0; 10*1024*1024];
+        let mut rng = StdRng::from_entropy();
+        rng.fill_bytes(&mut bs);
+        assert_eq!(fork(|| bs.as_slice())?, Ok(bs));
+
+        Ok(())
+    }
 
     #[test]
     fn unexpected_exit_code() -> crate::Result<()> {
@@ -304,7 +330,6 @@ mod fork_tests {
 
     #[test]
     #[allow(unreachable_code)]
-    #[ignore]
     fn unexpected_eof_when_nothing_is_written() -> crate::Result<()> {
         assert_eq!(
             fork(|| unsafe {
@@ -318,7 +343,6 @@ mod fork_tests {
 
     #[test]
     #[allow(unreachable_code)]
-    #[ignore]
     fn unexpected_eof_some_bytes_written() -> crate::Result<()> {
         assert_eq!(
             fork(|| unsafe {
@@ -372,9 +396,33 @@ mod fork_tests {
     }
 
     #[test]
+    #[ignore = "figure out how we can combine/override the test runners panic handler"]
     fn panic() -> crate::Result<()> {
-        assert_eq!(fork(|| panic!("oopsie")), Err(Error::unexpected_exit_code(101)));
+        assert_eq!(fork(|| panic!("oopsie")), Err(Error::unexpected_exit_code(102)));
         Ok(())
+    }
+
+    #[test]
+    fn soft_timeout() {
+        assert_eq!(
+            fork(|| unsafe { libc::sleep(SOFT_TIMEOUT_LIMIT.tv_sec as u32 * 2) }),
+            Err(Error::signal(SOFT_TIMEOUT_SIGNAL))
+        );
+    }
+
+    #[test]
+    fn hard_timeout() -> crate::Result<()> {
+        match fork(|| unsafe {
+            let mut ss = mem::MaybeUninit::uninit();
+            libc::sigemptyset(ss.as_mut_ptr());
+            libc::sigaddset(ss.as_mut_ptr(), SOFT_TIMEOUT_SIGNAL);
+            libc::sigprocmask(libc::SIG_BLOCK, ss.as_ptr(), core::ptr::null_mut());
+
+            libc::sleep(HARD_TIMEOUT_LIMIT.tv_sec as u32 * 2)
+        }) {
+            Err(crate::Error::ZoneError(Error::Timeout { .. })) => Ok(()),
+            r => panic!("unexpected return value: {:?}", r)
+        }
     }
 }
 

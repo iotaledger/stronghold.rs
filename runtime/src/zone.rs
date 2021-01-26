@@ -8,7 +8,7 @@ pub enum TransferError {
 }
 
 // TODO: use generic associated types when they are available
-pub trait Transferable<'a>: Sized {
+pub trait Transferable<'a> {
     type IntoIter: Iterator<Item = &'a u8>;
     fn transfer(&'a self) -> Self::IntoIter;
 
@@ -136,9 +136,70 @@ macro_rules! transfer_primitive {
 transfer_primitive!(u32);
 transfer_primitive!(u8);
 transfer_primitive!(i32);
+transfer_primitive!(usize);
 
 // TODO: impl<'a> Transferable<'a> for str { type Out = String }
-// TODO: impl<'a> Transferable<'a> for [u8] { type Out = Vec<u8>; }
+
+#[cfg(feature = "stdalloc")]
+pub struct LengthPrefix<'a> {
+    l: usize,
+    bs: &'a [u8],
+    i: usize,
+}
+
+#[cfg(feature = "stdalloc")]
+impl<'a> Iterator for LengthPrefix<'a> {
+    type Item = &'a u8;
+    fn next(&mut self) -> Option<&'a u8> {
+        let r = if self.i < core::mem::size_of::<usize>() {
+            let p = &self.l as *const usize as *const u8;
+            unsafe { p.add(self.i).as_ref() }
+        } else {
+            self.bs.get(self.i - core::mem::size_of::<usize>())
+        };
+        self.i += 1;
+        r
+    }
+}
+
+#[cfg(feature = "stdalloc")]
+impl<'a> Transferable<'a> for &[u8] {
+    type IntoIter = LengthPrefix<'a>;
+    fn transfer(&'a self) -> Self::IntoIter {
+        LengthPrefix { l: self.len(), bs: self, i: 0 }
+    }
+
+    type State = (Option<usize>, std::vec::Vec<u8>);
+    type Out = Result<std::vec::Vec<u8>, TransferError>;
+    fn receive<'b, I: Iterator<Item = &'b u8>>(
+        st: &mut Option<Self::State>,
+        bs: I,
+        _eof: bool, // TODO: add tests for eof and superfluous bytes handling
+    ) -> Option<Self::Out> {
+        let (i, buf) = st.get_or_insert((None, std::vec::Vec::with_capacity(mem::size_of::<usize>())));
+        buf.extend(bs);
+
+        if i.is_none() {
+            if buf.len() >= mem::size_of::<usize>() {
+                *i = Some(unsafe { *(buf[..mem::size_of::<usize>()].as_ptr() as *const usize).as_ref().unwrap() });
+                *buf = buf.split_off(mem::size_of::<usize>());
+            }
+        }
+
+        if let Some(l) = i {
+            if buf.capacity() < *l {
+                buf.reserve(*l - buf.capacity());
+            }
+            if buf.len() == *l {
+                Some(Ok(buf.clone()))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
 
 #[cfg(unix)]
 include!("zone_posix.rs");
