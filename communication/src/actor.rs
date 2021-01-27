@@ -6,10 +6,7 @@ pub mod message;
 mod swarm_task;
 use crate::behaviour::MessageEvent;
 use async_std::task;
-use core::{
-    marker::PhantomData,
-    task::{Context as TaskContext, Poll},
-};
+use core::task::{Context as TaskContext, Poll};
 use futures::{
     channel::mpsc::{unbounded, UnboundedSender},
     future,
@@ -44,51 +41,48 @@ use swarm_task::SwarmTask;
 ///
 /// let local_keys = Keypair::generate_ed25519();
 /// let sys = ActorSystem::new().unwrap();
-/// sys.actor_of_args::<CommunicationActor<Request, Response>, _>("communication-actor", (local_keys, sys.clone()));
+/// sys.actor_of_args::<CommunicationActor<Request, Response, Request>, _>(
+///     "communication-actor",
+///     (local_keys, sys.clone()),
+/// );
 /// ```
-pub struct CommunicationActor<T: MessageEvent, U: MessageEvent> {
-    keypair: Option<Keypair>,
-    sys: Option<ActorSystem>,
-    swarm_tx: Option<UnboundedSender<(CommunicationRequest<T>, Sender)>>,
+pub struct CommunicationActor<T: MessageEvent, U: MessageEvent, V: From<T> + Message> {
+    swarm_tx: UnboundedSender<(CommunicationRequest<T, V>, Sender)>,
+    swarm_task: Option<SwarmTask<T, U, V>>,
     poll_swarm_handle: Option<future::RemoteHandle<()>>,
-    marker: PhantomData<U>,
 }
 
-impl<T: MessageEvent, U: MessageEvent> ActorFactoryArgs<(Keypair, ActorSystem)> for CommunicationActor<T, U> {
+impl<T: MessageEvent, U: MessageEvent, V: From<T> + Message> ActorFactoryArgs<(Keypair, ActorSystem)>
+    for CommunicationActor<T, U, V>
+{
     fn create_args((keypair, sys): (Keypair, ActorSystem)) -> Self {
+        let (swarm_tx, swarm_rx) = unbounded();
+        let swarm_task = SwarmTask::<T, U, V>::new(keypair, sys, swarm_rx);
         // Channel to communicate from the CommunicationActor with the swarm task.
         Self {
-            keypair: Some(keypair),
-            sys: Some(sys),
-            swarm_tx: None,
+            swarm_tx,
+            swarm_task: Some(swarm_task),
             poll_swarm_handle: None,
-            marker: PhantomData,
         }
     }
 }
 
-impl<T: MessageEvent, U: MessageEvent> Actor for CommunicationActor<T, U> {
-    type Msg = CommunicationEvent<T, U>;
+impl<T: MessageEvent, U: MessageEvent, V: From<T> + Message> Actor for CommunicationActor<T, U, V> {
+    type Msg = CommunicationEvent<T, U, V>;
 
-    // Start a separate task to manage the communication from and to the swarm
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
-        let (swarm_tx, swarm_rx) = unbounded();
-        self.swarm_tx = Some(swarm_tx);
-        let swarm_task = SwarmTask::<T, U>::new(self.keypair.take().unwrap(), self.sys.take().unwrap(), swarm_rx);
-
         // Kick off the swarm communication in it's own task.
-        self.poll_swarm_handle = ctx.run(swarm_task.poll_swarm()).ok()
+        self.poll_swarm_handle = ctx.run(self.swarm_task.take().unwrap().poll_swarm()).ok();
     }
 
     // Forward the received events to the task that is managing the swarm communication.
     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         if let CommunicationEvent::Request(req) = msg {
-            let tx = &mut self.swarm_tx.as_mut().unwrap();
-            task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
-                match tx.poll_ready(tcx) {
-                    Poll::Ready(Ok(())) => Poll::Ready(tx.start_send((req.clone(), sender.clone()))),
+            task::block_on(future::poll_fn(move |tx: &mut TaskContext<'_>| {
+                match self.swarm_tx.poll_ready(tx) {
+                    Poll::Ready(Ok(())) => Poll::Ready(self.swarm_tx.start_send((req.clone(), sender.clone()))),
                     Poll::Ready(err) => Poll::Ready(err),
-                    _ => Poll::Pending,
+                    Poll::Pending => Poll::Pending,
                 }
             }))
             .unwrap();

@@ -11,21 +11,21 @@ use futures::{
     FutureExt,
 };
 
-pub fn ask_selection<Msg, Ctx, R>(ctx: &Ctx, selection: &ActorSelection, msg: Msg) -> Option<RemoteHandle<R>>
+pub fn ask<Msg, Ctx, R, T>(ctx: &Ctx, receiver: &T, msg: Msg) -> RemoteHandle<R>
 where
     Msg: Message,
     R: Message,
     Ctx: TmpActorRefFactory + Run,
+    T: Tell<Msg>,
 {
     let (tx, rx) = channel::<R>();
     let tx = Arc::new(Mutex::new(Some(tx)));
 
     let props = Props::new_from_args(Box::new(AskActor::boxed), tx);
     let actor = ctx.tmp_actor_of_props(props).unwrap();
-    // TODO handle error
-    selection.try_tell(msg, Some(actor.into()));
+    receiver.tell(msg, Some(actor.into()));
 
-    Some(ctx.run(rx.map(|r| r.unwrap())).unwrap())
+    ctx.run(rx.map(|r| r.unwrap())).unwrap()
 }
 
 struct AskActor<Msg> {
