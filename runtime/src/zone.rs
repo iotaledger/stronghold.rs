@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TransferError {
     UnexpectedEOF,
     SuperfluousBytes,
@@ -16,7 +16,7 @@ pub trait Transferable<'a> {
     type Out;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         st: &mut Option<Self::State>,
-        bs: I,
+        bs: &mut I,
         eof: bool,
     ) -> Option<Self::Out>;
 }
@@ -32,12 +32,114 @@ impl<'a> Transferable<'a> for () {
     type Out = Result<Self, TransferError>;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         _st: &mut Option<Self::State>,
-        mut bs: I,
+        bs: &mut I,
         _eof: bool,
     ) -> Option<Self::Out> {
         match bs.next() {
             None => Some(Ok(())),
             Some(_) => Some(Err(TransferError::SuperfluousBytes)),
+        }
+    }
+}
+
+impl<'a, A, Ao, B, Bo, E> Transferable<'a> for (A, B)
+where A: Transferable<'a, Out = Result<Ao, E>>,
+      Ao: Copy,
+      B: Transferable<'a, Out = Result<Bo, E>>,
+      Bo: Copy,
+{
+    type IntoIter = core::iter::Chain<A::IntoIter, B::IntoIter>;
+    fn transfer(&'a self) -> Self::IntoIter {
+        self.0.transfer().chain(self.1.transfer())
+    }
+
+    type State = (Result<Ao, Option<A::State>>, Result<Bo, Option<B::State>>);
+    type Out = Result<(Ao, Bo), E>;
+    fn receive<'b, I: Iterator<Item = &'b u8>>(
+        st: &mut Option<Self::State>,
+        bs: &mut I,
+        eof: bool,
+    ) -> Option<Self::Out> {
+        let (a, b) = st.get_or_insert((Err(None), Err(None)));
+
+        if let Err(ast) = a {
+            match A::receive(ast, bs, eof) {
+                Some(Ok(ao)) => *a = Ok(ao),
+                Some(Err(e)) => return Some(Err(e)),
+                None => (),
+            }
+        }
+
+        if a.is_ok() {
+            if let Err(bst) = b {
+                match B::receive(bst, bs, eof) {
+                    Some(Ok(bo)) => *b = Ok(bo),
+                    Some(Err(e)) => return Some(Err(e)),
+                    None => (),
+                }
+            }
+        }
+
+        match (a, b) {
+            (Ok(ao), Ok(bo)) => Some(Ok((*ao, *bo))),
+            _ => None,
+        }
+    }
+}
+
+impl<'a, A, Ao, B, Bo, C, Co, E> Transferable<'a> for (A, B, C)
+where A: Transferable<'a, Out = Result<Ao, E>>,
+      Ao: Clone,
+      B: Transferable<'a, Out = Result<Bo, E>>,
+      Bo: Clone,
+      C: Transferable<'a, Out = Result<Co, E>>,
+      Co: Clone,
+{
+    type IntoIter = core::iter::Chain<core::iter::Chain<A::IntoIter, B::IntoIter>, C::IntoIter>;
+    fn transfer(&'a self) -> Self::IntoIter {
+        self.0.transfer().chain(self.1.transfer()).chain(self.2.transfer())
+    }
+
+    type State = (Result<Ao, Option<A::State>>, Result<Bo, Option<B::State>>, Result<Co, Option<C::State>>);
+    type Out = Result<(Ao, Bo, Co), E>;
+    fn receive<'b, I: Iterator<Item = &'b u8>>(
+        st: &mut Option<Self::State>,
+        bs: &mut I,
+        eof: bool,
+    ) -> Option<Self::Out> {
+        let (a, b, c) = st.get_or_insert((Err(None), Err(None), Err(None)));
+
+        if let Err(ast) = a {
+            match A::receive(ast, bs, eof) {
+                Some(Ok(ao)) => *a = Ok(ao),
+                Some(Err(e)) => return Some(Err(e)),
+                None => (),
+            }
+        }
+
+        if a.is_ok() {
+            if let Err(bst) = b {
+                match B::receive(bst, bs, eof) {
+                    Some(Ok(bo)) => *b = Ok(bo),
+                    Some(Err(e)) => return Some(Err(e)),
+                    None => (),
+                }
+            }
+             
+            if c.is_ok() {
+                if let Err(cst) = c {
+                    match C::receive(cst, bs, eof) {
+                        Some(Ok(co)) => *c = Ok(co),
+                        Some(Err(e)) => return Some(Err(e)),
+                        None => (),
+                    }
+                }
+            }
+        }
+
+        match (a, b, c) {
+            (Ok(ao), Ok(bo), Ok(co)) => Some(Ok((ao.clone(), bo.clone(), co.clone()))),
+            _ => None,
         }
     }
 }
@@ -55,17 +157,18 @@ macro_rules! transfer_slice_of_bytes {
             type Out = Result<Self, TransferError>;
             fn receive<'b, I: Iterator<Item = &'b u8>>(
                 st: &mut Option<Self::State>,
-                bs: I,
+                bs: &mut I,
                 eof: bool,
             ) -> Option<Self::Out> {
                 let (i, buf) = st.get_or_insert((0, [0; $n]));
-                for b in bs {
-                    if *i >= $n {
-                        return Some(Err(TransferError::SuperfluousBytes));
-                    }
 
-                    buf[*i] = *b;
-                    *i += 1;
+                while *i < $n {
+                    if let Some(b) = bs.next() {
+                        buf[*i] = *b;
+                        *i += 1;
+                    } else {
+                        break
+                    }
                 }
 
                 if *i == $n {
@@ -108,17 +211,18 @@ macro_rules! transfer_primitive {
             type Out = Result<Self, TransferError>;
             fn receive<'b, I: Iterator<Item = &'b u8>>(
                 st: &mut Option<Self::State>,
-                bs: I,
+                bs: &mut I,
                 eof: bool,
             ) -> Option<Self::Out> {
                 let (i, buf) = st.get_or_insert((0, [0; mem::size_of::<Self>()]));
-                for b in bs {
-                    if *i >= mem::size_of::<Self>() {
-                        return Some(Err(TransferError::SuperfluousBytes));
-                    }
 
-                    buf[*i] = *b;
-                    *i += 1;
+                while *i < mem::size_of::<Self>() {
+                    if let Some(b) = bs.next() {
+                        buf[*i] = *b;
+                        *i += 1;
+                    } else {
+                        break
+                    }
                 }
 
                 if *i == mem::size_of::<Self>() {
@@ -148,6 +252,17 @@ pub struct LengthPrefix<'a> {
 }
 
 #[cfg(feature = "stdalloc")]
+impl<'a> LengthPrefix<'a> {
+    pub fn new(bs: &'a [u8]) -> Self {
+        Self {
+            l: bs.len(),
+            bs,
+            i: 0,
+        }
+    }
+}
+
+#[cfg(feature = "stdalloc")]
 impl<'a> Iterator for LengthPrefix<'a> {
     type Item = &'a u8;
     fn next(&mut self) -> Option<&'a u8> {
@@ -173,7 +288,7 @@ impl<'a> Transferable<'a> for &[u8] {
     type Out = Result<std::vec::Vec<u8>, TransferError>;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         st: &mut Option<Self::State>,
-        bs: I,
+        bs: &mut I,
         _eof: bool, // TODO: add tests for eof and superfluous bytes handling
     ) -> Option<Self::Out> {
         let (i, buf) = st.get_or_insert((None, std::vec::Vec::with_capacity(mem::size_of::<usize>())));
@@ -223,6 +338,7 @@ mod common_tests {
         assert_eq!(ZoneSpec::default().run(|| 7u8)?, Ok(7u8));
         assert_eq!(ZoneSpec::default().run(|| 7u32)?, Ok(7u32));
         assert_eq!(ZoneSpec::default().run(|| -7i32)?, Ok(-7i32));
+        assert_eq!(ZoneSpec::default().run(|| (7u32, 9usize))?, Ok((7u32, 9usize)));
         Ok(())
     }
 

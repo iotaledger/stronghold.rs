@@ -30,6 +30,7 @@ pub use crate::vault::protocol::{
 use secret::{Access, Protection};
 
 use runtime::guarded::r#box::GuardedBox;
+use runtime::zone::ZoneSpec;
 
 /// A record identifier
 #[repr(transparent)]
@@ -292,12 +293,20 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
         let b = BlobId::try_from(res.id())?;
 
         if self.is_active_blob(&b) {
-            // TODO: zone this computation
-            let ct = {
-                let pt = SealedBlob::from(res.data()).decrypt(&self.view.key, b)?;
-                recipient.as_ref().protect(pt.as_slice())?
-            };
-            Ok(ct)
+            let ct = ZoneSpec::default().secure_memory().random().run(|| {
+                let pt = SealedBlob::from(res.data()).decrypt(&self.view.key, b).unwrap();
+                let ct = recipient.as_ref().protect(pt.as_slice()).unwrap();
+
+                // TODO: This believe it or not is a POC that we can do crypto inside the zone: the
+                // remaining issue lies in the transfer of the Ciphetext (we currently time out,
+                // because of an infinite loop in the Ciphertext's recieve implementation) and the
+                // transfer of more structured types such as Option and Result (so that we don't
+                // have to unwrap inside the zone).
+                unsafe { libc::_exit(7) };
+
+                ct
+            })?;
+            Ok(ct.unwrap())
         } else {
             Err(crate::Error::ProtocolError("invalid blob".to_string()))
         }

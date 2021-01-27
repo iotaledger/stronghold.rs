@@ -5,6 +5,8 @@ use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, rand, x25519};
 
 use crate::{Access, Protectable, Protection};
 
+use runtime::zone::{Transferable, TransferError, LengthPrefix};
+
 use std::marker::PhantomData;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -29,6 +31,31 @@ impl<A: ?Sized> Clone for Ciphertext<A> {
             tag: self.tag,
             a: PhantomData,
         }
+    }
+}
+
+type CiphertextTuple<'a> = (&'a [u8], [u8; x25519::PUBLIC_KEY_LENGTH], [u8; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE]);
+
+impl<'a, A: ?Sized> Transferable<'a> for Ciphertext<A> {
+    type IntoIter = core::iter::Chain<core::iter::Chain<LengthPrefix<'a>, core::slice::Iter<'a, u8>>, core::slice::Iter<'a, u8>>;
+    fn transfer(&'a self) -> Self::IntoIter {
+        LengthPrefix::new(&self.ct).chain(self.ephemeral_pk.iter()).chain(self.tag.iter())
+    }
+
+    type State = <CiphertextTuple<'a> as Transferable<'a>>::State;
+    type Out = Result<Ciphertext<A>, TransferError>;
+
+    fn receive<'b, I: Iterator<Item = &'b u8>>(
+        st: &mut Option<Self::State>,
+        bs: &mut I,
+        eof: bool,
+    ) -> Option<Self::Out> {
+        CiphertextTuple::receive(st, bs, eof).map(|r| r.map(|(ct, ephemeral_pk, tag)| Ciphertext {
+            ct,
+            ephemeral_pk,
+            tag,
+            a: PhantomData,
+        }))
     }
 }
 

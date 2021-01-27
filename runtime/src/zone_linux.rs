@@ -47,6 +47,12 @@ impl ZoneSpec {
         };
         s
     }
+
+    pub fn random(&self) -> Self {
+        let mut s = self.clone();
+        s.seccomp.get_or_insert(crate::seccomp::Spec::default()).getrandom = true;
+        s
+    }
 }
 
 impl ZoneSpec {
