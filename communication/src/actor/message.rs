@@ -6,6 +6,7 @@ use libp2p::{
     core::{connection::PendingConnectionError, Multiaddr, PeerId},
     swarm::DialError,
 };
+use riker::{actors::ActorRef, Message};
 
 pub use libp2p::core::connection::ConnectionLimit;
 
@@ -50,25 +51,34 @@ impl From<DialError> for ConnectPeerError {
 }
 
 #[derive(Debug, Clone)]
-pub enum CommunicationRequest<T> {
+pub enum PeerTarget {
+    Id(PeerId),
+    Addr(Multiaddr),
+}
+
+#[derive(Debug, Clone)]
+pub enum CommunicationRequest<T, V: From<T> + Message> {
     RequestMsg {
         peer_id: PeerId,
-        client_str: String,
         request: T,
     },
-    ConnectPeerId(PeerId),
-    ConnectPeerAddr(Multiaddr),
+    ConnectPeer {
+        target: PeerTarget,
+        client_ref: ActorRef<V>,
+    },
     CheckConnection(PeerId),
     GetSwarmInfo,
     BanPeer(PeerId),
     UnbanPeer(PeerId),
-    StartListening(Option<Multiaddr>),
-    RemoveListener(Multiaddr),
+    StartListening {
+        client_ref: ActorRef<V>,
+        addr: Option<Multiaddr>,
+    },
+    RemoveListener(ActorRef<V>),
 }
 
 #[derive(Debug, Clone)]
 pub enum RequestMessageError {
-    NoClient(String),
     Outbound(P2POutboundFailure),
     Inbound(P2PInboundFailure),
 }
@@ -79,7 +89,7 @@ pub enum CommunicationResults<U> {
     ConnectPeerResult(Result<PeerId, ConnectPeerError>),
     CheckConnectionResult(bool),
     SwarmInfo { peer_id: PeerId, listeners: Vec<Multiaddr> },
-    BannedPeer { peer_id: PeerId, addr: Multiaddr },
+    BannedPeer(PeerId),
     UnbannedPeer(PeerId),
     StartListeningResult(Result<Multiaddr, ()>),
     RemoveListenerResult(Result<(), ()>),
@@ -107,8 +117,8 @@ pub enum SwarmEvent {
 }
 
 #[derive(Debug, Clone)]
-pub enum CommunicationEvent<T, U> {
-    Request(CommunicationRequest<T>),
+pub enum CommunicationEvent<T, U, V: From<T> + Message> {
+    Request(CommunicationRequest<T, V>),
     Results(CommunicationResults<U>),
     Swarm(Box<SwarmEvent>),
     Shutdown,
