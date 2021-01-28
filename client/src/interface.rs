@@ -69,7 +69,7 @@ impl Stronghold {
             system
                 .actor_of_args::<CommunicationActor<SHRequest, SHResults, ClientMsg>, _>(
                     "communication",
-                    (local_keys, system.clone()),
+                    (local_keys, system.clone(), client.clone()),
                 )
                 .expect(line_error!())
         };
@@ -133,57 +133,6 @@ impl Stronghold {
                 self.current_target = idx;
             }
 
-            StatusMessage::OK
-        } else {
-            StatusMessage::Error("Unable to find the actor with that client path".into())
-        }
-    }
-
-    #[cfg(feature = "communication")]
-    pub async fn client_start_listening(
-        &mut self,
-        client_path: Vec<u8>,
-        addr: Option<Multiaddr>,
-    ) -> ResultMessage<Multiaddr> {
-        let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
-        if self.client_ids.contains(&client_id) {
-            let idx = self.client_ids.iter().position(|cid| cid == &client_id).unwrap();
-            let client_ref = self.actors[idx].clone();
-            let req = CommunicationEvent::Request(CommunicationRequest::StartListening { client_ref, addr });
-            match ask(&self.system, &self.communication_actor, req).await {
-                CommunicationEvent::<SHRequest, SHResults, ClientMsg>::Results(
-                    CommunicationResults::StartListeningResult(result),
-                ) => match result {
-                    Ok(addr) => ResultMessage::Ok(addr),
-                    Err(()) => ResultMessage::Error(String::from("Listening Error")),
-                },
-                _ => unreachable!(),
-            }
-        } else {
-            ResultMessage::Error("Unable to find the actor with that client path".into())
-        }
-    }
-
-    #[cfg(feature = "communication")]
-    pub async fn client_stop_listening(&mut self, client_path: Vec<u8>) -> StatusMessage {
-        let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
-        if self.client_ids.contains(&client_id) {
-            let idx = self.client_ids.iter().position(|cid| cid == &client_id);
-            if let Some(idx) = idx {
-                let client_ref = &self.actors[idx];
-                let req = CommunicationEvent::<SHRequest, SHResults, ClientMsg>::Request(
-                    CommunicationRequest::RemoveListener(client_ref.clone()),
-                );
-                return match ask(&self.system, &self.communication_actor, req).await {
-                    CommunicationEvent::<SHRequest, SHResults, ClientMsg>::Results(
-                        CommunicationResults::RemoveListenerResult(result),
-                    ) => match result {
-                        Ok(()) => StatusMessage::OK,
-                        Err(()) => StatusMessage::Error(String::from("Listening Error")),
-                    },
-                    _ => unreachable!(),
-                };
-            }
             StatusMessage::OK
         } else {
             StatusMessage::Error("Unable to find the actor with that client path".into())
