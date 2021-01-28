@@ -128,11 +128,12 @@
 import EssentialLink from 'components/EssentialLink.vue'
 import InternalLink from 'components/InternalLink.vue'
 import LockTimer from 'components/LockTimer.vue'
-import { promisified } from 'tauri/api/tauri'
+// import { promisified } from 'tauri/api/tauri'
 import { save } from 'tauri/api/dialog'
-
+import { Stronghold, Location } from 'tauri-stronghold-api'
 import { mapState, mapActions, mapMutations } from 'vuex'
 const _package = require('../../package.json')
+
 const actionLinks = [
   {
     title: 'Dashboard',
@@ -238,7 +239,22 @@ export default {
         this.path = res
       })
     },
-    unlock () {
+    async unlock () {
+      const stronghold = new Stronghold(this.path, this.pwd)
+      const vault = stronghold.getVault('exampleVault', [])
+      const seedLocation = Location.generic('vault', 'seed')
+      await vault.generateBIP39(seedLocation)
+      const privateKeyLocation = Location.generic('vault', 'derived')
+      await vault.deriveSLIP10([0, 0, 0], 'Seed', seedLocation, privateKeyLocation)
+      const publicKey = await vault.getPublicKey(privateKeyLocation)
+      this.$q.notify('got public key ' + publicKey)
+      const message = 'Tauri + Stronghold!'
+      const signature = await vault.sign(privateKeyLocation, message)
+      this.$q.notify(`Signed "${message}" and got sig "${signature}"`)
+      /*
+
+      */
+      /*
       promisified({
         cmd: 'unlock',
         payload: {
@@ -249,10 +265,12 @@ export default {
         // do something with the Ok() response
         const { message } = response
         this.setLocalPeerID(message) // this.myPeerID(message)
+        this.$q.notify('Connected to Stronghold')
       }).catch(error => {
         // do something with the Err() response string
         this.$q.notify(`error: ${error}`)
       })
+      */
     }
   }
 }

@@ -3,28 +3,6 @@
   windows_subsystem = "windows"
 )]
 
-use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, StatusMessage, Stronghold};
-
-use futures::executor::block_on;
-
-use riker::actors::*;
-
-use std::path::{Path, PathBuf};
-
-use std::{thread, time};
-
-
-// create a line error with the file and the line number
-#[macro_export]
-macro_rules! line_error {
-    () => {
-        concat!("Error at ", file!(), ":", line!())
-    };
-    ($str:expr) => {
-        concat!($str, " @", file!(), ":", line!())
-    };
-}
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -67,14 +45,11 @@ impl<'a> std::fmt::Display for CommandError<'a> {
 
 impl<'a> std::error::Error for CommandError<'a> {}
 
-
+use tauri_stronghold::TauriStronghold;
 
 fn main() {
-  let system = ActorSystem::new().expect(line_error!());
-  let client_path = b"actor_path".to_vec();
-  let mut stronghold = Stronghold::init_stronghold_system(system, client_path.clone(), vec![]);
-
   tauri::AppBuilder::new()
+    .plugin(TauriStronghold {})
     .invoke_handler(|_webview, arg| {
       use Cmd::*;
       match serde_json::from_str(arg) {

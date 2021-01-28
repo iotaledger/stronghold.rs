@@ -2,8 +2,8 @@
   "build": {
     "distDir": "../dist/spa",
     "devPath": "http://localhost:8080",
-    "beforeDevCommand": "yarn dev",
-    "beforeBuildCommand": "yarn build"
+    "beforeDevCommand": "quasar dev",
+    "beforeBuildCommand": "quasar build"
   },
   "ctx": {},
   "tauri": {
