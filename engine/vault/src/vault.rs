@@ -274,12 +274,11 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
                 let tx = self.view.txs.get(&tx_id).unwrap().typed::<DataTransaction>().unwrap();
                 match self.view.cache.get(&tx.blob) {
                     Some(sb) => {
-                        // TODO: zone this computation
-                        let ct = {
-                            let pt = sb.decrypt(&self.view.key, tx.blob)?;
-                            recipient.as_ref().protect(pt.as_slice())?
-                        };
-                        Ok(PreparedRead::CacheHit(ct))
+                        let ct = ZoneSpec::default().secure_memory().random().run(|| {
+                            let pt = sb.decrypt(&self.view.key, tx.blob).unwrap();
+                            recipient.as_ref().protect(pt.as_slice()).unwrap()
+                        })?;
+                        Ok(PreparedRead::CacheHit(ct.unwrap()))
                     }
                     None => Ok(PreparedRead::CacheMiss(ReadRequest::blob(tx.blob))),
                 }
@@ -295,16 +294,7 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
         if self.is_active_blob(&b) {
             let ct = ZoneSpec::default().secure_memory().random().run(|| {
                 let pt = SealedBlob::from(res.data()).decrypt(&self.view.key, b).unwrap();
-                let ct = recipient.as_ref().protect(pt.as_slice()).unwrap();
-
-                // TODO: This believe it or not is a POC that we can do crypto inside the zone: the
-                // remaining issue lies in the transfer of the Ciphetext (we currently time out,
-                // because of an infinite loop in the Ciphertext's recieve implementation) and the
-                // transfer of more structured types such as Option and Result (so that we don't
-                // have to unwrap inside the zone).
-                unsafe { libc::_exit(7) };
-
-                ct
+                recipient.as_ref().protect(pt.as_slice()).unwrap()
             })?;
             Ok(ct.unwrap())
         } else {
@@ -382,12 +372,11 @@ impl<'a, P: BoxProvider> DBWriter<'a, P> {
 
         let req = WriteRequest::transaction(&tx_id, &transaction.encrypt(&self.view.key, tx_id)?);
 
-        // TODO: zone this computation
-        let ct = {
-            let pt = recipient_key.as_ref().access().access(data.as_ref())?;
-            let ct = (&*pt.access()).encrypt(&self.view.key, blob_id)?;
+        let ct = ZoneSpec::default().secure_memory().random().run(|| {
+            let pt = recipient_key.as_ref().access().access(data.as_ref()).unwrap();
+            let ct = (&*pt.access()).encrypt(&self.view.key, blob_id).unwrap();
             ct
-        };
+        })?.unwrap().into();
 
         let blob = WriteRequest::blob(&blob_id, &ct);
 
