@@ -46,18 +46,26 @@ use swarm_task::SwarmTask;
 ///     (local_keys, sys.clone()),
 /// );
 /// ```
-pub struct CommunicationActor<T: MessageEvent, U: MessageEvent, V: From<T> + Message> {
-    swarm_tx: UnboundedSender<(CommunicationRequest<T, V>, Sender)>,
-    swarm_task: Option<SwarmTask<T, U, V>>,
+pub struct CommunicationActor<Req, Res, T>
+where
+    Req: MessageEvent + Into<T>,
+    Res: MessageEvent,
+    T: Message,
+{
+    swarm_tx: UnboundedSender<(CommunicationRequest<Req, T>, Sender)>,
+    swarm_task: Option<SwarmTask<Req, Res, T>>,
     poll_swarm_handle: Option<future::RemoteHandle<()>>,
 }
 
-impl<T: MessageEvent, U: MessageEvent, V: From<T> + Message> ActorFactoryArgs<(Keypair, ActorSystem)>
-    for CommunicationActor<T, U, V>
+impl<Req, Res, T> ActorFactoryArgs<(Keypair, ActorSystem, ActorRef<T>)> for CommunicationActor<Req, Res, T>
+where
+    Req: MessageEvent + Into<T>,
+    Res: MessageEvent,
+    T: Message,
 {
-    fn create_args((keypair, sys): (Keypair, ActorSystem)) -> Self {
+    fn create_args((keypair, sys, client_ref): (Keypair, ActorSystem, ActorRef<T>)) -> Self {
         let (swarm_tx, swarm_rx) = unbounded();
-        let swarm_task = SwarmTask::<T, U, V>::new(keypair, sys, swarm_rx);
+        let swarm_task = SwarmTask::<Req, Res, T>::new(keypair, sys, client_ref, swarm_rx);
         // Channel to communicate from the CommunicationActor with the swarm task.
         Self {
             swarm_tx,
@@ -67,12 +75,17 @@ impl<T: MessageEvent, U: MessageEvent, V: From<T> + Message> ActorFactoryArgs<(K
     }
 }
 
-impl<T: MessageEvent, U: MessageEvent, V: From<T> + Message> Actor for CommunicationActor<T, U, V> {
-    type Msg = CommunicationEvent<T, U, V>;
-
+impl<Req, Res, T> Actor for CommunicationActor<Req, Res, T>
+where
+    Req: MessageEvent + Into<T>,
+    Res: MessageEvent,
+    T: Message,
+{
+    type Msg = CommunicationEvent<Req, Res, T>;
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         // Kick off the swarm communication in it's own task.
-        self.poll_swarm_handle = ctx.run(self.swarm_task.take().unwrap().poll_swarm()).ok();
+        let task: SwarmTask<Req, Res, T> = self.swarm_task.take().unwrap();
+        self.poll_swarm_handle = ctx.run(task.poll_swarm()).ok();
     }
 
     // Forward the received events to the task that is managing the swarm communication.

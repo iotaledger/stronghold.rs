@@ -3,11 +3,15 @@
 
 use crate::behaviour::message::{P2PIdentifyEvent, P2PInboundFailure, P2PMdnsEvent, P2POutboundFailure};
 use libp2p::{
-    core::{connection::PendingConnectionError, Multiaddr, PeerId},
+    core::{
+        connection::{ConnectionError, PendingConnectionError},
+        ConnectedPoint, Multiaddr, PeerId,
+    },
     swarm::DialError,
 };
 use riker::{actors::ActorRef, Message};
 
+use core::num::NonZeroU32;
 pub use libp2p::core::connection::ConnectionLimit;
 
 /// Errors that can occur in the context of a pending `Connection`.
@@ -27,6 +31,8 @@ pub enum ConnectPeerError {
     ConnectionLimit(ConnectionLimit),
     /// An I/O error occurred on the connection.
     IO,
+    /// The connection handler produced an error.
+    Handler,
 }
 
 impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
@@ -50,6 +56,15 @@ impl From<DialError> for ConnectPeerError {
     }
 }
 
+impl<THandlerErr> From<ConnectionError<THandlerErr>> for ConnectPeerError {
+    fn from(error: ConnectionError<THandlerErr>) -> Self {
+        match error {
+            ConnectionError::Handler(_) => ConnectPeerError::Handler,
+            ConnectionError::IO(_) => ConnectPeerError::IO,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum PeerTarget {
     Id(PeerId),
@@ -57,24 +72,16 @@ pub enum PeerTarget {
 }
 
 #[derive(Debug, Clone)]
-pub enum CommunicationRequest<T, V: From<T> + Message> {
-    RequestMsg {
-        peer_id: PeerId,
-        request: T,
-    },
-    ConnectPeer {
-        target: PeerTarget,
-        client_ref: ActorRef<V>,
-    },
+pub enum CommunicationRequest<Req, T: Message> {
+    RequestMsg { peer_id: PeerId, request: Req },
+    SetClientRef(ActorRef<T>),
+    ConnectPeer { addr: Multiaddr, peer_id: PeerId },
     CheckConnection(PeerId),
     GetSwarmInfo,
     BanPeer(PeerId),
     UnbanPeer(PeerId),
-    StartListening {
-        client_ref: ActorRef<V>,
-        addr: Option<Multiaddr>,
-    },
-    RemoveListener(ActorRef<V>),
+    StartListening(Option<Multiaddr>),
+    RemoveListener,
 }
 
 #[derive(Debug, Clone)]
@@ -84,8 +91,9 @@ pub enum RequestMessageError {
 }
 
 #[derive(Debug, Clone)]
-pub enum CommunicationResults<U> {
-    RequestMsgResult(Result<U, RequestMessageError>),
+pub enum CommunicationResults<Res, T: Message> {
+    RequestMsgResult(Result<Res, RequestMessageError>),
+    SetClientRefResult(ActorRef<T>),
     ConnectPeerResult(Result<PeerId, ConnectPeerError>),
     CheckConnectionResult(bool),
     SwarmInfo { peer_id: PeerId, listeners: Vec<Multiaddr> },
@@ -96,30 +104,42 @@ pub enum CommunicationResults<U> {
 }
 
 #[derive(Debug, Clone)]
-pub enum SwarmEvent {
+pub enum CommunicationSwarmEvent {
     Mdns(P2PMdnsEvent),
     Identify(Box<P2PIdentifyEvent>),
-    PeerConnected(PeerId),
-    IncomingConnection(Multiaddr),
-    ConnectionEstablished {
+    IncomingConnectionEstablished {
         peer_id: PeerId,
-        addr: Multiaddr,
+        local_addr: Multiaddr,
+        send_back_addr: Multiaddr,
+        num_established: NonZeroU32,
+    },
+    ConnectionClosed {
+        peer_id: PeerId,
+        endpoint: ConnectedPoint,
+        num_established: NonZeroU32,
+        cause: Option<ConnectPeerError>,
+    },
+    IncomingConnection {
+        local_addr: Multiaddr,
+        send_back_addr: Multiaddr,
     },
     IncomingConnectionError {
         peer_addr: Multiaddr,
         local_addr: Multiaddr,
         error: ConnectPeerError,
     },
+    ExpiredListenAddr(Multiaddr),
     ListenerClosed {
         addresses: Vec<Multiaddr>,
         reason: Result<(), String>,
     },
+    ListenerError(String),
 }
 
 #[derive(Debug, Clone)]
-pub enum CommunicationEvent<T, U, V: From<T> + Message> {
-    Request(CommunicationRequest<T, V>),
-    Results(CommunicationResults<U>),
-    Swarm(Box<SwarmEvent>),
+pub enum CommunicationEvent<Req, Res, T: Message> {
+    Request(CommunicationRequest<Req, T>),
+    Results(CommunicationResults<Res, T>),
+    Swarm(CommunicationSwarmEvent),
     Shutdown,
 }
