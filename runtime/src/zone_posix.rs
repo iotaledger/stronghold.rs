@@ -309,9 +309,7 @@ mod fork_tests {
     #[test]
     #[cfg(feature = "stdalloc")]
     fn vec() -> crate::Result<()> {
-        let mut bs = vec![0; 10*1024*1024];
-        let mut rng = StdRng::from_entropy();
-        rng.fill_bytes(&mut bs);
+        let bs = test_utils::fresh::bytestring();
         assert_eq!(fork(|| bs.as_slice())?, Ok(bs));
 
         Ok(())

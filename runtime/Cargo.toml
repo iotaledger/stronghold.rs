@@ -45,3 +45,7 @@ bindgen = "0.55.1"
 version = "0.7.3"
 default-features = false
 features = [ "getrandom" ]
+
+[dev-dependencies.stronghold-test-utils]
+path = "../test_utils"
+version = "0.1"
