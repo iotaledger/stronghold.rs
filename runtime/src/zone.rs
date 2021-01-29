@@ -1,7 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use core::mem::size_of;
+#![allow(clippy::type_complexity)]
+
+use core::{iter, mem::size_of, slice};
 
 // TODO: use generic associated types when they are available
 pub trait Transferable<'a> {
@@ -10,46 +12,38 @@ pub trait Transferable<'a> {
 
     type State;
     type Out;
-    fn receive<'b, I: Iterator<Item = &'b u8>>(
-        st: &mut Option<Self::State>,
-        bs: &mut I,
-    ) -> Option<Self::Out>;
+    fn receive<'b, I: Iterator<Item = &'b u8>>(st: &mut Option<Self::State>, bs: &mut I) -> Option<Self::Out>;
 }
 
 impl<'a> Transferable<'a> for () {
-    type IntoIter = core::iter::Empty<&'a u8>;
+    type IntoIter = iter::Empty<&'a u8>;
 
     fn transfer(&'a self) -> Self::IntoIter {
-        core::iter::empty()
+        iter::empty()
     }
 
     type State = ();
     type Out = Self;
-    fn receive<'b, I: Iterator<Item = &'b u8>>(
-        _st: &mut Option<Self::State>,
-        _bs: &mut I,
-    ) -> Option<Self::Out> {
+    fn receive<'b, I: Iterator<Item = &'b u8>>(_st: &mut Option<Self::State>, _bs: &mut I) -> Option<Self::Out> {
         Some(())
     }
 }
 
 impl<'a, A, Ao, B, Bo> Transferable<'a> for (A, B)
-where A: Transferable<'a, Out = Ao>,
-      Ao: Clone,
-      B: Transferable<'a, Out = Bo>,
-      Bo: Clone,
+where
+    A: Transferable<'a, Out = Ao>,
+    Ao: Clone,
+    B: Transferable<'a, Out = Bo>,
+    Bo: Clone,
 {
-    type IntoIter = core::iter::Chain<A::IntoIter, B::IntoIter>;
+    type IntoIter = iter::Chain<A::IntoIter, B::IntoIter>;
     fn transfer(&'a self) -> Self::IntoIter {
         self.0.transfer().chain(self.1.transfer())
     }
 
     type State = (Result<Ao, Option<A::State>>, Result<Bo, Option<B::State>>);
     type Out = (Ao, Bo);
-    fn receive<'b, I: Iterator<Item = &'b u8>>(
-        st: &mut Option<Self::State>,
-        bs: &mut I,
-    ) -> Option<Self::Out> {
+    fn receive<'b, I: Iterator<Item = &'b u8>>(st: &mut Option<Self::State>, bs: &mut I) -> Option<Self::Out> {
         let (a, b) = st.get_or_insert((Err(None), Err(None)));
 
         if let Err(ast) = a {
@@ -74,24 +68,26 @@ where A: Transferable<'a, Out = Ao>,
 }
 
 impl<'a, A, Ao, B, Bo, C, Co> Transferable<'a> for (A, B, C)
-where A: Transferable<'a, Out = Ao>,
-      Ao: Clone,
-      B: Transferable<'a, Out = Bo>,
-      Bo: Clone,
-      C: Transferable<'a, Out = Co>,
-      Co: Clone,
+where
+    A: Transferable<'a, Out = Ao>,
+    Ao: Clone,
+    B: Transferable<'a, Out = Bo>,
+    Bo: Clone,
+    C: Transferable<'a, Out = Co>,
+    Co: Clone,
 {
-    type IntoIter = core::iter::Chain<core::iter::Chain<A::IntoIter, B::IntoIter>, C::IntoIter>;
+    type IntoIter = iter::Chain<iter::Chain<A::IntoIter, B::IntoIter>, C::IntoIter>;
     fn transfer(&'a self) -> Self::IntoIter {
         self.0.transfer().chain(self.1.transfer()).chain(self.2.transfer())
     }
 
-    type State = (Result<Ao, Option<A::State>>, Result<Bo, Option<B::State>>, Result<Co, Option<C::State>>);
+    type State = (
+        Result<Ao, Option<A::State>>,
+        Result<Bo, Option<B::State>>,
+        Result<Co, Option<C::State>>,
+    );
     type Out = (Ao, Bo, Co);
-    fn receive<'b, I: Iterator<Item = &'b u8>>(
-        st: &mut Option<Self::State>,
-        bs: &mut I,
-    ) -> Option<Self::Out> {
+    fn receive<'b, I: Iterator<Item = &'b u8>>(st: &mut Option<Self::State>, bs: &mut I) -> Option<Self::Out> {
         let (a, b, c) = st.get_or_insert((Err(None), Err(None), Err(None)));
 
         if let Err(ast) = a {
@@ -126,7 +122,7 @@ where A: Transferable<'a, Out = Ao>,
 macro_rules! transfer_slice_of_bytes {
     ( $n:tt ) => {
         impl<'a> Transferable<'a> for [u8; $n] {
-            type IntoIter = core::slice::Iter<'a, u8>;
+            type IntoIter = slice::Iter<'a, u8>;
 
             fn transfer(&'a self) -> Self::IntoIter {
                 self.iter()
@@ -134,10 +130,7 @@ macro_rules! transfer_slice_of_bytes {
 
             type State = (usize, [u8; $n]);
             type Out = Self;
-            fn receive<'b, I: Iterator<Item = &'b u8>>(
-                st: &mut Option<Self::State>,
-                bs: &mut I,
-            ) -> Option<Self::Out> {
+            fn receive<'b, I: Iterator<Item = &'b u8>>(st: &mut Option<Self::State>, bs: &mut I) -> Option<Self::Out> {
                 let (i, buf) = st.get_or_insert((0, [0; $n]));
 
                 while *i < $n {
@@ -145,7 +138,7 @@ macro_rules! transfer_slice_of_bytes {
                         buf[*i] = *b;
                         *i += 1;
                     } else {
-                        break
+                        break;
                     }
                 }
 
@@ -176,19 +169,14 @@ transfer_slice_of_bytes!(4096);
 macro_rules! transfer_primitive {
     ( $t:ty ) => {
         impl<'a> Transferable<'a> for $t {
-            type IntoIter = core::slice::Iter<'a, u8>;
+            type IntoIter = slice::Iter<'a, u8>;
             fn transfer(&'a self) -> Self::IntoIter {
-                unsafe {
-                    core::slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>()).iter()
-                }
+                unsafe { slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>()).iter() }
             }
 
             type State = (usize, [u8; size_of::<Self>()]);
             type Out = Self;
-            fn receive<'b, I: Iterator<Item = &'b u8>>(
-                st: &mut Option<Self::State>,
-                bs: &mut I,
-            ) -> Option<Self::Out> {
+            fn receive<'b, I: Iterator<Item = &'b u8>>(st: &mut Option<Self::State>, bs: &mut I) -> Option<Self::Out> {
                 let (i, buf) = st.get_or_insert((0, [0; size_of::<Self>()]));
 
                 while *i < size_of::<Self>() {
@@ -196,7 +184,7 @@ macro_rules! transfer_primitive {
                         buf[*i] = *b;
                         *i += 1;
                     } else {
-                        break
+                        break;
                     }
                 }
 
@@ -227,11 +215,7 @@ pub struct LengthPrefix<'a> {
 #[cfg(feature = "stdalloc")]
 impl<'a> LengthPrefix<'a> {
     pub fn new(bs: &'a [u8]) -> Self {
-        Self {
-            l: bs.len(),
-            bs,
-            i: 0,
-        }
+        Self { l: bs.len(), bs, i: 0 }
     }
 }
 
@@ -251,33 +235,33 @@ impl<'a> Iterator for LengthPrefix<'a> {
 }
 
 #[cfg(feature = "stdalloc")]
+use std::vec::Vec;
+
+#[cfg(feature = "stdalloc")]
 impl<'a> Transferable<'a> for &[u8] {
     type IntoIter = LengthPrefix<'a>;
     fn transfer(&'a self) -> Self::IntoIter {
         LengthPrefix::new(self)
     }
 
-    type State = (Option<usize>, std::vec::Vec<u8>);
-    type Out = std::vec::Vec<u8>;
-    fn receive<'b, I: Iterator<Item = &'b u8>>(
-        st: &mut Option<Self::State>,
-        bs: &mut I,
-    ) -> Option<Self::Out> {
-        let (i, buf) = st.get_or_insert((None, std::vec::Vec::with_capacity(size_of::<usize>())));
+    type State = (Option<usize>, Vec<u8>);
+    type Out = Vec<u8>;
+    fn receive<'b, I: Iterator<Item = &'b u8>>(st: &mut Option<Self::State>, bs: &mut I) -> Option<Self::Out> {
+        let (i, buf) = st.get_or_insert((None, Vec::with_capacity(size_of::<usize>())));
 
         if i.is_none() {
             while buf.len() < size_of::<usize>() {
                 if let Some(b) = bs.next() {
                     buf.push(*b);
                 } else {
-                    break
+                    break;
                 }
             }
 
             if buf.len() == size_of::<usize>() {
                 let l = unsafe { *(buf.as_ptr() as *const usize).as_ref().unwrap() };
                 *i = Some(l);
-                *buf = std::vec::Vec::with_capacity(l);
+                *buf = Vec::with_capacity(l);
             }
         }
 
@@ -286,7 +270,7 @@ impl<'a> Transferable<'a> for &[u8] {
                 if let Some(b) = bs.next() {
                     buf.push(*b);
                 } else {
-                    break
+                    break;
                 }
             }
 
@@ -326,7 +310,7 @@ mod common_tests {
             ( $t:ty ) => {
                 let x = rng.gen::<$t>();
                 assert_eq!(ZoneSpec::default().run(|| x), Ok(x));
-            }
+            };
         }
 
         pure!(u8);
@@ -358,7 +342,7 @@ mod common_tests {
                 let mut bs = [0u8; $n];
                 rng.fill_bytes(&mut bs);
                 assert_eq!(ZoneSpec::default().run(|| bs), Ok(bs));
-            }
+            };
         }
 
         pure_byte_slice!(1);

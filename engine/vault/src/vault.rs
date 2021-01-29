@@ -29,8 +29,7 @@ pub use crate::vault::protocol::{
 
 use secret::{Access, Protection};
 
-use runtime::guarded::r#box::GuardedBox;
-use runtime::zone::ZoneSpec;
+use runtime::{guarded::r#box::GuardedBox, zone::ZoneSpec};
 
 /// A record identifier
 #[repr(transparent)]

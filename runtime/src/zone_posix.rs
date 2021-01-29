@@ -176,10 +176,8 @@ where
         if r == 0 {
             let n = now()?;
 
-            if !lt(&between(start, &n), &SOFT_TIMEOUT_LIMIT) {
-                if wait.is_none() {
-                    libc::kill(pid, SOFT_TIMEOUT_SIGNAL);
-                }
+            if !lt(&between(start, &n), &SOFT_TIMEOUT_LIMIT) && wait.is_none() {
+                libc::kill(pid, SOFT_TIMEOUT_SIGNAL);
             }
 
             let rt = between(start, &n);
@@ -215,20 +213,18 @@ unsafe fn attempt_wait_child(pid: libc::pid_t) -> crate::Result<Option<crate::Re
         Err(crate::Error::os("waitpid"))
     } else if r == 0 {
         Ok(None)
-    } else {
-        if libc::WIFEXITED(st) {
-            let ec = libc::WEXITSTATUS(st);
-            if ec == 0 {
-                Ok(Some(Ok(())))
-            } else {
-                Ok(Some(Err(Error::unexpected_exit_code(ec))))
-            }
-        } else if libc::WIFSIGNALED(st) {
-            Ok(Some(Err(Error::signal(libc::WTERMSIG(st)))))
+    } else if libc::WIFEXITED(st) {
+        let ec = libc::WEXITSTATUS(st);
+        if ec == 0 {
+            Ok(Some(Ok(())))
         } else {
-            Err(crate::Error::unreachable(
-                    "waitpid returned but: !WIFEXITED(st) && !WIFSIGNALED(st)"))
+            Ok(Some(Err(Error::unexpected_exit_code(ec))))
         }
+    } else if libc::WIFSIGNALED(st) {
+        Ok(Some(Err(Error::signal(libc::WTERMSIG(st)))))
+    } else {
+        Err(crate::Error::unreachable(
+                "waitpid returned but: !WIFEXITED(st) && !WIFSIGNALED(st)"))
     }
 }
 
@@ -296,12 +292,10 @@ unsafe fn expect_eof(fd: libc::c_int) -> crate::Result<()>
 
     let mut bs = [0; 1];
     let r = libc::read(fd, &mut bs as *mut _ as *mut libc::c_void, bs.len());
-    if r < 0 {
-        Err(crate::Error::os("read while expecting EOF"))
-    } else if r > 0 {
-        Err(Error::superfluous_bytes())
-    } else {
-        Ok(())
+    match r {
+        r if r < 0 => Err(crate::Error::os("read while expecting EOF")),
+        r if r > 0 => Err(Error::superfluous_bytes()),
+        _ => Ok(()),
     }
 }
 
@@ -427,7 +421,7 @@ mod fork_tests {
     #[test]
     #[ignore = "figure out how we can combine/override the test runners panic handler"]
     fn panic() -> crate::Result<()> {
-        assert_eq!(fork(|| panic!("oopsie")), Err(Error::unexpected_exit_code(102)));
+        assert_eq!(fork(|| panic!("oopsie")), Err(Error::unexpected_exit_code(101)));
         Ok(())
     }
 

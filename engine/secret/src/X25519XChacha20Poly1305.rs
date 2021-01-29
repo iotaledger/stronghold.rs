@@ -5,7 +5,7 @@ use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, rand, x25519};
 
 use crate::{Access, Protectable, Protection};
 
-use runtime::zone::{Transferable, LengthPrefix};
+use runtime::zone::{LengthPrefix, Transferable};
 
 use std::marker::PhantomData;
 
@@ -34,20 +34,24 @@ impl<A: ?Sized> Clone for Ciphertext<A> {
     }
 }
 
-type CiphertextTuple<'a> = (&'a [u8], [u8; x25519::PUBLIC_KEY_LENGTH], [u8; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE]);
+type CiphertextTuple<'a> = (
+    &'a [u8],
+    [u8; x25519::PUBLIC_KEY_LENGTH],
+    [u8; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE],
+);
 
 impl<'a, A: ?Sized> Transferable<'a> for Ciphertext<A> {
-    type IntoIter = core::iter::Chain<core::iter::Chain<LengthPrefix<'a>, core::slice::Iter<'a, u8>>, core::slice::Iter<'a, u8>>;
+    type IntoIter =
+        core::iter::Chain<core::iter::Chain<LengthPrefix<'a>, core::slice::Iter<'a, u8>>, core::slice::Iter<'a, u8>>;
     fn transfer(&'a self) -> Self::IntoIter {
-        LengthPrefix::new(&self.ct).chain(self.ephemeral_pk.iter()).chain(self.tag.iter())
+        LengthPrefix::new(&self.ct)
+            .chain(self.ephemeral_pk.iter())
+            .chain(self.tag.iter())
     }
 
     type State = <CiphertextTuple<'a> as Transferable<'a>>::State;
     type Out = Self;
-    fn receive<'b, I: Iterator<Item = &'b u8>>(
-        st: &mut Option<Self::State>,
-        bs: &mut I,
-    ) -> Option<Self::Out> {
+    fn receive<'b, I: Iterator<Item = &'b u8>>(st: &mut Option<Self::State>, bs: &mut I) -> Option<Self::Out> {
         CiphertextTuple::receive(st, bs).map(|(ct, ephemeral_pk, tag)| Ciphertext {
             ct,
             ephemeral_pk,

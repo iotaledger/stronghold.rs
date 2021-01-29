@@ -294,9 +294,7 @@ mod tests {
     use crate::zone::Transferable;
     use core::fmt::Debug;
 
-    fn harness<'b, T, F: FnOnce() -> T>(
-        f: F,
-    ) -> crate::Result<<T as Transferable<'b>>::Out>
+    fn harness<'b, T, F: FnOnce() -> T>(f: F) -> crate::Result<<T as Transferable<'b>>::Out>
     where
         T: for<'a> Transferable<'a>,
         <T as Transferable<'b>>::Out: PartialEq + Debug,
