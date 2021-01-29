@@ -3,7 +3,75 @@
 
 use core::mem;
 
+pub struct TimeoutSpec {
+    pub time: libc::timespec,
+    pub signal: libc::c_int,
+}
+
+pub struct Timeout {
+    pub soft: Option<TimeoutSpec>,
+    pub hard: Option<TimeoutSpec>,
+    pub granularity_ms: libc::c_int,
+}
+
+impl Default for Timeout {
+    fn default() -> Self {
+        Self {
+            soft: None,
+            hard: None,
+            granularity_ms: 100,
+        }
+    }
+}
+
+fn ms_to_timespec(ms: u32) -> libc::timespec {
+    libc::timespec {
+        tv_sec: (ms / 1000) as libc::time_t,
+        tv_nsec: (ms % 1000) as libc::c_long * 1_000_000,
+    }
+}
+
+impl Timeout {
+    pub fn soft_ms(self, ms: u32) -> Self {
+        self.soft_ms_signal(ms, libc::SIGINT)
+    }
+
+    pub fn soft_ms_signal(mut self, ms: u32, signal: libc::c_int) -> Self {
+        self.soft = Some(
+            TimeoutSpec {
+                time: ms_to_timespec(ms),
+                signal,
+            }
+        );
+
+        self
+    }
+
+    pub fn hard_ms(self, ms: u32) -> Self {
+        self.hard_ms_signal(ms, libc::SIGKILL)
+    }
+
+    pub fn hard_ms_signal(mut self, ms: u32, signal: libc::c_int) -> Self {
+        self.hard = Some(
+            TimeoutSpec {
+                time: ms_to_timespec(ms),
+                signal,
+            }
+        );
+
+        self
+    }
+}
+
 pub fn fork<'b, F, T>(f: F) -> crate::Result<<T as Transferable<'b>>::Out>
+where
+    F: FnOnce() -> T,
+    T: for <'a> Transferable<'a>,
+{
+    fork_with_timeout(f, Timeout::default())
+}
+
+pub fn fork_with_timeout<'b, F, T>(f: F, t: Timeout) -> crate::Result<<T as Transferable<'b>>::Out>
 where
     F: FnOnce() -> T,
     T: for <'a> Transferable<'a>,
@@ -11,7 +79,7 @@ where
     unsafe {
         let start = now()?;
         let (pid, fd) = spawn_child(f)?;
-        let out = wait_child::<T>(pid, fd, &start);
+        let out = wait_child::<T>(pid, fd, &start, t);
 
         let r = libc::close(fd);
         if r != 0 {
@@ -117,21 +185,7 @@ where
     libc::_exit(0)
 }
 
-const SOFT_TIMEOUT_LIMIT: libc::timespec = libc::timespec {
-    tv_sec: 3,
-    tv_nsec: 0,
-};
-const SOFT_TIMEOUT_SIGNAL: libc::c_int = libc::SIGINT;
-
-const HARD_TIMEOUT_LIMIT: libc::timespec = libc::timespec {
-    tv_sec: 4,
-    tv_nsec: 0,
-};
-const HARD_TIMEOUT_SIGNAL: libc::c_int = libc::SIGKILL;
-
-const TIMEOUT_GRANULARITY_MS: libc::c_int = 100;
-
-unsafe fn wait_child<'b, T>(pid: libc::pid_t, fd: libc::c_int, start: &libc::timespec) -> crate::Result<<T as Transferable<'b>>::Out>
+unsafe fn wait_child<'b, T>(pid: libc::pid_t, fd: libc::c_int, start: &libc::timespec, t: Timeout) -> crate::Result<<T as Transferable<'b>>::Out>
 where
     T: for <'a> Transferable<'a>,
 {
@@ -141,52 +195,61 @@ where
     let mut hup = false;
     let mut st: Option<T::State> = None;
     let mut tst = T::receive(&mut st, &mut core::iter::empty());
+    let poll_timeout = if t.soft.is_some() || t.hard.is_some() {
+        t.granularity_ms
+    } else {
+        -1
+    };
 
     loop {
+        if wait.is_none() {
+            wait = attempt_wait_child(pid)?;
+        }
+
         match wait {
-            Some(Err(e)) => {
-                return Err(e);
-            }
-            Some(Ok(())) => {
-                match tst {
-                    Some(o) => {
-                        expect_eof(fd)?;
-                        return Ok(o);
-                    }
-                    None => if hup {
-                        set_blocking(fd)?;
-                        match receive::<T>(&mut st, fd)? {
-                            Some(o) => return Ok(o),
-                            None => return Err(Error::unexpected_eof()),
-                        }
+            Some(Err(e)) => return Err(e),
+            Some(Ok(())) => match tst {
+                Some(o) => {
+                    expect_eof(fd)?;
+                    return Ok(o);
+                }
+                None => if hup {
+                    set_blocking(fd)?;
+                    match receive::<T>(&mut st, fd)? {
+                        Some(o) => return Ok(o),
+                        None => return Err(Error::unexpected_eof()),
                     }
                 }
             }
-            None => wait = attempt_wait_child(pid)?,
+            None => (),
         }
 
         let mut fds = [
             libc::pollfd { fd, events: libc::POLLIN, revents: 0 },
         ];
 
-        let r = libc::poll(fds.as_mut_ptr(), 1, TIMEOUT_GRANULARITY_MS);
+        let r = libc::poll(fds.as_mut_ptr(), 1, poll_timeout);
         if r == -1 {
             return Err(crate::Error::os("poll"));
         }
         if r == 0 {
             let n = now()?;
 
-            if !lt(&between(start, &n), &SOFT_TIMEOUT_LIMIT) && wait.is_none() {
-                libc::kill(pid, SOFT_TIMEOUT_SIGNAL);
+            if let Some(ref ts) = t.soft {
+                if !lt(&between(start, &n), &ts.time) && wait.is_none() {
+                    libc::kill(pid, ts.signal);
+                }
             }
 
-            let rt = between(start, &n);
-            if !lt(&rt, &HARD_TIMEOUT_LIMIT) {
-                if wait.is_none() {
-                    libc::kill(pid, HARD_TIMEOUT_SIGNAL);
-                }
+            if let Some(ref ts) = t.hard {
+                let rt = between(start, &n);
+                if !lt(&rt, &ts.time) {
+                    if wait.is_none() {
+                        libc::kill(pid, ts.signal);
+                    }
 
-                return Err(Error::timeout(&rt));
+                    return Err(Error::timeout(&rt));
+                }
             }
         }
 
@@ -427,22 +490,42 @@ mod fork_tests {
 
     #[test]
     fn soft_timeout() {
+        let s = 1;
+        let sig = libc::SIGINT;
+        let t = Timeout::default().soft_ms_signal(s * 1000, sig);
         assert_eq!(
-            fork(|| unsafe { libc::sleep(SOFT_TIMEOUT_LIMIT.tv_sec as u32 * 2) }),
-            Err(Error::signal(SOFT_TIMEOUT_SIGNAL))
+            fork_with_timeout(|| unsafe { libc::sleep(2 * s) }, t),
+            Err(Error::signal(sig))
         );
     }
 
     #[test]
     fn hard_timeout() -> crate::Result<()> {
-        match fork(|| unsafe {
+        let s = 1;
+        let sig = libc::SIGKILL;
+        let t = Timeout::default().hard_ms_signal(s * 1000, sig);
+        match fork_with_timeout(|| unsafe {
+            libc::sleep(2 * s)
+        }, t) {
+            Err(crate::Error::ZoneError(Error::Timeout { .. })) => Ok(()),
+            r => panic!("unexpected return value: {:?}", r)
+        }
+    }
+
+    #[test]
+    fn soft_then_hard_timeout() -> crate::Result<()> {
+        let s = 1;
+        let soft_sig = libc::SIGINT;
+        let hard_sig = libc::SIGKILL;
+        let t = Timeout::default().soft_ms_signal(s * 1000, soft_sig).hard_ms_signal(2 * s * 1000, hard_sig);
+        match fork_with_timeout(|| unsafe {
             let mut ss = mem::MaybeUninit::uninit();
             libc::sigemptyset(ss.as_mut_ptr());
-            libc::sigaddset(ss.as_mut_ptr(), SOFT_TIMEOUT_SIGNAL);
+            libc::sigaddset(ss.as_mut_ptr(), soft_sig);
             libc::sigprocmask(libc::SIG_BLOCK, ss.as_ptr(), core::ptr::null_mut());
 
-            libc::sleep(HARD_TIMEOUT_LIMIT.tv_sec as u32 * 2)
-        }) {
+            libc::sleep(3 * s)
+        }, t) {
             Err(crate::Error::ZoneError(Error::Timeout { .. })) => Ok(()),
             r => panic!("unexpected return value: {:?}", r)
         }
