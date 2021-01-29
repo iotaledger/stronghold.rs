@@ -150,7 +150,8 @@
         "vault",
         "snapshot",
         "random",
-        "primitives"
+        "primitives",
+        "test-utils"
       ]
     },
     "stronghold-engine": {
@@ -183,7 +184,8 @@
       "publish": false,
       "dependencies": [
         "crypto",
-        "random"
+        "random",
+        "test-utils"
       ]
     },
     "snapshot": {
@@ -192,7 +194,8 @@
       "publish": false,
       "dependencies": [
         "crypto",
-        "random"
+        "random",
+        "test-utils"
       ]
     },
     "random": {
@@ -207,6 +210,11 @@
     },
     "store": {
       "path": "./engine/store/",
+      "manager": "rust",
+      "publish": false
+    },
+    "test-utils": {
+      "path": "./test-utils/",
       "manager": "rust",
       "publish": false
     }

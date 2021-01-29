@@ -3,10 +3,7 @@
 
 use riker::actors::*;
 
-use crate::{
-    hd, line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, SLIP10DeriveInput, StatusMessage,
-    Stronghold,
-};
+use crate::{line_error, Location, RecordHint, Stronghold};
 
 #[test]
 fn test_stronghold() {
@@ -400,77 +397,5 @@ fn test_counters() {
     futures::executor::block_on(stronghold.write_all_to_snapshot(key_data, None, None));
 
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(loc0.vault_path()));
-    println!("{:?}", ids);
-}
-
-#[test]
-fn test_crypto() {
-    let sys = ActorSystem::new().unwrap();
-
-    let client_path = b"test".to_vec();
-
-    let slip10_seed = Location::generic("slip10", "seed");
-    let slip10_key = Location::generic("slip10", "key");
-    let bip39_seed = Location::generic("bip39", "seed");
-
-    let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
-
-    match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
-        output: slip10_seed.clone(),
-        hint: RecordHint::new(b"test_seed").expect(line_error!()),
-        size_bytes: 32,
-    })) {
-        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
-        r => panic!("unexpected result: {:?}", r),
-    }
-
-    match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Derive {
-        chain: hd::Chain::from_u32_hardened(vec![]),
-        input: SLIP10DeriveInput::Seed(slip10_seed.clone()),
-        output: slip10_key,
-        hint: RecordHint::new(b"test").expect(line_error!()),
-    })) {
-        ProcResult::SLIP10Derive(ResultMessage::Ok(key)) => {
-            println!("public key: {:?}", key);
-        }
-        r => panic!("unexpected result: {:?}", r),
-    }
-
-    let pk = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519PublicKey {
-        path: "".into(),
-        seed: slip10_seed.clone(),
-    })) {
-        ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(pk)) => {
-            crypto::ed25519::PublicKey::from_compressed_bytes(pk).expect(line_error!())
-        }
-        r => panic!("unexpected result: {:?}", r),
-    };
-
-    let msg = b"foobar";
-    let sig = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519Sign {
-        path: "".into(),
-        seed: slip10_seed.clone(),
-        msg: msg.to_vec(),
-    })) {
-        ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig)) => crypto::ed25519::Signature::from_bytes(sig),
-        r => panic!("unexpected result: {:?}", r),
-    };
-
-    assert!(crypto::ed25519::verify(&pk, &sig, msg));
-
-    match futures::executor::block_on(stronghold.runtime_exec(Procedure::BIP39Recover {
-        output: bip39_seed.clone(),
-        hint: RecordHint::new(b"bip_seed").expect(line_error!()),
-        mnemonic: "loyal arctic acid useless problem season gate token bunker want human laptop humble gold brand near attract wine arena very vague summer discover pass".into(),
-        passphrase: Some("a passphrase".into()),
-    })) {
-        ProcResult::BIP39Recover(StatusMessage::OK) => (),
-        r => panic!("unexpected result: {:?}", r),
-    }
-
-    let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(slip10_seed.vault_path()));
-    println!("{:?}", ids);
-
-    let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(bip39_seed.vault_path()));
     println!("{:?}", ids);
 }

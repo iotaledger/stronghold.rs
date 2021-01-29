@@ -23,17 +23,17 @@ json = "0.12"
 rand = "0.7.3"
 criterion = "0.3.3"
 
-  [dev-dependencies.random]
-  path = "../random"
-  version = "0.2"
+[dev-dependencies.random]
+path = "../random"
+version = "0.2"
 
-  [dev-dependencies.crypto]
-  path = "../crypto"
-  version = "0.2"
+[dev-dependencies.crypto]
+path = "../crypto"
+version = "0.2"
 
-  [dev-dependencies.stronghold-test-utils]
-  path = "../../test_utils"
-  version = "0.1"
+[dev-dependencies.stronghold-test-utils]
+path = "../../test_utils"
+version = "0.1"
 
 [[bench]]
 name = "benchmark"

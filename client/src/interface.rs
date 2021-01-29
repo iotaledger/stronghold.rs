@@ -223,6 +223,7 @@ impl Stronghold {
         StatusMessage::Error("Failed to write the data".into())
     }
 
+    /// A test function for reading data from a vault.
     #[cfg(test)]
     pub async fn read_secret(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
         let idx = self.current_target;
@@ -238,6 +239,10 @@ impl Stronghold {
         }
     }
 
+    /// Writes data into an insecure cache.  This method, accepts a `Location`, a `Vec<u8>` and an optional `Duration`.
+    /// The lifetime allows the data to be deleted after the specified duration has passed.  If not lifetime is
+    /// specified, the data will persist until it is manually deleted or over-written. Note: One store is mapped to
+    /// one client. Can specify the same location across multiple clients.
     pub async fn write_to_store(
         &self,
         location: Location,
@@ -266,6 +271,10 @@ impl Stronghold {
         }
     }
 
+    /// A method that reads from an insecure cache.  This method, accepts a `Location` and returns the payload in the
+    /// form of a `Vec<u8>`.  If the location does not exist, an empty vector will be returned along with an error
+    /// `StatusMessage`.  Note: One store is mapped to
+    /// one client. Can specify the same location across multiple clients.
     pub async fn read_from_store(&self, location: Location) -> (Vec<u8>, StatusMessage) {
         let idx = self.current_target;
 
@@ -280,6 +289,8 @@ impl Stronghold {
         }
     }
 
+    /// A method to delete data from an insecure cache. This method, accepts a `Location` and returns a `StatusMessage`.
+    /// Note: One store is mapped to one client. Can specify the same location across multiple clients.
     pub async fn delete_from_store(&self, location: Location) -> StatusMessage {
         let idx = self.current_target;
 

@@ -27,16 +27,18 @@ pub enum SLIP10DeriveInput {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Procedure {
-    /// Generate a raw SLIP10 seed of the specified size and store it in the `output` location
+    /// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in the
+    /// `output` location
     ///
     /// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
     /// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
     SLIP10Generate {
         output: Location,
         hint: RecordHint,
-        size_bytes: usize,
+        size_bytes: Option<usize>,
     },
-    /// Derive a SLIP10 child key from a seed or a parent key and store it in output location
+    /// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
+    /// return the corresponding chain code
     SLIP10Derive {
         chain: hd::Chain,
         input: SLIP10DeriveInput,
@@ -69,20 +71,6 @@ pub enum Procedure {
     /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
     /// in particular SLIP10 keys are compatible.
     Ed25519Sign { private_key: Location, msg: Vec<u8> },
-    /// Derive an Ed25519 key using SLIP10 from the specified path and derive its public key
-    SLIP10DeriveAndEd25519PublicKey { path: String, seed: Location },
-    /// Derive an Ed25519 key using SLIP10 from the specified path and seed and use it to sign the given message
-    SLIP10DeriveAndEd25519Sign { path: String, seed: Location, msg: Vec<u8> },
-    /// Derive a SLIP10 key from a SLIP10/BIP39 seed using path, sign the essence using Ed25519, return the signature
-    /// and the corresponding public key
-    ///
-    /// This is equivalent to separate calls to SLIP10Derive, Ed25519PublicKey, and Ed25519Sign but
-    /// does not store the derived key.
-    SignUnlockBlock {
-        seed: Location,
-        path: String,
-        essence: Vec<u8>,
-    },
 }
 
 /// A Procedure return result type.  Contains the different return values for the `Procedure` type calls used with
@@ -93,7 +81,7 @@ pub enum ProcResult {
     /// Return from generating a `SLIP10` seed.
     SLIP10Generate(StatusMessage),
     /// Returns the public key derived from the `SLIP10Derive` call.
-    SLIP10Derive(StatusMessage),
+    SLIP10Derive(ResultMessage<hd::ChainCode>),
     /// `BIP39Recover` return value.
     BIP39Recover(StatusMessage),
     /// `BIP39Generate` return value.
@@ -102,19 +90,8 @@ pub enum ProcResult {
     BIP39MnemonicSentence(ResultMessage<String>),
     /// Return value for `Ed25519PublicKey`. Returns an Ed25519 public key.
     Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
-    /// Return value for `SLIP10DeriveAndEd25519PublicKey`. Returns an Ed25519 public key.
-    SLIP10DeriveAndEd25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
     /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
     Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
-    /// Return value for `SLIP10DeriveAndEd25519Sign`. Returns an Ed25519 signature.
-    SLIP10DeriveAndEd25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
-    /// Return value for `SignUnlockBlock`. Returns a Ed25519 signature and a Ed25519 public key.
-    SignUnlockBlock(
-        ResultMessage<(
-            [u8; crypto::ed25519::SIGNATURE_LENGTH],
-            [u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH],
-        )>,
-    ),
 }
 
 #[allow(dead_code)]
@@ -126,19 +103,23 @@ pub enum SHRequest {
     CheckRecord {
         location: Location,
     },
+    // Write to the store.
     WriteToStore {
         location: Location,
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     },
+    // Read from the store.
     ReadFromStore {
         location: Location,
     },
+    // Delete a key/value pair from the store.
     DeleteFromStore(Location),
 
     // Creates a new Vault.
     CreateNewVault(Location),
 
+    // Write to the Vault.
     WriteToVault {
         location: Location,
         payload: Vec<u8>,
@@ -174,15 +155,20 @@ pub enum SHRequest {
         cid: ClientId,
         former_cid: Option<ClientId>,
     },
+    // Writes to the snapshot file. Accepts the snapshot key, an optional filename and an optional filepath.
+    // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
     WriteSnapshot {
         key: snapshot::Key,
         filename: Option<String>,
         path: Option<PathBuf>,
     },
+    // Helper to fill the snapshot state before the write operation.
     FillSnapshot,
 
+    // Clear the cache of the bucket.
     ClearCache,
 
+    // Interact with the runtime.
     ControlRequest(Procedure),
 }
 
@@ -488,7 +474,7 @@ impl Receive<SHRequest> for Client {
                                 vault_id: vid,
                                 record_id: rid,
                                 hint,
-                                size_bytes,
+                                size_bytes: size_bytes.unwrap_or(64),
                             },
                             sender,
                         )
@@ -616,17 +602,6 @@ impl Receive<SHRequest> for Client {
                         let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
                         internal.try_tell(InternalMsg::Ed25519PublicKey { vault_id, record_id }, sender)
                     }
-                    Procedure::SLIP10DeriveAndEd25519PublicKey { path, seed } => {
-                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
-                        internal.try_tell(
-                            InternalMsg::SLIP10DeriveAndEd25519PublicKey {
-                                path,
-                                vault_id,
-                                record_id,
-                            },
-                            sender,
-                        )
-                    }
                     Procedure::Ed25519Sign { private_key, msg } => {
                         let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
                         internal.try_tell(
@@ -634,30 +609,6 @@ impl Receive<SHRequest> for Client {
                                 vault_id,
                                 record_id,
                                 msg,
-                            },
-                            sender,
-                        )
-                    }
-                    Procedure::SLIP10DeriveAndEd25519Sign { path, seed, msg } => {
-                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
-                        internal.try_tell(
-                            InternalMsg::SLIP10DeriveAndEd25519Sign {
-                                path,
-                                vault_id,
-                                record_id,
-                                msg,
-                            },
-                            sender,
-                        )
-                    }
-                    Procedure::SignUnlockBlock { seed, path, essence } => {
-                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
-                        internal.try_tell(
-                            InternalMsg::SignUnlockBlock {
-                                vault_id,
-                                record_id,
-                                path,
-                                essence,
                             },
                             sender,
                         )
