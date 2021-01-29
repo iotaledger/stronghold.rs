@@ -331,7 +331,7 @@ mod tests {
                 Spec::strict().apply().unwrap();
                 7
             }),
-            Ok(Ok(7))
+            Ok(7)
         );
     }
 
@@ -344,7 +344,7 @@ mod tests {
                     libc::_exit(0);
                 }
             }),
-            Ok(Ok(()))
+            Ok(())
         );
     }
 
@@ -368,7 +368,7 @@ mod tests {
                 s.apply().unwrap();
                 7
             }),
-            Ok(Ok(7))
+            Ok(7)
         );
 
         expect_sigsys(|| {
@@ -394,7 +394,7 @@ mod tests {
                 s.apply().unwrap();
                 unsafe { libc::write(2, "hello".as_ptr() as *const libc::c_void, 5) };
             }),
-            Ok(Ok(()))
+            Ok(())
         );
     }
 }

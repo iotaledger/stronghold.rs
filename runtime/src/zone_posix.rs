@@ -11,7 +11,14 @@ where
     unsafe {
         let start = now()?;
         let (pid, fd) = spawn_child(f)?;
-        wait_child::<T>(pid, fd, &start)
+        let out = wait_child::<T>(pid, fd, &start);
+
+        let r = libc::close(fd);
+        if r != 0 {
+            return Err(crate::Error::os("close"));
+        }
+
+        out
     }
 }
 
@@ -122,6 +129,8 @@ const HARD_TIMEOUT_LIMIT: libc::timespec = libc::timespec {
 };
 const HARD_TIMEOUT_SIGNAL: libc::c_int = libc::SIGKILL;
 
+const TIMEOUT_GRANULARITY_MS: libc::c_int = 100;
+
 unsafe fn wait_child<'b, T>(pid: libc::pid_t, fd: libc::c_int, start: &libc::timespec) -> crate::Result<<T as Transferable<'b>>::Out>
 where
     T: for <'a> Transferable<'a>,
@@ -131,35 +140,26 @@ where
     let mut wait = None;
     let mut hup = false;
     let mut st: Option<T::State> = None;
-    let mut tst = T::receive(&mut st, &mut core::iter::empty(), false);
+    let mut tst = T::receive(&mut st, &mut core::iter::empty());
 
     loop {
         match wait {
             Some(Err(e)) => {
-                let r = libc::close(fd);
-                if r != 0 {
-                    return Err(crate::Error::os("close"));
-                }
-
                 return Err(e);
             }
-            Some(Ok(())) => if let Some(o) = tst {
-                let r = libc::close(fd);
-                if r != 0 {
-                    return Err(crate::Error::os("close"));
-                }
-
-                return Ok(o);
-            } else if hup {
-                // NB I suspect this can yield false negatives in the scenario that the process is
-                // succesfully waited for, the pipe is hung up but still has buffered data
-                if let Some(o) = T::receive(&mut st, &mut core::iter::empty(), true) {
-                    let r = libc::close(fd);
-                    if r != 0 {
-                        return Err(crate::Error::os("close"));
+            Some(Ok(())) => {
+                match tst {
+                    Some(o) => {
+                        expect_eof(fd)?;
+                        return Ok(o);
                     }
-
-                    return Ok(o);
+                    None => if hup {
+                        set_blocking(fd)?;
+                        match receive::<T>(&mut st, fd)? {
+                            Some(o) => return Ok(o),
+                            None => return Err(Error::unexpected_eof()),
+                        }
+                    }
                 }
             }
             None => wait = attempt_wait_child(pid)?,
@@ -169,7 +169,7 @@ where
             libc::pollfd { fd, events: libc::POLLIN, revents: 0 },
         ];
 
-        let r = libc::poll(fds.as_mut_ptr(), if hup { 0 } else { 1 }, 100);
+        let r = libc::poll(fds.as_mut_ptr(), 1, TIMEOUT_GRANULARITY_MS);
         if r == -1 {
             return Err(crate::Error::os("poll"));
         }
@@ -184,11 +184,6 @@ where
 
             let rt = between(start, &n);
             if !lt(&rt, &HARD_TIMEOUT_LIMIT) {
-                let r = libc::close(fd);
-                if r != 0 {
-                    return Err(crate::Error::os("close"));
-                }
-
                 if wait.is_none() {
                     libc::kill(pid, HARD_TIMEOUT_SIGNAL);
                 }
@@ -251,27 +246,63 @@ unsafe fn set_non_blocking(fd: libc::c_int) -> crate::Result<()> {
     }
 }
 
+unsafe fn set_blocking(fd: libc::c_int) -> crate::Result<()> {
+    let f = libc::fcntl(fd, libc::F_GETFL);
+    if f == -1 {
+        return Err(crate::Error::os("fcntl(F_GETFL)"));
+    }
+
+    let r = libc::fcntl(fd, libc::F_SETFL, f & !libc::O_NONBLOCK);
+    if r != -1 {
+        Ok(())
+    } else {
+        Err(crate::Error::os("fcntl(F_SETFL)"))
+    }
+}
+
 const RECEIVE_BUFFER: usize = 256;
 
-fn receive<'b, T>(st: &mut Option<<T as Transferable<'b>>::State>, fd: libc::c_int) -> crate::Result<Option<<T as Transferable<'b>>::Out>>
+unsafe fn receive<'b, T>(st: &mut Option<<T as Transferable<'b>>::State>, fd: libc::c_int) -> crate::Result<Option<<T as Transferable<'b>>::Out>>
 where
     T: for <'a> Transferable<'a>,
 {
     let mut ret = None;
     while ret.is_none() {
         let mut bs = [0; RECEIVE_BUFFER];
-        let r = unsafe { libc::read(fd, &mut bs as *mut _ as *mut libc::c_void, bs.len()) };
-        let errno = unsafe { *libc::__errno_location() };
+        let r = libc::read(fd, &mut bs as *mut _ as *mut libc::c_void, bs.len());
+        let errno = *libc::__errno_location();
         if r < 0 && (errno == libc::EAGAIN || errno == libc::EWOULDBLOCK ) {
             return Ok(None);
         }
         if r < 0 {
             return Err(crate::Error::os("read while receiving data"));
         }
+        if r == 0 {
+            break
+        }
 
-        ret = T::receive(st, &mut bs[..(r as usize)].iter(), r == 0);
+        let mut i = bs[..(r as usize)].iter();
+        ret = T::receive(st, &mut i);
+        if i.next().is_some() {
+            return Err(Error::superfluous_bytes());
+        }
     }
     Ok(ret)
+}
+
+unsafe fn expect_eof(fd: libc::c_int) -> crate::Result<()>
+{
+    set_blocking(fd)?;
+
+    let mut bs = [0; 1];
+    let r = libc::read(fd, &mut bs as *mut _ as *mut libc::c_void, bs.len());
+    if r < 0 {
+        Err(crate::Error::os("read while expecting EOF"))
+    } else if r > 0 {
+        Err(Error::superfluous_bytes())
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -281,9 +312,9 @@ mod fork_tests {
 
     #[test]
     fn pure() -> crate::Result<()> {
-        assert_eq!(fork(|| 7u8)?, Ok(7u8));
-        assert_eq!(fork(|| 7u32)?, Ok(7u32));
-        assert_eq!(fork(|| -7i32)?, Ok(-7i32));
+        assert_eq!(fork(|| 7u8)?, 7u8);
+        assert_eq!(fork(|| 7u32)?, 7u32);
+        assert_eq!(fork(|| -7i32)?, -7i32);
         Ok(())
     }
 
@@ -293,15 +324,15 @@ mod fork_tests {
 
         let mut bs = [0u8; RECEIVE_BUFFER/2];
         rng.fill_bytes(&mut bs);
-        assert_eq!(fork(|| bs)?, Ok(bs));
+        assert_eq!(fork(|| bs)?, bs);
 
         let mut bs = [0u8; RECEIVE_BUFFER];
         rng.fill_bytes(&mut bs);
-        assert_eq!(fork(|| bs)?, Ok(bs));
+        assert_eq!(fork(|| bs)?, bs);
 
         let mut bs = [0u8; RECEIVE_BUFFER*2];
         rng.fill_bytes(&mut bs);
-        assert_eq!(fork(|| bs)?, Ok(bs));
+        assert_eq!(fork(|| bs)?, bs);
 
         Ok(())
     }
@@ -310,7 +341,7 @@ mod fork_tests {
     #[cfg(feature = "stdalloc")]
     fn vec() -> crate::Result<()> {
         let bs = test_utils::fresh::bytestring();
-        assert_eq!(fork(|| bs.as_slice())?, Ok(bs));
+        assert_eq!(fork(|| bs.as_slice())?, bs);
 
         Ok(())
     }
@@ -333,8 +364,8 @@ mod fork_tests {
             fork(|| unsafe {
                 libc::_exit(0);
                 7u32
-            })?,
-            Err(TransferError::UnexpectedEOF)
+            }),
+            Err(Error::unexpected_eof())
         );
         Ok(())
     }
@@ -347,37 +378,36 @@ mod fork_tests {
                 libc::write(1, [1u8, 2u8].as_ptr() as *const libc::c_void, 2);
                 libc::_exit(0);
                 7u32
-            })?,
-            Err(TransferError::UnexpectedEOF)
+            }),
+            Err(Error::unexpected_eof())
         );
         Ok(())
     }
 
     #[test]
     #[allow(unreachable_code)]
-    #[ignore = "TODO: tuples (or any combination of transferables requires that the eof detection is done by the loop itself"]
     fn superfluous_bytes() -> crate::Result<()> {
         assert_eq!(
             fork(|| unsafe {
                 libc::write(1, &[7u8] as *const _ as *const libc::c_void, 1);
-            })?,
-            Err(TransferError::SuperfluousBytes)
+            }),
+            Err(Error::superfluous_bytes())
         );
 
         assert_eq!(
             fork(|| unsafe {
                 libc::write(1, &[7u8] as *const _ as *const libc::c_void, 1);
                 9u8
-            })?,
-            Err(TransferError::SuperfluousBytes)
+            }),
+            Err(Error::superfluous_bytes())
         );
 
         assert_eq!(
             fork(|| unsafe {
                 libc::write(1, &[7u8] as *const _ as *const libc::c_void, 1);
                 [1, 2, 3, 4]
-            })?,
-            Err(TransferError::SuperfluousBytes)
+            }),
+            Err(Error::superfluous_bytes())
         );
 
         Ok(())

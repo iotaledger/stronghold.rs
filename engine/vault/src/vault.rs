@@ -278,7 +278,7 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
                             let pt = sb.decrypt(&self.view.key, tx.blob).unwrap();
                             recipient.as_ref().protect(pt.as_slice()).unwrap()
                         })?;
-                        Ok(PreparedRead::CacheHit(ct.unwrap()))
+                        Ok(PreparedRead::CacheHit(ct))
                     }
                     None => Ok(PreparedRead::CacheMiss(ReadRequest::blob(tx.blob))),
                 }
@@ -296,7 +296,7 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
                 let pt = SealedBlob::from(res.data()).decrypt(&self.view.key, b).unwrap();
                 recipient.as_ref().protect(pt.as_slice()).unwrap()
             })?;
-            Ok(ct.unwrap())
+            Ok(ct)
         } else {
             Err(crate::Error::ProtocolError("invalid blob".to_string()))
         }
@@ -376,7 +376,7 @@ impl<'a, P: BoxProvider> DBWriter<'a, P> {
             let pt = recipient_key.as_ref().access().access(data.as_ref()).unwrap();
             let ct = (&*pt.access()).encrypt(&self.view.key, blob_id).unwrap();
             ct
-        })?.unwrap().into();
+        })?;
 
         let blob = WriteRequest::blob(&blob_id, &ct);
 

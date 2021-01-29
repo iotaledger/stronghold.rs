@@ -5,7 +5,7 @@ use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, rand, x25519};
 
 use crate::{Access, Protectable, Protection};
 
-use runtime::zone::{Transferable, TransferError, LengthPrefix};
+use runtime::zone::{Transferable, LengthPrefix};
 
 use std::marker::PhantomData;
 
@@ -43,19 +43,17 @@ impl<'a, A: ?Sized> Transferable<'a> for Ciphertext<A> {
     }
 
     type State = <CiphertextTuple<'a> as Transferable<'a>>::State;
-    type Out = Result<Ciphertext<A>, TransferError>;
-
+    type Out = Self;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         st: &mut Option<Self::State>,
         bs: &mut I,
-        eof: bool,
     ) -> Option<Self::Out> {
-        CiphertextTuple::receive(st, bs, eof).map(|r| r.map(|(ct, ephemeral_pk, tag)| Ciphertext {
+        CiphertextTuple::receive(st, bs).map(|(ct, ephemeral_pk, tag)| Ciphertext {
             ct,
             ephemeral_pk,
             tag,
             a: PhantomData,
-        }))
+        })
     }
 }
 

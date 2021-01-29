@@ -3,12 +3,6 @@
 
 use core::mem::size_of;
 
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum TransferError {
-    UnexpectedEOF,
-    SuperfluousBytes,
-}
-
 // TODO: use generic associated types when they are available
 pub trait Transferable<'a> {
     type IntoIter: Iterator<Item = &'a u8>;
@@ -19,7 +13,6 @@ pub trait Transferable<'a> {
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         st: &mut Option<Self::State>,
         bs: &mut I,
-        eof: bool,
     ) -> Option<Self::Out>;
 }
 
@@ -31,23 +24,19 @@ impl<'a> Transferable<'a> for () {
     }
 
     type State = ();
-    type Out = Result<Self, TransferError>;
+    type Out = Self;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         _st: &mut Option<Self::State>,
-        bs: &mut I,
-        _eof: bool,
+        _bs: &mut I,
     ) -> Option<Self::Out> {
-        match bs.next() {
-            None => Some(Ok(())),
-            Some(_) => Some(Err(TransferError::SuperfluousBytes)),
-        }
+        Some(())
     }
 }
 
-impl<'a, A, Ao, B, Bo, E> Transferable<'a> for (A, B)
-where A: Transferable<'a, Out = Result<Ao, E>>,
+impl<'a, A, Ao, B, Bo> Transferable<'a> for (A, B)
+where A: Transferable<'a, Out = Ao>,
       Ao: Clone,
-      B: Transferable<'a, Out = Result<Bo, E>>,
+      B: Transferable<'a, Out = Bo>,
       Bo: Clone,
 {
     type IntoIter = core::iter::Chain<A::IntoIter, B::IntoIter>;
@@ -56,45 +45,40 @@ where A: Transferable<'a, Out = Result<Ao, E>>,
     }
 
     type State = (Result<Ao, Option<A::State>>, Result<Bo, Option<B::State>>);
-    type Out = Result<(Ao, Bo), E>;
+    type Out = (Ao, Bo);
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         st: &mut Option<Self::State>,
         bs: &mut I,
-        eof: bool,
     ) -> Option<Self::Out> {
         let (a, b) = st.get_or_insert((Err(None), Err(None)));
 
         if let Err(ast) = a {
-            match A::receive(ast, bs, eof) {
-                Some(Ok(ao)) => *a = Ok(ao),
-                Some(Err(e)) => return Some(Err(e)),
-                None => (),
+            if let Some(ao) = A::receive(ast, bs) {
+                *a = Ok(ao);
             }
         }
 
         if a.is_ok() {
             if let Err(bst) = b {
-                match B::receive(bst, bs, eof) {
-                    Some(Ok(bo)) => *b = Ok(bo),
-                    Some(Err(e)) => return Some(Err(e)),
-                    None => (),
+                if let Some(bo) = B::receive(bst, bs) {
+                    *b = Ok(bo);
                 }
             }
         }
 
         match (a, b) {
-            (Ok(ao), Ok(bo)) => Some(Ok((ao.clone(), bo.clone()))),
+            (Ok(ao), Ok(bo)) => Some((ao.clone(), bo.clone())),
             _ => None,
         }
     }
 }
 
-impl<'a, A, Ao, B, Bo, C, Co, E> Transferable<'a> for (A, B, C)
-where A: Transferable<'a, Out = Result<Ao, E>>,
+impl<'a, A, Ao, B, Bo, C, Co> Transferable<'a> for (A, B, C)
+where A: Transferable<'a, Out = Ao>,
       Ao: Clone,
-      B: Transferable<'a, Out = Result<Bo, E>>,
+      B: Transferable<'a, Out = Bo>,
       Bo: Clone,
-      C: Transferable<'a, Out = Result<Co, E>>,
+      C: Transferable<'a, Out = Co>,
       Co: Clone,
 {
     type IntoIter = core::iter::Chain<core::iter::Chain<A::IntoIter, B::IntoIter>, C::IntoIter>;
@@ -103,44 +87,37 @@ where A: Transferable<'a, Out = Result<Ao, E>>,
     }
 
     type State = (Result<Ao, Option<A::State>>, Result<Bo, Option<B::State>>, Result<Co, Option<C::State>>);
-    type Out = Result<(Ao, Bo, Co), E>;
+    type Out = (Ao, Bo, Co);
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         st: &mut Option<Self::State>,
         bs: &mut I,
-        eof: bool,
     ) -> Option<Self::Out> {
         let (a, b, c) = st.get_or_insert((Err(None), Err(None), Err(None)));
 
         if let Err(ast) = a {
-            match A::receive(ast, bs, eof) {
-                Some(Ok(ao)) => *a = Ok(ao),
-                Some(Err(e)) => return Some(Err(e)),
-                None => (),
+            if let Some(ao) = A::receive(ast, bs) {
+                *a = Ok(ao);
             }
         }
 
         if a.is_ok() {
             if let Err(bst) = b {
-                match B::receive(bst, bs, eof) {
-                    Some(Ok(bo)) => *b = Ok(bo),
-                    Some(Err(e)) => return Some(Err(e)),
-                    None => (),
+                if let Some(bo) = B::receive(bst, bs) {
+                    *b = Ok(bo);
                 }
             }
 
             if b.is_ok() {
                 if let Err(cst) = c {
-                    match C::receive(cst, bs, eof) {
-                        Some(Ok(co)) => *c = Ok(co),
-                        Some(Err(e)) => return Some(Err(e)),
-                        None => (),
+                    if let Some(co) = C::receive(cst, bs) {
+                        *c = Ok(co);
                     }
                 }
             }
         }
 
         match (a, b, c) {
-            (Ok(ao), Ok(bo), Ok(co)) => Some(Ok((ao.clone(), bo.clone(), co.clone()))),
+            (Ok(ao), Ok(bo), Ok(co)) => Some((ao.clone(), bo.clone(), co.clone())),
             _ => None,
         }
     }
@@ -156,11 +133,10 @@ macro_rules! transfer_slice_of_bytes {
             }
 
             type State = (usize, [u8; $n]);
-            type Out = Result<Self, TransferError>;
+            type Out = Self;
             fn receive<'b, I: Iterator<Item = &'b u8>>(
                 st: &mut Option<Self::State>,
                 bs: &mut I,
-                eof: bool,
             ) -> Option<Self::Out> {
                 let (i, buf) = st.get_or_insert((0, [0; $n]));
 
@@ -174,9 +150,7 @@ macro_rules! transfer_slice_of_bytes {
                 }
 
                 if *i == $n {
-                    Some(Ok(*buf))
-                } else if eof {
-                    Some(Err(TransferError::UnexpectedEOF))
+                    Some(*buf)
                 } else {
                     None
                 }
@@ -210,11 +184,10 @@ macro_rules! transfer_primitive {
             }
 
             type State = (usize, [u8; size_of::<Self>()]);
-            type Out = Result<Self, TransferError>;
+            type Out = Self;
             fn receive<'b, I: Iterator<Item = &'b u8>>(
                 st: &mut Option<Self::State>,
                 bs: &mut I,
-                eof: bool,
             ) -> Option<Self::Out> {
                 let (i, buf) = st.get_or_insert((0, [0; size_of::<Self>()]));
 
@@ -228,9 +201,7 @@ macro_rules! transfer_primitive {
                 }
 
                 if *i == size_of::<Self>() {
-                    Some(Ok(unsafe { *(buf as *const _ as *const Self).as_ref().unwrap() }))
-                } else if eof {
-                    Some(Err(TransferError::UnexpectedEOF))
+                    Some(unsafe { *(buf as *const _ as *const Self).as_ref().unwrap() })
                 } else {
                     None
                 }
@@ -287,11 +258,10 @@ impl<'a> Transferable<'a> for &[u8] {
     }
 
     type State = (Option<usize>, std::vec::Vec<u8>);
-    type Out = Result<std::vec::Vec<u8>, TransferError>;
+    type Out = std::vec::Vec<u8>;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         st: &mut Option<Self::State>,
         bs: &mut I,
-        _eof: bool, // TODO: add tests for eof and superfluous bytes handling
     ) -> Option<Self::Out> {
         let (i, buf) = st.get_or_insert((None, std::vec::Vec::with_capacity(size_of::<usize>())));
 
@@ -321,7 +291,7 @@ impl<'a> Transferable<'a> for &[u8] {
             }
 
             if buf.len() == *l {
-                Some(Ok(buf.clone()))
+                Some(buf.clone())
             } else {
                 None
             }
@@ -355,7 +325,7 @@ mod common_tests {
         macro_rules! pure {
             ( $t:ty ) => {
                 let x = rng.gen::<$t>();
-                assert_eq!(ZoneSpec::default().run(|| x), Ok(Ok(x)));
+                assert_eq!(ZoneSpec::default().run(|| x), Ok(x));
             }
         }
 
@@ -387,7 +357,7 @@ mod common_tests {
             ( $n:tt ) => {
                 let mut bs = [0u8; $n];
                 rng.fill_bytes(&mut bs);
-                assert_eq!(ZoneSpec::default().run(|| bs), Ok(Ok(bs)));
+                assert_eq!(ZoneSpec::default().run(|| bs), Ok(bs));
             }
         }
 
@@ -410,17 +380,17 @@ mod common_tests {
     #[cfg(feature = "stdalloc")]
     fn pure_bytestring() {
         let bs = test_utils::fresh::bytestring();
-        assert_eq!(fork(|| bs.as_slice()), Ok(Ok(bs)));
+        assert_eq!(fork(|| bs.as_slice()), Ok(bs));
 
         let mut rng = StdRng::from_entropy();
 
         let bs = test_utils::fresh::bytestring();
         let i = rng.gen::<u32>();
-        assert_eq!(fork(|| (bs.as_slice(), i)), Ok(Ok((bs, i))));
+        assert_eq!(fork(|| (bs.as_slice(), i)), Ok((bs, i)));
 
         let bs = test_utils::fresh::bytestring();
         let i = rng.gen::<i32>();
-        assert_eq!(fork(|| (i, bs.as_slice())), Ok(Ok((i, bs))));
+        assert_eq!(fork(|| (i, bs.as_slice())), Ok((i, bs)));
     }
 
     #[test]
@@ -433,7 +403,7 @@ mod common_tests {
                 let b = Box::new(7u32);
                 *b
             })?,
-            Ok(7)
+            7
         );
         Ok(())
     }

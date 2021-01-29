@@ -334,7 +334,7 @@ impl Decrypt<Infallible, Vec<u8>> for SealedBlob {}
 impl Encrypt<SealedBlob> for Vec<u8> {}
 impl Encrypt<SealedBlob> for &[u8] {}
 
-use runtime::zone::{Transferable, TransferError, LengthPrefix};
+use runtime::zone::{Transferable, LengthPrefix};
 impl<'a> Transferable<'a> for SealedBlob {
     type IntoIter = <&'a [u8] as Transferable<'a>>::IntoIter;
     fn transfer(&'a self) -> Self::IntoIter {
@@ -342,13 +342,11 @@ impl<'a> Transferable<'a> for SealedBlob {
     }
 
     type State = <&'a [u8] as Transferable<'a>>::State;
-    type Out = Result<SealedBlob, TransferError>;
-
+    type Out = Self;
     fn receive<'b, I: Iterator<Item = &'b u8>>(
         st: &mut Option<Self::State>,
         bs: &mut I,
-        eof: bool,
     ) -> Option<Self::Out> {
-        <&'a [u8] as Transferable<'a>>::receive(st, bs, eof).map(|r| r.map(|bs| SealedBlob(bs)))
+        <&'a [u8] as Transferable<'a>>::receive(st, bs).map(|bs| SealedBlob(bs))
     }
 }
