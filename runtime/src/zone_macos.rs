@@ -33,7 +33,7 @@ impl Error {
 }
 
 #[derive(Clone)]
-struct ZoneSpec {
+pub struct ZoneSpec {
     guarded_allocator: bool,
 }
 
@@ -51,12 +51,17 @@ impl ZoneSpec {
         s.guarded_allocator = true;
         s
     }
+
+    pub fn random(&self) -> Self {
+        self.clone()
+    }
 }
 
 impl ZoneSpec {
-    pub fn run<F, T>(&self, f: F) -> crate::Result<T>
+    pub fn run<'b, F, T>(&self, f: F) -> crate::Result<<T as Transferable<'b>>::Out>
     where
         F: FnOnce() -> T,
+        T: for<'a> Transferable<'a>,
     {
         fork(|| {
             if self.guarded_allocator {

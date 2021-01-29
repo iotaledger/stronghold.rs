@@ -25,7 +25,7 @@
 pub use crypto;
 pub use primitives;
 pub use random;
+pub use secret;
 pub use snapshot;
 pub use store;
 pub use vault;
-pub use secret;

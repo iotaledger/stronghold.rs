@@ -17,6 +17,10 @@ impl ZoneSpec {
     pub fn secure_memory(&self) -> Self {
         self.clone()
     }
+
+    pub fn random(&self) -> Self {
+        self.clone()
+    }
 }
 
 #[allow(dead_code)]

@@ -321,6 +321,16 @@ unsafe fn set_blocking(fd: libc::c_int) -> crate::Result<()> {
 
 const RECEIVE_BUFFER: usize = 256;
 
+#[cfg(target_os = "linux")]
+unsafe fn errno() -> libc::c_int {
+    *libc::__errno_location()
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn errno() -> libc::c_int {
+    *libc::__error()
+}
+
 unsafe fn receive<'b, T>(st: &mut Option<<T as Transferable<'b>>::State>, fd: libc::c_int) -> crate::Result<Option<<T as Transferable<'b>>::Out>>
 where
     T: for <'a> Transferable<'a>,
@@ -329,8 +339,8 @@ where
     while ret.is_none() {
         let mut bs = [0; RECEIVE_BUFFER];
         let r = libc::read(fd, &mut bs as *mut _ as *mut libc::c_void, bs.len());
-        let errno = *libc::__errno_location();
-        if r < 0 && (errno == libc::EAGAIN || errno == libc::EWOULDBLOCK ) {
+        let e = errno();
+        if r < 0 && (e == libc::EAGAIN || e == libc::EWOULDBLOCK ) {
             return Ok(None);
         }
         if r < 0 {
