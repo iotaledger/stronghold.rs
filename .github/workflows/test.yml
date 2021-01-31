@@ -70,7 +70,16 @@ jobs:
           ${{ matrix.project }}-${{ matrix.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.toml') }}
 
     - name: Run tests for ${{ matrix.project }}
+      if: matrix.project != 'engine'
       uses: actions-rs/cargo@v1
       with:
         command: test
         args: --manifest-path=${{ matrix.project }}/Cargo.toml --release
+
+    - name: Run tests for engine
+      # Because of the way engine is structured, we need to specify each package to be tested
+      if: matrix.project == 'engine'
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --manifest-path=engine/Cargo.toml --release -p crypto -p primitives -p random -p snapshot -p store -p vault
