@@ -1,13 +1,13 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{ask::ask, message::*};
+use super::{ask::ask, message::*, CommunicationConfig};
 use crate::behaviour::{
     message::{P2PEvent, P2PReqResEvent},
     MessageEvent, P2PNetworkBehaviour,
 };
 use core::{ops::Deref, time::Duration};
-use futures::{channel::mpsc::UnboundedReceiver, prelude::*, select};
+use futures::{channel::mpsc::UnboundedReceiver, future, prelude::*, select};
 use libp2p::{
     core::{connection::ListenerId, ConnectedPoint},
     identity::Keypair,
@@ -15,39 +15,41 @@ use libp2p::{
     Multiaddr, PeerId,
 };
 use riker::{actors::*, Message};
-use std::time::Instant;
+use std::{
+    task::{Context, Poll},
+    time::Instant,
+};
 
 // Separate task that manages the swarm communication.
-pub struct SwarmTask<Req, Res, T>
+pub struct SwarmTask<Req, Res, T, U>
 where
-    Req: MessageEvent + Into<T>,
+    Req: MessageEvent,
     Res: MessageEvent,
-    T: Message,
+    T: Message + From<Req>,
+    U: Message + From<FirewallRequest<Req>>,
 {
-    sys: ActorSystem,
-    client_ref: ActorRef<T>,
+    config: CommunicationConfig<Req, T, U>,
     swarm: Swarm<P2PNetworkBehaviour<Req, Res>>,
     swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, T>, Sender)>,
     listener: Option<ListenerId>,
 }
 
-impl<Req, Res, T> SwarmTask<Req, Res, T>
+impl<Req, Res, T, U> SwarmTask<Req, Res, T, U>
 where
-    Req: MessageEvent + Into<T>,
+    Req: MessageEvent,
     Res: MessageEvent,
-    T: Message,
+    T: Message + From<Req>,
+    U: Message + From<FirewallRequest<Req>>,
 {
     pub fn new(
         keypair: Keypair,
-        system: ActorSystem,
-        client_ref: ActorRef<T>,
+        config: CommunicationConfig<Req, T, U>,
         swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, T>, Sender)>,
     ) -> Self {
         // Create a P2PNetworkBehaviour for the swarm communication.
         let swarm = P2PNetworkBehaviour::<Req, Res>::init_swarm(keypair).unwrap();
         SwarmTask {
-            sys: system,
-            client_ref,
+            config,
             swarm,
             swarm_rx,
             listener: None,
@@ -71,10 +73,9 @@ where
         }
     }
 
-    fn send_response(result: CommunicationResults<Res, T>, sender: Sender) {
-        let response = CommunicationEvent::<Req, Res, T>::Results(result);
+    fn send_response(result: CommunicationResults<Res>, sender: Sender) {
         if let Some(sender) = sender {
-            sender.try_tell(response, None).unwrap();
+            sender.try_tell(result, None).unwrap();
         }
     }
 
@@ -83,55 +84,72 @@ where
         match event {
             CommunicationRequest::RequestMsg { peer_id, request } => {
                 let res = self.send_request(peer_id, request).await;
-                SwarmTask::<Req, Res, T>::send_response(res, sender);
+                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::SetClientRef(client_ref) => {
-                self.client_ref = client_ref.clone();
-                let res = CommunicationResults::SetClientRefResult(client_ref);
-                SwarmTask::<Req, Res, T>::send_response(res, sender);
+                self.config.client = client_ref;
+                let res = CommunicationResults::SetClientRefResult;
+                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::ConnectPeer { peer_id, addr } => {
                 let res = self.connect_peer(peer_id, addr).await;
-                SwarmTask::<Req, Res, T>::send_response(res, sender);
+                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::CheckConnection(peer_id) => {
                 let is_connected = Swarm::is_connected(&self.swarm, &peer_id);
                 let res = CommunicationResults::CheckConnectionResult(is_connected);
-                SwarmTask::<Req, Res, T>::send_response(res, sender);
+                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::GetSwarmInfo => {
                 let peer_id = *Swarm::local_peer_id(&self.swarm);
                 let listeners = Swarm::listeners(&self.swarm).cloned().collect();
-                let res = CommunicationResults::<Res, T>::SwarmInfo { peer_id, listeners };
-                SwarmTask::<Req, Res, T>::send_response(res, sender);
+                let res = CommunicationResults::<Res>::SwarmInfo { peer_id, listeners };
+                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::StartListening(addr) => {
                 let res = self.start_listening(addr).await;
-                SwarmTask::<Req, Res, T>::send_response(res, sender);
+                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::RemoveListener => {
-                let res = if let Some(listener_id) = self.listener {
+                let result = if let Some(listener_id) = self.listener.take() {
                     Swarm::remove_listener(&mut self.swarm, listener_id)
                 } else {
                     Err(())
                 };
-                let res = CommunicationResults::<Res, T>::RemoveListenerResult(res);
-                SwarmTask::<Req, Res, T>::send_response(res, sender);
+                let res = CommunicationResults::<Res>::RemoveListenerResult(result);
+                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::BanPeer(peer_id) => {
                 Swarm::ban_peer_id(&mut self.swarm, peer_id);
-                let res = CommunicationResults::<Res, T>::BannedPeer(peer_id);
+                let res = CommunicationResults::<Res>::BannedPeer(peer_id);
                 sender.unwrap().try_tell(res, None).unwrap();
             }
             CommunicationRequest::UnbanPeer(peer_id) => {
                 Swarm::unban_peer_id(&mut self.swarm, peer_id);
-                let res = CommunicationResults::<Res, T>::UnbannedPeer(peer_id);
+                let res = CommunicationResults::<Res>::UnbannedPeer(peer_id);
                 sender.unwrap().try_tell(res, None).unwrap();
             }
         }
     }
 
-    async fn start_listening(&mut self, addr: Option<Multiaddr>) -> CommunicationResults<Res, T> {
+    async fn ask_permission(&mut self, request: Req, remote: PeerId, direction: RequestDirection) -> FirewallResponse {
+        let start = Instant::now();
+        let firewall_request = FirewallRequest::new(request, remote, direction);
+        let mut ask_permission = ask(&self.config.system, &self.config.firewall, firewall_request);
+        future::poll_fn(move |cx: &mut Context<'_>| match ask_permission.poll_unpin(cx) {
+            Poll::Ready(r) => Poll::Ready(r),
+            Poll::Pending => {
+                if start.elapsed() > Duration::new(3, 0) {
+                    Poll::Ready(FirewallResponse::Drop)
+                } else {
+                    Poll::Pending
+                }
+            }
+        })
+        .await
+    }
+
+    async fn start_listening(&mut self, addr: Option<Multiaddr>) -> CommunicationResults<Res> {
         let addr = addr.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().unwrap());
         if let Ok(listener_id) = Swarm::listen_on(&mut self.swarm, addr) {
             let start = Instant::now();
@@ -139,31 +157,31 @@ where
                 match self.swarm.next_event().await {
                     SwarmEvent::NewListenAddr(addr) => {
                         self.listener = Some(listener_id);
-                        return CommunicationResults::<Res, T>::StartListeningResult(Ok(addr));
+                        return CommunicationResults::<Res>::StartListeningResult(Ok(addr));
                     }
                     other => self.handle_swarm_event(other).await,
                 }
                 if start.elapsed() > Duration::new(5, 0) {
-                    return CommunicationResults::<Res, T>::StartListeningResult(Err(()));
+                    return CommunicationResults::<Res>::StartListeningResult(Err(()));
                 }
             }
         } else {
-            return CommunicationResults::<Res, T>::StartListeningResult(Err(()));
+            return CommunicationResults::<Res>::StartListeningResult(Err(()));
         }
     }
 
-    async fn connect_peer(&mut self, target_peer: PeerId, target_addr: Multiaddr) -> CommunicationResults<Res, T> {
+    async fn connect_peer(&mut self, target_peer: PeerId, target_addr: Multiaddr) -> CommunicationResults<Res> {
         if let Err(err) = Swarm::dial(&mut self.swarm, &target_peer) {
             match err {
                 DialError::NoAddresses => {
                     if let Err(limit) = Swarm::dial_addr(&mut self.swarm, target_addr.clone()) {
-                        return CommunicationResults::<Res, T>::ConnectPeerResult(Err(
-                            ConnectPeerError::ConnectionLimit(limit),
-                        ));
+                        return CommunicationResults::<Res>::ConnectPeerResult(Err(ConnectPeerError::ConnectionLimit(
+                            limit,
+                        )));
                     }
                 }
                 _ => {
-                    return CommunicationResults::<Res, T>::ConnectPeerResult(Err(err.into()));
+                    return CommunicationResults::<Res>::ConnectPeerResult(Err(err.into()));
                 }
             }
         }
@@ -176,7 +194,7 @@ where
                     num_established: _,
                 } => {
                     if peer_id == target_peer {
-                        return CommunicationResults::<Res, T>::ConnectPeerResult(Ok(peer_id));
+                        return CommunicationResults::<Res>::ConnectPeerResult(Ok(peer_id));
                     } else {
                         self.handle_swarm_event(event).await
                     }
@@ -188,12 +206,12 @@ where
                     attempts_remaining: 0,
                 } => {
                     if peer_id == target_peer {
-                        return CommunicationResults::<Res, T>::ConnectPeerResult(Err(ConnectPeerError::from(error)));
+                        return CommunicationResults::<Res>::ConnectPeerResult(Err(ConnectPeerError::from(error)));
                     }
                 }
                 SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {
                     if address == target_addr {
-                        return CommunicationResults::<Res, T>::ConnectPeerResult(Err(ConnectPeerError::from(error)));
+                        return CommunicationResults::<Res>::ConnectPeerResult(Err(ConnectPeerError::from(error)));
                     }
                 }
                 _ => self.handle_swarm_event(event).await,
@@ -201,55 +219,63 @@ where
         }
     }
 
-    async fn send_request(&mut self, peer_id: PeerId, request: Req) -> CommunicationResults<Res, T> {
-        let req_id = self.swarm.send_request(&peer_id, request);
-        loop {
-            let event = self.swarm.next_event().await;
-            match event {
-                SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
-                    match boxed_event.clone().deref().clone() {
-                        P2PReqResEvent::Res {
-                            peer_id: _,
-                            request_id,
-                            response,
-                        } => {
-                            if request_id == req_id {
-                                return CommunicationResults::<_, T>::RequestMsgResult(Ok(response));
+    async fn send_request(&mut self, peer_id: PeerId, request: Req) -> CommunicationResults<Res> {
+        let permission = self
+            .ask_permission(request.clone(), peer_id, RequestDirection::Out)
+            .await;
+        match permission {
+            FirewallResponse::Accept => {
+                let req_id = self.swarm.send_request(&peer_id, request);
+                loop {
+                    let event = self.swarm.next_event().await;
+                    match event {
+                        SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
+                            match boxed_event.clone().deref().clone() {
+                                P2PReqResEvent::Res {
+                                    peer_id: _,
+                                    request_id,
+                                    response,
+                                } => {
+                                    if request_id == req_id {
+                                        return CommunicationResults::RequestMsgResult(Ok(response));
+                                    }
+                                }
+                                P2PReqResEvent::InboundFailure {
+                                    peer_id: _,
+                                    request_id,
+                                    error,
+                                } => {
+                                    if request_id == req_id {
+                                        let err = RequestMessageError::Inbound(error);
+                                        return CommunicationResults::<Res>::RequestMsgResult(Err(err));
+                                    }
+                                }
+                                P2PReqResEvent::OutboundFailure {
+                                    peer_id: _,
+                                    request_id,
+                                    error,
+                                } => {
+                                    if request_id == req_id {
+                                        let err = RequestMessageError::Outbound(error);
+                                        return CommunicationResults::<Res>::RequestMsgResult(Err(err));
+                                    }
+                                }
+                                P2PReqResEvent::Req {
+                                    peer_id: _,
+                                    request_id,
+                                    request,
+                                } => {
+                                    let res: Res = ask(&self.config.system, &self.config.client, request).await;
+                                    self.swarm.send_response(res, request_id).unwrap();
+                                }
+                                _ => {}
                             }
                         }
-                        P2PReqResEvent::InboundFailure {
-                            peer_id: _,
-                            request_id,
-                            error,
-                        } => {
-                            if request_id == req_id {
-                                let err = RequestMessageError::Inbound(error);
-                                return CommunicationResults::<Res, T>::RequestMsgResult(Err(err));
-                            }
-                        }
-                        P2PReqResEvent::OutboundFailure {
-                            peer_id: _,
-                            request_id,
-                            error,
-                        } => {
-                            if request_id == req_id {
-                                let err = RequestMessageError::Outbound(error);
-                                return CommunicationResults::<Res, T>::RequestMsgResult(Err(err));
-                            }
-                        }
-                        P2PReqResEvent::Req {
-                            peer_id: _,
-                            request_id,
-                            request,
-                        } => {
-                            let res: Res = ask(&self.sys, &self.client_ref, request).await;
-                            self.swarm.send_response(res, request_id).unwrap();
-                        }
-                        _ => {}
+                        _ => self.handle_swarm_event(event).await,
                     }
                 }
-                _ => self.handle_swarm_event(event).await,
             }
+            _ => return CommunicationResults::Rejected,
         }
     }
 
@@ -259,13 +285,18 @@ where
             SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
                 P2PEvent::RequestResponse(boxed_event) => {
                     if let P2PReqResEvent::Req {
-                        peer_id: _,
+                        peer_id,
                         request_id,
                         request,
                     } = boxed_event.deref().clone()
                     {
-                        let res: Res = ask(&self.sys, &self.client_ref, request).await;
-                        self.swarm.send_response(res, request_id).unwrap();
+                        let permission = self
+                            .ask_permission(request.clone(), peer_id, RequestDirection::In)
+                            .await;
+                        if let FirewallResponse::Accept = permission {
+                            let res: Res = ask(&self.config.system, &self.config.client, request).await;
+                            self.swarm.send_response(res, request_id).unwrap();
+                        }
                     }
                 }
                 P2PEvent::Identify(identify_event) => {

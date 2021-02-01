@@ -22,8 +22,8 @@ use crate::{
 #[cfg(feature = "communication")]
 use stronghold_communication::{
     actor::{
-        message::{CommunicationEvent, CommunicationRequest, CommunicationResults},
-        CommunicationActor,
+        message::{CommunicationRequest, CommunicationResults},
+        CommunicationActor, CommunicationConfig,
     },
     Multiaddr, PeerId,
 };
@@ -66,11 +66,9 @@ impl Stronghold {
         #[cfg(feature = "communication")]
         let communication_actor = {
             let local_keys = stronghold_communication::generate_new_keypair();
+            let config = CommunicationConfig::new(system.clone(), client.clone());
             system
-                .actor_of_args::<CommunicationActor<SHRequest, SHResults, ClientMsg>, _>(
-                    "communication",
-                    (local_keys, system.clone(), client.clone()),
-                )
+                .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>("communication", (local_keys, config))
                 .expect(line_error!())
         };
         system
@@ -603,15 +601,10 @@ impl Stronghold {
     // - Response is okay, but the request procedure at the remote stronghold was not successful.
     // - Response is an error: request could not be send or no response was received.
     // - Invalid event was returned from the communication actor.
-    fn handle_response_failure(
-        res: CommunicationEvent<SHRequest, SHResults, ClientMsg>,
-        procedure: &str,
-    ) -> StatusMessage {
+    fn handle_response_failure(res: CommunicationResults<SHResults>, procedure: &str) -> StatusMessage {
         match res {
-            CommunicationEvent::Results(CommunicationResults::RequestMsgResult(Ok(_))) => {
-                StatusMessage::Error(format!("Failed to {}", procedure))
-            }
-            CommunicationEvent::Results(CommunicationResults::RequestMsgResult(Err(e))) => {
+            CommunicationResults::RequestMsgResult(Ok(_)) => StatusMessage::Error(format!("Failed to {}", procedure)),
+            CommunicationResults::RequestMsgResult(Err(e)) => {
                 StatusMessage::Error(format!("Error messaging peer {:?}", e))
             }
             _ => StatusMessage::Error("Invalid communication event".into()),
@@ -629,10 +622,7 @@ impl Stronghold {
         ask(
             &self.system,
             &self.communication_actor,
-            CommunicationEvent::<SHRequest, SHResults, ClientMsg>::Request(CommunicationRequest::RequestMsg {
-                peer_id,
-                request,
-            }),
+            CommunicationRequest::RequestMsg { peer_id, request },
         )
         .await
     }
@@ -823,16 +813,14 @@ impl Stronghold {
     #[cfg(feature = "communication")]
     //  Get the peer id and listening addresses of the local peer
     pub async fn get_swarm_info(&self) -> ResultMessage<(PeerId, Vec<Multiaddr>)> {
-        match ask::<_, _, CommunicationEvent<SHRequest, SHResults, ClientMsg>, _>(
+        match ask::<_, _, CommunicationResults<SHResults>, _>(
             &self.system,
             &self.communication_actor,
-            CommunicationEvent::Request(CommunicationRequest::GetSwarmInfo),
+            CommunicationRequest::GetSwarmInfo,
         )
         .await
         {
-            CommunicationEvent::Results(CommunicationResults::SwarmInfo { peer_id, listeners }) => {
-                ResultMessage::Ok((peer_id, listeners))
-            }
+            CommunicationResults::SwarmInfo { peer_id, listeners } => ResultMessage::Ok((peer_id, listeners)),
             _ => ResultMessage::Error("Failed to obtain swarm information".into()),
         }
     }
