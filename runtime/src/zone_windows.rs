@@ -32,3 +32,14 @@ impl ZoneSpec {
         Ok(f())
     }
 }
+
+/// TODO: STUB FUNCTION
+#[allow(clippy::extra_unused_lifetimes)]
+pub fn fork<'b, F, T>(f: F) -> crate::Result<T>
+where
+    F: FnOnce() -> T,
+{
+    let res = f();
+
+    Ok(res)
+}

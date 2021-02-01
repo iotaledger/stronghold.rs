@@ -21,6 +21,11 @@ stdalloc = []
 [dependencies]
 memoffset = "0.6.1"
 
+[target.'cfg(windows)'.dependencies]
+sysconf = "0.3"
+winapi = { version = "0.3", features = [ "memoryapi", "sysinfoapi", "winnt" ]}
+getrandom = "0.1"
+
 [dependencies.libc]
 version = "0.2.79"
 default-features = false

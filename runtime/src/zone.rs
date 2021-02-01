@@ -364,16 +364,19 @@ mod common_tests {
     #[cfg(feature = "stdalloc")]
     fn pure_bytestring() {
         let bs = test_utils::fresh::bytestring();
+        #[cfg(unix)]
         assert_eq!(fork(|| bs.as_slice()), Ok(bs));
 
         let mut rng = StdRng::from_entropy();
 
         let bs = test_utils::fresh::bytestring();
         let i = rng.gen::<u32>();
+        #[cfg(unix)]
         assert_eq!(fork(|| (bs.as_slice(), i)), Ok((bs, i)));
 
         let bs = test_utils::fresh::bytestring();
         let i = rng.gen::<i32>();
+        #[cfg(unix)]
         assert_eq!(fork(|| (i, bs.as_slice())), Ok((i, bs)));
     }
 

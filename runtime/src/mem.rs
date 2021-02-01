@@ -1,10 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use core::{
-    alloc::{GlobalAlloc, Layout, LayoutErr},
-    ptr,
-};
+use core::alloc::{GlobalAlloc, Layout, LayoutErr};
 
 use zeroize::Zeroize;
 
@@ -15,57 +12,16 @@ pub enum Error {
 }
 
 #[cfg(unix)]
-lazy_static! {
-    static ref PAGE_SIZE: usize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize };
-}
+mod posix;
+
 #[cfg(unix)]
-fn page_size() -> usize {
-    *PAGE_SIZE
-}
+pub use self::posix::{lock, mmap, munmap, page_size, prot, protect};
 
-fn pad(x: usize, n: usize) -> usize {
-    match x % n {
-        0 => 0,
-        r => n - r,
-    }
-}
+#[cfg(windows)]
+pub use self::win::{lock, mmap, munmap, page_size, prot, protect};
 
-fn pad_minimizer(a: usize, b: usize, c: usize) -> usize {
-    match b % c {
-        0 => 0,
-        bc => {
-            if bc % a == 0 {
-                c / a - bc / a
-            } else {
-                c / a - bc / a - 1
-            }
-        }
-    }
-}
-
-fn mmap(n: usize) -> crate::Result<*mut u8> {
-    let x = unsafe {
-        libc::mmap(
-            ptr::null_mut::<u8>() as *mut libc::c_void,
-            n,
-            libc::PROT_NONE,
-            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
-            -1,
-            0,
-        )
-    };
-    if x == libc::MAP_FAILED {
-        return Err(crate::Error::os("mmap"));
-    }
-    Ok(x as *mut u8)
-}
-
-fn munmap(p: *mut u8, n: usize) -> crate::Result<()> {
-    match unsafe { libc::munmap(p as *mut libc::c_void, n) } {
-        0 => Ok(()),
-        _ => Err(crate::Error::os("munmap")),
-    }
-}
+#[cfg(windows)]
+mod win;
 
 #[derive(Debug, PartialEq)]
 pub struct GuardedAllocation {
@@ -76,8 +32,7 @@ pub struct GuardedAllocation {
     mmapped_size: usize, // size of the memory mapping (including guard pages)
 }
 
-// TODO: is it really?
-unsafe impl Send for GuardedAllocation {}
+pub struct GuardedAllocator {}
 
 impl GuardedAllocation {
     pub fn unaligned(n: usize) -> crate::Result<Self> {
@@ -168,22 +123,14 @@ impl GuardedAllocation {
     }
 
     pub fn protect(&self, read: bool, write: bool) -> crate::Result<()> {
-        let prot = (read as i32 * libc::PROT_READ) | (write as i32 * libc::PROT_WRITE);
-        match unsafe { libc::mprotect(self.data_region_start as *mut libc::c_void, self.data_region_size, prot) } {
-            0 => Ok(()),
-            _ => Err(crate::Error::os("mprotect")),
-        }
+        let prot = prot(read, write);
+        protect(self.data_region_start, self.data_region_size as usize, prot)
     }
 
     fn lock(&self) -> crate::Result<()> {
-        match unsafe { libc::mlock(self.data_region_start as *mut libc::c_void, self.data_region_size) } {
-            0 => Ok(()),
-            _ => Err(crate::Error::os("mlock")),
-        }
+        lock(self.data_region_start, self.data_region_size)
     }
 }
-
-pub struct GuardedAllocator {}
 
 impl GuardedAllocator {
     pub const fn new() -> Self {
@@ -201,9 +148,33 @@ unsafe impl GlobalAlloc for GuardedAllocator {
     }
 }
 
+fn pad(x: usize, n: usize) -> usize {
+    match x % n {
+        0 => 0,
+        r => n - r,
+    }
+}
+
+fn pad_minimizer(a: usize, b: usize, c: usize) -> usize {
+    match b % c {
+        0 => 0,
+        bc => {
+            if bc % a == 0 {
+                c / a - bc / a
+            } else {
+                c / a - bc / a - 1
+            }
+        }
+    }
+}
+
+// TODO: is it really?
+unsafe impl Send for GuardedAllocation {}
+
 #[cfg(feature = "stdalloc")]
 pub mod stdalloc {
     use super::*;
+    use core::alloc::{GlobalAlloc, Layout};
     use core::cell::Cell;
 
     struct Toggleable<A, B> {
@@ -276,6 +247,7 @@ pub fn seccomp_spec() -> crate::seccomp::Spec {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::alloc::Layout;
     use rand::{rngs::OsRng, Rng};
 
     #[cfg(target_os = "linux")]
@@ -386,6 +358,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn guard_pages_pre_read() -> crate::Result<()> {
         let l = fresh_layout();
         let a = GuardedAllocation::aligned(l)?;
@@ -405,6 +378,8 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+
     fn guard_pages_pre_write() -> crate::Result<()> {
         let l = fresh_layout();
         let a = GuardedAllocation::aligned(l)?;
@@ -424,6 +399,8 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+
     fn guard_pages_post_read() -> crate::Result<()> {
         let l = fresh_layout();
         let a = GuardedAllocation::aligned(l)?;
@@ -443,6 +420,8 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+
     fn guard_pages_post_write() -> crate::Result<()> {
         let l = fresh_layout();
         let a = GuardedAllocation::aligned(l)?;
