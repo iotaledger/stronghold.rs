@@ -91,9 +91,9 @@ pub enum RequestMessageError {
 }
 
 #[derive(Debug, Clone)]
-pub enum CommunicationResults<Res, T: Message> {
+pub enum CommunicationResults<Res> {
     RequestMsgResult(Result<Res, RequestMessageError>),
-    SetClientRefResult(ActorRef<T>),
+    SetClientRefResult,
     ConnectPeerResult(Result<PeerId, ConnectPeerError>),
     CheckConnectionResult(bool),
     SwarmInfo { peer_id: PeerId, listeners: Vec<Multiaddr> },
@@ -101,6 +101,7 @@ pub enum CommunicationResults<Res, T: Message> {
     UnbannedPeer(PeerId),
     StartListeningResult(Result<Multiaddr, ()>),
     RemoveListenerResult(Result<(), ()>),
+    Rejected,
 }
 
 #[derive(Debug, Clone)]
@@ -137,9 +138,31 @@ pub enum CommunicationSwarmEvent {
 }
 
 #[derive(Debug, Clone)]
-pub enum CommunicationEvent<Req, Res, T: Message> {
-    Request(CommunicationRequest<Req, T>),
-    Results(CommunicationResults<Res, T>),
-    Swarm(CommunicationSwarmEvent),
-    Shutdown,
+pub enum RequestDirection {
+    In,
+    Out,
+}
+
+#[derive(Debug, Clone)]
+pub struct FirewallRequest<Req> {
+    request: Req,
+    remote: PeerId,
+    direction: RequestDirection,
+}
+
+impl<Req> FirewallRequest<Req> {
+    pub fn new(request: Req, remote: PeerId, direction: RequestDirection) -> Self {
+        FirewallRequest {
+            request,
+            remote,
+            direction,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum FirewallResponse {
+    Accept,
+    Reject,
+    Drop,
 }
