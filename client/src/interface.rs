@@ -248,7 +248,6 @@ impl Stronghold {
 
         StatusMessage::Error("Failed to write the data".into())
     }
-   
 
     /// A test function for reading data from a vault.
     #[cfg(test)]
