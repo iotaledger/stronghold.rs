@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod ask;
-pub mod message;
+mod message;
 mod swarm_task;
 use crate::behaviour::MessageEvent;
+pub use ask::ask;
 use async_std::task;
 use core::{
     marker::PhantomData,
@@ -15,7 +16,7 @@ use futures::{
     future,
 };
 use libp2p::core::identity::Keypair;
-use message::{CommunicationRequest, FirewallRequest};
+pub use message::*;
 use riker::actors::*;
 use swarm_task::SwarmTask;
 
@@ -59,24 +60,60 @@ where
 /// use libp2p::identity::Keypair;
 /// use riker::actors::*;
 /// use serde::{Deserialize, Serialize};
-/// use stronghold_communication::actor::{message::CommunicationActorMsg, CommunicationActor};
+/// use stronghold_communication::actor::{CommunicationActor, CommunicationConfig, FirewallRequest, FirewallResponse};
 ///
-/// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub enum Request {
 ///     Ping,
 /// }
 ///
-/// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub enum Response {
 ///     Pong,
+/// }
+/// // Dummy firewall that approves all requests
+/// #[derive(Debug, Clone)]
+/// struct Firewall;
+///
+/// impl ActorFactory for Firewall {
+///     fn create() -> Self {
+///         Firewall
+///     }
+/// }
+///
+/// impl Actor for Firewall {
+///     type Msg = FirewallRequest<Request>;
+///
+///     fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
+///         sender.unwrap().try_tell(FirewallResponse::Accept, None).unwrap()
+///     }
+/// }
+///
+/// // blank client actor without any logic
+/// #[derive(Clone, Debug)]
+/// struct ClientActor;
+///
+/// impl ActorFactory for ClientActor {
+///     fn create() -> Self {
+///         ClientActor
+///     }
+/// }
+///
+/// impl Actor for ClientActor {
+///     type Msg = Request;
+///
+///     fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {}
 /// }
 ///
 /// let local_keys = Keypair::generate_ed25519();
 /// let sys = ActorSystem::new().unwrap();
-/// sys.actor_of_args::<CommunicationActor<Request, Response, Request>, _>(
-///     "communication-actor",
-///     (local_keys, sys.clone()),
-/// );
+/// let keys = Keypair::generate_ed25519();
+/// let firewall = sys.actor_of::<Firewall>("firewall").unwrap();
+/// let client = sys.actor_of::<ClientActor>("client").unwrap();
+/// let config = CommunicationConfig::new(sys.clone(), client, firewall);
+/// let comms_actor = sys
+///     .actor_of_args::<CommunicationActor<_, Response, _, _>, _>("communication", (local_keys, config))
+///     .unwrap();
 /// ```
 pub struct CommunicationActor<Req, Res, T, U>
 where
@@ -135,116 +172,115 @@ where
         }))
         .unwrap();
     }
-
-    fn supervisor_strategy(&self) -> Strategy {
-        Strategy::Escalate
-    }
 }
 
 #[cfg(test)]
 mod test {
 
-    use super::{ask::ask, message::*, *};
+    use super::*;
     use core::time::Duration;
     use libp2p::{Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
-    #[derive(Debug, Clone)]
-    struct Firewall<Req: Message> {
-        marker: PhantomData<Req>,
-    }
-
-    impl<Req: Message> Default for Firewall<Req> {
-        fn default() -> Self {
-            Firewall { marker: PhantomData }
-        }
-    }
-
-    impl<Req: Message> Actor for Firewall<Req> {
-        type Msg = FirewallRequest<Req>;
-
-        fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: FirewallRequest<Req>, sender: Sender) {
-            sender.unwrap().try_tell(FirewallResponse::Accept, None).unwrap()
-        }
-    }
-
+    // the type of the send request and reponse messages
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Request {
         Ping,
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
     pub enum Response {
         Pong,
     }
 
-    #[actor(Request, CommunicationResults<Response>)]
+    // Dummy firewall that approves all requests
     #[derive(Debug, Clone)]
-    struct LocalActor {
-        remote_peer: PeerId,
-        remote_addr: Multiaddr,
-        has_received_response: bool,
+    struct Firewall;
+
+    impl ActorFactory for Firewall {
+        fn create() -> Self {
+            Firewall
+        }
     }
 
-    impl ActorFactoryArgs<(PeerId, Multiaddr)> for LocalActor {
-        fn create_args((remote_peer, remote_addr): (PeerId, Multiaddr)) -> Self {
-            LocalActor {
-                remote_peer,
-                remote_addr,
-                has_received_response: false,
-            }
+    impl Actor for Firewall {
+        type Msg = FirewallRequest<Request>;
+
+        fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
+            sender.unwrap().try_tell(FirewallResponse::Accept, None).unwrap()
+        }
+    }
+
+    // blank client actor without any logic
+    #[derive(Clone, Debug)]
+    struct BlankActor;
+
+    impl ActorFactory for BlankActor {
+        fn create() -> Self {
+            BlankActor
+        }
+    }
+
+    impl Actor for BlankActor {
+        type Msg = Request;
+
+        fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+            ctx.stop(&ctx.myself);
+        }
+
+        fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, _sender: Sender) {}
+    }
+
+    fn init_system(
+        sys: ActorSystem,
+        client: ActorRef<Request>,
+    ) -> (PeerId, ActorRef<CommunicationRequest<Request, Request>>) {
+        // init remote actor system
+        let keys = Keypair::generate_ed25519();
+        let peer_id = PeerId::from(keys.public());
+        let firewall = sys.actor_of::<Firewall>("firewall").unwrap();
+        let config = CommunicationConfig::new(sys.clone(), client, firewall);
+        let comms_actor = sys
+            .actor_of_args::<CommunicationActor<_, Response, _, _>, _>("communication", (keys, config))
+            .unwrap();
+        (peer_id, comms_actor)
+    }
+
+    // ====== First test ==========================
+
+    // local actor that receives the results for outgoing requests
+    #[derive(Debug, Clone)]
+    struct LocalActor;
+
+    impl ActorFactory for LocalActor {
+        fn create() -> Self {
+            LocalActor
         }
     }
 
     impl Actor for LocalActor {
-        type Msg = LocalActorMsg;
-
-        fn post_start(&mut self, ctx: &Context<Self::Msg>) {
-            let req = CommunicationRequest::<Request, LocalActorMsg>::ConnectPeer {
-                addr: self.remote_addr.clone(),
-                peer_id: self.remote_peer,
-            };
-            let communication_actor = ctx.select("communication").unwrap();
-            communication_actor.try_tell(req, ctx.myself());
-        }
+        type Msg = CommunicationResults<Response>;
 
         fn supervisor_strategy(&self) -> Strategy {
-            Strategy::Escalate
+            Strategy::Stop
         }
 
-        fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-            self.receive(ctx, msg, sender);
-        }
-
-        fn post_stop(&mut self) {
-            assert!(self.has_received_response);
-        }
-    }
-
-    impl Receive<Request> for LocalActor {
-        type Msg = LocalActorMsg;
-
-        fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: Request, _sender: Sender) {}
-    }
-
-    impl Receive<CommunicationResults<Response>> for LocalActor {
-        type Msg = LocalActorMsg;
-
-        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: CommunicationResults<Response>, _sender: Sender) {
+        fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
             if let CommunicationResults::RequestMsgResult(Ok(_)) = msg {
-                self.has_received_response = true;
+                ctx.stop(&ctx.myself);
             } else if let CommunicationResults::ConnectPeerResult(result) = msg {
                 let peer_id = result.expect("Panic due to no network connection");
-                let req = CommunicationRequest::<Request, LocalActorMsg>::RequestMsg {
+                let req = CommunicationRequest::<Request, Request>::RequestMsg {
                     peer_id,
                     request: Request::Ping,
                 };
-                let communication_actor = ctx.select("communication").unwrap();
+                let communication_actor = ctx.select("/user/communication").unwrap();
                 communication_actor.try_tell(req, ctx.myself());
             }
         }
     }
 
+    // remote actor that responds to a requests from the local system
     #[derive(Debug, Clone)]
     struct RemoteActor {
         listening_addr: Multiaddr,
@@ -265,10 +301,6 @@ mod test {
             communication_actor.try_tell(req, ctx.myself());
         }
 
-        fn supervisor_strategy(&self) -> Strategy {
-            Strategy::Escalate
-        }
-
         fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
             let response = Response::Pong;
             sender.unwrap().try_tell(response, None).unwrap();
@@ -279,62 +311,53 @@ mod test {
     fn msg_external_actor() {
         let remote_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8090".parse().unwrap();
 
-        // remote actor system
+        // init remote actor system
         let remote_sys = ActorSystem::new().unwrap();
-        let keys = Keypair::generate_ed25519();
         let client = remote_sys
             .actor_of_args::<RemoteActor, _>("remote-actor", remote_addr.clone())
             .unwrap();
-        let firewall = remote_sys.actor_of::<Firewall<Request>>("firewall").unwrap();
-        let config = CommunicationConfig::new(remote_sys.clone(), client, firewall);
-        remote_sys
-            .actor_of_args::<CommunicationActor<_, Response, _, _>, _>("communication", (keys, config))
-            .unwrap();
+        let (remote_peer_id, remote_comms) = init_system(remote_sys, client);
+        // remote comms start listening on the port
+        let req = CommunicationRequest::<Request, Request>::StartListening(Some(remote_addr.clone()));
+        remote_comms.tell(req, None);
 
         // local actor system
         let local_sys = ActorSystem::new().unwrap();
-        let keys = Keypair::generate_ed25519();
-        let client = local_sys
-            .actor_of_args::<LocalActor, _>("local-actor", (PeerId::random(), remote_addr))
-            .unwrap();
-        let firewall = local_sys.actor_of::<Firewall<Request>>("firewall").unwrap();
-        let config = CommunicationConfig::new(local_sys.clone(), client, firewall);
-        local_sys
-            .actor_of_args::<CommunicationActor<_, Response, _, _>, _>("communication", (keys, config))
-            .unwrap();
+        let client = local_sys.actor_of::<BlankActor>("blank").unwrap();
+        let (_, local_comms) = init_system(local_sys.clone(), client);
+
+        let local_actor = local_sys.actor_of::<LocalActor>("local-actor").unwrap();
+
         std::thread::sleep(Duration::new(1, 0));
 
-        task::block_on(async {
-            remote_sys.shutdown().await.unwrap();
-            local_sys.shutdown().await.unwrap();
-        });
-    }
+        // send request, use local_actor as target for the response
+        let req = CommunicationRequest::<Request, Request>::ConnectPeer {
+            addr: remote_addr,
+            peer_id: remote_peer_id,
+        };
+        local_comms.tell(req, local_actor.clone().into());
 
-    #[derive(Clone, Debug)]
-    struct BlankActor;
-
-    impl ActorFactory for BlankActor {
-        fn create() -> Self {
-            BlankActor
+        while local_sys
+            .user_root()
+            .children()
+            .any(|actor| actor == local_actor.clone().into())
+        {
+            // in order to lower cpu usage, sleep here
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
     }
 
-    impl Actor for BlankActor {
-        type Msg = String;
-
-        fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, _sender: Sender) {}
-    }
+    // ====== Second test ==========================
 
     #[test]
     fn ask_swarm_info() {
         let sys = ActorSystem::new().unwrap();
         let client = sys.actor_of::<BlankActor>("blank").unwrap();
-
-        let firewall = sys.actor_of::<Firewall<String>>("firewall").unwrap();
-        let keys = crate::generate_new_keypair();
+        let keys = Keypair::generate_ed25519();
+        let firewall = sys.actor_of::<Firewall>("firewall").unwrap();
         let config = CommunicationConfig::new(sys.clone(), client, firewall);
         let communication_actor = sys
-            .actor_of_args::<CommunicationActor<_, String, _, _>, _>("communication", (keys.clone(), config))
+            .actor_of_args::<CommunicationActor<_, Response, _, _>, _>("communication", (keys.clone(), config))
             .unwrap();
 
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8095".parse().unwrap();
@@ -343,19 +366,23 @@ mod test {
             &communication_actor,
             CommunicationRequest::StartListening(Some(addr.clone())),
         )) {
-            CommunicationResults::<String>::StartListeningResult(actual_addr) => assert_eq!(addr, actual_addr.unwrap()),
+            CommunicationResults::<Response>::StartListeningResult(actual_addr) => {
+                assert_eq!(addr, actual_addr.unwrap())
+            }
             _ => panic!(),
         }
 
         let result = task::block_on(ask(&sys, &communication_actor, CommunicationRequest::GetSwarmInfo));
         match result {
-            CommunicationResults::<String>::SwarmInfo { peer_id, listeners } => {
+            CommunicationResults::<Response>::SwarmInfo { peer_id, listeners } => {
                 assert_eq!(PeerId::from(keys.public()), peer_id);
                 assert!(listeners.contains(&addr));
             }
             _ => panic!(),
         }
     }
+
+    // ====== Third test ==========================
 
     #[derive(Clone)]
     struct TargetActor;
@@ -367,11 +394,11 @@ mod test {
     }
 
     impl Actor for TargetActor {
-        type Msg = String;
+        type Msg = Request;
 
-        fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
             // echo msg back
-            sender.unwrap().try_tell(msg, None).unwrap();
+            sender.unwrap().try_tell(Response::Pong, None).unwrap();
         }
     }
 
@@ -380,18 +407,13 @@ mod test {
         // start remote actor system
         let remote_sys = ActorSystem::new().unwrap();
         let target_actor = remote_sys.actor_of::<TargetActor>("target").unwrap();
-        let firewall = remote_sys.actor_of::<Firewall<String>>("firewall").unwrap();
-        let keys = crate::generate_new_keypair();
-        let config = CommunicationConfig::new(remote_sys.clone(), target_actor, firewall);
-        let remote_comms = remote_sys
-            .actor_of_args::<CommunicationActor<_, String, _, _>, _>("communication", (keys, config))
-            .unwrap();
+        let (_, remote_comms) = init_system(remote_sys.clone(), target_actor);
         match task::block_on(ask(
             &remote_sys,
             &remote_comms,
             CommunicationRequest::StartListening(None),
         )) {
-            CommunicationResults::<String>::StartListeningResult(a) => {
+            CommunicationResults::<Response>::StartListeningResult(a) => {
                 a.unwrap();
             }
             _ => panic!(),
@@ -400,18 +422,13 @@ mod test {
         // start local actor system
         let local_sys = ActorSystem::new().unwrap();
         let blank_actor = local_sys.actor_of::<BlankActor>("blank").unwrap();
-        let firewall = remote_sys.actor_of::<Firewall<String>>("firewall").unwrap();
-        let keys = crate::generate_new_keypair();
-        let config = CommunicationConfig::new(local_sys.clone(), blank_actor, firewall);
-        let local_comms = local_sys
-            .actor_of_args::<CommunicationActor<_, String, _, _>, _>("communication", (keys, config))
-            .unwrap();
+        let (_, local_comms) = init_system(local_sys.clone(), blank_actor);
 
         std::thread::sleep(Duration::new(1, 0));
         // obtain information about the remote peer id and listeners
         let (remote_peer_id, listeners) =
             match task::block_on(ask(&remote_sys, &remote_comms, CommunicationRequest::GetSwarmInfo)) {
-                CommunicationResults::<String>::SwarmInfo { peer_id, listeners } => (peer_id, listeners),
+                CommunicationResults::<Response>::SwarmInfo { peer_id, listeners } => (peer_id, listeners),
                 _ => panic!(),
             };
         // connect remote peer
@@ -423,21 +440,20 @@ mod test {
                 peer_id: remote_peer_id,
             },
         )) {
-            CommunicationResults::<String>::ConnectPeerResult(Ok(peer_id)) => assert_eq!(peer_id, remote_peer_id),
+            CommunicationResults::<Response>::ConnectPeerResult(Ok(peer_id)) => assert_eq!(peer_id, remote_peer_id),
             _ => panic!(),
         };
 
         // send message to remote peer
-        let test_msg = String::from("test");
         match task::block_on(ask(
             &local_sys,
             &local_comms,
             CommunicationRequest::RequestMsg {
                 peer_id: remote_peer_id,
-                request: test_msg.clone(),
+                request: Request::Ping,
             },
         )) {
-            CommunicationResults::<String>::RequestMsgResult(Ok(echoed_msg)) => assert_eq!(test_msg, echoed_msg),
+            CommunicationResults::<Response>::RequestMsgResult(Ok(res)) => assert_eq!(res, Response::Pong),
             _ => panic!(),
         };
         local_sys.stop(&local_comms);

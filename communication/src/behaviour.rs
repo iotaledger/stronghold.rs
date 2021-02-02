@@ -31,8 +31,6 @@ use libp2p::{
     yamux::YamuxConfig,
     NetworkBehaviour, Transport,
 };
-#[cfg(feature = "mdns")]
-use message::P2PMdnsEvent;
 use message::{P2PEvent, P2PReqResEvent};
 pub use protocol::MessageEvent;
 use protocol::{MessageCodec, MessageProtocol};
@@ -214,22 +212,18 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
 impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour<T, U> {
     // Called when `mdns` produces an event.
     fn inject_event(&mut self, event: MdnsEvent) {
-        let comm_event = P2PEvent::from(event);
-        if let P2PEvent::Mdns(e) = comm_event.clone() {
-            match e {
-                P2PMdnsEvent::Discovered(list) => {
-                    for (peer_id, multiaddr) in list {
-                        self.add_peer(peer_id, multiaddr);
-                    }
+        match event {
+            MdnsEvent::Discovered(list) => {
+                for (peer_id, multiaddr) in list {
+                    self.add_peer(peer_id, multiaddr);
                 }
-                P2PMdnsEvent::Expired(list) => {
-                    for (peer_id, _multiaddr) in list {
-                        self.remove_peer(&peer_id);
-                    }
+            }
+            MdnsEvent::Expired(list) => {
+                for (peer_id, _multiaddr) in list {
+                    self.remove_peer(&peer_id);
                 }
             }
         }
-        self.events.push(comm_event);
     }
 }
 
