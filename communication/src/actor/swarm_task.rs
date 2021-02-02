@@ -28,6 +28,7 @@ where
     T: Message + From<Req>,
     U: Message + From<FirewallRequest<Req>>,
 {
+    system: ActorSystem,
     config: CommunicationConfig<Req, T, U>,
     swarm: Swarm<P2PNetworkBehaviour<Req, Res>>,
     swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, T>, Sender)>,
@@ -42,6 +43,7 @@ where
     U: Message + From<FirewallRequest<Req>>,
 {
     pub fn new(
+        system: ActorSystem,
         keypair: Keypair,
         config: CommunicationConfig<Req, T, U>,
         swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, T>, Sender)>,
@@ -49,6 +51,7 @@ where
         // Create a P2PNetworkBehaviour for the swarm communication.
         let swarm = P2PNetworkBehaviour::<Req, Res>::init_swarm(keypair).unwrap();
         SwarmTask {
+            system,
             config,
             swarm,
             swarm_rx,
@@ -61,6 +64,7 @@ where
     pub async fn poll_swarm(mut self) {
         loop {
             select! {
+                swarm_event = self.swarm.next_event().fuse() => self.handle_swarm_event(swarm_event).await,
                 actor_event = self.swarm_rx.next().fuse() => {
                     if let Some((message, sender)) = actor_event {
                         self.handle_actor_request(message, sender).await
@@ -68,15 +72,69 @@ where
                         return
                     }
                 },
-                swarm_event = self.swarm.next_event().fuse() => self.handle_swarm_event(swarm_event).await,
             };
         }
     }
 
-    fn send_response(result: CommunicationResults<Res>, sender: Sender) {
-        if let Some(sender) = sender {
-            sender.try_tell(result, None).unwrap();
+    // Send incoming request to the client.
+    // Eventually other swarm events lik e.g. incoming connection should also be send to some top level actor.
+    async fn handle_swarm_event<HandleErr>(&mut self, event: SwarmEvent<P2PEvent<Req, Res>, HandleErr>) {
+        match event {
+            SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
+                P2PEvent::RequestResponse(boxed_event) => {
+                    if let P2PReqResEvent::Req {
+                        peer_id,
+                        request_id,
+                        request,
+                    } = boxed_event.deref().clone()
+                    {
+                        let permission = self
+                            .ask_permission(request.clone(), peer_id, RequestDirection::In)
+                            .await;
+                        if let FirewallResponse::Accept = permission {
+                            let res: Res = ask(&self.system, &self.config.client, request).await;
+                            self.swarm.send_response(res, request_id).unwrap();
+                        }
+                    }
+                }
+                P2PEvent::Identify(_) | P2PEvent::Mdns(_) => {}
+            },
+            SwarmEvent::ConnectionEstablished {
+                peer_id,
+                endpoint:
+                    ConnectedPoint::Listener {
+                        local_addr,
+                        send_back_addr,
+                    },
+                num_established,
+            } => {
+                let _swarm_event = CommunicationSwarmEvent::IncomingConnectionEstablished {
+                    peer_id,
+                    local_addr,
+                    send_back_addr,
+                    num_established,
+                };
+            }
+            _ => {}
         }
+    }
+
+    // Ask the firewall actor for FirewallResponse, return FirewallResponse::Drop on timeout
+    async fn ask_permission(&mut self, request: Req, remote: PeerId, direction: RequestDirection) -> FirewallResponse {
+        let start = Instant::now();
+        let firewall_request = FirewallRequest::new(request, remote, direction);
+        let mut ask_permission = ask(&self.system, &self.config.firewall, firewall_request);
+        future::poll_fn(move |cx: &mut Context<'_>| match ask_permission.poll_unpin(cx) {
+            Poll::Ready(r) => Poll::Ready(r),
+            Poll::Pending => {
+                if start.elapsed() > Duration::new(3, 0) {
+                    Poll::Ready(FirewallResponse::Drop)
+                } else {
+                    Poll::Pending
+                }
+            }
+        })
+        .await
     }
 
     // Handle the messages that are received from other actors in the system..
@@ -132,23 +190,14 @@ where
         }
     }
 
-    async fn ask_permission(&mut self, request: Req, remote: PeerId, direction: RequestDirection) -> FirewallResponse {
-        let start = Instant::now();
-        let firewall_request = FirewallRequest::new(request, remote, direction);
-        let mut ask_permission = ask(&self.config.system, &self.config.firewall, firewall_request);
-        future::poll_fn(move |cx: &mut Context<'_>| match ask_permission.poll_unpin(cx) {
-            Poll::Ready(r) => Poll::Ready(r),
-            Poll::Pending => {
-                if start.elapsed() > Duration::new(3, 0) {
-                    Poll::Ready(FirewallResponse::Drop)
-                } else {
-                    Poll::Pending
-                }
-            }
-        })
-        .await
+    // Send a reponse to the sender of a previous [`CommuncationRequest`]
+    fn send_response(result: CommunicationResults<Res>, sender: Sender) {
+        if let Some(sender) = sender {
+            sender.try_tell(result, None).unwrap();
+        }
     }
 
+    // Start listening on the swarm, if not address is provided, the port will be OS assigned.
     async fn start_listening(&mut self, addr: Option<Multiaddr>) -> CommunicationResults<Res> {
         let addr = addr.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().unwrap());
         if let Ok(listener_id) = Swarm::listen_on(&mut self.swarm, addr) {
@@ -161,7 +210,7 @@ where
                     }
                     other => self.handle_swarm_event(other).await,
                 }
-                if start.elapsed() > Duration::new(5, 0) {
+                if start.elapsed() > Duration::new(10, 0) {
                     return CommunicationResults::<Res>::StartListeningResult(Err(()));
                 }
             }
@@ -170,6 +219,7 @@ where
         }
     }
 
+    // Try to connect a remote peer by id or address.
     async fn connect_peer(&mut self, target_peer: PeerId, target_addr: Multiaddr) -> CommunicationResults<Res> {
         if let Err(err) = Swarm::dial(&mut self.swarm, &target_peer) {
             match err {
@@ -185,6 +235,7 @@ where
                 }
             }
         }
+        let start = Instant::now();
         loop {
             let event = self.swarm.next_event().await;
             match event {
@@ -216,9 +267,14 @@ where
                 }
                 _ => self.handle_swarm_event(event).await,
             }
+            if start.elapsed() > Duration::new(10, 0) {
+                return CommunicationResults::<Res>::ConnectPeerResult(Err(ConnectPeerError::Timeout));
+            }
         }
     }
 
+    // Try sending a request to a remote peer if it was approved by the firewall, and return the received Response.
+    // If no reponse is received, a CommunicationResults::Timeout will be returned.
     async fn send_request(&mut self, peer_id: PeerId, request: Req) -> CommunicationResults<Res> {
         let permission = self
             .ask_permission(request.clone(), peer_id, RequestDirection::Out)
@@ -226,6 +282,7 @@ where
         match permission {
             FirewallResponse::Accept => {
                 let req_id = self.swarm.send_request(&peer_id, request);
+                let start = Instant::now();
                 loop {
                     let event = self.swarm.next_event().await;
                     match event {
@@ -265,7 +322,7 @@ where
                                     request_id,
                                     request,
                                 } => {
-                                    let res: Res = ask(&self.config.system, &self.config.client, request).await;
+                                    let res: Res = ask(&self.system, &self.config.client, request).await;
                                     self.swarm.send_response(res, request_id).unwrap();
                                 }
                                 _ => {}
@@ -273,56 +330,18 @@ where
                         }
                         _ => self.handle_swarm_event(event).await,
                     }
-                }
-            }
-            _ => return CommunicationResults::Rejected,
-        }
-    }
-
-    // Poll from the swarm for requests and responses from remote peers, and publish them in the channel.
-    async fn handle_swarm_event<HandleErr>(&mut self, event: SwarmEvent<P2PEvent<Req, Res>, HandleErr>) {
-        match event {
-            SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
-                P2PEvent::RequestResponse(boxed_event) => {
-                    if let P2PReqResEvent::Req {
-                        peer_id,
-                        request_id,
-                        request,
-                    } = boxed_event.deref().clone()
-                    {
-                        let permission = self
-                            .ask_permission(request.clone(), peer_id, RequestDirection::In)
-                            .await;
-                        if let FirewallResponse::Accept = permission {
-                            let res: Res = ask(&self.config.system, &self.config.client, request).await;
-                            self.swarm.send_response(res, request_id).unwrap();
-                        }
+                    if start.elapsed() > Duration::new(10, 0) {
+                        return CommunicationResults::<Res>::RequestMsgResult(Err(RequestMessageError::Rejected(
+                            FirewallRejected::Remote,
+                        )));
                     }
                 }
-                P2PEvent::Identify(identify_event) => {
-                    let _swarm_event = CommunicationSwarmEvent::Identify(identify_event);
-                }
-                P2PEvent::Mdns(mdns_event) => {
-                    let _swarm_event = CommunicationSwarmEvent::Mdns(mdns_event);
-                }
-            },
-            SwarmEvent::ConnectionEstablished {
-                peer_id,
-                endpoint:
-                    ConnectedPoint::Listener {
-                        local_addr,
-                        send_back_addr,
-                    },
-                num_established,
-            } => {
-                let _swarm_event = CommunicationSwarmEvent::IncomingConnectionEstablished {
-                    peer_id,
-                    local_addr,
-                    send_back_addr,
-                    num_established,
-                };
             }
-            _ => {}
+            _ => {
+                return CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(
+                    FirewallRejected::Local,
+                )))
+            }
         }
     }
 }

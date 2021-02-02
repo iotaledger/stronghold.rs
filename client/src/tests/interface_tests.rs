@@ -4,8 +4,10 @@
 use riker::actors::*;
 
 use crate::{line_error, Location, RecordHint, Stronghold};
-// #[cfg(feature = "communication")]
-// use core::time::Duration;
+#[cfg(feature = "communication")]
+use crate::{ResultMessage, StatusMessage};
+#[cfg(feature = "communication")]
+use core::time::Duration;
 
 #[test]
 fn test_stronghold() {
@@ -154,9 +156,9 @@ fn run_stronghold_multi_actors() {
 
     let mut stronghold = Stronghold::init_stronghold_system(sys, client_path0.clone(), vec![]);
 
-    stronghold.spawn_stronghold_actor(client_path1.clone(), vec![]);
+    futures::executor::block_on(stronghold.spawn_stronghold_actor(client_path1.clone(), vec![]));
 
-    stronghold.switch_actor_target(client_path0.clone());
+    futures::executor::block_on(stronghold.switch_actor_target(client_path0.clone()));
 
     futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
@@ -170,7 +172,7 @@ fn run_stronghold_multi_actors() {
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
-    stronghold.switch_actor_target(client_path1.clone());
+    futures::executor::block_on(stronghold.switch_actor_target(client_path1.clone()));
 
     // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
     futures::executor::block_on(stronghold.write_to_vault(
@@ -185,7 +187,7 @@ fn run_stronghold_multi_actors() {
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
-    stronghold.switch_actor_target(client_path0.clone());
+    futures::executor::block_on(stronghold.switch_actor_target(client_path0.clone()));
 
     futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
@@ -203,12 +205,12 @@ fn run_stronghold_multi_actors() {
 
     futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data.to_vec(), Some("megasnap".into()), None));
 
-    stronghold.switch_actor_target(client_path1.clone());
+    futures::executor::block_on(stronghold.switch_actor_target(client_path1.clone()));
 
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
     println!("actor 1: {:?}", ids);
 
-    stronghold.spawn_stronghold_actor(client_path2.clone(), vec![]);
+    futures::executor::block_on(stronghold.spawn_stronghold_actor(client_path2.clone(), vec![]));
 
     futures::executor::block_on(stronghold.read_snapshot(
         client_path2,
@@ -246,7 +248,7 @@ fn run_stronghold_multi_actors() {
 
     let (ids2, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
 
-    stronghold.switch_actor_target(client_path1);
+    futures::executor::block_on(stronghold.switch_actor_target(client_path1));
 
     let (ids1, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
     assert_ne!(ids2, ids1);
@@ -254,7 +256,7 @@ fn run_stronghold_multi_actors() {
     println!("actor 2: {:?}", ids2);
     println!("actor 1: {:?}", ids1);
 
-    stronghold.spawn_stronghold_actor(client_path3.clone(), vec![]);
+    futures::executor::block_on(stronghold.spawn_stronghold_actor(client_path3.clone(), vec![]));
 
     futures::executor::block_on(stronghold.read_snapshot(
         client_path3,
@@ -267,7 +269,7 @@ fn run_stronghold_multi_actors() {
     let (mut ids3, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
     println!("actor 3: {:?}", ids3);
 
-    stronghold.switch_actor_target(client_path0);
+    futures::executor::block_on(stronghold.switch_actor_target(client_path0));
 
     let (mut ids0, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
     println!("actor 0: {:?}", ids0);
@@ -402,39 +404,80 @@ fn test_counters() {
     println!("{:?}", ids);
 }
 
-// #[cfg(feature = "communication")]
-// #[test]
-// fn test_stronghold_communication() {
-//     let local_sys = ActorSystem::new().unwrap();
-//     let local_client = b"local".to_vec();
-//     let local_stronghold = Stronghold::init_stronghold_system(local_sys, local_client, vec![]);
-//
-//     let remote_sys = ActorSystem::new().unwrap();
-//     let remote_client = b"remote".to_vec();
-//     let remote_stronghold = Stronghold::init_stronghold_system(remote_sys, remote_client, vec![]);
-//
-//     std::thread::sleep(Duration::new(1, 0));
-//
-//     let (peer_id, listeners) = match futures::executor::block_on(remote_stronghold.get_swarm_info()) {
-//         ResultMessage::Ok((peer_id, listeners)) => (peer_id, listeners),
-//         ResultMessage::Error(_) => panic!(),
-//     };
-//
-//     let loc = Location::counter::<_, usize>("path", Some(0));
-//     let original_data = b"some data".to_vec();
-//
-//     // write some data to the remote store
-//     match futures::executor::block_on(remote_stronghold.write_to_store(loc.clone(), original_data.clone(), None)) {
-//         StatusMessage::OK => {}
-//         StatusMessage::Error(_) => panic!(),
-//     }
-//
-//     let payload = match futures::executor::block_on(local_stronghold.read_from_remote_store(
-//         listeners.last().unwrap().clone(),
-//         loc,
-//     )) {
-//         (payload, StatusMessage::OK) => payload,
-//         (_, StatusMessage::Error(_)) => panic!(),
-//    };
-//     assert_eq!(payload, original_data);
-// }
+#[cfg(feature = "communication")]
+#[test]
+fn test_stronghold_communication() {
+    let local_sys = ActorSystem::new().unwrap();
+    let local_client = b"local".to_vec();
+    let local_stronghold = Stronghold::init_stronghold_system(local_sys, local_client, vec![]);
+
+    let remote_sys = ActorSystem::new().unwrap();
+    let remote_client = b"remote".to_vec();
+    let remote_stronghold = Stronghold::init_stronghold_system(remote_sys, remote_client, vec![]);
+
+    std::thread::sleep(Duration::new(1, 0));
+
+    let addr = match futures::executor::block_on(remote_stronghold.start_listening(None)) {
+        ResultMessage::Ok(addr) => addr,
+        ResultMessage::Error(_) => panic!(),
+    };
+
+    let (peer_id, listeners) = match futures::executor::block_on(remote_stronghold.get_swarm_info()) {
+        ResultMessage::Ok((peer_id, listeners)) => (peer_id, listeners),
+        ResultMessage::Error(_) => panic!(),
+    };
+
+    assert!(listeners.as_slice().contains(&addr));
+
+    // test writing at remote and reading it from local stronghold
+    let loc = Location::counter::<_, usize>("path", Some(0));
+    let original_data = b"some data".to_vec();
+    match futures::executor::block_on(remote_stronghold.write_to_store(loc.clone(), original_data.clone(), None)) {
+        StatusMessage::OK => {}
+        StatusMessage::Error(_) => panic!(),
+    }
+    let payload = match futures::executor::block_on(local_stronghold.read_from_remote_store(peer_id, addr.clone(), loc))
+    {
+        (payload, StatusMessage::OK) => payload,
+        (_, StatusMessage::Error(_)) => panic!(),
+    };
+    assert_eq!(payload, original_data);
+
+    // test writing from local and reading it at remote
+    let loc = Location::counter::<_, usize>("path", Some(1));
+    let original_data = b"some second data".to_vec();
+    match futures::executor::block_on(local_stronghold.write_to_remote_store(
+        peer_id,
+        addr.clone(),
+        loc.clone(),
+        original_data.clone(),
+        None,
+    )) {
+        StatusMessage::OK => {}
+        StatusMessage::Error(_) => panic!(),
+    }
+    let payload = match futures::executor::block_on(remote_stronghold.read_from_store(loc)) {
+        (payload, StatusMessage::OK) => payload,
+        (_, StatusMessage::Error(_)) => panic!(),
+    };
+    assert_eq!(payload, original_data);
+
+    // test writing and reading from local
+    let loc = Location::counter::<_, usize>("path", Some(2));
+    let original_data = b"some third data".to_vec();
+    match futures::executor::block_on(local_stronghold.write_to_remote_store(
+        peer_id,
+        addr.clone(),
+        loc.clone(),
+        original_data.clone(),
+        None,
+    )) {
+        StatusMessage::OK => {}
+        StatusMessage::Error(_) => panic!(),
+    }
+    let payload = match futures::executor::block_on(local_stronghold.read_from_remote_store(peer_id, addr, loc)) {
+        (payload, StatusMessage::OK) => payload,
+        (_, StatusMessage::Error(_)) => panic!(),
+    };
+    assert_eq!(payload, original_data);
+}

@@ -186,14 +186,18 @@ fn test_write_read_multi_snapshot() {
     let lochead = Location::counter::<_, usize>("path", None);
 
     for i in 0..20 {
-        stronghold.spawn_stronghold_actor(format!("test {:?}", i).as_bytes().to_vec(), vec![]);
+        futures::executor::block_on(
+            stronghold.spawn_stronghold_actor(format!("test {:?}", i).as_bytes().to_vec(), vec![]),
+        );
     }
 
     for i in 0..20 {
         futures::executor::block_on(async {
             let data = format!("test {:?}", i);
 
-            stronghold.switch_actor_target(format!("test {:?}", i).as_bytes().to_vec());
+            stronghold
+                .switch_actor_target(format!("test {:?}", i).as_bytes().to_vec())
+                .await;
 
             stronghold
                 .write_to_vault(
@@ -224,7 +228,9 @@ fn test_write_read_multi_snapshot() {
 
     for i in 0..10 {
         futures::executor::block_on(async {
-            stronghold.switch_actor_target(format!("test {:?}", i % 10).as_bytes().to_vec());
+            stronghold
+                .switch_actor_target(format!("test {:?}", i % 10).as_bytes().to_vec())
+                .await;
 
             let (p, _) = stronghold.read_secret(lochead.clone()).await;
 
