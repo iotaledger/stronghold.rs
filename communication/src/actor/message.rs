@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::behaviour::message::{P2PIdentifyEvent, P2PInboundFailure, P2PMdnsEvent, P2POutboundFailure};
+use crate::behaviour::message::{P2PInboundFailure, P2POutboundFailure};
 use libp2p::{
     core::{
         connection::{ConnectionError, PendingConnectionError},
@@ -33,6 +33,8 @@ pub enum ConnectPeerError {
     IO,
     /// The connection handler produced an error.
     Handler,
+    /// Timout on connection attempt
+    Timeout,
 }
 
 impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
@@ -65,84 +67,125 @@ impl<THandlerErr> From<ConnectionError<THandlerErr>> for ConnectPeerError {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum PeerTarget {
-    Id(PeerId),
-    Addr(Multiaddr),
-}
-
+/// Requests for the [`CommuncationActor`]
 #[derive(Debug, Clone)]
 pub enum CommunicationRequest<Req, T: Message> {
+    /// Send a request to a remote peer.
+    /// This requires that a connection to the targeted peer has been established and is active.
     RequestMsg { peer_id: PeerId, request: Req },
+    /// Set the actor reference that incoming request are forwarded to.
     SetClientRef(ActorRef<T>),
+    /// Connect to a remote peer.
+    /// If the peer id is know it will attempt to use a know address of it, otherwise the `addr` will be dialed.
     ConnectPeer { addr: Multiaddr, peer_id: PeerId },
+    /// Check if a connection to that peer is currently active.
     CheckConnection(PeerId),
+    /// Obtain information about the swarm.
     GetSwarmInfo,
+    /// Ban a peer, which prevent any connection to that peer.
     BanPeer(PeerId),
+    /// Unban a peer to allow future communication.
     UnbanPeer(PeerId),
+    /// Start listening to a port on the swarm. If no `Multiaddr` is provided, the address will be OS assigned.ActorRef
     StartListening(Option<Multiaddr>),
+    /// Stop listening to the swarm. Without a listener, the local peer can not be dialed from remote.
     RemoveListener,
+}
+
+/// The firewall that rejected or dropped the request
+#[derive(Debug, Clone)]
+pub enum FirewallRejected {
+    Local,
+    Remote,
 }
 
 #[derive(Debug, Clone)]
 pub enum RequestMessageError {
+    /// Possible failures occurring in the context of sending an outbound request and receiving the response.
     Outbound(P2POutboundFailure),
+    /// Possible failures occurring in the context of receiving an inbound request and sending a response.
     Inbound(P2PInboundFailure),
+    /// The request was rejected or dropped by the local or remote firewall.
+    Rejected(FirewallRejected),
 }
 
+/// Returned results from the [`CommuncationActor`]
 #[derive(Debug, Clone)]
 pub enum CommunicationResults<Res> {
+    /// Response or Error for an [`RequestMsg`] to a remote peer
     RequestMsgResult(Result<Res, RequestMessageError>),
+    /// New client actor reference was set.
     SetClientRefResult,
+    /// Result of trying to connect a peer.
     ConnectPeerResult(Result<PeerId, ConnectPeerError>),
+    /// Check if the connection exists
     CheckConnectionResult(bool),
-    SwarmInfo { peer_id: PeerId, listeners: Vec<Multiaddr> },
+    /// Information about the local swarm.
+    SwarmInfo {
+        /// The local peer id.
+        peer_id: PeerId,
+        /// The listening addresses of the local system.
+        /// Not all of theses addresses can be reached from outside of the network since they might be localhost or
+        /// private IPs.
+        listeners: Vec<Multiaddr>,
+    },
     BannedPeer(PeerId),
     UnbannedPeer(PeerId),
+    /// Result of starting a new listener on the swarm.
+    /// If it was successfull, one of the listening addresses is returned, which will show the listening port.
     StartListeningResult(Result<Multiaddr, ()>),
+    /// Stopped listening to the swarm for incoming connections.
     RemoveListenerResult(Result<(), ()>),
-    Rejected,
 }
 
+/// Events that are received from the swarm without being initiated by the local system.
 #[derive(Debug, Clone)]
 pub enum CommunicationSwarmEvent {
-    Mdns(P2PMdnsEvent),
-    Identify(Box<P2PIdentifyEvent>),
+    /// An incoming connection was successful.
     IncomingConnectionEstablished {
         peer_id: PeerId,
         local_addr: Multiaddr,
         send_back_addr: Multiaddr,
         num_established: NonZeroU32,
     },
+    /// Connection was closed.
     ConnectionClosed {
         peer_id: PeerId,
         endpoint: ConnectedPoint,
         num_established: NonZeroU32,
         cause: Option<ConnectPeerError>,
     },
+    /// Incoming connection attempt.
     IncomingConnection {
         local_addr: Multiaddr,
         send_back_addr: Multiaddr,
     },
+    /// An incoming connection was not successful.
     IncomingConnectionError {
         peer_addr: Multiaddr,
         local_addr: Multiaddr,
         error: ConnectPeerError,
     },
+    /// A listening address of the local peer has expired.
     ExpiredListenAddr(Multiaddr),
+    /// The local listener closed.
     ListenerClosed {
         addresses: Vec<Multiaddr>,
         reason: Result<(), String>,
     },
+    /// The local listener had an error.
     ListenerError(String),
 }
 
+/// The direction of a [`CommunicationRequest::RequestMsg`] that firewall receives.
 #[derive(Debug, Clone)]
 pub enum RequestDirection {
     In,
     Out,
 }
 
+/// Request to the firewall to obtain approval for a request from/ to a remote peer.
+/// If no [`FirewallResponse::Accept`] is returned, the request will be rejected.
 #[derive(Debug, Clone)]
 pub struct FirewallRequest<Req> {
     request: Req,
@@ -160,6 +203,7 @@ impl<Req> FirewallRequest<Req> {
     }
 }
 
+/// The expected response that should be send back from the firewall actor for a [`FirewallRequest`].
 #[derive(Debug, Clone)]
 pub enum FirewallResponse {
     Accept,
