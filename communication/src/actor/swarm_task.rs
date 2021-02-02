@@ -301,11 +301,9 @@ where
                 }
                 P2PEvent::Identify(identify_event) => {
                     let _swarm_event = CommunicationSwarmEvent::Identify(identify_event);
-                    todo!("Consider telling top level actor");
                 }
                 P2PEvent::Mdns(mdns_event) => {
                     let _swarm_event = CommunicationSwarmEvent::Mdns(mdns_event);
-                    todo!("Consider telling top level actor");
                 }
             },
             SwarmEvent::ConnectionEstablished {
@@ -323,7 +321,6 @@ where
                     send_back_addr,
                     num_established,
                 };
-                todo!("Tell top level actor")
             }
             _ => {}
         }
