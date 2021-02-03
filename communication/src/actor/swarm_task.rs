@@ -274,7 +274,7 @@ where
     }
 
     // Try sending a request to a remote peer if it was approved by the firewall, and return the received Response.
-    // If no reponse is received, a CommunicationResults::Timeout will be returned.
+    // If no reponse is received, a RequestMessageError::Rejected will be returned.
     async fn send_request(&mut self, peer_id: PeerId, request: Req) -> CommunicationResults<Res> {
         let permission = self
             .ask_permission(request.clone(), peer_id, RequestDirection::Out)

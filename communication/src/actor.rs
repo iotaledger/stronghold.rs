@@ -264,69 +264,67 @@ mod test {
         (peer_id, comms_actor)
     }
 
-    // ====== First test ==========================
-
-    // local actor that receives the results for outgoing requests
-    #[derive(Debug, Clone)]
-    struct LocalActor;
-
-    impl ActorFactory for LocalActor {
-        fn create() -> Self {
-            LocalActor
-        }
-    }
-
-    impl Actor for LocalActor {
-        type Msg = CommunicationResults<Response>;
-
-        fn supervisor_strategy(&self) -> Strategy {
-            Strategy::Stop
-        }
-
-        fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
-            if let CommunicationResults::RequestMsgResult(Ok(_)) = msg {
-                ctx.stop(&ctx.myself);
-            } else if let CommunicationResults::ConnectPeerResult(result) = msg {
-                let peer_id = result.expect("Panic due to no network connection");
-                let req = CommunicationRequest::<Request, Request>::RequestMsg {
-                    peer_id,
-                    request: Request::Ping,
-                };
-                let communication_actor = ctx.select("/user/communication").unwrap();
-                communication_actor.try_tell(req, ctx.myself());
-            }
-        }
-    }
-
-    // remote actor that responds to a requests from the local system
-    #[derive(Debug, Clone)]
-    struct RemoteActor {
-        listening_addr: Multiaddr,
-    }
-
-    impl ActorFactoryArgs<Multiaddr> for RemoteActor {
-        fn create_args(listening_addr: Multiaddr) -> Self {
-            RemoteActor { listening_addr }
-        }
-    }
-
-    impl Actor for RemoteActor {
-        type Msg = Request;
-
-        fn post_start(&mut self, ctx: &Context<Self::Msg>) {
-            let req = CommunicationRequest::<Request, Request>::StartListening(Some(self.listening_addr.clone()));
-            let communication_actor = ctx.select("communication").unwrap();
-            communication_actor.try_tell(req, ctx.myself());
-        }
-
-        fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
-            let response = Response::Pong;
-            sender.unwrap().try_tell(response, None).unwrap();
-        }
-    }
-
     #[test]
     fn msg_external_actor() {
+        // local actor that receives the results for outgoing requests
+        #[derive(Debug, Clone)]
+        struct LocalActor;
+
+        impl ActorFactory for LocalActor {
+            fn create() -> Self {
+                LocalActor
+            }
+        }
+
+        impl Actor for LocalActor {
+            type Msg = CommunicationResults<Response>;
+
+            fn supervisor_strategy(&self) -> Strategy {
+                Strategy::Stop
+            }
+
+            fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
+                if let CommunicationResults::RequestMsgResult(Ok(_)) = msg {
+                    ctx.stop(&ctx.myself);
+                } else if let CommunicationResults::ConnectPeerResult(result) = msg {
+                    let peer_id = result.expect("Panic due to no network connection");
+                    let req = CommunicationRequest::<Request, Request>::RequestMsg {
+                        peer_id,
+                        request: Request::Ping,
+                    };
+                    let communication_actor = ctx.select("/user/communication").unwrap();
+                    communication_actor.try_tell(req, ctx.myself());
+                }
+            }
+        }
+
+        // remote actor that responds to a requests from the local system
+        #[derive(Debug, Clone)]
+        struct RemoteActor {
+            listening_addr: Multiaddr,
+        }
+
+        impl ActorFactoryArgs<Multiaddr> for RemoteActor {
+            fn create_args(listening_addr: Multiaddr) -> Self {
+                RemoteActor { listening_addr }
+            }
+        }
+
+        impl Actor for RemoteActor {
+            type Msg = Request;
+
+            fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+                let req = CommunicationRequest::<Request, Request>::StartListening(Some(self.listening_addr.clone()));
+                let communication_actor = ctx.select("communication").unwrap();
+                communication_actor.try_tell(req, ctx.myself());
+            }
+
+            fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
+                let response = Response::Pong;
+                sender.unwrap().try_tell(response, None).unwrap();
+            }
+        }
+
         let remote_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8090".parse().unwrap();
 
         // init remote actor system
@@ -365,8 +363,6 @@ mod test {
         }
     }
 
-    // ====== Second test ==========================
-
     #[test]
     fn ask_swarm_info() {
         let sys = ActorSystem::new().unwrap();
@@ -400,28 +396,26 @@ mod test {
         }
     }
 
-    // ====== Third test ==========================
-
-    #[derive(Clone)]
-    struct TargetActor;
-
-    impl ActorFactory for TargetActor {
-        fn create() -> Self {
-            TargetActor
-        }
-    }
-
-    impl Actor for TargetActor {
-        type Msg = Request;
-
-        fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
-            // echo msg back
-            sender.unwrap().try_tell(Response::Pong, None).unwrap();
-        }
-    }
-
     #[test]
     fn ask_request() {
+        #[derive(Clone)]
+        struct TargetActor;
+
+        impl ActorFactory for TargetActor {
+            fn create() -> Self {
+                TargetActor
+            }
+        }
+
+        impl Actor for TargetActor {
+            type Msg = Request;
+
+            fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
+                // echo msg back
+                sender.unwrap().try_tell(Response::Pong, None).unwrap();
+            }
+        }
+
         // start remote actor system
         let remote_sys = ActorSystem::new().unwrap();
         let target_actor = remote_sys.actor_of::<TargetActor>("target").unwrap();
