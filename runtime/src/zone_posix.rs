@@ -203,7 +203,7 @@ where
 
     loop {
         if wait.is_none() {
-            wait = attempt_wait_child(pid)?;
+            wait = attempt_wait_child(pid, /* block: */ tst.is_some())?;
         }
 
         match wait {
@@ -215,10 +215,10 @@ where
                 }
                 None => if hup {
                     set_blocking(fd)?;
-                    match receive::<T>(&mut st, fd)? {
-                        Some(o) => return Ok(o),
-                        None => return Err(Error::unexpected_eof()),
-                    }
+                    return match receive::<T>(&mut st, fd)? {
+                        Some(o) => Ok(o),
+                        None => Err(Error::unexpected_eof()),
+                    };
                 }
             }
             None => (),
@@ -269,9 +269,9 @@ where
     }
 }
 
-unsafe fn attempt_wait_child(pid: libc::pid_t) -> crate::Result<Option<crate::Result<()>>> {
+unsafe fn attempt_wait_child(pid: libc::pid_t, block: bool) -> crate::Result<Option<crate::Result<()>>> {
     let mut st = 0;
-    let r = libc::waitpid(pid, &mut st, libc::WNOHANG);
+    let r = libc::waitpid(pid, &mut st, if block { 0 } else { libc::WNOHANG });
     if r < 0 {
         Err(crate::Error::os("waitpid"))
     } else if r == 0 {
@@ -340,18 +340,16 @@ where
         let mut bs = [0; RECEIVE_BUFFER];
         let r = libc::read(fd, &mut bs as *mut _ as *mut libc::c_void, bs.len());
         let e = errno();
-        if r < 0 && (e == libc::EAGAIN || e == libc::EWOULDBLOCK ) {
-            return Ok(None);
+        if r == 0 || r < 0 && (e == libc::EAGAIN || e == libc::EWOULDBLOCK) {
+            break
         }
         if r < 0 {
             return Err(crate::Error::os("read while receiving data"));
         }
-        if r == 0 {
-            break
-        }
 
         let mut i = bs[..(r as usize)].iter();
         ret = T::receive(st, &mut i);
+
         if i.next().is_some() {
             return Err(Error::superfluous_bytes());
         }
