@@ -195,15 +195,10 @@ where
     let mut hup = false;
     let mut st: Option<T::State> = None;
     let mut tst = T::receive(&mut st, &mut core::iter::empty());
-    let poll_timeout = if t.soft.is_some() || t.hard.is_some() {
-        t.granularity_ms
-    } else {
-        -1
-    };
 
     loop {
         if wait.is_none() {
-            wait = attempt_wait_child(pid, /* block: */ tst.is_some())?;
+            wait = attempt_wait_child(pid)?;
         }
 
         match wait {
@@ -228,10 +223,21 @@ where
             libc::pollfd { fd, events: libc::POLLIN, revents: 0 },
         ];
 
-        let r = libc::poll(fds.as_mut_ptr(), 1, poll_timeout);
-        if r == -1 {
-            return Err(crate::Error::os("poll"));
-        }
+        let r = if tst.is_none() {
+            let r = libc::poll(fds.as_mut_ptr(), 1, t.granularity_ms);
+            if r == -1 {
+                return Err(crate::Error::os("poll"));
+            }
+            r
+        } else {
+            let ts = ms_to_timespec(t.granularity_ms as u32);
+            let r = libc::nanosleep(&ts as *const _, core::ptr::null_mut());
+            if r == -1 {
+                return Err(crate::Error::os("nanosleep"));
+            }
+            0
+        };
+
         if r == 0 {
             let n = now()?;
 
@@ -269,9 +275,9 @@ where
     }
 }
 
-unsafe fn attempt_wait_child(pid: libc::pid_t, block: bool) -> crate::Result<Option<crate::Result<()>>> {
+unsafe fn attempt_wait_child(pid: libc::pid_t) -> crate::Result<Option<crate::Result<()>>> {
     let mut st = 0;
-    let r = libc::waitpid(pid, &mut st, if block { 0 } else { libc::WNOHANG });
+    let r = libc::waitpid(pid, &mut st, libc::WNOHANG);
     if r < 0 {
         Err(crate::Error::os("waitpid"))
     } else if r == 0 {
@@ -497,23 +503,57 @@ mod fork_tests {
     }
 
     #[test]
-    fn soft_timeout() {
+    fn soft_timeout_while_waiting_for_data() {
         let s = 1;
         let sig = libc::SIGINT;
         let t = Timeout::default().soft_ms_signal(s * 1000, sig);
         assert_eq!(
-            fork_with_timeout(|| unsafe { libc::sleep(2 * s) }, t),
+            fork_with_timeout(|| unsafe { libc::sleep(2 * s); 7 }, t),
             Err(Error::signal(sig))
         );
     }
 
     #[test]
-    fn hard_timeout() -> crate::Result<()> {
+    #[allow(unreachable_code)]
+    fn soft_timeout_while_wait_for_process() {
+        let s = 1;
+        let sig = libc::SIGINT;
+        let t = Timeout::default().soft_ms_signal(s * 1000, sig);
+        assert_eq!(
+            fork_with_timeout(|| unsafe {
+                libc::write(1, &[8u8] as *const _ as *const libc::c_void, 1);
+                libc::sleep(2 * s);
+                libc::_exit(0);
+                7u8
+            }, t),
+            Err(Error::signal(sig))
+        );
+    }
+
+    #[test]
+    fn hard_timeout_while_waiting_for_data() -> crate::Result<()> {
         let s = 1;
         let sig = libc::SIGKILL;
         let t = Timeout::default().hard_ms_signal(s * 1000, sig);
         match fork_with_timeout(|| unsafe {
-            libc::sleep(2 * s)
+            libc::sleep(2 * s); 7
+        }, t) {
+            Err(crate::Error::ZoneError(Error::Timeout { .. })) => Ok(()),
+            r => panic!("unexpected return value: {:?}", r)
+        }
+    }
+
+    #[test]
+    #[allow(unreachable_code)]
+    fn hard_timeout_while_waiting_for_process() -> crate::Result<()> {
+        let s = 1;
+        let sig = libc::SIGKILL;
+        let t = Timeout::default().hard_ms_signal(s * 1000, sig);
+        match fork_with_timeout(|| unsafe {
+            libc::write(1, &[8u8] as *const _ as *const libc::c_void, 1);
+            libc::sleep(2 * s);
+            libc::_exit(0);
+            7u8
         }, t) {
             Err(crate::Error::ZoneError(Error::Timeout { .. })) => Ok(()),
             r => panic!("unexpected return value: {:?}", r)
