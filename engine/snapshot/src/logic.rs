@@ -26,19 +26,18 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     output.write_all(&MAGIC)?;
     output.write_all(&VERSION)?;
 
-    let mut ephemeral_key = [0; x25519::SECRET_KEY_LENGTH];
-    crypto::rand::fill(&mut ephemeral_key)?;
+    let ephemeral_key = x25519::SecretKey::generate()?;
 
-    let ephemeral_pk = x25519::X25519(&ephemeral_key, None);
-    output.write_all(&ephemeral_pk)?;
+    let ephemeral_pk = ephemeral_key.public_key();
+    output.write_all(ephemeral_pk.as_bytes())?;
 
-    let pk = x25519::X25519(key, None);
-    let shared = x25519::X25519(&ephemeral_key, Some(&pk));
+    let pk = x25519::SecretKey::from_bytes(key)?.public_key();
+    let shared = ephemeral_key.diffie_hellman(&pk);
 
     let nonce = {
         let mut h = [0; xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE];
-        let mut i = ephemeral_pk.to_vec();
-        i.extend_from_slice(&pk);
+        let mut i = ephemeral_pk.to_bytes().to_vec();
+        i.extend_from_slice(pk.as_bytes());
         blake2b::hash(&i, &mut h);
         h
     };
@@ -46,7 +45,7 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
 
     let mut ct = vec![0; plain.len()];
-    xchacha20poly1305::encrypt(&mut ct, &mut tag, &plain, &shared, &nonce, associated_data)?;
+    xchacha20poly1305::encrypt(&mut ct, &mut tag, &plain, shared.as_bytes(), &nonce, associated_data)?;
 
     output.write_all(&tag)?;
     output.write_all(&ct)?;
@@ -60,17 +59,19 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
     // check the header
     check_header(input)?;
 
-    let mut ephemeral_pk = [0; x25519::PUBLIC_KEY_LENGTH];
+    let mut ephemeral_pk = [0; x25519::PUBLIC_KEY_LEN];
     input.read_exact(&mut ephemeral_pk)?;
+    let ephemeral_pk = x25519::PublicKey::from_bytes(&ephemeral_pk)?;
 
-    let pk = x25519::X25519(key, None);
+    let sk = x25519::SecretKey::from_bytes(key)?;
+    let pk = sk.public_key();
 
-    let shared = x25519::X25519(&key, Some(&ephemeral_pk));
+    let shared = sk.diffie_hellman(&ephemeral_pk);
 
     let nonce = {
         let mut h = [0; xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE];
-        let mut i = ephemeral_pk.to_vec();
-        i.extend_from_slice(&pk);
+        let mut i = ephemeral_pk.to_bytes().to_vec();
+        i.extend_from_slice(pk.as_bytes());
         blake2b::hash(&i, &mut h);
         h
     };
@@ -82,7 +83,7 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
     input.read_to_end(&mut ct)?;
 
     let mut pt = vec![0; ct.len()];
-    xchacha20poly1305::decrypt(&mut pt, &ct, &shared, &tag, &nonce, associated_data)?;
+    xchacha20poly1305::decrypt(&mut pt, &ct, shared.as_bytes(), &tag, &nonce, associated_data)?;
 
     Ok(pt)
 }
@@ -126,7 +127,7 @@ pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> crate::Resul
 }
 
 fn check_min_file_len(input: &mut File) -> crate::Result<()> {
-    let min = MAGIC.len() + VERSION.len() + x25519::PUBLIC_KEY_LENGTH + xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE;
+    let min = MAGIC.len() + VERSION.len() + x25519::PUBLIC_KEY_LEN + xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE;
     if input.metadata()?.len() >= min as u64 {
         Ok(())
     } else {
