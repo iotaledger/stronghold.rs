@@ -4,7 +4,7 @@ author: Tensor Programming <tensordeveloper@gmail.com>
 about: Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
 subcommands:
   - encrypt:
-      about: Encrypt data in a snapshot
+      about: Encrypt data to the vault. Writes to the snapshot. 
       args:
         - plain:
             short: p
@@ -27,13 +27,13 @@ subcommands:
             required: true
             takes_value: true
   - write:
-      about: Write data to the store.
+      about: Write data to the unencrypted cache store.
       args:
         - plain:
             short: p
             long: plain
             value_name: plaintext
-            about: a plaintext value that you want to encrypt.
+            about: a value you want to store. 
             required: true
             takes_value: true
         - rpath:
@@ -50,7 +50,7 @@ subcommands:
             required: true
             takes_value: true
   - snapshot:
-      about: load from an existing snapshot
+      about: load from an existing snapshot by path. 
       args:
         - path:
             short: p
@@ -65,7 +65,7 @@ subcommands:
             required: true
             takes_value: true
   - list:
-      about: Lists the ids of the records inside of your main snapshot
+      about: Lists the ids of the records inside of your stronghold's vault. 
       args:
         - password:
             short: w
@@ -81,7 +81,7 @@ subcommands:
             about: include revoked records
             takes_value: false
   - read:
-      about: read an associated record by id
+      about: Read the data from a record in the unencrypted store. 
       args:
         - password:
             short: w
@@ -97,7 +97,7 @@ subcommands:
             required: true
             takes_value: true
   - revoke:
-      about: Revoke a record by id
+      about: Revoke a record from the vault. 
       args:
         - password:
             short: w
@@ -114,7 +114,7 @@ subcommands:
             required: true
             takes_value: true
   - garbage_collect:
-      about: Garbage collect the entire vault and remove revoked records.
+      about: Garbage collect the vault and remove revoked records.
       args:
         - password:
             short: w
@@ -141,7 +141,7 @@ subcommands:
             required: true
             takes_value: true
   - take_ownership:
-      about: Take ownership of an existing chain.
+      about: Take ownership of an existing chain to give it to a new user.
       args:
         - password:
             short: w

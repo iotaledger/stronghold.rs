@@ -22,7 +22,7 @@ macro_rules! line_error {
     };
 }
 
-// handle the encryption command.
+// Writes data to the unencrypted store. Requires a password, the plaintext and the record path.
 fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("write") {
         if let Some(pass) = matches.value_of("password") {
@@ -39,7 +39,7 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
                         block_on(stronghold.read_snapshot(
                             client_path,
                             None,
-                            key.to_vec(),
+                            &key.to_vec(),
                             Some("commandline".to_string()),
                             None,
                         ));
@@ -51,13 +51,14 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
                         None,
                     ));
 
-                    block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 };
             };
         };
     }
 }
 
+/// Writes data to the encrypted vault.  Requires a password, the plaintext and the record path.
 fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("encrypt") {
         if let Some(pass) = matches.value_of("password") {
@@ -74,7 +75,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                         block_on(stronghold.read_snapshot(
                             client_path,
                             None,
-                            key.to_vec(),
+                            &key.to_vec(),
                             Some("commandline".to_string()),
                             None,
                         ));
@@ -87,14 +88,14 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                         vec![],
                     ));
 
-                    block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 };
             };
         };
     }
 }
 
-// handle the snapshot command.
+// Writes the state of the stronghold to a snapshot. Requires a password and an optional snapshot path.
 fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("snapshot") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -113,13 +114,18 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
                 out.push(Path::new("recompute.stronghold"));
 
                 if input.exists() {
-                    let status = block_on(stronghold.read_snapshot(client_path, None, key.to_vec(), None, Some(input)));
+                    let status =
+                        block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), None, Some(input)));
 
                     if let StatusMessage::Error(error) = status {
                         println!("{:?}", error);
                         return;
                     } else {
-                        block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                        block_on(stronghold.write_all_to_snapshot(
+                            &key.to_vec(),
+                            Some("commandline".to_string()),
+                            None,
+                        ));
                     }
                 } else {
                     println!("The path you entered does not contain a valid snapshot");
@@ -129,7 +135,7 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
     }
 }
 
-// handle the list command.
+// Lists the records in the stronghold. Requires a password to unlock the snapshot.
 fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("list") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -144,7 +150,7 @@ fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongho
                 block_on(stronghold.read_snapshot(
                     client_path,
                     None,
-                    key.to_vec(),
+                    &key.to_vec(),
                     Some("commandline".to_string()),
                     None,
                 ));
@@ -162,7 +168,7 @@ fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongho
     }
 }
 
-// handle the read command.
+// Reads a record from the unencrypted store.  Requires a snapshot password.
 fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("read") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -178,7 +184,7 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
                     block_on(stronghold.read_snapshot(
                         client_path,
                         None,
-                        key.to_vec(),
+                        &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
                     ));
@@ -200,7 +206,7 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
     }
 }
 
-// create a record with a revoke transaction.  Data isn't actually deleted until it is garbage collected.
+// Revoke a record.  Data isn't actually deleted until it is garbage collected.  Accepts a password and the record id that you want to revoke.
 fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("revoke") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -216,7 +222,7 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
                     block_on(stronghold.read_snapshot(
                         client_path,
                         None,
-                        key.to_vec(),
+                        &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
                     ));
@@ -228,7 +234,7 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
 
                     println!("{:?}", status);
 
-                    block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 } else {
                     println!("Could not find a snapshot at the home path.  Try writing first. ");
 
@@ -239,7 +245,7 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
     }
 }
 
-// garbage collect the chain.  Remove any revoked data from the chain.
+// garbage collect the chain.  Remove any revoked data from the chain.  Requires the password.
 fn garbage_collect_vault_command(
     matches: &ArgMatches,
     stronghold: &mut iota_stronghold::Stronghold,
@@ -258,7 +264,7 @@ fn garbage_collect_vault_command(
                 block_on(stronghold.read_snapshot(
                     client_path,
                     None,
-                    key.to_vec(),
+                    &key.to_vec(),
                     Some("commandline".to_string()),
                     None,
                 ));
@@ -267,7 +273,7 @@ fn garbage_collect_vault_command(
 
                 println!("{:?}", status);
 
-                block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
             } else {
                 println!("Could not find a snapshot at the home path.  Try writing first. ");
 
@@ -277,7 +283,7 @@ fn garbage_collect_vault_command(
     }
 }
 
-// Purge a record from the chain: revoke and then garbage collect.
+// Purge a record from the chain.  Calls revoke and garabge collect in one command.  Requires a password and the record id.
 fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("purge") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -293,7 +299,7 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
                     block_on(stronghold.read_snapshot(
                         client_path,
                         None,
-                        key.to_vec(),
+                        &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
                     ));
@@ -305,7 +311,7 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
 
                     println!("{:?}", status);
 
-                    block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 } else {
                     println!("Could not find a snapshot at the home path.  Try writing first. ");
 
