@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["write_to_read",""]],"struct":[["Bucket","A `Bucket` cache of the Data for stronghold. Contains a `HashMap<Key<P>, Option<DBView<P>>>` pairing the vault `Key<P>` and the vault `DBView<P>` together. Also contains a `HashMap<Key<P>, Vec<ReadResult>>` which pairs the backing data with the associated `Key<P>`."]],"type":[["Store",""]]});

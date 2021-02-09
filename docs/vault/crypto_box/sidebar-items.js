@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Key","A key to the crypto box.  Key is stored on the heap which makes it easier to erase."]],"trait":[["BoxProvider","A provider interface between the vault and a crypto box. See libsodium's secretbox for an example."],["Decrypt","Trait for decryptable data"],["Encrypt","trait for encryptable data"]]});

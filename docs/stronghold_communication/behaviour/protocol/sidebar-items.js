@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["MessageCodec","Describes how messages are read from and written to the io Socket by implementing the RequestResponseCodec"],["MessageProtocol","Custom protocol that extends libp2ps RequestResponseProtocol"]],"trait":[["MessageEvent","Trait for the generic Request and Response types"]]});

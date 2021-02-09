@@ -1,0 +1,586 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `engine/snapshot/src/logic.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>logic.rs - source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings"></script><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg">
+<link rel="alternate icon" type="image/png" href="../../favicon-16x16.png">
+<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../snapshot/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><span class="help-button">?</span>
+                <a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
+<span id="2">  2</span>
+<span id="3">  3</span>
+<span id="4">  4</span>
+<span id="5">  5</span>
+<span id="6">  6</span>
+<span id="7">  7</span>
+<span id="8">  8</span>
+<span id="9">  9</span>
+<span id="10"> 10</span>
+<span id="11"> 11</span>
+<span id="12"> 12</span>
+<span id="13"> 13</span>
+<span id="14"> 14</span>
+<span id="15"> 15</span>
+<span id="16"> 16</span>
+<span id="17"> 17</span>
+<span id="18"> 18</span>
+<span id="19"> 19</span>
+<span id="20"> 20</span>
+<span id="21"> 21</span>
+<span id="22"> 22</span>
+<span id="23"> 23</span>
+<span id="24"> 24</span>
+<span id="25"> 25</span>
+<span id="26"> 26</span>
+<span id="27"> 27</span>
+<span id="28"> 28</span>
+<span id="29"> 29</span>
+<span id="30"> 30</span>
+<span id="31"> 31</span>
+<span id="32"> 32</span>
+<span id="33"> 33</span>
+<span id="34"> 34</span>
+<span id="35"> 35</span>
+<span id="36"> 36</span>
+<span id="37"> 37</span>
+<span id="38"> 38</span>
+<span id="39"> 39</span>
+<span id="40"> 40</span>
+<span id="41"> 41</span>
+<span id="42"> 42</span>
+<span id="43"> 43</span>
+<span id="44"> 44</span>
+<span id="45"> 45</span>
+<span id="46"> 46</span>
+<span id="47"> 47</span>
+<span id="48"> 48</span>
+<span id="49"> 49</span>
+<span id="50"> 50</span>
+<span id="51"> 51</span>
+<span id="52"> 52</span>
+<span id="53"> 53</span>
+<span id="54"> 54</span>
+<span id="55"> 55</span>
+<span id="56"> 56</span>
+<span id="57"> 57</span>
+<span id="58"> 58</span>
+<span id="59"> 59</span>
+<span id="60"> 60</span>
+<span id="61"> 61</span>
+<span id="62"> 62</span>
+<span id="63"> 63</span>
+<span id="64"> 64</span>
+<span id="65"> 65</span>
+<span id="66"> 66</span>
+<span id="67"> 67</span>
+<span id="68"> 68</span>
+<span id="69"> 69</span>
+<span id="70"> 70</span>
+<span id="71"> 71</span>
+<span id="72"> 72</span>
+<span id="73"> 73</span>
+<span id="74"> 74</span>
+<span id="75"> 75</span>
+<span id="76"> 76</span>
+<span id="77"> 77</span>
+<span id="78"> 78</span>
+<span id="79"> 79</span>
+<span id="80"> 80</span>
+<span id="81"> 81</span>
+<span id="82"> 82</span>
+<span id="83"> 83</span>
+<span id="84"> 84</span>
+<span id="85"> 85</span>
+<span id="86"> 86</span>
+<span id="87"> 87</span>
+<span id="88"> 88</span>
+<span id="89"> 89</span>
+<span id="90"> 90</span>
+<span id="91"> 91</span>
+<span id="92"> 92</span>
+<span id="93"> 93</span>
+<span id="94"> 94</span>
+<span id="95"> 95</span>
+<span id="96"> 96</span>
+<span id="97"> 97</span>
+<span id="98"> 98</span>
+<span id="99"> 99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+<span id="161">161</span>
+<span id="162">162</span>
+<span id="163">163</span>
+<span id="164">164</span>
+<span id="165">165</span>
+<span id="166">166</span>
+<span id="167">167</span>
+<span id="168">168</span>
+<span id="169">169</span>
+<span id="170">170</span>
+<span id="171">171</span>
+<span id="172">172</span>
+<span id="173">173</span>
+<span id="174">174</span>
+<span id="175">175</span>
+<span id="176">176</span>
+<span id="177">177</span>
+<span id="178">178</span>
+<span id="179">179</span>
+<span id="180">180</span>
+<span id="181">181</span>
+<span id="182">182</span>
+<span id="183">183</span>
+<span id="184">184</span>
+<span id="185">185</span>
+<span id="186">186</span>
+<span id="187">187</span>
+<span id="188">188</span>
+<span id="189">189</span>
+<span id="190">190</span>
+<span id="191">191</span>
+<span id="192">192</span>
+<span id="193">193</span>
+<span id="194">194</span>
+<span id="195">195</span>
+<span id="196">196</span>
+<span id="197">197</span>
+<span id="198">198</span>
+<span id="199">199</span>
+<span id="200">200</span>
+<span id="201">201</span>
+<span id="202">202</span>
+<span id="203">203</span>
+<span id="204">204</span>
+<span id="205">205</span>
+<span id="206">206</span>
+<span id="207">207</span>
+<span id="208">208</span>
+<span id="209">209</span>
+<span id="210">210</span>
+<span id="211">211</span>
+<span id="212">212</span>
+<span id="213">213</span>
+<span id="214">214</span>
+<span id="215">215</span>
+<span id="216">216</span>
+<span id="217">217</span>
+<span id="218">218</span>
+<span id="219">219</span>
+<span id="220">220</span>
+<span id="221">221</span>
+<span id="222">222</span>
+<span id="223">223</span>
+<span id="224">224</span>
+<span id="225">225</span>
+<span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
+<span id="229">229</span>
+<span id="230">230</span>
+<span id="231">231</span>
+<span id="232">232</span>
+<span id="233">233</span>
+<span id="234">234</span>
+<span id="235">235</span>
+<span id="236">236</span>
+<span id="237">237</span>
+<span id="238">238</span>
+<span id="239">239</span>
+<span id="240">240</span>
+<span id="241">241</span>
+<span id="242">242</span>
+<span id="243">243</span>
+<span id="244">244</span>
+<span id="245">245</span>
+<span id="246">246</span>
+<span id="247">247</span>
+<span id="248">248</span>
+<span id="249">249</span>
+<span id="250">250</span>
+<span id="251">251</span>
+<span id="252">252</span>
+<span id="253">253</span>
+<span id="254">254</span>
+<span id="255">255</span>
+<span id="256">256</span>
+<span id="257">257</span>
+<span id="258">258</span>
+<span id="259">259</span>
+<span id="260">260</span>
+<span id="261">261</span>
+<span id="262">262</span>
+<span id="263">263</span>
+<span id="264">264</span>
+<span id="265">265</span>
+<span id="266">266</span>
+<span id="267">267</span>
+<span id="268">268</span>
+<span id="269">269</span>
+<span id="270">270</span>
+<span id="271">271</span>
+<span id="272">272</span>
+<span id="273">273</span>
+<span id="274">274</span>
+<span id="275">275</span>
+<span id="276">276</span>
+<span id="277">277</span>
+<span id="278">278</span>
+<span id="279">279</span>
+<span id="280">280</span>
+<span id="281">281</span>
+<span id="282">282</span>
+<span id="283">283</span>
+<span id="284">284</span>
+<span id="285">285</span>
+<span id="286">286</span>
+<span id="287">287</span>
+<span id="288">288</span>
+<span id="289">289</span>
+<span id="290">290</span>
+</pre><div class="example-wrap"><pre class="rust ">
+<span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
+<span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="kw">use</span> <span class="ident">std</span>::{
+    <span class="ident">fs</span>::{<span class="ident">rename</span>, <span class="ident">File</span>, <span class="ident">OpenOptions</span>},
+    <span class="ident">io</span>::{<span class="ident">Read</span>, <span class="ident">Write</span>},
+    <span class="ident">path</span>::<span class="ident">Path</span>,
+};
+
+<span class="kw">use</span> <span class="ident">crypto</span>::{<span class="ident">blake2b</span>, <span class="ident">ciphers</span>::<span class="ident">chacha</span>::<span class="ident">xchacha20poly1305</span>, <span class="ident">x25519</span>};
+
+<span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">compress</span>, <span class="ident">decompress</span>};
+
+<span class="doccomment">/// Magic bytes (bytes 0-4 in a snapshot file)</span>
+<span class="kw">pub</span> <span class="kw">const</span> <span class="ident">MAGIC</span>: [<span class="ident">u8</span>; <span class="number">5</span>] <span class="op">=</span> [<span class="number">0x50</span>, <span class="number">0x41</span>, <span class="number">0x52</span>, <span class="number">0x54</span>, <span class="number">0x49</span>];
+
+<span class="doccomment">/// Current version bytes (bytes 5-6 in a snapshot file)</span>
+<span class="kw">pub</span> <span class="kw">const</span> <span class="ident">VERSION</span>: [<span class="ident">u8</span>; <span class="number">2</span>] <span class="op">=</span> [<span class="number">0x2</span>, <span class="number">0x0</span>];
+
+<span class="kw">const</span> <span class="ident">KEY_SIZE</span>: <span class="ident">usize</span> <span class="op">=</span> <span class="number">32</span>;
+<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">Key</span> <span class="op">=</span> [<span class="ident">u8</span>; <span class="ident">KEY_SIZE</span>];
+
+<span class="doccomment">/// Encrypt the opaque plaintext bytestring using the specified key and optional associated data</span>
+<span class="doccomment">/// and writes the ciphertext to the specifed output</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">write</span><span class="op">&lt;</span><span class="ident">O</span>: <span class="ident">Write</span><span class="op">&gt;</span>(<span class="ident">plain</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>], <span class="ident">output</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">O</span>, <span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">Key</span>, <span class="ident">associated_data</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="ident">output</span>.<span class="ident">write_all</span>(<span class="kw-2">&amp;</span><span class="ident">MAGIC</span>)<span class="question-mark">?</span>;
+    <span class="ident">output</span>.<span class="ident">write_all</span>(<span class="kw-2">&amp;</span><span class="ident">VERSION</span>)<span class="question-mark">?</span>;
+
+    <span class="kw">let</span> <span class="ident">ephemeral_key</span> <span class="op">=</span> <span class="ident">x25519</span>::<span class="ident">SecretKey</span>::<span class="ident">generate</span>()<span class="question-mark">?</span>;
+
+    <span class="kw">let</span> <span class="ident">ephemeral_pk</span> <span class="op">=</span> <span class="ident">ephemeral_key</span>.<span class="ident">public_key</span>();
+    <span class="ident">output</span>.<span class="ident">write_all</span>(<span class="ident">ephemeral_pk</span>.<span class="ident">as_bytes</span>())<span class="question-mark">?</span>;
+
+    <span class="kw">let</span> <span class="ident">pk</span> <span class="op">=</span> <span class="ident">x25519</span>::<span class="ident">SecretKey</span>::<span class="ident">from_bytes</span>(<span class="ident">key</span>)<span class="question-mark">?</span>.<span class="ident">public_key</span>();
+    <span class="kw">let</span> <span class="ident">shared</span> <span class="op">=</span> <span class="ident">ephemeral_key</span>.<span class="ident">diffie_hellman</span>(<span class="kw-2">&amp;</span><span class="ident">pk</span>);
+
+    <span class="kw">let</span> <span class="ident">nonce</span> <span class="op">=</span> {
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">h</span> <span class="op">=</span> [<span class="number">0</span>; <span class="ident">xchacha20poly1305</span>::<span class="ident">XCHACHA20POLY1305_NONCE_SIZE</span>];
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">i</span> <span class="op">=</span> <span class="ident">ephemeral_pk</span>.<span class="ident">to_bytes</span>().<span class="ident">to_vec</span>();
+        <span class="ident">i</span>.<span class="ident">extend_from_slice</span>(<span class="ident">pk</span>.<span class="ident">as_bytes</span>());
+        <span class="ident">blake2b</span>::<span class="ident">hash</span>(<span class="kw-2">&amp;</span><span class="ident">i</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">h</span>);
+        <span class="ident">h</span>
+    };
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">tag</span> <span class="op">=</span> [<span class="number">0</span>; <span class="ident">xchacha20poly1305</span>::<span class="ident">XCHACHA20POLY1305_TAG_SIZE</span>];
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ct</span> <span class="op">=</span> <span class="macro">vec</span><span class="macro">!</span>[<span class="number">0</span>; <span class="ident">plain</span>.<span class="ident">len</span>()];
+    <span class="ident">xchacha20poly1305</span>::<span class="ident">encrypt</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ct</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">tag</span>, <span class="kw-2">&amp;</span><span class="ident">plain</span>, <span class="ident">shared</span>.<span class="ident">as_bytes</span>(), <span class="kw-2">&amp;</span><span class="ident">nonce</span>, <span class="ident">associated_data</span>)<span class="question-mark">?</span>;
+
+    <span class="ident">output</span>.<span class="ident">write_all</span>(<span class="kw-2">&amp;</span><span class="ident">tag</span>)<span class="question-mark">?</span>;
+    <span class="ident">output</span>.<span class="ident">write_all</span>(<span class="kw-2">&amp;</span><span class="ident">ct</span>)<span class="question-mark">?</span>;
+
+    <span class="prelude-val">Ok</span>(())
+}
+
+<span class="doccomment">/// Read ciphertext from the input, decrypts it using the specified key and the associated data</span>
+<span class="doccomment">/// specified during encryption and returns the plaintext</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">read</span><span class="op">&lt;</span><span class="ident">I</span>: <span class="ident">Read</span><span class="op">&gt;</span>(<span class="ident">input</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">I</span>, <span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">Key</span>, <span class="ident">associated_data</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="comment">// check the header</span>
+    <span class="ident">check_header</span>(<span class="ident">input</span>)<span class="question-mark">?</span>;
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ephemeral_pk</span> <span class="op">=</span> [<span class="number">0</span>; <span class="ident">x25519</span>::<span class="ident">PUBLIC_KEY_LEN</span>];
+    <span class="ident">input</span>.<span class="ident">read_exact</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ephemeral_pk</span>)<span class="question-mark">?</span>;
+    <span class="kw">let</span> <span class="ident">ephemeral_pk</span> <span class="op">=</span> <span class="ident">x25519</span>::<span class="ident">PublicKey</span>::<span class="ident">from_bytes</span>(<span class="kw-2">&amp;</span><span class="ident">ephemeral_pk</span>)<span class="question-mark">?</span>;
+
+    <span class="kw">let</span> <span class="ident">sk</span> <span class="op">=</span> <span class="ident">x25519</span>::<span class="ident">SecretKey</span>::<span class="ident">from_bytes</span>(<span class="ident">key</span>)<span class="question-mark">?</span>;
+    <span class="kw">let</span> <span class="ident">pk</span> <span class="op">=</span> <span class="ident">sk</span>.<span class="ident">public_key</span>();
+
+    <span class="kw">let</span> <span class="ident">shared</span> <span class="op">=</span> <span class="ident">sk</span>.<span class="ident">diffie_hellman</span>(<span class="kw-2">&amp;</span><span class="ident">ephemeral_pk</span>);
+
+    <span class="kw">let</span> <span class="ident">nonce</span> <span class="op">=</span> {
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">h</span> <span class="op">=</span> [<span class="number">0</span>; <span class="ident">xchacha20poly1305</span>::<span class="ident">XCHACHA20POLY1305_NONCE_SIZE</span>];
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">i</span> <span class="op">=</span> <span class="ident">ephemeral_pk</span>.<span class="ident">to_bytes</span>().<span class="ident">to_vec</span>();
+        <span class="ident">i</span>.<span class="ident">extend_from_slice</span>(<span class="ident">pk</span>.<span class="ident">as_bytes</span>());
+        <span class="ident">blake2b</span>::<span class="ident">hash</span>(<span class="kw-2">&amp;</span><span class="ident">i</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">h</span>);
+        <span class="ident">h</span>
+    };
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">tag</span> <span class="op">=</span> [<span class="number">0</span>; <span class="ident">xchacha20poly1305</span>::<span class="ident">XCHACHA20POLY1305_TAG_SIZE</span>];
+    <span class="ident">input</span>.<span class="ident">read_exact</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">tag</span>)<span class="question-mark">?</span>;
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ct</span> <span class="op">=</span> <span class="ident">Vec</span>::<span class="ident">new</span>();
+    <span class="ident">input</span>.<span class="ident">read_to_end</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ct</span>)<span class="question-mark">?</span>;
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">pt</span> <span class="op">=</span> <span class="macro">vec</span><span class="macro">!</span>[<span class="number">0</span>; <span class="ident">ct</span>.<span class="ident">len</span>()];
+    <span class="ident">xchacha20poly1305</span>::<span class="ident">decrypt</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">pt</span>, <span class="kw-2">&amp;</span><span class="ident">ct</span>, <span class="ident">shared</span>.<span class="ident">as_bytes</span>(), <span class="kw-2">&amp;</span><span class="ident">tag</span>, <span class="kw-2">&amp;</span><span class="ident">nonce</span>, <span class="ident">associated_data</span>)<span class="question-mark">?</span>;
+
+    <span class="prelude-val">Ok</span>(<span class="ident">pt</span>)
+}
+
+<span class="doccomment">/// Atomically encrypt and [`write`](fn.write.html) the specified plaintext to the specified path</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// This is achieved by creating a temporary file in the same directory as the specified path (same</span>
+<span class="doccomment">/// filename with a salted suffix). This is currently known to be problematic if the path is a</span>
+<span class="doccomment">/// symlink and/or if the target path resides in a directory without user write permission.</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">write_to</span>(<span class="ident">plain</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>], <span class="ident">path</span>: <span class="kw-2">&amp;</span><span class="ident">Path</span>, <span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">Key</span>, <span class="ident">associated_data</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="comment">// TODO: if path exists and is a symlink, resolve it and then append the salt</span>
+    <span class="comment">// TODO: if the sibling tempfile isn&#39;t writeable (e.g. directory permissions), write to</span>
+    <span class="comment">// env::temp_dir()</span>
+
+    <span class="kw">let</span> <span class="ident">compressed_plain</span> <span class="op">=</span> <span class="ident">compress</span>(<span class="ident">plain</span>);
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">salt</span> <span class="op">=</span> [<span class="number">0u8</span>; <span class="number">6</span>];
+    <span class="ident">crypto</span>::<span class="ident">rand</span>::<span class="ident">fill</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">salt</span>)<span class="question-mark">?</span>;
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">s</span> <span class="op">=</span> <span class="ident">path</span>.<span class="ident">as_os_str</span>().<span class="ident">to_os_string</span>();
+    <span class="ident">s</span>.<span class="ident">push</span>(<span class="string">&quot;.&quot;</span>);
+    <span class="ident">s</span>.<span class="ident">push</span>(<span class="ident">hex</span>::<span class="ident">encode</span>(<span class="ident">salt</span>));
+    <span class="kw">let</span> <span class="ident">tmp</span> <span class="op">=</span> <span class="ident">Path</span>::<span class="ident">new</span>(<span class="kw-2">&amp;</span><span class="ident">s</span>);
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">f</span> <span class="op">=</span> <span class="ident">OpenOptions</span>::<span class="ident">new</span>().<span class="ident">write</span>(<span class="bool-val">true</span>).<span class="ident">create_new</span>(<span class="bool-val">true</span>).<span class="ident">open</span>(<span class="ident">tmp</span>)<span class="question-mark">?</span>;
+    <span class="ident">write</span>(<span class="kw-2">&amp;</span><span class="ident">compressed_plain</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">f</span>, <span class="ident">key</span>, <span class="ident">associated_data</span>)<span class="question-mark">?</span>;
+    <span class="ident">f</span>.<span class="ident">sync_all</span>()<span class="question-mark">?</span>;
+
+    <span class="ident">rename</span>(<span class="ident">tmp</span>, <span class="ident">path</span>)<span class="question-mark">?</span>;
+
+    <span class="prelude-val">Ok</span>(())
+}
+
+<span class="doccomment">/// [`read`](fn.read.html) and decrypt the ciphertext from the specified path</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">read_from</span>(<span class="ident">path</span>: <span class="kw-2">&amp;</span><span class="ident">Path</span>, <span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">Key</span>, <span class="ident">associated_data</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">f</span>: <span class="ident">File</span> <span class="op">=</span> <span class="ident">OpenOptions</span>::<span class="ident">new</span>().<span class="ident">read</span>(<span class="bool-val">true</span>).<span class="ident">open</span>(<span class="ident">path</span>)<span class="question-mark">?</span>;
+    <span class="ident">check_min_file_len</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">f</span>)<span class="question-mark">?</span>;
+    <span class="kw">let</span> <span class="ident">pt</span> <span class="op">=</span> <span class="ident">read</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">f</span>, <span class="ident">key</span>, <span class="ident">associated_data</span>)<span class="question-mark">?</span>;
+
+    <span class="ident">decompress</span>(<span class="kw-2">&amp;</span><span class="ident">pt</span>)
+}
+
+<span class="kw">fn</span> <span class="ident">check_min_file_len</span>(<span class="ident">input</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">File</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="kw">let</span> <span class="ident">min</span> <span class="op">=</span> <span class="ident">MAGIC</span>.<span class="ident">len</span>() <span class="op">+</span> <span class="ident">VERSION</span>.<span class="ident">len</span>() <span class="op">+</span> <span class="ident">x25519</span>::<span class="ident">PUBLIC_KEY_LEN</span> <span class="op">+</span> <span class="ident">xchacha20poly1305</span>::<span class="ident">XCHACHA20POLY1305_TAG_SIZE</span>;
+    <span class="kw">if</span> <span class="ident">input</span>.<span class="ident">metadata</span>()<span class="question-mark">?</span>.<span class="ident">len</span>() <span class="op">&gt;</span><span class="op">=</span> <span class="ident">min</span> <span class="kw">as</span> <span class="ident">u64</span> {
+        <span class="prelude-val">Ok</span>(())
+    } <span class="kw">else</span> {
+        <span class="prelude-val">Err</span>(<span class="kw">crate</span>::<span class="ident">Error</span>::<span class="ident">SnapshotError</span>(<span class="string">&quot;Snapshot is too short to be valid&quot;</span>.<span class="ident">into</span>()))
+    }
+}
+
+<span class="kw">fn</span> <span class="ident">check_header</span><span class="op">&lt;</span><span class="ident">I</span>: <span class="ident">Read</span><span class="op">&gt;</span>(<span class="ident">input</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">I</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="comment">// check the magic bytes</span>
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">magic</span> <span class="op">=</span> [<span class="number">0u8</span>; <span class="number">5</span>];
+    <span class="ident">input</span>.<span class="ident">read_exact</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">magic</span>)<span class="question-mark">?</span>;
+    <span class="kw">if</span> <span class="ident">magic</span> <span class="op">!</span><span class="op">=</span> <span class="ident">MAGIC</span> {
+        <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="kw">crate</span>::<span class="ident">Error</span>::<span class="ident">SnapshotError</span>(
+            <span class="string">&quot;magic bytes mismatch, is this really a snapshot file?&quot;</span>.<span class="ident">into</span>(),
+        ));
+    }
+
+    <span class="comment">// check the version</span>
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">version</span> <span class="op">=</span> [<span class="number">0u8</span>; <span class="number">2</span>];
+    <span class="ident">input</span>.<span class="ident">read_exact</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">version</span>)<span class="question-mark">?</span>;
+    <span class="kw">if</span> <span class="ident">version</span> <span class="op">!</span><span class="op">=</span> <span class="ident">VERSION</span> {
+        <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="kw">crate</span>::<span class="ident">Error</span>::<span class="ident">SnapshotError</span>(<span class="string">&quot;snapshot version is incorrect&quot;</span>.<span class="ident">into</span>()));
+    }
+
+    <span class="prelude-val">Ok</span>(())
+}
+
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
+<span class="kw">mod</span> <span class="ident">test</span> {
+    <span class="kw">use</span> <span class="kw">super</span>::<span class="kw-2">*</span>;
+    <span class="kw">use</span> <span class="ident">test_utils</span>::{<span class="ident">corrupt</span>, <span class="ident">corrupt_file_at</span>, <span class="ident">fresh</span>};
+
+    <span class="attribute">#[<span class="ident">test</span>]</span>
+    <span class="kw">fn</span> <span class="ident">test_write_read</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">key</span>: <span class="ident">Key</span> <span class="op">=</span> <span class="ident">rand</span>::<span class="ident">random</span>();
+        <span class="kw">let</span> <span class="ident">bs0</span> <span class="op">=</span> <span class="ident">fresh</span>::<span class="ident">bytestring</span>();
+        <span class="kw">let</span> <span class="ident">ad</span> <span class="op">=</span> <span class="ident">fresh</span>::<span class="ident">bytestring</span>();
+
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">buf</span> <span class="op">=</span> <span class="ident">Vec</span>::<span class="ident">new</span>();
+        <span class="ident">write</span>(<span class="kw-2">&amp;</span><span class="ident">bs0</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">buf</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">bs1</span> <span class="op">=</span> <span class="ident">read</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">buf</span>.<span class="ident">as_slice</span>(), <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>)<span class="question-mark">?</span>;
+
+        <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">bs0</span>, <span class="ident">bs1</span>);
+
+        <span class="prelude-val">Ok</span>(())
+    }
+
+    <span class="attribute">#[<span class="ident">test</span>]</span>
+    <span class="attribute">#[<span class="ident">should_panic</span>]</span>
+    <span class="kw">fn</span> <span class="ident">test_corrupted_read_write</span>() {
+        <span class="kw">let</span> <span class="ident">key</span>: <span class="ident">Key</span> <span class="op">=</span> <span class="ident">rand</span>::<span class="ident">random</span>();
+        <span class="kw">let</span> <span class="ident">bs0</span> <span class="op">=</span> <span class="ident">fresh</span>::<span class="ident">bytestring</span>();
+        <span class="kw">let</span> <span class="ident">ad</span> <span class="op">=</span> <span class="ident">fresh</span>::<span class="ident">bytestring</span>();
+
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">buf</span> <span class="op">=</span> <span class="ident">Vec</span>::<span class="ident">new</span>();
+        <span class="ident">write</span>(<span class="kw-2">&amp;</span><span class="ident">bs0</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">buf</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>).<span class="ident">unwrap</span>();
+        <span class="ident">corrupt</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">buf</span>);
+        <span class="ident">read</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">buf</span>.<span class="ident">as_slice</span>(), <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>).<span class="ident">unwrap</span>();
+    }
+
+    <span class="attribute">#[<span class="ident">test</span>]</span>
+    <span class="kw">fn</span> <span class="ident">test_snapshot</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">f</span> <span class="op">=</span> <span class="ident">tempfile</span>::<span class="ident">tempdir</span>().<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">pb</span> <span class="op">=</span> <span class="ident">f</span>.<span class="ident">into_path</span>();
+        <span class="ident">pb</span>.<span class="ident">push</span>(<span class="string">&quot;snapshot&quot;</span>);
+
+        <span class="kw">let</span> <span class="ident">key</span>: <span class="ident">Key</span> <span class="op">=</span> <span class="ident">rand</span>::<span class="ident">random</span>();
+        <span class="kw">let</span> <span class="ident">bs0</span> <span class="op">=</span> <span class="ident">fresh</span>::<span class="ident">bytestring</span>();
+        <span class="kw">let</span> <span class="ident">ad</span> <span class="op">=</span> <span class="ident">fresh</span>::<span class="ident">bytestring</span>();
+
+        <span class="ident">write_to</span>(<span class="kw-2">&amp;</span><span class="ident">bs0</span>, <span class="kw-2">&amp;</span><span class="ident">pb</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">bs1</span> <span class="op">=</span> <span class="ident">read_from</span>(<span class="kw-2">&amp;</span><span class="ident">pb</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>)<span class="question-mark">?</span>;
+        <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">bs0</span>, <span class="ident">bs1</span>);
+
+        <span class="prelude-val">Ok</span>(())
+    }
+
+    <span class="attribute">#[<span class="ident">test</span>]</span>
+    <span class="attribute">#[<span class="ident">should_panic</span>]</span>
+    <span class="kw">fn</span> <span class="ident">test_currupted_snapshot</span>() {
+        <span class="kw">let</span> <span class="ident">f</span> <span class="op">=</span> <span class="ident">tempfile</span>::<span class="ident">tempdir</span>().<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">pb</span> <span class="op">=</span> <span class="ident">f</span>.<span class="ident">into_path</span>();
+        <span class="ident">pb</span>.<span class="ident">push</span>(<span class="string">&quot;snapshot&quot;</span>);
+
+        <span class="kw">let</span> <span class="ident">key</span>: <span class="ident">Key</span> <span class="op">=</span> <span class="ident">rand</span>::<span class="ident">random</span>();
+        <span class="kw">let</span> <span class="ident">bs0</span> <span class="op">=</span> <span class="ident">fresh</span>::<span class="ident">bytestring</span>();
+        <span class="kw">let</span> <span class="ident">ad</span> <span class="op">=</span> <span class="ident">fresh</span>::<span class="ident">bytestring</span>();
+
+        <span class="ident">write_to</span>(<span class="kw-2">&amp;</span><span class="ident">bs0</span>, <span class="kw-2">&amp;</span><span class="ident">pb</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>).<span class="ident">unwrap</span>();
+        <span class="ident">corrupt_file_at</span>(<span class="kw-2">&amp;</span><span class="ident">pb</span>);
+        <span class="ident">read_from</span>(<span class="kw-2">&amp;</span><span class="ident">pb</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>).<span class="ident">unwrap</span>();
+    }
+
+    <span class="attribute">#[<span class="ident">test</span>]</span>
+    <span class="kw">fn</span> <span class="ident">test_snapshot_overwrite</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">f</span> <span class="op">=</span> <span class="ident">tempfile</span>::<span class="ident">tempdir</span>().<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">pb</span> <span class="op">=</span> <span class="ident">f</span>.<span class="ident">into_path</span>();
+        <span class="ident">pb</span>.<span class="ident">push</span>(<span class="string">&quot;snapshot&quot;</span>);
+
+        <span class="ident">write_to</span>(<span class="kw-2">&amp;</span><span class="ident">fresh</span>::<span class="ident">bytestring</span>(), <span class="kw-2">&amp;</span><span class="ident">pb</span>, <span class="kw-2">&amp;</span><span class="ident">rand</span>::<span class="ident">random</span>(), <span class="kw-2">&amp;</span><span class="ident">fresh</span>::<span class="ident">bytestring</span>())<span class="question-mark">?</span>;
+
+        <span class="kw">let</span> <span class="ident">key</span>: <span class="ident">Key</span> <span class="op">=</span> <span class="ident">rand</span>::<span class="ident">random</span>();
+        <span class="kw">let</span> <span class="ident">bs0</span> <span class="op">=</span> <span class="ident">fresh</span>::<span class="ident">bytestring</span>();
+        <span class="kw">let</span> <span class="ident">ad</span> <span class="op">=</span> <span class="ident">fresh</span>::<span class="ident">bytestring</span>();
+        <span class="ident">write_to</span>(<span class="kw-2">&amp;</span><span class="ident">bs0</span>, <span class="kw-2">&amp;</span><span class="ident">pb</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>).<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="ident">bs1</span> <span class="op">=</span> <span class="ident">read_from</span>(<span class="kw-2">&amp;</span><span class="ident">pb</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>)<span class="question-mark">?</span>;
+        <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">bs0</span>, <span class="ident">bs1</span>);
+
+        <span class="prelude-val">Ok</span>(())
+    }
+
+    <span class="kw">struct</span> <span class="ident">TestVector</span> {
+        <span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">str</span>,
+        <span class="ident">ad</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">str</span>,
+        <span class="ident">data</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">str</span>,
+        <span class="ident">snapshot</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">str</span>,
+    }
+
+    <span class="attribute">#[<span class="ident">test</span>]</span>
+    <span class="kw">fn</span> <span class="ident">test_vectors</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">tvs</span> <span class="op">=</span> [
+            <span class="ident">TestVector</span> {
+                <span class="ident">key</span>: <span class="string">&quot;710a44779a77149688e91dd6dd1dccba8c128a4008e5e27d9ff00e471f37ca57&quot;</span>,
+                <span class="ident">ad</span>: <span class="string">&quot;0d5379c73a162d3cbc9dd452c9ffbbc4d79ec04199124b24bbe7f11515ba2de67bc55db2a66f03a70287e0ad98a49d51216f45eb8b1071c89b4bb0de36c265a6ee521690b6068a7f363885602a9e1104de1f9cf81484cc9a9822f5f3729dd300ef47cd5dd252c2780b126241c22359ff3df2d21c8e52823d3ddc792bcb765bedb5b9a2d0f4bdcd778c10d86981abb11d8fc753cee0b28694c9f46297ad8e22df96d8ac6849ba872da68fb4d5b11b50e6b5f9fc04ef2dc46d6d5c3ddda12b384fc3d3ccd912157407861494eb682deecef94949653e8c36abff2eb3258ab109e6fc3fc7a5002d3468a425a55ae48d0721f2e868480b17e1985275bd5b61c0e772eea00ee0e2ce52366daab39bdb638cc85ff212fba29fd2ed3e557884b802fca26ddca5ab19c524e617303f1c1527eed8bf0ebe764b6472745e83139b64c6db16f41347b330347c90cfdc24f122f87208cf74e046802f0e4a8ac30341a2b6ff3c9f1f9400f9197c4fdae84b37fc8818c5f6c6bb07f4ecf63c048caecb97531f94a1d7659230e44c1079f915d92fdc71328b010245a284391e40fd861788365c14798bbb9fa46635c75d9e18884fa45ff39aad62d457a084c977fc9ef129bc211f8fdf7d6f8c8e2f2f8ad193fe389dea2605f0927350223c79179c2748e66b1b787090084ab0b5951cc8e030f41a72413ca453f86d05c46ef9a7af3f38963d8ac55d3538f8a105ff6e16c34b339158d236700bb6cbbbc0b6e2e25f3cc8cec690941152cec0f7232062f44bc72018df629bddcbb276caf40b18112403f430f50fd81de7914e9858cf83d32a2542ce7deed78c3e38a1e3c6f28af1a976a72416e0adb4b227015ebaad8df79ab08f7c2ebb678ac08b3b9138&quot;</span>,
+                <span class="ident">data</span>: <span class="string">&quot;&quot;</span>,
+                <span class="ident">snapshot</span>: <span class="string">&quot;504152544902003baaf3b0887a72082691b351dfd2df1aa50c48414605eb8dfdf253ceaf78bc6e2248a59607c911fef2035e713765b936&quot;</span>,
+            },
+            <span class="ident">TestVector</span> {
+                <span class="ident">key</span>: <span class="string">&quot;ffde7cfa5af050eb62e5f03bad95ab3b2612ee2e20511578390e68dddd031121&quot;</span>,
+                <span class="ident">ad</span>: <span class="string">&quot;&quot;</span>,
+                <span class="ident">data</span>: <span class="string">&quot;652809fa092f390d8e79aa8955c3c3792a6082e302275f77d5dced4410f3966cef610106d471eac320f3ebb70dce63dc4733e0faae15dd099e5664cb8a5e252fb24493301906d90847236f7322f4a7892fce9ed6d0faba7be31165caa2112225e348c9fba1953c8bf9309de79bc04c1b2de0a7436030ff9930fd2a3367ec9da5185833cb4e44ed96aee18bf583ee7c53bf567b812e0ba123f8ec7a246e01481bfb6f1954a3ca3e43623c8848c4def5431ed9412dd92d09e8cd103e9bd7b9fbdd6e33f9c25feb08aab5b27e0f28037a7e6c3ca7305498865bfb453baea708fbe36daa94fe554072612509b7caefbbd039ede513acb35bfdf54e16ce56751679e0b231e06bfede50a70d430937e2a747a153b34b9d369e4dc88a27fda2a6fbaf124b8606d3c877622ff53bd34017eac12d937930f5cc216f713f81fd674140&quot;</span>,
+                <span class="ident">snapshot</span>: <span class="string">&quot;504152544902007e00f6d9986a17b46acc7fa1cd75306ce7a85dd21438925f983cfa1a09c6ac47a485adc0ff28c8478d3510afb91fb8ecb7bcf60fc64222d3fd3b81d370a1bc0c2faea84baf58f2cc623fe65ffed25f7a914f6213d48353b3f868d2d6dd2c1f140ba2a32f100486d536bd8aa1780b106d54d00d3a136b596c7fefdd15a70bf095a9fadf3534b1854470c1a894ab677af8b6aa2ad772d9a0d40667e742e16fffe163d7dcd90729ff241555bda57ace34fc4dd5965ed546610c07f182ea21293bbfe1e32e57ea93a30ec1dfb17fde8ff95e918c9ceb4c78ce537189b38187b6bc021d440018e097bc1e42ca70b4445324102b2cfb1249579766a8830a9c90d57153dcf4fd327e6405bafdec0b0dda6e001565ceee1842731da2b5b56c9a2fb706ede22b49ba8c86caaaa445ca0a78e87708d327bb3b1133f7045f92eacd3ee9096172caa9a97da8d4753022de654c71ff4ea32e35180e8933a13827ea201f790699f30e3d4cca0aef3ee29c5f8bc3a6&quot;</span>,
+            },
+            <span class="ident">TestVector</span> {
+                <span class="ident">key</span>: <span class="string">&quot;b7bae5d9416917f2029b37dcde592773718fc69d655dbbe33acbc2ca72ca4b02&quot;</span>,
+                <span class="ident">ad</span>: <span class="string">&quot;&quot;</span>,
+                <span class="ident">data</span>: <span class="string">&quot;&quot;</span>,
+                <span class="ident">snapshot</span>: <span class="string">&quot;50415254490200e1536070c0ad9b1372bcba19844cf8e4dcbca0f6e177991ad1892f32230d0057046994ff7154c7922e7dab153b73827c&quot;</span>,
+            },
+            <span class="ident">TestVector</span> {
+                <span class="ident">key</span>: <span class="string">&quot;dd1f3859e1af013358d6201eea1fd5807d8bbd52b5358f271e8b6409f7fdec15&quot;</span>,
+                <span class="ident">ad</span>: <span class="string">&quot;50a755a003eca23236dc000828f5e8cd21bc9580d27c37721f2de79e1fc304a301f880a8401ea1e20c2651e80714dca2fa90e24259bc9d17fdff77d6891601a3e310a79d9e814bd0afea27f9493b6da1d05a328cce638e4f42adffcc509e651eb5e0459d2deb83be6d24669232969fd1d84e4e1639375ea5978d8a5ef16945edb5&quot;</span>,
+                <span class="ident">data</span>: <span class="string">&quot;5cc4d3e8ff9ec22b7e5358aaf17dfef61eeaef98715b855eb5785d55244787ddde74f9015fc28b0bf4f9c4929137e7bbb660c1666f8caefc9e1461fa72c5d431bca015b257067e3e47c9d911a07a99a6d5f6634a4de4ad9ab9880d9175400c3ea70ae180062200b02f32a1d776cb707f77c9c8ab937a3659da0764b91d0dd887cd279083f6fe6f2b5a5b1e830dbb1f43ef6c5dca5c649114978deaf6f890b04b2af19eb092ab7eb9dc5f358fb5ccb0d86f866555cb5c796073d2e2b786654cdd4c34e2cd196e72659afc&quot;</span>,
+                <span class="ident">snapshot</span>: <span class="string">&quot;5041525449020057b0a04d218a1c64ef50fce13726d2957bff8060ca7906924982c8d945eda7299ab0681aafc29c42ef73bc36222b55c19315f160c14b5da14300d195b3485436523abc47ae7ddc64b1096de6f6b624b1d0a31675cbd135816f2b8c76ce5d0b2df1d45e6798ed60045eff0a8e04fada01a82d050e6d3aa4ddaeaded9be9e56a0394163971df9ae7fbfc80164a7e01d602739cb28f7b61161eebba9dad6904a848245a5562fa9584d7395f9b8c8fc3d90115f3e1e76137fd87d1a4269cd5704e6c9751e6d38687f8e86cd43221605233c3a6d3c71be870cd10d7881ff033c935e43335a6fcbd1816a63085b8617315c1082fdc2e401c5c82522d73&quot;</span>,
+            },
+        ];
+
+        <span class="kw">for</span> <span class="ident">tv</span> <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">tvs</span> {
+            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">key</span> <span class="op">=</span> [<span class="number">0</span>; <span class="ident">KEY_SIZE</span>];
+            <span class="ident">hex</span>::<span class="ident">decode_to_slice</span>(<span class="kw-2">&amp;</span><span class="ident">tv</span>.<span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">key</span>).<span class="ident">unwrap</span>();
+            <span class="kw">let</span> <span class="ident">ad</span> <span class="op">=</span> <span class="ident">hex</span>::<span class="ident">decode</span>(<span class="ident">tv</span>.<span class="ident">ad</span>).<span class="ident">unwrap</span>();
+            <span class="kw">let</span> <span class="ident">data</span> <span class="op">=</span> <span class="ident">hex</span>::<span class="ident">decode</span>(<span class="ident">tv</span>.<span class="ident">data</span>).<span class="ident">unwrap</span>();
+            <span class="kw">let</span> <span class="ident">snapshot</span> <span class="op">=</span> <span class="ident">hex</span>::<span class="ident">decode</span>(<span class="ident">tv</span>.<span class="ident">snapshot</span>).<span class="ident">unwrap</span>();
+
+            <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">data</span>, <span class="ident">read</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">snapshot</span>.<span class="ident">as_slice</span>(), <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">ad</span>)<span class="question-mark">?</span>);
+        }
+
+        <span class="prelude-val">Ok</span>(())
+    }
+}
+</pre></div>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "snapshot";</script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

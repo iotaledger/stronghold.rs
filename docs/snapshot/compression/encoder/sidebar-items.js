@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["DICT_SIZE",""]],"fn":[["compress",""],["compress_into",""]],"struct":[["LZ4Encoder",""]]});

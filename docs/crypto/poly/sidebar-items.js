@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["POLY1305_KEY","Size of the Key"],["POLY1305_TAG","Size of the auth tag"]],"struct":[["Poly1305",""]]});

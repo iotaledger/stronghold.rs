@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["crypto"] = [{"text":"impl Cipher for ChaCha20Ietf","synthetic":false,"types":[]},{"text":"impl Cipher for ChaChaPolyIetf","synthetic":false,"types":[]},{"text":"impl Cipher for XChaCha20","synthetic":false,"types":[]},{"text":"impl Cipher for XChaChaPoly","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

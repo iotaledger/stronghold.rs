@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["BlobId","A blob identifier"],["ChainId","A chain identifier"],["RecordHint","a record hint"],["TransactionId","A transaction identifier"],["Val","a big endian encoded number"]]});

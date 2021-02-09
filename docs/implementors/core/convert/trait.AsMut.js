@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["vault"] = [{"text":"impl AsMut&lt;[u8]&gt; for Transaction","synthetic":false,"types":[]},{"text":"impl AsMut&lt;[u8]&gt; for SealedTransaction","synthetic":false,"types":[]},{"text":"impl AsMut&lt;[u8]&gt; for SealedBlob","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

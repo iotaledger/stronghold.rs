@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["CHACHA20_KEY","Size of Key"],["CHACHA20_MAX","max bytes that can be processed with a key/nonce combo"],["CHACHA20_NONCE","Size of Nonce"]],"struct":[["ChaCha20Ietf",""]]});

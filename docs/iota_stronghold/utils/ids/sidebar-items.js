@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["ClientId","TODO: Implement Messages to interact with Stronghold HMAC(Key, Path0) -> Hash to VaultId Paths become IDS Persist to the snapshot. HMAC(Key, VaultId + Path1) = RecordId"],["ID",""],["VaultId",""]],"trait":[["LoadFromPath",""]]});

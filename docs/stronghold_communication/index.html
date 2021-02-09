@@ -1,0 +1,44 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="API documentation for the Rust `stronghold_communication` crate."><meta name="keywords" content="rust, rustlang, rust-lang, stronghold_communication"><title>stronghold_communication - Rust</title><link rel="stylesheet" type="text/css" href="../normalize.css"><link rel="stylesheet" type="text/css" href="../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../ayu.css" disabled ><script id="default-settings"></script><script src="../storage.js"></script><noscript><link rel="stylesheet" href="../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="alternate icon" type="image/png" href="../favicon-16x16.png">
+<link rel="alternate icon" type="image/png" href="../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../down-arrow.svg");}</style></head><body class="rustdoc mod"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../stronghold_communication/index.html'><div class='logo-container rust-logo'><img src='../rust-logo.png' alt='logo'></div></a><p class="location">Crate stronghold_communication</p><div class="block version"><p>Version 0.2.0</p></div><div class="sidebar-elems"><a id="all-types" href="all.html"><p>See all stronghold_communication's items</p></a><div class="block items"><ul><li><a href="#modules">Modules</a></li></ul></div><p class="location"></p><script>window.sidebarCurrent = {name: "stronghold_communication", ty: "mod", relpath: "../"};</script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><span class="help-button">?</span>
+                <a id="settings-menu" href="../settings.html"><img src="../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><h1 class="fqn"><span class="out-of-band"><span id="render-detail"><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class="inner">&#x2212;</span>]</a></span><a class="srclink" href="../src/stronghold_communication/lib.rs.html#4-56" title="goto source code">[src]</a></span><span class="in-band">Crate <a class="mod" href="">stronghold_communication</a></span></h1><div class="docblock"><h2 id="introduction" class="section-header"><a href="#introduction">Introduction</a></h2>
+<p>This library enables strongholds on different devices and in different networks to communicate with each other.
+The main basis for its functionality is the <a href="https://github.com/libp2p/rust-libp2p">rust-libp2p</a> library, which is a system of protocols, specifications and
+libraries that enable the development of peer-to-peer network applications (https://libp2p.io/).</p>
+<p>Libp2p was originally the network protocol of IPFS and has evolved into a modular system with implementations in
+Node.js, Go and Rust. It is important to note that at the current status, the Rust implementation doesn't have all
+features yet and especially peer discovery in different networks, NAT Traversal and Firewalls pose a problem that we
+solved for stronghold by using a mailbox concept that is described further down below.</p>
+<h2 id="transport-and-the-swarm" class="section-header"><a href="#transport-and-the-swarm">Transport and the Swarm</a></h2>
+<p>Libp2p uses the <code>transport</code> as the lowest layer, that is responsible for sending and receiving data over a network.
+The current rust implementation supports tcp and websockets, and apart from that provides the option to upgrade a
+connection with protocols for multiplexing and authentication.</p>
+<p>The second important concept of libp2p is its <code>Swarm</code> (in newer implementations and documents also called <code>Switch</code>).
+The swarm is responsible for negotiating protocols, managing transports and sending and receiving messages via
+different protocols. It is possible to combine different protocols into a so called <code>NetworkBehaviour</code>, which is
+what this library is doing. Stronghold-communication uses multicast DNS (mDNS) for peer discovery in a local
+network, the identify protocol to receive information about newly connected peers, and the RequestResponse protocol
+in order to send / receive custom messages and parse them.</p>
+<h2 id="multiplexing-and-noise-encryption" class="section-header"><a href="#multiplexing-and-noise-encryption">Multiplexing and Noise-encryption</a></h2>
+<p>The transport of stronghold-communication is upgraded with yamux for multiplexing and the noise protocol, this noise
+protocol uses the XX-Handshake and ensures authentication and encryption.</p>
+<h2 id="stronghold-communication" class="section-header"><a href="#stronghold-communication">Stronghold-Communication</a></h2>
+<p>Stronghold-communication creates the <code>P2PNetworkBehaviour</code> struct for sending messages and reacting upon the outcome
+of the operation. Upon creating a new instance, a transport is created and upgraded, and combined with the
+P2PNetworkBehaviour into a ExpandedSwarm. This Swarm is returned to the caller and serves as entry-point for all
+communication to other peers. Additionally to the methodes of <code>libp2p::swarm::ExpandedSwarm</code>, it enables sending
+outbound messages, and manually adding and dialing peers. Incoming <code>P2PEvent</code> can be handled by polling from the
+swarm, e.g. via the <code>next</code> method. Due to libp2ps concept of <code>multiaddresses</code>, the swarm has multiple listening
+addresses that encode different addressing schemes for different protocols. Apart from IPv4 and IPv6 Addresses,
+these multiaddresses can also be dns addresses, which is relevant if a peer is listening to such an address on a
+server. The listed multiaddresses are only the ones within the same local network, but if port forwarding was
+configured, the local <code>/ip4/127.0.0.1/tcp/12345</code> Address can be replaced by the public one or by
+<code>/dns/my.public.server.address/ tcp/12345</code>, where the <code>/tcp/12345</code> part describes the port.</p>
+<h2 id="mailbox-concept" class="section-header"><a href="#mailbox-concept">Mailbox Concept</a></h2>
+<p>Since not all peers can be dialed directly e.g. because they are behind a firewall, stronghold-communication
+includes an example and dockerfile for using a mailbox. The mailbox is a peer running on a server with public IP
+Address that can be reached by all other peers. If can be used to deposit records for unavailable remote peers by
+sending a <code>Request::PutRecord</code> message with the record to the mailbox, and that can then return the Records to
+remote peers upon receiving a <code>Request::GetRecord</code> request.</p>
+</div><h2 id="modules" class="section-header"><a href="#modules">Modules</a></h2>
+<table><tr class="module-item"><td><a class="mod" href="actor/index.html" title="stronghold_communication::actor mod">actor</a></td><td class="docblock-short"></td></tr><tr class="module-item"><td><a class="mod" href="behaviour/index.html" title="stronghold_communication::behaviour mod">behaviour</a></td><td class="docblock-short"></td></tr></table></section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../";window.currentCrate = "stronghold_communication";</script><script src="../main.js"></script><script defer src="../search-index.js"></script></body></html>

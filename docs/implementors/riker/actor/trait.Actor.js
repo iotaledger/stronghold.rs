@@ -1,0 +1,4 @@
+(function() {var implementors = {};
+implementors["iota_stronghold"] = [{"text":"impl Actor for Client","synthetic":false,"types":[]},{"text":"impl Actor for InternalActor&lt;Provider&gt;","synthetic":false,"types":[]},{"text":"impl Actor for Snapshot","synthetic":false,"types":[]},{"text":"impl&lt;Msg:&nbsp;Message&gt; Actor for AskActor&lt;Msg&gt;","synthetic":false,"types":[]}];
+implementors["stronghold_communication"] = [{"text":"impl&lt;T:&nbsp;MessageEvent, U:&nbsp;MessageEvent&gt; Actor for CommunicationActor&lt;T, U&gt;","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

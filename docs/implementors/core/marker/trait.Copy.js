@@ -1,0 +1,7 @@
+(function() {var implementors = {};
+implementors["iota_stronghold"] = [{"text":"impl Copy for Key","synthetic":false,"types":[]},{"text":"impl Copy for ClientId","synthetic":false,"types":[]},{"text":"impl Copy for VaultId","synthetic":false,"types":[]},{"text":"impl Copy for ID","synthetic":false,"types":[]}];
+implementors["random"] = [{"text":"impl Copy for OsRandomErr","synthetic":false,"types":[]}];
+implementors["runtime"] = [{"text":"impl Copy for __kernel_fd_set","synthetic":false,"types":[]},{"text":"impl Copy for __kernel_fsid_t","synthetic":false,"types":[]},{"text":"impl Copy for sock_filter","synthetic":false,"types":[]},{"text":"impl Copy for sock_fprog","synthetic":false,"types":[]},{"text":"impl Copy for seccomp_data","synthetic":false,"types":[]}];
+implementors["snapshot"] = [{"text":"impl Copy for Duplicate","synthetic":false,"types":[]}];
+implementors["vault"] = [{"text":"impl Copy for TransactionType","synthetic":false,"types":[]},{"text":"impl Copy for RecordHint","synthetic":false,"types":[]},{"text":"impl Copy for Val","synthetic":false,"types":[]},{"text":"impl Copy for ChainId","synthetic":false,"types":[]},{"text":"impl Copy for TransactionId","synthetic":false,"types":[]},{"text":"impl Copy for BlobId","synthetic":false,"types":[]},{"text":"impl Copy for Kind","synthetic":false,"types":[]},{"text":"impl Copy for RecordId","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

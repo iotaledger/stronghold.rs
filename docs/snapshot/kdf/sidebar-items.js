@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["naive_kdf",""],["recommended_kdf","derive a key from password and salt using the currently recommended key derivation function and parameters"]]});

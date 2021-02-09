@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["MessageAuthCodeInfo","Message Authentication Code information block"]],"trait":[["MessageAuthCode","a Message authentication interface (MAC) that is stateless and can be a one shot."],["VarLenMessageAuthCode","an extension for a Variable length Message Authentication Code (MAC)."]]});

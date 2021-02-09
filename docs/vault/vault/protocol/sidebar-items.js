@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Kind",""]],"struct":[["DeleteRequest","a delete call"],["ReadRequest","a read call"],["ReadResult","a read result"],["WriteRequest","a write call"]]});

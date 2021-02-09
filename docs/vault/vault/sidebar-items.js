@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["PreparedRead",""]],"mod":[["chain",""],["protocol",""]],"struct":[["DBReader","A reader for the `DBView`"],["DBView","A view over the records in a vault"],["DBWriter","A writer for the `DBView`"],["RecordId","A record identifier"]]});
