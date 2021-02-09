@@ -22,7 +22,8 @@ macro_rules! line_error {
     };
 }
 
-// Writes data to the unencrypted store. Requires a password, the plaintext and the record path.  Record path must be a number.
+// Writes data to the unencrypted store. Requires a password, the plaintext and the record path.  Record path must be a
+// number.
 fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("write") {
         if let Some(pass) = matches.value_of("password") {
@@ -60,7 +61,8 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
     }
 }
 
-/// Writes data to the encrypted vault.  Requires a password, the plaintext and the record path.  Record path must be a number.
+/// Writes data to the encrypted vault.  Requires a password, the plaintext and the record path.  Record path must be a
+/// number.
 fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("encrypt") {
         if let Some(pass) = matches.value_of("password") {
@@ -210,7 +212,8 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
     }
 }
 
-// Revoke a record.  Data isn't actually deleted until it is garbage collected.  Accepts a password and the record id that you want to revoke.
+// Revoke a record.  Data isn't actually deleted until it is garbage collected.  Accepts a password and the record id
+// that you want to revoke.
 fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("revoke") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -290,7 +293,8 @@ fn garbage_collect_vault_command(
     }
 }
 
-// Purge a record from the chain.  Calls revoke and garabge collect in one command.  Requires a password and the record id.
+// Purge a record from the chain.  Calls revoke and garabge collect in one command.  Requires a password and the record
+// id.
 fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("purge") {
         if let Some(ref pass) = matches.value_of("password") {
