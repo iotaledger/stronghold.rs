@@ -15,6 +15,10 @@ jobs:
           mdbook-version: 'latest'
 
       - run: mdbook build
+
+      - run: cargo doc --workspace --document-private-items --no-deps --release
+      - run: cp -r target/doc book/docs
+
       - name: Deploy
         uses: iotaledger/actions-gh-pages@v3
         with:
