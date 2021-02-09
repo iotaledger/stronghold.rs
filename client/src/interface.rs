@@ -398,7 +398,8 @@ impl Stronghold {
 
     /// Reads data from a given snapshot file.  Can only read the data for a single `client_path` at a time. If the new
     /// actor uses a new `client_path` the former client path may be passed into the function call to read the data into
-    /// that actor. Also requires keydata to unlock the snapshot. A filename and filepath can be specified.
+    /// that actor. Also requires keydata to unlock the snapshot. A filename and filepath can be specified. The Keydata
+    /// should implement and use Zeroize.
     pub async fn read_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
         client_path: Vec<u8>,
@@ -485,7 +486,7 @@ impl Stronghold {
 
     /// Writes the entire state of the `Stronghold` into a snapshot.  All Actors and their associated data will be
     /// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be
-    /// specified.
+    /// specified. The Keydata should implement and use Zeroize.
     pub async fn write_all_to_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
         keydata: &T,
