@@ -52,134 +52,218 @@ By default, `stronghold` will store its snapshots under the `~/.engine`
 directory. The location can be overridden by setting the `STRONGHOLD`
 environment variable.
 
-Create a new chain by encrypting some data and get back the unique identifier
-of the newly created encrypted record containing our plain-text data:
+Create a new chain by encrypting some data and get back the status result; with `Ok(())` 
+signifying that the operation succeeded. The record path must be a number. 
 ```shell
-> stronghold encrypt --pass foo --plain secret text
-zCeX9poxiirzBpiJGVE7wDReo5sYgyeS
+> stronghold encrypt --pass foo --plain secret --record_path 0
+Ok(())
 ```
 (Note that if you haven't/don't want to install the executable you can still
-run this as: `cargo run -- encrypt --pass foo --plain "secret text"`.)
+run this as: `cargo run -- encrypt --pass foo --plain secret --record_path 0`.)
 
-To read and decrypt the record we use the `read` command:
+To write insecure data to the stronghold's cache, use the write command.  Again, the record path must be a number. 
 ```shell
-> stronghold read --pass foo --id zCeX9poxiirzBpiJGVE7wDReo5sYgyeS
-Plain: "secret text"
+> stronghold write --pass foo --record_path 0 --plain test data
+Ok(())
 ```
+
+To read from the stronghold's cache, use the read command:
+```shell
+> stronghold read --pass foo --record_path 0
+Ok(())
+Data: "test"
+```
+
+Note that the vault and the cache are two separate databases so you can reuse record_paths. 
 
 In order to make the following examples less trivial, we create another entry:
 ```shell
-> stronghold encrypt --pass foo --plain another secret is 42
-GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7
+> stronghold encrypt --pass foo --plain secret --record_path 0
+Ok(())
 ```
 And now we can list the two records we currently have stored:
 ```shell
 > stronghold list --pass foo
-Id: zCeX9poxiirzBpiJGVE7wDReo5sYgyeS, Hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-Id: GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7, Hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+Ok(())
+[(0, c29tZSBoaW50AAAAAAAAAAAAAAAAAAAA), (1, c29tZSBoaW50AAAAAAAAAAAAAAAAAAAA)]
 ```
 
 When we grow tired of keeping the record we can `revoke` it:
 ```shell
-> stronghold revoke --pass foo --id zCeX9poxiirzBpiJGVE7wDReo5sYgyeS
+> stronghold revoke --pass foo --record_path 0
+Ok(())
 ```
 And running the `list` command again we see that it has disappeared:
 ```shell
 > stronghold list --pass foo
-Id: GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7, Hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[(1, c29tZSBoaW50AAAAAAAAAAAAAAAAAAAA)]
 ```
 But! The record is not actually removed until a garbage collection of the
 chain has taken place.
-Here's how you can see all records stored (not only the valid/unrevoked
-records):
-```shell
-> stronghold list --pass foo --all
-Id: zCeX9poxiirzBpiJGVE7wDReo5sYgyeS
-Id: GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7
-```
+
 So let's make sure it's actually removed:
 ```shell
 > stronghold garbage_collect --pass foo
-Id: GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7, Hint: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+Ok(())
+[(1, c29tZSBoaW50AAAAAAAAAAAAAAAAAAAA)]
 ```
-And check that it has in fact been removed:
-```shell
-> stronghold list --pass foo --all
-Id: GxOmjt1Y7fBdZEYPf56dz-CAKq8RGo-7
-```
+
 ## Usage
 ```
 Engine POC CLI 1.0
 Tensor Programming <tensordeveloper@gmail.com>
 Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
+
 USAGE:
-    stronghold [SUBCOMMAND]
+    stronghold.exe [SUBCOMMAND]
+
 FLAGS:
     -h, --help       Prints help information
     -V, --version    Prints version information
+
 SUBCOMMANDS:
-    encrypt            
-    garbage_collect    Garbage collect the entire vault and remove revoked records.
+    encrypt            Encrypt data to the vault. Writes to the snapshot.
+    garbage_collect    Garbage collect the vault and remove revoked records.
     help               Prints this message or the help of the given subcommand(s)
-    list               Lists the ids of the records inside of your main snapshot
+    list               Lists the ids of the records inside of your stronghold's vault; lists the
+                       record path and the hint hash.
     purge              Revoke a record by id and perform a gargbage collect
-    read               read an associated record by id
-    revoke             Revoke a record by id
-    snapshot           load from an existing snapshot
-    take_ownership     Take ownership of an existing chain.
+    read               Read the data from a record in the unencrypted store.
+    revoke             Revoke a record from the vault.
+    snapshot           load from an existing snapshot by path.
+    take_ownership     Take ownership of an existing chain to give it to a new user.
+    write              Write data to the unencrypted cache store.
 ```
 
 ### encrypt
 ```
-stronghold-encrypt 
+Encrypt data to the vault. Writes to the snapshot.
+
 USAGE:
-    stronghold encrypt --plain <plaintext> --pass <password>
+    stronghold.exe encrypt --plain <plaintext> --record_path <Record Path value> --pass <password>
+
 FLAGS:
     -h, --help       Prints help information
     -V, --version    Prints version information
+
 OPTIONS:
-    -w, --pass <password>      the password you want to use to encrypt/decrypt the snapshot.
-    -p, --plain <plaintext>    a plaintext value that you want to encrypt.
+    -w, --pass <password>
+            the password you want to use to encrypt/decrypt the snapshot.
+
+    -p, --plain <plaintext>                  a plaintext value that you want to encrypt.
+    -r, --record_path <Record Path value>
+```
+
+### write
+```
+Write data to the unencrypted cache store.
+
+USAGE:
+    stronghold.exe write --plain <plaintext> --record_path <Record Path value> --pass <password>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -w, --pass <password>
+            the password you want to use to encrypt/decrypt the snapshot.
+
+    -p, --plain <plaintext>                  a value you want to store.
+    -r, --record_path <Record Path value>
 ```
 
 ### read
 ```
-stronghold-read 
-read an associated record by id
+Read the data from a record in the unencrypted store.
+
 USAGE:
-    stronghold read --pass <password> --id <id>
+    stronghold.exe read --pass <password> --record_path <Record Path value>
+
 FLAGS:
     -h, --help       Prints help information
     -V, --version    Prints version information
+
 OPTIONS:
-    -i, --id <id>            the id of the record you want to read.
-    -w, --pass <password>    the password for the snapshot.
+    -w, --pass <password>                    the password for the snapshot.
+    -r, --record_path <Record Path value>
 ```
 
 ### list
 ```
-stronghold-list 
-Lists the ids of the records inside of your main snapshot
+Lists the ids of the records inside of your stronghold's vault; lists the record path and the hint hash.
+
 USAGE:
-    stronghold list [FLAGS] --pass <password>
+    stronghold.exe list --pass <password>
+
 FLAGS:
-    -A, --all        include revoked records
     -h, --help       Prints help information
     -V, --version    Prints version information
+
 OPTIONS:
     -w, --pass <password>    the password for the snapshot.
 ```
 
 ### revoke
 ```
-stronghold-revoke 
-Revoke a record by id
+Revoke a record from the vault.
+
 USAGE:
-    stronghold revoke --pass <password> --id <id>
+    stronghold.exe revoke --pass <password> --record_path <id>
+
 FLAGS:
     -h, --help       Prints help information
     -V, --version    Prints version information
+
+OPTIONS:
+    -w, --pass <password>     the password for the snapshot.
+    -r, --record_path <id>    the id of the entry
+```
+
+### purge
+```
+Revoke a record by id and perform a gargbage collect
+
+USAGE:
+    stronghold.exe purge --pass <password> --id <id>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
 OPTIONS:
     -i, --id <id>            the id of the entry
     -w, --pass <password>    the password for the snapshot.
 ```
+
+### snapshot
+```
+load from an existing snapshot by path.
+
+USAGE:
+    stronghold.exe snapshot --path <snapshot path> --pass <password>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -w, --pass <password>         the password for the snapshot you want to load.
+    -p, --path <snapshot path>
+```
+
+### take_ownership
+```
+Take ownership of an existing chain to give it to a new user.
+
+USAGE:
+    stronghold.exe take_ownership --pass <password>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -w, --pass <password>    the password for the snapshot.
+```
+

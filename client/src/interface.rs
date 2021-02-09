@@ -5,6 +5,7 @@ use riker::actors::*;
 
 use futures::future::RemoteHandle;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
+use zeroize::Zeroize;
 
 use engine::vault::RecordHint;
 
@@ -397,12 +398,13 @@ impl Stronghold {
 
     /// Reads data from a given snapshot file.  Can only read the data for a single `client_path` at a time. If the new
     /// actor uses a new `client_path` the former client path may be passed into the function call to read the data into
-    /// that actor. Also requires keydata to unlock the snapshot. A filename and filepath can be specified.
-    pub async fn read_snapshot(
+    /// that actor. Also requires keydata to unlock the snapshot. A filename and filepath can be specified. The Keydata
+    /// should implement and use Zeroize.
+    pub async fn read_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
         client_path: Vec<u8>,
         former_client_path: Option<Vec<u8>>,
-        keydata: Vec<u8>,
+        keydata: &T,
         filename: Option<String>,
         path: Option<PathBuf>,
     ) -> StatusMessage {
@@ -423,7 +425,9 @@ impl Stronghold {
 
             let mut key: [u8; 32] = [0u8; 32];
 
-            key.copy_from_slice(&keydata);
+            let keydata = keydata.as_ref();
+
+            key.copy_from_slice(keydata);
 
             if let SHResults::ReturnReadSnap(status) = ask(
                 &self.system,
@@ -482,10 +486,10 @@ impl Stronghold {
 
     /// Writes the entire state of the `Stronghold` into a snapshot.  All Actors and their associated data will be
     /// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be
-    /// specified.
-    pub async fn write_all_to_snapshot(
+    /// specified. The Keydata should implement and use Zeroize.
+    pub async fn write_all_to_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
-        keydata: Vec<u8>,
+        keydata: &T,
         filename: Option<String>,
         path: Option<PathBuf>,
     ) -> StatusMessage {
@@ -496,7 +500,9 @@ impl Stronghold {
         let mut futures = vec![];
         let mut key: [u8; 32] = [0u8; 32];
 
-        key.copy_from_slice(&keydata);
+        let keydata = keydata.as_ref();
+
+        key.copy_from_slice(keydata);
 
         if num_of_actors != 0 {
             for (_, actor) in self.actors.iter().enumerate() {
