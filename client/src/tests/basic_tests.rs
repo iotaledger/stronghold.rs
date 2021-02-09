@@ -157,11 +157,11 @@ fn test_write_read_snapshot() {
         });
     }
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), Some("test1".into()), None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, Some("test1".into()), None));
 
     futures::executor::block_on(stronghold.kill_stronghold(client_path.clone(), false));
 
-    futures::executor::block_on(stronghold.read_snapshot(client_path, None, key_data, Some("test1".into()), None));
+    futures::executor::block_on(stronghold.read_snapshot(client_path, None, &key_data, Some("test1".into()), None));
 
     for i in 0..20 {
         futures::executor::block_on(async {
@@ -206,7 +206,7 @@ fn test_write_read_multi_snapshot() {
         });
     }
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), Some("test2".into()), None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, Some("test2".into()), None));
 
     for i in 0..20 {
         futures::executor::block_on(stronghold.kill_stronghold(format!("test {:?}", i).as_bytes().to_vec(), false));
@@ -216,7 +216,7 @@ fn test_write_read_multi_snapshot() {
         futures::executor::block_on(stronghold.read_snapshot(
             format!("test {:?}", i).as_bytes().to_vec(),
             None,
-            key_data.clone(),
+            &key_data,
             Some("test2".into()),
             None,
         ));

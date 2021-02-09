@@ -17,7 +17,7 @@ fn test_stronghold() {
     let lochead = Location::counter::<_, usize>("path", None);
     let store_loc = Location::generic("some", "path");
 
-    let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
+    let mut key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
     let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
 
@@ -94,12 +94,12 @@ fn test_stronghold() {
 
     futures::executor::block_on(stronghold.garbage_collect(vault_path));
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), Some("test0".into()), None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, Some("test0".into()), None));
 
     futures::executor::block_on(stronghold.read_snapshot(
         client_path.clone(),
         None,
-        key_data,
+        &key_data,
         Some("test0".into()),
         None,
     ));
@@ -199,7 +199,7 @@ fn run_stronghold_multi_actors() {
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path()));
     println!("actor 0: {:?}", ids);
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.to_vec(), Some("megasnap".into()), None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data.to_vec(), Some("megasnap".into()), None));
 
     stronghold.switch_actor_target(client_path1.clone());
 
@@ -211,7 +211,7 @@ fn run_stronghold_multi_actors() {
     futures::executor::block_on(stronghold.read_snapshot(
         client_path2,
         Some(client_path1.clone()),
-        key_data.clone(),
+        &key_data,
         Some("megasnap".into()),
         None,
     ));
@@ -257,7 +257,7 @@ fn run_stronghold_multi_actors() {
     futures::executor::block_on(stronghold.read_snapshot(
         client_path3,
         Some(client_path0.clone()),
-        key_data,
+        &key_data,
         Some("megasnap".into()),
         None,
     ));
@@ -298,7 +298,7 @@ fn test_stronghold_generics() {
     let (p, _) = futures::executor::block_on(stronghold.read_secret(slip10_seed));
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.to_vec(), Some("generic".into()), None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data.to_vec(), Some("generic".into()), None));
 }
 
 #[test]
@@ -334,12 +334,12 @@ fn test_counters() {
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, None, None));
 
     futures::executor::block_on(stronghold.read_snapshot(
         client_path.clone(),
         Some(client_path.clone()),
-        key_data.clone(),
+        &key_data,
         None,
         None,
     ));
@@ -359,12 +359,12 @@ fn test_counters() {
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, None, None));
 
     futures::executor::block_on(stronghold.read_snapshot(
         client_path.clone(),
         Some(client_path.clone()),
-        key_data.clone(),
+        &key_data,
         None,
         None,
     ));
@@ -384,17 +384,17 @@ fn test_counters() {
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), None, None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, None, None));
 
     futures::executor::block_on(stronghold.read_snapshot(
         client_path.clone(),
         Some(client_path),
-        key_data.clone(),
+        &key_data,
         None,
         None,
     ));
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data, None, None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, None, None));
 
     let (ids, _) = futures::executor::block_on(stronghold.list_hints_and_ids(loc0.vault_path()));
     println!("{:?}", ids);

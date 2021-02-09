@@ -39,7 +39,7 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
                         block_on(stronghold.read_snapshot(
                             client_path,
                             None,
-                            key.to_vec(),
+                            &key.to_vec(),
                             Some("commandline".to_string()),
                             None,
                         ));
@@ -51,7 +51,7 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
                         None,
                     ));
 
-                    block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 };
             };
         };
@@ -74,7 +74,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                         block_on(stronghold.read_snapshot(
                             client_path,
                             None,
-                            key.to_vec(),
+                            &key.to_vec(),
                             Some("commandline".to_string()),
                             None,
                         ));
@@ -87,7 +87,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                         vec![],
                     ));
 
-                    block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 };
             };
         };
@@ -113,13 +113,18 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
                 out.push(Path::new("recompute.stronghold"));
 
                 if input.exists() {
-                    let status = block_on(stronghold.read_snapshot(client_path, None, key.to_vec(), None, Some(input)));
+                    let status =
+                        block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), None, Some(input)));
 
                     if let StatusMessage::Error(error) = status {
                         println!("{:?}", error);
                         return;
                     } else {
-                        block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                        block_on(stronghold.write_all_to_snapshot(
+                            &key.to_vec(),
+                            Some("commandline".to_string()),
+                            None,
+                        ));
                     }
                 } else {
                     println!("The path you entered does not contain a valid snapshot");
@@ -144,7 +149,7 @@ fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongho
                 block_on(stronghold.read_snapshot(
                     client_path,
                     None,
-                    key.to_vec(),
+                    &key.to_vec(),
                     Some("commandline".to_string()),
                     None,
                 ));
@@ -178,7 +183,7 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
                     block_on(stronghold.read_snapshot(
                         client_path,
                         None,
-                        key.to_vec(),
+                        &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
                     ));
@@ -216,7 +221,7 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
                     block_on(stronghold.read_snapshot(
                         client_path,
                         None,
-                        key.to_vec(),
+                        &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
                     ));
@@ -228,7 +233,7 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
 
                     println!("{:?}", status);
 
-                    block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 } else {
                     println!("Could not find a snapshot at the home path.  Try writing first. ");
 
@@ -258,7 +263,7 @@ fn garbage_collect_vault_command(
                 block_on(stronghold.read_snapshot(
                     client_path,
                     None,
-                    key.to_vec(),
+                    &key.to_vec(),
                     Some("commandline".to_string()),
                     None,
                 ));
@@ -267,7 +272,7 @@ fn garbage_collect_vault_command(
 
                 println!("{:?}", status);
 
-                block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
             } else {
                 println!("Could not find a snapshot at the home path.  Try writing first. ");
 
@@ -293,7 +298,7 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
                     block_on(stronghold.read_snapshot(
                         client_path,
                         None,
-                        key.to_vec(),
+                        &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
                     ));
@@ -305,7 +310,7 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
 
                     println!("{:?}", status);
 
-                    block_on(stronghold.write_all_to_snapshot(key.to_vec(), Some("commandline".to_string()), None));
+                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 } else {
                     println!("Could not find a snapshot at the home path.  Try writing first. ");
 

@@ -41,7 +41,7 @@ fn init_write_vault(stronghold: Stronghold) -> Stronghold {
     stronghold
 }
 
-fn init_read_snap(stronghold: Stronghold, key_data: Vec<u8>) -> Stronghold {
+fn init_read_snap(stronghold: Stronghold, key_data: &Vec<u8>) -> Stronghold {
     let mut stronghold = init_read_vault(stronghold);
 
     block_on(stronghold.write_all_to_snapshot(key_data, Some("bench_read".into()), None));
@@ -89,25 +89,19 @@ fn bench_write_snapshot(c: &mut Criterion) {
 
     c.bench_function("Write to snapshot", |b| {
         b.iter(|| {
-            block_on(stronghold.write_all_to_snapshot(key_data.clone(), Some("bench".into()), None));
+            block_on(stronghold.write_all_to_snapshot(&key_data, Some("bench".into()), None));
         });
     });
 }
 
 fn bench_read_from_snapshot(c: &mut Criterion) {
     let stronghold = init_stronghold();
-    let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
-    let mut stronghold = init_read_snap(stronghold, key_data.clone());
+    let mut key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
+    let mut stronghold = init_read_snap(stronghold, &mut key_data);
 
     c.bench_function("Read from snapshot", |b| {
         b.iter(|| {
-            block_on(stronghold.read_snapshot(
-                b"path".to_vec(),
-                None,
-                key_data.clone(),
-                Some("bench_read".into()),
-                None,
-            ));
+            block_on(stronghold.read_snapshot(b"path".to_vec(), None, &key_data, Some("bench_read".into()), None));
         });
     });
 }
