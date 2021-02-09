@@ -65,7 +65,7 @@ subcommands:
             required: true
             takes_value: true
   - list:
-      about: Lists the ids of the records inside of your stronghold's vault. 
+      about: Lists the ids of the records inside of your stronghold's vault; lists the record path and the hint hash. 
       args:
         - password:
             short: w
@@ -74,12 +74,7 @@ subcommands:
             about: the password for the snapshot.
             required: true
             takes_value: true
-        - all:
-            short: A
-            long: all
-            value_name: all
-            about: include revoked records
-            takes_value: false
+   
   - read:
       about: Read the data from a record in the unencrypted store. 
       args:
@@ -106,9 +101,9 @@ subcommands:
             about: the password for the snapshot.
             required: true
             takes_value: true
-        - id:
-            short: i
-            long: id
+        - rpath:
+            short: rid
+            long: record_path
             value_name: id
             about: the id of the entry
             required: true

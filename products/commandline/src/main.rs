@@ -22,7 +22,7 @@ macro_rules! line_error {
     };
 }
 
-// Writes data to the unencrypted store. Requires a password, the plaintext and the record path.
+// Writes data to the unencrypted store. Requires a password, the plaintext and the record path.  Record path must be a number.
 fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("write") {
         if let Some(pass) = matches.value_of("password") {
@@ -45,11 +45,13 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
                         ));
                     }
 
-                    block_on(stronghold.write_to_store(
+                    let status = block_on(stronghold.write_to_store(
                         Location::counter::<_, usize>("test", Some(rid.parse::<usize>().unwrap())),
                         plain.as_bytes().to_vec(),
                         None,
                     ));
+
+                    println!("{:?}", status);
 
                     block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 };
@@ -58,7 +60,7 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
     }
 }
 
-/// Writes data to the encrypted vault.  Requires a password, the plaintext and the record path.
+/// Writes data to the encrypted vault.  Requires a password, the plaintext and the record path.  Record path must be a number.
 fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("encrypt") {
         if let Some(pass) = matches.value_of("password") {
@@ -81,12 +83,14 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                         ));
                     }
 
-                    block_on(stronghold.write_to_vault(
+                    let status = block_on(stronghold.write_to_vault(
                         Location::counter::<_, usize>("test", Some(rid.parse::<usize>().unwrap())),
                         plain.as_bytes().to_vec(),
                         RecordHint::new("some hint").expect(line_error!()),
                         vec![],
                     ));
+
+                    println!("{:?}", status);
 
                     block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 };
@@ -210,7 +214,7 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
 fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("revoke") {
         if let Some(ref pass) = matches.value_of("password") {
-            if let Some(ref id) = matches.value_of("id") {
+            if let Some(ref id) = matches.value_of("rpath") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
                 naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
@@ -271,7 +275,10 @@ fn garbage_collect_vault_command(
 
                 let status = block_on(stronghold.garbage_collect(b"test".to_vec()));
 
+                let (list, _) = block_on(stronghold.list_hints_and_ids(b"test".to_vec()));
+
                 println!("{:?}", status);
+                println!("{:?}", list);
 
                 block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
             } else {
