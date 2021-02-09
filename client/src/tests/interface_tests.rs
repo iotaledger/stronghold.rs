@@ -17,7 +17,7 @@ fn test_stronghold() {
     let lochead = Location::counter::<_, usize>("path", None);
     let store_loc = Location::generic("some", "path");
 
-    let mut key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
+    let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
     let mut stronghold = Stronghold::init_stronghold_system(sys, client_path.clone(), vec![]);
 
