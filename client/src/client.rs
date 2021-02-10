@@ -24,7 +24,6 @@ pub enum ReadWrite {
 }
 
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
-
 #[actor(SHResults, SHRequest, InternalResults)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Client {

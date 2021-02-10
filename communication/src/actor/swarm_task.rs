@@ -21,7 +21,7 @@ use std::{
 };
 
 // Separate task that manages the swarm communication.
-pub struct SwarmTask<Req, Res, T, U>
+pub(super) struct SwarmTask<Req, Res, T, U>
 where
     Req: MessageEvent,
     Res: MessageEvent,
