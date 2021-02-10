@@ -33,6 +33,3 @@ riker = "0.4"
 [features]
 default = [ "mdns" ]
 mdns = [ ]
-
-[build-dependencies]
-prost-build = "0.6.1"
