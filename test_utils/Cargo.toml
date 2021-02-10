@@ -9,4 +9,4 @@ license = "Apache-2.0"
 name = "test_utils"
 
 [dependencies]
-rand = "0.7.3"
+rand = "0.8.3"
