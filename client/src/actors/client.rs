@@ -499,11 +499,6 @@ impl Receive<SHRequest> for Client {
                 let payload = self.read_from_store(vid.into());
 
                 if let Some(payload) = payload {
-                    println!(
-                        "\n\n{}\n{}\n\n",
-                        sender.clone().unwrap().name(),
-                        sender.clone().unwrap().path()
-                    );
                     sender
                         .as_ref()
                         .expect(line_error!())
