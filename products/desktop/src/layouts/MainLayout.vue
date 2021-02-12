@@ -47,7 +47,7 @@
             </q-item-section>
             <q-item-section v-if="loggedIn">
               <q-btn @click="register" v-if="!yubikey.registered" label="Register Yubikey" />
-              <q-btn @click="sign" v-if="yubikey.registered" label="Login with Yubikey" />
+              <q-btn @click="sign" v-if="yubikey.registered && !yubikey.signedIn" label="Login with Yubikey" />
             </q-item-section>
           </q-item>
           <q-list v-if="loggedIn">
@@ -113,8 +113,15 @@ import { mapState, mapActions, mapMutations } from 'vuex'
 const _package = require('../../package.json')
 const auth = new Authenticator()
 const application = 'https://stronghold.iota.org'
-const challenge = '471257143edcbd893de079a711a193c5' // 32
-const challenge2 = '871257143edcbd893de079a711a193c5'
+
+// not secure, but for this its fine
+// todo: use rust
+function uuidv4 () {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
 
 const actionLinks = [
   {
@@ -185,7 +192,8 @@ export default {
       isPwd: true,
       path: '',
       yubikey: {
-        registered: false
+        registered: false,
+        signedIn: false
       },
       thumbStyle: {
         right: '4px',
@@ -211,6 +219,9 @@ export default {
       // myPeerID (state) { return state.peers.me }
     })
   },
+  mounted () {
+    auth.init() // initialize usb
+  },
   methods: {
     ...mapActions('lockdown', ['lock', 'myPeerID']),
     ...mapMutations('lockdown', ['setLocalPeerID']),
@@ -220,25 +231,33 @@ export default {
       }
     },
     async register () {
-      auth.init() // initialize usb
-
+      const challenge = uuidv4()
+      this.$q.notify('insert and press yubikey button')
       const r = await auth.register(challenge, application)
+      console.log('response: ', r)
       this.$q.notify('yubikey registered')
-      this.keyhandleLocation = Location.generic('store', 'yubikeyKeyhandle')
-      this.challengeLocation = Location.generic('store', 'yubikeyChallenge')
-      await this.store.insert(this.keyhandleLocation, r)
+      this.ykhstore = this.stronghold.getStore('yubikeyHandle', [])
+      this.keyhandleLocation = Location.generic('yubikeyKeyhandle', 'value')
+      await this.ykhstore.insert(this.keyhandleLocation, r)
+      this.ykcstore = this.stronghold.getStore('yubikeyChallenge', [])
+      this.challengeLocation = Location.generic('yubikeyChallenge', 'value')
+      await this.ykcstore.insert(this.challengeLocation, challenge)
       await this.stronghold.save()
       this.yubikey.registered = true
     },
-    sign () {
-      auth.init() // initialize usb
+    async sign () {
       console.log('sign!')
-
-      this.keyhandleLocation = Location.generic('store', 'yubikeyKeyhandle')
-      this.store.get(this.keyhandleLocation).then(async kh => {
-        // const b = Buffer.from(kh, 'base64')
-        const r = await auth.sign(challenge2, application, kh)
+      this.ykcstore = this.stronghold.getStore('yubikeyChallenge', [])
+      this.challengeLocation = Location.generic('yubikeyChallenge', 'value')
+      this.challenge = await this.ykcstore.get(this.challengeLocation)
+      console.log(this.challenge)
+      this.ykhstore = this.stronghold.getStore('yubikeyHandle', [])
+      this.keyhandleLocation = Location.generic('yubikeyKeyhandle', 'value')
+      this.ykhstore.get(this.keyhandleLocation).then(async kh => {
+        console.log(this.kh)
+        const r = await auth.sign(this.challenge, application, kh)
         this.$q.notify(`=> sign: ${r}`)
+        this.yubikey.signedIn = true
       }).catch(e => {
         console.log(e)
       })
@@ -252,9 +271,9 @@ export default {
       this.stronghold = new Stronghold(this.path, this.pwd)
       this.vault = this.stronghold.getVault('exampleVault', [])
       this.loggedIn = true
-      this.store = this.stronghold.getStore('exampleStore', [])
-      this.keyhandleLocation = Location.generic('store', 'yubikeyKeyhandle')
-      this.store.get(this.keyhandleLocation).then(kh => {
+      this.ykhstore = this.stronghold.getStore('yubikeyHandle', [])
+      this.keyhandleLocation = Location.generic('yubikeyKeyhandle', 'value')
+      this.ykhstore.get(this.keyhandleLocation).then(kh => {
         this.yubikey.registered = kh
         console.log('keyHandle:', kh)
       }).catch(e => {
