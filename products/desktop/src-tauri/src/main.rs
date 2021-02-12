@@ -46,10 +46,12 @@ impl<'a> std::fmt::Display for CommandError<'a> {
 impl<'a> std::error::Error for CommandError<'a> {}
 
 use tauri_stronghold::TauriStronghold;
+use tauri_authenticator::TauriAuthenticator;
 
 fn main() {
   tauri::AppBuilder::new()
     .plugin(TauriStronghold {})
+    .plugin(TauriAuthenticator {})
     .invoke_handler(|_webview, arg| {
       use Cmd::*;
       match serde_json::from_str(arg) {

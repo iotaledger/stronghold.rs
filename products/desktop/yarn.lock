@@ -10239,6 +10239,10 @@ tar@^6.0.2:
     mkdirp "^1.0.3"
     yallist "^4.0.0"
 
+"tauri-authenticator@link:../../../tauri-authenticator-plugin/api-definitions":
+  version "0.0.0"
+  uid ""
+
 "tauri-stronghold-api@link:../../../tauri-stronghold-rs/api-definitions":
   version "0.0.0"
   uid ""

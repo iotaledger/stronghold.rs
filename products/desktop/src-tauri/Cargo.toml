@@ -17,6 +17,7 @@ futures = "0.3"
 riker = "0.4"
 bincode = "1.3.1"
 tauri-stronghold = { path = "../../../../tauri-stronghold-rs" }
+tauri-authenticator = { path = "../../../../tauri-authenticator-plugin" }
 
 [target."cfg(windows)".build-dependencies]
 winres = "0.1"

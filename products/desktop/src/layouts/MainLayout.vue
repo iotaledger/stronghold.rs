@@ -1,33 +1,5 @@
 <template>
   <q-layout view="hHh LpR lFf" style="max-height:100%">
-    <!--
-    <q-header elevated>
-      <q-toolbar dark>
-        <q-btn
-          flat
-          dense
-          round
-          aria-label="Menu"
-          @click="leftDrawerOpen = !leftDrawerOpen"
-        >
-          <q-avatar>
-            <img src="icon.png">
-          </q-avatar>
-        </q-btn>
-        <q-toolbar-title class="text-weight-bolder">
-          Stronghold
-        </q-toolbar-title>
-        <q-btn
-          flat
-          dense
-          class="float-right q-mr-sm"
-          :label="connectee"
-          to="/"
-        >
-        </q-btn>
-      </q-toolbar>
-    </q-header>
-    -->
     <div class="row">
       <div class="col-auto">
         <q-scroll-area
@@ -40,10 +12,10 @@
             <q-item-section avatar class="sidebar-item" style="height:84px">
               <lock-timer></lock-timer>
             </q-item-section>
-            <q-item-section class="q-ml-md" v-if="!locked">
+            <q-item-section class="q-ml-md" v-if="loggedIn">
               <q-item-label>Log Out</q-item-label>
             </q-item-section>
-            <q-item-section class="q-ml-md" v-else>
+            <q-item-section class="q-ml-md" v-if="!loggedIn">
 
               <q-input
                 outlined
@@ -72,6 +44,10 @@
               </q-input>
               <q-btn color="primary" class="q-mt-lg float-right" :disabled="!pwd" @click="unlock" label="unlock" />
 
+            </q-item-section>
+            <q-item-section v-if="loggedIn">
+              <q-btn @click="register" v-if="!yubikey.registered" label="Register Yubikey" />
+              <q-btn @click="sign" v-if="yubikey.registered" label="Login with Yubikey" />
             </q-item-section>
           </q-item>
           <q-list v-if="loggedIn">
@@ -131,8 +107,14 @@ import LockTimer from 'components/LockTimer.vue'
 // import { promisified } from 'tauri/api/tauri'
 import { save } from 'tauri/api/dialog'
 import { Stronghold, Location } from 'tauri-stronghold-api'
+import { Authenticator } from 'tauri-authenticator'
+
 import { mapState, mapActions, mapMutations } from 'vuex'
 const _package = require('../../package.json')
+const auth = new Authenticator()
+const application = 'https://stronghold.iota.org'
+const challenge = '471257143edcbd893de079a711a193c5' // 32
+const challenge2 = '871257143edcbd893de079a711a193c5'
 
 const actionLinks = [
   {
@@ -198,10 +180,13 @@ export default {
       actionLinks: actionLinks,
       essentialLinks: linksData,
       version: _package.version,
-      loggedIn: true,
+      loggedIn: false,
       pwd: '',
       isPwd: true,
       path: '',
+      yubikey: {
+        registered: false
+      },
       thumbStyle: {
         right: '4px',
         borderRadius: '5px',
@@ -234,26 +219,59 @@ export default {
         await this.lockdown()
       }
     },
+    async register () {
+      auth.init() // initialize usb
+
+      const r = await auth.register(challenge, application)
+      this.$q.notify('yubikey registered')
+      this.keyhandleLocation = Location.generic('store', 'yubikeyKeyhandle')
+      this.challengeLocation = Location.generic('store', 'yubikeyChallenge')
+      await this.store.insert(this.keyhandleLocation, r)
+      await this.stronghold.save()
+      this.yubikey.registered = true
+    },
+    sign () {
+      auth.init() // initialize usb
+      console.log('sign!')
+
+      this.keyhandleLocation = Location.generic('store', 'yubikeyKeyhandle')
+      this.store.get(this.keyhandleLocation).then(async kh => {
+        // const b = Buffer.from(kh, 'base64')
+        const r = await auth.sign(challenge2, application, kh)
+        this.$q.notify(`=> sign: ${r}`)
+      }).catch(e => {
+        console.log(e)
+      })
+    },
     chooseFile () {
       save().then(res => {
         this.path = res
       })
     },
     async unlock () {
-      const stronghold = new Stronghold(this.path, this.pwd)
-      const vault = stronghold.getVault('exampleVault', [])
-      const seedLocation = Location.generic('vault', 'seed')
-      await vault.generateBIP39(seedLocation)
+      this.stronghold = new Stronghold(this.path, this.pwd)
+      this.vault = this.stronghold.getVault('exampleVault', [])
+      this.loggedIn = true
+      this.store = this.stronghold.getStore('exampleStore', [])
+      this.keyhandleLocation = Location.generic('store', 'yubikeyKeyhandle')
+      this.store.get(this.keyhandleLocation).then(kh => {
+        this.yubikey.registered = kh
+        console.log('keyHandle:', kh)
+      }).catch(e => {
+        console.log(e)
+      })
+
+      this.seedLocation = Location.generic('vault', 'seed')
+      await this.vault.generateBIP39(this.seedLocation)
       const privateKeyLocation = Location.generic('vault', 'derived')
-      await vault.deriveSLIP10([0, 0, 0], 'Seed', seedLocation, privateKeyLocation)
-      const publicKey = await vault.getPublicKey(privateKeyLocation)
+      await this.vault.deriveSLIP10([0, 0, 0], 'Seed', this.seedLocation, privateKeyLocation)
+      const publicKey = await this.vault.getPublicKey(privateKeyLocation)
       this.$q.notify('got public key ' + publicKey)
       const message = 'Tauri + Stronghold!'
-      const signature = await vault.sign(privateKeyLocation, message)
+      const signature = await this.vault.sign(privateKeyLocation, message)
       this.$q.notify(`Signed "${message}" and got sig "${signature}"`)
-      /*
+      this.stronghold.save()
 
-      */
       /*
       promisified({
         cmd: 'unlock',
