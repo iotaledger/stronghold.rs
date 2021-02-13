@@ -173,37 +173,35 @@ fn run_mailbox(matches: &ArgMatches) {
                         println!("Listener error: {:?}", error);
                         return;
                     }
-                    SwarmEvent::Behaviour(e) => {
+                    SwarmEvent::Behaviour(P2PEvent::RequestResponse(event)) => {
                         // Handle messages from remote peers
-                        if let P2PEvent::RequestResponse(event) = e {
-                            if let P2PReqResEvent::Req {
-                                peer_id: _,
-                                request_id,
-                                request,
-                            } = event.deref().clone()
-                            {
-                                match request {
-                                    // Store the record as a key-value pair in the local binary
-                                    // tree
-                                    Request::PutRecord(record) => {
-                                        local_records.insert(record.key(), record.value());
+                        if let P2PReqResEvent::Req {
+                            peer_id: _,
+                            request_id,
+                            request,
+                        } = event.deref().clone()
+                        {
+                            match request {
+                                // Store the record as a key-value pair in the local binary
+                                // tree
+                                Request::PutRecord(record) => {
+                                    local_records.insert(record.key(), record.value());
+                                    swarm
+                                        .send_response(Response::Outcome(RequestOutcome::Success), request_id)
+                                        .unwrap();
+                                }
+                                // Send the record for that key to the remote peer
+                                Request::GetRecord(key) => {
+                                    if let Some((key, value)) = local_records.get_key_value(&key) {
+                                        let record = MailboxRecord::new(key.clone(), value.clone());
+                                        swarm.send_response(Response::Record(record), request_id).unwrap();
+                                    } else {
                                         swarm
-                                            .send_response(Response::Outcome(RequestOutcome::Success), request_id)
+                                            .send_response(Response::Outcome(RequestOutcome::Error), request_id)
                                             .unwrap();
                                     }
-                                    // Send the record for that key to the remote peer
-                                    Request::GetRecord(key) => {
-                                        if let Some((key, value)) = local_records.get_key_value(&key) {
-                                            let record = MailboxRecord::new(key.clone(), value.clone());
-                                            swarm.send_response(Response::Record(record), request_id).unwrap();
-                                        } else {
-                                            swarm
-                                                .send_response(Response::Outcome(RequestOutcome::Error), request_id)
-                                                .unwrap();
-                                        }
-                                    }
-                                };
-                            }
+                                }
+                            };
                         }
                     }
                     _ => {}

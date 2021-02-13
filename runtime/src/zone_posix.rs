@@ -135,27 +135,23 @@ mod fork_tests {
     }
 
     #[test]
-    #[allow(clippy::unnecessary_wraps)]
-    fn unexpected_exit_code() -> crate::Result<()> {
+    fn unexpected_exit_code() {
         assert_eq!(
             fork(|| unsafe {
                 libc::exit(1);
             }),
             Err(Error::unexpected_exit_code(1))
         );
-        Ok(())
     }
 
     #[test]
-    #[allow(clippy::unnecessary_wraps)]
-    fn signal() -> crate::Result<()> {
+    fn signal() {
         assert_eq!(
             fork(|| unsafe {
                 let _ = libc::kill(libc::getpid(), libc::SIGKILL);
             }),
             Err(Error::signal(libc::SIGKILL))
         );
-        Ok(())
     }
 
     #[test]
