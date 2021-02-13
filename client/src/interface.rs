@@ -25,7 +25,7 @@ use stronghold_communication::{
         CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults, FirewallRequest,
         FirewallResponse,
     },
-    Multiaddr, PeerId,
+    libp2p::{Keypair, Multiaddr, PeerId},
 };
 
 // Dummy firewall that approves all requests
@@ -87,7 +87,7 @@ impl Stronghold {
 
         #[cfg(feature = "communication")]
         let communication_actor = {
-            let local_keys = stronghold_communication::generate_new_keypair();
+            let local_keys = Keypair::generate_ed25519();
             let firewall = system.actor_of::<Firewall>("firewall").unwrap();
             let config = CommunicationConfig::new(client.clone(), firewall);
             system

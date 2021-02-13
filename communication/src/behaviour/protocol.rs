@@ -36,9 +36,12 @@ pub struct MessageCodec<T, U> {
     q: PhantomData<U>,
 }
 
-impl<T, U> MessageCodec<T, U> {
-    pub fn new(p: PhantomData<T>, q: PhantomData<U>) -> Self {
-        MessageCodec { p, q }
+impl<T, U> Default for MessageCodec<T, U> {
+    fn default() -> Self {
+        MessageCodec {
+            p: PhantomData,
+            q: PhantomData,
+        }
     }
 }
 
@@ -111,32 +114,15 @@ mod test {
         net::{Shutdown, TcpListener, TcpStream},
         task,
     };
-    use serde::Deserialize;
-
-    type RequestId = u64;
-
-    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-    struct Message {
-        id: RequestId,
-        msg: String,
-        record: Option<Record>,
-        message_type: Type,
-    }
-
-    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-    struct Record {
-        key: String,
-        values: Vec<String>,
-    }
-
-    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-    enum Type {
-        Request,
-        Response(RequestId),
-    }
+    use test_utils::fresh;
 
     #[test]
     fn send_request() {
+        let mut test_vector = Vec::new();
+        for _ in 0..20 {
+            test_vector.push(fresh::non_empty_bytestring());
+        }
+
         let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8081").await.unwrap() });
         let listener_handle = task::spawn(async move {
             let mut incoming = listener.incoming();
@@ -145,27 +131,21 @@ mod test {
             io::copy(reader, writer).await.unwrap();
         });
 
-        let writer_handle = task::spawn(async {
+        let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
-            let mut codec = MessageCodec::<Message, Message>::new(PhantomData, PhantomData);
+            let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
             let mut socket = TcpStream::connect("127.0.0.1:8081").await.unwrap();
-            let record = Record {
-                key: "key1".to_string(),
-                values: vec!["value1".to_string(), "value2".to_string()],
-            };
-            let message = Message {
-                id: 1u64,
-                msg: "POST/record".to_string(),
-                record: Some(record),
-                message_type: Type::Request,
-            };
-            codec
-                .write_request(&protocol, &mut socket, message.clone())
-                .await
-                .unwrap();
-            let received = codec.read_request(&protocol, &mut socket).await.unwrap();
+            for bytes in test_vector.iter() {
+                codec
+                    .write_request(&protocol, &mut socket, bytes.clone())
+                    .await
+                    .unwrap();
+            }
+            for bytes in test_vector.iter() {
+                let received = codec.read_request(&protocol, &mut socket).await.unwrap();
+                assert_eq!(bytes, &received);
+            }
             socket.shutdown(Shutdown::Both).unwrap();
-            assert_eq!(message, received);
         });
         task::block_on(async {
             listener_handle.await;
@@ -175,6 +155,11 @@ mod test {
 
     #[test]
     fn send_response() {
+        let mut test_vector = Vec::new();
+        for _ in 0..20 {
+            test_vector.push(fresh::non_empty_bytestring());
+        }
+
         let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8082").await.unwrap() });
         let listener_handle = task::spawn(async move {
             let mut incoming = listener.incoming();
@@ -183,23 +168,99 @@ mod test {
             io::copy(reader, writer).await.unwrap();
         });
 
-        let writer_handle = task::spawn(async {
+        let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
-            let mut codec = MessageCodec::<Message, Message>::new(PhantomData, PhantomData);
+            let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
             let mut socket = TcpStream::connect("127.0.0.1:8082").await.unwrap();
-            let message = Message {
-                id: 2u64,
-                msg: "OK".to_string(),
-                record: None,
-                message_type: Type::Response(1u64),
-            };
-            codec
-                .write_response(&protocol, &mut socket, message.clone())
-                .await
-                .unwrap();
-            let received = codec.read_response(&protocol, &mut socket).await.unwrap();
+            for bytes in test_vector.iter() {
+                codec
+                    .write_response(&protocol, &mut socket, bytes.clone())
+                    .await
+                    .unwrap();
+            }
+            for bytes in test_vector.iter() {
+                let received = codec.read_response(&protocol, &mut socket).await.unwrap();
+                assert_eq!(bytes, &received);
+            }
             socket.shutdown(Shutdown::Both).unwrap();
-            assert_eq!(message, received);
+        });
+        task::block_on(async {
+            listener_handle.await;
+            writer_handle.await;
+        })
+    }
+
+    #[test]
+    #[should_panic]
+    fn corrupt_request() {
+        let mut test_vector = Vec::new();
+        for _ in 0..20 {
+            test_vector.push(fresh::non_empty_bytestring());
+        }
+
+        let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8083").await.unwrap() });
+        let listener_handle = task::spawn(async move {
+            let mut incoming = listener.incoming();
+            let stream = incoming.next().await.unwrap().unwrap();
+            let (reader, writer) = &mut (&stream, &stream);
+            io::copy(reader, writer).await.unwrap();
+        });
+
+        let writer_handle = task::spawn(async move {
+            let protocol = MessageProtocol();
+            let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
+            let mut socket = TcpStream::connect("127.0.0.1:8083").await.unwrap();
+            for bytes in test_vector.clone().iter_mut() {
+                test_utils::corrupt(bytes);
+                codec
+                    .write_request(&protocol, &mut socket, bytes.clone())
+                    .await
+                    .unwrap();
+            }
+            for bytes in test_vector.iter() {
+                let received = codec.read_request(&protocol, &mut socket).await.unwrap();
+                assert_eq!(bytes, &received);
+            }
+            socket.shutdown(Shutdown::Both).unwrap();
+        });
+        task::block_on(async {
+            listener_handle.await;
+            writer_handle.await;
+        })
+    }
+
+    #[test]
+    #[should_panic]
+    fn corrupt_response() {
+        let mut test_vector = Vec::new();
+        for _ in 0..20 {
+            test_vector.push(fresh::non_empty_bytestring());
+        }
+
+        let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8084").await.unwrap() });
+        let listener_handle = task::spawn(async move {
+            let mut incoming = listener.incoming();
+            let stream = incoming.next().await.unwrap().unwrap();
+            let (reader, writer) = &mut (&stream, &stream);
+            io::copy(reader, writer).await.unwrap();
+        });
+
+        let writer_handle = task::spawn(async move {
+            let protocol = MessageProtocol();
+            let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
+            let mut socket = TcpStream::connect("127.0.0.1:8084").await.unwrap();
+            for bytes in test_vector.clone().iter_mut() {
+                test_utils::corrupt(bytes);
+                codec
+                    .write_response(&protocol, &mut socket, bytes.clone())
+                    .await
+                    .unwrap();
+            }
+            for bytes in test_vector.iter() {
+                let received = codec.read_response(&protocol, &mut socket).await.unwrap();
+                assert_eq!(bytes, &received);
+            }
+            socket.shutdown(Shutdown::Both).unwrap();
         });
         task::block_on(async {
             listener_handle.await;

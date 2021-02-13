@@ -51,12 +51,12 @@
 //! Address that can be reached by all other peers. If can be used to deposit records for unavailable remote peers by
 //! sending a `Request::PutRecord` message with the record to the mailbox, and that can then return the Records to
 //! remote peers upon receiving a `Request::GetRecord` request.
-use libp2p::identity::Keypair;
 
 pub mod actor;
 pub mod behaviour;
-pub use libp2p::{request_response::RequestId, Multiaddr, PeerId};
-
-pub fn generate_new_keypair() -> Keypair {
-    Keypair::generate_ed25519()
+pub mod libp2p {
+    pub use libp2p::{
+        core::{connection::ConnectionLimit, identity::Keypair, ConnectedPoint, Multiaddr, PeerId},
+        swarm::{Swarm, SwarmEvent},
+    };
 }
