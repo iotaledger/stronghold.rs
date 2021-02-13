@@ -158,9 +158,8 @@ mod fork_tests {
     }
 
     #[test]
-    fn panic() -> crate::Result<()> {
+    fn panic() {
         assert_eq!(fork(|| panic!("oopsie")), Err(Error::unexpected_exit_code(101)));
-        Ok(())
     }
 }
 
