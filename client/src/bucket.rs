@@ -203,29 +203,26 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
     /// Exposes the `DBView` of the current vault and the cache layer to allow transactions to occur.
     fn take(&mut self, key: Key<P>, f: impl FnOnce(DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>) {
-        let mut _reads = self.get_reads(key.clone());
-        let reads = _reads.take().expect(line_error!());
-        let mut _view = self.get_view(key.clone(), reads.clone());
-        let view = _view.take().expect(line_error!());
+        let reads = self.get_reads(key.clone());
+        let view = self.get_view(key.clone(), reads.clone());
         let res = f(view, reads);
         self.insert_reads(key.clone(), res);
-        self.insert_view(key, _view);
+        self.insert_view(key, None);
     }
 
-    fn get_view(&mut self, key: Key<P>, reads: Vec<ReadResult>) -> Option<DBView<P>> {
+    fn get_view(&mut self, key: Key<P>, reads: Vec<ReadResult>) -> DBView<P> {
         self.vaults.remove(&key);
-
-        Some(DBView::load(key, reads.iter()).expect(line_error!()))
+        DBView::load(key, reads.iter()).expect(line_error!())
     }
 
     fn insert_view(&mut self, key: Key<P>, view: Option<DBView<P>>) {
         self.vaults.insert(key, view);
     }
 
-    fn get_reads(&mut self, key: Key<P>) -> Option<Vec<ReadResult>> {
+    fn get_reads(&mut self, key: Key<P>) -> Vec<ReadResult> {
         match self.cache.remove(&key) {
-            Some(reads) => Some(reads),
-            None => Some(Vec::<ReadResult>::new()),
+            Some(reads) => reads,
+            None => Vec::<ReadResult>::new(),
         }
     }
 
