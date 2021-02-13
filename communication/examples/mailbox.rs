@@ -81,16 +81,11 @@
 use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
 use core::{ops::Deref, str::FromStr};
-use libp2p::{
-    core::{connection::ConnectedPoint, identity::Keypair},
-    multiaddr::Multiaddr,
-    swarm::{Swarm, SwarmEvent},
-};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use stronghold_communication::behaviour::{
-    message::{P2PEvent, P2PReqResEvent},
-    P2PNetworkBehaviour,
+use stronghold_communication::{
+    behaviour::{P2PEvent, P2PNetworkBehaviour, P2PReqResEvent},
+    libp2p::{ConnectedPoint, Keypair, Multiaddr, Swarm, SwarmEvent},
 };
 
 pub type Key = String;

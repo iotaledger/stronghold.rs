@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{ask::ask, message::*, CommunicationConfig};
-use crate::behaviour::{
-    message::{P2PEvent, P2PReqResEvent},
-    MessageEvent, P2PNetworkBehaviour,
-};
+use crate::behaviour::{MessageEvent, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent};
 use core::{ops::Deref, time::Duration};
 use futures::{channel::mpsc::UnboundedReceiver, future, prelude::*, select};
 use libp2p::{

@@ -1,10 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::behaviour::message::{P2PInboundFailure, P2POutboundFailure};
+use crate::behaviour::{P2PInboundFailure, P2POutboundFailure};
 use libp2p::{
     core::{
-        connection::{ConnectionError, PendingConnectionError},
+        connection::{ConnectionError, ConnectionLimit, PendingConnectionError},
         ConnectedPoint, Multiaddr, PeerId,
     },
     swarm::DialError,
@@ -12,7 +12,6 @@ use libp2p::{
 use riker::{actors::ActorRef, Message};
 
 use core::num::NonZeroU32;
-pub use libp2p::core::connection::ConnectionLimit;
 
 /// Errors that can occur in the context of a pending `Connection`.
 #[derive(Debug, Clone)]
