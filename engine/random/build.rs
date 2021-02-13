@@ -11,8 +11,7 @@ fn macos_secrandom() -> Option<&'static str> {
 
 // checks if the current version of glibc supports the getrandom function
 #[cfg(target_os = "linux")]
-#[allow(clippy::unnecessary_wraps)]
-fn linux_check_getrandom() -> Option<&'static str> {
+fn linux_check_getrandom() -> &'static str {
     use std::{ffi::CStr, os::raw::c_char, str::FromStr};
     extern "C" {
         fn gnu_get_libc_version() -> *const c_char;
@@ -26,8 +25,8 @@ fn linux_check_getrandom() -> Option<&'static str> {
         .collect();
 
     match (v[0], v[1]) {
-        (2..=255, 25..=255) => Some("USE_GETRANDOM"),
-        _ => Some("USE_DEV_RANDOM"),
+        (2..=255, 25..=255) => "USE_GETRANDOM",
+        _ => "USE_DEV_RANDOM",
     }
 }
 
@@ -58,7 +57,7 @@ fn main() {
         // somehow when compiling to `i686-linux-android` the target_os is still pointing to `linux`
         let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
         secure_random = match target_os.as_str() {
-            "linux" => linux_check_getrandom(),
+            "linux" => Some(linux_check_getrandom()),
             "android" => Some("USE_DEV_RANDOM"),
             _ => None,
         }

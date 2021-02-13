@@ -159,10 +159,8 @@ mod fork_tests {
     }
 
     #[test]
-    #[allow(clippy::unnecessary_wraps)]
-    fn panic() -> crate::Result<()> {
+    fn panic() {
         assert_eq!(fork(|| panic!("oopsie")), Err(Error::unexpected_exit_code(101)));
-        Ok(())
     }
 }
 
