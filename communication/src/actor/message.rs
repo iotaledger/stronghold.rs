@@ -94,7 +94,7 @@ pub enum CommunicationRequest<Req, T: Message> {
 
 /// The firewall that rejected or dropped the request
 #[derive(Debug, Clone)]
-pub enum FirewallRejected {
+pub enum FirewallBlocked {
     Local,
     Remote,
 }
@@ -106,7 +106,7 @@ pub enum RequestMessageError {
     /// Possible failures occurring in the context of receiving an inbound request and sending a response.
     Inbound(P2PInboundFailure),
     /// The request was rejected or dropped by the local or remote firewall.
-    Rejected(FirewallRejected),
+    Rejected(FirewallBlocked),
 }
 
 /// Returned results from the [`CommuncationActor`]

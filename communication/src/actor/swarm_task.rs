@@ -332,14 +332,14 @@ where
                     }
                     if start.elapsed() > Duration::new(10, 0) {
                         return CommunicationResults::<Res>::RequestMsgResult(Err(RequestMessageError::Rejected(
-                            FirewallRejected::Remote,
+                            FirewallBlocked::Remote,
                         )));
                     }
                 }
             }
             _ => {
                 return CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(
-                    FirewallRejected::Local,
+                    FirewallBlocked::Local,
                 )))
             }
         }
