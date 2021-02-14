@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use async_std::task;
-use core::{ops::Deref, str::FromStr, time::Duration};
+use core::{ops::Deref, time::Duration};
 use futures::future;
 use serde::{Deserialize, Serialize};
-use std::thread;
 use stronghold_communication::{
     behaviour::{P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
     libp2p::{Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
@@ -26,43 +25,52 @@ fn mock_swarm() -> Swarm<P2PNetworkBehaviour<Request, Response>> {
     P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).unwrap()
 }
 
-fn mock_addr() -> Multiaddr {
-    Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap()
-}
-
 #[test]
-fn new_behaviour() {
-    let local_keys = Keypair::generate_ed25519();
-    let swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys.clone()).unwrap();
-    assert_eq!(
-        &PeerId::from_public_key(local_keys.public()),
-        Swarm::local_peer_id(&swarm)
-    );
-    assert!(swarm.get_all_peers().is_empty());
-}
-
-#[test]
-fn add_peer() {
-    let mut swarm = mock_swarm();
-    let peer_id = PeerId::random();
-    let addr = mock_addr();
-    swarm.add_peer(peer_id, addr.clone());
-    assert!(swarm.get_peer_addr(&peer_id).is_some());
-    assert!(swarm.get_all_peers().contains(&(&peer_id, &addr)));
-    assert_eq!(swarm.remove_peer(&peer_id).unwrap(), addr);
-    assert!(swarm.get_peer_addr(&peer_id).is_none());
-    assert!(!swarm.get_all_peers().contains(&(&peer_id, &addr)));
-}
-
-#[test]
-fn listen_addr() {
-    let mut swarm = mock_swarm();
-    let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8085".parse().unwrap();
-    let listener_id = Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
+#[should_panic]
+fn reuse_addr() {
+    let mut swarm_a = mock_swarm();
+    let listen_addr = "/ip4/127.0.0.1/tcp/8087".parse::<Multiaddr>();
+    if listen_addr.is_err() {
+        return;
+    }
+    let listen_addr = listen_addr.unwrap();
+    if Swarm::listen_on(&mut swarm_a, listen_addr.clone()).is_err() {
+        return;
+    }
     let actual_addr = task::block_on(async {
         loop {
+            match swarm_a.next_event().await {
+                SwarmEvent::NewListenAddr(addr) => return Some(addr),
+                SwarmEvent::ListenerClosed {
+                    addresses: _,
+                    reason: _,
+                }
+                | SwarmEvent::ListenerError { error: _ } => return None,
+                _ => {}
+            }
+        }
+    });
+    if actual_addr.is_none() {
+        return;
+    }
+
+    // set second swarm to listen to same address
+    let mut swarm_b = mock_swarm();
+    Swarm::listen_on(&mut swarm_b, listen_addr).unwrap();
+}
+
+#[test]
+fn reuse_port() {
+    let mut swarm = mock_swarm();
+    let listen_addr = "/ip4/127.0.0.2/tcp/8088".parse::<Multiaddr>().unwrap();
+    Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
+    task::block_on(async {
+        loop {
             match swarm.next_event().await {
-                SwarmEvent::NewListenAddr(addr) => return addr,
+                SwarmEvent::NewListenAddr(addr) => {
+                    assert_eq!(listen_addr, addr);
+                    break;
+                }
                 SwarmEvent::ListenerClosed {
                     addresses: _,
                     reason: _,
@@ -72,15 +80,32 @@ fn listen_addr() {
             }
         }
     });
-    assert_eq!(listen_addr, actual_addr);
-    Swarm::remove_listener(&mut swarm, listener_id).unwrap();
-    assert!(!Swarm::listeners(&swarm).any(|addr| addr == &listen_addr));
+    // set second swarm to listen to same address
+    let mut swarm = mock_swarm();
+    let listen_addr = "/ip4/127.0.0.1/tcp/8088".parse::<Multiaddr>().unwrap();
+    Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
+    task::block_on(async {
+        loop {
+            match swarm.next_event().await {
+                SwarmEvent::NewListenAddr(addr) => {
+                    assert_eq!(listen_addr, addr);
+                    break;
+                }
+                SwarmEvent::ListenerClosed {
+                    addresses: _,
+                    reason: _,
+                } => panic!(),
+                SwarmEvent::ListenerError { error: _ } => panic!(),
+                _ => {}
+            }
+        }
+    });
 }
 
 #[test]
 fn request_response() {
     let mut remote = mock_swarm();
-    let listener_id = Swarm::listen_on(&mut remote, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+    Swarm::listen_on(&mut remote, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
     let remote_peer_id = *Swarm::local_peer_id(&remote);
     let remote_addr = task::block_on(async {
         loop {
@@ -89,13 +114,12 @@ fn request_response() {
                 SwarmEvent::ListenerClosed {
                     addresses: _,
                     reason: _,
-                } => panic!(),
-                SwarmEvent::ListenerError { error: _ } => panic!(),
+                }
+                | SwarmEvent::ListenerError { error: _ } => panic!(),
                 _ => {}
             }
         }
     });
-    let remote_addr_clone = remote_addr.clone();
 
     let mut local = mock_swarm();
     let local_peer_id = *Swarm::local_peer_id(&local);
@@ -110,9 +134,8 @@ fn request_response() {
                         request: Request::Ping,
                     } = boxed_event.deref().clone()
                     {
-                        if peer_id == local_peer_id {
-                            remote.send_response(Response::Pong, request_id).unwrap();
-                        }
+                        assert_eq!(peer_id, local_peer_id);
+                        remote.send_response(Response::Pong, request_id).unwrap();
                     }
                 }
                 SwarmEvent::ConnectionClosed {
@@ -121,33 +144,22 @@ fn request_response() {
                     num_established: _,
                     cause: _,
                 } => {
-                    if peer_id == local_peer_id {
-                        Swarm::remove_listener(&mut remote, listener_id).unwrap();
-                        return;
-                    }
+                    assert_eq!(peer_id, local_peer_id);
+                    return;
                 }
                 SwarmEvent::UnreachableAddr {
                     peer_id: _,
-                    address,
+                    address: _,
                     error: _,
                     attempts_remaining: 0,
-                } => {
-                    if address == remote_addr {
-                        panic!();
-                    }
                 }
-                SwarmEvent::UnknownPeerUnreachableAddr { address, error: _ } => {
-                    if address == remote_addr {
-                        panic!();
-                    }
-                }
-
+                | SwarmEvent::UnknownPeerUnreachableAddr { address: _, error: _ } => panic!(),
                 _ => {}
             }
         }
     });
 
-    Swarm::dial_addr(&mut local, remote_addr_clone.clone()).unwrap();
+    Swarm::dial_addr(&mut local, remote_addr).unwrap();
     let local_handle = task::spawn(async move {
         loop {
             match local.next_event().await {
@@ -158,9 +170,8 @@ fn request_response() {
                         response: Response::Pong,
                     } = boxed_event.deref().clone()
                     {
-                        if peer_id == remote_peer_id {
-                            return;
-                        }
+                        assert_eq!(peer_id, remote_peer_id);
+                        return;
                     }
                 }
                 SwarmEvent::ConnectionEstablished {
@@ -168,35 +179,22 @@ fn request_response() {
                     endpoint: _,
                     num_established: _,
                 } => {
-                    if peer_id == remote_peer_id {
-                        local.send_request(&remote_peer_id, Request::Ping);
-                    }
+                    assert_eq!(peer_id, remote_peer_id);
+                    local.send_request(&remote_peer_id, Request::Ping);
                 }
                 SwarmEvent::ConnectionClosed {
-                    peer_id,
+                    peer_id: _,
                     endpoint: _,
                     num_established: _,
                     cause: _,
-                } => {
-                    if peer_id == remote_peer_id {
-                        return;
-                    }
                 }
-                SwarmEvent::UnreachableAddr {
-                    peer_id,
+                | SwarmEvent::UnreachableAddr {
+                    peer_id: _,
                     address: _,
                     error: _,
                     attempts_remaining: 0,
-                } => {
-                    if peer_id == remote_peer_id {
-                        panic!();
-                    }
                 }
-                SwarmEvent::UnknownPeerUnreachableAddr { address, error: _ } => {
-                    if address == remote_addr_clone {
-                        panic!();
-                    }
-                }
+                | SwarmEvent::UnknownPeerUnreachableAddr { address: _, error: _ } => panic!(),
                 _ => {}
             }
         }
@@ -211,7 +209,7 @@ fn request_response() {
 fn identify_event() {
     let mut remote = mock_swarm();
     let remote_peer_id = *Swarm::local_peer_id(&remote);
-    let remote_listener_id = Swarm::listen_on(&mut remote, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+    let remote_listener_id = Swarm::listen_on(&mut remote, "/ip4/127.0.0.6/tcp/0".parse().unwrap()).unwrap();
     let remote_addr = task::block_on(async {
         loop {
             match remote.next_event().await {
@@ -219,8 +217,8 @@ fn identify_event() {
                 SwarmEvent::ListenerClosed {
                     addresses: _,
                     reason: _,
-                } => panic!(),
-                SwarmEvent::ListenerError { error: _ } => panic!(),
+                }
+                | SwarmEvent::ListenerError { error: _ } => panic!(),
                 _ => {}
             }
         }
@@ -236,8 +234,8 @@ fn identify_event() {
                 SwarmEvent::ListenerClosed {
                     addresses: _,
                     reason: _,
-                } => panic!(),
-                SwarmEvent::ListenerError { error: _ } => panic!(),
+                }
+                | SwarmEvent::ListenerError { error: _ } => panic!(),
                 _ => {}
             }
         }
@@ -257,13 +255,17 @@ fn identify_event() {
                         if peer_id == local_peer_id {
                             assert_eq!(PeerId::from_public_key(info.clone().public_key), peer_id);
                             assert!(info.listen_addrs.contains(&local_addr));
+                            let known_addr = remote.get_peer_addr(&local_peer_id).unwrap();
+                            for addr in info.listen_addrs {
+                                assert!(known_addr.contains(&addr));
+                            }
                             received = true;
                         }
                     }
                     P2PIdentifyEvent::Sent { peer_id } => {
                         if peer_id == local_peer_id {
                             sent = true;
-                            thread::sleep(Duration::from_millis(50));
+                            std::thread::sleep(Duration::from_millis(50));
                         }
                     }
                     P2PIdentifyEvent::Error { peer_id, error: _ } => {
@@ -298,7 +300,7 @@ fn identify_event() {
                     P2PIdentifyEvent::Sent { peer_id } => {
                         if peer_id == remote_peer_id {
                             sent = true;
-                            thread::sleep(Duration::from_millis(50));
+                            std::thread::sleep(Duration::from_millis(50));
                         }
                     }
                     P2PIdentifyEvent::Error { peer_id, error: _ } => {

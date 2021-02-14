@@ -190,7 +190,7 @@ where
     // Send a reponse to the sender of a previous [`CommuncationRequest`]
     fn send_response(result: CommunicationResults<Res>, sender: Sender) {
         if let Some(sender) = sender {
-            sender.try_tell(result, None).unwrap();
+            let _ = sender.try_tell(result, None);
         }
     }
 
@@ -264,7 +264,7 @@ where
                 }
                 _ => self.handle_swarm_event(event).await,
             }
-            if start.elapsed() > Duration::new(10, 0) {
+            if start.elapsed() > Duration::new(3, 0) {
                 return CommunicationResults::<Res>::ConnectPeerResult(Err(ConnectPeerError::Timeout));
             }
         }

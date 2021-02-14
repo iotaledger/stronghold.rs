@@ -72,9 +72,8 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
         match captures.name("type").unwrap().as_str() {
             "LIST" => {
                 println!("Known peers:");
-                let known_peers = swarm.get_all_peers();
-                for (peer, addr) in known_peers {
-                    println!("{:?}: {:?}", peer, addr);
+                for peer in swarm.get_all_peers() {
+                    println!("{:?}", peer);
                 }
             }
             "DIAL" => {

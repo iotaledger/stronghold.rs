@@ -71,7 +71,7 @@ pub struct P2PNetworkBehaviour<T: MessageEvent, U: MessageEvent> {
     identify: Identify,
     msg_proto: RequestResponse<MessageCodec<T, U>>,
     #[behaviour(ignore)]
-    peers: HashMap<PeerId, Multiaddr>,
+    peers: HashMap<PeerId, Vec<Multiaddr>>,
     #[behaviour(ignore)]
     events: Vec<P2PEvent<T, U>>,
     #[behaviour(ignore)]
@@ -173,20 +173,38 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
         Poll::Pending
     }
 
-    pub fn add_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
-        self.peers.insert(peer_id, addr);
+    pub fn add_peer_addr(&mut self, peer_id: PeerId, addr: Multiaddr) {
+        if let Some(addrs) = self.peers.get_mut(&peer_id) {
+            if !addrs.contains(&addr) {
+                addrs.push(addr);
+            }
+        } else {
+            self.peers.insert(peer_id, vec![addr]);
+        }
     }
 
-    pub fn remove_peer(&mut self, peer_id: &PeerId) -> Option<Multiaddr> {
+    pub fn remove_peer_addr(&mut self, peer_id: &PeerId, addr: &Multiaddr) {
+        if let Some(addrs) = self.peers.get_mut(peer_id) {
+            addrs.retain(|a| a != addr);
+        }
+    }
+
+    pub fn remove_peer(&mut self, peer_id: &PeerId) -> Option<Vec<Multiaddr>> {
         self.peers.remove(peer_id)
     }
 
-    pub fn get_peer_addr(&self, peer_id: &PeerId) -> Option<&Multiaddr> {
+    pub fn get_peer_addr(&self, peer_id: &PeerId) -> Option<&Vec<Multiaddr>> {
         self.peers.get(peer_id)
     }
 
-    pub fn get_all_peers(&self) -> Vec<(&PeerId, &Multiaddr)> {
-        self.peers.iter().collect()
+    pub fn get_all_peers(&self) -> Vec<&PeerId> {
+        self.peers.keys().collect()
+    }
+
+    #[cfg(feature = "mdns")]
+    /// Get the peers discovered by mdns
+    pub fn get_active_mdns_peers(&mut self) -> Vec<&PeerId> {
+        self.mdns.discovered_nodes().collect()
     }
 
     pub fn send_request(&mut self, peer_id: &PeerId, request: T) -> RequestId {
@@ -200,11 +218,6 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
             .ok_or_else(|| response.clone())?;
         self.msg_proto.send_response(channel, response)
     }
-    #[cfg(feature = "mdns")]
-    /// Get the peers discovered by mdns
-    pub fn get_active_mdns_peers(&mut self) -> Vec<&PeerId> {
-        self.mdns.discovered_nodes().collect()
-    }
 }
 
 #[cfg(feature = "mdns")]
@@ -214,12 +227,12 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> f
         match event {
             MdnsEvent::Discovered(list) => {
                 for (peer_id, multiaddr) in list {
-                    self.add_peer(peer_id, multiaddr);
+                    self.add_peer_addr(peer_id, multiaddr);
                 }
             }
             MdnsEvent::Expired(list) => {
-                for (peer_id, _multiaddr) in list {
-                    self.remove_peer(&peer_id);
+                for (peer_id, multiaddr) in list {
+                    self.remove_peer_addr(&peer_id, &multiaddr);
                 }
             }
         }
@@ -264,11 +277,144 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEven
         } = event
         {
             if self.get_peer_addr(&peer_id).is_none() {
-                if let Some(addr) = info.listen_addrs.clone().pop() {
-                    self.add_peer(peer_id, addr);
+                for addr in &info.listen_addrs {
+                    self.add_peer_addr(peer_id, addr.clone());
                 }
             }
         }
         self.events.push(P2PEvent::from(event));
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[cfg(not(feature = "mdns"))]
+    use async_std::task;
+    use core::str::FromStr;
+    use libp2p::swarm::SwarmEvent;
+
+    fn mock_swarm() -> Swarm<P2PNetworkBehaviour<String, String>> {
+        let local_keys = Keypair::generate_ed25519();
+        P2PNetworkBehaviour::<String, String>::init_swarm(local_keys).unwrap()
+    }
+
+    fn mock_addr() -> Multiaddr {
+        Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap()
+    }
+
+    #[test]
+    fn new_behaviour() {
+        let local_keys = Keypair::generate_ed25519();
+        let swarm = P2PNetworkBehaviour::<String, String>::init_swarm(local_keys.clone()).unwrap();
+        assert_eq!(
+            &PeerId::from_public_key(local_keys.public()),
+            Swarm::local_peer_id(&swarm)
+        );
+        assert!(swarm.get_all_peers().is_empty());
+    }
+
+    #[test]
+    fn add_peer() {
+        let mut swarm = mock_swarm();
+        let peer_id = PeerId::random();
+        let addr = mock_addr();
+        swarm.add_peer_addr(peer_id, addr.clone());
+        assert!(swarm.get_peer_addr(&peer_id).is_some());
+        assert!(swarm.get_all_peers().contains(&&peer_id));
+        assert!(swarm.remove_peer(&peer_id).unwrap().contains(&addr));
+        assert!(swarm.get_peer_addr(&peer_id).is_none());
+        assert!(!swarm.get_all_peers().contains(&&peer_id));
+    }
+
+    #[test]
+    fn listen_addr() {
+        let mut swarm = mock_swarm();
+        let listen_addr: Multiaddr = "/ip4/127.0.0.5/tcp/8085".parse().unwrap();
+        let listener_id = Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
+        task::block_on(async {
+            loop {
+                match swarm.next_event().await {
+                    SwarmEvent::NewListenAddr(addr) => {
+                        assert_eq!(listen_addr, addr);
+                        break;
+                    }
+                    SwarmEvent::ListenerClosed {
+                        addresses: _,
+                        reason: _,
+                    }
+                    | SwarmEvent::ListenerError { error: _ } => panic!(),
+                    _ => {}
+                }
+            }
+        });
+        Swarm::remove_listener(&mut swarm, listener_id).unwrap();
+        assert!(!Swarm::listeners(&swarm).any(|addr| addr == &listen_addr));
+    }
+
+    #[test]
+    fn zeroed_addr() {
+        let mut swarm = mock_swarm();
+        // empty ip and port
+        let mut listen_addr = "/ip4/0.0.0.0/tcp/0".parse::<Multiaddr>().unwrap();
+        Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
+        let mut actual_addr = task::block_on(async {
+            loop {
+                match swarm.next_event().await {
+                    SwarmEvent::NewListenAddr(addr) => return addr,
+                    SwarmEvent::ListenerClosed {
+                        addresses: _,
+                        reason: _,
+                    }
+                    | SwarmEvent::ListenerError { error: _ } => panic!(),
+                    _ => {}
+                }
+            }
+        });
+        // ip and port should both not be zero
+        assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
+        assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
+
+        // empty ip
+        let mut listen_addr = "/ip4/0.0.0.0/tcp/8086".parse::<Multiaddr>().unwrap();
+        Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
+        let mut actual_addr = task::block_on(async {
+            loop {
+                match swarm.next_event().await {
+                    SwarmEvent::NewListenAddr(addr) => return addr,
+                    SwarmEvent::ListenerClosed {
+                        addresses: _,
+                        reason: _,
+                    }
+                    | SwarmEvent::ListenerError { error: _ } => panic!(),
+                    _ => {}
+                }
+            }
+        });
+        // port should be the same
+        assert_eq!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
+        // ip should not be zero
+        assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
+
+        // empty port
+        let mut listen_addr = "/ip4/127.0.0.6/tcp/0".parse::<Multiaddr>().unwrap();
+        Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
+        let mut actual_addr = task::block_on(async {
+            loop {
+                match swarm.next_event().await {
+                    SwarmEvent::NewListenAddr(addr) => return addr,
+                    SwarmEvent::ListenerClosed {
+                        addresses: _,
+                        reason: _,
+                    }
+                    | SwarmEvent::ListenerError { error: _ } => panic!(),
+                    _ => {}
+                }
+            }
+        });
+        // port should not be zero
+        assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
+        // ip should be the same
+        assert_eq!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
     }
 }
