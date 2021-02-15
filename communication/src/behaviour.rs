@@ -1,8 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-mod message;
 mod protocol;
+mod types;
 
 #[cfg(feature = "mdns")]
 use async_std::task;
@@ -30,11 +30,11 @@ use libp2p::{
     yamux::YamuxConfig,
     NetworkBehaviour, Transport,
 };
-pub use message::*;
 pub use protocol::MessageEvent;
 use protocol::{MessageCodec, MessageProtocol};
 use std::collections::HashMap;
 use thiserror::Error as DeriveError;
+pub use types::*;
 
 /// Error upon creating a new NetworkBehaviour
 #[derive(Debug, DeriveError)]

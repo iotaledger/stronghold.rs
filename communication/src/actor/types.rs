@@ -89,6 +89,8 @@ pub enum CommunicationRequest<Req, T: Message> {
     StartListening(Option<Multiaddr>),
     /// Stop listening to the swarm. Without a listener, the local peer can not be dialed from remote.
     RemoveListener,
+    /// Shutdown communication actor.
+    Shutdown,
 }
 
 /// The firewall that rejected or dropped the request

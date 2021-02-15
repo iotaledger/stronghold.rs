@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod ask;
-mod message;
 mod swarm_task;
+mod types;
 use crate::behaviour::MessageEvent;
 pub use ask::ask;
 use async_std::task;
@@ -16,9 +16,9 @@ use futures::{
     future,
 };
 use libp2p::core::identity::Keypair;
-pub use message::*;
 use riker::actors::*;
 use swarm_task::SwarmTask;
+pub use types::*;
 
 #[derive(Debug, Clone)]
 /// The actor configuration
@@ -165,7 +165,7 @@ where
 
     // Spawn a task for polling the swarm and forwarding messages from/to remote peers.
     // A channel is created to send the messages that the [`CommunicationActor`] receives to that task.
-    // The swarm task won't start listening to the swarm untill a [`CommuncationRequest::StartListening`] was sent to
+    // The swarm task won't start listening to the swarm untill a [`CommunicationRequest::StartListening`] was sent to
     // it.
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         let (swarm_tx, swarm_rx) = unbounded();
