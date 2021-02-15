@@ -66,6 +66,17 @@ impl<THandlerErr> From<ConnectionError<THandlerErr>> for ConnectPeerError {
     }
 }
 
+/// Relay peer for outgoing request.
+#[derive(Debug, Clone)]
+pub enum RelayConfig {
+    /// No relay should be used, peers can only be dialed directly.
+    NoRelay,
+    /// Always send requests to remote peers via the relay.
+    RelayAlways(PeerId),
+    /// Use relay peer if sending the request directly failed,
+    RelayBackup(PeerId),
+}
+
 /// Requests for the [`CommuncationActor`]
 #[derive(Debug, Clone)]
 pub enum CommunicationRequest<Req, T: Message> {
@@ -89,6 +100,8 @@ pub enum CommunicationRequest<Req, T: Message> {
     StartListening(Option<Multiaddr>),
     /// Stop listening to the swarm. Without a listener, the local peer can not be dialed from remote.
     RemoveListener,
+    /// Configured if a relay peer should be used for requests
+    SetRelay(RelayConfig),
     /// Shutdown communication actor.
     Shutdown,
 }

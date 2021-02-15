@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::behaviour::{MessageEvent, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent};
+use crate::behaviour::{MessageEvent, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent, P2POutboundFailure};
 use core::{ops::Deref, time::Duration};
 use futures::{channel::mpsc::UnboundedReceiver, future, prelude::*, select};
 use libp2p::{
@@ -16,6 +16,14 @@ use std::{
     task::{Context, Poll},
     time::Instant,
 };
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestEnvelope<Req: MessageEvent> {
+    remote: PeerId,
+    message: Req,
+}
+
 // Separate task that manages the swarm communication.
 pub(super) struct SwarmTask<Req, Res, T, U>
 where
@@ -26,9 +34,10 @@ where
 {
     system: ActorSystem,
     config: CommunicationConfig<Req, T, U>,
-    swarm: Swarm<P2PNetworkBehaviour<Req, Res>>,
+    swarm: Swarm<P2PNetworkBehaviour<RequestEnvelope<Req>, Res>>,
     swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, T>, Sender)>,
     listener: Option<ListenerId>,
+    relay: RelayConfig,
 }
 
 impl<Req, Res, T, U> SwarmTask<Req, Res, T, U>
@@ -45,7 +54,7 @@ where
         swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, T>, Sender)>,
     ) -> Self {
         // Create a P2PNetworkBehaviour for the swarm communication.
-        let swarm = P2PNetworkBehaviour::<Req, Res>::init_swarm(keypair).unwrap();
+        let swarm = P2PNetworkBehaviour::<RequestEnvelope<Req>, Res>::init_swarm(keypair).unwrap();
         SwarmTask {
             system,
             config,
@@ -79,28 +88,38 @@ where
 
     fn shutdown(mut self) {
         if let Some(listener_id) = self.listener.take() {
-            let _ = Swarm::remove_listener(&mut self.swarm, listener_id);
+            Swarm::remove_listener(&mut self.swarm, listener_id);
         }
         self.swarm_rx.close();
     }
 
     // Send incoming request to the client.
     // Eventually other swarm events lik e.g. incoming connection should also be send to some top level actor.
-    async fn handle_swarm_event<HandleErr>(&mut self, event: SwarmEvent<P2PEvent<Req, Res>, HandleErr>) {
+    async fn handle_swarm_event<HandleErr>(
+        &mut self,
+        event: SwarmEvent<P2PEvent<RequestEnvelope<Req>, Res>, HandleErr>,
+    ) {
         match event {
             SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
                 P2PEvent::RequestResponse(boxed_event) => {
                     if let P2PReqResEvent::Req {
                         peer_id,
                         request_id,
-                        request,
+                        request: RequestEnvelope { remote, message },
                     } = boxed_event.deref().clone()
                     {
-                        let permission = self
-                            .ask_permission(request.clone(), peer_id, RequestDirection::In)
-                            .await;
+                        // validate that peer is either directly connected or the request was forwarded from the relay
+                        let valid_peer = peer_id == remote
+                            || match self.relay {
+                                RelayConfig::RelayOnly(relay_id) | RelayConfig::RelayBackup(relay_id) => peer_id == relay_id,
+                                RelayConfig::NoRelay => false,
+                            };
+                        if !valid_peer {
+                            return;
+                        }
+                        let permission = self.ask_permission(message.clone(), remote, RequestDirection::In).await;
                         if let FirewallResponse::Accept = permission {
-                            let res: Res = ask(&self.system, &self.config.client, request).await;
+                            let res: Res = ask(&self.system, &self.config.client, message).await;
                             self.swarm.send_response(res, request_id).unwrap();
                         }
                     }
@@ -149,7 +168,32 @@ where
     async fn handle_actor_request(&mut self, event: CommunicationRequest<Req, T>, sender: Sender) {
         match event {
             CommunicationRequest::RequestMsg { peer_id, request } => {
-                let res = self.send_request(peer_id, request).await;
+                let res = if let FirewallResponse::Accept = self
+                    .ask_permission(request.clone(), peer_id, RequestDirection::Out)
+                    .await 
+                {
+                    let envelope = RequestEnvelope {
+                        remote: peer_id,
+                        message: request,
+                    };
+                    match self.relay {
+                        RelayConfig::NoRelay => self.send_request(peer_id, envelope).await,
+                        RelayConfig::RelayAlways(relay_id) => self.send_request(relay_id, envelope).await,
+                        RelayConfig::RelayBackup(relay_id) => {
+                            // try sending directly, otherwise use relay
+                            if let CommunicationResults::RequestMsgResult(Err(RequestMessageError::Outbound(
+                                P2POutboundFailure::DialFailure,
+                            ))) = self.send_request(peer_id, envelope).await
+                            {
+                                self.send_request(relay_id, envelope).await
+                            }
+                        }
+                    }
+                } else {
+                    CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(
+                        FirewallBlocked::Local,
+                    )))
+                };
                 SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::SetClientRef(client_ref) => {
@@ -282,72 +326,60 @@ where
 
     // Try sending a request to a remote peer if it was approved by the firewall, and return the received Response.
     // If no reponse is received, a RequestMessageError::Rejected will be returned.
-    async fn send_request(&mut self, peer_id: PeerId, request: Req) -> CommunicationResults<Res> {
-        let permission = self
-            .ask_permission(request.clone(), peer_id, RequestDirection::Out)
-            .await;
-        match permission {
-            FirewallResponse::Accept => {
-                let req_id = self.swarm.send_request(&peer_id, request);
-                let start = Instant::now();
-                loop {
-                    let event = self.swarm.next_event().await;
-                    match event {
-                        SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
-                            match boxed_event.clone().deref().clone() {
-                                P2PReqResEvent::Res {
-                                    peer_id: _,
-                                    request_id,
-                                    response,
-                                } => {
-                                    if request_id == req_id {
-                                        return CommunicationResults::RequestMsgResult(Ok(response));
-                                    }
-                                }
-                                P2PReqResEvent::InboundFailure {
-                                    peer_id: _,
-                                    request_id,
-                                    error,
-                                } => {
-                                    if request_id == req_id {
-                                        let err = RequestMessageError::Inbound(error);
-                                        return CommunicationResults::RequestMsgResult(Err(err));
-                                    }
-                                }
-                                P2PReqResEvent::OutboundFailure {
-                                    peer_id: _,
-                                    request_id,
-                                    error,
-                                } => {
-                                    if request_id == req_id {
-                                        let err = RequestMessageError::Outbound(error);
-                                        return CommunicationResults::RequestMsgResult(Err(err));
-                                    }
-                                }
-                                P2PReqResEvent::Req {
-                                    peer_id: _,
-                                    request_id,
-                                    request,
-                                } => {
-                                    let res: Res = ask(&self.system, &self.config.client, request).await;
-                                    self.swarm.send_response(res, request_id).unwrap();
-                                }
-                                _ => {}
+    async fn send_request(&mut self, peer_id: PeerId, envelope: RequestEnvelope<Req>) -> CommunicationResults<Res> {
+        let req_id = self.swarm.send_request(&peer_id, envelope);
+        let start = Instant::now();
+        loop {
+            let event = self.swarm.next_event().await;
+            match event {
+                SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
+                    match boxed_event.clone().deref().clone() {
+                        P2PReqResEvent::Res {
+                            peer_id: _,
+                            request_id,
+                            response,
+                        } => {
+                            if request_id == req_id {
+                                return CommunicationResults::RequestMsgResult(Ok(response));
                             }
                         }
-                        _ => self.handle_swarm_event(event).await,
-                    }
-                    if start.elapsed() > Duration::new(10, 0) {
-                        return CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(
-                            FirewallBlocked::Remote,
-                        )));
+                        P2PReqResEvent::InboundFailure {
+                            peer_id: _,
+                            request_id,
+                            error,
+                        } => {
+                            if request_id == req_id {
+                                let err = RequestMessageError::Inbound(error);
+                                return CommunicationResults::RequestMsgResult(Err(err));
+                            }
+                        }
+                        P2PReqResEvent::OutboundFailure {
+                            peer_id: _,
+                            request_id,
+                            error,
+                        } => {
+                            if request_id == req_id {
+                                let err = RequestMessageError::Outbound(error);
+                                return CommunicationResults::RequestMsgResult(Err(err));
+                            }
+                        }
+                        P2PReqResEvent::Req {
+                            peer_id: _,
+                            request_id,
+                            request,
+                        } => {
+                            let res: Res = ask(&self.system, &self.config.client, request).await;
+                            self.swarm.send_response(res, request_id).unwrap();
+                        }
+                        _ => {}
                     }
                 }
+                _ => self.handle_swarm_event(event).await,
             }
-            _ => {
+            if start.elapsed() > Duration::new(10, 0) {
                 return CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(
-                    FirewallBlocked::Local,
-                )))
+                    FirewallBlocked::Remote,
+                )));
             }
         }
     }
