@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::behaviour::{MessageEvent, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent, P2POutboundFailure};
-use core::{ops::Deref, time::Duration};
+use crate::behaviour::{
+    MessageEvent, P2PEvent, P2PNetworkBehaviour, P2POutboundFailure, P2PReqResEvent, RequestEnvelope,
+};
+use core::{ops::Deref, str::FromStr, time::Duration};
 use futures::{channel::mpsc::UnboundedReceiver, future, prelude::*, select};
 use libp2p::{
     core::{connection::ListenerId, ConnectedPoint},
     identity::Keypair,
+    request_response::RequestId,
     swarm::{DialError, Swarm, SwarmEvent},
     Multiaddr, PeerId,
 };
@@ -16,13 +19,6 @@ use std::{
     task::{Context, Poll},
     time::Instant,
 };
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RequestEnvelope<Req: MessageEvent> {
-    remote: PeerId,
-    message: Req,
-}
 
 // Separate task that manages the swarm communication.
 pub(super) struct SwarmTask<Req, Res, T, U>
@@ -51,16 +47,18 @@ where
         system: ActorSystem,
         keypair: Keypair,
         config: CommunicationConfig<Req, T, U>,
+        behaviour: BehaviourConfig,
         swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, T>, Sender)>,
     ) -> Self {
         // Create a P2PNetworkBehaviour for the swarm communication.
-        let swarm = P2PNetworkBehaviour::<RequestEnvelope<Req>, Res>::init_swarm(keypair).unwrap();
+        let swarm = P2PNetworkBehaviour::<RequestEnvelope<Req>, Res>::init_swarm(keypair, behaviour).unwrap();
         SwarmTask {
             system,
             config,
             swarm,
             swarm_rx,
             listener: None,
+            relay: RelayConfig::NoRelay,
         }
     }
 
@@ -88,9 +86,41 @@ where
 
     fn shutdown(mut self) {
         if let Some(listener_id) = self.listener.take() {
-            Swarm::remove_listener(&mut self.swarm, listener_id);
+            let _ = Swarm::remove_listener(&mut self.swarm, listener_id);
         }
         self.swarm_rx.close();
+    }
+
+    async fn handle_incoming_envelope(
+        &mut self,
+        peer_id: PeerId,
+        request_id: RequestId,
+        request: RequestEnvelope<Req>,
+    ) {
+        if Swarm::local_peer_id(&self.swarm).to_string() != request.target {
+            return;
+        }
+        if let Ok(source) = PeerId::from_str(&request.source) {
+            println!("1");
+            // validate that peer is either directly connected or the request was forwarded from the relay
+            if peer_id == source
+                || match self.relay {
+                    RelayConfig::RelayAlways(relay_id) | RelayConfig::RelayBackup(relay_id) => peer_id == relay_id,
+                    RelayConfig::NoRelay => false,
+                }
+            {
+                println!("2");
+                let permission = self
+                    .ask_permission(request.message.clone(), source, RequestDirection::In)
+                    .await;
+                if let FirewallResponse::Accept = permission {
+                    println!("3");
+                    let res: Res = ask(&self.system, &self.config.client, request.message).await;
+                    println!("4");
+                    self.swarm.send_response(res, request_id).unwrap();
+                }
+            }
+        }
     }
 
     // Send incoming request to the client.
@@ -105,23 +135,11 @@ where
                     if let P2PReqResEvent::Req {
                         peer_id,
                         request_id,
-                        request: RequestEnvelope { remote, message },
+                        request,
                     } = boxed_event.deref().clone()
                     {
-                        // validate that peer is either directly connected or the request was forwarded from the relay
-                        let valid_peer = peer_id == remote
-                            || match self.relay {
-                                RelayConfig::RelayOnly(relay_id) | RelayConfig::RelayBackup(relay_id) => peer_id == relay_id,
-                                RelayConfig::NoRelay => false,
-                            };
-                        if !valid_peer {
-                            return;
-                        }
-                        let permission = self.ask_permission(message.clone(), remote, RequestDirection::In).await;
-                        if let FirewallResponse::Accept = permission {
-                            let res: Res = ask(&self.system, &self.config.client, message).await;
-                            self.swarm.send_response(res, request_id).unwrap();
-                        }
+                        println!("Received Swarm event {:?}", request);
+                        self.handle_incoming_envelope(peer_id, request_id, request).await;
                     }
                 }
                 P2PEvent::Identify(_) | P2PEvent::Mdns(_) => {}
@@ -141,6 +159,22 @@ where
                     send_back_addr,
                     num_established,
                 };
+            }
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                endpoint: ConnectedPoint::Dialer { address: _ },
+                num_established: 0,
+                cause: None,
+            } => {
+                // reestablish timedout connection to relay
+                match &self.relay {
+                    RelayConfig::RelayAlways(relay_id) | RelayConfig::RelayBackup(relay_id) => {
+                        if peer_id == *relay_id {
+                            let _ = Swarm::dial(&mut self.swarm, &peer_id);
+                        }
+                    }
+                    RelayConfig::NoRelay => {}
+                }
             }
             _ => {}
         }
@@ -166,33 +200,37 @@ where
 
     // Handle the messages that are received from other actors in the system..
     async fn handle_actor_request(&mut self, event: CommunicationRequest<Req, T>, sender: Sender) {
+        println!("Received Swarm Task{:?}", event);
         match event {
             CommunicationRequest::RequestMsg { peer_id, request } => {
                 let res = if let FirewallResponse::Accept = self
                     .ask_permission(request.clone(), peer_id, RequestDirection::Out)
-                    .await 
+                    .await
                 {
+                    let local_peer = Swarm::local_peer_id(&self.swarm);
                     let envelope = RequestEnvelope {
-                        remote: peer_id,
+                        source: local_peer.to_string(),
                         message: request,
+                        target: peer_id.to_string(),
                     };
                     match self.relay {
                         RelayConfig::NoRelay => self.send_request(peer_id, envelope).await,
                         RelayConfig::RelayAlways(relay_id) => self.send_request(relay_id, envelope).await,
                         RelayConfig::RelayBackup(relay_id) => {
                             // try sending directly, otherwise use relay
+                            let res = self.send_request(peer_id, envelope.clone()).await;
                             if let CommunicationResults::RequestMsgResult(Err(RequestMessageError::Outbound(
                                 P2POutboundFailure::DialFailure,
-                            ))) = self.send_request(peer_id, envelope).await
+                            ))) = res
                             {
                                 self.send_request(relay_id, envelope).await
+                            } else {
+                                res
                             }
                         }
                     }
                 } else {
-                    CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(
-                        FirewallBlocked::Local,
-                    )))
+                    CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(FirewallBlocked::Local)))
                 };
                 SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
@@ -232,12 +270,17 @@ where
             CommunicationRequest::BanPeer(peer_id) => {
                 Swarm::ban_peer_id(&mut self.swarm, peer_id);
                 let res = CommunicationResults::<Res>::BannedPeer(peer_id);
-                sender.unwrap().try_tell(res, None).unwrap();
+                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::UnbanPeer(peer_id) => {
                 Swarm::unban_peer_id(&mut self.swarm, peer_id);
                 let res = CommunicationResults::<Res>::UnbannedPeer(peer_id);
-                sender.unwrap().try_tell(res, None).unwrap();
+                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
+            }
+            CommunicationRequest::SetRelay(config) => {
+                self.relay = config;
+                let res = CommunicationResults::<Res>::SetRelay;
+                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::Shutdown => unreachable!(),
         }
@@ -340,6 +383,7 @@ where
                             response,
                         } => {
                             if request_id == req_id {
+                                println!("5");
                                 return CommunicationResults::RequestMsgResult(Ok(response));
                             }
                         }
@@ -364,12 +408,11 @@ where
                             }
                         }
                         P2PReqResEvent::Req {
-                            peer_id: _,
+                            peer_id,
                             request_id,
                             request,
                         } => {
-                            let res: Res = ask(&self.system, &self.config.client, request).await;
-                            self.swarm.send_response(res, request_id).unwrap();
+                            self.handle_incoming_envelope(peer_id, request_id, request).await;
                         }
                         _ => {}
                     }

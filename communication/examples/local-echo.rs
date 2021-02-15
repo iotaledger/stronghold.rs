@@ -47,7 +47,7 @@ use futures::{prelude::*, select};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use stronghold_communication::{
-    behaviour::{P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
+    behaviour::{BehaviourConfig, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
     libp2p::{Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
 };
 
@@ -196,9 +196,11 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
 // Create a swarm and poll for events from that swarm
 fn listen() {
     let local_keys = Keypair::generate_ed25519();
+    let config = BehaviourConfig::default();
 
     // Create a Swarm that implementes the Request-Reponse-, Identify-, and mDNS-Protocol
-    let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).expect("Could not create swarm.");
+    let mut swarm =
+        P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Could not create swarm.");
     Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).expect("Listening Error.");
 
     println!(

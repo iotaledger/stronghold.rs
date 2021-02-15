@@ -82,9 +82,9 @@ use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
 use core::{ops::Deref, str::FromStr};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use stronghold_communication::{
-    behaviour::{P2PEvent, P2PNetworkBehaviour, P2PReqResEvent},
+    behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent},
     libp2p::{ConnectedPoint, Keypair, Multiaddr, Swarm, SwarmEvent},
 };
 
@@ -154,14 +154,15 @@ fn eval_arg_matches(matches: &ArgMatches) -> Option<Matches> {
 fn run_mailbox(matches: &ArgMatches) {
     if matches.subcommand_matches("start-mailbox").is_some() {
         let local_keys = Keypair::generate_ed25519();
+        let config = BehaviourConfig::default();
 
         // Create swarm for communication
         let mut swarm =
-            P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).expect("Could not create swarm.");
+            P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Could not create swarm.");
         Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/16384".parse().unwrap()).expect("Listening error.");
         println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
         // temporary key-value store
-        let mut local_records = BTreeMap::new();
+        let mut local_records = HashMap::new();
         // Poll for events from the swarm
         task::block_on(async {
             loop {
@@ -221,9 +222,10 @@ fn put_record(matches: &ArgMatches) {
         }) = eval_arg_matches(matches)
         {
             let local_keys = Keypair::generate_ed25519();
+            let config = BehaviourConfig::default();
             // Create swarm for communication
-            let mut swarm =
-                P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).expect("Could not create swarm.");
+            let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config)
+                .expect("Could not create swarm.");
 
             // Connect to a remote mailbox on the server and then send the request.
             Swarm::dial_addr(&mut swarm, mail_addr.clone()).unwrap();
@@ -274,10 +276,11 @@ fn get_record(matches: &ArgMatches) {
     if let Some(matches) = matches.subcommand_matches("get-record") {
         if let Some(Matches { mail_addr, key, .. }) = eval_arg_matches(matches) {
             let local_keys = Keypair::generate_ed25519();
+            let config = BehaviourConfig::default();
 
             // Create swarm for communication
-            let mut swarm =
-                P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).expect("Could not create swarm.");
+            let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config)
+                .expect("Could not create swarm.");
 
             // Connect to a remote mailbox on the server and then send the request.
             Swarm::dial_addr(&mut swarm, mail_addr.clone()).unwrap();
@@ -322,7 +325,7 @@ fn get_record(matches: &ArgMatches) {
 }
 
 fn main() {
-    let yaml = load_yaml!("cli.yml");
+    let yaml = load_yaml!("cli_mailbox.yml");
     let matches = App::from(yaml).get_matches();
     run_mailbox(&matches);
     put_record(&matches);

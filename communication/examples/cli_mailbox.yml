@@ -1,7 +1,6 @@
 name: Communication CLI
 version: '1.0'
 author: Elena Frank <elena.frank@iota.org>
-about: Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
 subcommands:
   - start-mailbox:
       about: Start a mailbox that publishes records in kademlia upon receiving them in a request

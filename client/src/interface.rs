@@ -25,6 +25,7 @@ use stronghold_communication::{
         CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults, FirewallRequest,
         FirewallResponse,
     },
+    behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
 };
 
@@ -89,9 +90,13 @@ impl Stronghold {
         let communication_actor = {
             let local_keys = Keypair::generate_ed25519();
             let firewall = system.actor_of::<Firewall>("firewall").unwrap();
-            let config = CommunicationConfig::new(client.clone(), firewall);
+            let actor_config = CommunicationConfig::new(client.clone(), firewall);
+            let behaviour_config = BehaviourConfig::default();
             system
-                .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>("communication", (local_keys, config))
+                .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>(
+                    "communication",
+                    (local_keys, actor_config, behaviour_config),
+                )
                 .expect(line_error!())
         };
         system

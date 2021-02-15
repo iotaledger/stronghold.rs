@@ -52,6 +52,27 @@ pub enum BehaviourError {
     MdnsError(String),
 }
 
+#[derive(Debug, Clone)]
+pub struct BehaviourConfig {
+    timeout: Option<Duration>,
+    keep_alive: Option<Duration>,
+}
+
+impl BehaviourConfig {
+    pub fn new(timeout: Option<Duration>, keep_alive: Option<Duration>) -> Self {
+        BehaviourConfig { timeout, keep_alive }
+    }
+}
+
+impl Default for BehaviourConfig {
+    fn default() -> Self {
+        BehaviourConfig {
+            timeout: None,
+            keep_alive: None,
+        }
+    }
+}
+
 /// The `P2PNetworkBehaviour` determines the behaviour of the p2p-network.
 /// It combines the following protocols from libp2p
 /// - mDNS for peer discovery within the local network
@@ -90,7 +111,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     /// ```no_run
     /// use libp2p::identity::Keypair;
     /// use serde::{Deserialize, Serialize};
-    /// use stronghold_communication::behaviour::P2PNetworkBehaviour;
+    /// use stronghold_communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};
     ///
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// pub enum Request {
@@ -103,9 +124,13 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     /// }
     ///
     /// let local_keys = Keypair::generate_ed25519();
-    /// let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).unwrap();
+    /// let config = BehaviourConfig::default();
+    /// let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).unwrap();
     /// ```
-    pub fn init_swarm(local_keys: Keypair) -> Result<Swarm<P2PNetworkBehaviour<T, U>>, BehaviourError> {
+    pub fn init_swarm(
+        local_keys: Keypair,
+        config: BehaviourConfig,
+    ) -> Result<Swarm<P2PNetworkBehaviour<T, U>>, BehaviourError> {
         let local_peer_id = PeerId::from(local_keys.public());
 
         let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
@@ -139,7 +164,12 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
         // Enable Request- and Response-Messages with the generic MessageProtocol
         let msg_proto = {
             let mut cfg = RequestResponseConfig::default();
-            cfg.set_connection_keep_alive(Duration::from_secs(60));
+            if let Some(timeout) = config.timeout {
+                cfg.set_request_timeout(timeout);
+            }
+            if let Some(keep_alive) = config.keep_alive {
+                cfg.set_connection_keep_alive(keep_alive);
+            }
             let protocols = iter::once((MessageProtocol(), ProtocolSupport::Full));
             RequestResponse::new(MessageCodec::<T, U>::default(), protocols, cfg)
         };
@@ -296,7 +326,8 @@ mod test {
 
     fn mock_swarm() -> Swarm<P2PNetworkBehaviour<String, String>> {
         let local_keys = Keypair::generate_ed25519();
-        P2PNetworkBehaviour::<String, String>::init_swarm(local_keys).unwrap()
+        let config = BehaviourConfig::default();
+        P2PNetworkBehaviour::<String, String>::init_swarm(local_keys, config).unwrap()
     }
 
     fn mock_addr() -> Multiaddr {
@@ -306,7 +337,8 @@ mod test {
     #[test]
     fn new_behaviour() {
         let local_keys = Keypair::generate_ed25519();
-        let swarm = P2PNetworkBehaviour::<String, String>::init_swarm(local_keys.clone()).unwrap();
+        let config = BehaviourConfig::default();
+        let swarm = P2PNetworkBehaviour::<String, String>::init_swarm(local_keys.clone(), config).unwrap();
         assert_eq!(
             &PeerId::from_public_key(local_keys.public()),
             Swarm::local_peer_id(&swarm)
