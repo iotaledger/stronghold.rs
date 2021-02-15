@@ -8,6 +8,7 @@ use stronghold_communication::{
         ask, CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults, FirewallRequest,
         FirewallResponse,
     },
+    behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
 };
 
@@ -27,8 +28,12 @@ fn init_system(
     if firewall.is_err() {
         return None;
     }
-    let config = CommunicationConfig::new(client, firewall.unwrap());
-    let comms_actor = sys.actor_of_args::<CommunicationActor<_, Response, _, _>, _>("communication", (keys, config));
+    let actor_config = CommunicationConfig::new(client, firewall.unwrap());
+    let behaviour_config = BehaviourConfig::default();
+    let comms_actor = sys.actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
+        "communication",
+        (keys, actor_config, behaviour_config),
+    );
     comms_actor.ok().map(|comms_actor| (peer_id, comms_actor))
 }
 
@@ -207,9 +212,13 @@ fn ask_swarm_info() {
     let client = sys.actor_of::<BlankActor>("blank").unwrap();
     let keys = Keypair::generate_ed25519();
     let firewall = sys.actor_of::<Firewall>("firewall").unwrap();
-    let config = CommunicationConfig::new(client, firewall);
+    let actor_config = CommunicationConfig::new(client, firewall);
+    let behaviour_config = BehaviourConfig::default();
     let communication_actor = sys
-        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>("communication", (keys.clone(), config))
+        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
+            "communication",
+            (keys.clone(), actor_config, behaviour_config),
+        )
         .unwrap();
 
     let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8095".parse().unwrap();

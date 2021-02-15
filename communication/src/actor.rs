@@ -4,7 +4,7 @@
 mod ask;
 mod swarm_task;
 mod types;
-use crate::behaviour::MessageEvent;
+use crate::behaviour::{BehaviourConfig, MessageEvent};
 pub use ask::ask;
 use async_std::task;
 use core::{
@@ -15,7 +15,7 @@ use futures::{
     channel::mpsc::{unbounded, UnboundedSender},
     future,
 };
-use libp2p::core::identity::Keypair;
+use libp2p::identity::Keypair;
 use riker::actors::*;
 use swarm_task::SwarmTask;
 pub use types::*;
@@ -67,7 +67,10 @@ where
 /// use libp2p::identity::Keypair;
 /// use riker::actors::*;
 /// use serde::{Deserialize, Serialize};
-/// use stronghold_communication::actor::{CommunicationActor, CommunicationConfig, FirewallRequest, FirewallResponse};
+/// use stronghold_communication::{
+///     actor::{CommunicationActor, CommunicationConfig, FirewallRequest, FirewallResponse},
+///     behaviour::BehaviourConfig,
+/// };
 ///
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub enum Request {
@@ -117,9 +120,13 @@ where
 /// let keys = Keypair::generate_ed25519();
 /// let firewall = sys.actor_of::<Firewall>("firewall").unwrap();
 /// let client = sys.actor_of::<ClientActor>("client").unwrap();
-/// let config = CommunicationConfig::new(client, firewall);
+/// let actor_config = CommunicationConfig::new(client, firewall);
+/// let behaviour_config = BehaviourConfig::default();
 /// let comms_actor = sys
-///     .actor_of_args::<CommunicationActor<_, Response, _, _>, _>("communication", (local_keys, config))
+///     .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
+///         "communication",
+///         (local_keys, actor_config, behaviour_config),
+///     )
 ///     .unwrap();
 /// ```
 pub struct CommunicationActor<Req, Res, T, U>
@@ -130,12 +137,13 @@ where
     U: Message + From<FirewallRequest<Req>>,
 {
     swarm_tx: Option<UnboundedSender<(CommunicationRequest<Req, T>, Sender)>>,
-    swarm_task_config: Option<(Keypair, CommunicationConfig<Req, T, U>)>,
+    swarm_task_config: Option<(Keypair, CommunicationConfig<Req, T, U>, BehaviourConfig)>,
     poll_swarm_handle: Option<future::RemoteHandle<()>>,
     marker: PhantomData<Res>,
 }
 
-impl<Req, Res, T, U> ActorFactoryArgs<(Keypair, CommunicationConfig<Req, T, U>)> for CommunicationActor<Req, Res, T, U>
+impl<Req, Res, T, U> ActorFactoryArgs<(Keypair, CommunicationConfig<Req, T, U>, BehaviourConfig)>
+    for CommunicationActor<Req, Res, T, U>
 where
     Req: MessageEvent,
     Res: MessageEvent,
@@ -144,7 +152,7 @@ where
 {
     // Create a [`CommunicationActor`] that spwans a task to poll from the swarm.
     // The provided keypair is used to authenticate the swarm communication.
-    fn create_args(config: (Keypair, CommunicationConfig<Req, T, U>)) -> Self {
+    fn create_args(config: (Keypair, CommunicationConfig<Req, T, U>, BehaviourConfig)) -> Self {
         Self {
             swarm_tx: None,
             swarm_task_config: Some(config),
@@ -171,15 +179,17 @@ where
         let (swarm_tx, swarm_rx) = unbounded();
         self.swarm_tx = Some(swarm_tx);
         // Init task
-        let (keypair, config) = self.swarm_task_config.take().unwrap();
+        let (keypair, actor_config, behaviour_config) = self.swarm_task_config.take().unwrap();
         let actor_system = ctx.system.clone();
-        let swarm_task = SwarmTask::<_, Res, _, _>::new(actor_system, keypair, config, swarm_rx);
+        let swarm_task =
+            SwarmTask::<_, Res, _, _>::new(actor_system, keypair, actor_config, behaviour_config, swarm_rx);
         // Kick off the swarm communication.
         self.poll_swarm_handle = ctx.run(swarm_task.poll_swarm()).ok();
     }
 
     // Forward the received events to the task that is managing the swarm communication.
     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        println!("Received {:?}", msg);
         let mut tx = self.swarm_tx.clone().unwrap();
         task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
             match tx.poll_ready(tcx) {

@@ -1,6 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use core::fmt::Debug;
 use libp2p::{
     core::{Multiaddr, PeerId},
     identify::IdentifyEvent,
@@ -8,9 +9,18 @@ use libp2p::{
     request_response::{InboundFailure, OutboundFailure, RequestId, RequestResponseEvent, RequestResponseMessage},
     swarm::ProtocolsHandlerUpgrErr,
 };
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 #[cfg(feature = "mdns")]
 use libp2p::mdns::MdnsEvent;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestEnvelope<Req: Debug + Clone + Serialize + DeserializeOwned> {
+    pub source: String,
+    #[serde(bound = "Req: Debug + Clone + Serialize + DeserializeOwned")]
+    pub message: Req,
+    pub target: String,
+}
 
 /// Event that can be produced by the `Mdns` behaviour.
 #[derive(Debug, Clone, PartialEq)]

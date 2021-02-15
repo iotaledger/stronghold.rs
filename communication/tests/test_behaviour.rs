@@ -6,7 +6,7 @@ use core::{ops::Deref, time::Duration};
 use futures::future;
 use serde::{Deserialize, Serialize};
 use stronghold_communication::{
-    behaviour::{P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
+    behaviour::{BehaviourConfig, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
     libp2p::{Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
 };
 
@@ -22,7 +22,8 @@ pub enum Response {
 
 fn mock_swarm() -> Swarm<P2PNetworkBehaviour<Request, Response>> {
     let local_keys = Keypair::generate_ed25519();
-    P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).unwrap()
+    let config = BehaviourConfig::default();
+    P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).unwrap()
 }
 
 #[test]

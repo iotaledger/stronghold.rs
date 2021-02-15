@@ -150,6 +150,8 @@ pub enum CommunicationResults<Res> {
     StartListeningResult(Result<Multiaddr, ()>),
     /// Stopped listening to the swarm for incoming connections.
     RemoveListenerResult(Result<(), ()>),
+    /// Success setting relay
+    SetRelay,
 }
 
 /// Events that are received from the swarm without being initiated by the local system.

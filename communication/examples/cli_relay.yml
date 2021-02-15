@@ -1,0 +1,31 @@
+name: Communication CLI
+version: '1.0'
+author: Elena Frank <elena.frank@iota.org>
+subcommands:
+  - start-relay:
+      about: Start a relay server that forwards request if the remote peer is connected
+      args:
+        - port:
+            short: p
+            long: port
+            value_name: listening-port
+            about: the listening port for the peer, default is 16384
+            required: false
+            takes_value: true
+  - connect:
+      about: Connect with a local peer to the relay server
+      args:
+        - relay_addr:
+            short: a
+            long: relay-addr
+            value_name: relay-multi-addr
+            about: the multi-address of the relay
+            required: true
+            takes_value: true
+        - relay_adasdr:
+            short: b
+            long: reaslay-addr
+            value_name: relay-mulasdti-addr
+            about: the multi-adasddress of the relay
+            required: false
+            takes_value: true
