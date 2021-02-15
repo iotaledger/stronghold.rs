@@ -148,9 +148,8 @@ mod test {
             socket.shutdown(Shutdown::Both).unwrap();
         });
         task::block_on(async {
-            listener_handle.await;
-            writer_handle.await;
-        })
+            future::join(listener_handle, writer_handle).await;
+        });
     }
 
     #[test]
@@ -185,9 +184,8 @@ mod test {
             socket.shutdown(Shutdown::Both).unwrap();
         });
         task::block_on(async {
-            listener_handle.await;
-            writer_handle.await;
-        })
+            future::join(listener_handle, writer_handle).await;
+        });
     }
 
     #[test]
@@ -224,9 +222,8 @@ mod test {
             socket.shutdown(Shutdown::Both).unwrap();
         });
         task::block_on(async {
-            listener_handle.await;
-            writer_handle.await;
-        })
+            future::join(listener_handle, writer_handle).await;
+        });
     }
 
     #[test]
@@ -263,8 +260,7 @@ mod test {
             socket.shutdown(Shutdown::Both).unwrap();
         });
         task::block_on(async {
-            listener_handle.await;
-            writer_handle.await;
-        })
+            future::join(listener_handle, writer_handle).await;
+        });
     }
 }

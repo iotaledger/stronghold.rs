@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{ask::ask, message::*, CommunicationConfig};
+use super::*;
 use crate::behaviour::{MessageEvent, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent};
 use core::{ops::Deref, time::Duration};
 use futures::{channel::mpsc::UnboundedReceiver, future, prelude::*, select};
@@ -16,7 +16,6 @@ use std::{
     task::{Context, Poll},
     time::Instant,
 };
-
 // Separate task that manages the swarm communication.
 pub(super) struct SwarmTask<Req, Res, T, U>
 where
@@ -64,13 +63,25 @@ where
                 swarm_event = self.swarm.next_event().fuse() => self.handle_swarm_event(swarm_event).await,
                 actor_event = self.swarm_rx.next().fuse() => {
                     if let Some((message, sender)) = actor_event {
-                        self.handle_actor_request(message, sender).await
+                        if let CommunicationRequest::Shutdown = message {
+                            break;
+                        } else {
+                            self.handle_actor_request(message, sender).await
+                        }
                     } else {
-                        return
+                        break
                     }
                 },
             };
         }
+        self.shutdown();
+    }
+
+    fn shutdown(mut self) {
+        if let Some(listener_id) = self.listener.take() {
+            let _ = Swarm::remove_listener(&mut self.swarm, listener_id);
+        }
+        self.swarm_rx.close();
     }
 
     // Send incoming request to the client.
@@ -184,10 +195,11 @@ where
                 let res = CommunicationResults::<Res>::UnbannedPeer(peer_id);
                 sender.unwrap().try_tell(res, None).unwrap();
             }
+            CommunicationRequest::Shutdown => unreachable!(),
         }
     }
 
-    // Send a reponse to the sender of a previous [`CommuncationRequest`]
+    // Send a reponse to the sender of a previous [`CommunicationRequest`]
     fn send_response(result: CommunicationResults<Res>, sender: Sender) {
         if let Some(sender) = sender {
             let _ = sender.try_tell(result, None);
@@ -222,13 +234,11 @@ where
             match err {
                 DialError::NoAddresses => {
                     if let Err(limit) = Swarm::dial_addr(&mut self.swarm, target_addr.clone()) {
-                        return CommunicationResults::<Res>::ConnectPeerResult(Err(ConnectPeerError::ConnectionLimit(
-                            limit,
-                        )));
+                        return CommunicationResults::ConnectPeerResult(Err(ConnectPeerError::ConnectionLimit(limit)));
                     }
                 }
                 _ => {
-                    return CommunicationResults::<Res>::ConnectPeerResult(Err(err.into()));
+                    return CommunicationResults::ConnectPeerResult(Err(err.into()));
                 }
             }
         }
@@ -242,7 +252,7 @@ where
                     num_established: _,
                 } => {
                     if peer_id == target_peer {
-                        return CommunicationResults::<Res>::ConnectPeerResult(Ok(peer_id));
+                        return CommunicationResults::ConnectPeerResult(Ok(peer_id));
                     } else {
                         self.handle_swarm_event(event).await
                     }
@@ -254,18 +264,18 @@ where
                     attempts_remaining: 0,
                 } => {
                     if peer_id == target_peer {
-                        return CommunicationResults::<Res>::ConnectPeerResult(Err(ConnectPeerError::from(error)));
+                        return CommunicationResults::ConnectPeerResult(Err(ConnectPeerError::from(error)));
                     }
                 }
                 SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {
                     if address == target_addr {
-                        return CommunicationResults::<Res>::ConnectPeerResult(Err(ConnectPeerError::from(error)));
+                        return CommunicationResults::ConnectPeerResult(Err(ConnectPeerError::from(error)));
                     }
                 }
                 _ => self.handle_swarm_event(event).await,
             }
             if start.elapsed() > Duration::new(3, 0) {
-                return CommunicationResults::<Res>::ConnectPeerResult(Err(ConnectPeerError::Timeout));
+                return CommunicationResults::ConnectPeerResult(Err(ConnectPeerError::Timeout));
             }
         }
     }
@@ -301,7 +311,7 @@ where
                                 } => {
                                     if request_id == req_id {
                                         let err = RequestMessageError::Inbound(error);
-                                        return CommunicationResults::<Res>::RequestMsgResult(Err(err));
+                                        return CommunicationResults::RequestMsgResult(Err(err));
                                     }
                                 }
                                 P2PReqResEvent::OutboundFailure {
@@ -311,7 +321,7 @@ where
                                 } => {
                                     if request_id == req_id {
                                         let err = RequestMessageError::Outbound(error);
-                                        return CommunicationResults::<Res>::RequestMsgResult(Err(err));
+                                        return CommunicationResults::RequestMsgResult(Err(err));
                                     }
                                 }
                                 P2PReqResEvent::Req {
@@ -328,7 +338,7 @@ where
                         _ => self.handle_swarm_event(event).await,
                     }
                     if start.elapsed() > Duration::new(10, 0) {
-                        return CommunicationResults::<Res>::RequestMsgResult(Err(RequestMessageError::Rejected(
+                        return CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(
                             FirewallBlocked::Remote,
                         )));
                     }

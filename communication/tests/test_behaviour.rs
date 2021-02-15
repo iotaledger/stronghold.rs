@@ -200,9 +200,8 @@ fn request_response() {
         }
     });
     task::block_on(async {
-        local_handle.await;
-        remote_handle.await;
-    })
+        future::join(local_handle, remote_handle).await;
+    });
 }
 
 #[test]
