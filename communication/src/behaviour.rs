@@ -330,7 +330,7 @@ mod test {
     #[test]
     fn listen_addr() {
         let mut swarm = mock_swarm();
-        let listen_addr: Multiaddr = "/ip4/127.0.0.5/tcp/8085".parse().unwrap();
+        let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8085".parse().unwrap();
         let listener_id = Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
         task::block_on(async {
             loop {
@@ -397,7 +397,7 @@ mod test {
         assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
 
         // empty port
-        let mut listen_addr = "/ip4/127.0.0.6/tcp/0".parse::<Multiaddr>().unwrap();
+        let mut listen_addr = "/ip4/127.0.0.1/tcp/0".parse::<Multiaddr>().unwrap();
         Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
         let mut actual_addr = task::block_on(async {
             loop {
