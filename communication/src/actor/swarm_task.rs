@@ -101,7 +101,6 @@ where
             return;
         }
         if let Ok(source) = PeerId::from_str(&request.source) {
-            println!("1");
             // validate that peer is either directly connected or the request was forwarded from the relay
             if peer_id == source
                 || match self.relay {
@@ -109,15 +108,12 @@ where
                     RelayConfig::NoRelay => false,
                 }
             {
-                println!("2");
                 let permission = self
                     .ask_permission(request.message.clone(), source, RequestDirection::In)
                     .await;
                 if let FirewallResponse::Accept = permission {
-                    println!("3");
                     let res: Res = ask(&self.system, &self.config.client, request.message).await;
-                    println!("4");
-                    self.swarm.send_response(res, request_id).unwrap();
+                    self.swarm.send_response(request_id, res).unwrap();
                 }
             }
         }
@@ -138,7 +134,6 @@ where
                         request,
                     } = boxed_event.deref().clone()
                     {
-                        println!("Received Swarm event {:?}", request);
                         self.handle_incoming_envelope(peer_id, request_id, request).await;
                     }
                 }
@@ -200,7 +195,6 @@ where
 
     // Handle the messages that are received from other actors in the system..
     async fn handle_actor_request(&mut self, event: CommunicationRequest<Req, T>, sender: Sender) {
-        println!("Received Swarm Task{:?}", event);
         match event {
             CommunicationRequest::RequestMsg { peer_id, request } => {
                 let res = if let FirewallResponse::Accept = self
@@ -383,7 +377,6 @@ where
                             response,
                         } => {
                             if request_id == req_id {
-                                println!("5");
                                 return CommunicationResults::RequestMsgResult(Ok(response));
                             }
                         }

@@ -140,7 +140,7 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                 println!("Received message from peer {:?}\n{:?}", peer_id, request);
                 match request {
                     Request::Ping => {
-                        let response = swarm.send_response(Response::Pong, request_id);
+                        let response = swarm.send_response(request_id, Response::Pong);
                         if response.is_ok() {
                             println!("Send Pong back");
                         } else {
@@ -148,7 +148,7 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                         }
                     }
                     Request::Msg(msg) => {
-                        let response = swarm.send_response(Response::Msg(format!("echo: {}", msg)), request_id);
+                        let response = swarm.send_response(request_id, Response::Msg(format!("echo: {}", msg)));
                         if response.is_ok() {
                             println!("Echoed message");
                         } else {

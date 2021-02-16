@@ -189,7 +189,6 @@ where
 
     // Forward the received events to the task that is managing the swarm communication.
     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        println!("Received {:?}", msg);
         let mut tx = self.swarm_tx.clone().unwrap();
         task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
             match tx.poll_ready(tcx) {

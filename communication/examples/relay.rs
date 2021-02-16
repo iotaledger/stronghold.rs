@@ -9,11 +9,15 @@ use clap::{load_yaml, App, ArgMatches};
 use core::{ops::Deref, str::FromStr, time::Duration};
 use futures::{prelude::*, select};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Instant};
 use stronghold_communication::{
     behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent, RequestEnvelope},
     libp2p::{ConnectedPoint, Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Ack;
 
 // Start a mailbox that publishes record for other peers
 fn run_relay(matches: &ArgMatches) {
@@ -21,7 +25,7 @@ fn run_relay(matches: &ArgMatches) {
         let local_keys = Keypair::generate_ed25519();
         let config = BehaviourConfig::new(Some(Duration::from_secs(5)), Some(Duration::from_secs(60)));
         // Create swarm for communication
-        let mut swarm = P2PNetworkBehaviour::<RequestEnvelope<String>, String>::init_swarm(local_keys, config)
+        let mut swarm = P2PNetworkBehaviour::<RequestEnvelope<String>, Ack>::init_swarm(local_keys, config)
             .expect("Could not create swarm.");
         Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/16384".parse().unwrap()).expect("Listening error.");
         println!("\nLocal PeerId: {:?}", Swarm::local_peer_id(&swarm));
@@ -65,7 +69,7 @@ fn run_relay(matches: &ArgMatches) {
                                 response,
                             } => {
                                 if let Some(original_request) = requests.remove(&request_id) {
-                                    let _ = swarm.send_response(response, original_request);
+                                    let _ = swarm.send_response(original_request, response);
                                 }
                             }
                             _ => {}
@@ -88,7 +92,7 @@ fn start_peer(matches: &ArgMatches) {
 
         // Create swarm for communication
         let config = BehaviourConfig::new(Some(Duration::from_secs(10)), Some(Duration::from_secs(60)));
-        let mut swarm = P2PNetworkBehaviour::<RequestEnvelope<String>, String>::init_swarm(local_keys, config)
+        let mut swarm = P2PNetworkBehaviour::<RequestEnvelope<String>, Ack>::init_swarm(local_keys, config)
             .expect("Could not create swarm.");
         println!("\nLocal Peer Id {:?}", Swarm::local_peer_id(&swarm));
 
@@ -156,8 +160,8 @@ fn start_peer(matches: &ArgMatches) {
 // These events are either messages from remote peers or events from the protocols i.g.
 // `P2PEvent::Identify`
 fn handle_event(
-    swarm: &mut Swarm<P2PNetworkBehaviour<RequestEnvelope<String>, String>>,
-    e: P2PEvent<RequestEnvelope<String>, String>,
+    swarm: &mut Swarm<P2PNetworkBehaviour<RequestEnvelope<String>, Ack>>,
+    e: P2PEvent<RequestEnvelope<String>, Ack>,
     relay_peer: PeerId,
     remote_target: &mut Option<PeerId>,
 ) {
@@ -186,9 +190,7 @@ fn handle_event(
                     println!("\n==== Message from {:?}\n\n>{:?}", source, message);
                     remote_target.replace(source);
                 }
-                swarm
-                    .send_response(String::new(), request_id)
-                    .expect("Failed to send ack back.")
+                swarm.send_response(request_id, Ack).expect("Failed to send ack back.")
             }
             // Response to an request that out local peer send before
             P2PReqResEvent::Res {
@@ -206,7 +208,7 @@ fn handle_event(
 }
 
 fn handle_input_line(
-    swarm: &mut Swarm<P2PNetworkBehaviour<RequestEnvelope<String>, String>>,
+    swarm: &mut Swarm<P2PNetworkBehaviour<RequestEnvelope<String>, Ack>>,
     line: &str,
     relay_peer: PeerId,
     remote_target: &mut Option<PeerId>,
