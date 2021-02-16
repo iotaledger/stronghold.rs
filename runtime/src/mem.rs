@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::alloc::{GlobalAlloc, Layout, LayoutErr};
-
+use core::ptr::NonNull;
 use zeroize::Zeroize;
 
 #[derive(PartialEq, Debug)]
@@ -18,11 +18,14 @@ mod posix;
 pub use self::posix::{lock, mmap, munmap, page_size, prot, protect};
 
 #[cfg(windows)]
-pub use self::win::{lock, mmap, munmap, page_size, prot, protect};
+pub use self::win::{
+    calc_total_size, lock, mmap, munmap, page_size, prot, protect, unlock, CANARY_SIZE, GARBAGE_VALUE,
+};
 
 #[cfg(windows)]
 mod win;
 
+#[cfg(not(windows))]
 #[derive(Debug, PartialEq)]
 pub struct GuardedAllocation {
     base: *mut u8,
@@ -30,6 +33,15 @@ pub struct GuardedAllocation {
     data_region_size: usize,
     data_aligned: *mut u8,
     mmapped_size: usize, // size of the memory mapping (including guard pages)
+}
+
+#[cfg(windows)]
+#[derive(Debug, PartialEq)]
+pub struct GuardedAllocation {
+    base: *mut u8,
+    user: *mut u8,
+    size: usize,
+    unprotected: *mut u8,
 }
 
 pub struct GuardedAllocator {}
@@ -41,53 +53,69 @@ impl GuardedAllocation {
 
     pub fn aligned(l: Layout) -> crate::Result<Self> {
         let n = l.size();
+
         if n == 0 {
             return Err(Error::ZeroAllocation.into());
         }
 
-        let a = l.align();
-        let p = page_size();
-
-        let data_region_size = n + pad(n, p);
-        let a = if p % a == 0 {
-            let mmapped_size = p + data_region_size + p;
-            let base = mmap(mmapped_size)?;
-            let i = pad_minimizer(a, n, p);
-            Self {
-                base,
-                data_region_start: unsafe { base.add(p) },
-                data_region_size,
-                data_aligned: unsafe { base.add(p + i * a) },
-                mmapped_size,
-            }
-        } else if a % p == 0 {
-            let x = mmap(a + data_region_size + p)?;
-            let i = a / p;
-            let j = x as usize / p;
-            let o = i - 1 - (j % i);
-            let base = unsafe { x.add(o * p) };
-            if o > 0 {
-                munmap(x, o * p)?;
-            }
-            let mmapped_size = p + n + pad(n, p) + p;
-
-            if j % i > 0 {
-                let end = unsafe { base.add(mmapped_size) };
-                munmap(end, (j % i) * p)?;
-            }
+        #[cfg(windows)]
+        let a = {
+            let (base, user, unprotected) = mmap(n).unwrap();
 
             Self {
                 base,
-                data_region_start: unsafe { base.add(p) },
-                data_region_size,
-                data_aligned: unsafe { base.add(p) },
-                mmapped_size,
+                user,
+                size: n,
+                unprotected,
             }
-        } else {
-            return Err(crate::Error::unreachable(
-                "page size and requested alignment is coprime",
-            ));
         };
+        #[cfg(not(windows))]
+        {
+            let a = l.align();
+            let p = page_size();
+            let data_region_size = n + pad(n, p);
+            let a = if p % a == 0 {
+                let mmapped_size = p + data_region_size + p;
+
+                let base = mmap(mmapped_size)?;
+
+                let i = pad_minimizer(a, n, p);
+                Self {
+                    base,
+                    data_region_start: unsafe { base.add(p) },
+                    data_region_size,
+                    data_aligned: unsafe { base.add(p + i * a) },
+                    mmapped_size,
+                }
+            } else if a % p == 0 {
+                let x = mmap(a + data_region_size + p)?;
+                let i = a / p;
+                let j = x as usize / p;
+                let o = i - 1 - (j % i);
+                let base = unsafe { x.add(o * p) };
+                if o > 0 {
+                    munmap(x, o * p)?;
+                }
+                let mmapped_size = p + n + pad(n, p) + p;
+
+                if j % i > 0 {
+                    let end = unsafe { base.add(mmapped_size) };
+                    munmap(end, (j % i) * p)?;
+                }
+
+                Self {
+                    base,
+                    data_region_start: unsafe { base.add(p) },
+                    data_region_size,
+                    data_aligned: unsafe { base.add(p) },
+                    mmapped_size,
+                }
+            } else {
+                return Err(crate::Error::unreachable(
+                    "page size and requested alignment is coprime",
+                ));
+            };
+        }
 
         a.protect(true, true)?;
         a.lock()?;
@@ -98,6 +126,12 @@ impl GuardedAllocation {
         // then at least they don't reserve physical memory, (assuming COW))
     }
 
+    #[cfg(windows)]
+    unsafe fn from_ptr(data: *mut u8, l: Layout) -> Self {
+        unimplemented!()
+    }
+
+    #[cfg(not(windows))]
     unsafe fn from_ptr(data: *mut u8, l: Layout) -> Self {
         let p = page_size();
         let n = l.size();
@@ -113,20 +147,55 @@ impl GuardedAllocation {
         }
     }
 
+    #[cfg(windows)]
+    pub fn free(&self) -> crate::Result<()> {
+        let base = NonNull::new(self.user).unwrap();
+
+        munmap(base);
+
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
     pub fn free(&self) -> crate::Result<()> {
         unsafe { core::slice::from_raw_parts_mut(self.data_region_start, self.data_region_size) }.zeroize();
         munmap(self.base, self.mmapped_size)
     }
 
+    #[cfg(windows)]
+    pub fn data(&self) -> *mut u8 {
+        self.user
+    }
+
+    #[cfg(not(windows))]
     pub fn data(&self) -> *mut u8 {
         self.data_aligned
     }
 
+    #[cfg(windows)]
+    pub fn protect(&self, read: bool, write: bool) -> crate::Result<()> {
+        let prot = prot(read, write);
+        let base = NonNull::new(self.unprotected).unwrap();
+
+        protect(base, prot);
+
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
     pub fn protect(&self, read: bool, write: bool) -> crate::Result<()> {
         let prot = prot(read, write);
         protect(self.data_region_start, self.data_region_size as usize, prot)
     }
 
+    #[cfg(windows)]
+    fn lock(&self) -> crate::Result<()> {
+        lock(self.base, self.size);
+
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
     fn lock(&self) -> crate::Result<()> {
         lock(self.data_region_start, self.data_region_size)
     }
@@ -315,21 +384,78 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(windows)]
+    fn do_alloc_test(n: usize) -> crate::Result<()> {
+        let a = GuardedAllocation::unaligned(n)?;
+
+        let data = a.data();
+
+        let bs = unsafe { core::slice::from_raw_parts_mut(data, n) };
+
+        for b in bs.iter() {
+            assert_eq!(*b, 0u8);
+        }
+
+        OsRng.fill(bs);
+
+        a.free()?;
+
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_alloc_page_size() -> crate::Result<()> {
+        do_alloc_test(page_size())?;
+
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_alloc_size_one() -> crate::Result<()> {
+        do_alloc_test(1)?;
+
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_alloc_page_size_plus_one() -> crate::Result<()> {
+        do_alloc_test(page_size() + 1)?;
+
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_alloc_random_sizes() -> crate::Result<()> {
+        for _ in 0..10 {
+            do_alloc_test(fresh_non_zero_size(page_size() * page_size()))?
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
     #[test]
     fn allocate_whole_page() -> crate::Result<()> {
         do_sized_alloc_test(page_size())
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn allocate_less_than_a_whole_page() -> crate::Result<()> {
         do_sized_alloc_test(1)
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn allocate_little_more_than_a_whole_page() -> crate::Result<()> {
         do_sized_alloc_test(page_size() + 1)
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn allocate_random_sizes() -> crate::Result<()> {
         for _ in 1..10 {
@@ -338,6 +464,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn alignment() -> crate::Result<()> {
         for _ in 1..100 {
