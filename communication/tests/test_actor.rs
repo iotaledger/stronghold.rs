@@ -147,7 +147,7 @@ fn msg_external_actor() {
         }
     }
 
-    let remote_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8090".parse().unwrap();
+    let remote_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8095".parse().unwrap();
 
     // init remote actor system
     let remote_sys = ActorSystem::new().unwrap();
@@ -221,7 +221,7 @@ fn ask_swarm_info() {
         )
         .unwrap();
 
-    let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8095".parse().unwrap();
+    let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8096".parse().unwrap();
     match task::block_on(try_ask(
         &sys,
         &communication_actor,

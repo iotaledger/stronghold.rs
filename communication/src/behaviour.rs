@@ -241,7 +241,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
         self.msg_proto.send_request(peer_id, request)
     }
 
-    pub fn send_response(&mut self, response: U, request_id: RequestId) -> Result<(), U> {
+    pub fn send_response(&mut self, request_id: RequestId, response: U) -> Result<(), U> {
         let channel = self
             .response_channels
             .remove(&request_id)

@@ -188,17 +188,17 @@ fn run_mailbox(matches: &ArgMatches) {
                                 Request::PutRecord(record) => {
                                     local_records.insert(record.key(), record.value());
                                     swarm
-                                        .send_response(Response::Outcome(RequestOutcome::Success), request_id)
+                                        .send_response(request_id, Response::Outcome(RequestOutcome::Success))
                                         .unwrap();
                                 }
                                 // Send the record for that key to the remote peer
                                 Request::GetRecord(key) => {
                                     if let Some((key, value)) = local_records.get_key_value(&key) {
                                         let record = MailboxRecord::new(key.clone(), value.clone());
-                                        swarm.send_response(Response::Record(record), request_id).unwrap();
+                                        swarm.send_response(request_id, Response::Record(record)).unwrap();
                                     } else {
                                         swarm
-                                            .send_response(Response::Outcome(RequestOutcome::Error), request_id)
+                                            .send_response(request_id, Response::Outcome(RequestOutcome::Error))
                                             .unwrap();
                                     }
                                 }
