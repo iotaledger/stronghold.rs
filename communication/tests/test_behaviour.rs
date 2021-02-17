@@ -22,10 +22,13 @@ pub enum Response {
     Pong,
 }
 
-fn mock_swarm() -> Swarm<P2PNetworkBehaviour<Request, Response>> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Empty;
+
+fn mock_swarm<Req: MessageEvent, Res: MessageEvent>() -> Swarm<P2PNetworkBehaviour<Req, Res>> {
     let local_keys = Keypair::generate_ed25519();
     let config = BehaviourConfig::default();
-    P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).unwrap()
+    P2PNetworkBehaviour::init_swarm(local_keys, config).unwrap()
 }
 
 fn start_listening<Req: MessageEvent, Res: MessageEvent>(
@@ -48,8 +51,10 @@ fn start_listening<Req: MessageEvent, Res: MessageEvent>(
 
 fn establish_connection<Req: MessageEvent, Res: MessageEvent>(
     target_id: PeerId,
+    target_addr: Multiaddr,
     swarm: &mut Swarm<P2PNetworkBehaviour<Req, Res>>,
-) {
+) -> Option<()> {
+    Swarm::dial_addr(swarm, target_addr).unwrap();
     task::block_on(async {
         loop {
             match swarm.next_event().await {
@@ -59,7 +64,7 @@ fn establish_connection<Req: MessageEvent, Res: MessageEvent>(
                     num_established: _,
                 } => {
                     assert_eq!(peer_id, target_id);
-                    break;
+                    return Some(());
                 }
                 SwarmEvent::ConnectionClosed {
                     peer_id: _,
@@ -73,17 +78,17 @@ fn establish_connection<Req: MessageEvent, Res: MessageEvent>(
                     error: _,
                     attempts_remaining: 0,
                 }
-                | SwarmEvent::UnknownPeerUnreachableAddr { address: _, error: _ } => panic!(),
+                | SwarmEvent::UnknownPeerUnreachableAddr { address: _, error: _ } => return None,
                 _ => {}
             }
         }
-    });
+    })
 }
 
 #[test]
 #[should_panic]
 fn reuse_addr() {
-    let mut swarm_a = mock_swarm();
+    let mut swarm_a = mock_swarm::<Empty, Empty>();
     let listen_addr = "/ip4/127.0.0.1/tcp/8087".parse::<Multiaddr>();
     if listen_addr.is_err() {
         return;
@@ -98,21 +103,21 @@ fn reuse_addr() {
     }
 
     // set second swarm to listen to same address
-    let mut swarm_b = mock_swarm();
+    let mut swarm_b = mock_swarm::<Empty, Empty>();
     Swarm::listen_on(&mut swarm_b, listen_addr).unwrap();
     start_listening(&mut swarm_b).unwrap();
 }
 
 #[test]
 fn reuse_port() {
-    let mut swarm_a = mock_swarm();
+    let mut swarm_a = mock_swarm::<Empty, Empty>();
     let listen_addr = "/ip4/127.0.0.1/tcp/8088".parse::<Multiaddr>().unwrap();
     Swarm::listen_on(&mut swarm_a, listen_addr.clone()).unwrap();
     let actual_addr = start_listening(&mut swarm_a).unwrap();
     assert_eq!(listen_addr, actual_addr);
 
     // set second swarm to listen to same port but different ip
-    let mut swarm_b = mock_swarm();
+    let mut swarm_b = mock_swarm::<Empty, Empty>();
     let listen_addr = "/ip4/127.0.0.2/tcp/8088".parse::<Multiaddr>().unwrap();
     Swarm::listen_on(&mut swarm_b, listen_addr.clone()).unwrap();
     let actual_addr = start_listening(&mut swarm_b).unwrap();
@@ -121,18 +126,18 @@ fn reuse_port() {
 
 #[test]
 fn request_response() {
-    let mut remote = mock_swarm();
-    let remote_peer_id = *Swarm::local_peer_id(&remote);
-    Swarm::listen_on(&mut remote, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+    let mut swarm_a = mock_swarm::<Request, Response>();
+    let peer_a_id = *Swarm::local_peer_id(&swarm_a);
+    Swarm::listen_on(&mut swarm_a, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
 
-    let mut local = mock_swarm();
-    let local_peer_id = *Swarm::local_peer_id(&local);
+    let mut swarm_b = mock_swarm::<Request, Response>();
+    let local_peer_id = *Swarm::local_peer_id(&swarm_b);
 
-    let remote_addr = start_listening(&mut remote).unwrap();
+    let addr_a = start_listening(&mut swarm_a).unwrap();
 
     let remote_handle = task::spawn(async move {
         loop {
-            if let P2PEvent::RequestResponse(boxed_event) = remote.next().await {
+            if let P2PEvent::RequestResponse(boxed_event) = swarm_a.next().await {
                 match boxed_event.deref().clone() {
                     P2PReqResEvent::Req {
                         peer_id,
@@ -140,52 +145,50 @@ fn request_response() {
                         request: Request::Ping,
                     } => {
                         assert_eq!(peer_id, local_peer_id);
-                        remote.send_response(request_id, Response::Pong).unwrap();
+                        swarm_a.send_response(request_id, Response::Pong).unwrap();
                     }
                     P2PReqResEvent::ResSent { peer_id, request_id: _ } => {
                         assert_eq!(peer_id, local_peer_id);
                         std::thread::sleep(Duration::from_millis(50));
-                        return;
+                        return Ok(());
                     }
-                    _ => {}
+                    _ => return Err(()),
                 }
             }
         }
     });
 
-    Swarm::dial_addr(&mut local, remote_addr).unwrap();
-    establish_connection(remote_peer_id, &mut local);
-    local.send_request(&remote_peer_id, Request::Ping);
+    establish_connection(peer_a_id, addr_a, &mut swarm_b).unwrap();
+    swarm_b.send_request(&peer_a_id, Request::Ping);
     let local_handle = task::spawn(async move {
         loop {
-            if let P2PEvent::RequestResponse(boxed_event) = local.next().await {
+            if let P2PEvent::RequestResponse(boxed_event) = swarm_b.next().await {
                 if let P2PReqResEvent::Res {
                     peer_id,
                     request_id: _,
                     response: Response::Pong,
                 } = boxed_event.deref().clone()
                 {
-                    assert_eq!(peer_id, remote_peer_id);
+                    assert_eq!(peer_id, peer_a_id);
                     std::thread::sleep(Duration::from_millis(50));
-                    return;
+                    return Ok(());
                 } else {
-                    panic!();
+                    return Err(());
                 }
             }
         }
     });
-    task::block_on(async {
-        future::join(local_handle, remote_handle).await;
-    });
+    let (a, b) = task::block_on(async { future::join(local_handle, remote_handle).await });
+    a.and(b).unwrap();
 }
 
 #[test]
 fn identify_event() {
-    let mut swarm_a = mock_swarm();
+    let mut swarm_a = mock_swarm::<Empty, Empty>();
     let peer_a_id = *Swarm::local_peer_id(&swarm_a);
     let listener_id_a = Swarm::listen_on(&mut swarm_a, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
     let addr_a = start_listening(&mut swarm_a).unwrap();
-    let mut swarm_b = mock_swarm();
+    let mut swarm_b = mock_swarm::<Empty, Empty>();
     let peer_b_id = *Swarm::local_peer_id(&swarm_b);
     let listener_id_b = Swarm::listen_on(&mut swarm_b, "/ip4/127.0.0.6/tcp/0".parse().unwrap()).unwrap();
     let addr_b = start_listening(&mut swarm_b).unwrap();
@@ -214,15 +217,12 @@ fn identify_event() {
                             std::thread::sleep(Duration::from_millis(50));
                         }
                     }
-                    P2PIdentifyEvent::Error { peer_id, error: _ } => {
-                        if peer_id == peer_b_id {
-                            panic!();
-                        }
-                    }
+                    P2PIdentifyEvent::Error { peer_id: _, error } => return Err(error),
                 }
             }
         }
         Swarm::remove_listener(&mut swarm_a, listener_id_a).unwrap();
+        Ok(())
     });
 
     let handle_b = task::spawn(async move {
@@ -252,30 +252,20 @@ fn identify_event() {
                             std::thread::sleep(Duration::from_millis(50));
                         }
                     }
-                    P2PIdentifyEvent::Error { peer_id, error: _ } => {
-                        if peer_id == peer_a_id {
-                            panic!();
-                        }
-                    }
+                    P2PIdentifyEvent::Error { peer_id: _, error } => return Err(error),
                 }
             }
         }
         Swarm::remove_listener(&mut swarm_b, listener_id_b).unwrap();
+        Ok(())
     });
-    task::block_on(async {
-        future::join(handle_a, handle_b).await;
-    });
+    let (a, b) = task::block_on(async { future::join(handle_a, handle_b).await });
+    a.and(b).unwrap();
 }
 
 #[test]
 fn relay() {
-    let config = BehaviourConfig::default();
-
-    let mut swarm = P2PNetworkBehaviour::<RequestEnvelope<Request>, Response>::init_swarm(
-        Keypair::generate_ed25519(),
-        config.clone(),
-    )
-    .unwrap();
+    let mut swarm = mock_swarm::<RequestEnvelope<Request>, Response>();
     let relay_peer_id = *Swarm::local_peer_id(&swarm);
     Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
     let relay_addr = start_listening(&mut swarm).unwrap();
@@ -314,31 +304,24 @@ fn relay() {
                     P2PReqResEvent::ResSent { peer_id, request_id } => {
                         assert_eq!(peer_id, source_peer.unwrap());
                         assert_eq!(request_id, original_request.unwrap());
-                        break;
+                        std::thread::sleep(Duration::from_millis(50));
+                        return Ok(());
                     }
-                    _error => panic!(),
+                    _error => return Err(()),
                 }
             }
         }
     });
 
-    let mut swarm_a = P2PNetworkBehaviour::<RequestEnvelope<Request>, Response>::init_swarm(
-        Keypair::generate_ed25519(),
-        config.clone(),
-    )
-    .unwrap();
+    let mut swarm_a = mock_swarm::<RequestEnvelope<Request>, Response>();
     let peer_a_id = *Swarm::local_peer_id(&swarm_a);
-    Swarm::dial_addr(&mut swarm_a, relay_addr.clone()).unwrap();
-    establish_connection(relay_peer_id, &mut swarm_a);
+    establish_connection(relay_peer_id, relay_addr.clone(), &mut swarm_a).unwrap();
 
-    let mut swarm_b =
-        P2PNetworkBehaviour::<RequestEnvelope<Request>, Response>::init_swarm(Keypair::generate_ed25519(), config)
-            .unwrap();
+    let mut swarm_b = mock_swarm::<RequestEnvelope<Request>, Response>();
     let peer_b_id = *Swarm::local_peer_id(&swarm_b);
-    Swarm::dial_addr(&mut swarm_b, relay_addr).unwrap();
-    establish_connection(relay_peer_id, &mut swarm_b);
+    establish_connection(relay_peer_id, relay_addr, &mut swarm_b).unwrap();
 
-    // start peer a to send amessage
+    // start peer a to send a message to peer b
     let handle_a = task::spawn(async move {
         let envelope = RequestEnvelope {
             source: peer_a_id.to_string(),
@@ -356,15 +339,15 @@ fn relay() {
                 {
                     assert_eq!(peer_id, relay_peer_id);
                     std::thread::sleep(Duration::from_millis(50));
-                    break;
+                    return Ok(());
                 } else {
-                    panic!();
+                    return Err(());
                 }
             }
         }
     });
 
-    // start peer a to send amessage
+    // start peer b to respond to message from peer a
     let handle_b = task::spawn(async move {
         loop {
             if let P2PEvent::RequestResponse(boxed_event) = swarm_b.next().await {
@@ -387,14 +370,13 @@ fn relay() {
                     P2PReqResEvent::ResSent { peer_id, request_id: _ } => {
                         assert_eq!(peer_id, relay_peer_id);
                         std::thread::sleep(Duration::from_millis(50));
-                        return;
+                        return Ok(());
                     }
-                    _ => {}
+                    _ => return Err(()),
                 }
             }
         }
     });
-    task::block_on(async {
-        future::join3(handle_a, handle_b, relay_handle).await;
-    });
+    let (a, b, relay) = task::block_on(async { future::join3(handle_a, handle_b, relay_handle).await });
+    a.and(b).and(relay).unwrap();
 }
