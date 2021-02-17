@@ -86,45 +86,6 @@ fn establish_connection<Req: MessageEvent, Res: MessageEvent>(
 }
 
 #[test]
-#[should_panic]
-fn reuse_addr() {
-    let mut swarm_a = mock_swarm::<Empty, Empty>();
-    let listen_addr = "/ip4/127.0.0.1/tcp/8087".parse::<Multiaddr>();
-    if listen_addr.is_err() {
-        return;
-    }
-    let listen_addr = listen_addr.unwrap();
-    if Swarm::listen_on(&mut swarm_a, listen_addr.clone()).is_err() {
-        return;
-    }
-    let actual_addr = start_listening(&mut swarm_a);
-    if actual_addr.is_none() {
-        return;
-    }
-
-    // set second swarm to listen to same address
-    let mut swarm_b = mock_swarm::<Empty, Empty>();
-    Swarm::listen_on(&mut swarm_b, listen_addr).unwrap();
-    start_listening(&mut swarm_b).unwrap();
-}
-
-#[test]
-fn reuse_port() {
-    let mut swarm_a = mock_swarm::<Empty, Empty>();
-    let listen_addr = "/ip4/127.0.0.1/tcp/8088".parse::<Multiaddr>().unwrap();
-    Swarm::listen_on(&mut swarm_a, listen_addr.clone()).unwrap();
-    let actual_addr = start_listening(&mut swarm_a).unwrap();
-    assert_eq!(listen_addr, actual_addr);
-
-    // set second swarm to listen to same port but different ip
-    let mut swarm_b = mock_swarm::<Empty, Empty>();
-    let listen_addr = "/ip4/127.0.0.2/tcp/8088".parse::<Multiaddr>().unwrap();
-    Swarm::listen_on(&mut swarm_b, listen_addr.clone()).unwrap();
-    let actual_addr = start_listening(&mut swarm_b).unwrap();
-    assert_eq!(listen_addr, actual_addr);
-}
-
-#[test]
 fn request_response() {
     let mut swarm_a = mock_swarm::<Request, Response>();
     let peer_a_id = *Swarm::local_peer_id(&swarm_a);
@@ -190,7 +151,7 @@ fn identify_event() {
     let addr_a = start_listening(&mut swarm_a).unwrap();
     let mut swarm_b = mock_swarm::<Empty, Empty>();
     let peer_b_id = *Swarm::local_peer_id(&swarm_b);
-    let listener_id_b = Swarm::listen_on(&mut swarm_b, "/ip4/127.0.0.6/tcp/0".parse().unwrap()).unwrap();
+    let listener_id_b = Swarm::listen_on(&mut swarm_b, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
     let addr_b = start_listening(&mut swarm_b).unwrap();
 
     Swarm::dial_addr(&mut swarm_a, addr_b.clone()).unwrap();
