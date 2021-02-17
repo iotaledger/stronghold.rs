@@ -149,7 +149,28 @@ fn start_peer(matches: &ArgMatches) {
                         }
                     },
                     // Events from the swarm
-                    event = swarm.next().fuse() => handle_event(&mut swarm, event, relay_peer, &mut peer_target),
+                    event = swarm.next_event().fuse() => {
+                        match event {
+                            SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
+                                handle_event(&mut swarm, boxed_event.deref().clone(), relay_peer, &mut peer_target)
+                            }
+                            SwarmEvent::ConnectionClosed{peer_id, endpoint: _, num_established: 0, cause: _} => {
+                                if peer_id == relay_peer {
+                                    Swarm::dial_addr(&mut swarm, relay_addr.clone()).unwrap();
+                                }
+                            }
+                            SwarmEvent::UnreachableAddr {
+                                peer_id: _,
+                                address,
+                                error,
+                                attempts_remaining: 0,
+                            } | SwarmEvent::UnknownPeerUnreachableAddr {
+                                address,
+                                error,
+                            } => panic!(format!("Unreachable addr: {:?}\n{:?}", address, error)),
+                            _ => {}
+                        }
+                    }
                 };
             }
         });
@@ -161,49 +182,47 @@ fn start_peer(matches: &ArgMatches) {
 // `P2PEvent::Identify`
 fn handle_event(
     swarm: &mut Swarm<P2PNetworkBehaviour<RequestEnvelope<String>, Ack>>,
-    e: P2PEvent<RequestEnvelope<String>, Ack>,
+    event: P2PReqResEvent<RequestEnvelope<String>, Ack>,
     relay_peer: PeerId,
     remote_target: &mut Option<PeerId>,
 ) {
-    if let P2PEvent::RequestResponse(event) = e {
-        match event.deref().clone() {
-            // Request from a remote peer
-            P2PReqResEvent::Req {
-                peer_id,
-                request_id,
-                request:
-                    RequestEnvelope {
-                        source,
-                        message,
-                        target,
-                    },
-            } => {
-                if target != Swarm::local_peer_id(&swarm).to_string() {
-                    return;
-                }
-                if source != peer_id.to_string() && peer_id != relay_peer {
-                    return;
-                }
-                if remote_target.is_some() && remote_target.unwrap().to_string() == source {
-                    println!("> {:?}", message);
-                } else if let Ok(source) = PeerId::from_str(&source) {
-                    println!("\n==== Message from {:?}\n\n>{:?}", source, message);
-                    remote_target.replace(source);
-                }
-                swarm.send_response(request_id, Ack).expect("Failed to send ack back.")
+    match event {
+        // Request from a remote peer
+        P2PReqResEvent::Req {
+            peer_id,
+            request_id,
+            request:
+                RequestEnvelope {
+                    source,
+                    message,
+                    target,
+                },
+        } => {
+            if target != Swarm::local_peer_id(&swarm).to_string() {
+                return;
             }
-            // Response to an request that out local peer send before
-            P2PReqResEvent::Res {
-                peer_id: _,
-                request_id: _,
-                response: _,
+            if source != peer_id.to_string() && peer_id != relay_peer {
+                return;
             }
-            | P2PReqResEvent::ResSent {
-                peer_id: _,
-                request_id: _,
-            } => {}
-            error => println!("Error {:?}", error),
+            if remote_target.is_some() && remote_target.unwrap().to_string() == source {
+                println!("> {:?}", message);
+            } else if let Ok(source) = PeerId::from_str(&source) {
+                println!("\n==== Message from {:?}\n\n>{:?}", source, message);
+                remote_target.replace(source);
+            }
+            swarm.send_response(request_id, Ack).expect("Failed to send ack back.")
         }
+        // Response to an request that out local peer send before
+        P2PReqResEvent::Res {
+            peer_id: _,
+            request_id: _,
+            response: _,
+        }
+        | P2PReqResEvent::ResSent {
+            peer_id: _,
+            request_id: _,
+        } => {}
+        _error => {}
     }
 }
 
