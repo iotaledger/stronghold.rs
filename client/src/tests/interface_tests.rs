@@ -429,6 +429,11 @@ fn test_stronghold_communication() {
 
     assert!(listeners.as_slice().contains(&addr));
 
+    match futures::executor::block_on(local_stronghold.establish_connection(peer_id, addr, None)) {
+        ResultMessage::Ok(_) => {}
+        ResultMessage::Error(_) => panic!(),
+    }
+
     // test writing at remote and reading it from local stronghold
     let loc = Location::counter::<_, usize>("path", Some(0));
     let original_data = b"some data".to_vec();
@@ -436,8 +441,7 @@ fn test_stronghold_communication() {
         StatusMessage::OK => {}
         StatusMessage::Error(_) => panic!(),
     }
-    let payload = match futures::executor::block_on(local_stronghold.read_from_remote_store(peer_id, addr.clone(), loc))
-    {
+    let payload = match futures::executor::block_on(local_stronghold.read_from_remote_store(peer_id, loc)) {
         (payload, StatusMessage::OK) => payload,
         (_, StatusMessage::Error(_)) => panic!(),
     };
@@ -448,7 +452,6 @@ fn test_stronghold_communication() {
     let original_data = b"some second data".to_vec();
     match futures::executor::block_on(local_stronghold.write_to_remote_store(
         peer_id,
-        addr.clone(),
         loc.clone(),
         original_data.clone(),
         None,
@@ -467,7 +470,6 @@ fn test_stronghold_communication() {
     let original_data = b"some third data".to_vec();
     match futures::executor::block_on(local_stronghold.write_to_remote_store(
         peer_id,
-        addr.clone(),
         loc.clone(),
         original_data.clone(),
         None,
@@ -475,7 +477,7 @@ fn test_stronghold_communication() {
         StatusMessage::OK => {}
         StatusMessage::Error(_) => panic!(),
     }
-    let payload = match futures::executor::block_on(local_stronghold.read_from_remote_store(peer_id, addr, loc)) {
+    let payload = match futures::executor::block_on(local_stronghold.read_from_remote_store(peer_id, loc)) {
         (payload, StatusMessage::OK) => payload,
         (_, StatusMessage::Error(_)) => panic!(),
     };

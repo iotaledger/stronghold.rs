@@ -5,8 +5,8 @@ use async_std::task;
 use riker::actors::*;
 use stronghold_communication::{
     actor::{
-        ask, CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults, FirewallRequest,
-        FirewallResponse,
+        ask, CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults, ConnectionPermission,
+        FirewallRequest, FirewallResponse, MessagePermission,
     },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -61,8 +61,18 @@ impl ActorFactory for Firewall {
 impl Actor for Firewall {
     type Msg = FirewallRequest<Request>;
 
-    fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
-        sender.unwrap().try_tell(FirewallResponse::Accept, None).unwrap()
+    fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        let res = match msg {
+            FirewallRequest::Request {
+                request: _,
+                remote: _,
+                direction: _,
+            } => FirewallResponse::PermitMessage(MessagePermission::Accept),
+            FirewallRequest::EstablishConnection(_) => {
+                FirewallResponse::PermitConnection(ConnectionPermission::AcceptUnlimited)
+            }
+        };
+        sender.unwrap().try_tell(res, None).unwrap()
     }
 }
 
@@ -108,7 +118,7 @@ fn msg_external_actor() {
         fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
             if let CommunicationResults::RequestMsgResult(Ok(_)) = msg {
                 ctx.stop(&ctx.myself);
-            } else if let CommunicationResults::ConnectPeerResult(result) = msg {
+            } else if let CommunicationResults::EstablishConnectionResult(result) = msg {
                 let peer_id = result.expect("Panic due to no network connection");
                 let req = CommunicationRequest::<Request, Request>::RequestMsg {
                     peer_id,
@@ -169,9 +179,10 @@ fn msg_external_actor() {
     std::thread::sleep(Duration::new(1, 0));
 
     // send request, use local_actor as target for the response
-    let req = CommunicationRequest::<Request, Request>::ConnectPeer {
+    let req = CommunicationRequest::<Request, Request>::EstablishConnection {
         addr: remote_addr,
         peer_id: remote_peer_id,
+        duration: None,
     };
     local_comms.tell(req, local_actor.clone().into());
 
@@ -294,12 +305,13 @@ fn ask_request() {
     match task::block_on(try_ask(
         &local_sys,
         &local_comms,
-        CommunicationRequest::ConnectPeer {
+        CommunicationRequest::EstablishConnection {
             addr: listeners.last().unwrap().clone(),
             peer_id: remote_peer_id,
+            duration: None,
         },
     )) {
-        Some(CommunicationResults::ConnectPeerResult(Ok(peer_id))) => assert_eq!(peer_id, remote_peer_id),
+        Some(CommunicationResults::EstablishConnectionResult(Ok(peer_id))) => assert_eq!(peer_id, remote_peer_id),
         _ => panic!(),
     };
 
@@ -340,12 +352,13 @@ fn no_soliloquize() {
 
     for addr in listeners {
         // try connect self
-        if let Some(CommunicationResults::ConnectPeerResult(Err(_))) = task::block_on(try_ask(
+        if let Some(CommunicationResults::EstablishConnectionResult(Err(_))) = task::block_on(try_ask(
             &sys,
             &communication_actor,
-            CommunicationRequest::ConnectPeer {
+            CommunicationRequest::EstablishConnection {
                 addr,
                 peer_id: own_peer_id,
+                duration: None,
             },
         )) {
         } else {
@@ -379,12 +392,13 @@ fn connect_invalid() {
         return;
     }
     let (_, communication_actor) = opt.unwrap();
-    if let Some(CommunicationResults::ConnectPeerResult(Err(_))) = task::block_on(try_ask(
+    if let Some(CommunicationResults::EstablishConnectionResult(Err(_))) = task::block_on(try_ask(
         &sys,
         &communication_actor,
-        CommunicationRequest::ConnectPeer {
+        CommunicationRequest::EstablishConnection {
             addr: "/ip4/0.0.0.0/tcp/0".parse().unwrap(),
             peer_id: PeerId::random(),
+            duration: None,
         },
     )) {
         panic!();

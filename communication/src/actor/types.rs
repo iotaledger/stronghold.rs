@@ -5,13 +5,13 @@ use crate::behaviour::{P2PInboundFailure, P2POutboundFailure};
 use libp2p::{
     core::{
         connection::{ConnectionError, ConnectionLimit, PendingConnectionError},
-        ConnectedPoint, Multiaddr, PeerId,
+        Multiaddr, PeerId,
     },
     swarm::DialError,
 };
 use riker::{actors::ActorRef, Message};
 
-use core::num::NonZeroU32;
+use core::time::Duration;
 
 /// Errors that can occur in the context of a pending `Connection`.
 #[derive(Debug, Clone)]
@@ -72,9 +72,9 @@ pub enum RelayConfig {
     /// No relay should be used, peers can only be dialed directly.
     NoRelay,
     /// Always send requests to remote peers via the relay.
-    RelayAlways(PeerId),
+    RelayAlways { peer_id: PeerId, addr: Multiaddr },
     /// Use relay peer if sending the request directly failed,
-    RelayBackup(PeerId),
+    RelayBackup { peer_id: PeerId, addr: Multiaddr },
 }
 
 /// Requests for the [`CommuncationActor`]
@@ -87,7 +87,14 @@ pub enum CommunicationRequest<Req, T: Message> {
     SetClientRef(ActorRef<T>),
     /// Connect to a remote peer.
     /// If the peer id is know it will attempt to use a know address of it, otherwise the `addr` will be dialed.
-    ConnectPeer { addr: Multiaddr, peer_id: PeerId },
+    EstablishConnection {
+        addr: Multiaddr,
+        peer_id: PeerId,
+        duration: Option<Duration>,
+    },
+    /// Connect to a remote peer.
+    /// If the peer id is know it will attempt to use a know address of it, otherwise the `addr` will be dialed.
+    CloseConnection(PeerId),
     /// Check if a connection to that peer is currently active.
     CheckConnection(PeerId),
     /// Obtain information about the swarm.
@@ -131,7 +138,9 @@ pub enum CommunicationResults<Res> {
     /// New client actor reference was set.
     SetClientRefResult,
     /// Result of trying to connect a peer.
-    ConnectPeerResult(Result<PeerId, ConnectPeerError>),
+    EstablishConnectionResult(Result<PeerId, ConnectPeerError>),
+    /// Closed connection to peer
+    ClosedConnection,
     /// Check if the connection exists
     CheckConnectionResult(bool),
     /// Information about the local swarm.
@@ -151,46 +160,7 @@ pub enum CommunicationResults<Res> {
     /// Stopped listening to the swarm for incoming connections.
     RemoveListenerResult(Result<(), ()>),
     /// Success setting relay
-    SetRelay,
-}
-
-/// Events that are received from the swarm without being initiated by the local system.
-#[derive(Debug, Clone)]
-pub enum CommunicationSwarmEvent {
-    /// An incoming connection was successful.
-    IncomingConnectionEstablished {
-        peer_id: PeerId,
-        local_addr: Multiaddr,
-        send_back_addr: Multiaddr,
-        num_established: NonZeroU32,
-    },
-    /// Connection was closed.
-    ConnectionClosed {
-        peer_id: PeerId,
-        endpoint: ConnectedPoint,
-        num_established: NonZeroU32,
-        cause: Option<ConnectPeerError>,
-    },
-    /// Incoming connection attempt.
-    IncomingConnection {
-        local_addr: Multiaddr,
-        send_back_addr: Multiaddr,
-    },
-    /// An incoming connection was not successful.
-    IncomingConnectionError {
-        peer_addr: Multiaddr,
-        local_addr: Multiaddr,
-        error: ConnectPeerError,
-    },
-    /// A listening address of the local peer has expired.
-    ExpiredListenAddr(Multiaddr),
-    /// The local listener closed.
-    ListenerClosed {
-        addresses: Vec<Multiaddr>,
-        reason: Result<(), String>,
-    },
-    /// The local listener had an error.
-    ListenerError(String),
+    SetRelayResult(Result<(), ConnectPeerError>),
 }
 
 /// The direction of a [`CommunicationRequest::RequestMsg`] that firewall receives.
@@ -203,26 +173,31 @@ pub enum RequestDirection {
 /// Request to the firewall to obtain approval for a request from/ to a remote peer.
 /// If no [`FirewallResponse::Accept`] is returned, the request will be rejected.
 #[derive(Debug, Clone)]
-pub struct FirewallRequest<Req> {
-    request: Req,
-    remote: PeerId,
-    direction: RequestDirection,
+pub enum FirewallRequest<Req> {
+    EstablishConnection(PeerId),
+    Request {
+        request: Req,
+        remote: PeerId,
+        direction: RequestDirection,
+    },
 }
 
-impl<Req> FirewallRequest<Req> {
-    pub fn new(request: Req, remote: PeerId, direction: RequestDirection) -> Self {
-        FirewallRequest {
-            request,
-            remote,
-            direction,
-        }
-    }
+#[derive(Debug, Clone)]
+pub enum MessagePermission {
+    Accept,
+    Reject,
+}
+
+#[derive(Debug, Clone)]
+pub enum ConnectionPermission {
+    AcceptUnlimited,
+    AcceptLinmited(Duration),
+    Reject,
 }
 
 /// The expected response that should be send back from the firewall actor for a [`FirewallRequest`].
 #[derive(Debug, Clone)]
 pub enum FirewallResponse {
-    Accept,
-    Reject,
-    Drop,
+    PermitMessage(MessagePermission),
+    PermitConnection(ConnectionPermission),
 }

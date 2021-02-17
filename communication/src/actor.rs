@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod ask;
+mod connections;
 mod swarm_task;
 mod types;
 use crate::behaviour::{BehaviourConfig, MessageEvent};
@@ -68,7 +69,10 @@ where
 /// use riker::actors::*;
 /// use serde::{Deserialize, Serialize};
 /// use stronghold_communication::{
-///     actor::{CommunicationActor, CommunicationConfig, FirewallRequest, FirewallResponse},
+///     actor::{
+///         CommunicationActor, CommunicationConfig, ConnectionPermission, FirewallRequest, FirewallResponse,
+///         MessagePermission,
+///     },
 ///     behaviour::BehaviourConfig,
 /// };
 ///
@@ -94,8 +98,18 @@ where
 /// impl Actor for Firewall {
 ///     type Msg = FirewallRequest<Request>;
 ///
-///     fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
-///         sender.unwrap().try_tell(FirewallResponse::Accept, None).unwrap()
+///     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+///         let res = match msg {
+///             FirewallRequest::Request {
+///                 request: _,
+///                 remote: _,
+///                 direction: _,
+///             } => FirewallResponse::PermitMessage(MessagePermission::Accept),
+///             FirewallRequest::EstablishConnection(_) => {
+///                 FirewallResponse::PermitConnection(ConnectionPermission::AcceptUnlimited)
+///             }
+///         };
+///         sender.unwrap().try_tell(res, None).unwrap()
 ///     }
 /// }
 ///
