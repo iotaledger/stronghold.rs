@@ -45,7 +45,7 @@ impl<'a> std::fmt::Display for CommandError<'a> {
 
 impl<'a> std::error::Error for CommandError<'a> {}
 
-use tauri_stronghold::TauriStronghold;
+use tauri_plugin_stronghold::TauriStronghold;
 use tauri_authenticator::TauriAuthenticator;
 
 fn main() {

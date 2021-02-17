@@ -17,7 +17,7 @@
     "core-js": "^3.6.5",
     "quasar": "^1.0.0",
     "tauri": "^0.14.0",
-    "tauri-stronghold-api": "link:../../../tauri-stronghold-rs/api-definitions/",
+    "tauri-plugin-stronghold-api": "tauri-apps/tauri-plugin-stronghold#6749525a47a95439c9703d3a49b94ac65660998f",
     "tauri-authenticator": "link:../../../tauri-authenticator-plugin/api-definitions/"
   },
   "devDependencies": {

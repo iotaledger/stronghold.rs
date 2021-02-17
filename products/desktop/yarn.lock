@@ -10243,9 +10243,12 @@ tar@^6.0.2:
   version "0.0.0"
   uid ""
 
-"tauri-stronghold-api@link:../../../tauri-stronghold-rs/api-definitions":
-  version "0.0.0"
-  uid ""
+tauri-plugin-stronghold-api@tauri-apps/tauri-plugin-stronghold#6749525a47a95439c9703d3a49b94ac65660998f:
+  version "0.1.0"
+  resolved "https://codeload.github.com/tauri-apps/tauri-plugin-stronghold/tar.gz/6749525a47a95439c9703d3a49b94ac65660998f"
+  dependencies:
+    tauri "^0.14.1"
+    tslib "^2.1.0"
 
 tauri@^0.14.0:
   version "0.14.0"
