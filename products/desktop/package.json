@@ -18,7 +18,7 @@
     "quasar": "^1.0.0",
     "tauri": "^0.14.0",
     "tauri-plugin-stronghold-api": "tauri-apps/tauri-plugin-stronghold#6749525a47a95439c9703d3a49b94ac65660998f",
-    "tauri-authenticator": "link:../../../tauri-authenticator-plugin/api-definitions/"
+    "tauri-plugin-authenticator-api": "tauri-apps/tauri-plugin-authenticator#dbddf7c417e8cd10bae9928977f5f093430d51da"
   },
   "devDependencies": {
     "@quasar/app": "^2.0.0",

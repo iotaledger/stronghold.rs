@@ -107,7 +107,7 @@ import LockTimer from 'components/LockTimer.vue'
 // import { promisified } from 'tauri/api/tauri'
 import { save } from 'tauri/api/dialog'
 import { Stronghold, Location } from 'tauri-plugin-stronghold-api'
-import { Authenticator } from 'tauri-authenticator'
+import { Authenticator } from 'tauri-plugin-authenticator-api'
 
 import { mapState, mapActions, mapMutations } from 'vuex'
 const _package = require('../../package.json')

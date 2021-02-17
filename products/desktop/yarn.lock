@@ -10239,9 +10239,12 @@ tar@^6.0.2:
     mkdirp "^1.0.3"
     yallist "^4.0.0"
 
-"tauri-authenticator@link:../../../tauri-authenticator-plugin/api-definitions":
-  version "0.0.0"
-  uid ""
+tauri-plugin-authenticator-api@tauri-apps/tauri-plugin-authenticator#dbddf7c417e8cd10bae9928977f5f093430d51da:
+  version "0.1.0"
+  resolved "https://codeload.github.com/tauri-apps/tauri-plugin-authenticator/tar.gz/dbddf7c417e8cd10bae9928977f5f093430d51da"
+  dependencies:
+    tauri "^0.14.1"
+    tslib "^2.1.0"
 
 tauri-plugin-stronghold-api@tauri-apps/tauri-plugin-stronghold#6749525a47a95439c9703d3a49b94ac65660998f:
   version "0.1.0"

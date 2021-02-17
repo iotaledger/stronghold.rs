@@ -16,13 +16,14 @@ tauri = { version = "0.11", features = [ "all-api" ] }
 futures = "0.3"
 riker = "0.4"
 bincode = "1.3.1"
-tauri-authenticator = { path = "../../../../tauri-authenticator-plugin" }
 
-[dependencies.tauri-plugin-stronghold]
-# git = "https://github.com/tauri-apps/tauri-plugin-stronghold"
-rev = "6749525a47a95439c9703d3a49b94ac65660998f"
-# path = "../../../../tauri-plugin-stronghold"
+  [dependencies.tauri-plugin-authenticator]
+  git = "https://github.com/tauri-apps/tauri-plugin-authenticator"
+  rev = "dbddf7c417e8cd10bae9928977f5f093430d51da"
 
+  [dependencies.tauri-plugin-stronghold]
+  git = "https://github.com/tauri-apps/tauri-plugin-stronghold"
+  rev = "6749525a47a95439c9703d3a49b94ac65660998f"
 
 [target."cfg(windows)".build-dependencies]
 winres = "0.1"
