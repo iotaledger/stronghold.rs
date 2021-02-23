@@ -3,6 +3,7 @@
 
 mod ask;
 mod connections;
+pub mod firewall;
 mod swarm_task;
 mod types;
 use crate::behaviour::{BehaviourConfig, MessageEvent};
@@ -12,6 +13,7 @@ use core::{
     marker::PhantomData,
     task::{Context as TaskContext, Poll},
 };
+use firewall::*;
 use futures::{
     channel::mpsc::{unbounded, UnboundedSender},
     future,
@@ -69,10 +71,7 @@ where
 /// use riker::actors::*;
 /// use serde::{Deserialize, Serialize};
 /// use stronghold_communication::{
-///     actor::{
-///         CommunicationActor, CommunicationConfig, ConnectionPermission, FirewallRequest, FirewallResponse,
-///         MessagePermission,
-///     },
+///     actor::{firewall::OpenFirewall, CommunicationActor, CommunicationConfig},
 ///     behaviour::BehaviourConfig,
 /// };
 ///
@@ -84,33 +83,6 @@ where
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub enum Response {
 ///     Pong,
-/// }
-/// // Dummy firewall that approves all requests
-/// #[derive(Debug, Clone)]
-/// struct Firewall;
-///
-/// impl ActorFactory for Firewall {
-///     fn create() -> Self {
-///         Firewall
-///     }
-/// }
-///
-/// impl Actor for Firewall {
-///     type Msg = FirewallRequest<Request>;
-///
-///     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-///         let res = match msg {
-///             FirewallRequest::Request {
-///                 request: _,
-///                 remote: _,
-///                 direction: _,
-///             } => FirewallResponse::PermitMessage(MessagePermission::Accept),
-///             FirewallRequest::EstablishConnection(_) => {
-///                 FirewallResponse::PermitConnection(ConnectionPermission::AcceptUnlimited)
-///             }
-///         };
-///         sender.unwrap().try_tell(res, None).unwrap()
-///     }
 /// }
 ///
 /// // blank client actor without any logic
@@ -132,7 +104,7 @@ where
 /// let local_keys = Keypair::generate_ed25519();
 /// let sys = ActorSystem::new().unwrap();
 /// let keys = Keypair::generate_ed25519();
-/// let firewall = sys.actor_of::<Firewall>("firewall").unwrap();
+/// let firewall = sys.actor_of::<OpenFirewall<Request>>("firewall").unwrap();
 /// let client = sys.actor_of::<ClientActor>("client").unwrap();
 /// let actor_config = CommunicationConfig::new(client, firewall);
 /// let behaviour_config = BehaviourConfig::default();
@@ -203,6 +175,24 @@ where
 
     // Forward the received events to the task that is managing the swarm communication.
     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        self.send_swarm_task(msg, sender);
+    }
+
+    fn post_stop(&mut self) {
+        self.send_swarm_task(CommunicationRequest::Shutdown, None);
+        task::block_on(self.poll_swarm_handle.take().unwrap());
+        self.swarm_tx.take().unwrap().disconnect();
+    }
+}
+
+impl<Req, Res, T, U> CommunicationActor<Req, Res, T, U>
+where
+    Req: MessageEvent,
+    Res: MessageEvent,
+    T: Message + From<Req>,
+    U: Message + From<FirewallRequest<Req>>,
+{
+    fn send_swarm_task(&mut self, msg: CommunicationRequest<Req, T>, sender: Sender) {
         let mut tx = self.swarm_tx.clone().unwrap();
         task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
             match tx.poll_ready(tcx) {
@@ -211,6 +201,6 @@ where
                 Poll::Pending => Poll::Pending,
             }
         }))
-        .unwrap();
+        .unwrap()
     }
 }

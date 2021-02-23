@@ -5,8 +5,9 @@ use async_std::task;
 use riker::actors::*;
 use stronghold_communication::{
     actor::{
-        ask, CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults, ConnectionPermission,
-        FirewallRequest, FirewallResponse, MessagePermission,
+        ask,
+        firewall::{FirewallResponse, FirewallRule, OpenFirewall, RestrictConnectionFirewall},
+        CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults, KeepAlive,
     },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -20,21 +21,20 @@ use std::time::{Duration, Instant};
 fn init_system(
     sys: &ActorSystem,
     client: ActorRef<Request>,
-) -> Option<(PeerId, ActorRef<CommunicationRequest<Request, Request>>)> {
-    // init remote actor system
+) -> (PeerId, ActorRef<CommunicationRequest<Request, Request>>) {
+    // init actor system
     let keys = Keypair::generate_ed25519();
     let peer_id = PeerId::from(keys.public());
-    let firewall = sys.actor_of::<Firewall>("firewall");
-    if firewall.is_err() {
-        return None;
-    }
-    let actor_config = CommunicationConfig::new(client, firewall.unwrap());
+    let firewall = sys.actor_of::<OpenFirewall<Request>>("firewall").unwrap();
+    let actor_config = CommunicationConfig::new(client, firewall);
     let behaviour_config = BehaviourConfig::default();
-    let comms_actor = sys.actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
-        "communication",
-        (keys, actor_config, behaviour_config),
-    );
-    comms_actor.ok().map(|comms_actor| (peer_id, comms_actor))
+    let communication_actor_actor = sys
+        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
+            "communication",
+            (keys, actor_config, behaviour_config),
+        )
+        .unwrap();
+    (peer_id, communication_actor_actor)
 }
 
 // the type of the send request and reponse messages
@@ -46,34 +46,6 @@ pub enum Request {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Response {
     Pong,
-}
-
-// Dummy firewall that approves all requests
-#[derive(Debug, Clone)]
-struct Firewall;
-
-impl ActorFactory for Firewall {
-    fn create() -> Self {
-        Firewall
-    }
-}
-
-impl Actor for Firewall {
-    type Msg = FirewallRequest<Request>;
-
-    fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        let res = match msg {
-            FirewallRequest::Request {
-                request: _,
-                remote: _,
-                direction: _,
-            } => FirewallResponse::PermitMessage(MessagePermission::Accept),
-            FirewallRequest::EstablishConnection(_) => {
-                FirewallResponse::PermitConnection(ConnectionPermission::AcceptUnlimited)
-            }
-        };
-        sender.unwrap().try_tell(res, None).unwrap()
-    }
 }
 
 // blank client actor without any logic
@@ -95,20 +67,37 @@ impl Actor for BlankActor {
 
     fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, _sender: Sender) {}
 }
+#[derive(Clone)]
+struct ReplyActor;
+
+impl ActorFactory for ReplyActor {
+    fn create() -> Self {
+        ReplyActor
+    }
+}
+
+impl Actor for ReplyActor {
+    type Msg = Request;
+
+    fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
+        // echo msg back
+        sender.unwrap().try_tell(Response::Pong, None).unwrap();
+    }
+}
 
 #[test]
 fn msg_external_actor() {
     // local actor that receives the results for outgoing requests
     #[derive(Debug, Clone)]
-    struct LocalActor;
+    struct ActorA;
 
-    impl ActorFactory for LocalActor {
+    impl ActorFactory for ActorA {
         fn create() -> Self {
-            LocalActor
+            ActorA
         }
     }
 
-    impl Actor for LocalActor {
+    impl Actor for ActorA {
         type Msg = CommunicationResults<Response>;
 
         fn supervisor_strategy(&self) -> Strategy {
@@ -130,19 +119,25 @@ fn msg_external_actor() {
         }
     }
 
-    // remote actor that responds to a requests from the local system
+    // actor A system
+    let sys_a = ActorSystem::new().unwrap();
+    let client = sys_a.actor_of::<BlankActor>("blank").unwrap();
+    let (_, communication_actor_a) = init_system(&sys_a, client);
+    let actor_a = sys_a.actor_of::<ActorA>("actor-a").unwrap();
+
+    // remote actor that responds to a requests from actor A system
     #[derive(Debug, Clone)]
-    struct RemoteActor {
+    struct ActorB {
         listening_addr: Multiaddr,
     }
 
-    impl ActorFactoryArgs<Multiaddr> for RemoteActor {
+    impl ActorFactoryArgs<Multiaddr> for ActorB {
         fn create_args(listening_addr: Multiaddr) -> Self {
-            RemoteActor { listening_addr }
+            ActorB { listening_addr }
         }
     }
 
-    impl Actor for RemoteActor {
+    impl Actor for ActorB {
         type Msg = Request;
 
         fn post_start(&mut self, ctx: &Context<Self::Msg>) {
@@ -157,39 +152,30 @@ fn msg_external_actor() {
         }
     }
 
-    let remote_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8095".parse().unwrap();
+    // init actor B system
+    let sys_b = ActorSystem::new().unwrap();
+    let addr_b: Multiaddr = "/ip4/127.0.0.1/tcp/8095".parse().unwrap();
+    let client = sys_b.actor_of_args::<ActorB, _>("actor-b", addr_b.clone()).unwrap();
+    let (peer_b_id, communication_actor_b) = init_system(&sys_b, client);
 
-    // init remote actor system
-    let remote_sys = ActorSystem::new().unwrap();
-    let client = remote_sys
-        .actor_of_args::<RemoteActor, _>("remote-actor", remote_addr.clone())
-        .unwrap();
-    let (remote_peer_id, remote_comms) = init_system(&remote_sys, client).unwrap();
-    // remote comms start listening on the port
-    let req = CommunicationRequest::<Request, Request>::StartListening(Some(remote_addr.clone()));
-    remote_comms.tell(req, None);
-
-    // local actor system
-    let local_sys = ActorSystem::new().unwrap();
-    let client = local_sys.actor_of::<BlankActor>("blank").unwrap();
-    let (_, local_comms) = init_system(&local_sys, client).unwrap();
-
-    let local_actor = local_sys.actor_of::<LocalActor>("local-actor").unwrap();
+    // communication B start listening on the port
+    let req = CommunicationRequest::<Request, Request>::StartListening(Some(addr_b.clone()));
+    communication_actor_b.tell(req, None);
 
     std::thread::sleep(Duration::new(1, 0));
 
-    // send request, use local_actor as target for the response
+    // send request, use actor A  as target for the response
     let req = CommunicationRequest::<Request, Request>::EstablishConnection {
-        addr: remote_addr,
-        peer_id: remote_peer_id,
-        duration: None,
+        addr: addr_b,
+        peer_id: peer_b_id,
+        keep_alive: KeepAlive::Unlimited,
     };
-    local_comms.tell(req, local_actor.clone().into());
+    communication_actor_a.tell(req, actor_a.clone().into());
 
-    while local_sys
+    while sys_a
         .user_root()
         .children()
-        .any(|actor| actor == local_actor.clone().into())
+        .any(|actor| actor == actor_a.clone().into())
     {
         // in order to lower cpu usage, sleep here
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -222,7 +208,7 @@ fn ask_swarm_info() {
     let sys = ActorSystem::new().unwrap();
     let client = sys.actor_of::<BlankActor>("blank").unwrap();
     let keys = Keypair::generate_ed25519();
-    let firewall = sys.actor_of::<Firewall>("firewall").unwrap();
+    let firewall = sys.actor_of::<OpenFirewall<Request>>("firewall").unwrap();
     let actor_config = CommunicationConfig::new(client, firewall);
     let behaviour_config = BehaviourConfig::default();
     let communication_actor = sys
@@ -256,31 +242,13 @@ fn ask_swarm_info() {
 
 #[test]
 fn ask_request() {
-    #[derive(Clone)]
-    struct TargetActor;
-
-    impl ActorFactory for TargetActor {
-        fn create() -> Self {
-            TargetActor
-        }
-    }
-
-    impl Actor for TargetActor {
-        type Msg = Request;
-
-        fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
-            // echo msg back
-            sender.unwrap().try_tell(Response::Pong, None).unwrap();
-        }
-    }
-
-    // start remote actor system
-    let remote_sys = ActorSystem::new().unwrap();
-    let target_actor = remote_sys.actor_of::<TargetActor>("target").unwrap();
-    let (_, remote_comms) = init_system(&remote_sys, target_actor).unwrap();
+    // start actor B system
+    let sys_b = ActorSystem::new().unwrap();
+    let target_actor = sys_b.actor_of::<ReplyActor>("target").unwrap();
+    let (_, communication_actor_b) = init_system(&sys_b, target_actor);
     match task::block_on(try_ask(
-        &remote_sys,
-        &remote_comms,
+        &sys_b,
+        &communication_actor_b,
         CommunicationRequest::StartListening(None),
     )) {
         Some(CommunicationResults::StartListeningResult(a)) => {
@@ -289,59 +257,63 @@ fn ask_request() {
         _ => panic!(),
     }
 
-    // start local actor system
-    let local_sys = ActorSystem::new().unwrap();
-    let blank_actor = local_sys.actor_of::<BlankActor>("blank").unwrap();
-    let (_, local_comms) = init_system(&local_sys, blank_actor).unwrap();
+    // start actor A system
+    let sys_a = ActorSystem::new().unwrap();
+    let blank_actor = sys_a.actor_of::<BlankActor>("blank").unwrap();
+    let (_, communication_actor_a) = init_system(&sys_a, blank_actor);
 
-    // obtain information about the remote peer id and listeners
-    let (remote_peer_id, listeners) =
-        match task::block_on(try_ask(&remote_sys, &remote_comms, CommunicationRequest::GetSwarmInfo)) {
-            Some(CommunicationResults::SwarmInfo { peer_id, listeners }) => (peer_id, listeners),
-            _ => panic!(),
-        };
-
-    // connect remote peer
-    match task::block_on(try_ask(
-        &local_sys,
-        &local_comms,
-        CommunicationRequest::EstablishConnection {
-            addr: listeners.last().unwrap().clone(),
-            peer_id: remote_peer_id,
-            duration: None,
-        },
+    // obtain information about peer Bs id and listeners
+    let (peer_b_id, listeners) = match task::block_on(try_ask(
+        &sys_b,
+        &communication_actor_b,
+        CommunicationRequest::GetSwarmInfo,
     )) {
-        Some(CommunicationResults::EstablishConnectionResult(Ok(peer_id))) => assert_eq!(peer_id, remote_peer_id),
+        Some(CommunicationResults::SwarmInfo { peer_id, listeners }) => (peer_id, listeners),
         _ => panic!(),
     };
 
-    // send message to remote peer
-    if let Some(CommunicationResults::RequestMsgResult(Ok(res))) = task::block_on(try_ask(
-        &local_sys,
-        &local_comms,
+    // connect peer A with peer B
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::EstablishConnection {
+            addr: listeners.last().unwrap().clone(),
+            peer_id: peer_b_id,
+            keep_alive: KeepAlive::Unlimited,
+        },
+    )) {
+        Some(CommunicationResults::EstablishConnectionResult(Ok(peer_id))) => assert_eq!(peer_id, peer_b_id),
+        _ => panic!(),
+    };
+
+    // send message to from A to B
+    if let Some(CommunicationResults::RequestMsgResult(res)) = task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
         CommunicationRequest::RequestMsg {
-            peer_id: remote_peer_id,
+            peer_id: peer_b_id,
             request: Request::Ping,
         },
     )) {
-        assert_eq!(res, Response::Pong);
+        assert!(res.is_ok());
     } else {
         panic!()
     }
-    local_sys.stop(&local_comms);
-    remote_sys.stop(&remote_comms);
+    sys_a.stop(&communication_actor_a);
+    sys_b.stop(&communication_actor_b);
 }
 
 #[test]
 fn no_soliloquize() {
     let sys = ActorSystem::new().unwrap();
     let client = sys.actor_of::<BlankActor>("blank").unwrap();
-    let (own_peer_id, communication_actor) = init_system(&sys, client).unwrap();
-    if let Some(CommunicationResults::StartListeningResult(Ok(_))) = task::block_on(try_ask(
+    let (own_peer_id, communication_actor) = init_system(&sys, client);
+    if let Some(CommunicationResults::StartListeningResult(res)) = task::block_on(try_ask(
         &sys,
         &communication_actor,
         CommunicationRequest::StartListening(None),
     )) {
+        assert!(res.is_ok())
     } else {
         panic!();
     }
@@ -352,21 +324,22 @@ fn no_soliloquize() {
 
     for addr in listeners {
         // try connect self
-        if let Some(CommunicationResults::EstablishConnectionResult(Err(_))) = task::block_on(try_ask(
+        if let Some(CommunicationResults::EstablishConnectionResult(res)) = task::block_on(try_ask(
             &sys,
             &communication_actor,
             CommunicationRequest::EstablishConnection {
                 addr,
                 peer_id: own_peer_id,
-                duration: None,
+                keep_alive: KeepAlive::Unlimited,
             },
         )) {
+            assert!(res.is_err())
         } else {
             panic!();
         }
     }
     // try send request to self
-    if let Some(CommunicationResults::RequestMsgResult(Err(_))) = task::block_on(try_ask(
+    if let Some(CommunicationResults::RequestMsgResult(res)) = task::block_on(try_ask(
         &sys,
         &communication_actor,
         CommunicationRequest::RequestMsg {
@@ -374,84 +347,191 @@ fn no_soliloquize() {
             request: Request::Ping,
         },
     )) {
+        assert!(res.is_err())
     } else {
         panic!()
     }
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Could not establish connection")]
 fn connect_invalid() {
     let sys = ActorSystem::new().unwrap();
-    let client = sys.actor_of::<BlankActor>("blank");
-    if client.is_err() {
-        return;
-    }
-    let opt = init_system(&sys, client.unwrap());
-    if opt.is_none() {
-        return;
-    }
-    let (_, communication_actor) = opt.unwrap();
+    let client = sys.actor_of::<BlankActor>("blank").unwrap();
+    let (_, communication_actor) = init_system(&sys, client);
     if let Some(CommunicationResults::EstablishConnectionResult(Err(_))) = task::block_on(try_ask(
         &sys,
         &communication_actor,
         CommunicationRequest::EstablishConnection {
             addr: "/ip4/0.0.0.0/tcp/0".parse().unwrap(),
             peer_id: PeerId::random(),
-            duration: None,
+            keep_alive: KeepAlive::Unlimited,
         },
     )) {
-        panic!();
+        panic!("Could not establish connection");
     }
 }
 
 #[test]
-#[cfg(not(feature = "mdns"))]
-#[should_panic]
 fn send_request_unconnected() {
-    let sys = ActorSystem::new().unwrap();
-    let client = sys.actor_of::<BlankActor>("blank");
-    if client.is_err() {
-        return;
-    }
+    // init actor A
+    let sys_a = ActorSystem::new().unwrap();
+    let client = sys_a.actor_of::<BlankActor>("blank").unwrap();
+    let (peer_a_id, communication_actor_a) = init_system(&sys_a, client);
 
-    // init actor a
-    let opt = init_system(&sys, client.unwrap());
-    if opt.is_none() {
-        return;
-    }
-    let (peer_a_id, communication_actor_a) = opt.unwrap();
-    if let Some(CommunicationResults::StartListeningResult(Ok(_))) = task::block_on(try_ask(
-        &sys,
-        &communication_actor_a,
+    // init actor B
+    let sys_b = ActorSystem::new().unwrap();
+    let client = sys_b.actor_of::<ReplyActor>("target").unwrap();
+    let (peer_b_id, communication_actor_b) = init_system(&sys_b, client);
+
+    // peer B starts listening
+    let addr_b = match task::block_on(try_ask(
+        &sys_b,
+        &communication_actor_b,
         CommunicationRequest::StartListening(None),
     )) {
-    } else {
-        return;
+        Some(CommunicationResults::StartListeningResult(addr)) => addr.unwrap(),
+        _ => panic!(),
     };
 
-    // init actor b
-    let sys = ActorSystem::new().unwrap();
-    let client = sys.actor_of::<BlankActor>("blank");
-    if client.is_err() {
-        return;
-    }
-    let opt = init_system(&sys, client.unwrap());
-    if opt.is_none() {
-        return;
-    }
-    let (_, communication_actor_b) = opt.unwrap();
-
     // try to send a request between the peers without connecting them first
-    let res = task::block_on(try_ask(
-        &sys,
-        &communication_actor_b,
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
         CommunicationRequest::RequestMsg {
-            peer_id: peer_a_id,
+            peer_id: peer_b_id,
             request: Request::Ping,
         },
-    ));
-    if let Some(CommunicationResults::RequestMsgResult(Err(_))) = res {
-        panic!()
+    )) {
+        Some(CommunicationResults::RequestMsgResult(res)) => assert!(res.is_err()),
+        _ => panic!(),
+    }
+
+    // establish connection
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::EstablishConnection {
+            addr: addr_b,
+            peer_id: peer_b_id,
+            keep_alive: KeepAlive::Unlimited,
+        },
+    )) {
+        Some(CommunicationResults::EstablishConnectionResult(res)) => assert!(res.is_ok()),
+        _ => panic!(),
+    }
+
+    // send request after peers established a connection
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::RequestMsg {
+            peer_id: peer_b_id,
+            request: Request::Ping,
+        },
+    )) {
+        Some(CommunicationResults::RequestMsgResult(res)) => assert!(res.is_ok()),
+        _ => panic!(),
+    }
+
+    // Peer B closes connection
+    match task::block_on(try_ask(
+        &sys_b,
+        &communication_actor_b,
+        CommunicationRequest::CloseConnection(peer_a_id),
+    )) {
+        Some(CommunicationResults::ClosedConnection) => {}
+        _ => panic!(),
+    };
+
+    // send request after peer B closed connection
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::RequestMsg {
+            peer_id: peer_b_id,
+            request: Request::Ping,
+        },
+    )) {
+        Some(CommunicationResults::RequestMsgResult(res)) => assert!(res.is_err()),
+        _ => panic!(),
+    }
+}
+
+#[test]
+fn firewall_block() {
+    // Actor A
+    let sys_a = ActorSystem::new().unwrap();
+    let blank_actor = sys_a.actor_of::<BlankActor>("blank").unwrap();
+    let (peer_a_id, communication_actor_a) = init_system(&sys_a, blank_actor);
+
+    // Actor B with firewall that rejects all connections.
+    let sys_b = ActorSystem::new().unwrap();
+    let target_actor = sys_b.actor_of::<ReplyActor>("target").unwrap();
+    let keys = Keypair::generate_ed25519();
+    let peer_b_id = PeerId::from(keys.public());
+    let behaviour_config = BehaviourConfig::default();
+    // Set firewall to block all connections per default.
+    let firewall_b = sys_b
+        .actor_of_args::<RestrictConnectionFirewall<Request>, _>("firewall", FirewallResponse::Reject)
+        .unwrap();
+    let actor_config = CommunicationConfig::new(target_actor, firewall_b.clone());
+    let communication_actor_b = sys_b
+        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
+            "communication",
+            (keys, actor_config, behaviour_config),
+        )
+        .unwrap();
+
+    let addr_b = match task::block_on(try_ask(
+        &sys_b,
+        &communication_actor_b,
+        CommunicationRequest::StartListening(None),
+    )) {
+        Some(CommunicationResults::StartListeningResult(a)) => a.unwrap(),
+        _ => panic!(),
+    };
+
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::EstablishConnection {
+            addr: addr_b,
+            peer_id: peer_b_id,
+            keep_alive: KeepAlive::Unlimited,
+        },
+    )) {
+        Some(CommunicationResults::EstablishConnectionResult(res)) => assert!(res.is_ok()),
+        _ => panic!(),
+    }
+
+    // Sending a request to peer B should fail when no connection is permitted.
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::RequestMsg {
+            peer_id: peer_b_id,
+            request: Request::Ping,
+        },
+    )) {
+        Some(CommunicationResults::RequestMsgResult(res)) => assert!(res.is_err()),
+        _ => panic!(),
+    }
+
+    // Set rule in firewall to allow peer A.
+    let rule = FirewallRule::new(peer_a_id, FirewallResponse::Accept);
+    firewall_b.tell(rule, None);
+
+    // Send request
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::RequestMsg {
+            peer_id: peer_b_id,
+            request: Request::Ping,
+        },
+    )) {
+        Some(CommunicationResults::RequestMsgResult(res)) => assert!(res.is_ok()),
+        _ => panic!(),
     }
 }

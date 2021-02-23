@@ -8,6 +8,8 @@ use crate::{line_error, Location, RecordHint, Stronghold};
 use crate::{ResultMessage, StatusMessage};
 #[cfg(feature = "communication")]
 use core::time::Duration;
+#[cfg(feature = "communication")]
+use stronghold_communication::actor::{firewall::OpenFirewall, KeepAlive};
 
 #[test]
 fn test_stronghold() {
@@ -409,11 +411,15 @@ fn test_counters() {
 fn test_stronghold_communication() {
     let local_sys = ActorSystem::new().unwrap();
     let local_client = b"local".to_vec();
-    let local_stronghold = Stronghold::init_stronghold_system(local_sys, local_client, vec![]);
+    let firewall = local_sys.actor_of::<OpenFirewall<_>>("firewall").unwrap();
+    let mut local_stronghold = Stronghold::init_stronghold_system(local_sys, local_client, vec![]);
+    local_stronghold.spawn_communication(firewall);
 
     let remote_sys = ActorSystem::new().unwrap();
     let remote_client = b"remote".to_vec();
-    let remote_stronghold = Stronghold::init_stronghold_system(remote_sys, remote_client, vec![]);
+    let firewall = remote_sys.actor_of::<OpenFirewall<_>>("firewall").unwrap();
+    let mut remote_stronghold = Stronghold::init_stronghold_system(remote_sys, remote_client, vec![]);
+    remote_stronghold.spawn_communication(firewall);
 
     std::thread::sleep(Duration::new(1, 0));
 
@@ -429,7 +435,7 @@ fn test_stronghold_communication() {
 
     assert!(listeners.as_slice().contains(&addr));
 
-    match futures::executor::block_on(local_stronghold.establish_connection(peer_id, addr, None)) {
+    match futures::executor::block_on(local_stronghold.establish_connection(peer_id, addr, KeepAlive::None)) {
         ResultMessage::Ok(_) => {}
         ResultMessage::Error(_) => panic!(),
     }

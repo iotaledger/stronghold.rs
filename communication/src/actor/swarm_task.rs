@@ -5,7 +5,7 @@ use super::{connections::ConnectionManager, *};
 use crate::behaviour::{
     MessageEvent, P2PEvent, P2PNetworkBehaviour, P2POutboundFailure, P2PReqResEvent, RequestEnvelope,
 };
-use core::{num::NonZeroU32, ops::Deref, str::FromStr, time::Duration};
+use core::{ops::Deref, str::FromStr, time::Duration};
 use futures::{channel::mpsc::UnboundedReceiver, future, prelude::*, select};
 use libp2p::{
     core::{connection::ListenerId, ConnectedPoint},
@@ -101,41 +101,16 @@ where
     }
 
     // Ask the firewall actor for FirewallResponse, return FirewallResponse::Drop on timeout
-    fn ask_req_permission(&mut self, request: Req, remote: PeerId, direction: RequestDirection) -> MessagePermission {
+    fn ask_req_permission(&mut self, request: Req, remote: PeerId, direction: RequestDirection) -> FirewallResponse {
         let start = Instant::now();
-        let firewall_request = FirewallRequest::Request {
-            request,
-            remote,
-            direction,
-        };
+        let firewall_request = FirewallRequest::new(request, remote, direction);
         let mut ask_permission = ask(&self.system, &self.config.firewall, firewall_request);
         task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
             match ask_permission.poll_unpin(cx) {
-                Poll::Ready(FirewallResponse::PermitMessage(permit)) => Poll::Ready(permit),
-                Poll::Ready(FirewallResponse::PermitConnection(_)) => unreachable!(),
+                Poll::Ready(res) => Poll::Ready(res),
                 Poll::Pending => {
                     if start.elapsed() > Duration::new(5, 0) {
-                        Poll::Ready(MessagePermission::Reject)
-                    } else {
-                        Poll::Pending
-                    }
-                }
-            }
-        }))
-    }
-
-    // Ask the firewall actor for FirewallResponse, return FirewallResponse::Drop on timeout
-    fn ask_connection_permission(&mut self, remote: PeerId) -> ConnectionPermission {
-        let start = Instant::now();
-        let firewall_request = FirewallRequest::EstablishConnection(remote);
-        let mut ask_permission = ask(&self.system, &self.config.firewall, firewall_request);
-        task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
-            match ask_permission.poll_unpin(cx) {
-                Poll::Ready(FirewallResponse::PermitConnection(permit)) => Poll::Ready(permit),
-                Poll::Ready(FirewallResponse::PermitMessage(_)) => unreachable!(),
-                Poll::Pending => {
-                    if start.elapsed() > Duration::new(5, 0) {
-                        Poll::Ready(ConnectionPermission::Reject)
+                        Poll::Ready(FirewallResponse::Reject)
                     } else {
                         Poll::Pending
                     }
@@ -294,7 +269,7 @@ where
     fn handle_actor_request(&mut self, event: CommunicationRequest<Req, T>, sender: Sender) {
         match event {
             CommunicationRequest::RequestMsg { peer_id, request } => {
-                let res = if let MessagePermission::Accept =
+                let res = if let FirewallResponse::Accept =
                     self.ask_req_permission(request.clone(), peer_id, RequestDirection::Out)
                 {
                     let local_peer = Swarm::local_peer_id(&self.swarm);
@@ -335,14 +310,19 @@ where
             CommunicationRequest::EstablishConnection {
                 peer_id,
                 addr,
-                duration,
+                keep_alive,
             } => {
-                let res = self.connect_peer(peer_id, addr.clone());
-                if res.is_ok() {
-                    let endpoint = ConnectedPoint::Dialer { address: addr };
-                    self.connection_manager
-                        .insert_connection(peer_id, endpoint, duration, true);
-                }
+                let res = if Swarm::is_connected(&self.swarm, &peer_id) {
+                    self.connection_manager.set_keep_alive(&peer_id, keep_alive);
+                    Ok(peer_id)
+                } else {
+                    let res = self.connect_peer(peer_id, addr.clone());
+                    if res.is_ok() {
+                        let endpoint = ConnectedPoint::Dialer { address: addr };
+                        self.connection_manager.insert(peer_id, endpoint, keep_alive);
+                    }
+                    res
+                };
                 SwarmTask::<Req, Res, T, U>::send_response(
                     CommunicationResults::EstablishConnectionResult(res),
                     sender,
@@ -394,7 +374,7 @@ where
                         match res {
                             Ok(_) => {
                                 let endpoint = ConnectedPoint::Dialer { address: addr };
-                                self.connection_manager.insert_connection(peer_id, endpoint, None, true);
+                                self.connection_manager.insert(peer_id, endpoint, KeepAlive::Unlimited);
                                 self.relay = config;
                                 Ok(())
                             }
@@ -414,7 +394,7 @@ where
         }
         if let Ok(source) = PeerId::from_str(&request.source) {
             // validate that peer is either directly connected or the request was forwarded from the relay
-            if peer_id == source && self.connection_manager.is_permitted(&peer_id)
+            if peer_id == source && self.connection_manager.is_active_connection(&peer_id)
                 || match self.relay {
                     RelayConfig::RelayAlways {
                         peer_id: relay_id,
@@ -428,7 +408,7 @@ where
                 }
             {
                 let permission = self.ask_req_permission(request.message.clone(), source, RequestDirection::In);
-                if let MessagePermission::Accept = permission {
+                if let FirewallResponse::Accept = permission {
                     if let Some(res) = self.ask_client(request.message) {
                         self.swarm.send_response(request_id, res).unwrap();
                     }
@@ -457,32 +437,19 @@ where
             SwarmEvent::ConnectionEstablished {
                 peer_id,
                 endpoint,
-                num_established,
+                num_established: _,
             } => {
-                if num_established == NonZeroU32::new(1).unwrap() && !self.connection_manager.is_permitted(&peer_id) {
-                    let permission = self.ask_connection_permission(peer_id);
-                    match permission {
-                        ConnectionPermission::AcceptUnlimited => self
-                            .connection_manager
-                            .insert_connection(peer_id, endpoint, None, false),
-                        ConnectionPermission::AcceptLinmited(duration) => {
-                            self.connection_manager
-                                .insert_connection(peer_id, endpoint, Some(duration), false)
-                        }
-                        _ => {}
-                    }
-                }
+                self.connection_manager.insert(peer_id, endpoint, KeepAlive::None);
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
                 endpoint: ConnectedPoint::Dialer { address },
                 num_established: 0,
-                cause: None,
+                cause: _,
             } => {
-                if self.connection_manager.is_keep_alive(&peer_id) && self.connect_peer(peer_id, address).is_ok() {
-                    return;
+                if !self.connection_manager.is_keep_alive(&peer_id) || self.connect_peer(peer_id, address).is_err() {
+                    self.connection_manager.remove_connection(&peer_id);
                 }
-                self.connection_manager.remove_connection(&peer_id);
             }
             _ => {}
         }

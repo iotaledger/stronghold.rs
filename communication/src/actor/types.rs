@@ -11,7 +11,7 @@ use libp2p::{
 };
 use riker::{actors::ActorRef, Message};
 
-use core::time::Duration;
+use std::time::Instant;
 
 /// Errors that can occur in the context of a pending `Connection`.
 #[derive(Debug, Clone)]
@@ -77,6 +77,13 @@ pub enum RelayConfig {
     RelayBackup { peer_id: PeerId, addr: Multiaddr },
 }
 
+#[derive(Debug, Clone)]
+pub enum KeepAlive {
+    None,
+    Limited(Instant),
+    Unlimited,
+}
+
 /// Requests for the [`CommuncationActor`]
 #[derive(Debug, Clone)]
 pub enum CommunicationRequest<Req, T: Message> {
@@ -90,7 +97,7 @@ pub enum CommunicationRequest<Req, T: Message> {
     EstablishConnection {
         addr: Multiaddr,
         peer_id: PeerId,
-        duration: Option<Duration>,
+        keep_alive: KeepAlive,
     },
     /// Connect to a remote peer.
     /// If the peer id is know it will attempt to use a know address of it, otherwise the `addr` will be dialed.
@@ -161,43 +168,4 @@ pub enum CommunicationResults<Res> {
     RemoveListenerResult(Result<(), ()>),
     /// Success setting relay
     SetRelayResult(Result<(), ConnectPeerError>),
-}
-
-/// The direction of a [`CommunicationRequest::RequestMsg`] that firewall receives.
-#[derive(Debug, Clone)]
-pub enum RequestDirection {
-    In,
-    Out,
-}
-
-/// Request to the firewall to obtain approval for a request from/ to a remote peer.
-/// If no [`FirewallResponse::Accept`] is returned, the request will be rejected.
-#[derive(Debug, Clone)]
-pub enum FirewallRequest<Req> {
-    EstablishConnection(PeerId),
-    Request {
-        request: Req,
-        remote: PeerId,
-        direction: RequestDirection,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum MessagePermission {
-    Accept,
-    Reject,
-}
-
-#[derive(Debug, Clone)]
-pub enum ConnectionPermission {
-    AcceptUnlimited,
-    AcceptLinmited(Duration),
-    Reject,
-}
-
-/// The expected response that should be send back from the firewall actor for a [`FirewallRequest`].
-#[derive(Debug, Clone)]
-pub enum FirewallResponse {
-    PermitMessage(MessagePermission),
-    PermitConnection(ConnectionPermission),
 }
