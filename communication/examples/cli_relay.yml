@@ -22,10 +22,3 @@ subcommands:
             about: the multi-address of the relay
             required: true
             takes_value: true
-        - relay_adasdr:
-            short: b
-            long: reaslay-addr
-            value_name: relay-mulasdti-addr
-            about: the multi-adasddress of the relay
-            required: false
-            takes_value: true
