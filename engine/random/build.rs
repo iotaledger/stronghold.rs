@@ -3,7 +3,7 @@
 
 // links the macos security framework to the lib
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-#[allow(unnecessary_wraps)]
+#[allow(clippy::unnecessary_wraps)]
 fn macos_secrandom() -> Option<&'static str> {
     println!("cargo:rustc-link-lib=framework=Security");
     Some("USE_SECRANDOM")
@@ -11,7 +11,7 @@ fn macos_secrandom() -> Option<&'static str> {
 
 // checks if the current version of glibc supports the getrandom function
 #[cfg(target_os = "linux")]
-#[allow(unnecessary_wraps)]
+#[allow(clippy::unnecessary_wraps)]
 fn linux_check_getrandom() -> Option<&'static str> {
     use std::{ffi::CStr, os::raw::c_char, str::FromStr};
     extern "C" {
