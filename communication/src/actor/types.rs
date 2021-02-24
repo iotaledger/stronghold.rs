@@ -4,7 +4,7 @@
 use crate::behaviour::{P2PInboundFailure, P2POutboundFailure};
 use libp2p::{
     core::{
-        connection::{ConnectionError, ConnectionLimit, PendingConnectionError},
+        connection::{ConnectedPoint, ConnectionError, ConnectionLimit, PendingConnectionError},
         Multiaddr, PeerId,
     },
     swarm::DialError,
@@ -77,10 +77,22 @@ pub enum RelayConfig {
     RelayBackup { peer_id: PeerId, addr: Multiaddr },
 }
 
+/// Determines if the local system should actively keep the connection alive
 #[derive(Debug, Clone)]
 pub enum KeepAlive {
+    /// No keep-alive.
     None,
-    Limited(Instant),
+    /// Keep alive for a limited duration.
+    Limited {
+        /// End timestamp after whom the connection will not actively be kept alive anymore.
+        /// This does not automatically mean that the connection is closed, since request-response message might keep
+        /// it alive.
+        ///
+        /// If the connection should be completely stopped, the CommunicationRequest::CloseConnection should be send to
+        /// the [`CommunicationActor`].
+        end: Instant,
+    },
+    /// Keep alive until one of the peers close the connection.
     Unlimited,
 }
 
@@ -123,7 +135,9 @@ pub enum CommunicationRequest<Req, T: Message> {
 /// The firewall that rejected or dropped the request
 #[derive(Debug, Clone)]
 pub enum FirewallBlocked {
+    /// The local firewall block between the request was forwarded to the swarm.
     Local,
+    /// The remote peer did not response.
     Remote,
 }
 
@@ -135,6 +149,35 @@ pub enum RequestMessageError {
     Inbound(P2PInboundFailure),
     /// The request was rejected or dropped by the local or remote firewall.
     Rejected(FirewallBlocked),
+}
+
+/// Information about the connection with a remote peer as maintained in the ConnectionManager.
+#[derive(Clone, Debug)]
+pub struct EstablishedConnection {
+    start: Instant,
+    keep_alive: KeepAlive,
+    connected_point: ConnectedPoint,
+}
+
+impl EstablishedConnection {
+    pub fn new(keep_alive: KeepAlive, connected_point: ConnectedPoint) -> Self {
+        EstablishedConnection {
+            start: Instant::now(),
+            keep_alive,
+            connected_point,
+        }
+    }
+    pub(super) fn is_keep_alive(&self) -> bool {
+        match self.keep_alive {
+            KeepAlive::Unlimited => true,
+            KeepAlive::Limited { end } => Instant::now() <= end,
+            _ => false,
+        }
+    }
+
+    pub(super) fn set_keep_alive(&mut self, keep_alive: KeepAlive) {
+        self.keep_alive = keep_alive;
+    }
 }
 
 /// Returned results from the [`CommuncationActor`]
@@ -158,6 +201,8 @@ pub enum CommunicationResults<Res> {
         /// Not all of theses addresses can be reached from outside of the network since they might be localhost or
         /// private IPs.
         listeners: Vec<Multiaddr>,
+        /// established connections
+        connections: Vec<(PeerId, EstablishedConnection)>,
     },
     BannedPeer(PeerId),
     UnbannedPeer(PeerId),

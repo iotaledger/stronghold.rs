@@ -97,7 +97,7 @@ impl<Req: Message> From<FirewallRule> for RestrictConnectionFirewallMsg<Req> {
     }
 }
 
-// Restricted Firewall that only allows request for certain peers.
+// Restricted Firewall that only allows requests from / to certain peers.
 #[derive(Debug, Clone)]
 pub struct RestrictConnectionFirewall<Req: Message> {
     default: FirewallResponse,

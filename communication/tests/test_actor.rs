@@ -7,9 +7,10 @@ use stronghold_communication::{
     actor::{
         ask,
         firewall::{FirewallResponse, FirewallRule, OpenFirewall, RestrictConnectionFirewall},
-        CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults, KeepAlive,
+        CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults, FirewallBlocked,
+        KeepAlive, RequestMessageError,
     },
-    behaviour::BehaviourConfig,
+    behaviour::{BehaviourConfig, P2POutboundFailure},
     libp2p::{Keypair, Multiaddr, PeerId},
 };
 
@@ -227,16 +228,21 @@ fn ask_swarm_info() {
         Some(CommunicationResults::StartListeningResult(actual_addr)) => {
             assert_eq!(addr, actual_addr.unwrap())
         }
-        _ => panic!(),
+        other => panic!(other),
     }
 
     let result = task::block_on(try_ask(&sys, &communication_actor, CommunicationRequest::GetSwarmInfo));
     match result {
-        Some(CommunicationResults::SwarmInfo { peer_id, listeners }) => {
+        Some(CommunicationResults::SwarmInfo {
+            peer_id,
+            listeners,
+            connections,
+        }) => {
             assert_eq!(PeerId::from(keys.public()), peer_id);
             assert!(listeners.contains(&addr));
+            assert_eq!(connections.len(), 0)
         }
-        _ => panic!(),
+        other => panic!(other),
     }
 }
 
@@ -254,7 +260,7 @@ fn ask_request() {
         Some(CommunicationResults::StartListeningResult(a)) => {
             a.unwrap();
         }
-        _ => panic!(),
+        other => panic!(other),
     }
 
     // start actor A system
@@ -268,8 +274,12 @@ fn ask_request() {
         &communication_actor_b,
         CommunicationRequest::GetSwarmInfo,
     )) {
-        Some(CommunicationResults::SwarmInfo { peer_id, listeners }) => (peer_id, listeners),
-        _ => panic!(),
+        Some(CommunicationResults::SwarmInfo {
+            peer_id,
+            listeners,
+            connections: _,
+        }) => (peer_id, listeners),
+        other => panic!(other),
     };
 
     // connect peer A with peer B
@@ -283,7 +293,7 @@ fn ask_request() {
         },
     )) {
         Some(CommunicationResults::EstablishConnectionResult(Ok(peer_id))) => assert_eq!(peer_id, peer_b_id),
-        _ => panic!(),
+        other => panic!(other),
     };
 
     // send message to from A to B
@@ -318,8 +328,12 @@ fn no_soliloquize() {
         panic!();
     }
     let listeners = match task::block_on(try_ask(&sys, &communication_actor, CommunicationRequest::GetSwarmInfo)) {
-        Some(CommunicationResults::SwarmInfo { peer_id: _, listeners }) => listeners,
-        _ => panic!(),
+        Some(CommunicationResults::SwarmInfo {
+            peer_id: _,
+            listeners,
+            connections: _,
+        }) => listeners,
+        other => panic!(other),
     };
 
     for addr in listeners {
@@ -373,7 +387,7 @@ fn connect_invalid() {
 }
 
 #[test]
-fn send_request_unconnected() {
+fn manage_connection() {
     // init actor A
     let sys_a = ActorSystem::new().unwrap();
     let client = sys_a.actor_of::<BlankActor>("blank").unwrap();
@@ -383,16 +397,6 @@ fn send_request_unconnected() {
     let sys_b = ActorSystem::new().unwrap();
     let client = sys_b.actor_of::<ReplyActor>("target").unwrap();
     let (peer_b_id, communication_actor_b) = init_system(&sys_b, client);
-
-    // peer B starts listening
-    let addr_b = match task::block_on(try_ask(
-        &sys_b,
-        &communication_actor_b,
-        CommunicationRequest::StartListening(None),
-    )) {
-        Some(CommunicationResults::StartListeningResult(addr)) => addr.unwrap(),
-        _ => panic!(),
-    };
 
     // try to send a request between the peers without connecting them first
     match task::block_on(try_ask(
@@ -404,8 +408,18 @@ fn send_request_unconnected() {
         },
     )) {
         Some(CommunicationResults::RequestMsgResult(res)) => assert!(res.is_err()),
-        _ => panic!(),
+        other => panic!(other),
     }
+
+    // peer B starts listening
+    let addr_b = match task::block_on(try_ask(
+        &sys_b,
+        &communication_actor_b,
+        CommunicationRequest::StartListening(None),
+    )) {
+        Some(CommunicationResults::StartListeningResult(addr)) => addr.unwrap(),
+        other => panic!(other),
+    };
 
     // establish connection
     match task::block_on(try_ask(
@@ -418,8 +432,40 @@ fn send_request_unconnected() {
         },
     )) {
         Some(CommunicationResults::EstablishConnectionResult(res)) => assert!(res.is_ok()),
-        _ => panic!(),
+        other => panic!(other),
     }
+
+    // check if peer A is listed in peer Bs connections
+    match task::block_on(try_ask(
+        &sys_b,
+        &communication_actor_b,
+        CommunicationRequest::GetSwarmInfo,
+    )) {
+        Some(CommunicationResults::SwarmInfo {
+            peer_id: _,
+            listeners: _,
+            connections,
+        }) => {
+            assert!(connections.into_iter().any(|(peer, _)| peer == peer_a_id))
+        }
+        other => panic!(other),
+    };
+
+    // check if peer B is listed in peer As connections
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::GetSwarmInfo,
+    )) {
+        Some(CommunicationResults::SwarmInfo {
+            peer_id: _,
+            listeners: _,
+            connections,
+        }) => {
+            assert!(connections.into_iter().any(|(peer, _)| peer == peer_b_id))
+        }
+        other => panic!(other),
+    };
 
     // send request after peers established a connection
     match task::block_on(try_ask(
@@ -431,7 +477,7 @@ fn send_request_unconnected() {
         },
     )) {
         Some(CommunicationResults::RequestMsgResult(res)) => assert!(res.is_ok()),
-        _ => panic!(),
+        other => panic!(other),
     }
 
     // Peer B closes connection
@@ -441,7 +487,7 @@ fn send_request_unconnected() {
         CommunicationRequest::CloseConnection(peer_a_id),
     )) {
         Some(CommunicationResults::ClosedConnection) => {}
-        _ => panic!(),
+        other => panic!(other),
     };
 
     // send request after peer B closed connection
@@ -454,23 +500,35 @@ fn send_request_unconnected() {
         },
     )) {
         Some(CommunicationResults::RequestMsgResult(res)) => assert!(res.is_err()),
-        _ => panic!(),
+        other => panic!(other),
     }
 }
 
 #[test]
-fn firewall_block() {
+fn firewall_rules() {
     // Actor A
     let sys_a = ActorSystem::new().unwrap();
     let blank_actor = sys_a.actor_of::<BlankActor>("blank").unwrap();
-    let (peer_a_id, communication_actor_a) = init_system(&sys_a, blank_actor);
+    let keys = Keypair::generate_ed25519();
+    let peer_a_id = PeerId::from(keys.public());
+    let behaviour_config = BehaviourConfig::default();
+    // Set firewall to block all connections per default.
+    let firewall_a = sys_a
+        .actor_of_args::<RestrictConnectionFirewall<Request>, _>("firewall", FirewallResponse::Reject)
+        .unwrap();
+    let actor_config = CommunicationConfig::new(blank_actor, firewall_a.clone());
+    let communication_actor_a = sys_a
+        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
+            "communication",
+            (keys, actor_config, behaviour_config.clone()),
+        )
+        .unwrap();
 
     // Actor B with firewall that rejects all connections.
     let sys_b = ActorSystem::new().unwrap();
     let target_actor = sys_b.actor_of::<ReplyActor>("target").unwrap();
     let keys = Keypair::generate_ed25519();
     let peer_b_id = PeerId::from(keys.public());
-    let behaviour_config = BehaviourConfig::default();
     // Set firewall to block all connections per default.
     let firewall_b = sys_b
         .actor_of_args::<RestrictConnectionFirewall<Request>, _>("firewall", FirewallResponse::Reject)
@@ -489,7 +547,7 @@ fn firewall_block() {
         CommunicationRequest::StartListening(None),
     )) {
         Some(CommunicationResults::StartListeningResult(a)) => a.unwrap(),
-        _ => panic!(),
+        other => panic!(other),
     };
 
     match task::block_on(try_ask(
@@ -502,10 +560,10 @@ fn firewall_block() {
         },
     )) {
         Some(CommunicationResults::EstablishConnectionResult(res)) => assert!(res.is_ok()),
-        _ => panic!(),
+        other => panic!(other),
     }
 
-    // Sending a request to peer B should fail when no connection is permitted.
+    // Outgoing request should be blocked by As firewall
     match task::block_on(try_ask(
         &sys_a,
         &communication_actor_a,
@@ -514,11 +572,31 @@ fn firewall_block() {
             request: Request::Ping,
         },
     )) {
-        Some(CommunicationResults::RequestMsgResult(res)) => assert!(res.is_err()),
-        _ => panic!(),
+        Some(CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(FirewallBlocked::Local)))) => {}
+        other => panic!(other),
     }
 
-    // Set rule in firewall to allow peer A.
+    // Set rule for As firewall to allow requests to B
+    let rule = FirewallRule::new(peer_b_id, FirewallResponse::Accept);
+    firewall_a.tell(rule, None);
+
+    // Incoming request should be blocked by Bs firewall
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::RequestMsg {
+            peer_id: peer_b_id,
+            request: Request::Ping,
+        },
+    )) {
+        Some(CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(FirewallBlocked::Remote))))
+        | Some(CommunicationResults::RequestMsgResult(Err(RequestMessageError::Outbound(
+            P2POutboundFailure::Timeout,
+        )))) => {}
+        other => panic!(other),
+    }
+
+    // Set rule for Bs firewall to allow requests from A.
     let rule = FirewallRule::new(peer_a_id, FirewallResponse::Accept);
     firewall_b.tell(rule, None);
 
@@ -532,6 +610,26 @@ fn firewall_block() {
         },
     )) {
         Some(CommunicationResults::RequestMsgResult(res)) => assert!(res.is_ok()),
-        _ => panic!(),
+        other => panic!(other),
+    }
+
+    // Forbid requests from A again
+    let rule = FirewallRule::new(peer_a_id, FirewallResponse::Reject);
+    firewall_b.tell(rule, None);
+
+    // Requests should be blocked from B again
+    match task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::RequestMsg {
+            peer_id: peer_b_id,
+            request: Request::Ping,
+        },
+    )) {
+        Some(CommunicationResults::RequestMsgResult(Err(RequestMessageError::Rejected(FirewallBlocked::Remote))))
+        | Some(CommunicationResults::RequestMsgResult(Err(RequestMessageError::Outbound(
+            P2POutboundFailure::Timeout,
+        )))) => {}
+        other => panic!(other),
     }
 }

@@ -429,7 +429,7 @@ fn test_stronghold_communication() {
     };
 
     let (peer_id, listeners) = match futures::executor::block_on(remote_stronghold.get_swarm_info()) {
-        ResultMessage::Ok((peer_id, listeners)) => (peer_id, listeners),
+        ResultMessage::Ok((peer_id, listeners, _)) => (peer_id, listeners),
         ResultMessage::Error(_) => panic!(),
     };
 

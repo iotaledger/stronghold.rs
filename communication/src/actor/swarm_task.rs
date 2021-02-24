@@ -100,7 +100,7 @@ where
         }
     }
 
-    // Ask the firewall actor for FirewallResponse, return FirewallResponse::Drop on timeout
+    // Ask the firewall actor for FirewallResponse, return FirewallResponse::Reject on timeout
     fn ask_req_permission(&mut self, request: Req, remote: PeerId, direction: RequestDirection) -> FirewallResponse {
         let start = Instant::now();
         let firewall_request = FirewallRequest::new(request, remote, direction);
@@ -109,7 +109,7 @@ where
             match ask_permission.poll_unpin(cx) {
                 Poll::Ready(res) => Poll::Ready(res),
                 Poll::Pending => {
-                    if start.elapsed() > Duration::new(5, 0) {
+                    if start.elapsed() > Duration::new(3, 0) {
                         Poll::Ready(FirewallResponse::Reject)
                     } else {
                         Poll::Pending
@@ -127,7 +127,7 @@ where
             match ask_client.poll_unpin(cx) {
                 Poll::Ready(res) => Poll::Ready(Some(res)),
                 Poll::Pending => {
-                    if start.elapsed() > Duration::new(5, 0) {
+                    if start.elapsed() > Duration::new(3, 0) {
                         Poll::Ready(None)
                     } else {
                         Poll::Pending
@@ -151,7 +151,7 @@ where
                         }
                         other => self.handle_swarm_event(other),
                     }
-                    if start.elapsed() > Duration::new(5, 0) {
+                    if start.elapsed() > Duration::new(3, 0) {
                         return Err(());
                     }
                 }
@@ -208,7 +208,7 @@ where
                     }
                     _ => self.handle_swarm_event(event),
                 }
-                if start.elapsed() > Duration::new(5, 0) {
+                if start.elapsed() > Duration::new(3, 0) {
                     return Err(ConnectPeerError::Timeout);
                 }
             }
@@ -258,7 +258,7 @@ where
                     }
                     _ => self.handle_swarm_event(event),
                 }
-                if start.elapsed() > Duration::new(5, 0) {
+                if start.elapsed() > Duration::new(3, 0) {
                     return Err(RequestMessageError::Rejected(FirewallBlocked::Remote));
                 }
             }
@@ -312,17 +312,12 @@ where
                 addr,
                 keep_alive,
             } => {
-                let res = if Swarm::is_connected(&self.swarm, &peer_id) {
+                let res = self.connect_peer(peer_id, addr.clone());
+                if res.is_ok() {
+                    let endpoint = ConnectedPoint::Dialer { address: addr };
+                    self.connection_manager.insert(peer_id, endpoint, keep_alive.clone());
                     self.connection_manager.set_keep_alive(&peer_id, keep_alive);
-                    Ok(peer_id)
-                } else {
-                    let res = self.connect_peer(peer_id, addr.clone());
-                    if res.is_ok() {
-                        let endpoint = ConnectedPoint::Dialer { address: addr };
-                        self.connection_manager.insert(peer_id, endpoint, keep_alive);
-                    }
-                    res
-                };
+                }
                 SwarmTask::<Req, Res, T, U>::send_response(
                     CommunicationResults::EstablishConnectionResult(res),
                     sender,
@@ -340,7 +335,12 @@ where
             CommunicationRequest::GetSwarmInfo => {
                 let peer_id = *Swarm::local_peer_id(&self.swarm);
                 let listeners = Swarm::listeners(&self.swarm).cloned().collect();
-                let res = CommunicationResults::SwarmInfo { peer_id, listeners };
+                let connections = self.connection_manager.current_connections();
+                let res = CommunicationResults::SwarmInfo {
+                    peer_id,
+                    listeners,
+                    connections,
+                };
                 SwarmTask::<Req, Res, T, U>::send_response(res, sender);
             }
             CommunicationRequest::StartListening(addr) => {
@@ -388,6 +388,7 @@ where
         }
     }
 
+    // Handle incoming enveloped from either a peer directly or via the relay peer.
     fn handle_incoming_envelope(&mut self, peer_id: PeerId, request_id: RequestId, request: RequestEnvelope<Req>) {
         if Swarm::local_peer_id(&self.swarm).to_string() != request.target {
             return;

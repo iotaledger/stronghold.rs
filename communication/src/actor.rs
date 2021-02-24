@@ -122,8 +122,10 @@ where
     T: Message + From<Req>,
     U: Message + From<FirewallRequest<Req>>,
 {
+    // Channel for messages to the swarm task.
     swarm_tx: Option<UnboundedSender<(CommunicationRequest<Req, T>, Sender)>>,
     swarm_task_config: Option<(Keypair, CommunicationConfig<Req, T, U>, BehaviourConfig)>,
+    // Handle of the running swarm task.
     poll_swarm_handle: Option<future::RemoteHandle<()>>,
     marker: PhantomData<Res>,
 }
@@ -178,6 +180,7 @@ where
         self.send_swarm_task(msg, sender);
     }
 
+    // Shutdown the swarm task and close the channel.
     fn post_stop(&mut self) {
         self.send_swarm_task(CommunicationRequest::Shutdown, None);
         task::block_on(self.poll_swarm_handle.take().unwrap());
@@ -192,6 +195,7 @@ where
     T: Message + From<Req>,
     U: Message + From<FirewallRequest<Req>>,
 {
+    // Forward a request over the channel to the swarm task.
     fn send_swarm_task(&mut self, msg: CommunicationRequest<Req, T>, sender: Sender) {
         let mut tx = self.swarm_tx.clone().unwrap();
         task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {

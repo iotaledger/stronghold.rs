@@ -23,7 +23,7 @@ use crate::{
 use stronghold_communication::{
     actor::{
         firewall::FirewallRequest, CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults,
-        KeepAlive,
+        EstablishedConnection, KeepAlive,
     },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -658,7 +658,9 @@ impl Stronghold {
 
     #[cfg(feature = "communication")]
     ///  Get the peer id and listening addresses of the local peer
-    pub async fn get_swarm_info(&self) -> ResultMessage<(PeerId, Vec<Multiaddr>)> {
+    pub async fn get_swarm_info(
+        &self,
+    ) -> ResultMessage<(PeerId, Vec<Multiaddr>, Vec<(PeerId, EstablishedConnection)>)> {
         if self.communication_actor.is_none() {
             return ResultMessage::Error(String::from("No communication spawned"));
         }
@@ -670,7 +672,11 @@ impl Stronghold {
         )
         .await
         {
-            CommunicationResults::SwarmInfo { peer_id, listeners } => ResultMessage::Ok((peer_id, listeners)),
+            CommunicationResults::SwarmInfo {
+                peer_id,
+                listeners,
+                connections,
+            } => ResultMessage::Ok((peer_id, listeners, connections)),
             _ => ResultMessage::Error("Failed to obtain swarm information".into()),
         }
     }
