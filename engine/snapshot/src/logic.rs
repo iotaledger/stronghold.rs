@@ -5,9 +5,10 @@ use std::{
     fs::{rename, File, OpenOptions},
     io::{Read, Write},
     path::Path,
+    convert::TryInto,
 };
 
-use crypto::{blake2b, ciphers::chacha::xchacha20poly1305, x25519};
+use crypto::{hashes::blake2b, hashes::Digest, ciphers::chacha::xchacha20poly1305, x25519};
 
 use crate::{compress, decompress};
 
@@ -19,6 +20,14 @@ pub const VERSION: [u8; 2] = [0x2, 0x0];
 
 const KEY_SIZE: usize = 32;
 pub type Key = [u8; KEY_SIZE];
+
+const NONCE_SIZE: usize = xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE;
+pub type Nonce = [u8; NONCE_SIZE];
+
+/// Reshape the digest result to nonce size
+fn shape(h: &[u8]) -> Nonce {
+  h.try_into().unwrap()
+}
 
 /// Encrypt the opaque plaintext bytestring using the specified key and optional associated data
 /// and writes the ciphertext to the specifed output
@@ -35,11 +44,10 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     let shared = ephemeral_key.diffie_hellman(&pk);
 
     let nonce = {
-        let mut h = [0; xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE];
         let mut i = ephemeral_pk.to_bytes().to_vec();
         i.extend_from_slice(pk.as_bytes());
-        blake2b::hash(&i, &mut h);
-        h
+        let res = blake2b::Blake2b256::digest(&i);
+        shape(&res[..])
     };
 
     let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
@@ -69,11 +77,10 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
     let shared = sk.diffie_hellman(&ephemeral_pk);
 
     let nonce = {
-        let mut h = [0; xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE];
         let mut i = ephemeral_pk.to_bytes().to_vec();
         i.extend_from_slice(pk.as_bytes());
-        blake2b::hash(&i, &mut h);
-        h
+        let res = blake2b::Blake2b256::digest(&i);
+        shape(&res[..])
     };
 
     let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
