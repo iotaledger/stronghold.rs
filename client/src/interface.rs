@@ -22,7 +22,7 @@ use crate::{
 #[cfg(feature = "communication")]
 use stronghold_communication::{
     actor::{
-        firewall::FirewallRequest, CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults,
+        firewall::OpenFirewall, CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults,
         EstablishedConnection, KeepAlive,
     },
     behaviour::BehaviourConfig,
@@ -115,10 +115,10 @@ impl Stronghold {
     }
 
     #[cfg(feature = "communication")]
-    pub fn spawn_communication<T: Message + From<FirewallRequest<SHRequest>>>(
-        &mut self,
-        firewall: ActorRef<T>,
-    ) -> StatusMessage {
+    /// Spawn the communication actor and swarm.
+    /// Currently this creates an open firewall so that all requests are permitted, eventually there will be
+    /// configuration options for the firewall added to the SH interface.
+    pub fn spawn_communication(&mut self) -> StatusMessage {
         if self.communication_actor.is_some() {
             return StatusMessage::Error(String::from("Communication was already spawned"));
         }
@@ -126,6 +126,7 @@ impl Stronghold {
         let idx = self.current_target;
         let client = self.actors[idx].clone();
 
+        let firewall = self.system.actor_of::<OpenFirewall<_>>("firewall").unwrap();
         let actor_config = CommunicationConfig::new(client, firewall);
         let local_keys = Keypair::generate_ed25519();
         let behaviour_config = BehaviourConfig::default();
@@ -141,6 +142,7 @@ impl Stronghold {
         StatusMessage::OK
     }
 
+    /// Kill communication actor and swarm
     #[cfg(feature = "communication")]
     pub fn stop_communication(&mut self) {
         if let Some(communication_actor) = self.communication_actor.as_ref() {
@@ -753,7 +755,7 @@ impl Stronghold {
             .await
         {
             CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnExistsVault(b))) => b,
-            other => return Stronghold::handle_response_failure(other, "write data"),
+            other => return StatusMessage::Error(Stronghold::handle_response_failure(other, "write data")),
         };
         if vault_exists {
             // check if record exists
@@ -767,7 +769,7 @@ impl Stronghold {
                 .await
             {
                 CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnExistsRecord(b))) => b,
-                other => return Stronghold::handle_response_failure(other, "check record"),
+                other => return StatusMessage::Error(Stronghold::handle_response_failure(other, "check record")),
             };
             if !record_exists {
                 // initialize a new record
@@ -781,7 +783,9 @@ impl Stronghold {
                     .await
                 {
                     CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnInitRecord(status))) => status,
-                    other => return Stronghold::handle_response_failure(other, "initialize record"),
+                    other => {
+                        return StatusMessage::Error(Stronghold::handle_response_failure(other, "initialize record"))
+                    }
                 };
             }
         } else {
@@ -791,7 +795,7 @@ impl Stronghold {
                 .await
             {
                 CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnCreateVault(_))) => {}
-                other => return Stronghold::handle_response_failure(other, "create vault"),
+                other => return StatusMessage::Error(Stronghold::handle_response_failure(other, "create vault")),
             };
         }
         // write data
@@ -807,7 +811,7 @@ impl Stronghold {
             .await
         {
             CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnWriteVault(status))) => status,
-            other => Stronghold::handle_response_failure(other, "write data"),
+            other => StatusMessage::Error(Stronghold::handle_response_failure(other, "write data")),
         }
     }
 
@@ -836,7 +840,7 @@ impl Stronghold {
             .await
         {
             CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnWriteStore(status))) => status,
-            other => Stronghold::handle_response_failure(other, "write to the store"),
+            other => StatusMessage::Error(Stronghold::handle_response_failure(other, "write to the store")),
         }
     }
 
@@ -851,7 +855,10 @@ impl Stronghold {
             CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnReadStore(payload, status))) => {
                 (payload, status)
             }
-            other => (vec![], Stronghold::handle_response_failure(other, "write to the store")),
+            other => (
+                vec![],
+                StatusMessage::Error(Stronghold::handle_response_failure(other, "write to the store")),
+            ),
         }
     }
 
@@ -870,8 +877,27 @@ impl Stronghold {
             CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnList(ids, status))) => (ids, status),
             other => (
                 vec![],
-                Stronghold::handle_response_failure(other, "list hints and indexes from the vault"),
+                StatusMessage::Error(Stronghold::handle_response_failure(
+                    other,
+                    "list hints and indexes from the vault",
+                )),
             ),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    /// Executes a runtime command on a remote stronghold.
+    pub async fn remote_runtime_exec(&self, peer_id: PeerId, control_request: Procedure) -> Result<ProcResult, String> {
+        if self.communication_actor.is_none() {
+            return Err(String::from("No communication spawned"));
+        }
+
+        match self
+            .ask_remote(peer_id, SHRequest::ControlRequest(control_request))
+            .await
+        {
+            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnControlRequest(pr))) => Ok(pr),
+            other => Err(Stronghold::handle_response_failure(other, "execute procedure")),
         }
     }
 
@@ -882,13 +908,13 @@ impl Stronghold {
     // - Response is okay, but the request procedure at the remote stronghold was not successful.
     // - Response is an error: request could not be send or no response was received.
     // - Invalid event was returned from the communication actor.
-    fn handle_response_failure(res: CommunicationResults<SHResults>, procedure: &str) -> StatusMessage {
+    fn handle_response_failure(res: CommunicationResults<SHResults>, procedure: &str) -> String {
         match res {
-            CommunicationResults::RequestMsgResult(Ok(_)) => StatusMessage::Error(format!("Failed to {}", procedure)),
+            CommunicationResults::RequestMsgResult(Ok(_)) => format!("Failed to {}", procedure),
             CommunicationResults::RequestMsgResult(Err(e)) => {
-                StatusMessage::Error(format!("Error messaging peer {:?}", e))
+                format!("Error messaging peer {:?}", e)
             }
-            _ => StatusMessage::Error("Received invalid communication actor response".into()),
+            _ => "Received invalid communication actor response".into(),
         }
     }
 

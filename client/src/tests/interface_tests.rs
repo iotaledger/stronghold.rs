@@ -5,11 +5,14 @@ use riker::actors::*;
 
 use crate::{line_error, Location, RecordHint, Stronghold};
 #[cfg(feature = "communication")]
-use crate::{ResultMessage, StatusMessage};
+use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, StatusMessage};
 #[cfg(feature = "communication")]
 use core::time::Duration;
 #[cfg(feature = "communication")]
-use stronghold_communication::actor::{firewall::OpenFirewall, KeepAlive};
+use stronghold_communication::actor::KeepAlive;
+
+#[cfg(feature = "communication")]
+use super::fresh;
 
 #[test]
 fn test_stronghold() {
@@ -411,15 +414,13 @@ fn test_counters() {
 fn test_stronghold_communication() {
     let local_sys = ActorSystem::new().unwrap();
     let local_client = b"local".to_vec();
-    let firewall = local_sys.actor_of::<OpenFirewall<_>>("firewall").unwrap();
     let mut local_stronghold = Stronghold::init_stronghold_system(local_sys, local_client, vec![]);
-    local_stronghold.spawn_communication(firewall);
+    local_stronghold.spawn_communication();
 
     let remote_sys = ActorSystem::new().unwrap();
     let remote_client = b"remote".to_vec();
-    let firewall = remote_sys.actor_of::<OpenFirewall<_>>("firewall").unwrap();
     let mut remote_stronghold = Stronghold::init_stronghold_system(remote_sys, remote_client, vec![]);
-    remote_stronghold.spawn_communication(firewall);
+    remote_stronghold.spawn_communication();
 
     std::thread::sleep(Duration::new(1, 0));
 
@@ -488,4 +489,30 @@ fn test_stronghold_communication() {
         (_, StatusMessage::Error(_)) => panic!(),
     };
     assert_eq!(payload, original_data);
+
+    // test procedure execution
+
+    let seed = fresh::location();
+
+    match futures::executor::block_on(remote_stronghold.runtime_exec(Procedure::SLIP10Generate {
+        size_bytes: None,
+        output: seed.clone(),
+        hint: fresh::record_hint(),
+    })) {
+        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
+        r => panic!("unexpected result: {:?}", r),
+    };
+
+    let (_path, chain) = fresh::hd_path();
+    let procedure = Procedure::SLIP10Derive {
+        chain,
+        input: SLIP10DeriveInput::Seed(seed),
+        output: fresh::location(),
+        hint: fresh::record_hint(),
+    };
+
+    match futures::executor::block_on(local_stronghold.remote_runtime_exec(peer_id, procedure)) {
+        Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(_))) => {}
+        r => panic!("unexpected result: {:?}", r),
+    };
 }
