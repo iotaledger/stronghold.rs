@@ -34,7 +34,7 @@ version = "0.2"
 
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
-rev = "6e67b652dd55df05877f575b9a09ccb5a7006694"
+rev = "09ff1a94d6a87838589ccf1b874cfa3283a00f26"
 features = [ "random", "ed25519", "sha", "hmac", "bip39-en" ]
 version = "*"
 # Note: We are only adding a version so that we can publish to crates.io
@@ -43,7 +43,7 @@ version = "*"
 hex = "0.4.2"
 criterion = "0.3.3"
 clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
-rand = "0.7.3"
+rand = "0.8.3"
 
 [dev-dependencies.stronghold-test-utils]
 path = "../test_utils"
