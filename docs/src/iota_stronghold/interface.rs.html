@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `client/src/interface.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>interface.rs - source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings"></script><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg">
 <link rel="alternate icon" type="image/png" href="../../favicon-16x16.png">
-<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../iota_stronghold/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><span class="help-button">?</span>
+<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../iota_stronghold/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
                 <a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
 <span id="2">  2</span>
 <span id="3">  3</span>
@@ -693,7 +693,7 @@
     <span class="doccomment">/// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified</span>
     <span class="doccomment">/// location of `Location` type. The payload must be specified as a `Vec&lt;u8&gt;` and a `RecordHint` can be provided.</span>
     <span class="doccomment">/// Also accepts `VaultFlags` for when a new Vault is created.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">write_to_vault</span>(
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">write_to_vault</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">location</span>: <span class="ident">Location</span>,
         <span class="ident">payload</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
@@ -708,7 +708,7 @@
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">vault_path</span>.<span class="ident">to_vec</span>();
 
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnExistsVault</span>(<span class="ident">b</span>) <span class="op">=</span>
-            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">CheckVault</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>())).<span class="ident">await</span>
+            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">CheckVault</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>())).<span class="kw">await</span>
         {
             <span class="comment">// check if vault exists</span>
             <span class="kw">if</span> <span class="ident">b</span> {
@@ -719,7 +719,7 @@
                         <span class="ident">location</span>: <span class="ident">location</span>.<span class="ident">clone</span>(),
                     },
                 )
-                .<span class="ident">await</span>
+                .<span class="kw">await</span>
                 {
                     <span class="kw">if</span> <span class="ident">b</span> {
                         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnWriteVault</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(
@@ -731,7 +731,7 @@
                                 <span class="ident">hint</span>,
                             },
                         )
-                        .<span class="ident">await</span>
+                        .<span class="kw">await</span>
                         {
                             <span class="kw">return</span> <span class="ident">status</span>;
                         } <span class="kw">else</span> {
@@ -745,7 +745,7 @@
                                 <span class="ident">location</span>: <span class="ident">location</span>.<span class="ident">clone</span>(),
                             },
                         )
-                        .<span class="ident">await</span>
+                        .<span class="kw">await</span>
                         {
                             (<span class="prelude-val">Some</span>(<span class="ident">idx</span>), <span class="ident">status</span>)
                         } <span class="kw">else</span> {
@@ -761,7 +761,7 @@
                                 <span class="ident">hint</span>,
                             },
                         )
-                        .<span class="ident">await</span>
+                        .<span class="kw">await</span>
                         {
                             <span class="kw">return</span> <span class="ident">status</span>;
                         } <span class="kw">else</span> {
@@ -772,7 +772,7 @@
             } <span class="kw">else</span> {
                 <span class="comment">// no vault so create new one before writing.</span>
                 <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnCreateVault</span>(<span class="ident">status</span>) <span class="op">=</span>
-                    <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">CreateNewVault</span>(<span class="ident">location</span>.<span class="ident">clone</span>())).<span class="ident">await</span>
+                    <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">CreateNewVault</span>(<span class="ident">location</span>.<span class="ident">clone</span>())).<span class="kw">await</span>
                 {
                     <span class="ident">status</span>
                 } <span class="kw">else</span> {
@@ -788,7 +788,7 @@
                         <span class="ident">hint</span>,
                     },
                 )
-                .<span class="ident">await</span>
+                .<span class="kw">await</span>
                 {
                     <span class="kw">return</span> <span class="ident">status</span>;
                 } <span class="kw">else</span> {
@@ -802,12 +802,12 @@
 
     <span class="doccomment">/// A test function for reading data from a vault.</span>
     <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">read_secret</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_secret</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
         <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">current_target</span>;
 
         <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
 
-        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromVault</span> { <span class="ident">location</span> }).<span class="ident">await</span>;
+        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromVault</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
 
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnReadVault</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
             (<span class="prelude-val">Some</span>(<span class="ident">payload</span>), <span class="ident">status</span>)
@@ -820,7 +820,7 @@
     <span class="doccomment">/// The lifetime allows the data to be deleted after the specified duration has passed.  If not lifetime is</span>
     <span class="doccomment">/// specified, the data will persist until it is manually deleted or over-written. Note: One store is mapped to</span>
     <span class="doccomment">/// one client. Can specify the same location across multiple clients.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">write_to_store</span>(
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">write_to_store</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">location</span>: <span class="ident">Location</span>,
         <span class="ident">payload</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
@@ -839,7 +839,7 @@
                 <span class="ident">lifetime</span>,
             },
         )
-        .<span class="ident">await</span>;
+        .<span class="kw">await</span>;
 
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnWriteStore</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
             <span class="ident">status</span>
@@ -852,12 +852,12 @@
     <span class="doccomment">/// form of a `Vec&lt;u8&gt;`.  If the location does not exist, an empty vector will be returned along with an error</span>
     <span class="doccomment">/// `StatusMessage`.  Note: One store is mapped to</span>
     <span class="doccomment">/// one client. Can specify the same location across multiple clients.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">read_from_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_from_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
         <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">current_target</span>;
 
         <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
 
-        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromStore</span> { <span class="ident">location</span> }).<span class="ident">await</span>;
+        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
 
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnReadStore</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
             (<span class="ident">payload</span>, <span class="ident">status</span>)
@@ -868,12 +868,12 @@
 
     <span class="doccomment">/// A method to delete data from an insecure cache. This method, accepts a `Location` and returns a `StatusMessage`.</span>
     <span class="doccomment">/// Note: One store is mapped to one client. Can specify the same location across multiple clients.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">delete_from_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">delete_from_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">current_target</span>;
 
         <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
 
-        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">DeleteFromStore</span>(<span class="ident">location</span>)).<span class="ident">await</span>;
+        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">DeleteFromStore</span>(<span class="ident">location</span>)).<span class="kw">await</span>;
 
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnDeleteStore</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
             <span class="ident">status</span>
@@ -885,7 +885,7 @@
     <span class="doccomment">/// Revokes the data from the specified location of type `Location`. Revoked data is not readable and can be removed</span>
     <span class="doccomment">/// from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call with</span>
     <span class="doccomment">/// automatically cleanup the revoke. Otherwise, the data is just marked as revoked.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">delete_data</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>, <span class="ident">should_gc</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">delete_data</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>, <span class="ident">should_gc</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">current_target</span>;
         <span class="kw">let</span> <span class="ident">status</span>;
         <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
@@ -893,7 +893,7 @@
 
         <span class="kw">if</span> <span class="ident">should_gc</span> {
             <span class="kw">let</span> <span class="kw">_</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnRevoke</span>(<span class="ident">status</span>) <span class="op">=</span>
-                <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">RevokeData</span> { <span class="ident">location</span> }).<span class="ident">await</span>
+                <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">RevokeData</span> { <span class="ident">location</span> }).<span class="kw">await</span>
             {
                 <span class="ident">status</span>
             } <span class="kw">else</span> {
@@ -901,7 +901,7 @@
             };
 
             <span class="ident">status</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnGarbage</span>(<span class="ident">status</span>) <span class="op">=</span>
-                <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">GarbageCollect</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>())).<span class="ident">await</span>
+                <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">GarbageCollect</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>())).<span class="kw">await</span>
             {
                 <span class="ident">status</span>
             } <span class="kw">else</span> {
@@ -911,7 +911,7 @@
             <span class="ident">status</span>
         } <span class="kw">else</span> {
             <span class="ident">status</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnRevoke</span>(<span class="ident">status</span>) <span class="op">=</span>
-                <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">RevokeData</span> { <span class="ident">location</span> }).<span class="ident">await</span>
+                <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">RevokeData</span> { <span class="ident">location</span> }).<span class="kw">await</span>
             {
                 <span class="ident">status</span>
             } <span class="kw">else</span> {
@@ -923,12 +923,12 @@
     }
 
     <span class="doccomment">/// Garbage collects any revokes in a Vault based on the given vault_path and the current target actor.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">garbage_collect</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">garbage_collect</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">current_target</span>;
 
         <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnGarbage</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">GarbageCollect</span>(<span class="ident">vault_path</span>)).<span class="ident">await</span>
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnGarbage</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">GarbageCollect</span>(<span class="ident">vault_path</span>)).<span class="kw">await</span>
         {
             <span class="ident">status</span>
         } <span class="kw">else</span> {
@@ -939,7 +939,7 @@
     <span class="doccomment">/// Returns a list of the available records and their `RecordHint` values in a vault by the given vault_path.</span>
     <span class="doccomment">/// Records are returned as `usize` based on their index if they are written with counter `Locations`.  Generic</span>
     <span class="doccomment">/// `Locations` will not return a readable index.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">list_hints_and_ids</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">list_hints_and_ids</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">vault_path</span>: <span class="ident">V</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">usize</span>, <span class="ident">RecordHint</span>)<span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
@@ -948,7 +948,7 @@
         <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
 
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnList</span>(<span class="ident">ids</span>, <span class="ident">status</span>) <span class="op">=</span>
-            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ListIds</span>(<span class="ident">vault_path</span>.<span class="ident">into</span>())).<span class="ident">await</span>
+            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ListIds</span>(<span class="ident">vault_path</span>.<span class="ident">into</span>())).<span class="kw">await</span>
         {
             (<span class="ident">ids</span>, <span class="ident">status</span>)
         } <span class="kw">else</span> {
@@ -961,11 +961,11 @@
 
     <span class="doccomment">/// Executes a runtime command given a `Procedure`.  Returns a `ProcResult` based off of the control_request</span>
     <span class="doccomment">/// specified.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">runtime_exec</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">control_request</span>: <span class="ident">Procedure</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ProcResult</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">runtime_exec</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">control_request</span>: <span class="ident">Procedure</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ProcResult</span> {
         <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">current_target</span>;
 
         <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
-        <span class="kw">let</span> <span class="ident">shr</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ControlRequest</span>(<span class="ident">control_request</span>)).<span class="ident">await</span>;
+        <span class="kw">let</span> <span class="ident">shr</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ControlRequest</span>(<span class="ident">control_request</span>)).<span class="kw">await</span>;
         <span class="kw">match</span> <span class="ident">shr</span> {
             <span class="ident">SHResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">pr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">pr</span>,
             <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">todo</span><span class="macro">!</span>(<span class="string">&quot;return a proper error: unexpected result&quot;</span>),
@@ -976,7 +976,7 @@
     <span class="doccomment">/// actor uses a new `client_path` the former client path may be passed into the function call to read the data into</span>
     <span class="doccomment">/// that actor. Also requires keydata to unlock the snapshot. A filename and filepath can be specified. The Keydata</span>
     <span class="doccomment">/// should implement and use Zeroize.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">read_snapshot</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Zeroize</span> <span class="op">+</span> <span class="ident">AsRef</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_snapshot</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Zeroize</span> <span class="op">+</span> <span class="ident">AsRef</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
         <span class="ident">former_client_path</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>,
@@ -1016,7 +1016,7 @@
                     <span class="ident">former_cid</span>,
                 },
             )
-            .<span class="ident">await</span>
+            .<span class="kw">await</span>
             {
                 <span class="ident">status</span>
             } <span class="kw">else</span> {
@@ -1063,7 +1063,7 @@
     <span class="doccomment">/// Writes the entire state of the `Stronghold` into a snapshot.  All Actors and their associated data will be</span>
     <span class="doccomment">/// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be</span>
     <span class="doccomment">/// specified. The Keydata should implement and use Zeroize.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">write_all_to_snapshot</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Zeroize</span> <span class="op">+</span> <span class="ident">AsRef</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">write_all_to_snapshot</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Zeroize</span> <span class="op">+</span> <span class="ident">AsRef</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">keydata</span>: <span class="kw-2">&amp;</span><span class="ident">T</span>,
         <span class="ident">filename</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
@@ -1090,10 +1090,10 @@
         }
 
         <span class="kw">for</span> <span class="ident">fut</span> <span class="kw">in</span> <span class="ident">futures</span> {
-            <span class="ident">fut</span>.<span class="ident">await</span>;
+            <span class="ident">fut</span>.<span class="kw">await</span>;
         }
 
-        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">WriteSnapshot</span> { <span class="ident">key</span>, <span class="ident">filename</span>, <span class="ident">path</span> }).<span class="ident">await</span>;
+        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">WriteSnapshot</span> { <span class="ident">key</span>, <span class="ident">filename</span>, <span class="ident">path</span> }).<span class="kw">await</span>;
 
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnWriteSnap</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
             <span class="ident">status</span>
@@ -1105,7 +1105,7 @@
     <span class="doccomment">/// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If</span>
     <span class="doccomment">/// `kill_actor` is `true` both the internal actor and the client actor will be killed.  Otherwise, the cache of the</span>
     <span class="doccomment">/// current target actor will be cleared.</span>
-    <span class="kw">pub</span> <span class="ident">async</span> <span class="kw">fn</span> <span class="ident">kill_stronghold</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">kill_actor</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">kill_stronghold</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">kill_actor</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">data</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">derive_data</span>.<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
         <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId</span>::<span class="ident">load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">data</span>.<span class="ident">as_ref</span>(), <span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
@@ -1130,7 +1130,7 @@
             } <span class="kw">else</span> {
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
 
-                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnClearCache</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ClearCache</span>).<span class="ident">await</span> {
+                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnClearCache</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ClearCache</span>).<span class="kw">await</span> {
                     <span class="ident">status</span>
                 } <span class="kw">else</span> {
                     <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to clear the cache&quot;</span>.<span class="ident">into</span>())

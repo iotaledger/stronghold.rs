@@ -169,17 +169,17 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1><a class="header" href="#welcome" id="welcome">Welcome</a></h1>
+                        <h1 id="welcome"><a class="header" href="#welcome">Welcome</a></h1>
 <p>This is the documentation for the official IOTA Strongold Software.</p>
 <p>IOTA Stronghold is a secure software implementation with the sole purpose of isolating digital secrets like IOTA seeds and private keys.</p>
-<h2><a class="header" href="#-alpha-version-" id="-alpha-version-">🚧 Alpha Version 🚧</a></h2>
+<h2 id="-alpha-version-"><a class="header" href="#-alpha-version-">🚧 Alpha Version 🚧</a></h2>
 <p><a href="https://github.com/iotaledger/strongold.rs"><img src="https://img.shields.io/badge/Status-Alpha-yellow.svg" alt="status" /></a></p>
 <p>These libraries are being prepared for a number of external security audits in early 2021, so they are not yet verifiably safe. Until this warning is removed, the IOTA Foundation makes no guarantees to the fitness of these libraries for any purposes.</p>
 <p>As such, they are to be seen as experimental and not ready for real-world applications.</p>
 <p>Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out with any concerns or suggestions you may have.</p>
-<h2><a class="header" href="#joining-the-discussion" id="joining-the-discussion">Joining the discussion</a></h2>
+<h2 id="joining-the-discussion"><a class="header" href="#joining-the-discussion">Joining the discussion</a></h2>
 <p>If you want to get involved in discussions about this library, or you're looking for support, go to the #stronghold-discussion channel on <a href="https://discord.iota.org">Discord</a>.</p>
-<h2><a class="header" href="#what-you-will-find-here" id="what-you-will-find-here">What you will find here</a></h2>
+<h2 id="what-you-will-find-here"><a class="header" href="#what-you-will-find-here">What you will find here</a></h2>
 <p>This documentation has five paths. </p>
 <ol>
 <li>The Overview, an detailed overview of the project. </li>
@@ -188,7 +188,7 @@
 <li>Contribute, how you can work on the Stronghold software.</li>
 <li>Get in touch, join the community and become part of the X-Team!</li>
 </ol>
-<h1><a class="header" href="#overview" id="overview">Overview</a></h1>
+<h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
 <p>IOTA Stronghold is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidental leaks. It uses encrypted snapshots that can be easily backed up and securely shared between devices. Written in stable rust, it has strong guarantees of memory safety and process integrity.</p>
 <p>There are four main components of Stronghold:</p>
 <p>There are four main components of Stronghold:</p>
@@ -199,10 +199,10 @@
 <li><strong>Communication</strong>: Enables Strongholds in different processes or on different devices to communicate with each other securely.</li>
 </ol>
 <p>Read more about the <a href="https://blog.iota.org/stronghold-alpha-release/">Alpha Release</a>.</p>
-<h1><a class="header" href="#iota-stronghold-libraries" id="iota-stronghold-libraries">IOTA stronghold libraries</a></h1>
+<h1 id="iota-stronghold-libraries"><a class="header" href="#iota-stronghold-libraries">IOTA stronghold libraries</a></h1>
 <p>This is the location where bindings to other languages will be made available. The general strategy is that a binding will only expose the top level client interface.</p>
 <p>This allows the binding to be simple and easy to audit. </p>
-<h2><a class="header" href="#available-binding-languages" id="available-binding-languages">Available binding languages</a></h2>
+<h2 id="available-binding-languages"><a class="header" href="#available-binding-languages">Available binding languages</a></h2>
 <ul>
 <li><input disabled="" type="checkbox"/>
 C</li>
@@ -211,15 +211,15 @@ golang</li>
 <li><input disabled="" type="checkbox"/>
 node.js (via NEON)</li>
 </ul>
-<h2><a class="header" href="#why-no-wasm" id="why-no-wasm">Why no WASM?</a></h2>
+<h2 id="why-no-wasm"><a class="header" href="#why-no-wasm">Why no WASM?</a></h2>
 <p>While absolutely possible, we will not be providing full WASM bindings to stronghold, because of a number of very serious concerns regarding memory safety which basically destroys the security model that Stronghold seeks to offer.</p>
-<h1><a class="header" href="#specification" id="specification">Specification</a></h1>
+<h1 id="specification"><a class="header" href="#specification">Specification</a></h1>
 <blockquote>
 <p>TODO</p>
 </blockquote>
-<h1><a class="header" href="#contribute-to-the-project" id="contribute-to-the-project">Contribute to the project</a></h1>
+<h1 id="contribute-to-the-project"><a class="header" href="#contribute-to-the-project">Contribute to the project</a></h1>
 <p><strong>Thanks for thinking about contributing to the project! We have the following ways that you can contribute.</strong></p>
-<h2><a class="header" href="#join-the-iota-stronghold-initiative" id="join-the-iota-stronghold-initiative">Join the IOTA Stronghold Initiative</a></h2>
+<h2 id="join-the-iota-stronghold-initiative"><a class="header" href="#join-the-iota-stronghold-initiative">Join the IOTA Stronghold Initiative</a></h2>
 <p>The <a href="https://github.com/iota-community/X-Team_IOTA_Stronghold">IOTA Stronghold Initiative</a> is a collaborative effort to help improve the developer experience.</p>
 <ul>
 <li>Quality assurance and review</li>
@@ -227,17 +227,17 @@ node.js (via NEON)</li>
 <li>Code samples</li>
 </ul>
 <p>If you'd like to get involved, join the #experience channel on <a href="https://discord.iota.org">Discord</a>.</p>
-<h2><a class="header" href="#contribute-to-the-projects-github-repository" id="contribute-to-the-projects-github-repository">Contribute to the project's GitHub repository</a></h2>
+<h2 id="contribute-to-the-projects-github-repository"><a class="header" href="#contribute-to-the-projects-github-repository">Contribute to the project's GitHub repository</a></h2>
 <p>All the code is open source and hosted on <a href="https://github.com/iotaledger/stronghold.rs">GitHub</a> where you can do the following:</p>
 <ul>
 <li>Report a bug</li>
 <li>Suggest a new feature</li>
 <li>Contribute to the documentation</li>
 </ul>
-<h2><a class="header" href="#contribute-to-the-documentation" id="contribute-to-the-documentation">Contribute to the documentation</a></h2>
+<h2 id="contribute-to-the-documentation"><a class="header" href="#contribute-to-the-documentation">Contribute to the documentation</a></h2>
 <p>This documentation is also open source and hosted on GitHub.</p>
 <p>If you want to contribute new documentation or fix an error, see the <a href="https://github.com/iotaledger/documentation/blob/develop/.github/CONTRIBUTING.md">contribution guidelines</a>.</p>
-<h2><a class="header" href="#share-your-knowledge" id="share-your-knowledge">Share your knowledge</a></h2>
+<h2 id="share-your-knowledge"><a class="header" href="#share-your-knowledge">Share your knowledge</a></h2>
 <p>Helping others is an important part of any open source ecosystem.</p>
 <p>By sharing your knowledge with others, you can provide a lot of value to the community and maybe inspire someone else to learn and contribute.</p>
 <p>Take a look at what discussions are going on in the #stronghold-discussion channel on <a href="https://discord.iota.org">Discord</a>.</p>
