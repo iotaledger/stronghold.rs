@@ -1,7 +1,7 @@
 // Copyright 2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-pub use test_utils::fresh::*;
+pub use stronghold_utils::test_utils::{self, fresh::*};
 
 use crate::{hd, Location, RecordHint};
 

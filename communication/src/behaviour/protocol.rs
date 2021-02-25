@@ -114,13 +114,13 @@ mod test {
         net::{Shutdown, TcpListener, TcpStream},
         task,
     };
-    use test_utils::fresh;
+    use stronghold_utils::test_utils;
 
     #[test]
     fn send_request() {
         let mut test_vector = Vec::new();
         for _ in 0..20 {
-            test_vector.push(fresh::non_empty_bytestring());
+            test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
         let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8081").await.unwrap() });
@@ -156,7 +156,7 @@ mod test {
     fn send_response() {
         let mut test_vector = Vec::new();
         for _ in 0..20 {
-            test_vector.push(fresh::non_empty_bytestring());
+            test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
         let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8082").await.unwrap() });
@@ -193,7 +193,7 @@ mod test {
     fn corrupt_request() {
         let mut test_vector = Vec::new();
         for _ in 0..20 {
-            test_vector.push(fresh::non_empty_bytestring());
+            test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
         let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8083").await.unwrap() });
@@ -231,7 +231,7 @@ mod test {
     fn corrupt_response() {
         let mut test_vector = Vec::new();
         for _ in 0..20 {
-            test_vector.push(fresh::non_empty_bytestring());
+            test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
         let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8084").await.unwrap() });

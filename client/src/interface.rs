@@ -16,7 +16,7 @@ use crate::{
     client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
-    utils::{ask, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     ClientId, Location, Provider,
 };
 #[cfg(feature = "communication")]
@@ -28,6 +28,7 @@ use stronghold_communication::{
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
 };
+use stronghold_utils::ask;
 
 pub struct Stronghold {
     // actor system.

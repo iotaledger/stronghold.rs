@@ -23,8 +23,8 @@ version = "0.2"
 path = "../crypto"
 version = "0.2"
 
-[dev-dependencies.stronghold-test-utils]
-path = "../../test_utils"
+[dev-dependencies.stronghold-utils]
+path = "../../utils"
 version = "0.1"
 
 [[bench]]

@@ -28,10 +28,9 @@ serde = { version = "1.0", default-features = false, features = [ "alloc", "deri
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 riker = { version = "0.4", git ="https://github.com/elenaf9/riker", branch = "master" }
 
+stronghold-utils = {version = "0.1", path = "../utils"}
+
 [features]
 default = [ "mdns" ]
 mdns = [ ]
 
-[dev-dependencies.stronghold-test-utils]
-path = "../test_utils"
-version = "0.1"

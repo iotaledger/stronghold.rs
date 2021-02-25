@@ -1,12 +1,11 @@
 [package]
-name = "stronghold-test-utils"
+name = "stronghold-utils"
 version = "0.1.0"
 authors = [ "Gustav Behm <gustav.behm@iota.org>" ]
 edition = "2018"
 license = "Apache-2.0"
 
-[lib]
-name = "test_utils"
-
 [dependencies]
+futures = "0.3"
 rand = "0.8.3"
+riker = { version = "0.4", git ="https://github.com/elenaf9/riker", branch = "master" }

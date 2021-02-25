@@ -1,13 +1,11 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-mod ask;
 mod connections;
 pub mod firewall;
 mod swarm_task;
 mod types;
 use crate::behaviour::{BehaviourConfig, MessageEvent};
-pub use ask::ask;
 use async_std::task;
 use core::{
     marker::PhantomData,
@@ -20,6 +18,7 @@ use futures::{
 };
 use libp2p::identity::Keypair;
 use riker::actors::*;
+use stronghold_utils::ask;
 use swarm_task::SwarmTask;
 pub use types::*;
 

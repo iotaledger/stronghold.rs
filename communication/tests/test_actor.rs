@@ -5,7 +5,6 @@ use async_std::task;
 use riker::actors::*;
 use stronghold_communication::{
     actor::{
-        ask,
         firewall::{FirewallResponse, FirewallRule, OpenFirewall, RestrictConnectionFirewall},
         CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults, FirewallBlocked,
         KeepAlive, RequestMessageError,
@@ -13,6 +12,7 @@ use stronghold_communication::{
     behaviour::{BehaviourConfig, P2POutboundFailure},
     libp2p::{Keypair, Multiaddr, PeerId},
 };
+use stronghold_utils::ask;
 
 use core::task::{Context as TaskContext, Poll};
 use futures::{future, prelude::*};
