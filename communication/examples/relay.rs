@@ -27,7 +27,11 @@ fn run_relay(matches: &ArgMatches) {
         // Create swarm for communication
         let mut swarm = P2PNetworkBehaviour::<RequestEnvelope<String>, Ack>::init_swarm(local_keys, config)
             .expect("Could not create swarm.");
-        Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/16384".parse().unwrap()).expect("Listening error.");
+        Swarm::listen_on(
+            &mut swarm,
+            "/ip4/0.0.0.0/tcp/16384".parse().expect("Invalid Multiaddress."),
+        )
+        .expect("Listening error.");
         println!("\nLocal PeerId: {:?}", Swarm::local_peer_id(&swarm));
 
         // map request from original peer to the request send to target
@@ -156,7 +160,10 @@ fn start_peer(matches: &ArgMatches) {
                             }
                             SwarmEvent::ConnectionClosed{peer_id, endpoint: _, num_established: 0, cause: _} => {
                                 if peer_id == relay_peer {
-                                    Swarm::dial_addr(&mut swarm, relay_addr.clone()).unwrap();
+                                    if let Err(err) =  Swarm::dial_addr(&mut swarm, relay_addr.clone()){
+                                        println!("Error reconnection relay: {:?}", err);
+                                        return;
+                                    }
                                 }
                             }
                             SwarmEvent::UnreachableAddr {

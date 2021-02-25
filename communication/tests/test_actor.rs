@@ -155,7 +155,7 @@ fn msg_external_actor() {
 
     // init actor B system
     let sys_b = ActorSystem::new().unwrap();
-    let addr_b: Multiaddr = "/ip4/127.0.0.1/tcp/8095".parse().unwrap();
+    let addr_b: Multiaddr = "/ip4/127.0.0.1/tcp/8095".parse().expect("Invalid Multiaddress.");
     let client = sys_b.actor_of_args::<ActorB, _>("actor-b", addr_b.clone()).unwrap();
     let (peer_b_id, communication_actor_b) = init_system(&sys_b, client);
 
@@ -219,7 +219,7 @@ fn ask_swarm_info() {
         )
         .unwrap();
 
-    let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8096".parse().unwrap();
+    let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8096".parse().expect("Invalid Multiaddress.");
     match task::block_on(try_ask(
         &sys,
         &communication_actor,
@@ -377,7 +377,7 @@ fn connect_invalid() {
         &sys,
         &communication_actor,
         CommunicationRequest::EstablishConnection {
-            addr: "/ip4/0.0.0.0/tcp/0".parse().unwrap(),
+            addr: "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."),
             peer_id: PeerId::random(),
             keep_alive: KeepAlive::Unlimited,
         },

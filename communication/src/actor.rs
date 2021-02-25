@@ -15,7 +15,7 @@ use core::{
 };
 use firewall::*;
 use futures::{
-    channel::mpsc::{unbounded, UnboundedSender},
+    channel::mpsc::{unbounded, SendError, UnboundedSender},
     future,
 };
 use libp2p::identity::Keypair;
@@ -102,10 +102,14 @@ where
 /// }
 ///
 /// let local_keys = Keypair::generate_ed25519();
-/// let sys = ActorSystem::new().unwrap();
+/// let sys = ActorSystem::new().expect("Init actor system failed.");
 /// let keys = Keypair::generate_ed25519();
-/// let firewall = sys.actor_of::<OpenFirewall<Request>>("firewall").unwrap();
-/// let client = sys.actor_of::<ClientActor>("client").unwrap();
+/// let firewall = sys
+///     .actor_of::<OpenFirewall<Request>>("firewall")
+///     .expect("Init firewall actor failed.");
+/// let client = sys
+///     .actor_of::<ClientActor>("client")
+///     .expect("Init client actor failed.");
 /// let actor_config = CommunicationConfig::new(client, firewall);
 /// let behaviour_config = BehaviourConfig::default();
 /// let comms_actor = sys
@@ -113,7 +117,7 @@ where
 ///         "communication",
 ///         (local_keys, actor_config, behaviour_config),
 ///     )
-///     .unwrap();
+///     .expect("Init communication actor failed.");
 /// ```
 pub struct CommunicationActor<Req, Res, T, U>
 where
@@ -164,27 +168,43 @@ where
     // The swarm task won't start listening to the swarm untill a [`CommunicationRequest::StartListening`] was sent to
     // it.
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
-        let (swarm_tx, swarm_rx) = unbounded();
-        self.swarm_tx = Some(swarm_tx);
         // Init task
-        let (keypair, actor_config, behaviour_config) = self.swarm_task_config.take().unwrap();
-        let actor_system = ctx.system.clone();
-        let swarm_task =
-            SwarmTask::<_, Res, _, _>::new(actor_system, keypair, actor_config, behaviour_config, swarm_rx);
-        // Kick off the swarm communication.
-        self.poll_swarm_handle = ctx.run(swarm_task.poll_swarm()).ok();
+        if let Some((keypair, actor_config, behaviour_config)) = self.swarm_task_config.take() {
+            let (swarm_tx, swarm_rx) = unbounded();
+            self.swarm_tx = Some(swarm_tx);
+
+            let actor_system = ctx.system.clone();
+            let swarm_task =
+                SwarmTask::<_, Res, _, _>::new(actor_system, keypair, actor_config, behaviour_config, swarm_rx);
+            if let Ok(swarm_task) = swarm_task {
+                // Kick off the swarm communication.
+                self.poll_swarm_handle = ctx.run(swarm_task.poll_swarm()).ok();
+            } else {
+                // Init network behaviour failed, shutdown actor.
+                ctx.stop(ctx.myself());
+            }
+        }
     }
 
     // Forward the received events to the task that is managing the swarm communication.
-    fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        self.send_swarm_task(msg, sender);
+    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        let res = self.send_swarm_task(msg, sender);
+        if let Err(err) = res {
+            if err.is_disconnected() {
+                ctx.stop(ctx.myself())
+            }
+        }
     }
 
     // Shutdown the swarm task and close the channel.
     fn post_stop(&mut self) {
-        self.send_swarm_task(CommunicationRequest::Shutdown, None);
-        task::block_on(self.poll_swarm_handle.take().unwrap());
-        self.swarm_tx.take().unwrap().disconnect();
+        let _ = self.send_swarm_task(CommunicationRequest::Shutdown, None);
+        if let Some(swarm_handle) = self.poll_swarm_handle.take() {
+            task::block_on(swarm_handle);
+        }
+        if let Some(mut swarm_tx) = self.swarm_tx.take() {
+            swarm_tx.disconnect()
+        }
     }
 }
 
@@ -196,15 +216,16 @@ where
     U: Message + From<FirewallRequest<Req>>,
 {
     // Forward a request over the channel to the swarm task.
-    fn send_swarm_task(&mut self, msg: CommunicationRequest<Req, T>, sender: Sender) {
-        let mut tx = self.swarm_tx.clone().unwrap();
-        task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
-            match tx.poll_ready(tcx) {
-                Poll::Ready(Ok(())) => Poll::Ready(tx.start_send((msg.clone(), sender.clone()))),
-                Poll::Ready(err) => Poll::Ready(err),
-                Poll::Pending => Poll::Pending,
-            }
-        }))
-        .unwrap()
+    fn send_swarm_task(&mut self, msg: CommunicationRequest<Req, T>, sender: Sender) -> Result<(), SendError> {
+        if let Some(mut tx) = self.swarm_tx.clone() {
+            return task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
+                match tx.poll_ready(tcx) {
+                    Poll::Ready(Ok(())) => Poll::Ready(tx.start_send((msg.clone(), sender.clone()))),
+                    Poll::Ready(err) => Poll::Ready(err),
+                    Poll::Pending => Poll::Pending,
+                }
+            }));
+        }
+        Ok(())
     }
 }

@@ -58,7 +58,9 @@ impl<Req: Message> Actor for OpenFirewall<Req> {
 
     fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
         // Allows all  messages.
-        sender.unwrap().try_tell(FirewallResponse::Accept, None).unwrap()
+        if let Some(sender) = sender {
+            let _ = sender.try_tell(FirewallResponse::Accept, None);
+        }
     }
 }
 
@@ -145,6 +147,8 @@ impl<Req: Message> Receive<FirewallRequest<Req>> for RestrictConnectionFirewall<
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: FirewallRequest<Req>, sender: Sender) {
         let rule = *self.rules.get(&msg.remote).unwrap_or(&self.default);
-        sender.unwrap().try_tell(rule, None).unwrap()
+        if let Some(sender) = sender {
+            let _ = sender.try_tell(rule, None);
+        }
     }
 }

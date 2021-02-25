@@ -201,7 +201,8 @@ fn listen() {
     // Create a Swarm that implementes the Request-Reponse-, Identify-, and mDNS-Protocol
     let mut swarm =
         P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Could not create swarm.");
-    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).expect("Listening Error.");
+    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
+        .expect("Listening Error.");
 
     println!(
         "Local PeerId: {:?}\ncommands:\nPING <peer_id>\nMSG <peer_id>\nDIAL <peer_addr>\nLIST",

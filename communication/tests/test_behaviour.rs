@@ -89,7 +89,11 @@ fn establish_connection<Req: MessageEvent, Res: MessageEvent>(
 fn request_response() {
     let mut swarm_a = mock_swarm::<Request, Response>();
     let peer_a_id = *Swarm::local_peer_id(&swarm_a);
-    Swarm::listen_on(&mut swarm_a, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+    Swarm::listen_on(
+        &mut swarm_a,
+        "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."),
+    )
+    .unwrap();
 
     let mut swarm_b = mock_swarm::<Request, Response>();
     let local_peer_id = *Swarm::local_peer_id(&swarm_b);
@@ -147,11 +151,19 @@ fn request_response() {
 fn identify_event() {
     let mut swarm_a = mock_swarm::<Empty, Empty>();
     let peer_a_id = *Swarm::local_peer_id(&swarm_a);
-    let listener_id_a = Swarm::listen_on(&mut swarm_a, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+    let listener_id_a = Swarm::listen_on(
+        &mut swarm_a,
+        "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."),
+    )
+    .unwrap();
     let addr_a = start_listening(&mut swarm_a).unwrap();
     let mut swarm_b = mock_swarm::<Empty, Empty>();
     let peer_b_id = *Swarm::local_peer_id(&swarm_b);
-    let listener_id_b = Swarm::listen_on(&mut swarm_b, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+    let listener_id_b = Swarm::listen_on(
+        &mut swarm_b,
+        "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."),
+    )
+    .unwrap();
     let addr_b = start_listening(&mut swarm_b).unwrap();
 
     Swarm::dial_addr(&mut swarm_a, addr_b.clone()).unwrap();
@@ -228,7 +240,7 @@ fn identify_event() {
 fn relay() {
     let mut swarm = mock_swarm::<RequestEnvelope<Request>, Response>();
     let relay_peer_id = *Swarm::local_peer_id(&swarm);
-    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress.")).unwrap();
     let relay_addr = start_listening(&mut swarm).unwrap();
     // start relay peer
     let relay_handle = task::spawn(async move {

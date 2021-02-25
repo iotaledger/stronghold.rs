@@ -3,7 +3,7 @@
 
 use super::{connections::ConnectionManager, *};
 use crate::behaviour::{
-    MessageEvent, P2PEvent, P2PNetworkBehaviour, P2POutboundFailure, P2PReqResEvent, RequestEnvelope,
+    BehaviourError, MessageEvent, P2PEvent, P2PNetworkBehaviour, P2POutboundFailure, P2PReqResEvent, RequestEnvelope,
 };
 use core::{ops::Deref, str::FromStr, time::Duration};
 use futures::{channel::mpsc::UnboundedReceiver, future, prelude::*, select};
@@ -50,10 +50,10 @@ where
         config: CommunicationConfig<Req, T, U>,
         behaviour: BehaviourConfig,
         swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, T>, Sender)>,
-    ) -> Self {
+    ) -> Result<Self, BehaviourError> {
         // Create a P2PNetworkBehaviour for the swarm communication.
-        let swarm = P2PNetworkBehaviour::<RequestEnvelope<Req>, Res>::init_swarm(keypair, behaviour).unwrap();
-        SwarmTask {
+        let swarm = P2PNetworkBehaviour::<RequestEnvelope<Req>, Res>::init_swarm(keypair, behaviour)?;
+        Ok(SwarmTask {
             system,
             config,
             swarm,
@@ -61,7 +61,7 @@ where
             listener: None,
             relay: RelayConfig::NoRelay,
             connection_manager: ConnectionManager::new(),
-        }
+        })
     }
 
     // Poll from the swarm for events from remote peers, and from the `swarm_tx` channel for events from the local
@@ -139,7 +139,7 @@ where
 
     // Start listening on the swarm, if not address is provided, the port will be OS assigned.
     fn start_listening(&mut self, addr: Option<Multiaddr>) -> Result<Multiaddr, ()> {
-        let addr = addr.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().unwrap());
+        let addr = addr.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."));
         if let Ok(listener_id) = Swarm::listen_on(&mut self.swarm, addr) {
             let start = Instant::now();
             task::block_on(async {
@@ -411,7 +411,7 @@ where
                 let permission = self.ask_req_permission(request.message.clone(), source, RequestDirection::In);
                 if let FirewallResponse::Accept = permission {
                     if let Some(res) = self.ask_client(request.message) {
-                        self.swarm.send_response(request_id, res).unwrap();
+                        let _ = self.swarm.send_response(request_id, res);
                     }
                 }
             }

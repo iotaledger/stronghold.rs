@@ -159,7 +159,11 @@ fn run_mailbox(matches: &ArgMatches) {
         // Create swarm for communication
         let mut swarm =
             P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Could not create swarm.");
-        Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/16384".parse().unwrap()).expect("Listening error.");
+        Swarm::listen_on(
+            &mut swarm,
+            "/ip4/0.0.0.0/tcp/16384".parse().expect("Invalid Multiaddress."),
+        )
+        .expect("Listening error.");
         println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
         // temporary key-value store
         let mut local_records = HashMap::new();
@@ -187,19 +191,16 @@ fn run_mailbox(matches: &ArgMatches) {
                                 // tree
                                 Request::PutRecord(record) => {
                                     local_records.insert(record.key(), record.value());
-                                    swarm
-                                        .send_response(request_id, Response::Outcome(RequestOutcome::Success))
-                                        .unwrap();
+                                    let _ = swarm.send_response(request_id, Response::Outcome(RequestOutcome::Success));
                                 }
                                 // Send the record for that key to the remote peer
                                 Request::GetRecord(key) => {
                                     if let Some((key, value)) = local_records.get_key_value(&key) {
                                         let record = MailboxRecord::new(key.clone(), value.clone());
-                                        swarm.send_response(request_id, Response::Record(record)).unwrap();
+                                        let _ = swarm.send_response(request_id, Response::Record(record));
                                     } else {
-                                        swarm
-                                            .send_response(request_id, Response::Outcome(RequestOutcome::Error))
-                                            .unwrap();
+                                        let _ =
+                                            swarm.send_response(request_id, Response::Outcome(RequestOutcome::Error));
                                     }
                                 }
                             };
@@ -227,8 +228,11 @@ fn put_record(matches: &ArgMatches) {
             let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config)
                 .expect("Could not create swarm.");
 
+            if let Err(err) = Swarm::dial_addr(&mut swarm, mail_addr.clone()) {
+                println!("Error dialing address{:?}, {:?}", mail_addr, err);
+                return;
+            }
             // Connect to a remote mailbox on the server and then send the request.
-            Swarm::dial_addr(&mut swarm, mail_addr.clone()).unwrap();
             loop {
                 match task::block_on(swarm.next_event()) {
                     SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
@@ -282,8 +286,11 @@ fn get_record(matches: &ArgMatches) {
             let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config)
                 .expect("Could not create swarm.");
 
+            if let Err(err) = Swarm::dial_addr(&mut swarm, mail_addr.clone()) {
+                println!("Error dialing address{:?}, {:?}", mail_addr, err);
+                return;
+            }
             // Connect to a remote mailbox on the server and then send the request.
-            Swarm::dial_addr(&mut swarm, mail_addr.clone()).unwrap();
             loop {
                 match task::block_on(swarm.next_event()) {
                     SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {

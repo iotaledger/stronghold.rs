@@ -125,7 +125,8 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     ///
     /// let local_keys = Keypair::generate_ed25519();
     /// let config = BehaviourConfig::default();
-    /// let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).unwrap();
+    /// let mut swarm =
+    ///     P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Init swarm failed.");
     /// ```
     pub fn init_swarm(
         local_keys: Keypair,
@@ -354,7 +355,8 @@ mod test {
         swarm.add_peer_addr(peer_id, addr.clone());
         assert!(swarm.get_peer_addr(&peer_id).is_some());
         assert!(swarm.get_all_peers().contains(&&peer_id));
-        assert!(swarm.remove_peer(&peer_id).unwrap().contains(&addr));
+        let peer_addrs = swarm.remove_peer(&peer_id);
+        assert!(peer_addrs.is_some() && peer_addrs.unwrap().contains(&addr));
         assert!(swarm.get_peer_addr(&peer_id).is_none());
         assert!(!swarm.get_all_peers().contains(&&peer_id));
     }
@@ -362,7 +364,7 @@ mod test {
     #[test]
     fn listen_addr() {
         let mut swarm = mock_swarm();
-        let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8085".parse().unwrap();
+        let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8085".parse().expect("Invalid Multiaddress.");
         let listener_id = Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
         task::block_on(async {
             loop {
@@ -388,7 +390,9 @@ mod test {
     fn zeroed_addr() {
         let mut swarm = mock_swarm();
         // empty ip and port
-        let mut listen_addr = "/ip4/0.0.0.0/tcp/0".parse::<Multiaddr>().unwrap();
+        let mut listen_addr = "/ip4/0.0.0.0/tcp/0"
+            .parse::<Multiaddr>()
+            .expect("Invalid Multiaddress.");
         Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
         let mut actual_addr = task::block_on(async {
             loop {
@@ -408,7 +412,9 @@ mod test {
         assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
 
         // empty ip
-        let mut listen_addr = "/ip4/0.0.0.0/tcp/8086".parse::<Multiaddr>().unwrap();
+        let mut listen_addr = "/ip4/0.0.0.0/tcp/8086"
+            .parse::<Multiaddr>()
+            .expect("Invalid Multiaddress.");
         Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
         let mut actual_addr = task::block_on(async {
             loop {
@@ -429,7 +435,9 @@ mod test {
         assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
 
         // empty port
-        let mut listen_addr = "/ip4/127.0.0.1/tcp/0".parse::<Multiaddr>().unwrap();
+        let mut listen_addr = "/ip4/127.0.0.1/tcp/0"
+            .parse::<Multiaddr>()
+            .expect("Invalid Multiaddress.");
         Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
         let mut actual_addr = task::block_on(async {
             loop {
