@@ -151,7 +151,8 @@
         "snapshot",
         "random",
         "primitives",
-        "utils"
+        "stronghold-communication",
+        "stronghold-utils"
       ]
     },
     "stronghold-engine": {
@@ -173,7 +174,7 @@
       "path": "./communication/",
       "manager": "rust",
       "dependencies": [
-        "utils"
+        "stronghold-utils"
       ]
     },
     "crypto": {
@@ -188,7 +189,7 @@
       "dependencies": [
         "crypto",
         "random",
-        "utils"
+        "stronghold-utils"
       ]
     },
     "snapshot": {
@@ -198,7 +199,7 @@
       "dependencies": [
         "crypto",
         "random",
-        "utils"
+        "stronghold-utils"
       ]
     },
     "random": {
@@ -216,7 +217,7 @@
       "manager": "rust",
       "publish": false
     },
-    "utils": {
+    "stronghold-utils": {
       "path": "./utils/",
       "manager": "rust",
       "publish": false
