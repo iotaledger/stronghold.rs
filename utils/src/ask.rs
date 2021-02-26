@@ -11,6 +11,7 @@ use futures::{
     FutureExt,
 };
 
+// riker ask pattern
 pub fn ask<Msg, Ctx, R, T>(ctx: &Ctx, receiver: &T, msg: Msg) -> RemoteHandle<R>
 where
     Msg: Message,

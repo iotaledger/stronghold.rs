@@ -10,13 +10,18 @@ use crate::{
 };
 
 use engine::{snapshot, vault::RecordHint};
+use serde::{Deserialize, Serialize};
 
 use riker::actors::*;
 
+use core::{
+    array::TryFromSliceError,
+    convert::{TryFrom, TryInto},
+};
 use std::{path::PathBuf, time::Duration};
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SLIP10DeriveInput {
     /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
     Seed(Location),
@@ -25,7 +30,7 @@ pub enum SLIP10DeriveInput {
 
 /// Procedure type used to call to the runtime via `Strongnhold.runtime_exec(...)`.
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Procedure {
     /// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in the
     /// `output` location
@@ -76,7 +81,9 @@ pub enum Procedure {
 /// A Procedure return result type.  Contains the different return values for the `Procedure` type calls used with
 /// `Stronghold.runtime_exec(...)`.
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "SerdeProcResult")]
+#[serde(into = "SerdeProcResult")]
 pub enum ProcResult {
     /// Return from generating a `SLIP10` seed.
     SLIP10Generate(StatusMessage),
@@ -94,8 +101,74 @@ pub enum ProcResult {
     Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
 }
 
+impl TryFrom<SerdeProcResult> for ProcResult {
+    type Error = TryFromSliceError;
+
+    fn try_from(serde_proc_result: SerdeProcResult) -> Result<Self, Self::Error> {
+        match serde_proc_result {
+            SerdeProcResult::SLIP10Generate(msg) => Ok(ProcResult::SLIP10Generate(msg)),
+            SerdeProcResult::SLIP10Derive(msg) => Ok(ProcResult::SLIP10Derive(msg)),
+            SerdeProcResult::BIP39Recover(msg) => Ok(ProcResult::BIP39Recover(msg)),
+            SerdeProcResult::BIP39Generate(msg) => Ok(ProcResult::BIP39Generate(msg)),
+            SerdeProcResult::BIP39MnemonicSentence(msg) => Ok(ProcResult::BIP39MnemonicSentence(msg)),
+            SerdeProcResult::Ed25519PublicKey(msg) => {
+                let msg: ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> = match msg {
+                    ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
+                    ResultMessage::Error(e) => ResultMessage::Error(e),
+                };
+                Ok(ProcResult::Ed25519PublicKey(msg))
+            }
+            SerdeProcResult::Ed25519Sign(msg) => {
+                let msg: ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]> = match msg {
+                    ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
+                    ResultMessage::Error(e) => ResultMessage::Error(e),
+                };
+                Ok(ProcResult::Ed25519Sign(msg))
+            }
+        }
+    }
+}
+
+// Replaces arrays in ProcResult with vectors to derive Serialize/ Deserialize
+#[derive(Clone, Serialize, Deserialize)]
+enum SerdeProcResult {
+    SLIP10Generate(StatusMessage),
+    SLIP10Derive(ResultMessage<hd::ChainCode>),
+    BIP39Recover(StatusMessage),
+    BIP39Generate(StatusMessage),
+    BIP39MnemonicSentence(ResultMessage<String>),
+    Ed25519PublicKey(ResultMessage<Vec<u8>>),
+    Ed25519Sign(ResultMessage<Vec<u8>>),
+}
+
+impl From<ProcResult> for SerdeProcResult {
+    fn from(proc_result: ProcResult) -> Self {
+        match proc_result {
+            ProcResult::SLIP10Generate(msg) => SerdeProcResult::SLIP10Generate(msg),
+            ProcResult::SLIP10Derive(msg) => SerdeProcResult::SLIP10Derive(msg),
+            ProcResult::BIP39Recover(msg) => SerdeProcResult::BIP39Recover(msg),
+            ProcResult::BIP39Generate(msg) => SerdeProcResult::BIP39Generate(msg),
+            ProcResult::BIP39MnemonicSentence(msg) => SerdeProcResult::BIP39MnemonicSentence(msg),
+            ProcResult::Ed25519PublicKey(msg) => {
+                let msg = match msg {
+                    ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
+                    ResultMessage::Error(error) => ResultMessage::Error(error),
+                };
+                SerdeProcResult::Ed25519PublicKey(msg)
+            }
+            ProcResult::Ed25519Sign(msg) => {
+                let msg = match msg {
+                    ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
+                    ResultMessage::Error(error) => ResultMessage::Error(error),
+                };
+                SerdeProcResult::Ed25519Sign(msg)
+            }
+        }
+    }
+}
+
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SHRequest {
     // check if vault exists.
     CheckVault(Vec<u8>),
@@ -173,7 +246,7 @@ pub enum SHRequest {
 }
 
 /// Messages that come from stronghold
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SHResults {
     ReturnWriteStore(StatusMessage),
     ReturnReadStore(Vec<u8>, StatusMessage),

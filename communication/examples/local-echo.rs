@@ -43,18 +43,13 @@ use async_std::{
     task,
 };
 use core::{ops::Deref, str::FromStr};
-use stronghold_communication::behaviour::{
-    message::{P2PEvent, P2PIdentifyEvent, P2PReqResEvent},
-    P2PNetworkBehaviour,
-};
-
 use futures::{prelude::*, select};
-use libp2p::{
-    core::{identity::Keypair, Multiaddr, PeerId},
-    swarm::{Swarm, SwarmEvent},
-};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use stronghold_communication::{
+    behaviour::{BehaviourConfig, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
+    libp2p::{Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
@@ -77,9 +72,8 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
         match captures.name("type").unwrap().as_str() {
             "LIST" => {
                 println!("Known peers:");
-                let known_peers = swarm.get_all_peers();
-                for (peer, addr) in known_peers {
-                    println!("{:?}: {:?}", peer, addr);
+                for peer in swarm.get_all_peers() {
+                    println!("{:?}", peer);
                 }
             }
             "DIAL" => {
@@ -140,13 +134,13 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
             // Request from a remote peer
             P2PReqResEvent::Req {
                 peer_id,
-                request_id: Some(request_id),
+                request_id,
                 request,
             } => {
                 println!("Received message from peer {:?}\n{:?}", peer_id, request);
                 match request {
                     Request::Ping => {
-                        let response = swarm.send_response(Response::Pong, request_id);
+                        let response = swarm.send_response(request_id, Response::Pong);
                         if response.is_ok() {
                             println!("Send Pong back");
                         } else {
@@ -154,7 +148,7 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                         }
                     }
                     Request::Msg(msg) => {
-                        let response = swarm.send_response(Response::Msg(format!("echo: {}", msg)), request_id);
+                        let response = swarm.send_response(request_id, Response::Msg(format!("echo: {}", msg)));
                         if response.is_ok() {
                             println!("Echoed message");
                         } else {
@@ -202,10 +196,13 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
 // Create a swarm and poll for events from that swarm
 fn listen() {
     let local_keys = Keypair::generate_ed25519();
+    let config = BehaviourConfig::default();
 
     // Create a Swarm that implementes the Request-Reponse-, Identify-, and mDNS-Protocol
-    let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys).expect("Could not create swarm.");
-    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).expect("Listening Error.");
+    let mut swarm =
+        P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Could not create swarm.");
+    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
+        .expect("Listening Error.");
 
     println!(
         "Local PeerId: {:?}\ncommands:\nPING <peer_id>\nMSG <peer_id>\nDIAL <peer_addr>\nLIST",

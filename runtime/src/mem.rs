@@ -377,10 +377,8 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unnecessary_wraps)]
-    fn zero_allocation() -> crate::Result<()> {
+    fn zero_allocation() {
         assert_eq!(GuardedAllocation::unaligned(0), Err(Error::ZeroAllocation.into()),);
-        Ok(())
     }
 
     #[test]

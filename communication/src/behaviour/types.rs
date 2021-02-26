@@ -1,6 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use core::fmt::Debug;
 use libp2p::{
     core::{Multiaddr, PeerId},
     identify::IdentifyEvent,
@@ -8,9 +9,18 @@ use libp2p::{
     request_response::{InboundFailure, OutboundFailure, RequestId, RequestResponseEvent, RequestResponseMessage},
     swarm::ProtocolsHandlerUpgrErr,
 };
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 #[cfg(feature = "mdns")]
 use libp2p::mdns::MdnsEvent;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestEnvelope<Req: Debug + Clone + Serialize + DeserializeOwned> {
+    pub source: String,
+    #[serde(bound = "Req: Debug + Clone + Serialize + DeserializeOwned")]
+    pub message: Req,
+    pub target: String,
+}
 
 /// Event that can be produced by the `Mdns` behaviour.
 #[derive(Debug, Clone, PartialEq)]
@@ -114,7 +124,7 @@ pub enum P2PReqResEvent<T, U> {
     /// `InboundFailure` at the local node and an `OutboundFailure` at the remote.
     Req {
         peer_id: PeerId,
-        request_id: Option<RequestId>,
+        request_id: RequestId,
         request: T,
     },
     /// Response Message to a received `Req`.
@@ -153,8 +163,6 @@ pub enum P2PEvent<T, U> {
     /// Events from the libp2p identify protocol
     Identify(Box<P2PIdentifyEvent>),
     /// Events from the custom request-response protocol
-    ///
-    /// the request `T` and response `U` should implement Serialize and Deserialize
     RequestResponse(Box<P2PReqResEvent<T, U>>),
 }
 
@@ -209,7 +217,7 @@ impl<T, U> From<RequestResponseEvent<T, U>> for P2PEvent<T, U> {
                     channel: _,
                 } => P2PEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
                     peer_id: peer,
-                    request_id: Some(request_id),
+                    request_id,
                     request,
                 })),
                 RequestResponseMessage::Response { request_id, response } => {

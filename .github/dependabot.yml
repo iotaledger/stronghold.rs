@@ -25,7 +25,7 @@ updates:
     open-pull-requests-limit: 3
   
   - package-ecosystem: "cargo"
-    directory: "/test_utils"
+    directory: "/utils"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 3

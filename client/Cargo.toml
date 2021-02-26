@@ -22,7 +22,8 @@ zeroize_derive = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
 futures = "0.3"
-riker = "0.4"
+riker = { version = "0.4", git ="https://github.com/elenaf9/riker", branch = "master" }
+
 
 [dependencies.stronghold-engine]
 path = "../engine"
@@ -39,15 +40,22 @@ features = [ "random", "ed25519", "sha", "hmac", "bip39-en" ]
 version = "*"
 # Note: We are only adding a version so that we can publish to crates.io
 
+[dependencies.stronghold-communication]
+path = "../communication"
+optional = true
+
+[dependencies.stronghold-utils]
+path = "../utils"
+version = "0.1"
+
+[features]
+communication = ["stronghold-communication"]
+
 [dev-dependencies]
 hex = "0.4.2"
 criterion = "0.3.3"
 clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
 rand = "0.8.3"
-
-[dev-dependencies.stronghold-test-utils]
-path = "../test_utils"
-version = "0.1"
 
 [[bench]]
 name = "benchmark"

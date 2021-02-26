@@ -54,3 +54,9 @@
 
 pub mod actor;
 pub mod behaviour;
+pub mod libp2p {
+    pub use libp2p::{
+        core::{connection::ConnectionLimit, identity::Keypair, ConnectedPoint, Multiaddr, PeerId},
+        swarm::{Swarm, SwarmEvent},
+    };
+}

@@ -4,6 +4,7 @@
 // TODO: this module should probably not reside in the client
 
 use crypto::{ed25519::SecretKey, macs::hmac::HMAC_SHA512};
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
 // https://github.com/satoshilabs/slips/blob/master/slip-0010.md
@@ -101,7 +102,7 @@ impl TryFrom<&[u8]> for Key {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
     hardened: bool,
     bs: [u8; 4],
@@ -118,7 +119,7 @@ impl Segment {
     pub const HARDEN_MASK: u32 = 1 << 31;
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Chain(Vec<Segment>);
 
 impl Chain {
