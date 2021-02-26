@@ -1,8 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use core::mem::{self, MaybeUninit};
-use core::slice;
+use core::{
+    mem::{self, MaybeUninit},
+    slice,
+};
 
 const GARBAGE_VALUE: u8 = 0xdb;
 
