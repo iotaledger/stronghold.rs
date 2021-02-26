@@ -20,3 +20,4 @@ stdalloc = []
 
 [dependencies]
 libsodium-sys = "0.2"
+

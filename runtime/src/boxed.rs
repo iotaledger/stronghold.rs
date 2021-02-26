@@ -9,7 +9,7 @@ use std::{
 };
 
 use libsodium_sys::{
-    sodium_allocarray, sodium_free, sodium_init, sodium_mprotect_noaccess, sodium_mprotect_readonly,
+    sodium_allocarray, sodium_free, sodium_init, sodium_mlock, sodium_mprotect_noaccess, sodium_mprotect_readonly,
     sodium_mprotect_readwrite,
 };
 
@@ -36,6 +36,7 @@ impl<T: Bytes> Boxed<T> {
         F: FnOnce(&mut Self),
     {
         let mut boxed = Self::new_unlocked(len);
+        unsafe { lock_memory(boxed.ptr.as_mut(), len) };
 
         assert!(
             boxed.ptr != std::ptr::NonNull::dangling(),
@@ -278,6 +279,10 @@ fn mprotect<T>(ptr: *mut T, prot: Prot) {
 
 pub(crate) unsafe fn free<T>(ptr: *mut T) {
     sodium_free(ptr as *mut _)
+}
+
+pub(crate) unsafe fn lock_memory<T>(ptr: *mut T, len: usize) {
+    sodium_mlock(ptr as *mut _, len);
 }
 
 #[cfg(test)]
