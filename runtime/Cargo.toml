@@ -19,29 +19,4 @@ default = []
 stdalloc = []
 
 [dependencies]
-memoffset = "0.6.1"
-
-[dependencies.libc]
-version = "0.2.79"
-default-features = false
-
-[dependencies.lazy_static]
-version = "1.4.0"
-default-features = false
-features = [ "spin_no_std" ]
-
-[dependencies.num]
-version = "0.3.0"
-default-features = false
-
-[dependencies.zeroize]
-version = "1.1.1"
-default-features = false
-
-[build-dependencies]
-bindgen = "0.55.1"
-
-[dev-dependencies.rand]
-version = "0.7.3"
-default-features = false
-features = [ "getrandom" ]
+libsodium-sys = "0.2"
