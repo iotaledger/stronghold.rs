@@ -191,10 +191,10 @@ impl<T: Bytes> Eq for RefMut<'_, T> {}
 
 #[cfg(test)]
 mod tests {
-    extern crate std;
+    extern crate alloc;
     use super::*;
 
-    use std::format;
+    use alloc::format;
 
     #[test]
     fn test_init() {

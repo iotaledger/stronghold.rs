@@ -3,8 +3,6 @@
 
 use crate::types::*;
 
-extern crate std;
-
 use core::{
     cell::Cell,
     fmt::{self, Debug},
@@ -12,8 +10,6 @@ use core::{
     ptr::NonNull,
     slice,
 };
-
-use std::thread;
 
 use libsodium_sys::{
     sodium_allocarray, sodium_free, sodium_init, sodium_mlock, sodium_mprotect_noaccess, sodium_mprotect_readonly,
@@ -217,6 +213,10 @@ impl<T: Bytes + ZeroOut> Boxed<T> {
 
 impl<T: Bytes> Drop for Boxed<T> {
     fn drop(&mut self) {
+        extern crate std;
+
+        use std::thread;
+
         if !thread::panicking() {
             assert!(self.refs.get() == 0, "Retains exceeded releases");
 
@@ -294,8 +294,9 @@ pub(crate) unsafe fn lock_memory<T>(ptr: *mut T, len: usize) {
 
 #[cfg(test)]
 mod test {
+    extern crate alloc;
 
-    use std::vec;
+    use alloc::vec;
 
     use super::*;
     use libsodium_sys::randombytes_buf;
@@ -431,6 +432,8 @@ mod test {
 
     #[test]
     fn test_threading() {
+        extern crate std;
+
         use std::{sync::mpsc, thread};
 
         let (tx, rx) = mpsc::channel();
