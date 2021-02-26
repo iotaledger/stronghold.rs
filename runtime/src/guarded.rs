@@ -1,6 +1,9 @@
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{boxed::Boxed, types::*};
 
-use std::{
+use core::{
     fmt::{self, Debug, Formatter},
     ops::{Deref, DerefMut},
 };
@@ -182,7 +185,10 @@ impl<T: Bytes> Eq for RefMut<'_, T> {}
 
 #[cfg(test)]
 mod test {
+    extern crate std;
     use super::*;
+
+    use std::format;
 
     #[test]
     fn test_init() {

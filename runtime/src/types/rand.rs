@@ -1,3 +1,6 @@
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::types::*;
 
 use libsodium_sys::randombytes_buf;

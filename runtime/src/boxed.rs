@@ -1,12 +1,19 @@
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::types::*;
 
-use std::{
+extern crate std;
+
+use core::{
     cell::Cell,
     fmt::{self, Debug},
     mem,
     ptr::NonNull,
-    slice, thread,
+    slice,
 };
+
+use std::thread;
 
 use libsodium_sys::{
     sodium_allocarray, sodium_free, sodium_init, sodium_mlock, sodium_mprotect_noaccess, sodium_mprotect_readonly,
@@ -39,7 +46,7 @@ impl<T: Bytes> Boxed<T> {
         unsafe { lock_memory(boxed.ptr.as_mut(), len) };
 
         assert!(
-            boxed.ptr != std::ptr::NonNull::dangling(),
+            boxed.ptr != core::ptr::NonNull::dangling(),
             "Make sure pointer isn't dangling"
         );
         assert!(boxed.len == len);
@@ -58,7 +65,7 @@ impl<T: Bytes> Boxed<T> {
         let mut boxed = Self::new_unlocked(len);
 
         assert!(
-            boxed.ptr != std::ptr::NonNull::dangling(),
+            boxed.ptr != core::ptr::NonNull::dangling(),
             "Make sure pointer isn't dangling"
         );
         assert!(boxed.len == len);
@@ -287,6 +294,9 @@ pub(crate) unsafe fn lock_memory<T>(ptr: *mut T, len: usize) {
 
 #[cfg(test)]
 mod test {
+
+    use std::vec;
+
     use super::*;
     use libsodium_sys::randombytes_buf;
 
