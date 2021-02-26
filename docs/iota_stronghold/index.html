@@ -6,10 +6,7 @@
 <table><tr class="module-item"><td><a class="macro" href="macro.line_error.html" title="iota_stronghold::line_error macro">line_error</a></td><td class="docblock-short"></td></tr></table><h2 id="structs" class="section-header"><a href="#structs">Structs</a></h2>
 <table><tr class="module-item"><td><a class="struct" href="struct.Provider.html" title="iota_stronghold::Provider struct">Provider</a></td><td class="docblock-short"><p>Provider for the xchacha20poly1305 encryption engine.  Encrypts the data in the stronghold.</p>
 </td></tr><tr class="module-item"><td><a class="struct" href="struct.RecordHint.html" title="iota_stronghold::RecordHint struct">RecordHint</a></td><td class="docblock-short"><p>a record hint</p>
-</td></tr><tr class="module-item"><td><a class="struct" href="struct.Stronghold.html" title="iota_stronghold::Stronghold struct">Stronghold</a></td><td class="docblock-short"><p>Main Interface for the Stronghold System. Contains the Riker Actor System, a vector of the current attached
-ClientIds and ActorRefs, a HashMap of the derive data (SHA512 of the client_path) and an index for the Current
-target actor.</p>
-</td></tr></table><h2 id="enums" class="section-header"><a href="#enums">Enums</a></h2>
+</td></tr><tr class="module-item"><td><a class="struct" href="struct.Stronghold.html" title="iota_stronghold::Stronghold struct">Stronghold</a></td><td class="docblock-short"></td></tr></table><h2 id="enums" class="section-header"><a href="#enums">Enums</a></h2>
 <table><tr class="module-item"><td><a class="enum" href="enum.Error.html" title="iota_stronghold::Error enum">Error</a></td><td class="docblock-short"></td></tr><tr class="module-item"><td><a class="enum" href="enum.Location.html" title="iota_stronghold::Location enum">Location</a></td><td class="docblock-short"><p>A <code>Location</code> type used to specify where in the <code>Stronghold</code> a piece of data should be stored. A generic location
 specifies a non-versioned location while a counter location specifies a versioned location. The Counter location can
 be used to get the head of the version chain by passing in <code>None</code> as the counter index. Otherwise, counter records

@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["actor",""],["behaviour",""]]});
+initSidebarItems({"mod":[["actor",""],["behaviour",""],["libp2p",""]]});

@@ -57,6 +57,12 @@
 <span id="54">54</span>
 <span id="55">55</span>
 <span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+<span id="61">61</span>
+<span id="62">62</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -114,5 +120,11 @@
 
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">actor</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">behaviour</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">libp2p</span> {
+    <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">libp2p</span>::{
+        <span class="ident">core</span>::{<span class="ident">connection</span>::<span class="ident">ConnectionLimit</span>, <span class="ident">identity</span>::<span class="ident">Keypair</span>, <span class="ident">ConnectedPoint</span>, <span class="ident">Multiaddr</span>, <span class="ident">PeerId</span>},
+        <span class="ident">swarm</span>::{<span class="ident">Swarm</span>, <span class="ident">SwarmEvent</span>},
+    };
+}
 </pre></div>
 </section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "stronghold_communication";</script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

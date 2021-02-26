@@ -175,12 +175,6 @@
 <span id="172">172</span>
 <span id="173">173</span>
 <span id="174">174</span>
-<span id="175">175</span>
-<span id="176">176</span>
-<span id="177">177</span>
-<span id="178">178</span>
-<span id="179">179</span>
-<span id="180">180</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -319,34 +313,28 @@
     }
 
     <span class="attribute">#[<span class="ident">test</span>]</span>
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">unnecessary_wraps</span>)]</span>
-    <span class="kw">fn</span> <span class="ident">unexpected_exit_code</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">unexpected_exit_code</span>() {
         <span class="macro">assert_eq</span><span class="macro">!</span>(
             <span class="ident">fork</span>(<span class="op">|</span><span class="op">|</span> <span class="kw">unsafe</span> {
                 <span class="ident">libc</span>::<span class="ident">exit</span>(<span class="number">1</span>);
             }),
             <span class="prelude-val">Err</span>(<span class="ident">Error</span>::<span class="ident">unexpected_exit_code</span>(<span class="number">1</span>))
         );
-        <span class="prelude-val">Ok</span>(())
     }
 
     <span class="attribute">#[<span class="ident">test</span>]</span>
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">unnecessary_wraps</span>)]</span>
-    <span class="kw">fn</span> <span class="ident">signal</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">signal</span>() {
         <span class="macro">assert_eq</span><span class="macro">!</span>(
             <span class="ident">fork</span>(<span class="op">|</span><span class="op">|</span> <span class="kw">unsafe</span> {
                 <span class="kw">let</span> <span class="kw">_</span> <span class="op">=</span> <span class="ident">libc</span>::<span class="ident">kill</span>(<span class="ident">libc</span>::<span class="ident">getpid</span>(), <span class="ident">libc</span>::<span class="ident">SIGKILL</span>);
             }),
             <span class="prelude-val">Err</span>(<span class="ident">Error</span>::<span class="ident">signal</span>(<span class="ident">libc</span>::<span class="ident">SIGKILL</span>))
         );
-        <span class="prelude-val">Ok</span>(())
     }
 
     <span class="attribute">#[<span class="ident">test</span>]</span>
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">unnecessary_wraps</span>)]</span>
-    <span class="kw">fn</span> <span class="ident">panic</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">panic</span>() {
         <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">fork</span>(<span class="op">|</span><span class="op">|</span> <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;oopsie&quot;</span>)), <span class="prelude-val">Err</span>(<span class="ident">Error</span>::<span class="ident">unexpected_exit_code</span>(<span class="number">101</span>)));
-        <span class="prelude-val">Ok</span>(())
     }
 }
 

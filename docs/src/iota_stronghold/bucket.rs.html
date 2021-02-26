@@ -401,9 +401,6 @@
 <span id="398">398</span>
 <span id="399">399</span>
 <span id="400">400</span>
-<span id="401">401</span>
-<span id="402">402</span>
-<span id="403">403</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -610,29 +607,26 @@
 
     <span class="doccomment">/// Exposes the `DBView` of the current vault and the cache layer to allow transactions to occur.</span>
     <span class="kw">fn</span> <span class="ident">take</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>, <span class="ident">f</span>: <span class="kw">impl</span> <span class="ident">FnOnce</span>(<span class="ident">DBView</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span>) {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">_reads</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_reads</span>(<span class="ident">key</span>.<span class="ident">clone</span>());
-        <span class="kw">let</span> <span class="ident">reads</span> <span class="op">=</span> <span class="ident">_reads</span>.<span class="ident">take</span>().<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">_view</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_view</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">reads</span>.<span class="ident">clone</span>());
-        <span class="kw">let</span> <span class="ident">view</span> <span class="op">=</span> <span class="ident">_view</span>.<span class="ident">take</span>().<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+        <span class="kw">let</span> <span class="ident">reads</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_reads</span>(<span class="ident">key</span>.<span class="ident">clone</span>());
+        <span class="kw">let</span> <span class="ident">view</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_view</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">reads</span>.<span class="ident">clone</span>());
         <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">f</span>(<span class="ident">view</span>, <span class="ident">reads</span>);
         <span class="self">self</span>.<span class="ident">insert_reads</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">res</span>);
-        <span class="self">self</span>.<span class="ident">insert_view</span>(<span class="ident">key</span>, <span class="ident">_view</span>);
+        <span class="self">self</span>.<span class="ident">insert_view</span>(<span class="ident">key</span>, <span class="prelude-val">None</span>);
     }
 
-    <span class="kw">fn</span> <span class="ident">get_view</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>, <span class="ident">reads</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">DBView</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">get_view</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>, <span class="ident">reads</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">DBView</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">vaults</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>);
-
-        <span class="prelude-val">Some</span>(<span class="ident">DBView</span>::<span class="ident">load</span>(<span class="ident">key</span>, <span class="ident">reads</span>.<span class="ident">iter</span>()).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>()))
+        <span class="ident">DBView</span>::<span class="ident">load</span>(<span class="ident">key</span>, <span class="ident">reads</span>.<span class="ident">iter</span>()).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>())
     }
 
     <span class="kw">fn</span> <span class="ident">insert_view</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>, <span class="ident">view</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">DBView</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span><span class="op">&gt;</span>) {
         <span class="self">self</span>.<span class="ident">vaults</span>.<span class="ident">insert</span>(<span class="ident">key</span>, <span class="ident">view</span>);
     }
 
-    <span class="kw">fn</span> <span class="ident">get_reads</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">get_reads</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span>.<span class="ident">cache</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>) {
-            <span class="prelude-val">Some</span>(<span class="ident">reads</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="ident">reads</span>),
-            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="ident">Vec</span>::<span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span>::<span class="ident">new</span>()),
+            <span class="prelude-val">Some</span>(<span class="ident">reads</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">reads</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">Vec</span>::<span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span>::<span class="ident">new</span>(),
         }
     }
 

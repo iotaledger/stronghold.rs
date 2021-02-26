@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Stronghold","Main Interface for the Stronghold System. Contains the Riker Actor System, a vector of the current attached ClientIds and ActorRefs, a HashMap of the derive data (SHA512 of the client_path) and an index for the Current target actor."]]});
+initSidebarItems({"struct":[["Stronghold",""]]});

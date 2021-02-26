@@ -282,6 +282,7 @@
 <span id="279">279</span>
 <span id="280">280</span>
 <span id="281">281</span>
+<span id="282">282</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -289,6 +290,7 @@
 <span class="comment">// TODO: this module should probably not reside in the client</span>
 
 <span class="kw">use</span> <span class="ident">crypto</span>::{<span class="ident">ed25519</span>::<span class="ident">SecretKey</span>, <span class="ident">macs</span>::<span class="ident">hmac</span>::<span class="ident">HMAC_SHA512</span>};
+<span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">convert</span>::<span class="ident">TryFrom</span>;
 
 <span class="comment">// https://github.com/satoshilabs/slips/blob/master/slip-0010.md</span>
@@ -386,7 +388,7 @@
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Segment</span> {
     <span class="ident">hardened</span>: <span class="ident">bool</span>,
     <span class="ident">bs</span>: [<span class="ident">u8</span>; <span class="number">4</span>],
@@ -403,7 +405,7 @@
     <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">HARDEN_MASK</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">1</span> <span class="op">&lt;</span><span class="op">&lt;</span> <span class="number">31</span>;
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Default</span>, <span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Default</span>, <span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Chain</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Segment</span><span class="op">&gt;</span>);
 
 <span class="kw">impl</span> <span class="ident">Chain</span> {

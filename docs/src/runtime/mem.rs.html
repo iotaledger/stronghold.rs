@@ -499,8 +499,6 @@
 <span id="496">496</span>
 <span id="497">497</span>
 <span id="498">498</span>
-<span id="499">499</span>
-<span id="500">500</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -881,10 +879,8 @@
     }
 
     <span class="attribute">#[<span class="ident">test</span>]</span>
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">unnecessary_wraps</span>)]</span>
-    <span class="kw">fn</span> <span class="ident">zero_allocation</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">zero_allocation</span>() {
         <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">GuardedAllocation</span>::<span class="ident">unaligned</span>(<span class="number">0</span>), <span class="prelude-val">Err</span>(<span class="ident">Error</span>::<span class="ident">ZeroAllocation</span>.<span class="ident">into</span>()),);
-        <span class="prelude-val">Ok</span>(())
     }
 
     <span class="attribute">#[<span class="ident">test</span>]</span>
