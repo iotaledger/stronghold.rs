@@ -6,7 +6,7 @@ use crypto::{ciphers::chacha::xchacha20poly1305, rand::fill};
 use std::convert::TryInto;
 
 use engine::vault::{BoxProvider, Key};
-#[derive(Ord, PartialEq, Eq, PartialOrd)]
+#[derive(Ord, PartialEq, Eq, PartialOrd, Clone, Debug)]
 pub struct Provider;
 impl Provider {
     const NONCE_LEN: usize = xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE;
@@ -22,7 +22,7 @@ impl BoxProvider for Provider {
         Self::NONCE_LEN + Self::TAG_LEN
     }
 
-    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> crate::Result<Vec<u8>> {
+    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> engine::vault::Result<Vec<u8>> {
         let mut cipher = vec![0u8; data.len()];
         let mut boxx = vec![];
 
@@ -39,7 +39,7 @@ impl BoxProvider for Provider {
             &nonce,
             ad,
         )
-        .map_err(|_| crate::Error::CryptoError(String::from("Unable to seal data")))?;
+        .map_err(|_| engine::vault::Error::CryptoError(String::from("Unable to seal data")))?;
 
         boxx.extend(tag.iter());
         boxx.extend(nonce.iter());
@@ -48,7 +48,7 @@ impl BoxProvider for Provider {
         Ok(boxx)
     }
 
-    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> crate::Result<Vec<u8>> {
+    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> engine::vault::Result<Vec<u8>> {
         let (tag, ct) = data.split_at(Self::TAG_LEN);
         let (nonce, cipher) = ct.split_at(Self::NONCE_LEN);
 
@@ -62,12 +62,12 @@ impl BoxProvider for Provider {
             &nonce.to_vec().try_into().expect("Key not the correct size: Encrypt"),
             ad,
         )
-        .map_err(|_| crate::Error::CryptoError(String::from("Invalid Cipher")))?;
+        .map_err(|_| engine::vault::Error::CryptoError(String::from("Invalid Cipher")))?;
 
         Ok(plain)
     }
 
-    fn random_buf(buf: &mut [u8]) -> crate::Result<()> {
-        fill(buf).map_err(|_| crate::Error::CryptoError(String::from("Can't generated random Bytes")))
+    fn random_buf(buf: &mut [u8]) -> engine::vault::Result<()> {
+        fill(buf).map_err(|_| engine::vault::Error::CryptoError(String::from("Can't generated random Bytes")))
     }
 }
