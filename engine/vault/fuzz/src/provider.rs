@@ -24,7 +24,6 @@ impl BoxProvider for Provider {
 
     fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> vault::Result<Vec<u8>> {
         let mut cipher = vec![0u8; data.len()];
-        let mut boxx = vec![];
 
         let mut tag = [0u8; 16];
         let mut nonce: [u8; 24] = [0u8; Self::NONCE_LEN];
@@ -41,9 +40,7 @@ impl BoxProvider for Provider {
         )
         .map_err(|_| vault::Error::CryptoError(String::from("Unable to seal data")))?;
 
-        boxx.extend(tag.iter());
-        boxx.extend(nonce.iter());
-        boxx.extend(cipher.iter());
+        let boxx = [tag.to_vec(), nonce.to_vec(), cipher].concat();
 
         Ok(boxx)
     }
@@ -58,8 +55,8 @@ impl BoxProvider for Provider {
             &mut plain,
             cipher,
             key.bytes().try_into().expect("key is not the correct size: Decrypt"),
-            &tag.try_into().expect("Key not the correct size: Encrypt"),
-            &nonce.to_vec().try_into().expect("Key not the correct size: Encrypt"),
+            &tag.try_into().expect("Key not the correct size: Decrypt"),
+            &nonce.to_vec().try_into().expect("Key not the correct size: Decrypt"),
             ad,
         )
         .map_err(|_| vault::Error::CryptoError(String::from("Invalid Cipher")))?;
@@ -68,6 +65,6 @@ impl BoxProvider for Provider {
     }
 
     fn random_buf(buf: &mut [u8]) -> vault::Result<()> {
-        fill(buf).map_err(|_| vault::Error::CryptoError(String::from("Can't generated random Bytes")))
+        fill(buf).map_err(|_| vault::Error::CryptoError(String::from("Can't generate random Bytes")))
     }
 }
