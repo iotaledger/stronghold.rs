@@ -5,21 +5,31 @@ use riker::actors::*;
 
 use futures::future::RemoteHandle;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
+use zeroize::Zeroize;
 
 use engine::vault::RecordHint;
 
+#[cfg(feature = "communication")]
+use crate::utils::ResultMessage;
 use crate::{
     actors::{InternalActor, InternalMsg, ProcResult, Procedure, SHRequest, SHResults},
     client::{Client, ClientMsg},
     line_error,
     snapshot::Snapshot,
-    utils::{ask, LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     ClientId, Location, Provider,
 };
+#[cfg(feature = "communication")]
+use stronghold_communication::{
+    actor::{
+        firewall::OpenFirewall, CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults,
+        EstablishedConnection, KeepAlive,
+    },
+    behaviour::BehaviourConfig,
+    libp2p::{Keypair, Multiaddr, PeerId},
+};
+use stronghold_utils::ask;
 
-/// Main Interface for the Stronghold System. Contains the Riker Actor System, a vector of the current attached
-/// ClientIds and ActorRefs, a HashMap of the derive data (SHA512 of the client_path) and an index for the Current
-/// target actor.
 pub struct Stronghold {
     // actor system.
     pub system: ActorSystem,
@@ -34,6 +44,10 @@ pub struct Stronghold {
 
     // current index of the client.
     current_target: usize,
+
+    #[cfg(feature = "communication")]
+    // communication actor ref
+    communication_actor: Option<ActorRef<CommunicationRequest<SHRequest, ClientMsg>>>,
 }
 
 impl Stronghold {
@@ -51,7 +65,6 @@ impl Stronghold {
         let client = system
             .actor_of_args::<Client, _>(&id_str, client_id)
             .expect(line_error!());
-
         system
             .actor_of_args::<InternalActor<Provider>, _>(&format!("internal-{}", id_str), client_id)
             .expect(line_error!());
@@ -66,18 +79,24 @@ impl Stronghold {
             derive_data,
             actors,
             current_target: 0,
+            #[cfg(feature = "communication")]
+            communication_actor: None,
         }
     }
 
     /// Spawns a new set of actors for the Stronghold system. Accepts the client_path: `Vec<u8>` and the options:
     /// `StrongholdFlags`
-    pub fn spawn_stronghold_actor(&mut self, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> StatusMessage {
+    pub async fn spawn_stronghold_actor(
+        &mut self,
+        client_path: Vec<u8>,
+        _options: Vec<StrongholdFlags>,
+    ) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
         let id_str: String = client_id.into();
         let counter = self.actors.len();
 
         if self.client_ids.contains(&client_id) {
-            self.switch_actor_target(client_path);
+            self.switch_actor_target(client_path).await;
         } else {
             let client = self
                 .system
@@ -96,8 +115,44 @@ impl Stronghold {
         StatusMessage::OK
     }
 
+    #[cfg(feature = "communication")]
+    /// Spawn the communication actor and swarm.
+    /// Currently this creates an open firewall so that all requests are permitted, eventually there will be
+    /// configuration options for the firewall added to the SH interface.
+    pub fn spawn_communication(&mut self) -> StatusMessage {
+        if self.communication_actor.is_some() {
+            return StatusMessage::Error(String::from("Communication was already spawned"));
+        }
+
+        let idx = self.current_target;
+        let client = self.actors[idx].clone();
+
+        let firewall = self.system.actor_of::<OpenFirewall<_>>("firewall").unwrap();
+        let actor_config = CommunicationConfig::new(client, firewall);
+        let local_keys = Keypair::generate_ed25519();
+        let behaviour_config = BehaviourConfig::default();
+
+        let communication_actor = self
+            .system
+            .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>(
+                "communication",
+                (local_keys, actor_config, behaviour_config),
+            )
+            .expect(line_error!());
+        self.communication_actor = Some(communication_actor);
+        StatusMessage::OK
+    }
+
+    /// Kill communication actor and swarm
+    #[cfg(feature = "communication")]
+    pub fn stop_communication(&mut self) {
+        if let Some(communication_actor) = self.communication_actor.as_ref() {
+            self.system.stop(communication_actor);
+        }
+    }
+
     /// Switches the actor target to another actor in the system specified by the client_path: `Vec<u8>`.
-    pub fn switch_actor_target(&mut self, client_path: Vec<u8>) -> StatusMessage {
+    pub async fn switch_actor_target(&mut self, client_path: Vec<u8>) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
 
         if self.client_ids.contains(&client_id) {
@@ -105,8 +160,23 @@ impl Stronghold {
 
             if let Some(idx) = idx {
                 self.current_target = idx;
-            }
 
+                #[cfg(feature = "communication")]
+                if let Some(communication_actor) = self.communication_actor.as_ref() {
+                    match ask(
+                        &self.system,
+                        communication_actor,
+                        CommunicationRequest::SetClientRef(self.actors[idx].clone()),
+                    )
+                    .await
+                    {
+                        CommunicationResults::<SHResults>::SetClientRefResult => {}
+                        _ => {
+                            return StatusMessage::Error("Could not set communication client target".into());
+                        }
+                    }
+                }
+            }
             StatusMessage::OK
         } else {
             StatusMessage::Error("Unable to find the actor with that client path".into())
@@ -397,12 +467,13 @@ impl Stronghold {
 
     /// Reads data from a given snapshot file.  Can only read the data for a single `client_path` at a time. If the new
     /// actor uses a new `client_path` the former client path may be passed into the function call to read the data into
-    /// that actor. Also requires keydata to unlock the snapshot. A filename and filepath can be specified.
-    pub async fn read_snapshot(
+    /// that actor. Also requires keydata to unlock the snapshot. A filename and filepath can be specified. The Keydata
+    /// should implement and use Zeroize.
+    pub async fn read_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
         client_path: Vec<u8>,
         former_client_path: Option<Vec<u8>>,
-        keydata: Vec<u8>,
+        keydata: &T,
         filename: Option<String>,
         path: Option<PathBuf>,
     ) -> StatusMessage {
@@ -423,7 +494,9 @@ impl Stronghold {
 
             let mut key: [u8; 32] = [0u8; 32];
 
-            key.copy_from_slice(&keydata);
+            let keydata = keydata.as_ref();
+
+            key.copy_from_slice(keydata);
 
             if let SHResults::ReturnReadSnap(status) = ask(
                 &self.system,
@@ -482,10 +555,10 @@ impl Stronghold {
 
     /// Writes the entire state of the `Stronghold` into a snapshot.  All Actors and their associated data will be
     /// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be
-    /// specified.
-    pub async fn write_all_to_snapshot(
+    /// specified. The Keydata should implement and use Zeroize.
+    pub async fn write_all_to_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
-        keydata: Vec<u8>,
+        keydata: &T,
         filename: Option<String>,
         path: Option<PathBuf>,
     ) -> StatusMessage {
@@ -496,7 +569,9 @@ impl Stronghold {
         let mut futures = vec![];
         let mut key: [u8; 32] = [0u8; 32];
 
-        key.copy_from_slice(&keydata);
+        let keydata = keydata.as_ref();
+
+        key.copy_from_slice(keydata);
 
         if num_of_actors != 0 {
             for (_, actor) in self.actors.iter().enumerate() {
@@ -562,5 +637,298 @@ impl Stronghold {
     #[allow(dead_code)]
     fn check_config_flags() {
         unimplemented!()
+    }
+
+    #[cfg(feature = "communication")]
+    ///  Start listening on the swarm
+    pub async fn start_listening(&self, addr: Option<Multiaddr>) -> ResultMessage<Multiaddr> {
+        if self.communication_actor.is_none() {
+            return ResultMessage::Error(String::from("No communication spawned"));
+        }
+
+        match ask::<_, _, CommunicationResults<SHResults>, _>(
+            &self.system,
+            self.communication_actor.as_ref().unwrap(),
+            CommunicationRequest::StartListening(addr),
+        )
+        .await
+        {
+            CommunicationResults::StartListeningResult(Ok(addr)) => ResultMessage::Ok(addr),
+            CommunicationResults::StartListeningResult(Err(_)) => ResultMessage::Error("Listener Error".into()),
+            _ => ResultMessage::Error("Received invalid communication actor response".into()),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    ///  Get the peer id and listening addresses of the local peer
+    pub async fn get_swarm_info(
+        &self,
+    ) -> ResultMessage<(PeerId, Vec<Multiaddr>, Vec<(PeerId, EstablishedConnection)>)> {
+        if self.communication_actor.is_none() {
+            return ResultMessage::Error(String::from("No communication spawned"));
+        }
+
+        match ask::<_, _, CommunicationResults<SHResults>, _>(
+            &self.system,
+            self.communication_actor.as_ref().unwrap(),
+            CommunicationRequest::GetSwarmInfo,
+        )
+        .await
+        {
+            CommunicationResults::SwarmInfo {
+                peer_id,
+                listeners,
+                connections,
+            } => ResultMessage::Ok((peer_id, listeners, connections)),
+            _ => ResultMessage::Error("Failed to obtain swarm information".into()),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    /// Connect a remote peer either by id if the peer is known, or alternatively by the address.
+    pub async fn establish_connection(
+        &self,
+        peer_id: PeerId,
+        addr: Multiaddr,
+        keep_alive: KeepAlive,
+    ) -> ResultMessage<PeerId> {
+        if self.communication_actor.is_none() {
+            return ResultMessage::Error(String::from("No communication spawned"));
+        }
+
+        match ask::<_, _, CommunicationResults<SHResults>, _>(
+            &self.system,
+            self.communication_actor.as_ref().unwrap(),
+            CommunicationRequest::EstablishConnection {
+                peer_id,
+                addr,
+                keep_alive,
+            },
+        )
+        .await
+        {
+            CommunicationResults::EstablishConnectionResult(Ok(peer_id)) => ResultMessage::Ok(peer_id),
+            CommunicationResults::EstablishConnectionResult(Err(reason)) => {
+                ResultMessage::Error(format!("Error connecting peer: {:?}", reason))
+            }
+            _ => ResultMessage::Error("Invalid communication event".into()),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    /// Close the connection to a remote peer so that no more request can be received.
+    pub async fn close_connection(&self, peer_id: PeerId) -> StatusMessage {
+        if self.communication_actor.is_none() {
+            return StatusMessage::Error(String::from("No communication spawned"));
+        }
+
+        match ask::<_, _, CommunicationResults<SHResults>, _>(
+            &self.system,
+            self.communication_actor.as_ref().unwrap(),
+            CommunicationRequest::CloseConnection(peer_id),
+        )
+        .await
+        {
+            CommunicationResults::ClosedConnection => StatusMessage::OK,
+            _ => StatusMessage::Error("Invalid communication event".into()),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    /// Write to the vault of a remote stronghold
+    pub async fn write_remote_vault(
+        &self,
+        peer_id: PeerId,
+        location: Location,
+        payload: Vec<u8>,
+        hint: RecordHint,
+        _options: Vec<VaultFlags>,
+    ) -> StatusMessage {
+        if self.communication_actor.is_none() {
+            return StatusMessage::Error(String::from("No communication spawned"));
+        }
+
+        let vault_path = &location.vault_path();
+        let vault_path = vault_path.to_vec();
+        // check if vault exists
+        let vault_exists = match self
+            .ask_remote(peer_id, SHRequest::CheckVault(vault_path.clone()))
+            .await
+        {
+            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnExistsVault(b))) => b,
+            other => return StatusMessage::Error(Stronghold::handle_response_failure(other, "write data")),
+        };
+        if vault_exists {
+            // check if record exists
+            let record_exists = match self
+                .ask_remote(
+                    peer_id,
+                    SHRequest::CheckRecord {
+                        location: location.clone(),
+                    },
+                )
+                .await
+            {
+                CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnExistsRecord(b))) => b,
+                other => return StatusMessage::Error(Stronghold::handle_response_failure(other, "check record")),
+            };
+            if !record_exists {
+                // initialize a new record
+                match self
+                    .ask_remote(
+                        peer_id,
+                        SHRequest::InitRecord {
+                            location: location.clone(),
+                        },
+                    )
+                    .await
+                {
+                    CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnInitRecord(status))) => status,
+                    other => {
+                        return StatusMessage::Error(Stronghold::handle_response_failure(other, "initialize record"))
+                    }
+                };
+            }
+        } else {
+            // no vault so create new one before writing.
+            match self
+                .ask_remote(peer_id, SHRequest::CreateNewVault(location.clone()))
+                .await
+            {
+                CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnCreateVault(_))) => {}
+                other => return StatusMessage::Error(Stronghold::handle_response_failure(other, "create vault")),
+            };
+        }
+        // write data
+        match self
+            .ask_remote(
+                peer_id,
+                SHRequest::WriteToVault {
+                    location: location.clone(),
+                    payload: payload.clone(),
+                    hint,
+                },
+            )
+            .await
+        {
+            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnWriteVault(status))) => status,
+            other => StatusMessage::Error(Stronghold::handle_response_failure(other, "write data")),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    /// Write to the store of a remote stronghold
+    pub async fn write_to_remote_store(
+        &self,
+        peer_id: PeerId,
+        location: Location,
+        payload: Vec<u8>,
+        lifetime: Option<Duration>,
+    ) -> StatusMessage {
+        if self.communication_actor.is_none() {
+            return StatusMessage::Error(String::from("No communication spawned"));
+        }
+
+        match self
+            .ask_remote(
+                peer_id,
+                SHRequest::WriteToStore {
+                    location,
+                    payload,
+                    lifetime,
+                },
+            )
+            .await
+        {
+            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnWriteStore(status))) => status,
+            other => StatusMessage::Error(Stronghold::handle_response_failure(other, "write to the store")),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    /// Read from the store of a remote stronghold
+    pub async fn read_from_remote_store(&self, peer_id: PeerId, location: Location) -> (Vec<u8>, StatusMessage) {
+        if self.communication_actor.is_none() {
+            return (vec![], StatusMessage::Error(String::from("No communication spawned")));
+        }
+
+        match self.ask_remote(peer_id, SHRequest::ReadFromStore { location }).await {
+            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnReadStore(payload, status))) => {
+                (payload, status)
+            }
+            other => (
+                vec![],
+                StatusMessage::Error(Stronghold::handle_response_failure(other, "write to the store")),
+            ),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    /// Returns a list of the available records and their `RecordHint` values in a remote vault.
+    pub async fn list_remote_hints_and_ids<V: Into<Vec<u8>>>(
+        &self,
+        peer_id: PeerId,
+        vault_path: V,
+    ) -> (Vec<(usize, RecordHint)>, StatusMessage) {
+        if self.communication_actor.is_none() {
+            return (vec![], StatusMessage::Error(String::from("No communication spawned")));
+        }
+
+        match self.ask_remote(peer_id, SHRequest::ListIds(vault_path.into())).await {
+            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnList(ids, status))) => (ids, status),
+            other => (
+                vec![],
+                StatusMessage::Error(Stronghold::handle_response_failure(
+                    other,
+                    "list hints and indexes from the vault",
+                )),
+            ),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    /// Executes a runtime command on a remote stronghold.
+    pub async fn remote_runtime_exec(&self, peer_id: PeerId, control_request: Procedure) -> Result<ProcResult, String> {
+        if self.communication_actor.is_none() {
+            return Err(String::from("No communication spawned"));
+        }
+
+        match self
+            .ask_remote(peer_id, SHRequest::ControlRequest(control_request))
+            .await
+        {
+            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnControlRequest(pr))) => Ok(pr),
+            other => Err(Stronghold::handle_response_failure(other, "execute procedure")),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    // Create an error message for received CommunicationResults.
+    // It assumes that the received event is some sort of failure.
+    // The returned error messages depends on source of that failure:
+    // - Response is okay, but the request procedure at the remote stronghold was not successful.
+    // - Response is an error: request could not be send or no response was received.
+    // - Invalid event was returned from the communication actor.
+    fn handle_response_failure(res: CommunicationResults<SHResults>, procedure: &str) -> String {
+        match res {
+            CommunicationResults::RequestMsgResult(Ok(_)) => format!("Failed to {}", procedure),
+            CommunicationResults::RequestMsgResult(Err(e)) => {
+                format!("Error messaging peer {:?}", e)
+            }
+            _ => "Received invalid communication actor response".into(),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    // Wrap the SHRequest in an CommunicationRequest::RequestMsg, send it to the CommunicationActor and
+    // wait for it to return a result from the remote peer.
+    // This method assumes that a communication actor was spawned and exists in self.
+    async fn ask_remote(&self, peer_id: PeerId, request: SHRequest) -> CommunicationResults<SHResults> {
+        ask(
+            &self.system,
+            self.communication_actor.as_ref().unwrap(),
+            CommunicationRequest::RequestMsg { peer_id, request },
+        )
+        .await
     }
 }

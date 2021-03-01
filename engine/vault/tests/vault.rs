@@ -4,7 +4,7 @@
 mod utils;
 use utils::provider::Provider;
 
-use test_utils::fresh;
+use stronghold_utils::test_utils::fresh;
 
 use vault::{DBView, Encrypt, Key, Kind, PreparedRead, ReadResult, RecordHint, RecordId, Result, WriteRequest};
 

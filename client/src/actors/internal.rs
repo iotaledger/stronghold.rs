@@ -11,14 +11,6 @@ use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
 use engine::snapshot;
 
-use bee_signing_ext::{
-    binary::{
-        ed25519::{Ed25519PrivateKey, Ed25519Seed},
-        BIP32Path,
-    },
-    Signer,
-};
-
 use crate::{
     actors::{ProcResult, SMsg},
     bucket::Bucket,
@@ -109,27 +101,10 @@ pub enum InternalMsg {
         vault_id: VaultId,
         record_id: RecordId,
     },
-    SLIP10DeriveAndEd25519PublicKey {
-        path: String,
-        vault_id: VaultId,
-        record_id: RecordId,
-    },
     Ed25519Sign {
         vault_id: VaultId,
         record_id: RecordId,
         msg: Vec<u8>,
-    },
-    SLIP10DeriveAndEd25519Sign {
-        path: String,
-        vault_id: VaultId,
-        record_id: RecordId,
-        msg: Vec<u8>,
-    },
-    SignUnlockBlock {
-        vault_id: VaultId,
-        record_id: RecordId,
-        path: String,
-        essence: Vec<u8>,
     },
 }
 
@@ -450,7 +425,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                ProcResult::SLIP10Derive(StatusMessage::Ok(())),
+                                ProcResult::SLIP10Derive(ResultMessage::Ok(dk.chain_code())),
                             )),
                             sender,
                         );
@@ -493,7 +468,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                ProcResult::SLIP10Derive(StatusMessage::Ok(())),
+                                ProcResult::SLIP10Derive(ResultMessage::Ok(dk.chain_code())),
                             )),
                             sender,
                         );
@@ -605,38 +580,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     sender,
                 );
             }
-            InternalMsg::SLIP10DeriveAndEd25519PublicKey {
-                path,
-                vault_id,
-                record_id,
-            } => {
-                let key = match self.keystore.get_key(vault_id) {
-                    Some(key) => key,
-                    None => todo!("return error message"),
-                };
-                self.keystore.insert_key(vault_id, key.clone());
-
-                let raw = self.bucket.read_data(key, record_id);
-                // NB: bee_signing_ext only accepts 256 bit seeds
-                if raw.len() != 32 {
-                    todo!("return error message: incorrect amount of seed bytes")
-                }
-                let seed = Ed25519Seed::from_bytes(&raw).expect(line_error!());
-
-                let bip32path = BIP32Path::from_str(&path).expect(line_error!());
-
-                let sk = Ed25519PrivateKey::generate_from_seed(&seed, &bip32path).expect(line_error!());
-                let pk = sk.generate_public_key().to_bytes();
-
-                let cstr: String = self.client_id.into();
-                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-                client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                        ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(pk)),
-                    )),
-                    sender,
-                );
-            }
             InternalMsg::Ed25519Sign {
                 vault_id,
                 record_id,
@@ -668,87 +611,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     ))),
                     sender,
                 );
-            }
-            InternalMsg::SLIP10DeriveAndEd25519Sign {
-                path,
-                vault_id,
-                record_id,
-                msg,
-            } => {
-                let seed_key = match self.keystore.get_key(vault_id) {
-                    Some(seed_key) => seed_key,
-                    None => todo!("return error message"),
-                };
-                self.keystore.insert_key(vault_id, seed_key.clone());
-
-                let raw = self.bucket.read_data(seed_key, record_id);
-                // NB: bee_signing_ext only accepts 256 bit seeds
-                if raw.len() != 32 {
-                    todo!("return error message: insufficient bytes")
-                }
-                let seed = Ed25519Seed::from_bytes(&raw).expect(line_error!());
-
-                let bip32path = BIP32Path::from_str(&path).expect(line_error!());
-
-                let sk = Ed25519PrivateKey::generate_from_seed(&seed, &bip32path).expect(line_error!());
-
-                let sig = sk.sign(&msg);
-
-                let cstr: String = self.client_id.into();
-                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-                client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                        ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig.to_bytes())),
-                    )),
-                    sender,
-                );
-            }
-            InternalMsg::SignUnlockBlock {
-                vault_id,
-                record_id,
-                path,
-                essence,
-            } => {
-                let cstr: String = self.client_id.into();
-                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-
-                match self.keystore.get_key(vault_id) {
-                    Some(key) => {
-                        self.keystore.insert_key(vault_id, key.clone());
-
-                        let mut raw = self.bucket.read_data(key, record_id);
-                        if raw.len() < 32 {
-                            todo!("return error message: insufficient bytes")
-                        }
-                        raw.truncate(32);
-                        let mut bs = [0; 32];
-                        bs.copy_from_slice(&raw);
-
-                        let seed = Ed25519Seed::from_bytes(&bs).expect(line_error!());
-
-                        let bip32path = BIP32Path::from_str(&path).expect(line_error!());
-
-                        let sk = Ed25519PrivateKey::generate_from_seed(&seed, &bip32path).expect(line_error!());
-                        let pk = sk.generate_public_key().to_bytes();
-
-                        let signature = sk.sign(&essence);
-
-                        client.try_tell(
-                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                ProcResult::SignUnlockBlock(ResultMessage::Ok((signature.to_bytes(), pk))),
-                            )),
-                            sender,
-                        );
-                    }
-                    None => {
-                        client.try_tell(
-                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                ProcResult::SignUnlockBlock(ResultMessage::Error("Failed to get the seed data".into())),
-                            )),
-                            sender,
-                        );
-                    }
-                };
             }
             InternalMsg::FillSnapshot { data, id } => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());

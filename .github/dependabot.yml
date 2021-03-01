@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/client"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: "cargo"
+    directory: "/communication"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: "cargo"
+    directory: "/engine"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 3
+  
+  - package-ecosystem: "cargo"
+    directory: "/runtime"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 3
+  
+  - package-ecosystem: "cargo"
+    directory: "/utils"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 3

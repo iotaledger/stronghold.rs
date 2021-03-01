@@ -66,7 +66,6 @@ where
             return Err(crate::Error::os("close"));
         }
 
-
         let mut st = 0;
         let r = libc::waitpid(pid, &mut st, 0);
         if r < 0 {
@@ -129,38 +128,35 @@ mod fork_tests {
     #[test]
     #[ignore = "TODO: read and waitpid non-blocking"]
     fn pure_large_buffer() -> crate::Result<()> {
-        let mut bs = [0u8; 1024*128];
+        let mut bs = [0u8; 1024 * 128];
         OsRng.fill_bytes(&mut bs);
         assert_eq!(fork(|| bs)?, bs);
         Ok(())
     }
 
     #[test]
-    fn unexpected_exit_code() -> crate::Result<()> {
+    fn unexpected_exit_code() {
         assert_eq!(
             fork(|| unsafe {
                 libc::exit(1);
             }),
             Err(Error::unexpected_exit_code(1))
         );
-        Ok(())
     }
 
     #[test]
-    fn signal() -> crate::Result<()> {
+    fn signal() {
         assert_eq!(
             fork(|| unsafe {
                 let _ = libc::kill(libc::getpid(), libc::SIGKILL);
             }),
             Err(Error::signal(libc::SIGKILL))
         );
-        Ok(())
     }
 
     #[test]
-    fn panic() -> crate::Result<()> {
+    fn panic() {
         assert_eq!(fork(|| panic!("oopsie")), Err(Error::unexpected_exit_code(101)));
-        Ok(())
     }
 }
 

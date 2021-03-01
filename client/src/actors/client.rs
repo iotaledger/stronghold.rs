@@ -10,13 +10,18 @@ use crate::{
 };
 
 use engine::{snapshot, vault::RecordHint};
+use serde::{Deserialize, Serialize};
 
 use riker::actors::*;
 
+use core::{
+    array::TryFromSliceError,
+    convert::{TryFrom, TryInto},
+};
 use std::{path::PathBuf, time::Duration};
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SLIP10DeriveInput {
     /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
     Seed(Location),
@@ -25,18 +30,20 @@ pub enum SLIP10DeriveInput {
 
 /// Procedure type used to call to the runtime via `Strongnhold.runtime_exec(...)`.
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Procedure {
-    /// Generate a raw SLIP10 seed of the specified size and store it in the `output` location
+    /// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in the
+    /// `output` location
     ///
     /// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
     /// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
     SLIP10Generate {
         output: Location,
         hint: RecordHint,
-        size_bytes: usize,
+        size_bytes: Option<usize>,
     },
-    /// Derive a SLIP10 child key from a seed or a parent key and store it in output location
+    /// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
+    /// return the corresponding chain code
     SLIP10Derive {
         chain: hd::Chain,
         input: SLIP10DeriveInput,
@@ -69,31 +76,19 @@ pub enum Procedure {
     /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
     /// in particular SLIP10 keys are compatible.
     Ed25519Sign { private_key: Location, msg: Vec<u8> },
-    /// Derive an Ed25519 key using SLIP10 from the specified path and derive its public key
-    SLIP10DeriveAndEd25519PublicKey { path: String, seed: Location },
-    /// Derive an Ed25519 key using SLIP10 from the specified path and seed and use it to sign the given message
-    SLIP10DeriveAndEd25519Sign { path: String, seed: Location, msg: Vec<u8> },
-    /// Derive a SLIP10 key from a SLIP10/BIP39 seed using path, sign the essence using Ed25519, return the signature
-    /// and the corresponding public key
-    ///
-    /// This is equivalent to separate calls to SLIP10Derive, Ed25519PublicKey, and Ed25519Sign but
-    /// does not store the derived key.
-    SignUnlockBlock {
-        seed: Location,
-        path: String,
-        essence: Vec<u8>,
-    },
 }
 
 /// A Procedure return result type.  Contains the different return values for the `Procedure` type calls used with
 /// `Stronghold.runtime_exec(...)`.
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "SerdeProcResult")]
+#[serde(into = "SerdeProcResult")]
 pub enum ProcResult {
     /// Return from generating a `SLIP10` seed.
     SLIP10Generate(StatusMessage),
     /// Returns the public key derived from the `SLIP10Derive` call.
-    SLIP10Derive(StatusMessage),
+    SLIP10Derive(ResultMessage<hd::ChainCode>),
     /// `BIP39Recover` return value.
     BIP39Recover(StatusMessage),
     /// `BIP39Generate` return value.
@@ -102,23 +97,78 @@ pub enum ProcResult {
     BIP39MnemonicSentence(ResultMessage<String>),
     /// Return value for `Ed25519PublicKey`. Returns an Ed25519 public key.
     Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
-    /// Return value for `SLIP10DeriveAndEd25519PublicKey`. Returns an Ed25519 public key.
-    SLIP10DeriveAndEd25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
     /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
     Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
-    /// Return value for `SLIP10DeriveAndEd25519Sign`. Returns an Ed25519 signature.
-    SLIP10DeriveAndEd25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
-    /// Return value for `SignUnlockBlock`. Returns a Ed25519 signature and a Ed25519 public key.
-    SignUnlockBlock(
-        ResultMessage<(
-            [u8; crypto::ed25519::SIGNATURE_LENGTH],
-            [u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH],
-        )>,
-    ),
+}
+
+impl TryFrom<SerdeProcResult> for ProcResult {
+    type Error = TryFromSliceError;
+
+    fn try_from(serde_proc_result: SerdeProcResult) -> Result<Self, Self::Error> {
+        match serde_proc_result {
+            SerdeProcResult::SLIP10Generate(msg) => Ok(ProcResult::SLIP10Generate(msg)),
+            SerdeProcResult::SLIP10Derive(msg) => Ok(ProcResult::SLIP10Derive(msg)),
+            SerdeProcResult::BIP39Recover(msg) => Ok(ProcResult::BIP39Recover(msg)),
+            SerdeProcResult::BIP39Generate(msg) => Ok(ProcResult::BIP39Generate(msg)),
+            SerdeProcResult::BIP39MnemonicSentence(msg) => Ok(ProcResult::BIP39MnemonicSentence(msg)),
+            SerdeProcResult::Ed25519PublicKey(msg) => {
+                let msg: ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> = match msg {
+                    ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
+                    ResultMessage::Error(e) => ResultMessage::Error(e),
+                };
+                Ok(ProcResult::Ed25519PublicKey(msg))
+            }
+            SerdeProcResult::Ed25519Sign(msg) => {
+                let msg: ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]> = match msg {
+                    ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
+                    ResultMessage::Error(e) => ResultMessage::Error(e),
+                };
+                Ok(ProcResult::Ed25519Sign(msg))
+            }
+        }
+    }
+}
+
+// Replaces arrays in ProcResult with vectors to derive Serialize/ Deserialize
+#[derive(Clone, Serialize, Deserialize)]
+enum SerdeProcResult {
+    SLIP10Generate(StatusMessage),
+    SLIP10Derive(ResultMessage<hd::ChainCode>),
+    BIP39Recover(StatusMessage),
+    BIP39Generate(StatusMessage),
+    BIP39MnemonicSentence(ResultMessage<String>),
+    Ed25519PublicKey(ResultMessage<Vec<u8>>),
+    Ed25519Sign(ResultMessage<Vec<u8>>),
+}
+
+impl From<ProcResult> for SerdeProcResult {
+    fn from(proc_result: ProcResult) -> Self {
+        match proc_result {
+            ProcResult::SLIP10Generate(msg) => SerdeProcResult::SLIP10Generate(msg),
+            ProcResult::SLIP10Derive(msg) => SerdeProcResult::SLIP10Derive(msg),
+            ProcResult::BIP39Recover(msg) => SerdeProcResult::BIP39Recover(msg),
+            ProcResult::BIP39Generate(msg) => SerdeProcResult::BIP39Generate(msg),
+            ProcResult::BIP39MnemonicSentence(msg) => SerdeProcResult::BIP39MnemonicSentence(msg),
+            ProcResult::Ed25519PublicKey(msg) => {
+                let msg = match msg {
+                    ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
+                    ResultMessage::Error(error) => ResultMessage::Error(error),
+                };
+                SerdeProcResult::Ed25519PublicKey(msg)
+            }
+            ProcResult::Ed25519Sign(msg) => {
+                let msg = match msg {
+                    ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
+                    ResultMessage::Error(error) => ResultMessage::Error(error),
+                };
+                SerdeProcResult::Ed25519Sign(msg)
+            }
+        }
+    }
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SHRequest {
     // check if vault exists.
     CheckVault(Vec<u8>),
@@ -196,7 +246,7 @@ pub enum SHRequest {
 }
 
 /// Messages that come from stronghold
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SHResults {
     ReturnWriteStore(StatusMessage),
     ReturnReadStore(Vec<u8>, StatusMessage),
@@ -497,7 +547,7 @@ impl Receive<SHRequest> for Client {
                                 vault_id: vid,
                                 record_id: rid,
                                 hint,
-                                size_bytes,
+                                size_bytes: size_bytes.unwrap_or(64),
                             },
                             sender,
                         )
@@ -625,17 +675,6 @@ impl Receive<SHRequest> for Client {
                         let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
                         internal.try_tell(InternalMsg::Ed25519PublicKey { vault_id, record_id }, sender)
                     }
-                    Procedure::SLIP10DeriveAndEd25519PublicKey { path, seed } => {
-                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
-                        internal.try_tell(
-                            InternalMsg::SLIP10DeriveAndEd25519PublicKey {
-                                path,
-                                vault_id,
-                                record_id,
-                            },
-                            sender,
-                        )
-                    }
                     Procedure::Ed25519Sign { private_key, msg } => {
                         let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
                         internal.try_tell(
@@ -643,30 +682,6 @@ impl Receive<SHRequest> for Client {
                                 vault_id,
                                 record_id,
                                 msg,
-                            },
-                            sender,
-                        )
-                    }
-                    Procedure::SLIP10DeriveAndEd25519Sign { path, seed, msg } => {
-                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
-                        internal.try_tell(
-                            InternalMsg::SLIP10DeriveAndEd25519Sign {
-                                path,
-                                vault_id,
-                                record_id,
-                                msg,
-                            },
-                            sender,
-                        )
-                    }
-                    Procedure::SignUnlockBlock { seed, path, essence } => {
-                        let (vault_id, record_id) = self.resolve_location(seed, ReadWrite::Read);
-                        internal.try_tell(
-                            InternalMsg::SignUnlockBlock {
-                                vault_id,
-                                record_id,
-                                path,
-                                essence,
                             },
                             sender,
                         )

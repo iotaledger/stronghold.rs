@@ -3,20 +3,7 @@
 
 use riker::actors::*;
 
-use crate::{
-    line_error, Location, ProcResult, Procedure, RecordHint, ResultMessage, SLIP10DeriveInput, StatusMessage,
-    Stronghold,
-};
-
-use bee_signing_ext::{
-    binary::{
-        ed25519::{Ed25519PrivateKey, Ed25519Seed},
-        BIP32Path,
-    },
-    Signer,
-};
-
-use super::fresh;
+use crate::{line_error, Location, RecordHint, ResultMessage, Stronghold};
 
 fn setup_stronghold() -> Stronghold {
     let sys = ActorSystem::new().unwrap();
@@ -170,11 +157,11 @@ fn test_write_read_snapshot() {
         });
     }
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), Some("test1".into()), None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, Some("test1".into()), None));
 
     futures::executor::block_on(stronghold.kill_stronghold(client_path.clone(), false));
 
-    futures::executor::block_on(stronghold.read_snapshot(client_path, None, key_data, Some("test1".into()), None));
+    futures::executor::block_on(stronghold.read_snapshot(client_path, None, &key_data, Some("test1".into()), None));
 
     for i in 0..20 {
         futures::executor::block_on(async {
@@ -199,14 +186,18 @@ fn test_write_read_multi_snapshot() {
     let lochead = Location::counter::<_, usize>("path", None);
 
     for i in 0..20 {
-        stronghold.spawn_stronghold_actor(format!("test {:?}", i).as_bytes().to_vec(), vec![]);
+        futures::executor::block_on(
+            stronghold.spawn_stronghold_actor(format!("test {:?}", i).as_bytes().to_vec(), vec![]),
+        );
     }
 
     for i in 0..20 {
         futures::executor::block_on(async {
             let data = format!("test {:?}", i);
 
-            stronghold.switch_actor_target(format!("test {:?}", i).as_bytes().to_vec());
+            stronghold
+                .switch_actor_target(format!("test {:?}", i).as_bytes().to_vec())
+                .await;
 
             stronghold
                 .write_to_vault(
@@ -219,7 +210,7 @@ fn test_write_read_multi_snapshot() {
         });
     }
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(key_data.clone(), Some("test2".into()), None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, Some("test2".into()), None));
 
     for i in 0..20 {
         futures::executor::block_on(stronghold.kill_stronghold(format!("test {:?}", i).as_bytes().to_vec(), false));
@@ -229,7 +220,7 @@ fn test_write_read_multi_snapshot() {
         futures::executor::block_on(stronghold.read_snapshot(
             format!("test {:?}", i).as_bytes().to_vec(),
             None,
-            key_data.clone(),
+            &key_data,
             Some("test2".into()),
             None,
         ));
@@ -237,7 +228,9 @@ fn test_write_read_multi_snapshot() {
 
     for i in 0..10 {
         futures::executor::block_on(async {
-            stronghold.switch_actor_target(format!("test {:?}", i % 10).as_bytes().to_vec());
+            stronghold
+                .switch_actor_target(format!("test {:?}", i % 10).as_bytes().to_vec())
+                .await;
 
             let (p, _) = stronghold.read_secret(lochead.clone()).await;
 
@@ -246,189 +239,6 @@ fn test_write_read_multi_snapshot() {
             assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));
         });
     }
-}
-
-#[test]
-fn test_unlock_block() {
-    let sys = ActorSystem::new().unwrap();
-
-    let client_path = fresh::bytestring();
-
-    let seed = Location::generic("slip10", "seed");
-
-    let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
-
-    let essence = fresh::bytestring();
-
-    match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10Generate {
-        output: seed.clone(),
-        hint: fresh::record_hint(),
-        size_bytes: 32,
-    })) {
-        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
-        r => panic!("unexpected result: {:?}", r),
-    }
-
-    let (seed_data, _) = futures::executor::block_on(stronghold.read_secret(seed.clone()));
-
-    let mut seed_data = seed_data.expect(line_error!());
-
-    let key0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519PublicKey {
-        path: "m/1'".into(),
-        seed: seed.clone(),
-    })) {
-        ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(key)) => key,
-        r => panic!("unexpected result: {:?}", r),
-    };
-
-    let sig0 = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SLIP10DeriveAndEd25519Sign {
-        path: "m/1'".into(),
-        seed: seed.clone(),
-        msg: essence.to_vec(),
-    })) {
-        ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig)) => sig,
-        r => panic!("unexpected result: {:?}", r),
-    };
-
-    let (sig1, key1) = match futures::executor::block_on(stronghold.runtime_exec(Procedure::SignUnlockBlock {
-        seed,
-        path: "m/1'".into(),
-        essence: essence.to_vec(),
-    })) {
-        ProcResult::SignUnlockBlock(ResultMessage::Ok((sig, key))) => {
-            let sig = crypto::ed25519::Signature::from_bytes(sig);
-            let key = crypto::ed25519::PublicKey::from_compressed_bytes(key).unwrap();
-
-            (sig, key)
-        }
-        r => panic!("unexpected result: {:?}", r),
-    };
-
-    if seed_data.len() < 32 {
-        todo!("return error message: insufficient bytes")
-    }
-    seed_data.truncate(32);
-    let mut bs = [0; 32];
-    bs.copy_from_slice(&seed_data);
-    let seed = Ed25519Seed::from_bytes(&seed_data).expect(line_error!());
-
-    let sk = Ed25519PrivateKey::generate_from_seed(&seed, &BIP32Path::from_str("m/1'").unwrap()).expect(line_error!());
-    let pk = sk.generate_public_key().to_bytes();
-    let sig2 = sk.sign(&essence);
-
-    assert_eq!(key1.to_compressed_bytes(), pk);
-    assert_eq!(sig2.to_bytes(), sig1.to_bytes());
-    assert_eq!(sig0, sig1.to_bytes());
-    assert_eq!(key0, pk);
-
-    assert!(crypto::ed25519::verify(&key1, &sig1, &essence));
-
-    let sc = crate::hd::Seed::from_bytes(&seed_data);
-    let mkc = sc.to_master_key();
-    let skc = mkc
-        .derive(&crate::hd::Chain::from_u32_hardened(vec![1]))
-        .unwrap()
-        .secret_key()
-        .unwrap();
-
-    let pkc = skc.public_key();
-    assert_eq!(pkc.to_compressed_bytes(), pk);
-    let sigc = skc.sign(&essence);
-    assert_eq!(sigc.to_bytes(), sig0);
-}
-
-#[test]
-fn test_ed25519_public_key_equivalence() {
-    let sh = Stronghold::init_stronghold_system(ActorSystem::new().unwrap(), fresh::bytestring(), vec![]);
-
-    let seed = fresh::location();
-
-    match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Generate {
-        output: seed.clone(),
-        hint: fresh::record_hint(),
-        size_bytes: 32,
-    })) {
-        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
-        r => panic!("unexpected result: {:?}", r),
-    }
-
-    let (path, chain) = fresh::hd_path();
-
-    let pk0 = match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10DeriveAndEd25519PublicKey {
-        path,
-        seed: seed.clone(),
-    })) {
-        ProcResult::SLIP10DeriveAndEd25519PublicKey(ResultMessage::Ok(pk)) => pk,
-        r => panic!("unexpected result: {:?}", r),
-    };
-
-    let pk1 = {
-        let key = fresh::location();
-        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
-            chain,
-            input: SLIP10DeriveInput::Seed(seed),
-            output: key.clone(),
-            hint: fresh::record_hint(),
-        })) {
-            ProcResult::SLIP10Derive(StatusMessage::Ok(())) => (),
-            r => panic!("unexpected result: {:?}", r),
-        };
-
-        match futures::executor::block_on(sh.runtime_exec(Procedure::Ed25519PublicKey { private_key: key })) {
-            ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) => pk,
-            r => panic!("unexpected result: {:?}", r),
-        }
-    };
-
-    assert_eq!(pk0, pk1);
-}
-
-#[test]
-fn test_ed25519_sign_equivalence() {
-    let sh = Stronghold::init_stronghold_system(ActorSystem::new().unwrap(), fresh::bytestring(), vec![]);
-
-    let seed = fresh::location();
-
-    match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Generate {
-        output: seed.clone(),
-        hint: fresh::record_hint(),
-        size_bytes: 32,
-    })) {
-        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
-        r => panic!("unexpected result: {:?}", r),
-    }
-
-    let (path, chain) = fresh::hd_path();
-    let msg = fresh::bytestring();
-
-    let sig0 = match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10DeriveAndEd25519Sign {
-        path,
-        seed: seed.clone(),
-        msg: msg.clone(),
-    })) {
-        ProcResult::SLIP10DeriveAndEd25519Sign(ResultMessage::Ok(sig)) => sig,
-        r => panic!("unexpected result: {:?}", r),
-    };
-
-    let sig1 = {
-        let key = fresh::location();
-        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
-            chain,
-            input: SLIP10DeriveInput::Seed(seed),
-            output: key.clone(),
-            hint: fresh::record_hint(),
-        })) {
-            ProcResult::SLIP10Derive(StatusMessage::Ok(())) => (),
-            r => panic!("unexpected result: {:?}", r),
-        };
-
-        match futures::executor::block_on(sh.runtime_exec(Procedure::Ed25519Sign { private_key: key, msg })) {
-            ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => sig,
-            r => panic!("unexpected result: {:?}", r),
-        }
-    };
-
-    assert_eq!(sig0, sig1);
 }
 
 #[test]

@@ -13,13 +13,13 @@
 //! bytestring to further protect the offline snapshot files (one might consider
 //! using a secondary user password strengthened by an HSM).
 //!
-//! The current version of the format is using the symmetric XChaCha20 cipher with
-//! the Poly1305 message authentication algorithm.
-//!
-//! Future versions will consider using X25519 to encrypt using an ephemeral key
-//! instead of directly using the users key. When the demands for larger
-//! snapshot sizes and/or random access is desired one might consider encrypting
-//! smaller chunks (B-trees?) or similar using derived ephemeral keys.
+//! The current version of the format is using X25519 together with an ephemeral
+//! key to derive a shared key for the symmetric XChaCha20 cipher and uses the
+//! Poly1305 message authentication algorithm.
+
+//! Future versions, when the demands for larger snapshot sizes and/or random
+//! access is desired, might consider encrypting smaller chunks (B-trees?) or
+//! similar using per chunk derived ephemeral keys.
 
 mod compression;
 pub mod files;

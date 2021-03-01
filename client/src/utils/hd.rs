@@ -4,6 +4,7 @@
 // TODO: this module should probably not reside in the client
 
 use crypto::{ed25519::SecretKey, macs::hmac::HMAC_SHA512};
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
 // https://github.com/satoshilabs/slips/blob/master/slip-0010.md
@@ -44,7 +45,7 @@ impl Seed {
     }
 }
 
-type ChainCode = [u8; 32];
+pub type ChainCode = [u8; 32];
 
 #[derive(Copy, Clone, Debug)]
 pub struct Key([u8; 64]);
@@ -101,7 +102,7 @@ impl TryFrom<&[u8]> for Key {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
     hardened: bool,
     bs: [u8; 4],
@@ -118,7 +119,7 @@ impl Segment {
     pub const HARDEN_MASK: u32 = 1 << 31;
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Chain(Vec<Segment>);
 
 impl Chain {
@@ -132,6 +133,18 @@ impl Chain {
 
     pub fn from_u32_hardened<I: IntoIterator<Item = u32>>(is: I) -> Self {
         Self::from_u32(is.into_iter().map(|i| Segment::HARDEN_MASK | i))
+    }
+
+    pub fn join<O: AsRef<Chain>>(&self, o: O) -> Self {
+        let mut ss = self.0.clone();
+        ss.extend_from_slice(&o.as_ref().0);
+        Self(ss)
+    }
+}
+
+impl AsRef<Chain> for Chain {
+    fn as_ref(&self) -> &Self {
+        &self
     }
 }
 
