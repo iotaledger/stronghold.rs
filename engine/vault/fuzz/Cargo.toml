@@ -17,17 +17,12 @@ rand = "0.8.3"
 path = "../../vault"
 version = "0.2"
 
-[dependencies.crypto]
-path = "../../crypto"
-version = "0.2"
-
-[dependencies.random]
-path = "../../random"
-version = "0.2"
-
-[dependencies.primitives]
-path = "../../primitives"
-version = "0.2"
+[dependencies.iota-crypto]
+git = "https://github.com/iotaledger/crypto.rs"
+rev = "09ff1a94d6a87838589ccf1b874cfa3283a00f26"
+features = [ "random", "chacha" ]
+version = "*"
+# Note: We are only adding a version so that we can publish to crates.io
 
 [profile.release]
 overflow-checks = true

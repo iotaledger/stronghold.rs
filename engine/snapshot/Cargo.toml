@@ -26,7 +26,7 @@ version = "*"
 tempfile = "3.1.0"
 rand = "0.8.3"
 
-proptest = "0.10.1"
+proptest = "1.0.0"
 criterion = "0.3.3"
 
 [dev-dependencies.stronghold-utils]
