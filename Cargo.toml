@@ -2,9 +2,6 @@
 members = [
   "engine",
   "engine/vault",
-  "engine/primitives",
-  "engine/random",
-  "engine/crypto",
   "engine/snapshot",
   "engine/store",
   "runtime",

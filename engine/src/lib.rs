@@ -10,11 +10,9 @@
 //!
 //! This framework is divided into the following crates:
 //!
-//! - `primitives`: traits for cryptographic primitives
-//! - `crypto`: composable Poly1305 and ChaCha20 using traits from the primitives
-//! - `random`: a secure random number generator
 //! - `vault`: logic and abstractions for the storage layer
 //! - `snapshot`: method for storing the state of the vault in a file
+//! - `store`: a simple unencrypted storage protocol
 //!
 //! ## WARNING
 //!
@@ -22,9 +20,6 @@
 //! Until a formal third-party security audit has taken place, the IOTA Foundation
 //! makes no guarantees to the fitness of this library for any purposes.
 
-pub use crypto;
-pub use primitives;
-pub use random;
 pub use snapshot;
 pub use store;
 pub use vault;
