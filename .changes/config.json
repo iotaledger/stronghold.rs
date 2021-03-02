@@ -146,11 +146,9 @@
       "manager": "rust",
       "dependencies": [
         "stronghold-engine",
-        "crypto",
         "vault",
         "snapshot",
-        "random",
-        "primitives",
+        "store",
         "stronghold-communication",
         "stronghold-utils"
       ]
@@ -159,11 +157,9 @@
       "path": "./engine/",
       "manager": "rust",
       "dependencies": [
-        "crypto",
         "vault",
         "snapshot",
-        "random",
-        "primitives"
+        "store"
       ]
     },
     "stronghold-runtime": {
@@ -177,18 +173,11 @@
         "stronghold-utils"
       ]
     },
-    "crypto": {
-      "path": "./engine/crypto/",
-      "manager": "rust",
-      "publish": false
-    },
     "vault": {
       "path": "./engine/vault/",
       "manager": "rust",
       "publish": false,
       "dependencies": [
-        "crypto",
-        "random",
         "stronghold-utils"
       ]
     },
@@ -197,20 +186,8 @@
       "manager": "rust",
       "publish": false,
       "dependencies": [
-        "crypto",
-        "random",
         "stronghold-utils"
       ]
-    },
-    "random": {
-      "path": "./engine/random/",
-      "manager": "rust",
-      "publish": false
-    },
-    "primitives": {
-      "path": "./engine/primitives/",
-      "manager": "rust",
-      "publish": false
     },
     "store": {
       "path": "./engine/store/",
