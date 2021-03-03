@@ -5,9 +5,11 @@ use crate::{
     actors::{InternalMsg, InternalResults, SMsg},
     client::{Client, ClientMsg, ReadWrite},
     line_error,
-    utils::{hd, ClientId, ResultMessage, StatusMessage},
+    utils::{ClientId, ResultMessage, StatusMessage},
     Location,
 };
+
+use crypto::keys::slip10::{Chain, ChainCode};
 
 use engine::{snapshot, vault::RecordHint};
 use serde::{Deserialize, Serialize};
@@ -45,7 +47,7 @@ pub enum Procedure {
     /// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
     /// return the corresponding chain code
     SLIP10Derive {
-        chain: hd::Chain,
+        chain: Chain,
         input: SLIP10DeriveInput,
         output: Location,
         hint: RecordHint,
@@ -88,7 +90,7 @@ pub enum ProcResult {
     /// Return from generating a `SLIP10` seed.
     SLIP10Generate(StatusMessage),
     /// Returns the public key derived from the `SLIP10Derive` call.
-    SLIP10Derive(ResultMessage<hd::ChainCode>),
+    SLIP10Derive(ResultMessage<ChainCode>),
     /// `BIP39Recover` return value.
     BIP39Recover(StatusMessage),
     /// `BIP39Generate` return value.
@@ -96,9 +98,9 @@ pub enum ProcResult {
     /// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.
     BIP39MnemonicSentence(ResultMessage<String>),
     /// Return value for `Ed25519PublicKey`. Returns an Ed25519 public key.
-    Ed25519PublicKey(ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+    Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
     /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
-    Ed25519Sign(ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]>),
+    Ed25519Sign(ResultMessage<[u8; crypto::signatures::ed25519::SIGNATURE_LENGTH]>),
 }
 
 impl TryFrom<SerdeProcResult> for ProcResult {
@@ -112,14 +114,14 @@ impl TryFrom<SerdeProcResult> for ProcResult {
             SerdeProcResult::BIP39Generate(msg) => Ok(ProcResult::BIP39Generate(msg)),
             SerdeProcResult::BIP39MnemonicSentence(msg) => Ok(ProcResult::BIP39MnemonicSentence(msg)),
             SerdeProcResult::Ed25519PublicKey(msg) => {
-                let msg: ResultMessage<[u8; crypto::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> = match msg {
+                let msg: ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> = match msg {
                     ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
                     ResultMessage::Error(e) => ResultMessage::Error(e),
                 };
                 Ok(ProcResult::Ed25519PublicKey(msg))
             }
             SerdeProcResult::Ed25519Sign(msg) => {
-                let msg: ResultMessage<[u8; crypto::ed25519::SIGNATURE_LENGTH]> = match msg {
+                let msg: ResultMessage<[u8; crypto::signatures::ed25519::SIGNATURE_LENGTH]> = match msg {
                     ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
                     ResultMessage::Error(e) => ResultMessage::Error(e),
                 };
@@ -133,7 +135,7 @@ impl TryFrom<SerdeProcResult> for ProcResult {
 #[derive(Clone, Serialize, Deserialize)]
 enum SerdeProcResult {
     SLIP10Generate(StatusMessage),
-    SLIP10Derive(ResultMessage<hd::ChainCode>),
+    SLIP10Derive(ResultMessage<ChainCode>),
     BIP39Recover(StatusMessage),
     BIP39Generate(StatusMessage),
     BIP39MnemonicSentence(ResultMessage<String>),

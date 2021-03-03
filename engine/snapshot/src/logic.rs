@@ -11,7 +11,8 @@ use std::{
 use crypto::{
     ciphers::chacha::xchacha20poly1305,
     hashes::{blake2b, Digest},
-    x25519,
+    keys::x25519,
+    utils::rand,
 };
 
 use crate::{compress, decompress};
@@ -109,7 +110,7 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     let compressed_plain = compress(plain);
 
     let mut salt = [0u8; 6];
-    crypto::rand::fill(&mut salt)?;
+    rand::fill(&mut salt)?;
 
     let mut s = path.as_os_str().to_os_string();
     s.push(".");
@@ -168,9 +169,17 @@ mod test {
     use super::*;
     use stronghold_utils::test_utils::{corrupt, corrupt_file_at, fresh};
 
+    fn random_key() -> Key {
+        let mut key: Key = [0u8; KEY_SIZE];
+
+        rand::fill(&mut key).expect("Unable to fill buffer");
+
+        key
+    }
+
     #[test]
     fn test_write_read() -> crate::Result<()> {
-        let key: Key = rand::random();
+        let key: Key = random_key();
         let bs0 = fresh::bytestring();
         let ad = fresh::bytestring();
 
@@ -183,7 +192,7 @@ mod test {
     #[test]
     #[should_panic]
     fn test_corrupted_read_write() {
-        let key: Key = rand::random();
+        let key: Key = random_key();
         let bs0 = fresh::bytestring();
         let ad = fresh::bytestring();
 
@@ -199,7 +208,7 @@ mod test {
         let mut pb = f.into_path();
         pb.push("snapshot");
 
-        let key: Key = rand::random();
+        let key: Key = random_key();
         let bs0 = fresh::bytestring();
         let ad = fresh::bytestring();
 
@@ -217,7 +226,7 @@ mod test {
         let mut pb = f.into_path();
         pb.push("snapshot");
 
-        let key: Key = rand::random();
+        let key: Key = random_key();
         let bs0 = fresh::bytestring();
         let ad = fresh::bytestring();
 
@@ -232,9 +241,9 @@ mod test {
         let mut pb = f.into_path();
         pb.push("snapshot");
 
-        write_to(&fresh::bytestring(), &pb, &rand::random(), &fresh::bytestring())?;
+        write_to(&fresh::bytestring(), &pb, &random_key(), &fresh::bytestring())?;
 
-        let key: Key = rand::random();
+        let key: Key = random_key();
         let bs0 = fresh::bytestring();
         let ad = fresh::bytestring();
         write_to(&bs0, &pb, &key, &ad).unwrap();

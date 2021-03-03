@@ -16,7 +16,6 @@ type Store = Cache<Vec<u8>, Vec<u8>>;
 /// `Key<P>` and the vault `DBView<P>` together. Also contains a `HashMap<Key<P>, Vec<ReadResult>>` which pairs the
 /// backing data with the associated `Key<P>`.
 pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
-    vaults: HashMap<Key<P>, Option<DBView<P>>>,
     cache: HashMap<Key<P>, Vec<ReadResult>>,
 }
 
@@ -24,9 +23,8 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     /// Creates a new `Bucket`.
     pub fn new() -> Self {
         let cache = HashMap::new();
-        let vaults = HashMap::new();
 
-        Self { cache, vaults }
+        Self { cache }
     }
 
     #[allow(dead_code)]
@@ -164,26 +162,9 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         buffer
     }
 
-    /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.  Returns a `Vec<Key<P>,
-    /// Vec<Vec<RecordId>>`.
-    pub fn repopulate_data(&mut self, cache: HashMap<Key<P>, Vec<ReadResult>>) -> (Vec<Key<P>>, Vec<Vec<RecordId>>) {
-        let mut vaults = HashMap::new();
-        let mut rids: Vec<Vec<RecordId>> = Vec::new();
-        let mut keystore_keys: Vec<Key<P>> = Vec::new();
-
-        cache.clone().into_iter().for_each(|(k, v)| {
-            keystore_keys.push(k.clone());
-            let view = DBView::load(k.clone(), v.iter()).expect(line_error!());
-
-            rids.push(view.all().collect());
-
-            vaults.insert(k, Some(view));
-        });
-
-        self.vaults = vaults;
+    /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.
+    pub fn repopulate_data(&mut self, cache: HashMap<Key<P>, Vec<ReadResult>>) {
         self.cache = cache;
-
-        (keystore_keys, rids)
     }
 
     pub fn get_data(&mut self) -> HashMap<Key<P>, Vec<ReadResult>> {
@@ -197,26 +178,16 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     }
 
     pub fn clear_cache(&mut self) {
-        self.vaults.clear();
         self.cache.clear();
     }
 
     /// Exposes the `DBView` of the current vault and the cache layer to allow transactions to occur.
     fn take(&mut self, key: Key<P>, f: impl FnOnce(DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>) {
         let reads = self.get_reads(key.clone());
-        let view = self.get_view(key.clone(), reads.clone());
+        let view = DBView::load(key.clone(), reads.iter()).expect(line_error!());
+
         let res = f(view, reads);
-        self.insert_reads(key.clone(), res);
-        self.insert_view(key, None);
-    }
-
-    fn get_view(&mut self, key: Key<P>, reads: Vec<ReadResult>) -> DBView<P> {
-        self.vaults.remove(&key);
-        DBView::load(key, reads.iter()).expect(line_error!())
-    }
-
-    fn insert_view(&mut self, key: Key<P>, view: Option<DBView<P>>) {
-        self.vaults.insert(key, view);
+        self.insert_reads(key, res);
     }
 
     fn get_reads(&mut self, key: Key<P>) -> Vec<ReadResult> {

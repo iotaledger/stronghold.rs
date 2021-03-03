@@ -43,7 +43,7 @@ pub use crate::{
     actors::{ProcResult, Procedure, SLIP10DeriveInput},
     interface::Stronghold,
     internals::Provider,
-    utils::{hd, Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
 pub use engine::snapshot::{

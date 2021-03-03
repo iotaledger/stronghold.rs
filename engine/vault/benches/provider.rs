@@ -40,9 +40,9 @@ impl BoxProvider for Provider {
         )
         .map_err(|_| vault::Error::CryptoError(String::from("Unable to seal data")))?;
 
-        let boxx = [tag.to_vec(), nonce.to_vec(), cipher].concat();
+        let r#box = [tag.to_vec(), nonce.to_vec(), cipher].concat();
 
-        Ok(boxx)
+        Ok(r#box)
     }
 
     fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> vault::Result<Vec<u8>> {

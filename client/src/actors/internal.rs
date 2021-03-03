@@ -9,6 +9,15 @@ use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
+use crypto::{
+    keys::{
+        bip39,
+        slip10::{self, Chain, Curve, Seed},
+    },
+    signatures::ed25519,
+    utils::rand::fill,
+};
+
 use engine::snapshot;
 
 use crate::{
@@ -18,7 +27,7 @@ use crate::{
     internals::Provider,
     key_store::KeyStore,
     line_error,
-    utils::{hd, ResultMessage, StatusMessage, VaultId},
+    utils::{ResultMessage, StatusMessage, VaultId},
     ClientId,
 };
 
@@ -69,7 +78,7 @@ pub enum InternalMsg {
         size_bytes: usize,
     },
     SLIP10DeriveFromSeed {
-        chain: hd::Chain,
+        chain: Chain,
         seed_vault_id: VaultId,
         seed_record_id: RecordId,
         key_vault_id: VaultId,
@@ -77,7 +86,7 @@ pub enum InternalMsg {
         hint: RecordHint,
     },
     SLIP10DeriveFromKey {
-        chain: hd::Chain,
+        chain: Chain,
         parent_vault_id: VaultId,
         parent_record_id: RecordId,
         child_vault_id: VaultId,
@@ -382,7 +391,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 }
 
                 let mut seed = vec![0u8; size_bytes];
-                crypto::rand::fill(&mut seed).expect(line_error!());
+                fill(&mut seed).expect(line_error!());
 
                 self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
 
@@ -408,7 +417,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     Some(seed_key) => {
                         let plain = self.bucket.read_data(seed_key.clone(), seed_record_id);
                         self.keystore.insert_key(seed_vault_id, seed_key);
-                        let dk = hd::Seed::from_bytes(&plain).derive(&chain).expect(line_error!());
+                        let dk = Seed::from_bytes(&plain)
+                            .derive(Curve::Ed25519, &chain)
+                            .expect(line_error!());
 
                         let dk_key = if !self.keystore.vault_exists(key_vault_id) {
                             self.keystore.create_key(key_vault_id)
@@ -449,7 +460,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         let parent = self.bucket.read_data(parent_key.clone(), parent_record_id);
                         self.keystore.insert_key(parent_vault_id, parent_key);
 
-                        let parent = hd::Key::try_from(parent.as_slice()).expect(line_error!());
+                        let parent = slip10::Key::try_from(parent.as_slice()).expect(line_error!());
                         let dk = parent.derive(&chain).expect(line_error!());
 
                         let child_key = if !self.keystore.vault_exists(child_vault_id) {
@@ -483,16 +494,16 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 hint,
             } => {
                 let mut entropy = [0u8; 32];
-                crypto::rand::fill(&mut entropy).expect(line_error!());
+                fill(&mut entropy).expect(line_error!());
 
-                let mnemonic = crypto::bip39::wordlist::encode(
+                let mnemonic = bip39::wordlist::encode(
                     &entropy,
-                    &crypto::bip39::wordlist::ENGLISH, // TODO: make this user configurable
+                    &bip39::wordlist::ENGLISH, // TODO: make this user configurable
                 )
                 .expect(line_error!());
 
                 let mut seed = [0u8; 64];
-                crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+                bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
 
                 let key = if !self.keystore.vault_exists(vault_id) {
                     self.keystore.create_key(vault_id)
@@ -539,7 +550,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 }
 
                 let mut seed = [0u8; 64];
-                crypto::bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+                bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
 
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
@@ -568,7 +579,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 raw.truncate(32);
                 let mut bs = [0; 32];
                 bs.copy_from_slice(&raw);
-                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                let sk = ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
                 let pk = sk.public_key();
 
                 let cstr: String = self.client_id.into();
@@ -599,7 +610,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 raw.truncate(32);
                 let mut bs = [0; 32];
                 bs.copy_from_slice(&raw);
-                let sk = crypto::ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                let sk = ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
 
                 let sig = sk.sign(&msg);
 

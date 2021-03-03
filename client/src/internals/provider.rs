@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crypto::{ciphers::chacha::xchacha20poly1305, rand::fill};
+use crypto::{ciphers::chacha::xchacha20poly1305, utils::rand::fill};
 
 use std::convert::TryInto;
 
