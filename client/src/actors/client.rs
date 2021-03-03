@@ -20,6 +20,11 @@ use core::{
 };
 use std::{path::PathBuf, time::Duration};
 
+#[cfg(feature = "communication")]
+use communication_macros::RequestPermissions;
+#[cfg(feature = "communication")]
+use stronghold_communication::actor::firewall::{PermissionSum, ToPermissionVariants, VariantPermission};
+
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SLIP10DeriveInput {
@@ -169,6 +174,7 @@ impl From<ProcResult> for SerdeProcResult {
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "communication", derive(RequestPermissions))]
 pub enum SHRequest {
     // check if vault exists.
     CheckVault(Vec<u8>),

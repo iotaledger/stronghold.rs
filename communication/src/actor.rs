@@ -22,39 +22,6 @@ use stronghold_utils::ask;
 use swarm_task::SwarmTask;
 pub use types::*;
 
-#[derive(Debug, Clone)]
-/// The actor configuration
-pub struct CommunicationConfig<Req, T, U>
-where
-    Req: MessageEvent,
-    T: Message + From<Req>,
-    U: Message + From<FirewallRequest<Req>>,
-{
-    /// target client for incoming request
-    pub client: ActorRef<T>,
-    /// The firewall actor.
-    ///
-    /// For any request, a [`FirewallRequest`] is sent to that actor and the request will be reject unless a
-    /// FirewallRequest::Accept is return from the firewall,
-    pub firewall: ActorRef<U>,
-    marker: PhantomData<Req>,
-}
-
-impl<Req, T, U> CommunicationConfig<Req, T, U>
-where
-    Req: MessageEvent,
-    T: Message + From<Req>,
-    U: Message + From<FirewallRequest<Req>>,
-{
-    pub fn new(client: ActorRef<T>, firewall: ActorRef<U>) -> Self {
-        CommunicationConfig {
-            client,
-            firewall,
-            marker: PhantomData,
-        }
-    }
-}
-
 /// Actor for the communication to a remote peer over the swarm.
 ///
 /// Sends the [`CommunicationRequest`]s it receives over the swarm to the corresponding remote peer and forwards
@@ -66,20 +33,24 @@ where
 /// to the [`CommunicationActor`].
 ///
 /// ```no_run
+/// use communication_macros::RequestPermissions;
 /// use libp2p::identity::Keypair;
 /// use riker::actors::*;
 /// use serde::{Deserialize, Serialize};
 /// use stronghold_communication::{
-///     actor::{firewall::OpenFirewall, CommunicationActor, CommunicationConfig},
+///     actor::{
+///         firewall::{PermissionSum, ToPermissionVariants, VariantPermission},
+///         CommunicationActor,
+///     },
 ///     behaviour::BehaviourConfig,
 /// };
 ///
-/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]
 /// pub enum Request {
 ///     Ping,
 /// }
 ///
-/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]
 /// pub enum Response {
 ///     Pong,
 /// }
@@ -103,47 +74,41 @@ where
 /// let local_keys = Keypair::generate_ed25519();
 /// let sys = ActorSystem::new().expect("Init actor system failed.");
 /// let keys = Keypair::generate_ed25519();
-/// let firewall = sys
-///     .actor_of::<OpenFirewall<Request>>("firewall")
-///     .expect("Init firewall actor failed.");
 /// let client = sys
 ///     .actor_of::<ClientActor>("client")
 ///     .expect("Init client actor failed.");
-/// let actor_config = CommunicationConfig::new(client, firewall);
 /// let behaviour_config = BehaviourConfig::default();
 /// let comms_actor = sys
-///     .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
+///     .actor_of_args::<CommunicationActor<Request, Response, _>, _>(
 ///         "communication",
-///         (local_keys, actor_config, behaviour_config),
+///         (local_keys, client, behaviour_config),
 ///     )
 ///     .expect("Init communication actor failed.");
 /// ```
-pub struct CommunicationActor<Req, Res, T, U>
+pub struct CommunicationActor<Req, Res, ClientMsg>
 where
-    Req: MessageEvent,
+    Req: MessageEvent + VariantPermission + Into<ClientMsg>,
     Res: MessageEvent,
-    T: Message + From<Req>,
-    U: Message + From<FirewallRequest<Req>>,
+    ClientMsg: Message,
 {
     // Channel for messages to the swarm task.
-    swarm_tx: Option<UnboundedSender<(CommunicationRequest<Req, T>, Sender)>>,
-    swarm_task_config: Option<(Keypair, CommunicationConfig<Req, T, U>, BehaviourConfig)>,
+    swarm_tx: Option<UnboundedSender<(CommunicationRequest<Req, ClientMsg>, Sender)>>,
+    swarm_task_config: Option<(Keypair, ActorRef<ClientMsg>, BehaviourConfig)>,
     // Handle of the running swarm task.
     poll_swarm_handle: Option<future::RemoteHandle<()>>,
     marker: PhantomData<Res>,
 }
 
-impl<Req, Res, T, U> ActorFactoryArgs<(Keypair, CommunicationConfig<Req, T, U>, BehaviourConfig)>
-    for CommunicationActor<Req, Res, T, U>
+impl<Req, Res, ClientMsg> ActorFactoryArgs<(Keypair, ActorRef<ClientMsg>, BehaviourConfig)>
+    for CommunicationActor<Req, Res, ClientMsg>
 where
-    Req: MessageEvent,
+    Req: MessageEvent + VariantPermission + Into<ClientMsg>,
     Res: MessageEvent,
-    T: Message + From<Req>,
-    U: Message + From<FirewallRequest<Req>>,
+    ClientMsg: Message,
 {
     // Create a [`CommunicationActor`] that spwans a task to poll from the swarm.
     // The provided keypair is used to authenticate the swarm communication.
-    fn create_args(config: (Keypair, CommunicationConfig<Req, T, U>, BehaviourConfig)) -> Self {
+    fn create_args(config: (Keypair, ActorRef<ClientMsg>, BehaviourConfig)) -> Self {
         Self {
             swarm_tx: None,
             swarm_task_config: Some(config),
@@ -153,14 +118,13 @@ where
     }
 }
 
-impl<Req, Res, T, U> Actor for CommunicationActor<Req, Res, T, U>
+impl<Req, Res, ClientMsg> Actor for CommunicationActor<Req, Res, ClientMsg>
 where
-    Req: MessageEvent,
+    Req: MessageEvent + VariantPermission + Into<ClientMsg>,
     Res: MessageEvent,
-    T: Message + From<Req>,
-    U: Message + From<FirewallRequest<Req>>,
+    ClientMsg: Message,
 {
-    type Msg = CommunicationRequest<Req, T>;
+    type Msg = CommunicationRequest<Req, ClientMsg>;
 
     // Spawn a task for polling the swarm and forwarding messages from/to remote peers.
     // A channel is created to send the messages that the [`CommunicationActor`] receives to that task.
@@ -168,29 +132,18 @@ where
     // it.
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         // Init task
-        if let Some((keypair, actor_config, behaviour_config)) = self.swarm_task_config.take() {
+        if let Some((keypair, client, behaviour_config)) = self.swarm_task_config.take() {
             let (swarm_tx, swarm_rx) = unbounded();
             self.swarm_tx = Some(swarm_tx);
 
             let actor_system = ctx.system.clone();
-            let swarm_task =
-                SwarmTask::<_, Res, _, _>::new(actor_system, keypair, actor_config, behaviour_config, swarm_rx);
+            let swarm_task = SwarmTask::<_, Res, _>::new(actor_system, keypair, client, behaviour_config, swarm_rx);
             if let Ok(swarm_task) = swarm_task {
                 // Kick off the swarm communication.
                 self.poll_swarm_handle = ctx.run(swarm_task.poll_swarm()).ok();
             } else {
                 // Init network behaviour failed, shutdown actor.
                 ctx.stop(ctx.myself());
-            }
-        }
-    }
-
-    // Forward the received events to the task that is managing the swarm communication.
-    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        let res = self.send_swarm_task(msg, sender);
-        if let Err(err) = res {
-            if err.is_disconnected() {
-                ctx.stop(ctx.myself())
             }
         }
     }
@@ -205,17 +158,26 @@ where
             swarm_tx.disconnect()
         }
     }
+
+    // Forward the received events to the task that is managing the swarm communication.
+    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        let res = self.send_swarm_task(msg, sender);
+        if let Err(err) = res {
+            if err.is_disconnected() {
+                ctx.stop(ctx.myself())
+            }
+        }
+    }
 }
 
-impl<Req, Res, T, U> CommunicationActor<Req, Res, T, U>
+impl<Req, Res, ClientMsg> CommunicationActor<Req, Res, ClientMsg>
 where
-    Req: MessageEvent,
+    Req: MessageEvent + VariantPermission + Into<ClientMsg>,
     Res: MessageEvent,
-    T: Message + From<Req>,
-    U: Message + From<FirewallRequest<Req>>,
+    ClientMsg: Message,
 {
     // Forward a request over the channel to the swarm task.
-    fn send_swarm_task(&mut self, msg: CommunicationRequest<Req, T>, sender: Sender) -> Result<(), SendError> {
+    fn send_swarm_task(&mut self, msg: CommunicationRequest<Req, ClientMsg>, sender: Sender) -> Result<(), SendError> {
         if let Some(mut tx) = self.swarm_tx.clone() {
             return task::block_on(future::poll_fn(move |tcx: &mut TaskContext<'_>| {
                 match tx.poll_ready(tcx) {

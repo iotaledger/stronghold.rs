@@ -21,10 +21,7 @@ use crate::{
 };
 #[cfg(feature = "communication")]
 use stronghold_communication::{
-    actor::{
-        firewall::OpenFirewall, CommunicationActor, CommunicationConfig, CommunicationRequest, CommunicationResults,
-        EstablishedConnection, KeepAlive,
-    },
+    actor::{CommunicationActor, CommunicationRequest, CommunicationResults, EstablishedConnection, KeepAlive},
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
 };
@@ -127,16 +124,14 @@ impl Stronghold {
         let idx = self.current_target;
         let client = self.actors[idx].clone();
 
-        let firewall = self.system.actor_of::<OpenFirewall<_>>("firewall").unwrap();
-        let actor_config = CommunicationConfig::new(client, firewall);
         let local_keys = Keypair::generate_ed25519();
         let behaviour_config = BehaviourConfig::default();
 
         let communication_actor = self
             .system
-            .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>(
+            .actor_of_args::<CommunicationActor<_, SHResults, _>, _>(
                 "communication",
-                (local_keys, actor_config, behaviour_config),
+                (local_keys, client, behaviour_config),
             )
             .expect(line_error!());
         self.communication_actor = Some(communication_actor);
