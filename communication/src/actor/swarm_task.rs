@@ -21,11 +21,12 @@ use std::{
 };
 
 // Separate task that manages the swarm communication.
-pub(super) struct SwarmTask<Req, Res, ClientMsg>
+pub(super) struct SwarmTask<Req, Res, ClientMsg, P>
 where
-    Req: MessageEvent + VariantPermission + Into<ClientMsg>,
+    Req: MessageEvent + ToPermissionVariants<P> + Into<ClientMsg>,
     Res: MessageEvent,
     ClientMsg: Message,
+    P: Message + VariantPermission,
 {
     system: ActorSystem,
     // client to receive incoming requests
@@ -39,13 +40,15 @@ where
     relay: RelayConfig,
     // maintain the current state of connections and keep-alive configuration
     connection_manager: ConnectionManager,
+    _marker: PhantomData<P>,
 }
 
-impl<Req, Res, ClientMsg> SwarmTask<Req, Res, ClientMsg>
+impl<Req, Res, ClientMsg, P> SwarmTask<Req, Res, ClientMsg, P>
 where
-    Req: MessageEvent + VariantPermission + Into<ClientMsg>,
+    Req: MessageEvent + ToPermissionVariants<P> + Into<ClientMsg>,
     Res: MessageEvent,
     ClientMsg: Message,
+    P: Message + VariantPermission,
 {
     pub fn new(
         system: ActorSystem,
@@ -66,6 +69,7 @@ where
             listener: None,
             relay: RelayConfig::NoRelay,
             connection_manager: ConnectionManager::new(),
+            _marker: PhantomData,
         })
     }
 
@@ -336,12 +340,12 @@ where
                 } else {
                     Err(RequestMessageError::Rejected(FirewallBlocked::Local))
                 };
-                SwarmTask::<Req, Res, ClientMsg>::send_response(CommunicationResults::RequestMsgResult(res), sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::RequestMsgResult(res), sender);
             }
             CommunicationRequest::SetClientRef(client_ref) => {
                 self.client = client_ref;
                 let res = CommunicationResults::SetClientRefAck;
-                SwarmTask::<Req, Res, ClientMsg>::send_response(res, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::EstablishConnection {
                 peer_id,
@@ -354,19 +358,19 @@ where
                     self.connection_manager.insert(peer_id, endpoint, keep_alive.clone());
                     self.connection_manager.set_keep_alive(&peer_id, keep_alive);
                 }
-                SwarmTask::<Req, Res, ClientMsg>::send_response(
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(
                     CommunicationResults::EstablishConnectionResult(res),
                     sender,
                 );
             }
             CommunicationRequest::CloseConnection(peer_id) => {
                 self.connection_manager.remove_connection(&peer_id);
-                SwarmTask::<Req, Res, ClientMsg>::send_response(CommunicationResults::CloseConnectionAck, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::CloseConnectionAck, sender);
             }
             CommunicationRequest::CheckConnection(peer_id) => {
                 let is_connected = Swarm::is_connected(&self.swarm, &peer_id);
                 let res = CommunicationResults::CheckConnectionResult { peer_id, is_connected };
-                SwarmTask::<Req, Res, ClientMsg>::send_response(res, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::GetSwarmInfo => {
                 let peer_id = *Swarm::local_peer_id(&self.swarm);
@@ -377,11 +381,11 @@ where
                     listeners,
                     connections,
                 };
-                SwarmTask::<Req, Res, ClientMsg>::send_response(res, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::StartListening(addr) => {
                 let res = self.start_listening(addr);
-                SwarmTask::<Req, Res, ClientMsg>::send_response(
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(
                     CommunicationResults::StartListeningResult(res),
                     sender,
                 );
@@ -393,25 +397,25 @@ where
                     Err(())
                 };
                 let res = CommunicationResults::RemoveListenerResult(result);
-                SwarmTask::<Req, Res, ClientMsg>::send_response(res, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::BanPeer(peer_id) => {
                 Swarm::ban_peer_id(&mut self.swarm, peer_id);
                 let res = CommunicationResults::BannedPeerAck(peer_id);
-                SwarmTask::<Req, Res, ClientMsg>::send_response(res, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::UnbanPeer(peer_id) => {
                 Swarm::unban_peer_id(&mut self.swarm, peer_id);
                 let res = CommunicationResults::UnbannedPeerAck(peer_id);
-                SwarmTask::<Req, Res, ClientMsg>::send_response(res, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::SetRelay(config) => {
                 let res = self.set_relay(config);
-                SwarmTask::<Req, Res, ClientMsg>::send_response(CommunicationResults::SetRelayResult(res), sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::SetRelayResult(res), sender);
             }
             CommunicationRequest::ConfigureFirewall(rule) => {
                 self.configure_firewall(rule);
-                SwarmTask::<Req, Res, ClientMsg>::send_response(CommunicationResults::ConfigureFirewallAck, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::ConfigureFirewallAck, sender);
             }
             CommunicationRequest::Shutdown => unreachable!(),
         }

@@ -7,7 +7,7 @@ use riker::actors::*;
 use stronghold_communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults, FirewallBlocked,
-        FirewallPermission, FirewallRule, KeepAlive, PermissionSum, RequestDirection, RequestMessageError,
+        FirewallPermission, FirewallRule, KeepAlive, PermissionValue, RequestDirection, RequestMessageError,
         ToPermissionVariants, VariantPermission,
     },
     behaviour::{BehaviourConfig, P2POutboundFailure},
@@ -35,7 +35,10 @@ fn init_system(
         firewall_default_out: FirewallPermission::All,
     };
     let communication_actor_actor = sys
-        .actor_of_args::<CommunicationActor<_, Response, _>, _>("communication", (keys, actor_config, behaviour_config))
+        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
+            "communication",
+            (keys, actor_config, behaviour_config),
+        )
         .unwrap();
     (peer_id, communication_actor_actor)
 }
@@ -287,7 +290,7 @@ fn ask_swarm_info() {
         firewall_default_out: FirewallPermission::All,
     };
     let communication_actor = sys
-        .actor_of_args::<CommunicationActor<_, Response, _>, _>(
+        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
             "communication",
             (keys.clone(), actor_config, behaviour_config),
         )
@@ -483,7 +486,7 @@ fn firewall_rules() {
         firewall_default_out: FirewallPermission::None,
     };
     let communication_actor_a = sys_a
-        .actor_of_args::<CommunicationActor<_, Response, _>, _>(
+        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
             "communication",
             (keys, actor_config, behaviour_config.clone()),
         )
@@ -501,7 +504,10 @@ fn firewall_rules() {
         firewall_default_out: FirewallPermission::None,
     };
     let communication_actor_b = sys_b
-        .actor_of_args::<CommunicationActor<_, Response, _>, _>("communication", (keys, actor_config, behaviour_config))
+        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
+            "communication",
+            (keys, actor_config, behaviour_config),
+        )
         .unwrap();
 
     let addr_b = start_listening(&sys_b, &communication_actor_b, None);

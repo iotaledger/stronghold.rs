@@ -137,7 +137,7 @@ impl Stronghold {
 
         let communication_actor = self
             .system
-            .actor_of_args::<CommunicationActor<_, SHResults, _>, _>(
+            .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>(
                 "communication",
                 (local_keys, actor_config, behaviour_config),
             )

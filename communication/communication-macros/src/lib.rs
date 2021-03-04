@@ -7,6 +7,11 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{punctuated::Punctuated, token::Comma, Data, DataEnum, DeriveInput, Fields};
 
+/// Implements the [`VariantPermission`] for all elements, and [`ToPermissionVariants`] for enums,
+/// this enables using it within the [`CommunicationActor`] and allows the [`CommunicationFirewall`] to handle it.
+/// [`VariantPermission`] defaults to PermissionValue(1) on structs and unions,
+/// for enums, it uses the index a variant in the enum and calculate 2 to the power fo the index
+/// i.g. 1, 2, 4, 8,...
 #[proc_macro_derive(RequestPermissions)]
 pub fn permissions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let derive_input = syn::parse_macro_input!(input as DeriveInput);
@@ -15,23 +20,23 @@ pub fn permissions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let gen = match derive_input.data {
         Data::Enum(data_enum) => {
             let unit_enum = build_plain(&name, &data_enum);
-            let impl_permission = impl_permission(&derive_input.ident, &name, &data_enum);
-            let to_permission_variants = impl_to_permission_variants(&derive_input.ident, &name, &data_enum);
+            let impl_permission = impl_permission(&name, &data_enum);
+            let to_permissioned = impl_to_permissioned(&derive_input.ident, &name, &data_enum);
 
             quote! {
                 #unit_enum
                 #impl_permission
-                #to_permission_variants
+                #to_permissioned
             }
         }
         Data::Struct(_) | Data::Union(_) => {
             let ident = derive_input.ident.clone();
             quote! {
                 impl VariantPermission for #ident {
-                    fn variant_permission_value(&self) -> PermissionSum {
+                    fn permission(&self) -> PermissionValue {
                         1
                     }
-                    fn is_permitted(&self, permission: PermissionSum) -> bool {
+                    fn is_permitted(&self, permission: PermissionValue) -> bool {
                         permission % 2 != 0
                     }
                 }
@@ -91,7 +96,7 @@ fn match_fields(fields: &Fields) -> TokenStream {
     }
 }
 
-fn impl_to_permission_variants(input: &Ident, name: &Ident, data_enum: &DataEnum) -> TokenStream {
+fn impl_to_permissioned(input: &Ident, name: &Ident, data_enum: &DataEnum) -> TokenStream {
     let match_variants = data_enum
         .variants
         .iter()
@@ -105,9 +110,7 @@ fn impl_to_permission_variants(input: &Ident, name: &Ident, data_enum: &DataEnum
         .collect::<TokenStream>();
     quote! {
         impl ToPermissionVariants<#name> for #input {
-            #[allow(non_snake_case)]
-            #[allow(unused_variables)]
-            fn to_permission_variants(&self) -> #name {
+            fn to_permissioned(&self) -> #name {
                 match self {
                     #match_variants
                 }
@@ -116,8 +119,11 @@ fn impl_to_permission_variants(input: &Ident, name: &Ident, data_enum: &DataEnum
     }
 }
 
-fn impl_permission(input: &Ident, name: &Ident, data_enum: &DataEnum) -> TokenStream {
-    let mut i = 0u32;
+fn impl_permission(name: &Ident, data_enum: &DataEnum) -> TokenStream {
+    if data_enum.variants.len() > 32 {
+        panic!("More then 32 variants on enums are not allowed.");
+    }
+    let mut i = 0u8;
     let permissions = data_enum
         .variants
         .iter()
@@ -132,21 +138,11 @@ fn impl_permission(input: &Ident, name: &Ident, data_enum: &DataEnum) -> TokenSt
         .collect::<TokenStream>();
     quote! {
         impl VariantPermission for #name {
-            fn variant_permission_value(&self) -> PermissionSum {
-                match self {
+            fn permission(&self) -> PermissionValue {
+                let n = match self {
                     #permissions
-                }
-            }
-            fn is_permitted(&self, permission: PermissionSum) -> bool {
-                (permission >> self.variant_permission_value()) & 1 != 0
-            }
-        }
-        impl VariantPermission for #input {
-            fn variant_permission_value(&self) -> PermissionSum {
-                self.to_permission_variants().variant_permission_value()
-            }
-            fn is_permitted(&self, permission: PermissionSum) -> bool {
-                self.to_permission_variants().is_permitted(permission)
+                };
+                PermissionValue::new(n)
             }
         }
     }

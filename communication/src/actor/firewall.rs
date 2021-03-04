@@ -4,15 +4,97 @@
 use libp2p::PeerId;
 use std::collections::HashMap;
 
-pub type PermissionSum = u32;
+/// The permission value.
+/// In Case of a struct or union this always defaults to 1.
+/// In case of enums, the permission it is a bit that is set according to the order within the enum.
+/// Enums can not have more than 32 variants since we are using 32bit values here.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PermissionValue(u32);
 
-pub trait VariantPermission {
-    fn variant_permission_value(&self) -> PermissionSum;
-    fn is_permitted(&self, permission: PermissionSum) -> bool;
+impl PermissionValue {
+    /// Create a new permission value for an index, max allowed index is 31.
+    /// For index > 31 the value will result in O, and [`PermissionSum::permits`] will always return false.
+    pub fn new(index: u8) -> Self {
+        let value = 1u32 << index;
+        PermissionValue(value)
+    }
+
+    fn value(&self) -> u32 {
+        self.0
+    }
 }
 
+impl PartialEq<u32> for PermissionValue {
+    fn eq(&self, other: &u32) -> bool {
+        self.value() == *other
+    }
+}
+
+/// The sum of allowed permissions.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PermissionSum(u32);
+
+impl PermissionSum {
+    /// No values are allowed.
+    pub fn none() -> Self {
+        PermissionSum(0u32)
+    }
+
+    /// All values are allowed.
+    pub fn all() -> Self {
+        PermissionSum(u32::MAX)
+    }
+
+    /// Adds a new value to the sum and therefore allows this value.
+    pub fn sum(self, other: PermissionValue) -> Self {
+        let sum = self.value() | other.value();
+        PermissionSum(sum)
+    }
+
+    /// Remove a certain value from the sum to remove permission.
+    pub fn subtract(self, other: PermissionValue) -> Self {
+        let sub = self.value() & !other.value();
+        PermissionSum(sub)
+    }
+
+    /// Check if the sum includes this value i.g. if a certain bit is set.
+    pub fn permits(&self, v: &PermissionValue) -> bool {
+        self.value() & v.value() != 0
+    }
+
+    fn value(&self) -> u32 {
+        self.0
+    }
+}
+
+impl From<u32> for PermissionSum {
+    fn from(value: u32) -> Self {
+        PermissionSum(value)
+    }
+}
+
+impl PartialEq<u32> for PermissionSum {
+    fn eq(&self, other: &u32) -> bool {
+        self.value() == *other
+    }
+}
+
+/// The permission value for the different variants of an enum.
+/// This allows permitting specific variants of an enum while prohibiting others.
+/// In structs or unions, it should default to PermissionValue(1)
+pub trait VariantPermission {
+    fn permission(&self) -> PermissionValue;
+}
+
+/// Convert an element to implement permissions.
 pub trait ToPermissionVariants<P: VariantPermission> {
-    fn to_permission_variants(&self) -> P;
+    fn to_permissioned(&self) -> P;
+}
+
+impl<T: VariantPermission + Clone> ToPermissionVariants<T> for T {
+    fn to_permissioned(&self) -> T {
+        self.clone()
+    }
 }
 
 /// The direction of a [`CommunicationRequest::RequestMsg`] that firewall receives.
@@ -48,12 +130,17 @@ pub enum FirewallRule {
         direction: RequestDirection,
     },
 }
-//
+
+// Configuration of the firewall in the Swarm Task
 #[derive(Debug, Clone)]
-pub struct FirewallConfiguration {
+pub(super) struct FirewallConfiguration {
+    // Default for incoming requests if no rule is set for a peer.
     default_in: FirewallPermission,
+    // Default for outgoing requests if no rule is set for a peer.
     default_out: FirewallPermission,
+    // Rules for incoming request from specific peers.
     rules_in: HashMap<PeerId, FirewallPermission>,
+    // Rules for outgoing request to specific peers.
     rules_out: HashMap<PeerId, FirewallPermission>,
 }
 
@@ -108,7 +195,10 @@ impl FirewallConfiguration {
         }
     }
 
-    pub fn is_permitted<Req: VariantPermission>(
+    // Uses a rule if one is specified for that peer, otherwise use default.
+    // In case of FirewallPermission::Restricted, the permission is checked for the required permissions of the specific
+    // request variant.
+    pub fn is_permitted<Req: ToPermissionVariants<P>, P: VariantPermission>(
         &self,
         variant: Req,
         peer_id: PeerId,
@@ -121,7 +211,7 @@ impl FirewallConfiguration {
         match permissions {
             FirewallPermission::None => false,
             FirewallPermission::All => true,
-            FirewallPermission::Restricted(permissions) => variant.is_permitted(permissions),
+            FirewallPermission::Restricted(sum) => sum.permits(&variant.to_permissioned().permission()),
         }
     }
 }

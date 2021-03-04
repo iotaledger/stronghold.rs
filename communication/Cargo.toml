@@ -15,7 +15,6 @@ libp2p = { version = "0.35", default-features = false, features = [
   "dns",
   "identify",
   "mdns",
-  "mplex",
   "noise",
   "request-response",
   "tcp-async-io",
