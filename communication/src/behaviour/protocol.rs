@@ -31,12 +31,12 @@ impl ProtocolName for MessageProtocol {
 
 /// Describes how messages are read from and written to the io Socket by implementing the RequestResponseCodec
 #[derive(Clone)]
-pub struct MessageCodec<T, U> {
-    p: PhantomData<T>,
-    q: PhantomData<U>,
+pub struct MessageCodec<Req, Res> {
+    p: PhantomData<Req>,
+    q: PhantomData<Res>,
 }
 
-impl<T, U> Default for MessageCodec<T, U> {
+impl<Req, Res> Default for MessageCodec<Req, Res> {
     fn default() -> Self {
         MessageCodec {
             p: PhantomData,
@@ -45,16 +45,16 @@ impl<T, U> Default for MessageCodec<T, U> {
     }
 }
 
-/// Read and write request and responses and parse them into the generic structs T and U
+/// Read and write request and responses and parse them into the generic structs Req and Res
 #[async_trait]
-impl<T, U> RequestResponseCodec for MessageCodec<T, U>
+impl<Req, Res> RequestResponseCodec for MessageCodec<Req, Res>
 where
-    T: MessageEvent,
-    U: MessageEvent,
+    Req: MessageEvent,
+    Res: MessageEvent,
 {
     type Protocol = MessageProtocol;
-    type Request = T;
-    type Response = U;
+    type Request = Req;
+    type Response = Res;
 
     // read requests from remote peers and parse them into the request struct
     async fn read_request<R>(&mut self, _: &MessageProtocol, io: &mut R) -> IOResult<Self::Request>

@@ -11,6 +11,7 @@ use libp2p::{
 };
 use riker::{actors::ActorRef, Message};
 
+use crate::actor::firewall::FirewallRule;
 use std::time::Instant;
 
 /// Relay peer for outgoing request.
@@ -43,7 +44,7 @@ pub enum KeepAlive {
     Unlimited,
 }
 
-/// Requests for the [`CommuncationActor`]
+/// Requests for the [`CommunicationActor`]
 #[derive(Debug, Clone)]
 pub enum CommunicationRequest<Req, ClientMsg: Message> {
     /// Send a request to a remote peer.
@@ -75,6 +76,9 @@ pub enum CommunicationRequest<Req, ClientMsg: Message> {
     RemoveListener,
     /// Configured if a relay peer should be used for requests
     SetRelay(RelayConfig),
+    /// Add or remove a rule of the firewall.
+    /// If a rule for a peer & direction combination already exists, it is overwritten.
+    ConfigureFirewall(FirewallRule),
     /// Shutdown communication actor.
     Shutdown,
 }
@@ -133,13 +137,16 @@ pub enum CommunicationResults<Res> {
     /// Response or Error for an [`RequestMsg`] to a remote peer
     RequestMsgResult(Result<Res, RequestMessageError>),
     /// New client actor reference was set.
-    SetClientRefResult,
+    SetClientRefAck,
     /// Result of trying to connect a peer.
     EstablishConnectionResult(Result<PeerId, ConnectPeerError>),
     /// Closed connection to peer
-    ClosedConnection,
+    CloseConnectionAck,
     /// Check if the connection exists
-    CheckConnectionResult(bool),
+    CheckConnectionResult {
+        peer_id: PeerId,
+        is_connected: bool,
+    },
     /// Information about the local swarm.
     SwarmInfo {
         /// The local peer id.
@@ -151,15 +158,18 @@ pub enum CommunicationResults<Res> {
         /// established connections
         connections: Vec<(PeerId, EstablishedConnection)>,
     },
-    BannedPeer(PeerId),
-    UnbannedPeer(PeerId),
+    BannedPeerAck(PeerId),
+    UnbannedPeerAck(PeerId),
     /// Result of starting a new listener on the swarm.
     /// If it was successfull, one of the listening addresses is returned, which will show the listening port.
     StartListeningResult(Result<Multiaddr, ()>),
     /// Stopped listening to the swarm for incoming connections.
     RemoveListenerResult(Result<(), ()>),
-    /// Success setting relay
+    /// Setting relay result.
+    /// Error if the relay peer could not be connected.
     SetRelayResult(Result<(), ConnectPeerError>),
+    /// Successfully set firewall rule
+    ConfigureFirewallAck,
 }
 
 /// Errors that can occur in the context of a pending `Connection`.

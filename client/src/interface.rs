@@ -21,7 +21,10 @@ use crate::{
 };
 #[cfg(feature = "communication")]
 use stronghold_communication::{
-    actor::{CommunicationActor, CommunicationRequest, CommunicationResults, EstablishedConnection, KeepAlive},
+    actor::{
+        CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults,
+        EstablishedConnection, FirewallPermission, FirewallRule, KeepAlive,
+    },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
 };
@@ -126,12 +129,17 @@ impl Stronghold {
 
         let local_keys = Keypair::generate_ed25519();
         let behaviour_config = BehaviourConfig::default();
+        let actor_config = CommunicationActorConfig {
+            client,
+            firewall_default_in: FirewallPermission::None,
+            firewall_default_out: FirewallPermission::All,
+        };
 
         let communication_actor = self
             .system
             .actor_of_args::<CommunicationActor<_, SHResults, _>, _>(
                 "communication",
-                (local_keys, client, behaviour_config),
+                (local_keys, actor_config, behaviour_config),
             )
             .expect(line_error!());
         self.communication_actor = Some(communication_actor);
@@ -165,7 +173,7 @@ impl Stronghold {
                     )
                     .await
                     {
-                        CommunicationResults::<SHResults>::SetClientRefResult => {}
+                        CommunicationResults::<SHResults>::SetClientRefAck => {}
                         _ => {
                             return StatusMessage::Error("Could not set communication client target".into());
                         }
@@ -724,7 +732,26 @@ impl Stronghold {
         )
         .await
         {
-            CommunicationResults::ClosedConnection => StatusMessage::OK,
+            CommunicationResults::CloseConnectionAck => StatusMessage::OK,
+            _ => StatusMessage::Error("Invalid communication event".into()),
+        }
+    }
+
+    #[cfg(feature = "communication")]
+    /// Read from the store of a remote stronghold
+    pub async fn configure_firewall(&self, rule: FirewallRule) -> StatusMessage {
+        if self.communication_actor.is_none() {
+            return StatusMessage::Error(String::from("No communication spawned"));
+        }
+
+        match ask::<_, _, CommunicationResults<SHResults>, _>(
+            &self.system,
+            self.communication_actor.as_ref().unwrap(),
+            CommunicationRequest::ConfigureFirewall(rule),
+        )
+        .await
+        {
+            CommunicationResults::ConfigureFirewallAck => StatusMessage::OK,
             _ => StatusMessage::Error("Invalid communication event".into()),
         }
     }

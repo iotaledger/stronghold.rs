@@ -12,6 +12,9 @@ use core::{
     task::{Context as TaskContext, Poll},
 };
 use firewall::*;
+pub use firewall::{
+    FirewallPermission, FirewallRule, PermissionSum, RequestDirection, ToPermissionVariants, VariantPermission,
+};
 use futures::{
     channel::mpsc::{unbounded, SendError, UnboundedSender},
     future,
@@ -21,6 +24,20 @@ use riker::actors::*;
 use stronghold_utils::ask;
 use swarm_task::SwarmTask;
 pub use types::*;
+
+#[derive(Debug, Clone)]
+/// The actor configuration
+pub struct CommunicationActorConfig<ClientMsg>
+where
+    ClientMsg: Message,
+{
+    /// Target client for incoming request
+    pub client: ActorRef<ClientMsg>,
+    /// Default restriction for incoming requests.
+    pub firewall_default_in: FirewallPermission,
+    /// Default restriction for outgoing requests.
+    pub firewall_default_out: FirewallPermission,
+}
 
 /// Actor for the communication to a remote peer over the swarm.
 ///
@@ -40,7 +57,7 @@ pub use types::*;
 /// use stronghold_communication::{
 ///     actor::{
 ///         firewall::{PermissionSum, ToPermissionVariants, VariantPermission},
-///         CommunicationActor,
+///         CommunicationActor, CommunicationActorConfig, FirewallPermission,
 ///     },
 ///     behaviour::BehaviourConfig,
 /// };
@@ -77,11 +94,16 @@ pub use types::*;
 /// let client = sys
 ///     .actor_of::<ClientActor>("client")
 ///     .expect("Init client actor failed.");
+/// let actor_config = CommunicationActorConfig {
+///     client,
+///     firewall_default_in: FirewallPermission::All,
+///     firewall_default_out: FirewallPermission::None,
+/// };
 /// let behaviour_config = BehaviourConfig::default();
 /// let comms_actor = sys
 ///     .actor_of_args::<CommunicationActor<Request, Response, _>, _>(
 ///         "communication",
-///         (local_keys, client, behaviour_config),
+///         (local_keys, actor_config, behaviour_config),
 ///     )
 ///     .expect("Init communication actor failed.");
 /// ```
@@ -93,22 +115,23 @@ where
 {
     // Channel for messages to the swarm task.
     swarm_tx: Option<UnboundedSender<(CommunicationRequest<Req, ClientMsg>, Sender)>>,
-    swarm_task_config: Option<(Keypair, ActorRef<ClientMsg>, BehaviourConfig)>,
+    swarm_task_config: Option<(Keypair, CommunicationActorConfig<ClientMsg>, BehaviourConfig)>,
     // Handle of the running swarm task.
     poll_swarm_handle: Option<future::RemoteHandle<()>>,
     marker: PhantomData<Res>,
 }
 
-impl<Req, Res, ClientMsg> ActorFactoryArgs<(Keypair, ActorRef<ClientMsg>, BehaviourConfig)>
+impl<Req, Res, ClientMsg> ActorFactoryArgs<(Keypair, CommunicationActorConfig<ClientMsg>, BehaviourConfig)>
     for CommunicationActor<Req, Res, ClientMsg>
 where
     Req: MessageEvent + VariantPermission + Into<ClientMsg>,
     Res: MessageEvent,
     ClientMsg: Message,
 {
-    // Create a [`CommunicationActor`] that spwans a task to poll from the swarm.
+    // Create a CommunicationActor that spawns a task to poll from the swarm.
     // The provided keypair is used to authenticate the swarm communication.
-    fn create_args(config: (Keypair, ActorRef<ClientMsg>, BehaviourConfig)) -> Self {
+    // The client actor ref is used to forward incoming requests from the swarm to
+    fn create_args(config: (Keypair, CommunicationActorConfig<ClientMsg>, BehaviourConfig)) -> Self {
         Self {
             swarm_tx: None,
             swarm_task_config: Some(config),
@@ -132,12 +155,13 @@ where
     // it.
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         // Init task
-        if let Some((keypair, client, behaviour_config)) = self.swarm_task_config.take() {
+        if let Some((keypair, actor_config, behaviour_config)) = self.swarm_task_config.take() {
             let (swarm_tx, swarm_rx) = unbounded();
             self.swarm_tx = Some(swarm_tx);
 
             let actor_system = ctx.system.clone();
-            let swarm_task = SwarmTask::<_, Res, _>::new(actor_system, keypair, client, behaviour_config, swarm_rx);
+            let swarm_task =
+                SwarmTask::<_, Res, _>::new(actor_system, swarm_rx, actor_config, keypair, behaviour_config);
             if let Ok(swarm_task) = swarm_task {
                 // Kick off the swarm communication.
                 self.poll_swarm_handle = ctx.run(swarm_task.poll_swarm()).ok();
