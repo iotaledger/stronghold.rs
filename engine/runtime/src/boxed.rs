@@ -236,7 +236,7 @@ impl<T: Bytes> Debug for Boxed<T> {
 impl<T: Bytes> Clone for Boxed<T> {
     fn clone(&self) -> Self {
         Self::new(self.len, |b| {
-            b.as_mut_slice().copy_from_slice(self.unlock().as_slice());
+            b.as_mut_slice().clone_from_slice(self.unlock().as_slice());
             self.lock();
         })
     }
@@ -273,6 +273,7 @@ impl<T: Bytes + ZeroOut> From<&mut [T]> for Boxed<T> {
 }
 
 unsafe impl<T: Bytes + Send> Send for Boxed<T> {}
+unsafe impl<T: Bytes + Sync> Sync for Boxed<T> {}
 
 fn mprotect<T>(ptr: *mut T, prot: Prot) {
     if !match prot {

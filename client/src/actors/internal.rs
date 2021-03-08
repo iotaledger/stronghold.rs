@@ -35,7 +35,7 @@ use crate::{
 
 pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
     client_id: ClientId,
-    bucket: Bucket<P>,
+    bucket: Bucket,
     keystore: KeyStore<P>,
 }
 
@@ -62,7 +62,7 @@ pub enum InternalMsg {
         Box<(
             Client,
             HashMap<VaultId, Key<Provider>>,
-            HashMap<Key<Provider>, Vec<ReadResult>>,
+            HashMap<VaultId, Vec<ReadResult>>,
         )>,
         StatusMessage,
     ),
@@ -164,7 +164,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
             InternalMsg::CreateVault(vid, rid) => {
                 let key = self.keystore.create_key(vid);
 
-                self.bucket.create_and_init_vault(key, rid);
+                self.bucket.create_and_init_vault(vid, key, rid);
 
                 let cstr: String = self.client_id.into();
 
@@ -180,7 +180,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
                 if let Some(key) = self.keystore.get_key(vid) {
-                    let plain = self.bucket.read_data(key.clone(), rid);
+                    let plain = self.bucket.read_data(vid, key.clone(), rid);
 
                     self.keystore.insert_key(vid, key);
 
@@ -203,7 +203,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
                 if let Some(key) = self.keystore.get_key(vid) {
-                    self.bucket.write_payload(key.clone(), rid, payload, hint);
+                    self.bucket.write_payload(vid, key.clone(), rid, payload, hint);
 
                     self.keystore.insert_key(vid, key);
 
@@ -254,7 +254,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
-                    let _rid = self.bucket.init_record(key.clone(), rid);
+                    let _rid = self.bucket.init_record(vid, key.clone(), rid);
 
                     self.keystore.insert_key(vid, key);
 
@@ -268,7 +268,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
-                    self.bucket.revoke_data(key.clone(), rid);
+                    self.bucket.revoke_data(vid, key.clone(), rid);
 
                     self.keystore.insert_key(vid, key);
 
@@ -289,7 +289,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
-                    self.bucket.garbage_collect(key.clone());
+                    self.bucket.garbage_collect(vid, key.clone());
 
                     self.keystore.insert_key(vid, key);
 
@@ -310,7 +310,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
-                    let ids = self.bucket.list_ids(key.clone());
+                    let ids = self.bucket.list_ids(vid, key.clone());
 
                     self.keystore.insert_key(vid, key);
 
@@ -388,14 +388,14 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 self.keystore.insert_key(vault_id, key.clone());
 
-                if !self.bucket.record_exists_in_vault(key.clone(), record_id) {
-                    self.bucket.create_and_init_vault(key.clone(), record_id);
+                if !self.bucket.record_exists_in_vault(vault_id, key.clone(), record_id) {
+                    self.bucket.create_and_init_vault(vault_id, key.clone(), record_id);
                 }
 
                 let mut seed = vec![0u8; size_bytes];
                 fill(&mut seed).expect(line_error!());
 
-                self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
+                self.bucket.write_payload(vault_id, key, record_id, seed.to_vec(), hint);
 
                 client.try_tell(
                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Generate(
@@ -417,7 +417,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 match self.keystore.get_key(seed_vault_id) {
                     Some(seed_key) => {
-                        let plain = self.bucket.read_data(seed_key.clone(), seed_record_id);
+                        let plain = self.bucket.read_data(seed_vault_id, seed_key.clone(), seed_record_id);
                         self.keystore.insert_key(seed_vault_id, seed_key);
                         let dk = Seed::from_bytes(&plain)
                             .derive(Curve::Ed25519, &chain)
@@ -430,11 +430,16 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         };
                         self.keystore.insert_key(key_vault_id, dk_key.clone());
 
-                        if !self.bucket.record_exists_in_vault(dk_key.clone(), key_record_id) {
-                            self.bucket.create_and_init_vault(dk_key.clone(), key_record_id);
+                        if !self
+                            .bucket
+                            .record_exists_in_vault(key_vault_id, dk_key.clone(), key_record_id)
+                        {
+                            self.bucket
+                                .create_and_init_vault(key_vault_id, dk_key.clone(), key_record_id);
                         }
 
-                        self.bucket.write_payload(dk_key, key_record_id, dk.into(), hint);
+                        self.bucket
+                            .write_payload(key_vault_id, dk_key, key_record_id, dk.into(), hint);
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
@@ -459,7 +464,9 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 match self.keystore.get_key(parent_vault_id) {
                     Some(parent_key) => {
-                        let parent = self.bucket.read_data(parent_key.clone(), parent_record_id);
+                        let parent = self
+                            .bucket
+                            .read_data(parent_vault_id, parent_key.clone(), parent_record_id);
                         self.keystore.insert_key(parent_vault_id, parent_key);
 
                         let parent = slip10::Key::try_from(parent.as_slice()).expect(line_error!());
@@ -473,11 +480,16 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                         self.keystore.insert_key(child_vault_id, child_key.clone());
 
-                        if !self.bucket.record_exists_in_vault(child_key.clone(), child_record_id) {
-                            self.bucket.create_and_init_vault(child_key.clone(), child_record_id);
+                        if !self
+                            .bucket
+                            .record_exists_in_vault(child_vault_id, child_key.clone(), child_record_id)
+                        {
+                            self.bucket
+                                .create_and_init_vault(child_vault_id, child_key.clone(), child_record_id);
                         }
 
-                        self.bucket.write_payload(child_key, child_record_id, dk.into(), hint);
+                        self.bucket
+                            .write_payload(child_vault_id, child_key, child_record_id, dk.into(), hint);
 
                         client.try_tell(
                             ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
@@ -515,13 +527,13 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 self.keystore.insert_key(vault_id, key.clone());
 
-                if !self.bucket.record_exists_in_vault(key.clone(), record_id) {
-                    self.bucket.create_and_init_vault(key.clone(), record_id);
+                if !self.bucket.record_exists_in_vault(vault_id, key.clone(), record_id) {
+                    self.bucket.create_and_init_vault(vault_id, key.clone(), record_id);
                 }
 
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
-                self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
+                self.bucket.write_payload(vault_id, key, record_id, seed.to_vec(), hint);
 
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
@@ -547,8 +559,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 self.keystore.insert_key(vault_id, key.clone());
 
-                if !self.bucket.record_exists_in_vault(key.clone(), record_id) {
-                    self.bucket.create_and_init_vault(key.clone(), record_id);
+                if !self.bucket.record_exists_in_vault(vault_id, key.clone(), record_id) {
+                    self.bucket.create_and_init_vault(vault_id, key.clone(), record_id);
                 }
 
                 let mut seed = [0u8; 64];
@@ -556,7 +568,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
-                self.bucket.write_payload(key, record_id, seed.to_vec(), hint);
+                self.bucket.write_payload(vault_id, key, record_id, seed.to_vec(), hint);
 
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
@@ -574,7 +586,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, key.clone());
 
-                let mut raw = self.bucket.read_data(key, record_id);
+                let mut raw = self.bucket.read_data(vault_id, key, record_id);
                 if raw.len() < 32 {
                     todo!("return error message: insufficient bytes")
                 }
@@ -604,7 +616,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 };
                 self.keystore.insert_key(vault_id, key_key.clone());
 
-                let mut raw = self.bucket.read_data(key_key, record_id);
+                let mut raw = self.bucket.read_data(vault_id, key_key, record_id);
                 // NB we truncate here to accomodate SLIP10/BIP32 keys without explicit conversion
                 if raw.len() <= 32 {
                     todo!("return error message: incorrect number of key bytes")

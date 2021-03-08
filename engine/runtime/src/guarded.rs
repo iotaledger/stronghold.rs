@@ -183,6 +183,9 @@ impl<T: Bytes> PartialEq<Ref<'_, T>> for RefMut<'_, T> {
 
 impl<T: Bytes> Eq for RefMut<'_, T> {}
 
+unsafe impl<T: Bytes + Send> Send for Guarded<T> {}
+unsafe impl<T: Bytes + Sync> Sync for Guarded<T> {}
+
 #[cfg(test)]
 mod test {
     extern crate alloc;

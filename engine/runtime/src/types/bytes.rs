@@ -1,14 +1,20 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+extern crate alloc;
+
 use core::{
     mem::{self, MaybeUninit},
     slice,
 };
 
+use alloc::vec::Vec;
+
+use vault::{BoxProvider, Key, ReadResult};
+
 const GARBAGE_VALUE: u8 = 0xdb;
 
-pub unsafe trait Bytes: Sized + Copy {
+pub unsafe trait Bytes: Sized + Clone {
     fn uninitialized() -> Self {
         let mut val = MaybeUninit::<Self>::uninit();
 
@@ -73,3 +79,7 @@ unsafe impl<T: Bytes> ContiguousBytes for [T] {
         self.as_ptr() as *mut _
     }
 }
+
+unsafe impl<T: BoxProvider> Bytes for Key<T> {}
+unsafe impl Bytes for ReadResult {}
+unsafe impl Bytes for Vec<ReadResult> {}

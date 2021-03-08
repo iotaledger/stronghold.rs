@@ -8,18 +8,18 @@ use engine::{
 
 use std::collections::HashMap;
 
-use crate::line_error;
+use crate::{line_error, VaultId};
 
 type Store = Cache<Vec<u8>, Vec<u8>>;
 
 /// A `Bucket` cache of the Data for stronghold. Contains a `HashMap<Key<P>, Option<DBView<P>>>` pairing the vault
 /// `Key<P>` and the vault `DBView<P>` together. Also contains a `HashMap<Key<P>, Vec<ReadResult>>` which pairs the
 /// backing data with the associated `Key<P>`.
-pub struct Bucket<P: BoxProvider + Send + Sync + Clone + 'static> {
-    cache: HashMap<Key<P>, Vec<ReadResult>>,
+pub struct Bucket {
+    cache: HashMap<VaultId, Vec<ReadResult>>,
 }
 
-impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 'static> Bucket<P> {
+impl Bucket {
     /// Creates a new `Bucket`.
     pub fn new() -> Self {
         let cache = HashMap::new();
@@ -27,27 +27,10 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         Self { cache }
     }
 
-    #[allow(dead_code)]
-    /// Gets the Vault `RecordIds` when given a `Key<P>`.  Returns a `Vec<RecordId>`.
-    pub fn get_vault_record_ids(&mut self, key: Key<P>) -> Vec<RecordId> {
-        let mut buffer = Vec::new();
-        self.take(key, |view, reads| {
-            let map = view.chain_ctrs();
-
-            map.keys().into_iter().for_each(|rid| {
-                buffer.push(*rid);
-            });
-
-            reads
-        });
-
-        buffer
-    }
-
     /// Creates and initializes a new Vault given a `Key<P>`.  Returns a tuple of `(Key<P>, RecordId)`. The returned
     /// `Key<P>` is the Key associated with the Vault and the `RecordId` is the ID for its first record.
-    pub fn create_and_init_vault(&mut self, key: Key<P>, rid: RecordId) -> RecordId {
-        self.take(key, |view, mut reads| {
+    pub fn create_and_init_vault<P: BoxProvider>(&mut self, id: VaultId, key: Key<P>, rid: RecordId) -> RecordId {
+        self.take(id, key, |view, mut reads| {
             let mut writer = view.writer(rid);
 
             let truncate = writer.truncate().expect(line_error!());
@@ -61,12 +44,12 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     }
 
     /// Reads data from a Record in the Vault given a `RecordId`.  Returns the data as a `Vec<u8>` of utf8 bytes.
-    pub fn read_data(&mut self, key: Key<P>, id: RecordId) -> Vec<u8> {
+    pub fn read_data<P: BoxProvider>(&mut self, id: VaultId, key: Key<P>, rid: RecordId) -> Vec<u8> {
         let mut buffer: Vec<u8> = vec![];
-        self.take(key, |view, reads| {
+        self.take(id, key, |view, reads| {
             let reader = view.reader();
 
-            let res = reader.prepare_read(&id).expect(line_error!());
+            let res = reader.prepare_read(&rid).expect(line_error!());
 
             if let PreparedRead::CacheHit(mut v) = res {
                 buffer.append(&mut v);
@@ -78,10 +61,10 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
         buffer
     }
 
-    pub fn record_exists_in_vault(&mut self, key: Key<P>, rid: RecordId) -> bool {
+    pub fn record_exists_in_vault<P: BoxProvider>(&mut self, id: VaultId, key: Key<P>, rid: RecordId) -> bool {
         let mut res = false;
 
-        self.take(key, |view, reads| {
+        self.take(id, key, |view, reads| {
             let reader = view.reader();
 
             res = reader.exists(rid);
@@ -93,8 +76,8 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     }
 
     /// Initializes a new Record in the Vault based on the inserted `Key<P>`. Returns a `RecordId` for the new Record.
-    pub fn init_record(&mut self, key: Key<P>, rid: RecordId) -> RecordId {
-        self.take(key, |view, mut reads| {
+    pub fn init_record<P: BoxProvider>(&mut self, id: VaultId, key: Key<P>, rid: RecordId) -> RecordId {
+        self.take(id, key, |view, mut reads| {
             let mut writer = view.writer(rid);
 
             let truncate = writer.truncate().expect(line_error!());
@@ -109,9 +92,16 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
 
     /// Writes a payload of `Vec<u8>` and a `RecordHint` into a Record. Record is specified with the inserted `RecordId`
     /// and the `Key<P>`
-    pub fn write_payload(&mut self, key: Key<P>, id: RecordId, payload: Vec<u8>, hint: RecordHint) {
-        self.take(key, |view, mut reads| {
-            let mut writer = view.writer(id);
+    pub fn write_payload<P: BoxProvider>(
+        &mut self,
+        id: VaultId,
+        key: Key<P>,
+        rid: RecordId,
+        payload: Vec<u8>,
+        hint: RecordHint,
+    ) {
+        self.take(id, key, |view, mut reads| {
+            let mut writer = view.writer(rid);
 
             let writes = writer.write(&payload, hint).expect(line_error!());
 
@@ -124,9 +114,9 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     }
 
     /// Marks a record for deletion based on a given `Key<P>` and `RecordId`
-    pub fn revoke_data(&mut self, key: Key<P>, id: RecordId) {
-        self.take(key, |view, mut reads| {
-            let mut writer = view.writer(id);
+    pub fn revoke_data<P: BoxProvider>(&mut self, id: VaultId, key: Key<P>, rid: RecordId) {
+        self.take(id, key, |view, mut reads| {
+            let mut writer = view.writer(rid);
 
             let revoke = writer.revoke().expect(line_error!());
 
@@ -137,8 +127,8 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     }
 
     /// Garbage Collects any deletion marked Records in the given Vault. Accepts a `Key<P>`
-    pub fn garbage_collect(&mut self, key: Key<P>) {
-        self.take(key, |view, mut reads| {
+    pub fn garbage_collect<P: BoxProvider>(&mut self, id: VaultId, key: Key<P>) {
+        self.take(id, key, |view, mut reads| {
             let deletes = view.gc();
 
             deletes.iter().for_each(|d| reads.retain(|r| r.id() != d.id()));
@@ -148,10 +138,10 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     }
 
     /// Lists the `RecordId`s and `RecordHint`s for a given Vault.  Accepts a `Key<P>`
-    pub fn list_ids(&mut self, key: Key<P>) -> Vec<(RecordId, RecordHint)> {
+    pub fn list_ids<P: BoxProvider>(&mut self, id: VaultId, key: Key<P>) -> Vec<(RecordId, RecordHint)> {
         let mut buffer: Vec<(RecordId, RecordHint)> = Vec::new();
 
-        self.take(key, |view, reads| {
+        self.take(id, key, |view, reads| {
             let mut data = view.records().collect();
 
             buffer.append(&mut data);
@@ -163,12 +153,12 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     }
 
     /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.
-    pub fn repopulate_data(&mut self, cache: HashMap<Key<P>, Vec<ReadResult>>) {
+    pub fn repopulate_data(&mut self, cache: HashMap<VaultId, Vec<ReadResult>>) {
         self.cache = cache;
     }
 
-    pub fn get_data(&mut self) -> HashMap<Key<P>, Vec<ReadResult>> {
-        let mut cache: HashMap<Key<P>, Vec<ReadResult>> = HashMap::new();
+    pub fn get_data(&mut self) -> HashMap<VaultId, Vec<ReadResult>> {
+        let mut cache: HashMap<VaultId, Vec<ReadResult>> = HashMap::new();
 
         self.cache.iter().for_each(|(k, v)| {
             cache.insert(k.clone(), v.clone());
@@ -182,190 +172,32 @@ impl<P: BoxProvider + Send + Sync + Clone + Ord + PartialOrd + PartialEq + Eq + 
     }
 
     /// Exposes the `DBView` of the current vault and the cache layer to allow transactions to occur.
-    fn take(&mut self, key: Key<P>, f: impl FnOnce(DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>) {
-        let reads = self.get_reads(key.clone());
+    fn take<P: BoxProvider>(
+        &mut self,
+        id: VaultId,
+        key: Key<P>,
+        f: impl FnOnce(DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>,
+    ) {
+        let reads = self.get_reads(id);
+
         let view = DBView::load(key.clone(), reads.iter()).expect(line_error!());
 
         let res = f(view, reads);
-        self.insert_reads(key, res);
+        self.insert_reads(id, (*res.clone()).to_vec());
     }
 
-    fn get_reads(&mut self, key: Key<P>) -> Vec<ReadResult> {
-        match self.cache.remove(&key) {
+    fn get_reads(&mut self, id: VaultId) -> Vec<ReadResult> {
+        match self.cache.remove(&id) {
             Some(reads) => reads,
             None => Vec::<ReadResult>::new(),
         }
     }
 
-    fn insert_reads(&mut self, key: Key<P>, reads: Vec<ReadResult>) {
-        self.cache.insert(key, reads);
+    fn insert_reads(&mut self, id: VaultId, reads: Vec<ReadResult>) {
+        self.cache.insert(id, reads);
     }
 }
 
 fn write_to_read(write: &WriteRequest) -> ReadResult {
     ReadResult::new(write.kind(), write.id(), write.data())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_bucket() {
-        use crate::Provider;
-
-        let key1 = Key::<Provider>::random().expect(line_error!());
-        let key2 = Key::<Provider>::random().expect(line_error!());
-
-        let rid1 = RecordId::random::<Provider>().expect(line_error!());
-        let rid2 = RecordId::random::<Provider>().expect(line_error!());
-
-        let mut bucket = Bucket::<Provider>::new();
-
-        let rid1 = bucket.create_and_init_vault(key1.clone(), rid1);
-        let rid2 = bucket.create_and_init_vault(key2.clone(), rid2);
-        println!("vault1 id1: {:?}", rid1);
-        println!("vault2 id1: {:?}", rid2);
-
-        bucket.write_payload(
-            key1.clone(),
-            rid1,
-            b"some data".to_vec(),
-            RecordHint::new(b"").expect(line_error!()),
-        );
-
-        bucket.write_payload(
-            key2,
-            rid2,
-            b"some new data".to_vec(),
-            RecordHint::new(b"").expect(line_error!()),
-        );
-
-        let rid3 = RecordId::random::<Provider>().expect(line_error!());
-        let rid3 = bucket.init_record(key1.clone(), rid3);
-
-        bucket.write_payload(
-            key1.clone(),
-            rid3,
-            b"some more data".to_vec(),
-            RecordHint::new(b"").expect(line_error!()),
-        );
-
-        println!("vault1 rid2: {:?}", rid3);
-
-        let data = bucket.read_data(key1.clone(), rid1);
-        println!("{:?}", std::str::from_utf8(&data));
-        let data = bucket.read_data(key1, rid3);
-
-        println!("{:?}", std::str::from_utf8(&data));
-    }
-
-    fn write_to_read(write: &WriteRequest) -> ReadResult {
-        ReadResult::new(write.kind(), write.id(), write.data())
-    }
-
-    #[test]
-    fn test_take() {
-        use crate::Provider;
-
-        let key = Key::<Provider>::random().expect(line_error!());
-
-        let mut bucket = Bucket::<Provider>::new();
-        let id1 = RecordId::random::<Provider>().expect(line_error!());
-        let id2 = RecordId::random::<Provider>().expect(line_error!());
-
-        bucket.take(key.clone(), |view, mut reads| -> Vec<ReadResult> {
-            let mut writer = view.writer(id1);
-
-            let wr = writer.truncate().expect(line_error!());
-
-            reads.push(write_to_read(&wr));
-
-            reads
-        });
-
-        bucket.take(key.clone(), |view, mut reads| {
-            let mut writer = view.writer(id1);
-
-            let wr = writer
-                .write(b"some data", RecordHint::new(b"").expect(line_error!()))
-                .expect(line_error!());
-
-            let mut wr: Vec<ReadResult> = wr.into_iter().map(|w| write_to_read(&w)).collect();
-
-            reads.append(&mut wr);
-
-            reads
-        });
-
-        bucket.take(key.clone(), |view, mut reads| {
-            let mut writer = view.writer(id2);
-
-            let wr = writer.truncate().expect(line_error!());
-
-            reads.push(write_to_read(&wr));
-
-            reads
-        });
-
-        bucket.take(key.clone(), |view, reads| {
-            let data: Vec<(RecordId, RecordHint)> = view.records().collect();
-
-            data.iter().for_each(|(i, h)| {
-                println!("{:?}: {:?}", i, h);
-            });
-
-            reads
-        });
-
-        bucket.take(key.clone(), |view, reads| {
-            let reader = view.reader();
-
-            let res = reader.prepare_read(&id1).expect(line_error!());
-
-            match res {
-                PreparedRead::CacheHit(v) => {
-                    println!("{:?}", std::str::from_utf8(&v));
-                }
-                PreparedRead::CacheMiss(v) => {
-                    println!("{:?}", v.id());
-                }
-                _ => {
-                    println!("Record doesn't exist");
-                }
-            }
-
-            reads
-        });
-
-        bucket.take(key.clone(), |view, mut reads| {
-            let mut writer = view.writer(id1);
-
-            reads.push(write_to_read(&writer.revoke().expect(line_error!())));
-
-            reads
-        });
-
-        bucket.take(key.clone(), |view, mut reads| {
-            let deletes = view.gc();
-
-            deletes.iter().for_each(|d| {
-                reads.retain(|r| r.id() != d.id());
-            });
-
-            reads
-        });
-
-        bucket.take(key, |view, reads| {
-            let data: Vec<(RecordId, RecordHint)> = view.records().collect();
-
-            data.iter().for_each(|(i, h)| {
-                println!("Data {:?}: {:?}", i, h);
-            });
-
-            reads
-        });
-
-        println!("{:?}, {:?}", id1, id2);
-    }
 }

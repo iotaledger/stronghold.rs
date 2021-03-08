@@ -20,3 +20,4 @@ mod types;
 
 pub use guarded::Guarded;
 pub use guarded_vec::GuardedVec;
+pub use types::Bytes;
