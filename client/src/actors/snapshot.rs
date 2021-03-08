@@ -13,9 +13,11 @@ use engine::vault::{Key, ReadResult};
 
 use crate::{
     actors::{InternalMsg, SHResults},
-    client::Client,
     line_error,
-    snapshot::{Snapshot, SnapshotState},
+    state::{
+        client::Client,
+        snapshot::{Snapshot, SnapshotState},
+    },
     utils::StatusMessage,
     ClientId, Provider, VaultId,
 };

@@ -13,9 +13,11 @@ use engine::vault::RecordHint;
 use crate::utils::ResultMessage;
 use crate::{
     actors::{InternalActor, InternalMsg, ProcResult, Procedure, SHRequest, SHResults},
-    client::{Client, ClientMsg},
     line_error,
-    snapshot::Snapshot,
+    state::{
+        client::{Client, ClientMsg},
+        snapshot::Snapshot,
+    },
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     ClientId, Location, Provider,
 };

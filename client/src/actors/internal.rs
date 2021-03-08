@@ -22,11 +22,13 @@ use engine::snapshot;
 
 use crate::{
     actors::{ProcResult, SMsg},
-    bucket::Bucket,
-    client::{Client, ClientMsg},
     internals::Provider,
-    key_store::KeyStore,
     line_error,
+    state::{
+        bucket::Bucket,
+        client::{Client, ClientMsg},
+        key_store::KeyStore,
+    },
     utils::{ResultMessage, StatusMessage, VaultId},
     ClientId,
 };
@@ -58,7 +60,7 @@ pub enum InternalMsg {
     ),
     ReloadData(
         Box<(
-            crate::client::Client,
+            Client,
             HashMap<VaultId, Key<Provider>>,
             HashMap<Key<Provider>, Vec<ReadResult>>,
         )>,

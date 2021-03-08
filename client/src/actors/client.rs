@@ -3,8 +3,8 @@
 
 use crate::{
     actors::{InternalMsg, InternalResults, SMsg},
-    client::{Client, ClientMsg, ReadWrite},
     line_error,
+    state::client::{Client, ClientMsg, ReadWrite},
     utils::{ClientId, ResultMessage, StatusMessage},
     Location,
 };
