@@ -1,18 +1,15 @@
 [package]
-name = "stronghold-runtime"
+name = "runtime"
 version = "0.2.0"
 authors = [ "Gustav Behm <gustav.behm@iota.org>" ]
 edition = "2018"
 license = "Apache-2.0"
-description = "Runtime zone for process isolation"
+description = "Runtime and allocation primitives for stronghold"
 readme = "README.md"
 keywords = [ "iota", "stronghold", "security" ]
 categories = [ "security" ]
 homepage = "https://iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
-
-[lib]
-name = "runtime"
 
 [features]
 default = []

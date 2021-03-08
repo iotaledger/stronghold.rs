@@ -4,7 +4,7 @@ members = [
   "engine/vault",
   "engine/snapshot",
   "engine/store",
-  "runtime",
+  "engine/runtime",
   "client",
   "communication",
   "utils",

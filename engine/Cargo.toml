@@ -25,3 +25,7 @@ version = "0.2"
 [dependencies.store]
 path = "store"
 version = "0.2"
+
+[dependencies.runtime]
+path = "runtime"
+version = "0.2"

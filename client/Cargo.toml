@@ -29,10 +29,6 @@ riker = { version = "0.4", git ="https://github.com/elenaf9/riker", branch = "ma
 path = "../engine"
 version = "0.2"
 
-[dependencies.stronghold-runtime]
-path = "../runtime"
-version = "0.2"
-
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
 rev = "c3bf565eba62d0b81144174c2ff917bfde282e49"
