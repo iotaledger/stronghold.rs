@@ -364,7 +364,7 @@ impl<P: BoxProvider> DBWriter<P> {
         Ok(WriteRequest::transaction(&id, &tx.encrypt(&self.view.key, id)?))
     }
 
-    pub fn to_view(self) -> DBView<P> {
+    pub fn into_view(self) -> DBView<P> {
         self.view
     }
 }
