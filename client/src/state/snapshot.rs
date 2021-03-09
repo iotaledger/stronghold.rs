@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use engine::{
     snapshot::{self, read_from, write_to, Key},
-    vault::{GuardedData, Key as PKey},
+    vault::{Key as PKey, ReadResult},
 };
 
 use crate::{line_error, state::client::Client, ClientId, Provider, VaultId};
@@ -28,7 +28,7 @@ pub struct SnapshotState(
         (
             Client,
             HashMap<VaultId, PKey<Provider>>,
-            HashMap<VaultId, Vec<GuardedData>>,
+            HashMap<VaultId, Vec<ReadResult>>,
         ),
     >,
 );
@@ -45,7 +45,7 @@ impl Snapshot {
     ) -> (
         Client,
         HashMap<VaultId, PKey<Provider>>,
-        HashMap<VaultId, Vec<GuardedData>>,
+        HashMap<VaultId, Vec<ReadResult>>,
     ) {
         match self.state.0.remove(&id) {
             Some(t) => t,
@@ -96,7 +96,7 @@ impl SnapshotState {
         data: (
             Client,
             HashMap<VaultId, PKey<Provider>>,
-            HashMap<VaultId, Vec<GuardedData>>,
+            HashMap<VaultId, Vec<ReadResult>>,
         ),
     ) -> Self {
         let mut state = HashMap::new();
@@ -111,7 +111,7 @@ impl SnapshotState {
         data: (
             Client,
             HashMap<VaultId, PKey<Provider>>,
-            HashMap<VaultId, Vec<GuardedData>>,
+            HashMap<VaultId, Vec<ReadResult>>,
         ),
     ) {
         self.0.insert(id, data);

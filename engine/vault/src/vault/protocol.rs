@@ -55,18 +55,18 @@ impl ReadRequest {
     pub fn result(&self, data: Vec<u8>) -> ReadResult {
         ReadResult {
             kind: self.kind,
-            id: self.id.clone(),
-            data,
+            id: self.id.to_vec(),
+            data: GuardedVec::new(data.len(), |i| i.copy_from_slice(data.as_ref())),
         }
     }
 }
 
 /// a read result
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ReadResult {
     kind: Kind,
     id: Vec<u8>,
-    data: Vec<u8>,
+    data: GuardedVec<u8>,
 }
 
 impl ReadResult {
@@ -74,7 +74,7 @@ impl ReadResult {
         Self {
             kind,
             id: id.to_vec(),
-            data: data.to_vec(),
+            data: GuardedVec::new(data.as_ref().len(), |i| i.copy_from_slice(data.as_ref())),
         }
     }
 
@@ -89,8 +89,8 @@ impl ReadResult {
     }
 
     /// data from record
-    pub fn data(&self) -> &[u8] {
-        &self.data
+    pub fn data(&self) -> Vec<u8> {
+        (*self.data.borrow()).to_vec()
     }
 }
 
@@ -111,7 +111,7 @@ impl Debug for ReadResult {
 pub struct WriteRequest {
     kind: Kind,
     id: Vec<u8>,
-    data: Vec<u8>,
+    data: GuardedVec<u8>,
 }
 
 impl WriteRequest {
@@ -120,7 +120,7 @@ impl WriteRequest {
         Self {
             kind: Kind::Transaction,
             id: id.into(),
-            data: stx.as_ref().to_vec(),
+            data: GuardedVec::new(stx.as_ref().len(), |i| i.copy_from_slice(stx.as_ref())),
         }
     }
 
@@ -129,7 +129,7 @@ impl WriteRequest {
         Self {
             kind: Kind::Blob,
             id: id.into(),
-            data: sb.as_ref().to_vec(),
+            data: GuardedVec::new(sb.as_ref().len(), |i| i.copy_from_slice(sb.as_ref())),
         }
     }
 
@@ -144,8 +144,8 @@ impl WriteRequest {
     }
 
     /// data of record
-    pub fn data(&self) -> &[u8] {
-        &self.data
+    pub fn data(&self) -> Vec<u8> {
+        (*self.data.borrow()).to_vec()
     }
 }
 
@@ -173,48 +173,5 @@ impl DeleteRequest {
     /// kind of data
     pub fn kind(&self) -> Kind {
         self.kind
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct GuardedData {
-    kind: u8,
-    id: GuardedVec<u8>,
-    data: GuardedVec<u8>,
-}
-
-impl From<GuardedData> for ReadResult {
-    fn from(guard: GuardedData) -> Self {
-        let kind = match guard.kind {
-            1 => Kind::Transaction,
-            2 => Kind::Blob,
-            // Impossible since kind can only be 1 or 2.
-            _ => panic!("Invalid Kind"),
-        };
-
-        let data = (*guard.data.borrow()).to_vec();
-        let id = (*guard.id.borrow()).to_vec();
-
-        ReadResult { kind, data, id }
-    }
-}
-
-impl From<ReadResult> for GuardedData {
-    fn from(res: ReadResult) -> Self {
-        let kind = match res.kind {
-            Kind::Transaction => 1,
-            Kind::Blob => 2,
-        };
-
-        let data = GuardedVec::new(res.data.len(), |d| d.copy_from_slice(res.data.as_slice()));
-        let id = GuardedVec::new(res.id.len(), |d| d.copy_from_slice(res.id.as_slice()));
-
-        GuardedData { kind, id, data }
-    }
-}
-
-impl Debug for GuardedData {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        write!(f, "GuardedData")
     }
 }

@@ -7,7 +7,7 @@ use riker::actors::*;
 
 use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
 
-use engine::vault::{BoxProvider, GuardedData, Key, RecordHint, RecordId};
+use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
 use crypto::{
     keys::{
@@ -62,7 +62,7 @@ pub enum InternalMsg {
         Box<(
             Client,
             HashMap<VaultId, Key<Provider>>,
-            HashMap<VaultId, Vec<GuardedData>>,
+            HashMap<VaultId, Vec<ReadResult>>,
         )>,
         StatusMessage,
     ),
@@ -220,36 +220,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            // InternalMsg::WriteToStore { key, payload, lifetime } => {
-            //     let cstr: String = self.client_id.into();
-            //     let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
 
-            //     self.bucket.write_to_store(key.into(), payload, lifetime);
-
-            //     client.try_tell(
-            //         ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::OK)),
-            //         sender,
-            //     );
-            // }
-            // InternalMsg::ReadFromStore { key } => {
-            //     let cstr: String = self.client_id.into();
-            //     let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-
-            //     if let Some(payload) = self.bucket.read_from_store(key.into()) {
-            //         client.try_tell(
-            //             ClientMsg::InternalResults(InternalResults::ReturnReadStore(payload, StatusMessage::OK)),
-            //             sender,
-            //         );
-            //     } else {
-            //         client.try_tell(
-            //             ClientMsg::InternalResults(InternalResults::ReturnReadStore(
-            //                 vec![],
-            //                 StatusMessage::Error("Unable to find that data".into()),
-            //             )),
-            //             sender,
-            //         );
-            //     }
-            // }
             InternalMsg::InitRecord(vid, rid) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());

@@ -23,7 +23,7 @@ use std::{
 mod chain;
 mod protocol;
 
-pub use crate::vault::protocol::{DeleteRequest, GuardedData, Kind, ReadRequest, ReadResult, WriteRequest};
+pub use crate::vault::protocol::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
 
 /// A record identifier
 #[repr(transparent)]
