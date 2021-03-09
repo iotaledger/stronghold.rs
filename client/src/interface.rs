@@ -295,22 +295,6 @@ impl Stronghold {
         StatusMessage::Error("Failed to write the data".into())
     }
 
-    /// A test function for reading data from a vault.
-    #[cfg(test)]
-    pub async fn read_secret(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
-        let res: SHResults = ask(&self.system, client, SHRequest::ReadFromVault { location }).await;
-
-        if let SHResults::ReturnReadVault(payload, status) = res {
-            (Some(payload), status)
-        } else {
-            (None, StatusMessage::Error("Unable to read data".into()))
-        }
-    }
-
     /// Writes data into an insecure cache.  This method, accepts a `Location`, a `Vec<u8>` and an optional `Duration`.
     /// The lifetime allows the data to be deleted after the specified duration has passed.  If not lifetime is
     /// specified, the data will persist until it is manually deleted or over-written. Note: One store is mapped to
@@ -521,39 +505,6 @@ impl Stronghold {
             StatusMessage::Error("Unable to find client actor".into())
         }
     }
-
-    // pub async fn write_snapshot(
-    //     &self,
-    //     _client_path: Vec<u8>,
-    //     _keydata: Vec<u8>,
-    //     _filename: Option<String>,
-    //     _path: Option<PathBuf>,
-    //     _duration: Option<Duration>,
-    // ) -> StatusMessage {
-    //     // let data = self.derive_data.get(&client_path).expect(line_error!());
-    //     // let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
-
-    //     // let idx = self.client_ids.iter().position(|id| id == &client_id);
-    //     // if let Some(idx) = idx {
-    //     //     let client = &self.actors[idx];
-
-    //     //     let mut key: [u8; 32] = [0u8; 32];
-
-    //     //     key.copy_from_slice(&keydata);
-
-    //     //     if let SHResults::ReturnWriteSnap(status) =
-    //     //         ask(&self.system, client, SHRequest::WriteSnapshot { key, filename, path }).await
-    //     //     {
-    //     //         status
-    //     //     } else {
-    //     //         StatusMessage::Error("Unable to read snapshot".into())
-    //     //     }
-    //     // } else {
-    //     //     StatusMessage::Error("Unable to find client actor".into())
-    //     // }
-
-    //     unimplemented!()
-    // }
 
     /// Writes the entire state of the `Stronghold` into a snapshot.  All Actors and their associated data will be
     /// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be
@@ -932,5 +883,21 @@ impl Stronghold {
             CommunicationRequest::RequestMsg { peer_id, request },
         )
         .await
+    }
+
+    /// A test function for reading data from a vault.
+    #[cfg(test)]
+    pub async fn read_secret(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        let res: SHResults = ask(&self.system, client, SHRequest::ReadFromVault { location }).await;
+
+        if let SHResults::ReturnReadVault(payload, status) = res {
+            (Some(payload), status)
+        } else {
+            (None, StatusMessage::Error("Unable to read data".into()))
+        }
     }
 }

@@ -38,7 +38,7 @@ pub trait BoxProvider: Sized + Ord + PartialOrd {
 /// A key to the crypto box.  Key is stored on the heap which makes it easier to erase.
 #[derive(Serialize, Deserialize)]
 pub struct Key<T: BoxProvider> {
-    /// the raw bytes that make up the key
+    /// the guarded raw bytes that make up the key
     pub key: GuardedVec<u8>,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -84,9 +84,12 @@ impl<T: BoxProvider> Clone for Key<T> {
         }
     }
 }
+
 /// call the drop hook on dropping the key.
 impl<T: BoxProvider> Drop for Key<T> {
     fn drop(&mut self) {
+        // Zero out the key before dropping.
+        GuardedVec::<u8>::zero(self.key.len());
         drop(self);
     }
 }

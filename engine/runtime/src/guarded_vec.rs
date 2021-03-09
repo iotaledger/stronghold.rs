@@ -17,6 +17,25 @@ use core::{
 
 use alloc::vec::Vec;
 
+/// A guarded type for protecting variable-length secrets allocated on the heap.
+///
+/// Provides the following features and guarantees:
+/// * Causes segfault upon access without using a borrow.
+/// * Protected using mprotect:
+///    * `Prot::NoAccess` - when the box has no current borrows.
+///    * `Prot::ReadOnly` - when the box has at least one current immutable borrow.
+///    * `Prot::ReadWrite` - when the box has a current mutable borrow (can only have one at a time).
+/// * The allocated memory uses guard pages both proceeding and following the memory. Overflows and large underflows
+///   cause immediate termination of the program.
+/// * A canary proceeds the memory location to detect smaller underflows.  The program will drop the underlying memory
+///   and terminate if detected.
+/// * The Memory is locked with `mlock`.
+/// * When the memory is freed, `munlock` is called.
+/// * The memory is zeroed when no longer in use via `sodium_free`.
+/// * `Guarded` types can be compared in constant time.
+/// * `Guarded` types can not be printed using `Debug`.
+/// * The interior data of a `Guarded` type may not be `Clone`.
+
 #[derive(Clone, Eq)]
 pub struct GuardedVec<T: Bytes> {
     boxed: Boxed<T>,
@@ -76,7 +95,7 @@ impl<T: Bytes + Randomized> GuardedVec<T> {
     }
 }
 
-impl<T: Bytes + ZeroOut> GuardedVec<T> {
+impl<T: Bytes + Zeroed> GuardedVec<T> {
     pub fn zero(len: usize) -> Self {
         Self {
             boxed: Boxed::zero(len),
@@ -84,7 +103,7 @@ impl<T: Bytes + ZeroOut> GuardedVec<T> {
     }
 }
 
-impl<T: Bytes + ZeroOut> From<&mut [T]> for GuardedVec<T> {
+impl<T: Bytes + Zeroed> From<&mut [T]> for GuardedVec<T> {
     fn from(data: &mut [T]) -> Self {
         Self { boxed: data.into() }
     }

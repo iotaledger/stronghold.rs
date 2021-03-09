@@ -9,7 +9,7 @@ mod zero;
 pub use bytes::{Bytes, ContiguousBytes};
 pub use const_eq::ConstEq;
 pub use rand::Randomized;
-pub use zero::ZeroOut;
+pub use zero::Zeroed;
 
 macro_rules! impls {
     ($($ty:ty),* ; $ns:tt) => {$(

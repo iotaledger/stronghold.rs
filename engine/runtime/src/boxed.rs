@@ -25,11 +25,16 @@ enum Prot {
 
 type RefCount = u8;
 
+/// A protected piece of memory.
 #[derive(Eq)]
 pub(crate) struct Boxed<T: Bytes> {
+    // the pointer to the underlying protected memory
     ptr: NonNull<T>,
+    // The number of elements of type `T` that can be stored in the pointer.
     len: usize,
+    // the current protection level of the data.
     prot: Cell<Prot>,
+    // The number of current borrows of this pointer.
     refs: Cell<RefCount>,
 }
 
@@ -205,7 +210,7 @@ impl<T: Bytes + Randomized> Boxed<T> {
     }
 }
 
-impl<T: Bytes + ZeroOut> Boxed<T> {
+impl<T: Bytes + Zeroed> Boxed<T> {
     pub(crate) fn zero(len: usize) -> Self {
         Self::new(len, |b| b.as_mut_slice().zero())
     }
@@ -260,13 +265,13 @@ impl<T: Bytes + ConstEq> PartialEq for Boxed<T> {
     }
 }
 
-impl<T: Bytes + ZeroOut> From<&mut T> for Boxed<T> {
+impl<T: Bytes + Zeroed> From<&mut T> for Boxed<T> {
     fn from(data: &mut T) -> Self {
         Self::new(1, |b| unsafe { data.copy_and_zero(b.as_mut()) })
     }
 }
 
-impl<T: Bytes + ZeroOut> From<&mut [T]> for Boxed<T> {
+impl<T: Bytes + Zeroed> From<&mut [T]> for Boxed<T> {
     fn from(data: &mut [T]) -> Self {
         Self::new(data.len(), |b| unsafe { data.copy_and_zero(b.as_mut_slice()) })
     }

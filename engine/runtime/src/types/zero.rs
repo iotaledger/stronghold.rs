@@ -5,7 +5,7 @@ use crate::types::*;
 
 use libsodium_sys::sodium_memzero;
 
-pub unsafe trait ZeroOut: ContiguousBytes {
+pub unsafe trait Zeroed: ContiguousBytes {
     fn zero(&mut self) {
         unsafe { sodium_memzero(self.as_mut_bytes().as_mut_ptr() as *mut _, self.as_bytes().len()) }
     }
@@ -26,4 +26,4 @@ pub unsafe trait ZeroOut: ContiguousBytes {
     }
 }
 
-unsafe impl<T: ContiguousBytes + ?Sized> ZeroOut for T {}
+unsafe impl<T: ContiguousBytes + ?Sized> Zeroed for T {}

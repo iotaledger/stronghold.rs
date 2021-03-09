@@ -30,6 +30,7 @@ mod internals;
 mod state;
 mod utils;
 
+// Tests exist as a sub-module because they need to be able to test internal concepts without exposing them publicly.
 #[cfg(test)]
 mod tests;
 
@@ -50,6 +51,7 @@ pub use engine::snapshot::{
 
 pub use engine::vault::RecordHint;
 
+/// TODO: Should be replaced with proper errors.
 #[macro_export]
 macro_rules! line_error {
     () => {
