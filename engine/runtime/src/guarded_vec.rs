@@ -1,12 +1,21 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+extern crate alloc;
+
 use crate::{boxed::Boxed, types::*};
+
+use serde::ser::{Serialize, SerializeSeq, Serializer};
+
+use serde::de::{Deserialize, Deserializer, SeqAccess, Visitor};
 
 use core::{
     fmt::{self, Debug, Formatter},
+    marker::PhantomData,
     ops::{Deref, DerefMut},
 };
+
+use alloc::vec::Vec;
 
 #[derive(Clone, Eq)]
 pub struct GuardedVec<T: Bytes> {
@@ -191,6 +200,70 @@ impl<T: Bytes> Eq for RefMut<'_, T> {}
 
 unsafe impl<T: Bytes + Send> Send for GuardedVec<T> {}
 unsafe impl<T: Bytes + Sync> Sync for GuardedVec<T> {}
+
+impl<T: Bytes> Serialize for GuardedVec<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_seq(Some(self.len()))?;
+        for e in self.borrow().iter() {
+            state.serialize_element(e)?;
+        }
+        state.end()
+    }
+}
+
+struct GuardedVecVisitor<T: Bytes> {
+    marker: PhantomData<fn() -> GuardedVec<T>>,
+}
+
+impl<T: Bytes> GuardedVecVisitor<T> {
+    fn new() -> Self {
+        GuardedVecVisitor { marker: PhantomData }
+    }
+}
+
+impl<'de, T: Bytes> Visitor<'de> for GuardedVecVisitor<T>
+where
+    T: Deserialize<'de>,
+{
+    type Value = GuardedVec<T>;
+
+    fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.write_str("GuardedVec not found")
+    }
+
+    fn visit_seq<E>(self, mut access: E) -> Result<Self::Value, E::Error>
+    where
+        E: SeqAccess<'de>,
+    {
+        let mut seq = Vec::<T>::with_capacity(access.size_hint().unwrap_or(0));
+
+        while let Some(e) = access.next_element()? {
+            seq.push(e);
+        }
+
+        let seq = GuardedVec::new(seq.len(), |s| s.copy_from_slice(seq.as_slice()));
+
+        Ok(seq)
+    }
+}
+
+impl<'de, T: Bytes> Deserialize<'de> for GuardedVec<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_seq(GuardedVecVisitor::new())
+    }
+}
 
 #[cfg(test)]
 mod tests {

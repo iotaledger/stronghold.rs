@@ -7,6 +7,8 @@ use std::{
     marker::PhantomData,
 };
 
+use runtime::GuardedVec;
+
 use serde::{Deserialize, Serialize};
 
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
@@ -37,11 +39,9 @@ pub trait BoxProvider: Sized + Ord + PartialOrd {
 #[derive(Serialize, Deserialize)]
 pub struct Key<T: BoxProvider> {
     /// the raw bytes that make up the key
-    pub key: Vec<u8>,
-    /// callback function invoked on drop. Used top drop the data out of memory or pass it to a file.
+    pub key: GuardedVec<u8>,
+
     #[serde(skip_serializing, skip_deserializing)]
-    drop_fn: Option<&'static fn(&mut [u8])>,
-    /// associated Provider data
     _box_provider: PhantomData<T>,
 }
 
@@ -49,8 +49,10 @@ impl<T: BoxProvider> Key<T> {
     /// generate a random key using secure random bytes
     pub fn random() -> crate::Result<Self> {
         Ok(Self {
-            key: T::random_vec(T::box_key_len())?,
-            drop_fn: None,
+            key: GuardedVec::new(T::box_key_len(), |v| {
+                v.copy_from_slice(T::random_vec(T::box_key_len()).unwrap().as_slice())
+            }),
+
             _box_provider: PhantomData,
         })
     }
@@ -60,21 +62,16 @@ impl<T: BoxProvider> Key<T> {
         match key {
             key if key.len() != T::box_key_len() => Err(crate::Error::InterfaceError),
             key => Ok(Self {
-                key,
-                drop_fn: None,
+                key: GuardedVec::new(T::box_key_len(), |v| v.copy_from_slice(key.as_slice())),
+
                 _box_provider: PhantomData,
             }),
         }
     }
 
-    /// set up the drop hook function which will be called if the instance gets dropped
-    pub fn on_drop(&mut self, hook: &'static fn(&mut [u8])) {
-        self.drop_fn = Some(hook)
-    }
-
     /// get the key's bytes
-    pub fn bytes(&self) -> &[u8] {
-        &self.key
+    pub fn bytes(&self) -> Vec<u8> {
+        (*self.key.borrow()).to_vec()
     }
 }
 
@@ -82,7 +79,7 @@ impl<T: BoxProvider> Clone for Key<T> {
     fn clone(&self) -> Self {
         Self {
             key: self.key.clone(),
-            drop_fn: self.drop_fn,
+
             _box_provider: PhantomData,
         }
     }
@@ -90,9 +87,7 @@ impl<T: BoxProvider> Clone for Key<T> {
 /// call the drop hook on dropping the key.
 impl<T: BoxProvider> Drop for Key<T> {
     fn drop(&mut self) {
-        if let Some(hook) = self.drop_fn {
-            hook(&mut self.key);
-        }
+        drop(self);
     }
 }
 
@@ -112,13 +107,13 @@ impl<T: BoxProvider> PartialOrd for Key<T> {
 
 impl<T: BoxProvider> Ord for Key<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.key.cmp(&other.key)
+        self.key.borrow().cmp(&other.key.borrow())
     }
 }
 
 impl<T: BoxProvider> Hash for Key<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.key.hash(state);
+        self.key.borrow().hash(state);
         self._box_provider.hash(state);
     }
 }

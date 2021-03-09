@@ -30,11 +30,13 @@ impl BoxProvider for Provider {
 
         Self::random_buf(&mut nonce)?;
 
+        let key = key.bytes();
+
         xchacha20poly1305::encrypt(
             &mut cipher,
             &mut tag,
             data,
-            key.bytes().try_into().expect("Key not the correct size: Encrypt"),
+            &key.try_into().expect("Key not the correct size: Encrypt"),
             &nonce,
             ad,
         )
@@ -51,12 +53,14 @@ impl BoxProvider for Provider {
 
         let mut plain = vec![0; cipher.len()];
 
+        let key = key.bytes();
+
         xchacha20poly1305::decrypt(
             &mut plain,
             cipher,
-            key.bytes().try_into().expect("key is not the correct size: Decrypt"),
-            &tag.try_into().expect("Key not the correct size: Decrypt"),
-            &nonce.to_vec().try_into().expect("Key not the correct size: Encrypt"),
+            &key.try_into().expect("Key not the correct size: Decrypt"),
+            &tag.try_into().expect("Tag not the correct size: Decrypt"),
+            &nonce.to_vec().try_into().expect("Nonce not the correct size: Decrypt"),
             ad,
         )
         .map_err(|_| vault::Error::CryptoError(String::from("Invalid Cipher")))?;

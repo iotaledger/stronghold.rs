@@ -10,7 +10,9 @@ thiserror = "1.0"
 anyhow = "1.0"
 serde = { version = "1.0", features = [ "derive" ] }
 
-
+[dependencies.runtime]
+path = "../runtime"
+version = "0.2"
 
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"

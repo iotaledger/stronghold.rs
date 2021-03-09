@@ -5,8 +5,8 @@ use crypto::{ciphers::chacha::xchacha20poly1305, utils::rand::fill};
 
 use std::convert::TryInto;
 
-use engine::vault::{BoxProvider, Key};
-#[derive(Ord, PartialEq, Eq, PartialOrd, Clone, Debug)]
+use engine::vault::{self, BoxProvider, Key};
+#[derive(Ord, PartialEq, Eq, PartialOrd, Clone)]
 pub struct Provider;
 impl Provider {
     const NONCE_LEN: usize = xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE;
@@ -22,7 +22,7 @@ impl BoxProvider for Provider {
         Self::NONCE_LEN + Self::TAG_LEN
     }
 
-    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> engine::vault::Result<Vec<u8>> {
+    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> vault::Result<Vec<u8>> {
         let mut cipher = vec![0u8; data.len()];
 
         let mut tag = [0u8; 16];
@@ -30,41 +30,45 @@ impl BoxProvider for Provider {
 
         Self::random_buf(&mut nonce)?;
 
+        let key = key.bytes();
+
         xchacha20poly1305::encrypt(
             &mut cipher,
             &mut tag,
             data,
-            key.bytes().try_into().expect("Key not the correct size: Encrypt"),
+            &key.try_into().expect("Key not the correct size: Encrypt"),
             &nonce,
             ad,
         )
-        .map_err(|_| engine::vault::Error::CryptoError(String::from("Unable to seal data")))?;
+        .map_err(|_| vault::Error::CryptoError(String::from("Unable to seal data")))?;
 
-        let boxx = [tag.to_vec(), nonce.to_vec(), cipher].concat();
+        let r#box = [tag.to_vec(), nonce.to_vec(), cipher].concat();
 
-        Ok(boxx)
+        Ok(r#box)
     }
 
-    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> engine::vault::Result<Vec<u8>> {
+    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> vault::Result<Vec<u8>> {
         let (tag, ct) = data.split_at(Self::TAG_LEN);
         let (nonce, cipher) = ct.split_at(Self::NONCE_LEN);
 
         let mut plain = vec![0; cipher.len()];
 
+        let key = key.bytes();
+
         xchacha20poly1305::decrypt(
             &mut plain,
             cipher,
-            key.bytes().try_into().expect("key is not the correct size: Decrypt"),
-            &tag.try_into().expect("Key not the correct size: Decrypt"),
-            &nonce.to_vec().try_into().expect("Key not the correct size: Decrypt"),
+            &key.try_into().expect("Key not the correct size: Decrypt"),
+            &tag.try_into().expect("Tag not the correct size: Decrypt"),
+            &nonce.to_vec().try_into().expect("Nonce not the correct size: Decrypt"),
             ad,
         )
-        .map_err(|_| engine::vault::Error::CryptoError(String::from("Invalid Cipher")))?;
+        .map_err(|_| vault::Error::CryptoError(String::from("Invalid Cipher")))?;
 
         Ok(plain)
     }
 
-    fn random_buf(buf: &mut [u8]) -> engine::vault::Result<()> {
-        fill(buf).map_err(|_| engine::vault::Error::CryptoError(String::from("Can't generate random Bytes")))
+    fn random_buf(buf: &mut [u8]) -> vault::Result<()> {
+        fill(buf).map_err(|_| vault::Error::CryptoError(String::from("Can't generate random Bytes")))
     }
 }
