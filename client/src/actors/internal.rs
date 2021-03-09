@@ -7,7 +7,7 @@ use riker::actors::*;
 
 use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
 
-use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
+use engine::vault::{BoxProvider, GuardedData, Key, RecordHint, RecordId};
 
 use crypto::{
     keys::{
@@ -62,7 +62,7 @@ pub enum InternalMsg {
         Box<(
             Client,
             HashMap<VaultId, Key<Provider>>,
-            HashMap<VaultId, Vec<ReadResult>>,
+            HashMap<VaultId, Vec<GuardedData>>,
         )>,
         StatusMessage,
     ),

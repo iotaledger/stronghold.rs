@@ -63,7 +63,6 @@ impl<T: BoxProvider> Key<T> {
             key if key.len() != T::box_key_len() => Err(crate::Error::InterfaceError),
             key => Ok(Self {
                 key: GuardedVec::new(T::box_key_len(), |v| v.copy_from_slice(key.as_slice())),
-
                 _box_provider: PhantomData,
             }),
         }
@@ -79,18 +78,8 @@ impl<T: BoxProvider> Clone for Key<T> {
     fn clone(&self) -> Self {
         Self {
             key: self.key.clone(),
-
             _box_provider: PhantomData,
         }
-    }
-}
-
-/// call the drop hook on dropping the key.
-impl<T: BoxProvider> Drop for Key<T> {
-    fn drop(&mut self) {
-        // Zero out the key before dropping.
-        GuardedVec::<u8>::zero(self.key.len());
-        drop(self);
     }
 }
 

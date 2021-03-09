@@ -3,7 +3,7 @@
 
 use engine::{
     store::Cache,
-    vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest},
+    vault::{BoxProvider, DBView, GuardedData, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest},
 };
 
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ type Store = Cache<Vec<u8>, Vec<u8>>;
 /// `Key<P>` and the vault `DBView<P>` together. Also contains a `HashMap<Key<P>, Vec<ReadResult>>` which pairs the
 /// backing data with the associated `Key<P>`.
 pub struct Bucket {
-    cache: HashMap<VaultId, Vec<ReadResult>>,
+    cache: HashMap<VaultId, Vec<GuardedData>>,
 }
 
 impl Bucket {
@@ -153,12 +153,12 @@ impl Bucket {
     }
 
     /// Repopulates the data in the Bucket given a Vec<u8> of state from a snapshot.
-    pub fn repopulate_data(&mut self, cache: HashMap<VaultId, Vec<ReadResult>>) {
+    pub fn repopulate_data(&mut self, cache: HashMap<VaultId, Vec<GuardedData>>) {
         self.cache = cache;
     }
 
-    pub fn get_data(&mut self) -> HashMap<VaultId, Vec<ReadResult>> {
-        let mut cache: HashMap<VaultId, Vec<ReadResult>> = HashMap::new();
+    pub fn get_data(&mut self) -> HashMap<VaultId, Vec<GuardedData>> {
+        let mut cache: HashMap<VaultId, Vec<GuardedData>> = HashMap::new();
 
         self.cache.iter().for_each(|(k, v)| {
             cache.insert(k.clone(), v.clone());
@@ -178,26 +178,36 @@ impl Bucket {
         key: Key<P>,
         f: impl FnOnce(DBView<P>, Vec<ReadResult>) -> Vec<ReadResult>,
     ) {
-        let reads = self.get_reads(id);
+        let reads: Vec<ReadResult> = self.get_reads(id).into_iter().map(guarded_to_read).collect();
 
         let view = DBView::load(key.clone(), reads.iter()).expect(line_error!());
 
         let res = f(view, reads);
-        self.insert_reads(id, (*res.clone()).to_vec());
+        let guards = res.into_iter().map(read_to_guarded).collect();
+
+        self.insert_reads(id, guards);
     }
 
-    fn get_reads(&mut self, id: VaultId) -> Vec<ReadResult> {
+    fn get_reads(&mut self, id: VaultId) -> Vec<GuardedData> {
         match self.cache.remove(&id) {
             Some(reads) => reads,
-            None => Vec::<ReadResult>::new(),
+            None => Vec::<GuardedData>::new(),
         }
     }
 
-    fn insert_reads(&mut self, id: VaultId, reads: Vec<ReadResult>) {
+    fn insert_reads(&mut self, id: VaultId, reads: Vec<GuardedData>) {
         self.cache.insert(id, reads);
     }
 }
 
 fn write_to_read(write: &WriteRequest) -> ReadResult {
     ReadResult::new(write.kind(), write.id(), write.data())
+}
+
+fn read_to_guarded(read: ReadResult) -> GuardedData {
+    read.into()
+}
+
+fn guarded_to_read(guard: GuardedData) -> ReadResult {
+    guard.into()
 }

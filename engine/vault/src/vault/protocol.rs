@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use std::fmt::{self, Debug, Formatter};
 
+use runtime::GuardedVec;
+
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Kind {
     Transaction = 1,
@@ -60,7 +62,7 @@ impl ReadRequest {
 }
 
 /// a read result
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct ReadResult {
     kind: Kind,
     id: Vec<u8>,
@@ -171,5 +173,48 @@ impl DeleteRequest {
     /// kind of data
     pub fn kind(&self) -> Kind {
         self.kind
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct GuardedData {
+    kind: u8,
+    id: GuardedVec<u8>,
+    data: GuardedVec<u8>,
+}
+
+impl From<GuardedData> for ReadResult {
+    fn from(guard: GuardedData) -> Self {
+        let kind = match guard.kind {
+            1 => Kind::Transaction,
+            2 => Kind::Blob,
+            // Impossible since kind can only be 1 or 2.
+            _ => panic!("Invalid Kind"),
+        };
+
+        let data = (*guard.data.borrow()).to_vec();
+        let id = (*guard.id.borrow()).to_vec();
+
+        ReadResult { kind, data, id }
+    }
+}
+
+impl From<ReadResult> for GuardedData {
+    fn from(res: ReadResult) -> Self {
+        let kind = match res.kind {
+            Kind::Transaction => 1,
+            Kind::Blob => 2,
+        };
+
+        let data = GuardedVec::new(res.data.len(), |d| d.copy_from_slice(res.data.as_slice()));
+        let id = GuardedVec::new(res.id.len(), |d| d.copy_from_slice(res.id.as_slice()));
+
+        GuardedData { kind, id, data }
+    }
+}
+
+impl Debug for GuardedData {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "GuardedData")
     }
 }

@@ -9,7 +9,7 @@ use std::{fmt::Debug, path::PathBuf};
 
 use engine::snapshot;
 
-use engine::vault::{Key, ReadResult};
+use engine::vault::{GuardedData, Key};
 
 use crate::{
     actors::{InternalMsg, SHResults},
@@ -36,7 +36,7 @@ pub enum SMsg {
         data: Box<(
             Client,
             HashMap<VaultId, Key<Provider>>,
-            HashMap<VaultId, Vec<ReadResult>>,
+            HashMap<VaultId, Vec<GuardedData>>,
         )>,
         id: ClientId,
     },

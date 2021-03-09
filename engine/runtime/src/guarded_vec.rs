@@ -1,21 +1,18 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-extern crate alloc;
-
 use crate::{boxed::Boxed, types::*};
 
-use serde::ser::{Serialize, SerializeSeq, Serializer};
-
-use serde::de::{Deserialize, Deserializer, SeqAccess, Visitor};
+use serde::{
+    de::{Deserialize, Deserializer, SeqAccess, Visitor},
+    ser::{Serialize, SerializeSeq, Serializer},
+};
 
 use core::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
-
-use alloc::vec::Vec;
 
 /// A guarded type for protecting variable-length secrets allocated on the heap.
 ///
@@ -35,6 +32,8 @@ use alloc::vec::Vec;
 /// * `Guarded` types can be compared in constant time.
 /// * `Guarded` types can not be printed using `Debug`.
 /// * The interior data of a `Guarded` type may not be `Clone`.
+/// `GuardedVec` includes serialization which converts the data into a vector before its serialized by serde.  Upon
+/// deserialization, the data is returned back to a new GuardedVec.
 
 #[derive(Clone, Eq)]
 pub struct GuardedVec<T: Bytes> {
@@ -260,6 +259,9 @@ where
     where
         E: SeqAccess<'de>,
     {
+        extern crate alloc;
+        use alloc::vec::Vec;
+
         let mut seq = Vec::<T>::with_capacity(access.size_hint().unwrap_or(0));
 
         while let Some(e) = access.next_element()? {
