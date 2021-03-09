@@ -161,7 +161,7 @@ impl Bucket {
         let mut cache: HashMap<VaultId, Vec<ReadResult>> = HashMap::new();
 
         self.cache.iter().for_each(|(k, v)| {
-            cache.insert(k.clone(), v.clone());
+            cache.insert(*k, v.clone());
         });
 
         cache
@@ -180,7 +180,7 @@ impl Bucket {
     ) {
         let reads: Vec<ReadResult> = self.get_reads(id);
 
-        let view = DBView::load(key.clone(), reads.iter()).expect(line_error!());
+        let view = DBView::load(key, reads.iter()).expect(line_error!());
 
         let res = f(view, reads);
 
