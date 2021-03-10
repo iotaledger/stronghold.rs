@@ -31,12 +31,15 @@ where
     system: ActorSystem,
     // client to receive incoming requests
     client: ActorRef<ClientMsg>,
+    // firewall configuration to check and validate all outgoing and incoming requests
     firewall: FirewallConfiguration,
+    // the expanded swarm that is used to poll for incoming requests and interact
     swarm: Swarm<P2PNetworkBehaviour<RequestEnvelope<Req>, Res>>,
     // channel from the communication actor to this task
     swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, ClientMsg>, Sender)>,
     // current listener in the swarm
     listener: Option<ListenerId>,
+    // configuration to use optionally use a relay peer if a peer in a remote network can not be reached directly.
     relay: RelayConfig,
     // maintain the current state of connections and keep-alive configuration
     connection_manager: ConnectionManager,
@@ -109,7 +112,7 @@ where
         }
     }
 
-    // Forward request to client and wait for result
+    // Forward request to client actor and wait for the result, with 3s timeout.
     fn ask_client(&mut self, request: Req) -> Option<Res> {
         let start = Instant::now();
         let mut ask_client = ask(&self.system, &self.client, request);
@@ -151,7 +154,7 @@ where
         }
     }
 
-    // Try to connect a remote peer by id or address.
+    // Try to connect a remote peer by id, and if the peer id is not know yet the address is used.
     fn connect_peer(&mut self, target_peer: PeerId, target_addr: Multiaddr) -> Result<PeerId, ConnectPeerError> {
         if let Err(err) = Swarm::dial(&mut self.swarm, &target_peer) {
             match err {
@@ -205,8 +208,8 @@ where
         })
     }
 
-    // Try sending a request to a remote peer if it was approved by the firewall, and return the received Response.
-    // If no reponse is received, a RequestMessageError::Rejected will be returned.
+    // Try sending a request envelope to a remote peer if it was approved by the firewall, and return the received
+    // Response. If no response is received, a RequestMessageError::Rejected will be returned.
     fn send_envelope_to_peer(
         &mut self,
         peer_id: PeerId,
@@ -259,6 +262,8 @@ where
         })
     }
 
+    // Wrap the request into an envelope, which enables using a relay peer, and send it to the remote.
+    // Depending on the config, it is ether send directly or via the relay.
     fn send_request(&mut self, peer_id: PeerId, request: Req) -> Result<Res, RequestMessageError> {
         let local_peer = Swarm::local_peer_id(&self.swarm);
         let envelope = RequestEnvelope {
@@ -287,6 +292,7 @@ where
         }
     }
 
+    // Set the new relay configuration. If a relay is use, a keep-alive connection to the relay will be established.
     fn set_relay(&mut self, config: RelayConfig) -> Result<(), ConnectPeerError> {
         match config.clone() {
             RelayConfig::NoRelay => Ok(()),
@@ -328,7 +334,7 @@ where
         }
     }
 
-    // Handle the messages that are received from other actors in the system..
+    // Handle the messages that are received from other actors in the system.
     fn handle_actor_request(&mut self, event: CommunicationRequest<Req, ClientMsg>, sender: Sender) {
         match event {
             CommunicationRequest::RequestMsg { peer_id, request } => {
@@ -481,6 +487,7 @@ where
                 num_established: 0,
                 cause: _,
             } => {
+                // Re-establish the connection if it was configured.
                 if !self.connection_manager.is_keep_alive(&peer_id) || self.connect_peer(peer_id, address).is_err() {
                     self.connection_manager.remove_connection(&peer_id);
                 }

@@ -115,45 +115,6 @@ impl Stronghold {
         StatusMessage::OK
     }
 
-    #[cfg(feature = "communication")]
-    /// Spawn the communication actor and swarm.
-    /// Currently this creates an open firewall so that all requests are permitted, eventually there will be
-    /// configuration options for the firewall added to the SH interface.
-    pub fn spawn_communication(&mut self) -> StatusMessage {
-        if self.communication_actor.is_some() {
-            return StatusMessage::Error(String::from("Communication was already spawned"));
-        }
-
-        let idx = self.current_target;
-        let client = self.actors[idx].clone();
-
-        let local_keys = Keypair::generate_ed25519();
-        let behaviour_config = BehaviourConfig::default();
-        let actor_config = CommunicationActorConfig {
-            client,
-            firewall_default_in: FirewallPermission::None,
-            firewall_default_out: FirewallPermission::All,
-        };
-
-        let communication_actor = self
-            .system
-            .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>(
-                "communication",
-                (local_keys, actor_config, behaviour_config),
-            )
-            .expect(line_error!());
-        self.communication_actor = Some(communication_actor);
-        StatusMessage::OK
-    }
-
-    /// Kill communication actor and swarm
-    #[cfg(feature = "communication")]
-    pub fn stop_communication(&mut self) {
-        if let Some(communication_actor) = self.communication_actor.as_ref() {
-            self.system.stop(communication_actor);
-        }
-    }
-
     /// Switches the actor target to another actor in the system specified by the client_path: `Vec<u8>`.
     pub async fn switch_actor_target(&mut self, client_path: Vec<u8>) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
@@ -640,6 +601,44 @@ impl Stronghold {
     #[allow(dead_code)]
     fn check_config_flags() {
         unimplemented!()
+    }
+
+    #[cfg(feature = "communication")]
+    /// Spawn the communication actor and swarm.
+    /// Set default configuration for firewall to allow all outgoing requests and no incoming.
+    pub fn spawn_communication(&mut self) -> StatusMessage {
+        if self.communication_actor.is_some() {
+            return StatusMessage::Error(String::from("Communication was already spawned"));
+        }
+
+        let idx = self.current_target;
+        let client = self.actors[idx].clone();
+
+        let local_keys = Keypair::generate_ed25519();
+        let behaviour_config = BehaviourConfig::default();
+        let actor_config = CommunicationActorConfig {
+            client,
+            firewall_default_in: FirewallPermission::None,
+            firewall_default_out: FirewallPermission::All,
+        };
+
+        let communication_actor = self
+            .system
+            .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>(
+                "communication",
+                (local_keys, actor_config, behaviour_config),
+            )
+            .expect(line_error!());
+        self.communication_actor = Some(communication_actor);
+        StatusMessage::OK
+    }
+
+    /// Kill communication actor and swarm
+    #[cfg(feature = "communication")]
+    pub fn stop_communication(&mut self) {
+        if let Some(communication_actor) = self.communication_actor.as_ref() {
+            self.system.stop(communication_actor);
+        }
     }
 
     #[cfg(feature = "communication")]

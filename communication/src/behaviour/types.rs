@@ -14,6 +14,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 #[cfg(feature = "mdns")]
 use libp2p::mdns::MdnsEvent;
 
+/// Wrapped request message to allow using a relay peer that forward messages from source to target.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestEnvelope<Req: Debug + Clone + Serialize + DeserializeOwned> {
     pub source: String,

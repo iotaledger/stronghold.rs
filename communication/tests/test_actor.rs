@@ -19,7 +19,7 @@ use core::task::{Context as TaskContext, Poll};
 use futures::{future, prelude::*};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
-use stronghold_communication::actor::ConnectPeerError;
+use stronghold_communication::actor::{firewall::PermissionSum, ConnectPeerError};
 
 fn init_system(
     sys: &ActorSystem,
@@ -47,6 +47,7 @@ fn init_system(
 #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]
 pub enum Request {
     Ping,
+    Other,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, RequestPermissions)]
@@ -564,5 +565,38 @@ fn firewall_rules() {
         Err(RequestMessageError::Rejected(FirewallBlocked::Remote))
         | Err(RequestMessageError::Outbound(P2POutboundFailure::Timeout)) => {}
         _ => panic!("Remote firewall should have blocked the request"),
+    }
+
+    // only allow Request::Ping
+    let ping_permission = RequestPermission::Ping.permission();
+    let allowed = PermissionSum::none().add_permission(ping_permission);
+    set_firewall_rule(
+        &sys_b,
+        &communication_actor_b,
+        peer_a_id,
+        RequestDirection::In,
+        FirewallPermission::Restricted(allowed),
+    );
+
+    // Request::Ping should be allowed
+    let res = send_request(&sys_a, &communication_actor_a, peer_b_id);
+    assert!(res.is_ok());
+
+    // Request::Other should not be allowed
+    if let Some(CommunicationResults::RequestMsgResult(res)) = task::block_on(try_ask(
+        &sys_a,
+        &communication_actor_a,
+        CommunicationRequest::RequestMsg {
+            peer_id: peer_b_id,
+            request: Request::Other,
+        },
+    )) {
+        match res {
+            Err(RequestMessageError::Rejected(FirewallBlocked::Remote))
+            | Err(RequestMessageError::Outbound(P2POutboundFailure::Timeout)) => {}
+            _ => panic!("Remote firewall should have blocked the request"),
+        }
+    } else {
+        panic!("Unexpected Response");
     }
 }

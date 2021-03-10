@@ -7,11 +7,11 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{punctuated::Punctuated, token::Comma, Data, DataEnum, DeriveInput, Fields};
 
-/// Implements the [`VariantPermission`] for all elements, and [`ToPermissionVariants`] for enums,
-/// this enables using it within the [`CommunicationActor`] and allows the [`CommunicationFirewall`] to handle it.
-/// [`VariantPermission`] defaults to PermissionValue(1) on structs and unions,
-/// for enums, it uses the index a variant in the enum and calculate 2 to the power fo the index
-/// i.g. 1, 2, 4, 8,...
+/// Implements the [`VariantPermission`] for struct/ unions with PermissionValue(1).
+/// For enums, it implements [`ToPermissionVariants`], which creates an according new enum <Ident>Permission with Unit
+/// variants, and implements [`VariantPermission`] by assigning a permission value for each variant.
+/// The permission value is the "index" in the enum as exponent for the power of 2, thus from top to bottom 1, 2, 4,
+/// 8... This enables using it within the [`CommunicationActor`] and allows the [`CommunicationFirewall`] to handle it.
 #[proc_macro_derive(RequestPermissions)]
 pub fn permissions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let derive_input = syn::parse_macro_input!(input as DeriveInput);

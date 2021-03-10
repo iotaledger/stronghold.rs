@@ -4,15 +4,14 @@
 use libp2p::PeerId;
 use std::collections::HashMap;
 
-/// The permission value.
-/// In Case of a struct or union this always defaults to 1.
-/// In case of enums, the permission it is a bit that is set according to the order within the enum.
-/// Enums can not have more than 32 variants since we are using 32bit values here.
+/// The permission value for request variants.
+/// It is a  bit that is set at a certain index, therefore the value is always a power of 2.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PermissionValue(u32);
 
 impl PermissionValue {
     /// Create a new permission value for an index, max allowed index is 31.
+    /// The value equals 2 to the power of the index.
     /// For index > 31 the value will result in O, and [`PermissionSum::permits`] will always return false.
     pub fn new(index: u8) -> Self {
         let value = 1u32 << index;
@@ -31,6 +30,7 @@ impl PartialEq<u32> for PermissionValue {
 }
 
 /// The sum of allowed permissions.
+/// This is using the same concepts as e.g. permission values in Unix systems.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PermissionSum(u32);
 
@@ -46,13 +46,13 @@ impl PermissionSum {
     }
 
     /// Adds a new value to the sum and therefore allows this value.
-    pub fn sum(self, other: PermissionValue) -> Self {
+    pub fn add_permission(self, other: PermissionValue) -> Self {
         let sum = self.value() | other.value();
         PermissionSum(sum)
     }
 
     /// Remove a certain value from the sum to remove permission.
-    pub fn subtract(self, other: PermissionValue) -> Self {
+    pub fn remove_permission(self, other: PermissionValue) -> Self {
         let sub = self.value() & !other.value();
         PermissionSum(sub)
     }
@@ -106,6 +106,9 @@ pub enum RequestDirection {
     Out,
 }
 
+/// Permission that is set in the Firewall.
+/// In case of [`FirewallPermission::Restricted`], only selected variants in a enum are allowed,
+/// the [`VariantPermission`] of the request message is used for each individual request to validate it.
 #[derive(Debug, Clone)]
 pub enum FirewallPermission {
     None,
@@ -113,7 +116,7 @@ pub enum FirewallPermission {
     All,
 }
 
-/// Permission for a specific peer.
+/// Configure the firewall.
 #[derive(Debug, Clone)]
 pub enum FirewallRule {
     SetDefault {

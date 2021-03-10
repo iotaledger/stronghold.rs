@@ -44,7 +44,7 @@ pub enum KeepAlive {
     Unlimited,
 }
 
-/// Requests for the [`CommunicationActor`]
+/// Requests for the [`CommunicationActor`].
 #[derive(Debug, Clone)]
 pub enum CommunicationRequest<Req, ClientMsg: Message> {
     /// Send a request to a remote peer.
@@ -59,18 +59,18 @@ pub enum CommunicationRequest<Req, ClientMsg: Message> {
         peer_id: PeerId,
         keep_alive: KeepAlive,
     },
-    /// Connect to a remote peer.
-    /// If the peer id is know it will attempt to use a know address of it, otherwise the `addr` will be dialed.
+    /// Close the connection to a remote peer so that no more requests from that peer will be allowed.
+    /// This does not directly close the underlying transport connection, which will close on timeout instead.
     CloseConnection(PeerId),
     /// Check if a connection to that peer is currently active.
     CheckConnection(PeerId),
     /// Obtain information about the swarm.
     GetSwarmInfo,
-    /// Ban a peer, which prevent any connection to that peer.
+    /// Ban a peer, which prevents any connection to that peer.
     BanPeer(PeerId),
     /// Unban a peer to allow future communication.
     UnbanPeer(PeerId),
-    /// Start listening to a port on the swarm. If no `Multiaddr` is provided, the address will be OS assigned.ActorRef
+    /// Start listening to a port on the swarm. If no `Multiaddr` is provided, the address will be OS assigned.
     StartListening(Option<Multiaddr>),
     /// Stop listening to the swarm. Without a listener, the local peer can not be dialed from remote.
     RemoveListener,
@@ -131,7 +131,7 @@ impl EstablishedConnection {
     }
 }
 
-/// Returned results from the [`CommuncationActor`]
+/// Returned results from the [`CommunicationActor`]
 #[derive(Debug, Clone)]
 pub enum CommunicationResults<Res> {
     /// Response or Error for an [`RequestMsg`] to a remote peer
@@ -140,9 +140,9 @@ pub enum CommunicationResults<Res> {
     SetClientRefAck,
     /// Result of trying to connect a peer.
     EstablishConnectionResult(Result<PeerId, ConnectPeerError>),
-    /// Closed connection to peer
+    /// Closed connection to peer.
     CloseConnectionAck,
-    /// Check if the connection exists
+    /// Check if the connection exists.
     CheckConnectionResult {
         peer_id: PeerId,
         is_connected: bool,
@@ -155,20 +155,20 @@ pub enum CommunicationResults<Res> {
         /// Not all of theses addresses can be reached from outside of the network since they might be localhost or
         /// private IPs.
         listeners: Vec<Multiaddr>,
-        /// established connections
+        /// Established connections.
         connections: Vec<(PeerId, EstablishedConnection)>,
     },
     BannedPeerAck(PeerId),
     UnbannedPeerAck(PeerId),
     /// Result of starting a new listener on the swarm.
-    /// If it was successfull, one of the listening addresses is returned, which will show the listening port.
+    /// If it was successful, one of the listening addresses is returned, which will show the listening port.
     StartListeningResult(Result<Multiaddr, ()>),
     /// Stopped listening to the swarm for incoming connections.
     RemoveListenerResult(Result<(), ()>),
     /// Setting relay result.
     /// Error if the relay peer could not be connected.
     SetRelayResult(Result<(), ConnectPeerError>),
-    /// Successfully set firewall rule
+    /// Successfully set firewall rule.
     ConfigureFirewallAck,
 }
 

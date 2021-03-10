@@ -42,9 +42,11 @@ where
 /// Actor for the communication to a remote peer over the swarm.
 ///
 /// Sends the [`CommunicationRequest::RequestMsg`]s it receives over the swarm to the corresponding remote peer and
-/// forwards incoming request to the client provided in the [`CommunicationConfig`]. Before forwarding any requests, a
-/// FirewallRequest is send to the firewall and the Request will only be forwarded if a FirewallResponse::Accept was
-/// returned.
+/// forwards incoming request to the client provided in the [`CommunicationConfig`].
+/// Before forwarding any requests, the request will be validated by the firewall according to the configuration from
+/// [`CommunicationConfig`], additional rules or changed can be set with [`CommunicationRequest::ConfigureFirewall`].
+/// This requires that the ToPermissionVariants is implemented for the `Req` type, which can be derived with the macro
+/// [`RequestPermissions`] from `communication_macros`.
 ///
 /// If remote peers should be able to dial the local system, a [`CommunicationRequest::StartListening`] has to be sent
 /// to the [`CommunicationActor`].
@@ -132,7 +134,7 @@ where
 {
     // Create a CommunicationActor that spawns a task to poll from the swarm.
     // The provided keypair is used to authenticate the swarm communication.
-    // The client actor ref is used to forward incoming requests from the swarm to
+    // The client actor ref is used to forward incoming requests from the swarm to it.
     fn create_args(config: (Keypair, CommunicationActorConfig<ClientMsg>, BehaviourConfig)) -> Self {
         Self {
             swarm_tx: None,
@@ -154,8 +156,6 @@ where
 
     // Spawn a task for polling the swarm and forwarding messages from/to remote peers.
     // A channel is created to send the messages that the [`CommunicationActor`] receives to that task.
-    // The swarm task won't start listening to the swarm untill a [`CommunicationRequest::StartListening`] was sent to
-    // it.
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         // Init task
         if let Some((keypair, actor_config, behaviour_config)) = self.swarm_task_config.take() {
