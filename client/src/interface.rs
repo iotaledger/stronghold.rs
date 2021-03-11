@@ -587,6 +587,7 @@ impl Stronghold {
         }
     }
 
+    /// Unimplemented until Policies are implemented.
     #[allow(dead_code)]
     fn check_config_flags() {
         unimplemented!()
