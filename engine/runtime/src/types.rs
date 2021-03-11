@@ -11,19 +11,20 @@ pub use const_eq::ConstEq;
 pub use rand::Randomized;
 pub use zero::Zeroed;
 
+/// Implements the traits onto primitive types and slices.
 macro_rules! impls {
-    ($($ty:ty),* ; $ns:tt) => {$(
-        impls!{prim  $ty}
-        impls!{array $ty; $ns}
+    ($($type:ty),* ; $size:tt) => {$(
+        impls!{prim  $type}
+        impls!{array $type; $size}
     )*};
 
-    (prim $ty:ty) => {
-        unsafe impl Bytes for $ty {}
+    (prim $type:ty) => {
+        unsafe impl Bytes for $type {}
     };
 
-    (array $ty:ty; ($($n:tt)*)) => {$(
+    (array $type:ty; ($($size:tt)*)) => {$(
         #[allow(trivial_casts)]
-        unsafe impl Bytes for [$ty; $n] {}
+        unsafe impl Bytes for [$type; $size] {}
     )*};
 }
 
