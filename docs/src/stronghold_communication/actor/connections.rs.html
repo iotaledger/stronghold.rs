@@ -94,7 +94,7 @@
         }
     }
 
-    <span class="comment">// Check is peer is in the curently active connections.</span>
+    <span class="comment">// Check is peer is in the currently active/ allowed connections.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">is_active_connection</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="kw-2">&amp;</span><span class="ident">PeerId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="self">self</span>.<span class="ident">map</span>.<span class="ident">get</span>(<span class="ident">peer_id</span>).<span class="ident">is_some</span>()
     }

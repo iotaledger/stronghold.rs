@@ -1,4 +1,5 @@
 var N = null;var sourcesIndex = {};
+sourcesIndex["communication_macros"] = {"name":"","files":["lib.rs"]};
 sourcesIndex["crypto"] = {"name":"","dirs":[{"name":"internal","files":["chacha.rs","poly.rs"]}],"files":["chacha_ietf.rs","chachapoly_ietf.rs","internal.rs","lib.rs","poly.rs","verify.rs","xchacha.rs","xchachapoly.rs"]};
 sourcesIndex["engine"] = {"name":"","files":["lib.rs"]};
 sourcesIndex["iota_stronghold"] = {"name":"","dirs":[{"name":"actors","files":["client.rs","internal.rs","snapshot.rs"]},{"name":"internals","files":["provider.rs"]},{"name":"utils","files":["hd.rs","ids.rs","types.rs"]}],"files":["actors.rs","bucket.rs","client.rs","interface.rs","internals.rs","key_store.rs","lib.rs","snapshot.rs","utils.rs"]};

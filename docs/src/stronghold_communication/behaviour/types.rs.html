@@ -274,6 +274,7 @@
 <span id="271">271</span>
 <span id="272">272</span>
 <span id="273">273</span>
+<span id="274">274</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -291,6 +292,7 @@
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
 <span class="kw">use</span> <span class="ident">libp2p</span>::<span class="ident">mdns</span>::<span class="ident">MdnsEvent</span>;
 
+<span class="doccomment">/// Wrapped request message to allow using a relay peer that forward messages from source to target.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">RequestEnvelope</span><span class="op">&lt;</span><span class="ident">Req</span>: <span class="ident">Debug</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span><span class="op">&gt;</span> {
     <span class="kw">pub</span> <span class="ident">source</span>: <span class="ident">String</span>,
@@ -393,7 +395,7 @@
 
 <span class="doccomment">/// Event emitted  by the `RequestResponse` behaviour.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">PartialEq</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">P2PReqResEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> {
+<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">P2PReqResEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> {
     <span class="doccomment">/// Request Message</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// Requests require a response to acknowledge them, if [`P2PNetworkBehaviour::send_response`]</span>
@@ -402,7 +404,7 @@
     <span class="ident">Req</span> {
         <span class="ident">peer_id</span>: <span class="ident">PeerId</span>,
         <span class="ident">request_id</span>: <span class="ident">RequestId</span>,
-        <span class="ident">request</span>: <span class="ident">T</span>,
+        <span class="ident">request</span>: <span class="ident">Req</span>,
     },
     <span class="doccomment">/// Response Message to a received `Req`.</span>
     <span class="doccomment">///</span>
@@ -414,7 +416,7 @@
     <span class="ident">Res</span> {
         <span class="ident">peer_id</span>: <span class="ident">PeerId</span>,
         <span class="ident">request_id</span>: <span class="ident">RequestId</span>,
-        <span class="ident">response</span>: <span class="ident">U</span>,
+        <span class="ident">response</span>: <span class="ident">Res</span>,
     },
     <span class="ident">InboundFailure</span> {
         <span class="ident">peer_id</span>: <span class="ident">PeerId</span>,
@@ -434,18 +436,18 @@
 
 <span class="doccomment">/// Event that was emitted by one of the protocols of the `P2PNetworkBehaviour`</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">PartialEq</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> {
+<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> {
     <span class="doccomment">/// Events from the libp2p mDNS protocol</span>
     <span class="ident">Mdns</span>(<span class="ident">P2PMdnsEvent</span>),
     <span class="doccomment">/// Events from the libp2p identify protocol</span>
     <span class="ident">Identify</span>(<span class="ident">Box</span><span class="op">&lt;</span><span class="ident">P2PIdentifyEvent</span><span class="op">&gt;</span>),
     <span class="doccomment">/// Events from the custom request-response protocol</span>
-    <span class="ident">RequestResponse</span>(<span class="ident">Box</span><span class="op">&lt;</span><span class="ident">P2PReqResEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span><span class="op">&gt;</span>),
+    <span class="ident">RequestResponse</span>(<span class="ident">Box</span><span class="op">&lt;</span><span class="ident">P2PReqResEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span><span class="op">&gt;</span>),
 }
 
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">MdnsEvent</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> {
-    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">event</span>: <span class="ident">MdnsEvent</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">MdnsEvent</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">event</span>: <span class="ident">MdnsEvent</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="ident">event</span> {
             <span class="ident">MdnsEvent</span>::<span class="ident">Discovered</span>(<span class="ident">list</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">P2PEvent</span>::<span class="ident">Mdns</span>(<span class="ident">P2PMdnsEvent</span>::<span class="ident">Discovered</span>(<span class="ident">list</span>.<span class="ident">collect</span>())),
             <span class="ident">MdnsEvent</span>::<span class="ident">Expired</span>(<span class="ident">list</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">P2PEvent</span>::<span class="ident">Mdns</span>(<span class="ident">P2PMdnsEvent</span>::<span class="ident">Expired</span>(<span class="ident">list</span>.<span class="ident">collect</span>())),
@@ -453,8 +455,8 @@
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">IdentifyEvent</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> {
-    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">event</span>: <span class="ident">IdentifyEvent</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">IdentifyEvent</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">event</span>: <span class="ident">IdentifyEvent</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="ident">event</span> {
             <span class="ident">IdentifyEvent</span>::<span class="ident">Received</span> {
                 <span class="ident">peer_id</span>,
@@ -484,8 +486,8 @@
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">RequestResponseEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> {
-    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">event</span>: <span class="ident">RequestResponseEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">RequestResponseEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">event</span>: <span class="ident">RequestResponseEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">P2PEvent</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="ident">event</span> {
             <span class="ident">RequestResponseEvent</span>::<span class="ident">Message</span> { <span class="ident">peer</span>, <span class="ident">message</span> } <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">message</span> {
                 <span class="ident">RequestResponseMessage</span>::<span class="ident">Request</span> {

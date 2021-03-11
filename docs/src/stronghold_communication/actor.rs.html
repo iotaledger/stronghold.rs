@@ -221,16 +221,6 @@
 <span id="218">218</span>
 <span id="219">219</span>
 <span id="220">220</span>
-<span id="221">221</span>
-<span id="222">222</span>
-<span id="223">223</span>
-<span id="224">224</span>
-<span id="225">225</span>
-<span id="226">226</span>
-<span id="227">227</span>
-<span id="228">228</span>
-<span id="229">229</span>
-<span id="230">230</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -246,6 +236,9 @@
     <span class="ident">task</span>::{<span class="ident">Context</span> <span class="kw">as</span> <span class="ident">TaskContext</span>, <span class="ident">Poll</span>},
 };
 <span class="kw">use</span> <span class="ident">firewall</span>::<span class="kw-2">*</span>;
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">firewall</span>::{
+    <span class="ident">FirewallPermission</span>, <span class="ident">FirewallRule</span>, <span class="ident">PermissionValue</span>, <span class="ident">RequestDirection</span>, <span class="ident">ToPermissionVariants</span>, <span class="ident">VariantPermission</span>,
+};
 <span class="kw">use</span> <span class="ident">futures</span>::{
     <span class="ident">channel</span>::<span class="ident">mpsc</span>::{<span class="ident">unbounded</span>, <span class="ident">SendError</span>, <span class="ident">UnboundedSender</span>},
     <span class="ident">future</span>,
@@ -258,62 +251,49 @@
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
 <span class="doccomment">/// The actor configuration</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">CommunicationConfig</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">CommunicationActorConfig</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>
 <span class="kw">where</span>
-    <span class="ident">Req</span>: <span class="ident">MessageEvent</span>,
-    <span class="ident">T</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>,
-    <span class="ident">U</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">FirewallRequest</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">ClientMsg</span>: <span class="ident">Message</span>,
 {
-    <span class="doccomment">/// target client for incoming request</span>
-    <span class="kw">pub</span> <span class="ident">client</span>: <span class="ident">ActorRef</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>,
-    <span class="doccomment">/// The firewall actor.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// For any request, a [`FirewallRequest`] is sent to that actor and the request will be reject unless a</span>
-    <span class="doccomment">/// FirewallRequest::Accept is return from the firewall,</span>
-    <span class="kw">pub</span> <span class="ident">firewall</span>: <span class="ident">ActorRef</span><span class="op">&lt;</span><span class="ident">U</span><span class="op">&gt;</span>,
-    <span class="ident">marker</span>: <span class="ident">PhantomData</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>,
-}
-
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> <span class="ident">CommunicationConfig</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>
-<span class="kw">where</span>
-    <span class="ident">Req</span>: <span class="ident">MessageEvent</span>,
-    <span class="ident">T</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>,
-    <span class="ident">U</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">FirewallRequest</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-{
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">client</span>: <span class="ident">ActorRef</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>, <span class="ident">firewall</span>: <span class="ident">ActorRef</span><span class="op">&lt;</span><span class="ident">U</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="ident">CommunicationConfig</span> {
-            <span class="ident">client</span>,
-            <span class="ident">firewall</span>,
-            <span class="ident">marker</span>: <span class="ident">PhantomData</span>,
-        }
-    }
+    <span class="doccomment">/// Target client for incoming request</span>
+    <span class="kw">pub</span> <span class="ident">client</span>: <span class="ident">ActorRef</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// Default restriction for incoming requests.</span>
+    <span class="kw">pub</span> <span class="ident">firewall_default_in</span>: <span class="ident">FirewallPermission</span>,
+    <span class="doccomment">/// Default restriction for outgoing requests.</span>
+    <span class="kw">pub</span> <span class="ident">firewall_default_out</span>: <span class="ident">FirewallPermission</span>,
 }
 
 <span class="doccomment">/// Actor for the communication to a remote peer over the swarm.</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// Sends the [`CommunicationRequest`]s it receives over the swarm to the corresponding remote peer and forwards</span>
-<span class="doccomment">/// incoming request to the client provided in the [`CommunicationConfig`]. Before forwarding any requests, a</span>
-<span class="doccomment">/// FirewallRequest is send to the firewall and the Request will only be forwarded if a FirewallResponse::Accept was</span>
-<span class="doccomment">/// returned.</span>
+<span class="doccomment">/// Sends the [`CommunicationRequest::RequestMsg`]s it receives over the swarm to the corresponding remote peer and</span>
+<span class="doccomment">/// forwards incoming request to the client provided in the [`CommunicationConfig`].</span>
+<span class="doccomment">/// Before forwarding any requests, the request will be validated by the firewall according to the configuration from</span>
+<span class="doccomment">/// [`CommunicationConfig`], additional rules or changed can be set with [`CommunicationRequest::ConfigureFirewall`].</span>
+<span class="doccomment">/// This requires that the ToPermissionVariants is implemented for the `Req` type, which can be derived with the macro</span>
+<span class="doccomment">/// [`RequestPermissions`] from `communication_macros`.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// If remote peers should be able to dial the local system, a [`CommunicationRequest::StartListening`] has to be sent</span>
 <span class="doccomment">/// to the [`CommunicationActor`].</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// ```no_run</span>
+<span class="doccomment">/// use communication_macros::RequestPermissions;</span>
 <span class="doccomment">/// use libp2p::identity::Keypair;</span>
 <span class="doccomment">/// use riker::actors::*;</span>
 <span class="doccomment">/// use serde::{Deserialize, Serialize};</span>
 <span class="doccomment">/// use stronghold_communication::{</span>
-<span class="doccomment">///     actor::{firewall::OpenFirewall, CommunicationActor, CommunicationConfig},</span>
+<span class="doccomment">///     actor::{</span>
+<span class="doccomment">///         firewall::{PermissionValue, ToPermissionVariants, VariantPermission},</span>
+<span class="doccomment">///         CommunicationActor, CommunicationActorConfig, FirewallPermission,</span>
+<span class="doccomment">///     },</span>
 <span class="doccomment">///     behaviour::BehaviourConfig,</span>
 <span class="doccomment">/// };</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// #[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="doccomment">/// #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]</span>
 <span class="doccomment">/// pub enum Request {</span>
 <span class="doccomment">///     Ping,</span>
 <span class="doccomment">/// }</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// #[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="doccomment">/// #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]</span>
 <span class="doccomment">/// pub enum Response {</span>
 <span class="doccomment">///     Pong,</span>
 <span class="doccomment">/// }</span>
@@ -337,69 +317,69 @@
 <span class="doccomment">/// let local_keys = Keypair::generate_ed25519();</span>
 <span class="doccomment">/// let sys = ActorSystem::new().expect(&quot;Init actor system failed.&quot;);</span>
 <span class="doccomment">/// let keys = Keypair::generate_ed25519();</span>
-<span class="doccomment">/// let firewall = sys</span>
-<span class="doccomment">///     .actor_of::&lt;OpenFirewall&lt;Request&gt;&gt;(&quot;firewall&quot;)</span>
-<span class="doccomment">///     .expect(&quot;Init firewall actor failed.&quot;);</span>
 <span class="doccomment">/// let client = sys</span>
 <span class="doccomment">///     .actor_of::&lt;ClientActor&gt;(&quot;client&quot;)</span>
 <span class="doccomment">///     .expect(&quot;Init client actor failed.&quot;);</span>
-<span class="doccomment">/// let actor_config = CommunicationConfig::new(client, firewall);</span>
+<span class="doccomment">/// let actor_config = CommunicationActorConfig {</span>
+<span class="doccomment">///     client,</span>
+<span class="doccomment">///     firewall_default_in: FirewallPermission::All,</span>
+<span class="doccomment">///     firewall_default_out: FirewallPermission::None,</span>
+<span class="doccomment">/// };</span>
 <span class="doccomment">/// let behaviour_config = BehaviourConfig::default();</span>
 <span class="doccomment">/// let comms_actor = sys</span>
-<span class="doccomment">///     .actor_of_args::&lt;CommunicationActor&lt;_, Response, _, _&gt;, _&gt;(</span>
+<span class="doccomment">///     .actor_of_args::&lt;CommunicationActor&lt;Request, Response, _, _&gt;, _&gt;(</span>
 <span class="doccomment">///         &quot;communication&quot;,</span>
 <span class="doccomment">///         (local_keys, actor_config, behaviour_config),</span>
 <span class="doccomment">///     )</span>
 <span class="doccomment">///     .expect(&quot;Init communication actor failed.&quot;);</span>
 <span class="doccomment">/// ```</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">CommunicationActor</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">CommunicationActor</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>
 <span class="kw">where</span>
-    <span class="ident">Req</span>: <span class="ident">MessageEvent</span>,
+    <span class="ident">Req</span>: <span class="ident">MessageEvent</span> <span class="op">+</span> <span class="ident">ToPermissionVariants</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>,
     <span class="ident">Res</span>: <span class="ident">MessageEvent</span>,
-    <span class="ident">T</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>,
-    <span class="ident">U</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">FirewallRequest</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">ClientMsg</span>: <span class="ident">Message</span>,
+    <span class="ident">P</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">VariantPermission</span>,
 {
     <span class="comment">// Channel for messages to the swarm task.</span>
-    <span class="ident">swarm_tx</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">UnboundedSender</span><span class="op">&lt;</span>(<span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span><span class="op">&gt;</span>, <span class="ident">Sender</span>)<span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="ident">swarm_task_config</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span>(<span class="ident">Keypair</span>, <span class="ident">CommunicationConfig</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>, <span class="ident">BehaviourConfig</span>)<span class="op">&gt;</span>,
+    <span class="ident">swarm_tx</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">UnboundedSender</span><span class="op">&lt;</span>(<span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">ClientMsg</span><span class="op">&gt;</span>, <span class="ident">Sender</span>)<span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">swarm_task_config</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span>(<span class="ident">Keypair</span>, <span class="ident">CommunicationActorConfig</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>, <span class="ident">BehaviourConfig</span>)<span class="op">&gt;</span>,
     <span class="comment">// Handle of the running swarm task.</span>
     <span class="ident">poll_swarm_handle</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">future</span>::<span class="ident">RemoteHandle</span><span class="op">&lt;</span>()<span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="ident">marker</span>: <span class="ident">PhantomData</span><span class="op">&lt;</span><span class="ident">Res</span><span class="op">&gt;</span>,
+    <span class="ident">_marker</span>: (<span class="ident">PhantomData</span><span class="op">&lt;</span><span class="ident">Res</span><span class="op">&gt;</span>, <span class="ident">PhantomData</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>),
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> <span class="ident">ActorFactoryArgs</span><span class="op">&lt;</span>(<span class="ident">Keypair</span>, <span class="ident">CommunicationConfig</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>, <span class="ident">BehaviourConfig</span>)<span class="op">&gt;</span>
-    <span class="kw">for</span> <span class="ident">CommunicationActor</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span> <span class="ident">ActorFactoryArgs</span><span class="op">&lt;</span>(<span class="ident">Keypair</span>, <span class="ident">CommunicationActorConfig</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>, <span class="ident">BehaviourConfig</span>)<span class="op">&gt;</span>
+    <span class="kw">for</span> <span class="ident">CommunicationActor</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>
 <span class="kw">where</span>
-    <span class="ident">Req</span>: <span class="ident">MessageEvent</span>,
+    <span class="ident">Req</span>: <span class="ident">MessageEvent</span> <span class="op">+</span> <span class="ident">ToPermissionVariants</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>,
     <span class="ident">Res</span>: <span class="ident">MessageEvent</span>,
-    <span class="ident">T</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>,
-    <span class="ident">U</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">FirewallRequest</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">ClientMsg</span>: <span class="ident">Message</span>,
+    <span class="ident">P</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">VariantPermission</span>,
 {
-    <span class="comment">// Create a [`CommunicationActor`] that spwans a task to poll from the swarm.</span>
+    <span class="comment">// Create a CommunicationActor that spawns a task to poll from the swarm.</span>
     <span class="comment">// The provided keypair is used to authenticate the swarm communication.</span>
-    <span class="kw">fn</span> <span class="ident">create_args</span>(<span class="ident">config</span>: (<span class="ident">Keypair</span>, <span class="ident">CommunicationConfig</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>, <span class="ident">BehaviourConfig</span>)) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+    <span class="comment">// The client actor ref is used to forward incoming requests from the swarm to it.</span>
+    <span class="kw">fn</span> <span class="ident">create_args</span>(<span class="ident">config</span>: (<span class="ident">Keypair</span>, <span class="ident">CommunicationActorConfig</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>, <span class="ident">BehaviourConfig</span>)) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">swarm_tx</span>: <span class="prelude-val">None</span>,
             <span class="ident">swarm_task_config</span>: <span class="prelude-val">Some</span>(<span class="ident">config</span>),
             <span class="ident">poll_swarm_handle</span>: <span class="prelude-val">None</span>,
-            <span class="ident">marker</span>: <span class="ident">PhantomData</span>,
+            <span class="ident">_marker</span>: (<span class="ident">PhantomData</span>, <span class="ident">PhantomData</span>),
         }
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> <span class="ident">Actor</span> <span class="kw">for</span> <span class="ident">CommunicationActor</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span> <span class="ident">Actor</span> <span class="kw">for</span> <span class="ident">CommunicationActor</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>
 <span class="kw">where</span>
-    <span class="ident">Req</span>: <span class="ident">MessageEvent</span>,
+    <span class="ident">Req</span>: <span class="ident">MessageEvent</span> <span class="op">+</span> <span class="ident">ToPermissionVariants</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>,
     <span class="ident">Res</span>: <span class="ident">MessageEvent</span>,
-    <span class="ident">T</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>,
-    <span class="ident">U</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">FirewallRequest</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">ClientMsg</span>: <span class="ident">Message</span>,
+    <span class="ident">P</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">VariantPermission</span>,
 {
-    <span class="kw">type</span> <span class="ident">Msg</span> <span class="op">=</span> <span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span><span class="op">&gt;</span>;
+    <span class="kw">type</span> <span class="ident">Msg</span> <span class="op">=</span> <span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">ClientMsg</span><span class="op">&gt;</span>;
 
     <span class="comment">// Spawn a task for polling the swarm and forwarding messages from/to remote peers.</span>
     <span class="comment">// A channel is created to send the messages that the [`CommunicationActor`] receives to that task.</span>
-    <span class="comment">// The swarm task won&#39;t start listening to the swarm untill a [`CommunicationRequest::StartListening`] was sent to</span>
-    <span class="comment">// it.</span>
     <span class="kw">fn</span> <span class="ident">post_start</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="ident">Context</span><span class="op">&lt;</span><span class="self">Self</span>::<span class="ident">Msg</span><span class="op">&gt;</span>) {
         <span class="comment">// Init task</span>
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="ident">keypair</span>, <span class="ident">actor_config</span>, <span class="ident">behaviour_config</span>)) <span class="op">=</span> <span class="self">self</span>.<span class="ident">swarm_task_config</span>.<span class="ident">take</span>() {
@@ -408,23 +388,13 @@
 
             <span class="kw">let</span> <span class="ident">actor_system</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">system</span>.<span class="ident">clone</span>();
             <span class="kw">let</span> <span class="ident">swarm_task</span> <span class="op">=</span>
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Res</span>, <span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span>::<span class="ident">new</span>(<span class="ident">actor_system</span>, <span class="ident">keypair</span>, <span class="ident">actor_config</span>, <span class="ident">behaviour_config</span>, <span class="ident">swarm_rx</span>);
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Res</span>, <span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span>::<span class="ident">new</span>(<span class="ident">actor_system</span>, <span class="ident">swarm_rx</span>, <span class="ident">actor_config</span>, <span class="ident">keypair</span>, <span class="ident">behaviour_config</span>);
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">swarm_task</span>) <span class="op">=</span> <span class="ident">swarm_task</span> {
                 <span class="comment">// Kick off the swarm communication.</span>
                 <span class="self">self</span>.<span class="ident">poll_swarm_handle</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">run</span>(<span class="ident">swarm_task</span>.<span class="ident">poll_swarm</span>()).<span class="ident">ok</span>();
             } <span class="kw">else</span> {
                 <span class="comment">// Init network behaviour failed, shutdown actor.</span>
                 <span class="ident">ctx</span>.<span class="ident">stop</span>(<span class="ident">ctx</span>.<span class="ident">myself</span>());
-            }
-        }
-    }
-
-    <span class="comment">// Forward the received events to the task that is managing the swarm communication.</span>
-    <span class="kw">fn</span> <span class="ident">recv</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="ident">Context</span><span class="op">&lt;</span><span class="self">Self</span>::<span class="ident">Msg</span><span class="op">&gt;</span>, <span class="ident">msg</span>: <span class="self">Self</span>::<span class="ident">Msg</span>, <span class="ident">sender</span>: <span class="ident">Sender</span>) {
-        <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">send_swarm_task</span>(<span class="ident">msg</span>, <span class="ident">sender</span>);
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">res</span> {
-            <span class="kw">if</span> <span class="ident">err</span>.<span class="ident">is_disconnected</span>() {
-                <span class="ident">ctx</span>.<span class="ident">stop</span>(<span class="ident">ctx</span>.<span class="ident">myself</span>())
             }
         }
     }
@@ -439,17 +409,27 @@
             <span class="ident">swarm_tx</span>.<span class="ident">disconnect</span>()
         }
     }
+
+    <span class="comment">// Forward the received events to the task that is managing the swarm communication.</span>
+    <span class="kw">fn</span> <span class="ident">recv</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="ident">Context</span><span class="op">&lt;</span><span class="self">Self</span>::<span class="ident">Msg</span><span class="op">&gt;</span>, <span class="ident">msg</span>: <span class="self">Self</span>::<span class="ident">Msg</span>, <span class="ident">sender</span>: <span class="ident">Sender</span>) {
+        <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">send_swarm_task</span>(<span class="ident">msg</span>, <span class="ident">sender</span>);
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">res</span> {
+            <span class="kw">if</span> <span class="ident">err</span>.<span class="ident">is_disconnected</span>() {
+                <span class="ident">ctx</span>.<span class="ident">stop</span>(<span class="ident">ctx</span>.<span class="ident">myself</span>())
+            }
+        }
+    }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> <span class="ident">CommunicationActor</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span> <span class="ident">CommunicationActor</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>
 <span class="kw">where</span>
-    <span class="ident">Req</span>: <span class="ident">MessageEvent</span>,
+    <span class="ident">Req</span>: <span class="ident">MessageEvent</span> <span class="op">+</span> <span class="ident">ToPermissionVariants</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>,
     <span class="ident">Res</span>: <span class="ident">MessageEvent</span>,
-    <span class="ident">T</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>,
-    <span class="ident">U</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">FirewallRequest</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">ClientMsg</span>: <span class="ident">Message</span>,
+    <span class="ident">P</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">VariantPermission</span>,
 {
     <span class="comment">// Forward a request over the channel to the swarm task.</span>
-    <span class="kw">fn</span> <span class="ident">send_swarm_task</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">msg</span>: <span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span><span class="op">&gt;</span>, <span class="ident">sender</span>: <span class="ident">Sender</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">SendError</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">send_swarm_task</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">msg</span>: <span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">ClientMsg</span><span class="op">&gt;</span>, <span class="ident">sender</span>: <span class="ident">Sender</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">SendError</span><span class="op">&gt;</span> {
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="kw-2">mut</span> <span class="ident">tx</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">swarm_tx</span>.<span class="ident">clone</span>() {
             <span class="kw">return</span> <span class="ident">task</span>::<span class="ident">block_on</span>(<span class="ident">future</span>::<span class="ident">poll_fn</span>(<span class="kw">move</span> <span class="op">|</span><span class="ident">tcx</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">TaskContext</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span><span class="op">&gt;</span><span class="op">|</span> {
                 <span class="kw">match</span> <span class="ident">tx</span>.<span class="ident">poll_ready</span>(<span class="ident">tcx</span>) {

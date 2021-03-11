@@ -459,6 +459,46 @@
 <span id="456">456</span>
 <span id="457">457</span>
 <span id="458">458</span>
+<span id="459">459</span>
+<span id="460">460</span>
+<span id="461">461</span>
+<span id="462">462</span>
+<span id="463">463</span>
+<span id="464">464</span>
+<span id="465">465</span>
+<span id="466">466</span>
+<span id="467">467</span>
+<span id="468">468</span>
+<span id="469">469</span>
+<span id="470">470</span>
+<span id="471">471</span>
+<span id="472">472</span>
+<span id="473">473</span>
+<span id="474">474</span>
+<span id="475">475</span>
+<span id="476">476</span>
+<span id="477">477</span>
+<span id="478">478</span>
+<span id="479">479</span>
+<span id="480">480</span>
+<span id="481">481</span>
+<span id="482">482</span>
+<span id="483">483</span>
+<span id="484">484</span>
+<span id="485">485</span>
+<span id="486">486</span>
+<span id="487">487</span>
+<span id="488">488</span>
+<span id="489">489</span>
+<span id="490">490</span>
+<span id="491">491</span>
+<span id="492">492</span>
+<span id="493">493</span>
+<span id="494">494</span>
+<span id="495">495</span>
+<span id="496">496</span>
+<span id="497">497</span>
+<span id="498">498</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -483,46 +523,58 @@
 };
 
 <span class="comment">// Separate task that manages the swarm communication.</span>
-<span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">struct</span> <span class="ident">SwarmTask</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>
+<span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">struct</span> <span class="ident">SwarmTask</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>
 <span class="kw">where</span>
-    <span class="ident">Req</span>: <span class="ident">MessageEvent</span>,
+    <span class="ident">Req</span>: <span class="ident">MessageEvent</span> <span class="op">+</span> <span class="ident">ToPermissionVariants</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>,
     <span class="ident">Res</span>: <span class="ident">MessageEvent</span>,
-    <span class="ident">T</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>,
-    <span class="ident">U</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">FirewallRequest</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">ClientMsg</span>: <span class="ident">Message</span>,
+    <span class="ident">P</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">VariantPermission</span>,
 {
     <span class="ident">system</span>: <span class="ident">ActorSystem</span>,
-    <span class="ident">config</span>: <span class="ident">CommunicationConfig</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>,
+    <span class="comment">// client to receive incoming requests</span>
+    <span class="ident">client</span>: <span class="ident">ActorRef</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>,
+    <span class="comment">// firewall configuration to check and validate all outgoing and incoming requests</span>
+    <span class="ident">firewall</span>: <span class="ident">FirewallConfiguration</span>,
+    <span class="comment">// the expanded swarm that is used to poll for incoming requests and interact</span>
     <span class="ident">swarm</span>: <span class="ident">Swarm</span><span class="op">&lt;</span><span class="ident">P2PNetworkBehaviour</span><span class="op">&lt;</span><span class="ident">RequestEnvelope</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>, <span class="ident">Res</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="ident">swarm_rx</span>: <span class="ident">UnboundedReceiver</span><span class="op">&lt;</span>(<span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span><span class="op">&gt;</span>, <span class="ident">Sender</span>)<span class="op">&gt;</span>,
+    <span class="comment">// channel from the communication actor to this task</span>
+    <span class="ident">swarm_rx</span>: <span class="ident">UnboundedReceiver</span><span class="op">&lt;</span>(<span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">ClientMsg</span><span class="op">&gt;</span>, <span class="ident">Sender</span>)<span class="op">&gt;</span>,
+    <span class="comment">// current listener in the swarm</span>
     <span class="ident">listener</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">ListenerId</span><span class="op">&gt;</span>,
+    <span class="comment">// configuration to use optionally use a relay peer if a peer in a remote network can not be reached directly.</span>
     <span class="ident">relay</span>: <span class="ident">RelayConfig</span>,
+    <span class="comment">// maintain the current state of connections and keep-alive configuration</span>
     <span class="ident">connection_manager</span>: <span class="ident">ConnectionManager</span>,
+    <span class="ident">_marker</span>: <span class="ident">PhantomData</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>,
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span> <span class="ident">SwarmTask</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span> <span class="ident">SwarmTask</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>
 <span class="kw">where</span>
-    <span class="ident">Req</span>: <span class="ident">MessageEvent</span>,
+    <span class="ident">Req</span>: <span class="ident">MessageEvent</span> <span class="op">+</span> <span class="ident">ToPermissionVariants</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>,
     <span class="ident">Res</span>: <span class="ident">MessageEvent</span>,
-    <span class="ident">T</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>,
-    <span class="ident">U</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">FirewallRequest</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">ClientMsg</span>: <span class="ident">Message</span>,
+    <span class="ident">P</span>: <span class="ident">Message</span> <span class="op">+</span> <span class="ident">VariantPermission</span>,
 {
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(
         <span class="ident">system</span>: <span class="ident">ActorSystem</span>,
+        <span class="ident">swarm_rx</span>: <span class="ident">UnboundedReceiver</span><span class="op">&lt;</span>(<span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">ClientMsg</span><span class="op">&gt;</span>, <span class="ident">Sender</span>)<span class="op">&gt;</span>,
+        <span class="ident">actor_config</span>: <span class="ident">CommunicationActorConfig</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>,
         <span class="ident">keypair</span>: <span class="ident">Keypair</span>,
-        <span class="ident">config</span>: <span class="ident">CommunicationConfig</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>,
         <span class="ident">behaviour</span>: <span class="ident">BehaviourConfig</span>,
-        <span class="ident">swarm_rx</span>: <span class="ident">UnboundedReceiver</span><span class="op">&lt;</span>(<span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span><span class="op">&gt;</span>, <span class="ident">Sender</span>)<span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">BehaviourError</span><span class="op">&gt;</span> {
         <span class="comment">// Create a P2PNetworkBehaviour for the swarm communication.</span>
         <span class="kw">let</span> <span class="ident">swarm</span> <span class="op">=</span> <span class="ident">P2PNetworkBehaviour</span>::<span class="op">&lt;</span><span class="ident">RequestEnvelope</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>, <span class="ident">Res</span><span class="op">&gt;</span>::<span class="ident">init_swarm</span>(<span class="ident">keypair</span>, <span class="ident">behaviour</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">firewall</span> <span class="op">=</span> <span class="ident">FirewallConfiguration</span>::<span class="ident">new</span>(<span class="ident">actor_config</span>.<span class="ident">firewall_default_in</span>, <span class="ident">actor_config</span>.<span class="ident">firewall_default_out</span>);
         <span class="prelude-val">Ok</span>(<span class="ident">SwarmTask</span> {
             <span class="ident">system</span>,
-            <span class="ident">config</span>,
+            <span class="ident">client</span>: <span class="ident">actor_config</span>.<span class="ident">client</span>,
+            <span class="ident">firewall</span>,
             <span class="ident">swarm</span>,
             <span class="ident">swarm_rx</span>,
             <span class="ident">listener</span>: <span class="prelude-val">None</span>,
             <span class="ident">relay</span>: <span class="ident">RelayConfig</span>::<span class="ident">NoRelay</span>,
             <span class="ident">connection_manager</span>: <span class="ident">ConnectionManager</span>::<span class="ident">new</span>(),
+            <span class="ident">_marker</span>: <span class="ident">PhantomData</span>,
         })
     }
 
@@ -562,29 +614,10 @@
         }
     }
 
-    <span class="comment">// Ask the firewall actor for FirewallResponse, return FirewallResponse::Reject on timeout</span>
-    <span class="kw">fn</span> <span class="ident">ask_req_permission</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">request</span>: <span class="ident">Req</span>, <span class="ident">remote</span>: <span class="ident">PeerId</span>, <span class="ident">direction</span>: <span class="ident">RequestDirection</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">FirewallResponse</span> {
-        <span class="kw">let</span> <span class="ident">start</span> <span class="op">=</span> <span class="ident">Instant</span>::<span class="ident">now</span>();
-        <span class="kw">let</span> <span class="ident">firewall_request</span> <span class="op">=</span> <span class="ident">FirewallRequest</span>::<span class="ident">new</span>(<span class="ident">request</span>, <span class="ident">remote</span>, <span class="ident">direction</span>);
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ask_permission</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">config</span>.<span class="ident">firewall</span>, <span class="ident">firewall_request</span>);
-        <span class="ident">task</span>::<span class="ident">block_on</span>(<span class="ident">future</span>::<span class="ident">poll_fn</span>(<span class="kw">move</span> <span class="op">|</span><span class="ident">cx</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Context</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span><span class="op">&gt;</span><span class="op">|</span> {
-            <span class="kw">match</span> <span class="ident">ask_permission</span>.<span class="ident">poll_unpin</span>(<span class="ident">cx</span>) {
-                <span class="ident">Poll</span>::<span class="ident">Ready</span>(<span class="ident">res</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">Poll</span>::<span class="ident">Ready</span>(<span class="ident">res</span>),
-                <span class="ident">Poll</span>::<span class="ident">Pending</span> <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="kw">if</span> <span class="ident">start</span>.<span class="ident">elapsed</span>() <span class="op">&gt;</span> <span class="ident">Duration</span>::<span class="ident">new</span>(<span class="number">3</span>, <span class="number">0</span>) {
-                        <span class="ident">Poll</span>::<span class="ident">Ready</span>(<span class="ident">FirewallResponse</span>::<span class="ident">Reject</span>)
-                    } <span class="kw">else</span> {
-                        <span class="ident">Poll</span>::<span class="ident">Pending</span>
-                    }
-                }
-            }
-        }))
-    }
-
-    <span class="comment">// Ask the firewall actor for FirewallResponse, return FirewallResponse::Drop on timeout</span>
+    <span class="comment">// Forward request to client actor and wait for the result, with 3s timeout.</span>
     <span class="kw">fn</span> <span class="ident">ask_client</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">request</span>: <span class="ident">Req</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Res</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">start</span> <span class="op">=</span> <span class="ident">Instant</span>::<span class="ident">now</span>();
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ask_client</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">config</span>.<span class="ident">client</span>, <span class="ident">request</span>);
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ask_client</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">client</span>, <span class="ident">request</span>);
         <span class="ident">task</span>::<span class="ident">block_on</span>(<span class="ident">future</span>::<span class="ident">poll_fn</span>(<span class="kw">move</span> <span class="op">|</span><span class="ident">cx</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Context</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span><span class="op">&gt;</span><span class="op">|</span> {
             <span class="kw">match</span> <span class="ident">ask_client</span>.<span class="ident">poll_unpin</span>(<span class="ident">cx</span>) {
                 <span class="ident">Poll</span>::<span class="ident">Ready</span>(<span class="ident">res</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">Poll</span>::<span class="ident">Ready</span>(<span class="prelude-val">Some</span>(<span class="ident">res</span>)),
@@ -623,7 +656,7 @@
         }
     }
 
-    <span class="comment">// Try to connect a remote peer by id or address.</span>
+    <span class="comment">// Try to connect a remote peer by id, and if the peer id is not know yet the address is used.</span>
     <span class="kw">fn</span> <span class="ident">connect_peer</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">target_peer</span>: <span class="ident">PeerId</span>, <span class="ident">target_addr</span>: <span class="ident">Multiaddr</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">PeerId</span>, <span class="ident">ConnectPeerError</span><span class="op">&gt;</span> {
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">Swarm</span>::<span class="ident">dial</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">swarm</span>, <span class="kw-2">&amp;</span><span class="ident">target_peer</span>) {
             <span class="kw">match</span> <span class="ident">err</span> {
@@ -677,9 +710,13 @@
         })
     }
 
-    <span class="comment">// Try sending a request to a remote peer if it was approved by the firewall, and return the received Response.</span>
-    <span class="comment">// If no reponse is received, a RequestMessageError::Rejected will be returned.</span>
-    <span class="kw">fn</span> <span class="ident">send_request</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">envelope</span>: <span class="ident">RequestEnvelope</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Res</span>, <span class="ident">RequestMessageError</span><span class="op">&gt;</span> {
+    <span class="comment">// Try sending a request envelope to a remote peer if it was approved by the firewall, and return the received</span>
+    <span class="comment">// Response. If no response is received, a RequestMessageError::Rejected will be returned.</span>
+    <span class="kw">fn</span> <span class="ident">send_envelope_to_peer</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">peer_id</span>: <span class="ident">PeerId</span>,
+        <span class="ident">envelope</span>: <span class="ident">RequestEnvelope</span><span class="op">&lt;</span><span class="ident">Req</span><span class="op">&gt;</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Res</span>, <span class="ident">RequestMessageError</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">req_id</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">swarm</span>.<span class="ident">send_request</span>(<span class="kw-2">&amp;</span><span class="ident">peer_id</span>, <span class="ident">envelope</span>);
         <span class="kw">let</span> <span class="ident">start</span> <span class="op">=</span> <span class="ident">Instant</span>::<span class="ident">now</span>();
         <span class="ident">task</span>::<span class="ident">block_on</span>(<span class="kw">async</span> {
@@ -727,47 +764,96 @@
         })
     }
 
-    <span class="comment">// Handle the messages that are received from other actors in the system..</span>
-    <span class="kw">fn</span> <span class="ident">handle_actor_request</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">event</span>: <span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">T</span><span class="op">&gt;</span>, <span class="ident">sender</span>: <span class="ident">Sender</span>) {
+    <span class="comment">// Wrap the request into an envelope, which enables using a relay peer, and send it to the remote.</span>
+    <span class="comment">// Depending on the config, it is ether send directly or via the relay.</span>
+    <span class="kw">fn</span> <span class="ident">send_request</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">request</span>: <span class="ident">Req</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Res</span>, <span class="ident">RequestMessageError</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">local_peer</span> <span class="op">=</span> <span class="ident">Swarm</span>::<span class="ident">local_peer_id</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">swarm</span>);
+        <span class="kw">let</span> <span class="ident">envelope</span> <span class="op">=</span> <span class="ident">RequestEnvelope</span> {
+            <span class="ident">source</span>: <span class="ident">local_peer</span>.<span class="ident">to_string</span>(),
+            <span class="ident">message</span>: <span class="ident">request</span>,
+            <span class="ident">target</span>: <span class="ident">peer_id</span>.<span class="ident">to_string</span>(),
+        };
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">relay</span> {
+            <span class="ident">RelayConfig</span>::<span class="ident">NoRelay</span> <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">send_envelope_to_peer</span>(<span class="ident">peer_id</span>, <span class="ident">envelope</span>),
+            <span class="ident">RelayConfig</span>::<span class="ident">RelayAlways</span> {
+                <span class="ident">peer_id</span>: <span class="ident">relay_id</span>,
+                <span class="ident">addr</span>: <span class="kw">_</span>,
+            } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">send_envelope_to_peer</span>(<span class="ident">relay_id</span>, <span class="ident">envelope</span>),
+            <span class="ident">RelayConfig</span>::<span class="ident">RelayBackup</span> {
+                <span class="ident">peer_id</span>: <span class="ident">relay_id</span>,
+                <span class="ident">addr</span>: <span class="kw">_</span>,
+            } <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="comment">// try sending directly, otherwise use relay</span>
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">send_envelope_to_peer</span>(<span class="ident">peer_id</span>, <span class="ident">envelope</span>.<span class="ident">clone</span>());
+                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">RequestMessageError</span>::<span class="ident">Outbound</span>(<span class="ident">P2POutboundFailure</span>::<span class="ident">DialFailure</span>)) <span class="op">=</span> <span class="ident">res</span> {
+                    <span class="self">self</span>.<span class="ident">send_envelope_to_peer</span>(<span class="ident">relay_id</span>, <span class="ident">envelope</span>)
+                } <span class="kw">else</span> {
+                    <span class="ident">res</span>
+                }
+            }
+        }
+    }
+
+    <span class="comment">// Set the new relay configuration. If a relay is use, a keep-alive connection to the relay will be established.</span>
+    <span class="kw">fn</span> <span class="ident">set_relay</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">config</span>: <span class="ident">RelayConfig</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">ConnectPeerError</span><span class="op">&gt;</span> {
+        <span class="kw">match</span> <span class="ident">config</span>.<span class="ident">clone</span>() {
+            <span class="ident">RelayConfig</span>::<span class="ident">NoRelay</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(()),
+            <span class="ident">RelayConfig</span>::<span class="ident">RelayAlways</span> { <span class="ident">peer_id</span>, <span class="ident">addr</span> } <span class="op">|</span> <span class="ident">RelayConfig</span>::<span class="ident">RelayBackup</span> { <span class="ident">peer_id</span>, <span class="ident">addr</span> } <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">connect_peer</span>(<span class="ident">peer_id</span>, <span class="ident">addr</span>.<span class="ident">clone</span>());
+                <span class="kw">match</span> <span class="ident">res</span> {
+                    <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                        <span class="kw">let</span> <span class="ident">endpoint</span> <span class="op">=</span> <span class="ident">ConnectedPoint</span>::<span class="ident">Dialer</span> { <span class="ident">address</span>: <span class="ident">addr</span> };
+                        <span class="self">self</span>.<span class="ident">connection_manager</span>.<span class="ident">insert</span>(<span class="ident">peer_id</span>, <span class="ident">endpoint</span>, <span class="ident">KeepAlive</span>::<span class="ident">Unlimited</span>);
+                        <span class="self">self</span>.<span class="ident">relay</span> <span class="op">=</span> <span class="ident">config</span>;
+                        <span class="prelude-val">Ok</span>(())
+                    }
+                    <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>),
+                }
+            }
+        }
+    }
+
+    <span class="kw">fn</span> <span class="ident">configure_firewall</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">rule</span>: <span class="ident">FirewallRule</span>) {
+        <span class="kw">match</span> <span class="ident">rule</span> {
+            <span class="ident">FirewallRule</span>::<span class="ident">SetDefault</span> {
+                <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+                <span class="ident">permission</span>,
+            } <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="self">self</span>.<span class="ident">firewall</span>.<span class="ident">set_default_in</span>(<span class="ident">permission</span>);
+            }
+            <span class="ident">FirewallRule</span>::<span class="ident">SetDefault</span> {
+                <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">Out</span>,
+                <span class="ident">permission</span>,
+            } <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="self">self</span>.<span class="ident">firewall</span>.<span class="ident">set_default_out</span>(<span class="ident">permission</span>);
+            }
+            <span class="ident">FirewallRule</span>::<span class="ident">SetRule</span> {
+                <span class="ident">peer_id</span>,
+                <span class="ident">direction</span>,
+                <span class="ident">permission</span>,
+            } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">firewall</span>.<span class="ident">set_rule</span>(<span class="ident">peer_id</span>, <span class="kw-2">&amp;</span><span class="ident">direction</span>, <span class="ident">permission</span>),
+            <span class="ident">FirewallRule</span>::<span class="ident">RemoveRule</span> { <span class="ident">peer_id</span>, <span class="ident">direction</span> } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">firewall</span>.<span class="ident">remove_rule</span>(<span class="kw-2">&amp;</span><span class="ident">peer_id</span>, <span class="kw-2">&amp;</span><span class="ident">direction</span>),
+        }
+    }
+
+    <span class="comment">// Handle the messages that are received from other actors in the system.</span>
+    <span class="kw">fn</span> <span class="ident">handle_actor_request</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">event</span>: <span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">ClientMsg</span><span class="op">&gt;</span>, <span class="ident">sender</span>: <span class="ident">Sender</span>) {
         <span class="kw">match</span> <span class="ident">event</span> {
             <span class="ident">CommunicationRequest</span>::<span class="ident">RequestMsg</span> { <span class="ident">peer_id</span>, <span class="ident">request</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="ident">FirewallResponse</span>::<span class="ident">Accept</span> <span class="op">=</span>
-                    <span class="self">self</span>.<span class="ident">ask_req_permission</span>(<span class="ident">request</span>.<span class="ident">clone</span>(), <span class="ident">peer_id</span>, <span class="ident">RequestDirection</span>::<span class="ident">Out</span>)
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="kw">if</span> <span class="self">self</span>
+                    .<span class="ident">firewall</span>
+                    .<span class="ident">is_permitted</span>(<span class="ident">request</span>.<span class="ident">clone</span>(), <span class="ident">peer_id</span>, <span class="ident">RequestDirection</span>::<span class="ident">Out</span>)
                 {
-                    <span class="kw">let</span> <span class="ident">local_peer</span> <span class="op">=</span> <span class="ident">Swarm</span>::<span class="ident">local_peer_id</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">swarm</span>);
-                    <span class="kw">let</span> <span class="ident">envelope</span> <span class="op">=</span> <span class="ident">RequestEnvelope</span> {
-                        <span class="ident">source</span>: <span class="ident">local_peer</span>.<span class="ident">to_string</span>(),
-                        <span class="ident">message</span>: <span class="ident">request</span>,
-                        <span class="ident">target</span>: <span class="ident">peer_id</span>.<span class="ident">to_string</span>(),
-                    };
-                    <span class="kw">match</span> <span class="self">self</span>.<span class="ident">relay</span> {
-                        <span class="ident">RelayConfig</span>::<span class="ident">NoRelay</span> <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">send_request</span>(<span class="ident">peer_id</span>, <span class="ident">envelope</span>),
-                        <span class="ident">RelayConfig</span>::<span class="ident">RelayAlways</span> {
-                            <span class="ident">peer_id</span>: <span class="ident">relay_id</span>,
-                            <span class="ident">addr</span>: <span class="kw">_</span>,
-                        } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">send_request</span>(<span class="ident">relay_id</span>, <span class="ident">envelope</span>),
-                        <span class="ident">RelayConfig</span>::<span class="ident">RelayBackup</span> {
-                            <span class="ident">peer_id</span>: <span class="ident">relay_id</span>,
-                            <span class="ident">addr</span>: <span class="kw">_</span>,
-                        } <span class="op">=</span><span class="op">&gt;</span> {
-                            <span class="comment">// try sending directly, otherwise use relay</span>
-                            <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">send_request</span>(<span class="ident">peer_id</span>, <span class="ident">envelope</span>.<span class="ident">clone</span>());
-                            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">RequestMessageError</span>::<span class="ident">Outbound</span>(<span class="ident">P2POutboundFailure</span>::<span class="ident">DialFailure</span>)) <span class="op">=</span> <span class="ident">res</span> {
-                                <span class="self">self</span>.<span class="ident">send_request</span>(<span class="ident">relay_id</span>, <span class="ident">envelope</span>)
-                            } <span class="kw">else</span> {
-                                <span class="ident">res</span>
-                            }
-                        }
-                    }
+                    <span class="self">self</span>.<span class="ident">send_request</span>(<span class="ident">peer_id</span>, <span class="ident">request</span>)
                 } <span class="kw">else</span> {
                     <span class="prelude-val">Err</span>(<span class="ident">RequestMessageError</span>::<span class="ident">Rejected</span>(<span class="ident">FirewallBlocked</span>::<span class="ident">Local</span>))
                 };
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="ident">res</span>), <span class="ident">sender</span>);
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="ident">res</span>), <span class="ident">sender</span>);
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">SetClientRef</span>(<span class="ident">client_ref</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="self">self</span>.<span class="ident">config</span>.<span class="ident">client</span> <span class="op">=</span> <span class="ident">client_ref</span>;
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">CommunicationResults</span>::<span class="ident">SetClientRefResult</span>;
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
+                <span class="self">self</span>.<span class="ident">client</span> <span class="op">=</span> <span class="ident">client_ref</span>;
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">CommunicationResults</span>::<span class="ident">SetClientRefAck</span>;
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">EstablishConnection</span> {
                 <span class="ident">peer_id</span>,
@@ -780,19 +866,19 @@
                     <span class="self">self</span>.<span class="ident">connection_manager</span>.<span class="ident">insert</span>(<span class="ident">peer_id</span>, <span class="ident">endpoint</span>, <span class="ident">keep_alive</span>.<span class="ident">clone</span>());
                     <span class="self">self</span>.<span class="ident">connection_manager</span>.<span class="ident">set_keep_alive</span>(<span class="kw-2">&amp;</span><span class="ident">peer_id</span>, <span class="ident">keep_alive</span>);
                 }
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(
                     <span class="ident">CommunicationResults</span>::<span class="ident">EstablishConnectionResult</span>(<span class="ident">res</span>),
                     <span class="ident">sender</span>,
                 );
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">CloseConnection</span>(<span class="ident">peer_id</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="self">self</span>.<span class="ident">connection_manager</span>.<span class="ident">remove_connection</span>(<span class="kw-2">&amp;</span><span class="ident">peer_id</span>);
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">CommunicationResults</span>::<span class="ident">ClosedConnection</span>, <span class="ident">sender</span>);
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">CommunicationResults</span>::<span class="ident">CloseConnectionAck</span>, <span class="ident">sender</span>);
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">CheckConnection</span>(<span class="ident">peer_id</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">is_connected</span> <span class="op">=</span> <span class="ident">Swarm</span>::<span class="ident">is_connected</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">swarm</span>, <span class="kw-2">&amp;</span><span class="ident">peer_id</span>);
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">CommunicationResults</span>::<span class="ident">CheckConnectionResult</span>(<span class="ident">is_connected</span>);
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">CommunicationResults</span>::<span class="ident">CheckConnectionResult</span> { <span class="ident">peer_id</span>, <span class="ident">is_connected</span> };
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">GetSwarmInfo</span> <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">peer_id</span> <span class="op">=</span> <span class="kw-2">*</span><span class="ident">Swarm</span>::<span class="ident">local_peer_id</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">swarm</span>);
@@ -803,11 +889,14 @@
                     <span class="ident">listeners</span>,
                     <span class="ident">connections</span>,
                 };
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">StartListening</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">start_listening</span>(<span class="ident">addr</span>);
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">CommunicationResults</span>::<span class="ident">StartListeningResult</span>(<span class="ident">res</span>), <span class="ident">sender</span>);
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(
+                    <span class="ident">CommunicationResults</span>::<span class="ident">StartListeningResult</span>(<span class="ident">res</span>),
+                    <span class="ident">sender</span>,
+                );
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">RemoveListener</span> <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">result</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">listener_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">listener</span>.<span class="ident">take</span>() {
@@ -816,35 +905,25 @@
                     <span class="prelude-val">Err</span>(())
                 };
                 <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">CommunicationResults</span>::<span class="ident">RemoveListenerResult</span>(<span class="ident">result</span>);
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">BanPeer</span>(<span class="ident">peer_id</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="ident">Swarm</span>::<span class="ident">ban_peer_id</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">swarm</span>, <span class="ident">peer_id</span>);
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">CommunicationResults</span>::<span class="ident">BannedPeer</span>(<span class="ident">peer_id</span>);
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">CommunicationResults</span>::<span class="ident">BannedPeerAck</span>(<span class="ident">peer_id</span>);
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">UnbanPeer</span>(<span class="ident">peer_id</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="ident">Swarm</span>::<span class="ident">unban_peer_id</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">swarm</span>, <span class="ident">peer_id</span>);
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">CommunicationResults</span>::<span class="ident">UnbannedPeer</span>(<span class="ident">peer_id</span>);
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">CommunicationResults</span>::<span class="ident">UnbannedPeerAck</span>(<span class="ident">peer_id</span>);
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">res</span>, <span class="ident">sender</span>);
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">SetRelay</span>(<span class="ident">config</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">config</span>.<span class="ident">clone</span>() {
-                    <span class="ident">RelayConfig</span>::<span class="ident">NoRelay</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(()),
-                    <span class="ident">RelayConfig</span>::<span class="ident">RelayAlways</span> { <span class="ident">peer_id</span>, <span class="ident">addr</span> } <span class="op">|</span> <span class="ident">RelayConfig</span>::<span class="ident">RelayBackup</span> { <span class="ident">peer_id</span>, <span class="ident">addr</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">connect_peer</span>(<span class="ident">peer_id</span>, <span class="ident">addr</span>.<span class="ident">clone</span>());
-                        <span class="kw">match</span> <span class="ident">res</span> {
-                            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                                <span class="kw">let</span> <span class="ident">endpoint</span> <span class="op">=</span> <span class="ident">ConnectedPoint</span>::<span class="ident">Dialer</span> { <span class="ident">address</span>: <span class="ident">addr</span> };
-                                <span class="self">self</span>.<span class="ident">connection_manager</span>.<span class="ident">insert</span>(<span class="ident">peer_id</span>, <span class="ident">endpoint</span>, <span class="ident">KeepAlive</span>::<span class="ident">Unlimited</span>);
-                                <span class="self">self</span>.<span class="ident">relay</span> <span class="op">=</span> <span class="ident">config</span>;
-                                <span class="prelude-val">Ok</span>(())
-                            }
-                            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>),
-                        }
-                    }
-                };
-                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">T</span>, <span class="ident">U</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">CommunicationResults</span>::<span class="ident">SetRelayResult</span>(<span class="ident">res</span>), <span class="ident">sender</span>);
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">set_relay</span>(<span class="ident">config</span>);
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">CommunicationResults</span>::<span class="ident">SetRelayResult</span>(<span class="ident">res</span>), <span class="ident">sender</span>);
+            }
+            <span class="ident">CommunicationRequest</span>::<span class="ident">ConfigureFirewall</span>(<span class="ident">rule</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="self">self</span>.<span class="ident">configure_firewall</span>(<span class="ident">rule</span>);
+                <span class="ident">SwarmTask</span>::<span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span>, <span class="ident">ClientMsg</span>, <span class="ident">P</span><span class="op">&gt;</span>::<span class="ident">send_response</span>(<span class="ident">CommunicationResults</span>::<span class="ident">ConfigureFirewallAck</span>, <span class="ident">sender</span>);
             }
             <span class="ident">CommunicationRequest</span>::<span class="ident">Shutdown</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">unreachable</span><span class="macro">!</span>(),
         }
@@ -856,25 +935,25 @@
             <span class="kw">return</span>;
         }
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">source</span>) <span class="op">=</span> <span class="ident">PeerId</span>::<span class="ident">from_str</span>(<span class="kw-2">&amp;</span><span class="ident">request</span>.<span class="ident">source</span>) {
-            <span class="comment">// validate that peer is either directly connected or the request was forwarded from the relay</span>
-            <span class="kw">if</span> <span class="ident">peer_id</span> <span class="op">=</span><span class="op">=</span> <span class="ident">source</span> <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">connection_manager</span>.<span class="ident">is_active_connection</span>(<span class="kw-2">&amp;</span><span class="ident">peer_id</span>)
-                <span class="op">|</span><span class="op">|</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">relay</span> {
-                    <span class="ident">RelayConfig</span>::<span class="ident">RelayAlways</span> {
-                        <span class="ident">peer_id</span>: <span class="ident">relay_id</span>,
-                        <span class="ident">addr</span>: <span class="kw">_</span>,
-                    }
-                    <span class="op">|</span> <span class="ident">RelayConfig</span>::<span class="ident">RelayBackup</span> {
-                        <span class="ident">peer_id</span>: <span class="ident">relay_id</span>,
-                        <span class="ident">addr</span>: <span class="kw">_</span>,
-                    } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">peer_id</span> <span class="op">=</span><span class="op">=</span> <span class="ident">relay_id</span>,
-                    <span class="ident">RelayConfig</span>::<span class="ident">NoRelay</span> <span class="op">=</span><span class="op">&gt;</span> <span class="bool-val">false</span>,
+            <span class="kw">let</span> <span class="ident">is_active_direct</span> <span class="op">=</span> <span class="ident">peer_id</span> <span class="op">=</span><span class="op">=</span> <span class="ident">source</span> <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">connection_manager</span>.<span class="ident">is_active_connection</span>(<span class="kw-2">&amp;</span><span class="ident">peer_id</span>);
+            <span class="kw">let</span> <span class="ident">from_relay</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">relay</span> {
+                <span class="ident">RelayConfig</span>::<span class="ident">RelayAlways</span> {
+                    <span class="ident">peer_id</span>: <span class="ident">relay_id</span>,
+                    <span class="ident">addr</span>: <span class="kw">_</span>,
                 }
-            {
-                <span class="kw">let</span> <span class="ident">permission</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">ask_req_permission</span>(<span class="ident">request</span>.<span class="ident">message</span>.<span class="ident">clone</span>(), <span class="ident">source</span>, <span class="ident">RequestDirection</span>::<span class="ident">In</span>);
-                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">FirewallResponse</span>::<span class="ident">Accept</span> <span class="op">=</span> <span class="ident">permission</span> {
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">res</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">ask_client</span>(<span class="ident">request</span>.<span class="ident">message</span>) {
-                        <span class="kw">let</span> <span class="kw">_</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">swarm</span>.<span class="ident">send_response</span>(<span class="ident">request_id</span>, <span class="ident">res</span>);
-                    }
+                <span class="op">|</span> <span class="ident">RelayConfig</span>::<span class="ident">RelayBackup</span> {
+                    <span class="ident">peer_id</span>: <span class="ident">relay_id</span>,
+                    <span class="ident">addr</span>: <span class="kw">_</span>,
+                } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">peer_id</span> <span class="op">=</span><span class="op">=</span> <span class="ident">relay_id</span>,
+                <span class="ident">RelayConfig</span>::<span class="ident">NoRelay</span> <span class="op">=</span><span class="op">&gt;</span> <span class="bool-val">false</span>,
+            };
+            <span class="kw">let</span> <span class="ident">is_permitted</span> <span class="op">=</span> <span class="self">self</span>
+                .<span class="ident">firewall</span>
+                .<span class="ident">is_permitted</span>(<span class="ident">request</span>.<span class="ident">message</span>.<span class="ident">clone</span>(), <span class="ident">source</span>, <span class="ident">RequestDirection</span>::<span class="ident">In</span>);
+
+            <span class="kw">if</span> (<span class="ident">is_active_direct</span> <span class="op">|</span><span class="op">|</span> <span class="ident">from_relay</span>) <span class="op">&amp;&amp;</span> <span class="ident">is_permitted</span> {
+                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">res</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">ask_client</span>(<span class="ident">request</span>.<span class="ident">message</span>) {
+                    <span class="kw">let</span> <span class="kw">_</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">swarm</span>.<span class="ident">send_response</span>(<span class="ident">request_id</span>, <span class="ident">res</span>);
                 }
             }
         }
@@ -910,6 +989,7 @@
                 <span class="ident">num_established</span>: <span class="number">0</span>,
                 <span class="ident">cause</span>: <span class="kw">_</span>,
             } <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="comment">// Re-establish the connection if it was configured.</span>
                 <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">connection_manager</span>.<span class="ident">is_keep_alive</span>(<span class="kw-2">&amp;</span><span class="ident">peer_id</span>) <span class="op">|</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">connect_peer</span>(<span class="ident">peer_id</span>, <span class="ident">address</span>).<span class="ident">is_err</span>() {
                     <span class="self">self</span>.<span class="ident">connection_manager</span>.<span class="ident">remove_connection</span>(<span class="kw-2">&amp;</span><span class="ident">peer_id</span>);
                 }

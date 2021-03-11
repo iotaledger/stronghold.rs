@@ -793,6 +793,12 @@
 <span id="790">790</span>
 <span id="791">791</span>
 <span id="792">792</span>
+<span id="793">793</span>
+<span id="794">794</span>
+<span id="795">795</span>
+<span id="796">796</span>
+<span id="797">797</span>
+<span id="798">798</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -815,6 +821,11 @@
     <span class="ident">convert</span>::{<span class="ident">TryFrom</span>, <span class="ident">TryInto</span>},
 };
 <span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">path</span>::<span class="ident">PathBuf</span>, <span class="ident">time</span>::<span class="ident">Duration</span>};
+
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
+<span class="kw">use</span> <span class="ident">communication_macros</span>::<span class="ident">RequestPermissions</span>;
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
+<span class="kw">use</span> <span class="ident">stronghold_communication</span>::<span class="ident">actor</span>::<span class="ident">firewall</span>::{<span class="ident">PermissionValue</span>, <span class="ident">ToPermissionVariants</span>, <span class="ident">VariantPermission</span>};
 
 <span class="doccomment">/// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
@@ -965,6 +976,7 @@
 
 <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
+<span class="attribute">#[<span class="ident">cfg_attr</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>, <span class="ident">derive</span>(<span class="ident">RequestPermissions</span>))]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">SHRequest</span> {
     <span class="comment">// check if vault exists.</span>
     <span class="ident">CheckVault</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>),
