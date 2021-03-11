@@ -11,60 +11,8 @@ use libp2p::{
 };
 use riker::{actors::ActorRef, Message};
 
+use crate::actor::firewall::FirewallRule;
 use std::time::Instant;
-
-/// Errors that can occur in the context of a pending `Connection`.
-#[derive(Debug, Clone)]
-pub enum ConnectPeerError {
-    /// The peer is currently banned.
-    Banned,
-    /// No addresses for the peer to dial
-    NoAddresses,
-    /// An error occurred while negotiating the transport protocol(s).
-    Transport,
-    /// The peer identity obtained on the connection did not
-    /// match the one that was expected or is otherwise invalid.
-    InvalidPeerId,
-    /// The connection was dropped because the connection limit
-    /// for a peer has been reached.
-    ConnectionLimit(ConnectionLimit),
-    /// An I/O error occurred on the connection.
-    IO,
-    /// The connection handler produced an error.
-    Handler,
-    /// Timout on connection attempt
-    Timeout,
-}
-
-impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
-    fn from(error: PendingConnectionError<TTransErr>) -> Self {
-        match error {
-            PendingConnectionError::Transport(_) => ConnectPeerError::Transport,
-            PendingConnectionError::InvalidPeerId => ConnectPeerError::InvalidPeerId,
-            PendingConnectionError::ConnectionLimit(limit) => ConnectPeerError::ConnectionLimit(limit),
-            PendingConnectionError::IO(_) => ConnectPeerError::IO,
-        }
-    }
-}
-
-impl From<DialError> for ConnectPeerError {
-    fn from(error: DialError) -> Self {
-        match error {
-            DialError::Banned => ConnectPeerError::Banned,
-            DialError::ConnectionLimit(limit) => ConnectPeerError::ConnectionLimit(limit),
-            DialError::NoAddresses => ConnectPeerError::NoAddresses,
-        }
-    }
-}
-
-impl<THandlerErr> From<ConnectionError<THandlerErr>> for ConnectPeerError {
-    fn from(error: ConnectionError<THandlerErr>) -> Self {
-        match error {
-            ConnectionError::Handler(_) => ConnectPeerError::Handler,
-            ConnectionError::IO(_) => ConnectPeerError::IO,
-        }
-    }
-}
 
 /// Relay peer for outgoing request.
 #[derive(Debug, Clone)]
@@ -96,14 +44,14 @@ pub enum KeepAlive {
     Unlimited,
 }
 
-/// Requests for the [`CommuncationActor`]
+/// Requests for the [`CommunicationActor`].
 #[derive(Debug, Clone)]
-pub enum CommunicationRequest<Req, T: Message> {
+pub enum CommunicationRequest<Req, ClientMsg: Message> {
     /// Send a request to a remote peer.
     /// This requires that a connection to the targeted peer has been established and is active.
     RequestMsg { peer_id: PeerId, request: Req },
     /// Set the actor reference that incoming request are forwarded to.
-    SetClientRef(ActorRef<T>),
+    SetClientRef(ActorRef<ClientMsg>),
     /// Connect to a remote peer.
     /// If the peer id is know it will attempt to use a know address of it, otherwise the `addr` will be dialed.
     EstablishConnection {
@@ -111,23 +59,26 @@ pub enum CommunicationRequest<Req, T: Message> {
         peer_id: PeerId,
         keep_alive: KeepAlive,
     },
-    /// Connect to a remote peer.
-    /// If the peer id is know it will attempt to use a know address of it, otherwise the `addr` will be dialed.
+    /// Close the connection to a remote peer so that no more requests from that peer will be allowed.
+    /// This does not directly close the underlying transport connection, which will close on timeout instead.
     CloseConnection(PeerId),
     /// Check if a connection to that peer is currently active.
     CheckConnection(PeerId),
     /// Obtain information about the swarm.
     GetSwarmInfo,
-    /// Ban a peer, which prevent any connection to that peer.
+    /// Ban a peer, which prevents any connection to that peer.
     BanPeer(PeerId),
     /// Unban a peer to allow future communication.
     UnbanPeer(PeerId),
-    /// Start listening to a port on the swarm. If no `Multiaddr` is provided, the address will be OS assigned.ActorRef
+    /// Start listening to a port on the swarm. If no `Multiaddr` is provided, the address will be OS assigned.
     StartListening(Option<Multiaddr>),
     /// Stop listening to the swarm. Without a listener, the local peer can not be dialed from remote.
     RemoveListener,
     /// Configured if a relay peer should be used for requests
     SetRelay(RelayConfig),
+    /// Add or remove a rule of the firewall.
+    /// If a rule for a peer & direction combination already exists, it is overwritten.
+    ConfigureFirewall(FirewallRule),
     /// Shutdown communication actor.
     Shutdown,
 }
@@ -180,19 +131,22 @@ impl EstablishedConnection {
     }
 }
 
-/// Returned results from the [`CommuncationActor`]
+/// Returned results from the [`CommunicationActor`]
 #[derive(Debug, Clone)]
 pub enum CommunicationResults<Res> {
     /// Response or Error for an [`RequestMsg`] to a remote peer
     RequestMsgResult(Result<Res, RequestMessageError>),
     /// New client actor reference was set.
-    SetClientRefResult,
+    SetClientRefAck,
     /// Result of trying to connect a peer.
     EstablishConnectionResult(Result<PeerId, ConnectPeerError>),
-    /// Closed connection to peer
-    ClosedConnection,
-    /// Check if the connection exists
-    CheckConnectionResult(bool),
+    /// Closed connection to peer.
+    CloseConnectionAck,
+    /// Check if the connection exists.
+    CheckConnectionResult {
+        peer_id: PeerId,
+        is_connected: bool,
+    },
     /// Information about the local swarm.
     SwarmInfo {
         /// The local peer id.
@@ -201,16 +155,72 @@ pub enum CommunicationResults<Res> {
         /// Not all of theses addresses can be reached from outside of the network since they might be localhost or
         /// private IPs.
         listeners: Vec<Multiaddr>,
-        /// established connections
+        /// Established connections.
         connections: Vec<(PeerId, EstablishedConnection)>,
     },
-    BannedPeer(PeerId),
-    UnbannedPeer(PeerId),
+    BannedPeerAck(PeerId),
+    UnbannedPeerAck(PeerId),
     /// Result of starting a new listener on the swarm.
-    /// If it was successfull, one of the listening addresses is returned, which will show the listening port.
+    /// If it was successful, one of the listening addresses is returned, which will show the listening port.
     StartListeningResult(Result<Multiaddr, ()>),
     /// Stopped listening to the swarm for incoming connections.
     RemoveListenerResult(Result<(), ()>),
-    /// Success setting relay
+    /// Setting relay result.
+    /// Error if the relay peer could not be connected.
     SetRelayResult(Result<(), ConnectPeerError>),
+    /// Successfully set firewall rule.
+    ConfigureFirewallAck,
+}
+
+/// Errors that can occur in the context of a pending `Connection`.
+#[derive(Debug, Clone)]
+pub enum ConnectPeerError {
+    /// The peer is currently banned.
+    Banned,
+    /// No addresses for the peer to dial
+    NoAddresses,
+    /// An error occurred while negotiating the transport protocol(s).
+    Transport,
+    /// The peer identity obtained on the connection did not
+    /// match the one that was expected or is otherwise invalid.
+    InvalidPeerId,
+    /// The connection was dropped because the connection limit
+    /// for a peer has been reached.
+    ConnectionLimit(ConnectionLimit),
+    /// An I/O error occurred on the connection.
+    IO,
+    /// The connection handler produced an error.
+    Handler,
+    /// Timout on connection attempt
+    Timeout,
+}
+
+impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
+    fn from(error: PendingConnectionError<TTransErr>) -> Self {
+        match error {
+            PendingConnectionError::Transport(_) => ConnectPeerError::Transport,
+            PendingConnectionError::InvalidPeerId => ConnectPeerError::InvalidPeerId,
+            PendingConnectionError::ConnectionLimit(limit) => ConnectPeerError::ConnectionLimit(limit),
+            PendingConnectionError::IO(_) => ConnectPeerError::IO,
+        }
+    }
+}
+
+impl From<DialError> for ConnectPeerError {
+    fn from(error: DialError) -> Self {
+        match error {
+            DialError::Banned => ConnectPeerError::Banned,
+            DialError::ConnectionLimit(limit) => ConnectPeerError::ConnectionLimit(limit),
+            DialError::NoAddresses => ConnectPeerError::NoAddresses,
+        }
+    }
+}
+
+impl<THandlerErr> From<ConnectionError<THandlerErr>> for ConnectPeerError {
+    fn from(error: ConnectionError<THandlerErr>) -> Self {
+        match error {
+            ConnectionError::Handler(_) => ConnectPeerError::Handler,
+            ConnectionError::IO(_) => ConnectPeerError::IO,
+        }
+    }
 }

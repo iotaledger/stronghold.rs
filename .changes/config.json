@@ -152,6 +152,7 @@
         "random",
         "primitives",
         "stronghold-communication",
+        "communication-macros",
         "stronghold-utils"
       ]
     },
@@ -174,8 +175,13 @@
       "path": "./communication/",
       "manager": "rust",
       "dependencies": [
-        "stronghold-utils"
+        "stronghold-utils",
+        "communication-macros"
       ]
+    },
+    "communication-macros": {
+      "path": "./communication/communication-macros",
+      "manager": "rust"
     },
     "crypto": {
       "path": "./engine/crypto/",
