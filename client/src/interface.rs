@@ -447,7 +447,7 @@ impl Stronghold {
         let shr = ask(&self.system, client, SHRequest::ControlRequest(control_request)).await;
         match shr {
             SHResults::ReturnControlRequest(pr) => pr,
-            _ => todo!("return a proper error: unexpected result"),
+            _ => ProcResult::Error("Invalid communication event".into()),
         }
     }
 

@@ -101,12 +101,14 @@ pub enum ProcResult {
     Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
     /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
     Ed25519Sign(ResultMessage<[u8; crypto::signatures::ed25519::SIGNATURE_LENGTH]>),
+    /// Generic Error return message.
+    Error(String),
 }
 
 impl TryFrom<SerdeProcResult> for ProcResult {
     type Error = TryFromSliceError;
 
-    fn try_from(serde_proc_result: SerdeProcResult) -> Result<Self, Self::Error> {
+    fn try_from(serde_proc_result: SerdeProcResult) -> Result<Self, TryFromSliceError> {
         match serde_proc_result {
             SerdeProcResult::SLIP10Generate(msg) => Ok(ProcResult::SLIP10Generate(msg)),
             SerdeProcResult::SLIP10Derive(msg) => Ok(ProcResult::SLIP10Derive(msg)),
@@ -127,6 +129,7 @@ impl TryFrom<SerdeProcResult> for ProcResult {
                 };
                 Ok(ProcResult::Ed25519Sign(msg))
             }
+            SerdeProcResult::Error(err) => Ok(ProcResult::Error(err)),
         }
     }
 }
@@ -141,6 +144,7 @@ enum SerdeProcResult {
     BIP39MnemonicSentence(ResultMessage<String>),
     Ed25519PublicKey(ResultMessage<Vec<u8>>),
     Ed25519Sign(ResultMessage<Vec<u8>>),
+    Error(String),
 }
 
 impl From<ProcResult> for SerdeProcResult {
@@ -165,6 +169,7 @@ impl From<ProcResult> for SerdeProcResult {
                 };
                 SerdeProcResult::Ed25519Sign(msg)
             }
+            ProcResult::Error(err) => SerdeProcResult::Error(err),
         }
     }
 }
@@ -672,7 +677,8 @@ impl Receive<SHRequest> for Client {
                             sender,
                         )
                     }
-                    Procedure::BIP39MnemonicSentence { .. } => todo!(),
+                    // Not implemented yet.
+                    Procedure::BIP39MnemonicSentence { .. } => unimplemented!(),
                     Procedure::Ed25519PublicKey { private_key } => {
                         let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
                         internal.try_tell(InternalMsg::Ed25519PublicKey { vault_id, record_id }, sender)
