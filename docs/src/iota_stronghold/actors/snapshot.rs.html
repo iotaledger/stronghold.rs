@@ -135,6 +135,8 @@
 <span id="132">132</span>
 <span id="133">133</span>
 <span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -151,9 +153,11 @@
 
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">actors</span>::{<span class="ident">InternalMsg</span>, <span class="ident">SHResults</span>},
-    <span class="ident">client</span>::<span class="ident">Client</span>,
     <span class="ident">line_error</span>,
-    <span class="ident">snapshot</span>::{<span class="ident">Snapshot</span>, <span class="ident">SnapshotState</span>},
+    <span class="ident">state</span>::{
+        <span class="ident">client</span>::<span class="ident">Client</span>,
+        <span class="ident">snapshot</span>::{<span class="ident">Snapshot</span>, <span class="ident">SnapshotState</span>},
+    },
     <span class="ident">utils</span>::<span class="ident">StatusMessage</span>,
     <span class="ident">ClientId</span>, <span class="ident">Provider</span>, <span class="ident">VaultId</span>,
 };
@@ -172,7 +176,7 @@
         <span class="ident">data</span>: <span class="ident">Box</span><span class="op">&lt;</span>(
             <span class="ident">Client</span>,
             <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-            <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">Key</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+            <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span><span class="op">&gt;</span>,
         )<span class="op">&gt;</span>,
         <span class="ident">id</span>: <span class="ident">ClientId</span>,
     },

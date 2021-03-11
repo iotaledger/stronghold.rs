@@ -799,17 +799,27 @@
 <span id="796">796</span>
 <span id="797">797</span>
 <span id="798">798</span>
+<span id="799">799</span>
+<span id="800">800</span>
+<span id="801">801</span>
+<span id="802">802</span>
+<span id="803">803</span>
+<span id="804">804</span>
+<span id="805">805</span>
+<span id="806">806</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
 
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">actors</span>::{<span class="ident">InternalMsg</span>, <span class="ident">InternalResults</span>, <span class="ident">SMsg</span>},
-    <span class="ident">client</span>::{<span class="ident">Client</span>, <span class="ident">ClientMsg</span>, <span class="ident">ReadWrite</span>},
     <span class="ident">line_error</span>,
-    <span class="ident">utils</span>::{<span class="ident">hd</span>, <span class="ident">ClientId</span>, <span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>},
+    <span class="ident">state</span>::<span class="ident">client</span>::{<span class="ident">Client</span>, <span class="ident">ClientMsg</span>, <span class="ident">ReadWrite</span>},
+    <span class="ident">utils</span>::{<span class="ident">ClientId</span>, <span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>},
     <span class="ident">Location</span>,
 };
+
+<span class="kw">use</span> <span class="ident">crypto</span>::<span class="ident">keys</span>::<span class="ident">slip10</span>::{<span class="ident">Chain</span>, <span class="ident">ChainCode</span>};
 
 <span class="kw">use</span> <span class="ident">engine</span>::{<span class="ident">snapshot</span>, <span class="ident">vault</span>::<span class="ident">RecordHint</span>};
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
@@ -852,7 +862,7 @@
     <span class="doccomment">/// Derive a SLIP10 child key from a seed or a parent key, store it in output location and</span>
     <span class="doccomment">/// return the corresponding chain code</span>
     <span class="ident">SLIP10Derive</span> {
-        <span class="ident">chain</span>: <span class="ident">hd</span>::<span class="ident">Chain</span>,
+        <span class="ident">chain</span>: <span class="ident">Chain</span>,
         <span class="ident">input</span>: <span class="ident">SLIP10DeriveInput</span>,
         <span class="ident">output</span>: <span class="ident">Location</span>,
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
@@ -895,7 +905,7 @@
     <span class="doccomment">/// Return from generating a `SLIP10` seed.</span>
     <span class="ident">SLIP10Generate</span>(<span class="ident">StatusMessage</span>),
     <span class="doccomment">/// Returns the public key derived from the `SLIP10Derive` call.</span>
-    <span class="ident">SLIP10Derive</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">hd</span>::<span class="ident">ChainCode</span><span class="op">&gt;</span>),
+    <span class="ident">SLIP10Derive</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">ChainCode</span><span class="op">&gt;</span>),
     <span class="doccomment">/// `BIP39Recover` return value.</span>
     <span class="ident">BIP39Recover</span>(<span class="ident">StatusMessage</span>),
     <span class="doccomment">/// `BIP39Generate` return value.</span>
@@ -903,15 +913,17 @@
     <span class="doccomment">/// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.</span>
     <span class="ident">BIP39MnemonicSentence</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>),
     <span class="doccomment">/// Return value for `Ed25519PublicKey`. Returns an Ed25519 public key.</span>
-    <span class="ident">Ed25519PublicKey</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="ident">crypto</span>::<span class="ident">ed25519</span>::<span class="ident">COMPRESSED_PUBLIC_KEY_LENGTH</span>]<span class="op">&gt;</span>),
+    <span class="ident">Ed25519PublicKey</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="ident">crypto</span>::<span class="ident">signatures</span>::<span class="ident">ed25519</span>::<span class="ident">COMPRESSED_PUBLIC_KEY_LENGTH</span>]<span class="op">&gt;</span>),
     <span class="doccomment">/// Return value for `Ed25519Sign`. Returns an Ed25519 signature.</span>
-    <span class="ident">Ed25519Sign</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="ident">crypto</span>::<span class="ident">ed25519</span>::<span class="ident">SIGNATURE_LENGTH</span>]<span class="op">&gt;</span>),
+    <span class="ident">Ed25519Sign</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="ident">crypto</span>::<span class="ident">signatures</span>::<span class="ident">ed25519</span>::<span class="ident">SIGNATURE_LENGTH</span>]<span class="op">&gt;</span>),
+    <span class="doccomment">/// Generic Error return message.</span>
+    <span class="ident">Error</span>(<span class="ident">String</span>),
 }
 
 <span class="kw">impl</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">SerdeProcResult</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">ProcResult</span> {
     <span class="kw">type</span> <span class="ident">Error</span> <span class="op">=</span> <span class="ident">TryFromSliceError</span>;
 
-    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">serde_proc_result</span>: <span class="ident">SerdeProcResult</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span>::<span class="ident">Error</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">serde_proc_result</span>: <span class="ident">SerdeProcResult</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">TryFromSliceError</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="ident">serde_proc_result</span> {
             <span class="ident">SerdeProcResult</span>::<span class="ident">SLIP10Generate</span>(<span class="ident">msg</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ProcResult</span>::<span class="ident">SLIP10Generate</span>(<span class="ident">msg</span>)),
             <span class="ident">SerdeProcResult</span>::<span class="ident">SLIP10Derive</span>(<span class="ident">msg</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ProcResult</span>::<span class="ident">SLIP10Derive</span>(<span class="ident">msg</span>)),
@@ -919,19 +931,20 @@
             <span class="ident">SerdeProcResult</span>::<span class="ident">BIP39Generate</span>(<span class="ident">msg</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ProcResult</span>::<span class="ident">BIP39Generate</span>(<span class="ident">msg</span>)),
             <span class="ident">SerdeProcResult</span>::<span class="ident">BIP39MnemonicSentence</span>(<span class="ident">msg</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ProcResult</span>::<span class="ident">BIP39MnemonicSentence</span>(<span class="ident">msg</span>)),
             <span class="ident">SerdeProcResult</span>::<span class="ident">Ed25519PublicKey</span>(<span class="ident">msg</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">msg</span>: <span class="ident">ResultMessage</span><span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="ident">crypto</span>::<span class="ident">ed25519</span>::<span class="ident">COMPRESSED_PUBLIC_KEY_LENGTH</span>]<span class="op">&gt;</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">msg</span> {
+                <span class="kw">let</span> <span class="ident">msg</span>: <span class="ident">ResultMessage</span><span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="ident">crypto</span>::<span class="ident">signatures</span>::<span class="ident">ed25519</span>::<span class="ident">COMPRESSED_PUBLIC_KEY_LENGTH</span>]<span class="op">&gt;</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">msg</span> {
                     <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">v</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">v</span>.<span class="ident">as_slice</span>().<span class="ident">try_into</span>()<span class="question-mark">?</span>),
                     <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">e</span>),
                 };
                 <span class="prelude-val">Ok</span>(<span class="ident">ProcResult</span>::<span class="ident">Ed25519PublicKey</span>(<span class="ident">msg</span>))
             }
             <span class="ident">SerdeProcResult</span>::<span class="ident">Ed25519Sign</span>(<span class="ident">msg</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">msg</span>: <span class="ident">ResultMessage</span><span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="ident">crypto</span>::<span class="ident">ed25519</span>::<span class="ident">SIGNATURE_LENGTH</span>]<span class="op">&gt;</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">msg</span> {
+                <span class="kw">let</span> <span class="ident">msg</span>: <span class="ident">ResultMessage</span><span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="ident">crypto</span>::<span class="ident">signatures</span>::<span class="ident">ed25519</span>::<span class="ident">SIGNATURE_LENGTH</span>]<span class="op">&gt;</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">msg</span> {
                     <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">v</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">v</span>.<span class="ident">as_slice</span>().<span class="ident">try_into</span>()<span class="question-mark">?</span>),
                     <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">e</span>),
                 };
                 <span class="prelude-val">Ok</span>(<span class="ident">ProcResult</span>::<span class="ident">Ed25519Sign</span>(<span class="ident">msg</span>))
             }
+            <span class="ident">SerdeProcResult</span>::<span class="ident">Error</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ProcResult</span>::<span class="ident">Error</span>(<span class="ident">err</span>)),
         }
     }
 }
@@ -940,12 +953,13 @@
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">enum</span> <span class="ident">SerdeProcResult</span> {
     <span class="ident">SLIP10Generate</span>(<span class="ident">StatusMessage</span>),
-    <span class="ident">SLIP10Derive</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">hd</span>::<span class="ident">ChainCode</span><span class="op">&gt;</span>),
+    <span class="ident">SLIP10Derive</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">ChainCode</span><span class="op">&gt;</span>),
     <span class="ident">BIP39Recover</span>(<span class="ident">StatusMessage</span>),
     <span class="ident">BIP39Generate</span>(<span class="ident">StatusMessage</span>),
     <span class="ident">BIP39MnemonicSentence</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>),
     <span class="ident">Ed25519PublicKey</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>),
     <span class="ident">Ed25519Sign</span>(<span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>),
+    <span class="ident">Error</span>(<span class="ident">String</span>),
 }
 
 <span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">ProcResult</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">SerdeProcResult</span> {
@@ -970,6 +984,7 @@
                 };
                 <span class="ident">SerdeProcResult</span>::<span class="ident">Ed25519Sign</span>(<span class="ident">msg</span>)
             }
+            <span class="ident">ProcResult</span>::<span class="ident">Error</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">SerdeProcResult</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
         }
     }
 }
@@ -1478,7 +1493,8 @@
                             <span class="ident">sender</span>,
                         )
                     }
-                    <span class="ident">Procedure</span>::<span class="ident">BIP39MnemonicSentence</span> { .. } <span class="op">=</span><span class="op">&gt;</span> <span class="macro">todo</span><span class="macro">!</span>(),
+                    <span class="comment">// Not implemented yet.</span>
+                    <span class="ident">Procedure</span>::<span class="ident">BIP39MnemonicSentence</span> { .. } <span class="op">=</span><span class="op">&gt;</span> <span class="macro">unimplemented</span><span class="macro">!</span>(),
                     <span class="ident">Procedure</span>::<span class="ident">Ed25519PublicKey</span> { <span class="ident">private_key</span> } <span class="op">=</span><span class="op">&gt;</span> {
                         <span class="kw">let</span> (<span class="ident">vault_id</span>, <span class="ident">record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">private_key</span>, <span class="ident">ReadWrite</span>::<span class="ident">Read</span>);
                         <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">Ed25519PublicKey</span> { <span class="ident">vault_id</span>, <span class="ident">record_id</span> }, <span class="ident">sender</span>)

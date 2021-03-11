@@ -631,6 +631,35 @@
 <span id="628">628</span>
 <span id="629">629</span>
 <span id="630">630</span>
+<span id="631">631</span>
+<span id="632">632</span>
+<span id="633">633</span>
+<span id="634">634</span>
+<span id="635">635</span>
+<span id="636">636</span>
+<span id="637">637</span>
+<span id="638">638</span>
+<span id="639">639</span>
+<span id="640">640</span>
+<span id="641">641</span>
+<span id="642">642</span>
+<span id="643">643</span>
+<span id="644">644</span>
+<span id="645">645</span>
+<span id="646">646</span>
+<span id="647">647</span>
+<span id="648">648</span>
+<span id="649">649</span>
+<span id="650">650</span>
+<span id="651">651</span>
+<span id="652">652</span>
+<span id="653">653</span>
+<span id="654">654</span>
+<span id="655">655</span>
+<span id="656">656</span>
+<span id="657">657</span>
+<span id="658">658</span>
+<span id="659">659</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -643,22 +672,33 @@
 
 <span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::{<span class="ident">BoxProvider</span>, <span class="ident">Key</span>, <span class="ident">ReadResult</span>, <span class="ident">RecordHint</span>, <span class="ident">RecordId</span>};
 
+<span class="kw">use</span> <span class="ident">crypto</span>::{
+    <span class="ident">keys</span>::{
+        <span class="ident">bip39</span>,
+        <span class="ident">slip10</span>::{<span class="self">self</span>, <span class="ident">Chain</span>, <span class="ident">Curve</span>, <span class="ident">Seed</span>},
+    },
+    <span class="ident">signatures</span>::<span class="ident">ed25519</span>,
+    <span class="ident">utils</span>::<span class="ident">rand</span>::<span class="ident">fill</span>,
+};
+
 <span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">snapshot</span>;
 
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">actors</span>::{<span class="ident">ProcResult</span>, <span class="ident">SMsg</span>},
-    <span class="ident">bucket</span>::<span class="ident">Bucket</span>,
-    <span class="ident">client</span>::{<span class="ident">Client</span>, <span class="ident">ClientMsg</span>},
     <span class="ident">internals</span>::<span class="ident">Provider</span>,
-    <span class="ident">key_store</span>::<span class="ident">KeyStore</span>,
     <span class="ident">line_error</span>,
-    <span class="ident">utils</span>::{<span class="ident">hd</span>, <span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>, <span class="ident">VaultId</span>},
+    <span class="ident">state</span>::{
+        <span class="ident">bucket</span>::<span class="ident">Bucket</span>,
+        <span class="ident">client</span>::{<span class="ident">Client</span>, <span class="ident">ClientMsg</span>},
+        <span class="ident">key_store</span>::<span class="ident">KeyStore</span>,
+    },
+    <span class="ident">utils</span>::{<span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>, <span class="ident">VaultId</span>},
     <span class="ident">ClientId</span>,
 };
 
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">InternalActor</span><span class="op">&lt;</span><span class="ident">P</span>: <span class="ident">BoxProvider</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="lifetime">&#39;static</span><span class="op">&gt;</span> {
     <span class="ident">client_id</span>: <span class="ident">ClientId</span>,
-    <span class="ident">bucket</span>: <span class="ident">Bucket</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>,
+    <span class="ident">bucket</span>: <span class="ident">Bucket</span>,
     <span class="ident">keystore</span>: <span class="ident">KeyStore</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>,
 }
 
@@ -683,9 +723,9 @@
     ),
     <span class="ident">ReloadData</span>(
         <span class="ident">Box</span><span class="op">&lt;</span>(
-            <span class="kw">crate</span>::<span class="ident">client</span>::<span class="ident">Client</span>,
+            <span class="ident">Client</span>,
             <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-            <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">Key</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+            <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span><span class="op">&gt;</span>,
         )<span class="op">&gt;</span>,
         <span class="ident">StatusMessage</span>,
     ),
@@ -703,7 +743,7 @@
         <span class="ident">size_bytes</span>: <span class="ident">usize</span>,
     },
     <span class="ident">SLIP10DeriveFromSeed</span> {
-        <span class="ident">chain</span>: <span class="ident">hd</span>::<span class="ident">Chain</span>,
+        <span class="ident">chain</span>: <span class="ident">Chain</span>,
         <span class="ident">seed_vault_id</span>: <span class="ident">VaultId</span>,
         <span class="ident">seed_record_id</span>: <span class="ident">RecordId</span>,
         <span class="ident">key_vault_id</span>: <span class="ident">VaultId</span>,
@@ -711,7 +751,7 @@
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
     },
     <span class="ident">SLIP10DeriveFromKey</span> {
-        <span class="ident">chain</span>: <span class="ident">hd</span>::<span class="ident">Chain</span>,
+        <span class="ident">chain</span>: <span class="ident">Chain</span>,
         <span class="ident">parent_vault_id</span>: <span class="ident">VaultId</span>,
         <span class="ident">parent_record_id</span>: <span class="ident">RecordId</span>,
         <span class="ident">child_vault_id</span>: <span class="ident">VaultId</span>,
@@ -787,7 +827,7 @@
             <span class="ident">InternalMsg</span>::<span class="ident">CreateVault</span>(<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">create_key</span>(<span class="ident">vid</span>);
 
-                <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">create_and_init_vault</span>(<span class="ident">key</span>, <span class="ident">rid</span>);
+                <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">create_and_init_vault</span>(<span class="ident">vid</span>, <span class="ident">key</span>, <span class="ident">rid</span>);
 
                 <span class="kw">let</span> <span class="ident">cstr</span>: <span class="ident">String</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">client_id</span>.<span class="ident">into</span>();
 
@@ -803,7 +843,7 @@
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/{}/&quot;</span>, <span class="ident">cstr</span>)).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">vid</span>) {
-                    <span class="kw">let</span> <span class="ident">plain</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">read_data</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">rid</span>);
+                    <span class="kw">let</span> <span class="ident">plain</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">read_data</span>(<span class="ident">vid</span>, <span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">rid</span>);
 
                     <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vid</span>, <span class="ident">key</span>);
 
@@ -826,7 +866,7 @@
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/{}/&quot;</span>, <span class="ident">cstr</span>)).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">vid</span>) {
-                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">write_payload</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">rid</span>, <span class="ident">payload</span>, <span class="ident">hint</span>);
+                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">write_payload</span>(<span class="ident">vid</span>, <span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">rid</span>, <span class="ident">payload</span>, <span class="ident">hint</span>);
 
                     <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vid</span>, <span class="ident">key</span>);
 
@@ -843,41 +883,12 @@
                     );
                 }
             }
-            <span class="comment">// InternalMsg::WriteToStore { key, payload, lifetime } =&gt; {</span>
-            <span class="comment">//     let cstr: String = self.client_id.into();</span>
-            <span class="comment">//     let client = ctx.select(&amp;format!(&quot;/user/{}/&quot;, cstr)).expect(line_error!());</span>
 
-            <span class="comment">//     self.bucket.write_to_store(key.into(), payload, lifetime);</span>
-
-            <span class="comment">//     client.try_tell(</span>
-            <span class="comment">//         ClientMsg::InternalResults(InternalResults::ReturnWriteVault(StatusMessage::OK)),</span>
-            <span class="comment">//         sender,</span>
-            <span class="comment">//     );</span>
-            <span class="comment">// }</span>
-            <span class="comment">// InternalMsg::ReadFromStore { key } =&gt; {</span>
-            <span class="comment">//     let cstr: String = self.client_id.into();</span>
-            <span class="comment">//     let client = ctx.select(&amp;format!(&quot;/user/{}/&quot;, cstr)).expect(line_error!());</span>
-
-            <span class="comment">//     if let Some(payload) = self.bucket.read_from_store(key.into()) {</span>
-            <span class="comment">//         client.try_tell(</span>
-            <span class="comment">//             ClientMsg::InternalResults(InternalResults::ReturnReadStore(payload, StatusMessage::OK)),</span>
-            <span class="comment">//             sender,</span>
-            <span class="comment">//         );</span>
-            <span class="comment">//     } else {</span>
-            <span class="comment">//         client.try_tell(</span>
-            <span class="comment">//             ClientMsg::InternalResults(InternalResults::ReturnReadStore(</span>
-            <span class="comment">//                 vec![],</span>
-            <span class="comment">//                 StatusMessage::Error(&quot;Unable to find that data&quot;.into()),</span>
-            <span class="comment">//             )),</span>
-            <span class="comment">//             sender,</span>
-            <span class="comment">//         );</span>
-            <span class="comment">//     }</span>
-            <span class="comment">// }</span>
             <span class="ident">InternalMsg</span>::<span class="ident">InitRecord</span>(<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">cstr</span>: <span class="ident">String</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">client_id</span>.<span class="ident">into</span>();
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/{}/&quot;</span>, <span class="ident">cstr</span>)).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">vid</span>) {
-                    <span class="kw">let</span> <span class="ident">_rid</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">init_record</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">rid</span>);
+                    <span class="kw">let</span> <span class="ident">_rid</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">init_record</span>(<span class="ident">vid</span>, <span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">rid</span>);
 
                     <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vid</span>, <span class="ident">key</span>);
 
@@ -891,7 +902,7 @@
                 <span class="kw">let</span> <span class="ident">cstr</span>: <span class="ident">String</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">client_id</span>.<span class="ident">into</span>();
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/{}/&quot;</span>, <span class="ident">cstr</span>)).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">vid</span>) {
-                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">revoke_data</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">rid</span>);
+                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">revoke_data</span>(<span class="ident">vid</span>, <span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">rid</span>);
 
                     <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vid</span>, <span class="ident">key</span>);
 
@@ -912,7 +923,7 @@
                 <span class="kw">let</span> <span class="ident">cstr</span>: <span class="ident">String</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">client_id</span>.<span class="ident">into</span>();
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/{}/&quot;</span>, <span class="ident">cstr</span>)).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">vid</span>) {
-                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">garbage_collect</span>(<span class="ident">key</span>.<span class="ident">clone</span>());
+                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">garbage_collect</span>(<span class="ident">vid</span>, <span class="ident">key</span>.<span class="ident">clone</span>());
 
                     <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vid</span>, <span class="ident">key</span>);
 
@@ -933,7 +944,7 @@
                 <span class="kw">let</span> <span class="ident">cstr</span>: <span class="ident">String</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">client_id</span>.<span class="ident">into</span>();
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/{}/&quot;</span>, <span class="ident">cstr</span>)).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">vid</span>) {
-                    <span class="kw">let</span> <span class="ident">ids</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">list_ids</span>(<span class="ident">key</span>.<span class="ident">clone</span>());
+                    <span class="kw">let</span> <span class="ident">ids</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">list_ids</span>(<span class="ident">vid</span>, <span class="ident">key</span>.<span class="ident">clone</span>());
 
                     <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vid</span>, <span class="ident">key</span>);
 
@@ -1011,14 +1022,14 @@
 
                 <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>());
 
-                <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">record_exists_in_vault</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>) {
-                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">create_and_init_vault</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>);
+                <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">record_exists_in_vault</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>) {
+                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">create_and_init_vault</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>);
                 }
 
                 <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">seed</span> <span class="op">=</span> <span class="macro">vec</span><span class="macro">!</span>[<span class="number">0u8</span>; <span class="ident">size_bytes</span>];
-                <span class="ident">crypto</span>::<span class="ident">rand</span>::<span class="ident">fill</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">seed</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+                <span class="ident">fill</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">seed</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
-                <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">write_payload</span>(<span class="ident">key</span>, <span class="ident">record_id</span>, <span class="ident">seed</span>.<span class="ident">to_vec</span>(), <span class="ident">hint</span>);
+                <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">write_payload</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>, <span class="ident">record_id</span>, <span class="ident">seed</span>.<span class="ident">to_vec</span>(), <span class="ident">hint</span>);
 
                 <span class="ident">client</span>.<span class="ident">try_tell</span>(
                     <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">ProcResult</span>::<span class="ident">SLIP10Generate</span>(
@@ -1040,9 +1051,11 @@
 
                 <span class="kw">match</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">seed_vault_id</span>) {
                     <span class="prelude-val">Some</span>(<span class="ident">seed_key</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">let</span> <span class="ident">plain</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">read_data</span>(<span class="ident">seed_key</span>.<span class="ident">clone</span>(), <span class="ident">seed_record_id</span>);
+                        <span class="kw">let</span> <span class="ident">plain</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">read_data</span>(<span class="ident">seed_vault_id</span>, <span class="ident">seed_key</span>.<span class="ident">clone</span>(), <span class="ident">seed_record_id</span>);
                         <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">seed_vault_id</span>, <span class="ident">seed_key</span>);
-                        <span class="kw">let</span> <span class="ident">dk</span> <span class="op">=</span> <span class="ident">hd</span>::<span class="ident">Seed</span>::<span class="ident">from_bytes</span>(<span class="kw-2">&amp;</span><span class="ident">plain</span>).<span class="ident">derive</span>(<span class="kw-2">&amp;</span><span class="ident">chain</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+                        <span class="kw">let</span> <span class="ident">dk</span> <span class="op">=</span> <span class="ident">Seed</span>::<span class="ident">from_bytes</span>(<span class="kw-2">&amp;</span><span class="ident">plain</span>)
+                            .<span class="ident">derive</span>(<span class="ident">Curve</span>::<span class="ident">Ed25519</span>, <span class="kw-2">&amp;</span><span class="ident">chain</span>)
+                            .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
                         <span class="kw">let</span> <span class="ident">dk_key</span> <span class="op">=</span> <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">vault_exists</span>(<span class="ident">key_vault_id</span>) {
                             <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">create_key</span>(<span class="ident">key_vault_id</span>)
@@ -1051,11 +1064,16 @@
                         };
                         <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">key_vault_id</span>, <span class="ident">dk_key</span>.<span class="ident">clone</span>());
 
-                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">record_exists_in_vault</span>(<span class="ident">dk_key</span>.<span class="ident">clone</span>(), <span class="ident">key_record_id</span>) {
-                            <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">create_and_init_vault</span>(<span class="ident">dk_key</span>.<span class="ident">clone</span>(), <span class="ident">key_record_id</span>);
+                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>
+                            .<span class="ident">bucket</span>
+                            .<span class="ident">record_exists_in_vault</span>(<span class="ident">key_vault_id</span>, <span class="ident">dk_key</span>.<span class="ident">clone</span>(), <span class="ident">key_record_id</span>)
+                        {
+                            <span class="self">self</span>.<span class="ident">bucket</span>
+                                .<span class="ident">create_and_init_vault</span>(<span class="ident">key_vault_id</span>, <span class="ident">dk_key</span>.<span class="ident">clone</span>(), <span class="ident">key_record_id</span>);
                         }
 
-                        <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">write_payload</span>(<span class="ident">dk_key</span>, <span class="ident">key_record_id</span>, <span class="ident">dk</span>.<span class="ident">into</span>(), <span class="ident">hint</span>);
+                        <span class="self">self</span>.<span class="ident">bucket</span>
+                            .<span class="ident">write_payload</span>(<span class="ident">key_vault_id</span>, <span class="ident">dk_key</span>, <span class="ident">key_record_id</span>, <span class="ident">dk</span>.<span class="ident">into</span>(), <span class="ident">hint</span>);
 
                         <span class="ident">client</span>.<span class="ident">try_tell</span>(
                             <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(
@@ -1064,7 +1082,12 @@
                             <span class="ident">sender</span>,
                         );
                     }
-                    <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">todo</span><span class="macro">!</span>(<span class="string">&quot;return error message&quot;</span>),
+                    <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">client</span>.<span class="ident">try_tell</span>(
+                        <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">ProcResult</span>::<span class="ident">SLIP10Derive</span>(
+                            <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to access vault&quot;</span>.<span class="ident">into</span>()),
+                        ))),
+                        <span class="ident">sender</span>,
+                    ),
                 }
             }
             <span class="ident">InternalMsg</span>::<span class="ident">SLIP10DeriveFromKey</span> {
@@ -1080,10 +1103,12 @@
 
                 <span class="kw">match</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">parent_vault_id</span>) {
                     <span class="prelude-val">Some</span>(<span class="ident">parent_key</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">let</span> <span class="ident">parent</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">read_data</span>(<span class="ident">parent_key</span>.<span class="ident">clone</span>(), <span class="ident">parent_record_id</span>);
+                        <span class="kw">let</span> <span class="ident">parent</span> <span class="op">=</span> <span class="self">self</span>
+                            .<span class="ident">bucket</span>
+                            .<span class="ident">read_data</span>(<span class="ident">parent_vault_id</span>, <span class="ident">parent_key</span>.<span class="ident">clone</span>(), <span class="ident">parent_record_id</span>);
                         <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">parent_vault_id</span>, <span class="ident">parent_key</span>);
 
-                        <span class="kw">let</span> <span class="ident">parent</span> <span class="op">=</span> <span class="ident">hd</span>::<span class="ident">Key</span>::<span class="ident">try_from</span>(<span class="ident">parent</span>.<span class="ident">as_slice</span>()).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+                        <span class="kw">let</span> <span class="ident">parent</span> <span class="op">=</span> <span class="ident">slip10</span>::<span class="ident">Key</span>::<span class="ident">try_from</span>(<span class="ident">parent</span>.<span class="ident">as_slice</span>()).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
                         <span class="kw">let</span> <span class="ident">dk</span> <span class="op">=</span> <span class="ident">parent</span>.<span class="ident">derive</span>(<span class="kw-2">&amp;</span><span class="ident">chain</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
                         <span class="kw">let</span> <span class="ident">child_key</span> <span class="op">=</span> <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">vault_exists</span>(<span class="ident">child_vault_id</span>) {
@@ -1094,11 +1119,16 @@
 
                         <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">child_vault_id</span>, <span class="ident">child_key</span>.<span class="ident">clone</span>());
 
-                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">record_exists_in_vault</span>(<span class="ident">child_key</span>.<span class="ident">clone</span>(), <span class="ident">child_record_id</span>) {
-                            <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">create_and_init_vault</span>(<span class="ident">child_key</span>.<span class="ident">clone</span>(), <span class="ident">child_record_id</span>);
+                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>
+                            .<span class="ident">bucket</span>
+                            .<span class="ident">record_exists_in_vault</span>(<span class="ident">child_vault_id</span>, <span class="ident">child_key</span>.<span class="ident">clone</span>(), <span class="ident">child_record_id</span>)
+                        {
+                            <span class="self">self</span>.<span class="ident">bucket</span>
+                                .<span class="ident">create_and_init_vault</span>(<span class="ident">child_vault_id</span>, <span class="ident">child_key</span>.<span class="ident">clone</span>(), <span class="ident">child_record_id</span>);
                         }
 
-                        <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">write_payload</span>(<span class="ident">child_key</span>, <span class="ident">child_record_id</span>, <span class="ident">dk</span>.<span class="ident">into</span>(), <span class="ident">hint</span>);
+                        <span class="self">self</span>.<span class="ident">bucket</span>
+                            .<span class="ident">write_payload</span>(<span class="ident">child_vault_id</span>, <span class="ident">child_key</span>, <span class="ident">child_record_id</span>, <span class="ident">dk</span>.<span class="ident">into</span>(), <span class="ident">hint</span>);
 
                         <span class="ident">client</span>.<span class="ident">try_tell</span>(
                             <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(
@@ -1107,7 +1137,12 @@
                             <span class="ident">sender</span>,
                         );
                     }
-                    <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">todo</span><span class="macro">!</span>(<span class="string">&quot;return error message&quot;</span>),
+                    <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">client</span>.<span class="ident">try_tell</span>(
+                        <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">ProcResult</span>::<span class="ident">SLIP10Derive</span>(
+                            <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to access vault&quot;</span>.<span class="ident">into</span>()),
+                        ))),
+                        <span class="ident">sender</span>,
+                    ),
                 }
             }
             <span class="ident">InternalMsg</span>::<span class="ident">BIP39Generate</span> {
@@ -1117,16 +1152,16 @@
                 <span class="ident">hint</span>,
             } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">entropy</span> <span class="op">=</span> [<span class="number">0u8</span>; <span class="number">32</span>];
-                <span class="ident">crypto</span>::<span class="ident">rand</span>::<span class="ident">fill</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">entropy</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+                <span class="ident">fill</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">entropy</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
-                <span class="kw">let</span> <span class="ident">mnemonic</span> <span class="op">=</span> <span class="ident">crypto</span>::<span class="ident">bip39</span>::<span class="ident">wordlist</span>::<span class="ident">encode</span>(
+                <span class="kw">let</span> <span class="ident">mnemonic</span> <span class="op">=</span> <span class="ident">bip39</span>::<span class="ident">wordlist</span>::<span class="ident">encode</span>(
                     <span class="kw-2">&amp;</span><span class="ident">entropy</span>,
-                    <span class="kw-2">&amp;</span><span class="ident">crypto</span>::<span class="ident">bip39</span>::<span class="ident">wordlist</span>::<span class="ident">ENGLISH</span>, <span class="comment">// TODO: make this user configurable</span>
+                    <span class="kw-2">&amp;</span><span class="ident">bip39</span>::<span class="ident">wordlist</span>::<span class="ident">ENGLISH</span>, <span class="comment">// TODO: make this user configurable</span>
                 )
                 .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
                 <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">seed</span> <span class="op">=</span> [<span class="number">0u8</span>; <span class="number">64</span>];
-                <span class="ident">crypto</span>::<span class="ident">bip39</span>::<span class="ident">mnemonic_to_seed</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic</span>, <span class="kw-2">&amp;</span><span class="ident">passphrase</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">seed</span>);
+                <span class="ident">bip39</span>::<span class="ident">mnemonic_to_seed</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic</span>, <span class="kw-2">&amp;</span><span class="ident">passphrase</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">seed</span>);
 
                 <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">vault_exists</span>(<span class="ident">vault_id</span>) {
                     <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">create_key</span>(<span class="ident">vault_id</span>)
@@ -1136,13 +1171,13 @@
 
                 <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>());
 
-                <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">record_exists_in_vault</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>) {
-                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">create_and_init_vault</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>);
+                <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">record_exists_in_vault</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>) {
+                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">create_and_init_vault</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>);
                 }
 
                 <span class="comment">// TODO: also store the mnemonic to be able to export it in the</span>
                 <span class="comment">// BIP39MnemonicSentence message</span>
-                <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">write_payload</span>(<span class="ident">key</span>, <span class="ident">record_id</span>, <span class="ident">seed</span>.<span class="ident">to_vec</span>(), <span class="ident">hint</span>);
+                <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">write_payload</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>, <span class="ident">record_id</span>, <span class="ident">seed</span>.<span class="ident">to_vec</span>(), <span class="ident">hint</span>);
 
                 <span class="kw">let</span> <span class="ident">cstr</span>: <span class="ident">String</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">client_id</span>.<span class="ident">into</span>();
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/{}/&quot;</span>, <span class="ident">cstr</span>)).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
@@ -1168,16 +1203,16 @@
 
                 <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>());
 
-                <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">record_exists_in_vault</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>) {
-                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">create_and_init_vault</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>);
+                <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">record_exists_in_vault</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>) {
+                    <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">create_and_init_vault</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">record_id</span>);
                 }
 
                 <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">seed</span> <span class="op">=</span> [<span class="number">0u8</span>; <span class="number">64</span>];
-                <span class="ident">crypto</span>::<span class="ident">bip39</span>::<span class="ident">mnemonic_to_seed</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic</span>, <span class="kw-2">&amp;</span><span class="ident">passphrase</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">seed</span>);
+                <span class="ident">bip39</span>::<span class="ident">mnemonic_to_seed</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic</span>, <span class="kw-2">&amp;</span><span class="ident">passphrase</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">seed</span>);
 
                 <span class="comment">// TODO: also store the mnemonic to be able to export it in the</span>
                 <span class="comment">// BIP39MnemonicSentence message</span>
-                <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">write_payload</span>(<span class="ident">key</span>, <span class="ident">record_id</span>, <span class="ident">seed</span>.<span class="ident">to_vec</span>(), <span class="ident">hint</span>);
+                <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">write_payload</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>, <span class="ident">record_id</span>, <span class="ident">seed</span>.<span class="ident">to_vec</span>(), <span class="ident">hint</span>);
 
                 <span class="kw">let</span> <span class="ident">cstr</span>: <span class="ident">String</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">client_id</span>.<span class="ident">into</span>();
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/{}/&quot;</span>, <span class="ident">cstr</span>)).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
@@ -1189,62 +1224,85 @@
                 );
             }
             <span class="ident">InternalMsg</span>::<span class="ident">Ed25519PublicKey</span> { <span class="ident">vault_id</span>, <span class="ident">record_id</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">vault_id</span>) {
-                    <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">key</span>,
-                    <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">todo</span><span class="macro">!</span>(<span class="string">&quot;return error message&quot;</span>),
-                };
-                <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>());
-
-                <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">raw</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">read_data</span>(<span class="ident">key</span>, <span class="ident">record_id</span>);
-                <span class="kw">if</span> <span class="ident">raw</span>.<span class="ident">len</span>() <span class="op">&lt;</span> <span class="number">32</span> {
-                    <span class="macro">todo</span><span class="macro">!</span>(<span class="string">&quot;return error message: insufficient bytes&quot;</span>)
-                }
-                <span class="ident">raw</span>.<span class="ident">truncate</span>(<span class="number">32</span>);
-                <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">bs</span> <span class="op">=</span> [<span class="number">0</span>; <span class="number">32</span>];
-                <span class="ident">bs</span>.<span class="ident">copy_from_slice</span>(<span class="kw-2">&amp;</span><span class="ident">raw</span>);
-                <span class="kw">let</span> <span class="ident">sk</span> <span class="op">=</span> <span class="ident">crypto</span>::<span class="ident">ed25519</span>::<span class="ident">SecretKey</span>::<span class="ident">from_le_bytes</span>(<span class="ident">bs</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
-                <span class="kw">let</span> <span class="ident">pk</span> <span class="op">=</span> <span class="ident">sk</span>.<span class="ident">public_key</span>();
-
                 <span class="kw">let</span> <span class="ident">cstr</span>: <span class="ident">String</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">client_id</span>.<span class="ident">into</span>();
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/{}/&quot;</span>, <span class="ident">cstr</span>)).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
-                <span class="ident">client</span>.<span class="ident">try_tell</span>(
-                    <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">ProcResult</span>::<span class="ident">Ed25519PublicKey</span>(
-                        <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">pk</span>.<span class="ident">to_compressed_bytes</span>()),
-                    ))),
-                    <span class="ident">sender</span>,
-                );
+
+                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">vault_id</span>) {
+                    <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>.<span class="ident">clone</span>());
+
+                    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">raw</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">read_data</span>(<span class="ident">vault_id</span>, <span class="ident">key</span>, <span class="ident">record_id</span>);
+                    <span class="kw">if</span> <span class="ident">raw</span>.<span class="ident">len</span>() <span class="op">&lt;</span> <span class="number">32</span> {
+                        <span class="ident">client</span>.<span class="ident">try_tell</span>(
+                            <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(
+                                <span class="ident">ProcResult</span>::<span class="ident">Ed25519PublicKey</span>(<span class="ident">ResultMessage</span>::<span class="ident">Error</span>(
+                                    <span class="string">&quot;Incorrect number of key bytes&quot;</span>.<span class="ident">into</span>(),
+                                )),
+                            )),
+                            <span class="ident">sender</span>.<span class="ident">clone</span>(),
+                        );
+                    }
+                    <span class="ident">raw</span>.<span class="ident">truncate</span>(<span class="number">32</span>);
+                    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">bs</span> <span class="op">=</span> [<span class="number">0</span>; <span class="number">32</span>];
+                    <span class="ident">bs</span>.<span class="ident">copy_from_slice</span>(<span class="kw-2">&amp;</span><span class="ident">raw</span>);
+                    <span class="kw">let</span> <span class="ident">sk</span> <span class="op">=</span> <span class="ident">ed25519</span>::<span class="ident">SecretKey</span>::<span class="ident">from_le_bytes</span>(<span class="ident">bs</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+                    <span class="kw">let</span> <span class="ident">pk</span> <span class="op">=</span> <span class="ident">sk</span>.<span class="ident">public_key</span>();
+
+                    <span class="ident">client</span>.<span class="ident">try_tell</span>(
+                        <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(
+                            <span class="ident">ProcResult</span>::<span class="ident">Ed25519PublicKey</span>(<span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">pk</span>.<span class="ident">to_compressed_bytes</span>())),
+                        )),
+                        <span class="ident">sender</span>,
+                    );
+                } <span class="kw">else</span> {
+                    <span class="ident">client</span>.<span class="ident">try_tell</span>(
+                        <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(
+                            <span class="ident">ProcResult</span>::<span class="ident">Ed25519PublicKey</span>(<span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to access vault&quot;</span>.<span class="ident">into</span>())),
+                        )),
+                        <span class="ident">sender</span>,
+                    )
+                }
             }
             <span class="ident">InternalMsg</span>::<span class="ident">Ed25519Sign</span> {
                 <span class="ident">vault_id</span>,
                 <span class="ident">record_id</span>,
                 <span class="ident">msg</span>,
             } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">key_key</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">vault_id</span>) {
-                    <span class="prelude-val">Some</span>(<span class="ident">key_key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">key_key</span>,
-                    <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">todo</span><span class="macro">!</span>(<span class="string">&quot;return error message&quot;</span>),
-                };
-                <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vault_id</span>, <span class="ident">key_key</span>.<span class="ident">clone</span>());
-
-                <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">raw</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">read_data</span>(<span class="ident">key_key</span>, <span class="ident">record_id</span>);
-                <span class="comment">// NB we truncate here to accomodate SLIP10/BIP32 keys without explicit conversion</span>
-                <span class="kw">if</span> <span class="ident">raw</span>.<span class="ident">len</span>() <span class="op">&lt;</span><span class="op">=</span> <span class="number">32</span> {
-                    <span class="macro">todo</span><span class="macro">!</span>(<span class="string">&quot;return error message: incorrect number of key bytes&quot;</span>)
-                }
-                <span class="ident">raw</span>.<span class="ident">truncate</span>(<span class="number">32</span>);
-                <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">bs</span> <span class="op">=</span> [<span class="number">0</span>; <span class="number">32</span>];
-                <span class="ident">bs</span>.<span class="ident">copy_from_slice</span>(<span class="kw-2">&amp;</span><span class="ident">raw</span>);
-                <span class="kw">let</span> <span class="ident">sk</span> <span class="op">=</span> <span class="ident">crypto</span>::<span class="ident">ed25519</span>::<span class="ident">SecretKey</span>::<span class="ident">from_le_bytes</span>(<span class="ident">bs</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
-
-                <span class="kw">let</span> <span class="ident">sig</span> <span class="op">=</span> <span class="ident">sk</span>.<span class="ident">sign</span>(<span class="kw-2">&amp;</span><span class="ident">msg</span>);
-
                 <span class="kw">let</span> <span class="ident">cstr</span>: <span class="ident">String</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">client_id</span>.<span class="ident">into</span>();
                 <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/{}/&quot;</span>, <span class="ident">cstr</span>)).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
-                <span class="ident">client</span>.<span class="ident">try_tell</span>(
-                    <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">ProcResult</span>::<span class="ident">Ed25519Sign</span>(
-                        <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">sig</span>.<span class="ident">to_bytes</span>()),
-                    ))),
-                    <span class="ident">sender</span>,
-                );
+                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">pkey</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">get_key</span>(<span class="ident">vault_id</span>) {
+                    <span class="self">self</span>.<span class="ident">keystore</span>.<span class="ident">insert_key</span>(<span class="ident">vault_id</span>, <span class="ident">pkey</span>.<span class="ident">clone</span>());
+
+                    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">raw</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bucket</span>.<span class="ident">read_data</span>(<span class="ident">vault_id</span>, <span class="ident">pkey</span>, <span class="ident">record_id</span>);
+                    <span class="comment">// NB we truncate here to accomodate SLIP10/BIP32 keys without explicit conversion</span>
+                    <span class="kw">if</span> <span class="ident">raw</span>.<span class="ident">len</span>() <span class="op">&lt;</span><span class="op">=</span> <span class="number">32</span> {
+                        <span class="ident">client</span>.<span class="ident">try_tell</span>(
+                            <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">ProcResult</span>::<span class="ident">Ed25519Sign</span>(
+                                <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;incorrect number of key bytes&quot;</span>.<span class="ident">into</span>()),
+                            ))),
+                            <span class="ident">sender</span>.<span class="ident">clone</span>(),
+                        );
+                    }
+                    <span class="ident">raw</span>.<span class="ident">truncate</span>(<span class="number">32</span>);
+                    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">bs</span> <span class="op">=</span> [<span class="number">0</span>; <span class="number">32</span>];
+                    <span class="ident">bs</span>.<span class="ident">copy_from_slice</span>(<span class="kw-2">&amp;</span><span class="ident">raw</span>);
+                    <span class="kw">let</span> <span class="ident">sk</span> <span class="op">=</span> <span class="ident">ed25519</span>::<span class="ident">SecretKey</span>::<span class="ident">from_le_bytes</span>(<span class="ident">bs</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+
+                    <span class="kw">let</span> <span class="ident">sig</span> <span class="op">=</span> <span class="ident">sk</span>.<span class="ident">sign</span>(<span class="kw-2">&amp;</span><span class="ident">msg</span>);
+
+                    <span class="ident">client</span>.<span class="ident">try_tell</span>(
+                        <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">ProcResult</span>::<span class="ident">Ed25519Sign</span>(
+                            <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">sig</span>.<span class="ident">to_bytes</span>()),
+                        ))),
+                        <span class="ident">sender</span>,
+                    );
+                } <span class="kw">else</span> {
+                    <span class="ident">client</span>.<span class="ident">try_tell</span>(
+                        <span class="ident">ClientMsg</span>::<span class="ident">InternalResults</span>(<span class="ident">InternalResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">ProcResult</span>::<span class="ident">Ed25519Sign</span>(
+                            <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to access vault&quot;</span>.<span class="ident">into</span>()),
+                        ))),
+                        <span class="ident">sender</span>,
+                    )
+                }
             }
             <span class="ident">InternalMsg</span>::<span class="ident">FillSnapshot</span> { <span class="ident">data</span>, <span class="ident">id</span> } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">snapshot</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="string">&quot;/user/snapshot/&quot;</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());

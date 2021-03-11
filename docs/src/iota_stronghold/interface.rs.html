@@ -926,36 +926,6 @@
 <span id="923">923</span>
 <span id="924">924</span>
 <span id="925">925</span>
-<span id="926">926</span>
-<span id="927">927</span>
-<span id="928">928</span>
-<span id="929">929</span>
-<span id="930">930</span>
-<span id="931">931</span>
-<span id="932">932</span>
-<span id="933">933</span>
-<span id="934">934</span>
-<span id="935">935</span>
-<span id="936">936</span>
-<span id="937">937</span>
-<span id="938">938</span>
-<span id="939">939</span>
-<span id="940">940</span>
-<span id="941">941</span>
-<span id="942">942</span>
-<span id="943">943</span>
-<span id="944">944</span>
-<span id="945">945</span>
-<span id="946">946</span>
-<span id="947">947</span>
-<span id="948">948</span>
-<span id="949">949</span>
-<span id="950">950</span>
-<span id="951">951</span>
-<span id="952">952</span>
-<span id="953">953</span>
-<span id="954">954</span>
-<span id="955">955</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -972,9 +942,11 @@
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">utils</span>::<span class="ident">ResultMessage</span>;
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">actors</span>::{<span class="ident">InternalActor</span>, <span class="ident">InternalMsg</span>, <span class="ident">ProcResult</span>, <span class="ident">Procedure</span>, <span class="ident">SHRequest</span>, <span class="ident">SHResults</span>},
-    <span class="ident">client</span>::{<span class="ident">Client</span>, <span class="ident">ClientMsg</span>},
     <span class="ident">line_error</span>,
-    <span class="ident">snapshot</span>::<span class="ident">Snapshot</span>,
+    <span class="ident">state</span>::{
+        <span class="ident">client</span>::{<span class="ident">Client</span>, <span class="ident">ClientMsg</span>},
+        <span class="ident">snapshot</span>::<span class="ident">Snapshot</span>,
+    },
     <span class="ident">utils</span>::{<span class="ident">LoadFromPath</span>, <span class="ident">StatusMessage</span>, <span class="ident">StrongholdFlags</span>, <span class="ident">VaultFlags</span>},
     <span class="ident">ClientId</span>, <span class="ident">Location</span>, <span class="ident">Provider</span>,
 };
@@ -1216,22 +1188,6 @@
         <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to write the data&quot;</span>.<span class="ident">into</span>())
     }
 
-    <span class="doccomment">/// A test function for reading data from a vault.</span>
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_secret</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">current_target</span>;
-
-        <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
-
-        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromVault</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
-
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnReadVault</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
-            (<span class="prelude-val">Some</span>(<span class="ident">payload</span>), <span class="ident">status</span>)
-        } <span class="kw">else</span> {
-            (<span class="prelude-val">None</span>, <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to read data&quot;</span>.<span class="ident">into</span>()))
-        }
-    }
-
     <span class="doccomment">/// Writes data into an insecure cache.  This method, accepts a `Location`, a `Vec&lt;u8&gt;` and an optional `Duration`.</span>
     <span class="doccomment">/// The lifetime allows the data to be deleted after the specified duration has passed.  If not lifetime is</span>
     <span class="doccomment">/// specified, the data will persist until it is manually deleted or over-written. Note: One store is mapped to</span>
@@ -1384,7 +1340,7 @@
         <span class="kw">let</span> <span class="ident">shr</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ControlRequest</span>(<span class="ident">control_request</span>)).<span class="kw">await</span>;
         <span class="kw">match</span> <span class="ident">shr</span> {
             <span class="ident">SHResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">pr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">pr</span>,
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">todo</span><span class="macro">!</span>(<span class="string">&quot;return a proper error: unexpected result&quot;</span>),
+            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProcResult</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication event&quot;</span>.<span class="ident">into</span>()),
         }
     }
 
@@ -1442,39 +1398,6 @@
             <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to find client actor&quot;</span>.<span class="ident">into</span>())
         }
     }
-
-    <span class="comment">// pub async fn write_snapshot(</span>
-    <span class="comment">//     &amp;self,</span>
-    <span class="comment">//     _client_path: Vec&lt;u8&gt;,</span>
-    <span class="comment">//     _keydata: Vec&lt;u8&gt;,</span>
-    <span class="comment">//     _filename: Option&lt;String&gt;,</span>
-    <span class="comment">//     _path: Option&lt;PathBuf&gt;,</span>
-    <span class="comment">//     _duration: Option&lt;Duration&gt;,</span>
-    <span class="comment">// ) -&gt; StatusMessage {</span>
-    <span class="comment">//     // let data = self.derive_data.get(&amp;client_path).expect(line_error!());</span>
-    <span class="comment">//     // let client_id = ClientId::load_from_path(&amp;data.as_ref(), &amp;client_path).expect(line_error!());</span>
-
-    <span class="comment">//     // let idx = self.client_ids.iter().position(|id| id == &amp;client_id);</span>
-    <span class="comment">//     // if let Some(idx) = idx {</span>
-    <span class="comment">//     //     let client = &amp;self.actors[idx];</span>
-
-    <span class="comment">//     //     let mut key: [u8; 32] = [0u8; 32];</span>
-
-    <span class="comment">//     //     key.copy_from_slice(&amp;keydata);</span>
-
-    <span class="comment">//     //     if let SHResults::ReturnWriteSnap(status) =</span>
-    <span class="comment">//     //         ask(&amp;self.system, client, SHRequest::WriteSnapshot { key, filename, path }).await</span>
-    <span class="comment">//     //     {</span>
-    <span class="comment">//     //         status</span>
-    <span class="comment">//     //     } else {</span>
-    <span class="comment">//     //         StatusMessage::Error(&quot;Unable to read snapshot&quot;.into())</span>
-    <span class="comment">//     //     }</span>
-    <span class="comment">//     // } else {</span>
-    <span class="comment">//     //     StatusMessage::Error(&quot;Unable to find client actor&quot;.into())</span>
-    <span class="comment">//     // }</span>
-
-    <span class="comment">//     unimplemented!()</span>
-    <span class="comment">// }</span>
 
     <span class="doccomment">/// Writes the entire state of the `Stronghold` into a snapshot.  All Actors and their associated data will be</span>
     <span class="doccomment">/// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be</span>
@@ -1557,6 +1480,7 @@
         }
     }
 
+    <span class="doccomment">/// Unimplemented until Policies are implemented.</span>
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>
     <span class="kw">fn</span> <span class="ident">check_config_flags</span>() {
         <span class="macro">unimplemented</span><span class="macro">!</span>()
@@ -1910,6 +1834,22 @@
             <span class="ident">CommunicationRequest</span>::<span class="ident">RequestMsg</span> { <span class="ident">peer_id</span>, <span class="ident">request</span> },
         )
         .<span class="kw">await</span>
+    }
+
+    <span class="doccomment">/// A test function for reading data from a vault.</span>
+    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_secret</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
+        <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">current_target</span>;
+
+        <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
+
+        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromVault</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
+
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnReadVault</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
+            (<span class="prelude-val">Some</span>(<span class="ident">payload</span>), <span class="ident">status</span>)
+        } <span class="kw">else</span> {
+            (<span class="prelude-val">None</span>, <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to read data&quot;</span>.<span class="ident">into</span>()))
+        }
     }
 }
 </pre></div>

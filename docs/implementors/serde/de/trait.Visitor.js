@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["runtime"] = [{"text":"impl&lt;'de, T:&nbsp;Bytes&gt; Visitor&lt;'de&gt; for GuardedVecVisitor&lt;T&gt; <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;T: Deserialize&lt;'de&gt;,&nbsp;</span>","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["OsRandomErr","Rust Bindings to major C random generator headers.  A library that creates secure random number generators."],["OsRng","an interface for the OS's secure RNG"]]});

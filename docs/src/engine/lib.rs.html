@@ -27,10 +27,6 @@
 <span id="24">24</span>
 <span id="25">25</span>
 <span id="26">26</span>
-<span id="27">27</span>
-<span id="28">28</span>
-<span id="29">29</span>
-<span id="30">30</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -44,11 +40,9 @@
 <span class="doccomment">//!</span>
 <span class="doccomment">//! This framework is divided into the following crates:</span>
 <span class="doccomment">//!</span>
-<span class="doccomment">//! - `primitives`: traits for cryptographic primitives</span>
-<span class="doccomment">//! - `crypto`: composable Poly1305 and ChaCha20 using traits from the primitives</span>
-<span class="doccomment">//! - `random`: a secure random number generator</span>
 <span class="doccomment">//! - `vault`: logic and abstractions for the storage layer</span>
 <span class="doccomment">//! - `snapshot`: method for storing the state of the vault in a file</span>
+<span class="doccomment">//! - `store`: a simple unencrypted storage protocol</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//! ## WARNING</span>
 <span class="doccomment">//!</span>
@@ -56,9 +50,7 @@
 <span class="doccomment">//! Until a formal third-party security audit has taken place, the IOTA Foundation</span>
 <span class="doccomment">//! makes no guarantees to the fitness of this library for any purposes.</span>
 
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">crypto</span>;
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">primitives</span>;
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">random</span>;
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">runtime</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">snapshot</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">store</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">vault</span>;

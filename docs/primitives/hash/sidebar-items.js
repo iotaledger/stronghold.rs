@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["HashInfo","An information block describing a Hash."]],"trait":[["Hash","A Hash interface"],["VarLenHash","a variable length hash"]]});

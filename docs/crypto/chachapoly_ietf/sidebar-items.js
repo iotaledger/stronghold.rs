@@ -1,1 +1,0 @@
-initSidebarItems({"constant":[["CHACHAPOLY_KEY","size of key"],["CHACHAPOLY_MAX","max bytes that can be processed with a key/nonce combo"],["CHACHAPOLY_NONCE","size of nonce"],["CHACHAPOLY_TAG","size of auth tag"]],"fn":[["chachapoly_open","open data and decrypt it in place."],["chachapoly_seal","encrypts data in place"]],"struct":[["ChaChaPolyIetf","ChaChaPolyIETF cipher"]]});

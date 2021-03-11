@@ -1,3 +1,3 @@
 (function() {var implementors = {};
-implementors["runtime"] = [{"text":"impl Deref for PAGE_SIZE","synthetic":false,"types":[]}];
+implementors["runtime"] = [{"text":"impl&lt;T:&nbsp;Bytes&gt; Deref for Ref&lt;'_, T&gt;","synthetic":false,"types":[]},{"text":"impl&lt;T:&nbsp;Bytes&gt; Deref for RefMut&lt;'_, T&gt;","synthetic":false,"types":[]},{"text":"impl&lt;T:&nbsp;Bytes&gt; Deref for Ref&lt;'_, T&gt;","synthetic":false,"types":[]},{"text":"impl&lt;T:&nbsp;Bytes&gt; Deref for RefMut&lt;'_, T&gt;","synthetic":false,"types":[]}];
 if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

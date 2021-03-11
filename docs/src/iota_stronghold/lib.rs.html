@@ -76,8 +76,6 @@
 <span id="73">73</span>
 <span id="74">74</span>
 <span id="75">75</span>
-<span id="76">76</span>
-<span id="77">77</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -95,9 +93,8 @@
 <span class="comment">// TODO: Synchronization via 4th actor and status type.</span>
 <span class="comment">// TODO: Add supervisors</span>
 <span class="comment">// TODO: Add documentation</span>
-<span class="comment">// TODO: Encrypted Return Channel</span>
 <span class="comment">// TODO: Handshake</span>
-<span class="comment">// TODO: O(1) comparison for IDS.</span>
+<span class="comment">// TODO: ~~O(1) comparison for IDS.~~</span>
 <span class="comment">// TODO: ~~Add ability to name snapshots~~</span>
 <span class="comment">// TODO: ~~Add ability to read and revoke records not on the head of the chain.~~</span>
 <span class="comment">// TODO: Add Reference types for the RecordIds and VaultIds to expose to the External programs.</span>
@@ -107,14 +104,12 @@
 <span class="kw">use</span> <span class="ident">thiserror</span>::<span class="ident">Error</span> <span class="kw">as</span> <span class="ident">DeriveError</span>;
 
 <span class="kw">mod</span> <span class="ident">actors</span>;
-<span class="kw">mod</span> <span class="ident">bucket</span>;
-<span class="kw">mod</span> <span class="ident">client</span>;
 <span class="kw">mod</span> <span class="ident">interface</span>;
 <span class="kw">mod</span> <span class="ident">internals</span>;
-<span class="kw">mod</span> <span class="ident">key_store</span>;
-<span class="kw">mod</span> <span class="ident">snapshot</span>;
+<span class="kw">mod</span> <span class="ident">state</span>;
 <span class="kw">mod</span> <span class="ident">utils</span>;
 
+<span class="comment">// Tests exist as a sub-module because they need to be able to test internal concepts without exposing them publicly.</span>
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
 <span class="kw">mod</span> <span class="ident">tests</span>;
 
@@ -124,7 +119,7 @@
     <span class="ident">actors</span>::{<span class="ident">ProcResult</span>, <span class="ident">Procedure</span>, <span class="ident">SLIP10DeriveInput</span>},
     <span class="ident">interface</span>::<span class="ident">Stronghold</span>,
     <span class="ident">internals</span>::<span class="ident">Provider</span>,
-    <span class="ident">utils</span>::{<span class="ident">hd</span>, <span class="ident">Location</span>, <span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>, <span class="ident">StrongholdFlags</span>, <span class="ident">VaultFlags</span>},
+    <span class="ident">utils</span>::{<span class="ident">Location</span>, <span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>, <span class="ident">StrongholdFlags</span>, <span class="ident">VaultFlags</span>},
 };
 
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">snapshot</span>::{
@@ -135,6 +130,7 @@
 
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::<span class="ident">RecordHint</span>;
 
+<span class="doccomment">/// TODO: Should be replaced with proper errors.</span>
 <span class="attribute">#[<span class="ident">macro_export</span>]</span>
 <span class="macro">macro_rules</span><span class="macro">!</span> <span class="ident">line_error</span> {
     () <span class="op">=</span><span class="op">&gt;</span> {

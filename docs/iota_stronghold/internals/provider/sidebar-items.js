@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Provider","Provider for the xchacha20poly1305 encryption engine.  Encrypts the data in the stronghold."]]});
+initSidebarItems({"struct":[["Provider",""]]});

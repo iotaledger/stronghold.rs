@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["SignInfo","Signature information block"]],"trait":[["Sign",""]]});

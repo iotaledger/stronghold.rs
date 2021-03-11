@@ -1,1 +1,0 @@
-initSidebarItems({"trait":[["SliceExt","slice extension for constrainted values"],["USizeExt","extension on usize for constrained values."]]});

@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["GuardedVec","A guarded type for protecting variable-length secrets allocated on the heap."],["GuardedVecVisitor",""],["Ref",""],["RefMut",""]]});

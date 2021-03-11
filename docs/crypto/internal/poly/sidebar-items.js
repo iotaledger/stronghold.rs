@@ -1,1 +1,0 @@
-initSidebarItems({"fn":[["poly1305_finish","finishes authentication"],["poly1305_init","Loads a key into r and s and computes the key multipliers"],["poly1305_update","updates the value a with any data using the key and the multipliers pads any incomplete block with 0 bytes."]]});

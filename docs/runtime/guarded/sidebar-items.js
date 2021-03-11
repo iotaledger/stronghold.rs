@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Guarded","A guarded type for protecting fixed-length secrets allocated on the heap."],["Ref",""],["RefMut",""]]});

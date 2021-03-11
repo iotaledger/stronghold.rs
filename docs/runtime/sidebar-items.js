@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["Error",""]],"fn":[["strerror",""]],"mod":[["mem",""],["seccomp",""],["zone",""]],"type":[["Result",""]]});
+initSidebarItems({"mod":[["boxed",""],["guarded",""],["guarded_vec",""],["types",""]],"struct":[["Guarded","A guarded type for protecting fixed-length secrets allocated on the heap."],["GuardedVec","A guarded type for protecting variable-length secrets allocated on the heap."]],"trait":[["Bytes",""]]});

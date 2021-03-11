@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["index_of_unchecked",""]],"mod":[["hd",""],["ids",""],["types",""]]});
+initSidebarItems({"fn":[["index_of_unchecked",""]],"mod":[["ids",""],["types",""]]});
