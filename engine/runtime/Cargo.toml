@@ -1,0 +1,20 @@
+[package]
+name = "runtime"
+version = "0.2.0"
+authors = [ "Gustav Behm <gustav.behm@iota.org>" ]
+edition = "2018"
+license = "Apache-2.0"
+description = "Runtime and allocation primitives for stronghold"
+readme = "README.md"
+keywords = [ "iota", "stronghold", "security" ]
+categories = [ "security" ]
+homepage = "https://iota.org"
+repository = "https://github.com/iotaledger/stronghold.rs"
+
+[features]
+default = []
+stdalloc = []
+
+[dependencies]
+libsodium-sys = "0.2"
+serde = "1.0"

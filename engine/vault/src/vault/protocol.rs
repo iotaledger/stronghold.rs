@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use std::fmt::{self, Debug, Formatter};
 
+use runtime::GuardedVec;
+
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Kind {
     Transaction = 1,
@@ -53,8 +55,8 @@ impl ReadRequest {
     pub fn result(&self, data: Vec<u8>) -> ReadResult {
         ReadResult {
             kind: self.kind,
-            id: self.id.clone(),
-            data,
+            id: self.id.to_vec(),
+            data: GuardedVec::new(data.len(), |i| i.copy_from_slice(data.as_ref())),
         }
     }
 }
@@ -64,7 +66,7 @@ impl ReadRequest {
 pub struct ReadResult {
     kind: Kind,
     id: Vec<u8>,
-    data: Vec<u8>,
+    data: GuardedVec<u8>,
 }
 
 impl ReadResult {
@@ -72,7 +74,7 @@ impl ReadResult {
         Self {
             kind,
             id: id.to_vec(),
-            data: data.to_vec(),
+            data: GuardedVec::new(data.as_ref().len(), |i| i.copy_from_slice(data.as_ref())),
         }
     }
 
@@ -87,8 +89,8 @@ impl ReadResult {
     }
 
     /// data from record
-    pub fn data(&self) -> &[u8] {
-        &self.data
+    pub fn data(&self) -> Vec<u8> {
+        (*self.data.borrow()).to_vec()
     }
 }
 
@@ -109,7 +111,7 @@ impl Debug for ReadResult {
 pub struct WriteRequest {
     kind: Kind,
     id: Vec<u8>,
-    data: Vec<u8>,
+    data: GuardedVec<u8>,
 }
 
 impl WriteRequest {
@@ -118,7 +120,7 @@ impl WriteRequest {
         Self {
             kind: Kind::Transaction,
             id: id.into(),
-            data: stx.as_ref().to_vec(),
+            data: GuardedVec::new(stx.as_ref().len(), |i| i.copy_from_slice(stx.as_ref())),
         }
     }
 
@@ -127,7 +129,7 @@ impl WriteRequest {
         Self {
             kind: Kind::Blob,
             id: id.into(),
-            data: sb.as_ref().to_vec(),
+            data: GuardedVec::new(sb.as_ref().len(), |i| i.copy_from_slice(sb.as_ref())),
         }
     }
 
@@ -142,8 +144,8 @@ impl WriteRequest {
     }
 
     /// data of record
-    pub fn data(&self) -> &[u8] {
-        &self.data
+    pub fn data(&self) -> Vec<u8> {
+        (*self.data.borrow()).to_vec()
     }
 }
 

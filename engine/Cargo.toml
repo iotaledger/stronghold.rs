@@ -14,20 +14,8 @@ repository = "https://github.com/iotaledger/stronghold.rs"
 [lib]
 name = "engine"
 
-[dependencies.crypto]
-path = "crypto"
-version = "0.2"
-
 [dependencies.vault]
 path = "vault"
-version = "0.2"
-
-[dependencies.primitives]
-path = "primitives"
-version = "0.2"
-
-[dependencies.random]
-path = "random"
 version = "0.2"
 
 [dependencies.snapshot]
@@ -36,4 +24,8 @@ version = "0.2"
 
 [dependencies.store]
 path = "store"
+version = "0.2"
+
+[dependencies.runtime]
+path = "runtime"
 version = "0.2"

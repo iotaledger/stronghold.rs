@@ -1,22 +1,16 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use engine::crypto::XChaChaPoly;
+use crypto::{ciphers::chacha::xchacha20poly1305, utils::rand::fill};
 
-use engine::random::{
-    primitives::{cipher::AeadCipher, rng::SecureRng},
-    OsRng,
-};
+use std::convert::TryInto;
 
-use engine::vault::{BoxProvider, Error, Key, Result};
-
-/// Provider for the xchacha20poly1305 encryption engine.  Encrypts the data in the stronghold.
-#[derive(Debug, Clone, Ord, PartialOrd, PartialEq, Eq)]
+use engine::vault::{self, BoxProvider, Key};
+#[derive(Ord, PartialEq, Eq, PartialOrd, Clone)]
 pub struct Provider;
-
 impl Provider {
-    const NONCE_LEN: usize = 24;
-    const TAG_LEN: usize = 16;
+    const NONCE_LEN: usize = xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE;
+    const TAG_LEN: usize = xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE;
 }
 
 impl BoxProvider for Provider {
@@ -28,34 +22,53 @@ impl BoxProvider for Provider {
         Self::NONCE_LEN + Self::TAG_LEN
     }
 
-    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-        let mut boxx = vec![0; data.len() + Self::box_overhead()];
-        let (nonce, cipher) = boxx.split_at_mut(Self::NONCE_LEN);
-        Self::random_buf(nonce)?;
+    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> vault::Result<Vec<u8>> {
+        let mut cipher = vec![0u8; data.len()];
 
-        XChaChaPoly
-            .seal_with(cipher, data, ad, key.bytes(), nonce)
-            .map_err(|_| Error::CryptoError(String::from("Unable to seal data")))?;
-        Ok(boxx)
+        let mut tag = [0u8; 16];
+        let mut nonce: [u8; 24] = [0u8; Self::NONCE_LEN];
+
+        Self::random_buf(&mut nonce)?;
+
+        let key = key.bytes();
+
+        xchacha20poly1305::encrypt(
+            &mut cipher,
+            &mut tag,
+            data,
+            &key.try_into().expect("Key not the correct size: Encrypt"),
+            &nonce,
+            ad,
+        )
+        .map_err(|_| vault::Error::CryptoError(String::from("Unable to seal data")))?;
+
+        let r#box = [tag.to_vec(), nonce.to_vec(), cipher].concat();
+
+        Ok(r#box)
     }
-    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-        let mut plain = match data.len() {
-            len if len >= Self::box_overhead() => vec![0; len - Self::box_overhead()],
-            _ => return Err(Error::CryptoError(String::from("Truncated cipher"))),
-        };
 
-        let (nonce, cipher) = data.split_at(Self::NONCE_LEN);
+    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> vault::Result<Vec<u8>> {
+        let (tag, ct) = data.split_at(Self::TAG_LEN);
+        let (nonce, cipher) = ct.split_at(Self::NONCE_LEN);
 
-        XChaChaPoly
-            .open_to(&mut plain, cipher, ad, key.bytes(), nonce)
-            .map_err(|_| Error::CryptoError(String::from("Invalid Cipher")))?;
+        let mut plain = vec![0; cipher.len()];
+
+        let key = key.bytes();
+
+        xchacha20poly1305::decrypt(
+            &mut plain,
+            cipher,
+            &key.try_into().expect("Key not the correct size: Decrypt"),
+            &tag.try_into().expect("Tag not the correct size: Decrypt"),
+            &nonce.to_vec().try_into().expect("Nonce not the correct size: Decrypt"),
+            ad,
+        )
+        .map_err(|_| vault::Error::CryptoError(String::from("Invalid Cipher")))?;
 
         Ok(plain)
     }
 
-    fn random_buf(buf: &mut [u8]) -> Result<()> {
-        OsRng
-            .random(buf)
-            .map_err(|_| Error::CryptoError(String::from("Can't generated random Bytes")))
+    fn random_buf(buf: &mut [u8]) -> vault::Result<()> {
+        fill(buf).map_err(|_| vault::Error::CryptoError(String::from("Can't generate random Bytes")))
     }
 }

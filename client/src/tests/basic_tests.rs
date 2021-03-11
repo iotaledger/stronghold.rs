@@ -3,7 +3,8 @@
 
 use riker::actors::*;
 
-use crate::{line_error, Location, RecordHint, ResultMessage, Stronghold};
+use crate::{line_error, utils::LoadFromPath, ClientId, Location, RecordHint, ResultMessage, Stronghold, VaultId};
+use crypto::macs::hmac::HMAC_SHA512;
 
 fn setup_stronghold() -> Stronghold {
     let sys = ActorSystem::new().unwrap();
@@ -257,4 +258,35 @@ fn test_store() {
     let (res, _) = futures::executor::block_on(stronghold.read_from_store(location));
 
     assert_eq!(std::str::from_utf8(&res), Ok("test data"));
+}
+
+/// ID Tests.
+#[test]
+fn test_client_id() {
+    let path = b"some_path";
+    let data = b"a bunch of random data";
+    let mut buf = [0; 64];
+
+    let id = ClientId::load_from_path(data, path).unwrap();
+
+    HMAC_SHA512(data, path, &mut buf);
+
+    let (test, _) = buf.split_at(24);
+
+    assert_eq!(ClientId::load(test).unwrap(), id);
+}
+
+#[test]
+fn test_vault_id() {
+    let path = b"another_path_of_data";
+    let data = b"a long sentance for seeding the id with some data and bytes.  Testing to see how long this can be without breaking the hmac";
+    let mut buf = [0; 64];
+
+    let id = VaultId::load_from_path(data, path).unwrap();
+
+    HMAC_SHA512(data, path, &mut buf);
+
+    let (test, _) = buf.split_at(24);
+
+    assert_eq!(VaultId::load(test).unwrap(), id);
 }

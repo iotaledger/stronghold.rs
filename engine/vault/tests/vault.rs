@@ -13,7 +13,7 @@ use std::{collections::HashMap, iter::empty};
 use rand::Rng;
 
 fn write_to_read(wr: &WriteRequest) -> ReadResult {
-    ReadResult::new(wr.kind(), wr.id(), wr.data())
+    ReadResult::new(wr.kind(), &wr.id(), &wr.data())
 }
 
 fn fresh_record_hint() -> RecordHint {

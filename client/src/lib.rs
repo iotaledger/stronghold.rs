@@ -14,9 +14,8 @@
 // TODO: Synchronization via 4th actor and status type.
 // TODO: Add supervisors
 // TODO: Add documentation
-// TODO: Encrypted Return Channel
 // TODO: Handshake
-// TODO: O(1) comparison for IDS.
+// TODO: ~~O(1) comparison for IDS.~~
 // TODO: ~~Add ability to name snapshots~~
 // TODO: ~~Add ability to read and revoke records not on the head of the chain.~~
 // TODO: Add Reference types for the RecordIds and VaultIds to expose to the External programs.
@@ -26,14 +25,12 @@
 use thiserror::Error as DeriveError;
 
 mod actors;
-mod bucket;
-mod client;
 mod interface;
 mod internals;
-mod key_store;
-mod snapshot;
+mod state;
 mod utils;
 
+// Tests exist as a sub-module because they need to be able to test internal concepts without exposing them publicly.
 #[cfg(test)]
 mod tests;
 
@@ -43,7 +40,7 @@ pub use crate::{
     actors::{ProcResult, Procedure, SLIP10DeriveInput},
     interface::Stronghold,
     internals::Provider,
-    utils::{hd, Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
 pub use engine::snapshot::{
@@ -54,6 +51,7 @@ pub use engine::snapshot::{
 
 pub use engine::vault::RecordHint;
 
+/// TODO: Should be replaced with proper errors.
 #[macro_export]
 macro_rules! line_error {
     () => {

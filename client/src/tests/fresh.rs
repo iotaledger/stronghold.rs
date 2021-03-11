@@ -1,15 +1,14 @@
 // Copyright 2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use crypto::{keys::slip10::Chain, utils::rand::fill};
 pub use stronghold_utils::test_utils::{self, fresh::*};
 
-use crate::{hd, Location, RecordHint};
-
-use rand::Rng;
+use crate::{Location, RecordHint};
 
 pub fn record_hint() -> RecordHint {
     let mut bs = [0; 24];
-    rand::thread_rng().fill(&mut bs);
+    fill(&mut bs).expect("Unable to fill record hint");
     bs.into()
 }
 
@@ -25,7 +24,7 @@ pub fn passphrase() -> Option<String> {
     }
 }
 
-pub fn hd_path() -> (String, hd::Chain) {
+pub fn hd_path() -> (String, Chain) {
     let mut s = "m".to_string();
     let mut is = vec![];
     while coinflip() {
@@ -33,5 +32,5 @@ pub fn hd_path() -> (String, hd::Chain) {
         s.push_str(&format!("/{}'", i.to_string()));
         is.push(i);
     }
-    (s, hd::Chain::from_u32_hardened(is))
+    (s, Chain::from_u32_hardened(is))
 }

@@ -184,7 +184,7 @@ impl<P: BoxProvider> DBView<P> {
     }
 
     /// Converts the `DBView` into a `DBWriter` for a specific record.
-    pub fn writer(&self, record: RecordId) -> DBWriter<P> {
+    pub fn writer(self, record: RecordId) -> DBWriter<P> {
         let next_ctr = self
             .chains
             .get(&record.0)
@@ -315,13 +315,13 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
 }
 
 /// A writer for the `DBView`
-pub struct DBWriter<'a, P: BoxProvider> {
-    view: &'a DBView<P>,
+pub struct DBWriter<P: BoxProvider> {
+    view: DBView<P>,
     chain: ChainId,
     next_ctr: Val,
 }
 
-impl<'a, P: BoxProvider> DBWriter<'a, P> {
+impl<P: BoxProvider> DBWriter<P> {
     fn next_ctr(&mut self) -> Val {
         let c = self.next_ctr;
         self.next_ctr += 1;
@@ -360,5 +360,9 @@ impl<'a, P: BoxProvider> DBWriter<'a, P> {
         let id = TransactionId::random::<P>()?;
         let tx = RevocationTransaction::new(self.chain, self.next_ctr(), id);
         Ok(WriteRequest::transaction(&id, &tx.encrypt(&self.view.key, id)?))
+    }
+
+    pub fn into_view(self) -> DBView<P> {
+        self.view
     }
 }

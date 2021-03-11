@@ -13,9 +13,11 @@ use engine::vault::{Key, ReadResult};
 
 use crate::{
     actors::{InternalMsg, SHResults},
-    client::Client,
     line_error,
-    snapshot::{Snapshot, SnapshotState},
+    state::{
+        client::Client,
+        snapshot::{Snapshot, SnapshotState},
+    },
     utils::StatusMessage,
     ClientId, Provider, VaultId,
 };
@@ -34,7 +36,7 @@ pub enum SMsg {
         data: Box<(
             Client,
             HashMap<VaultId, Key<Provider>>,
-            HashMap<Key<Provider>, Vec<ReadResult>>,
+            HashMap<VaultId, Vec<ReadResult>>,
         )>,
         id: ClientId,
     },

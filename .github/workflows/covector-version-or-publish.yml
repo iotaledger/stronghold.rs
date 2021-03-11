@@ -2,7 +2,7 @@ name: publish
 on:
   push:
     branches:
-    - main
+      - main
 
 jobs:
   version-or-publish:
@@ -44,8 +44,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: release/version-updates
           title: Apply Version Updates From Current Changes
-          commit-message: "apply version updates"
-          labels: "version updates"
+          commit-message: 'apply version updates'
+          labels: 'version updates'
           body: ${{ steps.covector.outputs.change }}
 
   tangle:
@@ -60,8 +60,6 @@ jobs:
             registryName: iota-stronghold
           - name: stronghold-engine
             registryName: stronghold-engine
-          - name: stronghold-runtime
-            registryName: stronghold-runtime
           - name: stronghold-communication
             registryName: stronghold-communication
 
@@ -70,13 +68,13 @@ jobs:
       - run: echo "PUBLISHED=$(jq '.${{ matrix.package.name }}.command' ${{ needs.version-or-publish.outputs.change }})" >> $GITHUB_ENV
       - run: echo "PACKAGE_VERSION=$(jq '.${{ matrix.package.name }}.pkg.pkgFile.version' ${{ needs.version-or-publish.outputs.change }})" >> $GITHUB_ENV
       - name: Tangle Release
-        if:  env.PUBLISHED != 'false' && startsWith(env.PUBLISHED, 'parse error') != true && startsWith(env.PACKAGE_VERSION, 'parse error') != true
+        if: env.PUBLISHED != 'false' && startsWith(env.PUBLISHED, 'parse error') != true && startsWith(env.PACKAGE_VERSION, 'parse error') != true
         id: tangle_release
         uses: iotaledger/gh-tangle-release@v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IOTA_SEED: ${{ secrets.IOTA_SEED }}
-          IOTA_NODE: "https://iotanode.us:14267"
+          IOTA_NODE: 'https://iotanode.us:14267'
         with:
           tag_name: ${{ matrix.package.name }}-v${{ env.PACKAGE_VERSION }}
-          comment: "Release ${{ matrix.package.name }} v${{ env.PACKAGE_VERSION }}"
+          comment: 'Release ${{ matrix.package.name }} v${{ env.PACKAGE_VERSION }}'
