@@ -352,8 +352,6 @@ impl<P: BoxProvider> DBWriter<P> {
         let req = WriteRequest::transaction(&tx_id, &transaction.encrypt(&self.view.key, tx_id)?);
         let blob = WriteRequest::blob(&blob_id, &data.encrypt(&self.view.key, blob_id)?);
 
-        self.view.cache.insert(blob_id, SealedBlob::from(blob.data()));
-
         Ok(vec![req, blob])
     }
 

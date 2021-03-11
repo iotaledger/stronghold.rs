@@ -78,8 +78,6 @@ impl Chain {
                         }
                         res.data = Some(tx.id);
 
-                        // Scenario: init, data, revoke, data
-                        // that is: data cancels revoke
                         revocation_score = 0;
                     }
                     TransactionType::Init => {
@@ -91,13 +89,7 @@ impl Chain {
                     TransactionType::Revocation => {
                         revokes.push(tx.id);
                         revocation_score += 1;
-                    } //TransactionType::Unrevocation => {
-                      //    if revocation_score <= 0 {
-                      //        res.garbage.push(tx.id);
-                      //    } else {
-                      //        revocation_score -= 1;
-                      //    }
-                      //}
+                    }
                 }
 
                 res.subchain.push(tx.id);
