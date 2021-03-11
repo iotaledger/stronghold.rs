@@ -151,7 +151,8 @@
         "store",
         "stronghold-communication",
         "stronghold-utils",
-        "runtime"
+        "runtime",
+        "communication-macros"
       ]
     },
     "stronghold-engine": {
@@ -168,8 +169,13 @@
       "path": "./communication/",
       "manager": "rust",
       "dependencies": [
-        "stronghold-utils"
+        "stronghold-utils",
+        "communication-macros"
       ]
+    },
+    "communication-macros": {
+      "path": "./communication/communication-macros",
+      "manager": "rust"
     },
     "vault": {
       "path": "./engine/vault/",

@@ -9,7 +9,7 @@ use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, StatusMessa
 #[cfg(feature = "communication")]
 use core::time::Duration;
 #[cfg(feature = "communication")]
-use stronghold_communication::actor::KeepAlive;
+use stronghold_communication::actor::{FirewallPermission, FirewallRule, KeepAlive, RequestDirection};
 
 #[cfg(feature = "communication")]
 use super::fresh;
@@ -421,24 +421,31 @@ fn test_stronghold_communication() {
     let remote_client = b"remote".to_vec();
     let mut remote_stronghold = Stronghold::init_stronghold_system(remote_sys, remote_client, vec![]);
     remote_stronghold.spawn_communication();
+    let set_default = FirewallRule::SetDefault {
+        direction: RequestDirection::In,
+        permission: FirewallPermission::All,
+    };
+    if let StatusMessage::Error(_) = futures::executor::block_on(remote_stronghold.configure_firewall(set_default)) {
+        panic!("Could not configure firewall.")
+    }
 
     std::thread::sleep(Duration::new(1, 0));
 
     let addr = match futures::executor::block_on(remote_stronghold.start_listening(None)) {
         ResultMessage::Ok(addr) => addr,
-        ResultMessage::Error(_) => panic!(),
+        ResultMessage::Error(_) => panic!("Could not start listening"),
     };
 
     let (peer_id, listeners) = match futures::executor::block_on(remote_stronghold.get_swarm_info()) {
         ResultMessage::Ok((peer_id, listeners, _)) => (peer_id, listeners),
-        ResultMessage::Error(_) => panic!(),
+        ResultMessage::Error(_) => panic!("Could not get swarm info."),
     };
 
     assert!(listeners.as_slice().contains(&addr));
 
     match futures::executor::block_on(local_stronghold.establish_connection(peer_id, addr, KeepAlive::None)) {
         ResultMessage::Ok(_) => {}
-        ResultMessage::Error(_) => panic!(),
+        ResultMessage::Error(_) => panic!("Could not establish connection to remote."),
     }
 
     // test writing at remote and reading it from local stronghold
@@ -446,11 +453,11 @@ fn test_stronghold_communication() {
     let original_data = b"some data".to_vec();
     match futures::executor::block_on(remote_stronghold.write_to_store(loc.clone(), original_data.clone(), None)) {
         StatusMessage::OK => {}
-        StatusMessage::Error(_) => panic!(),
+        StatusMessage::Error(_) => panic!("Could not write store."),
     }
     let payload = match futures::executor::block_on(local_stronghold.read_from_remote_store(peer_id, loc)) {
         (payload, StatusMessage::OK) => payload,
-        (_, StatusMessage::Error(_)) => panic!(),
+        (_, StatusMessage::Error(_)) => panic!("Could not read from remote store."),
     };
     assert_eq!(payload, original_data);
 
@@ -464,11 +471,11 @@ fn test_stronghold_communication() {
         None,
     )) {
         StatusMessage::OK => {}
-        StatusMessage::Error(_) => panic!(),
+        StatusMessage::Error(_) => panic!("Could not write to remote store"),
     }
     let payload = match futures::executor::block_on(remote_stronghold.read_from_store(loc)) {
         (payload, StatusMessage::OK) => payload,
-        (_, StatusMessage::Error(_)) => panic!(),
+        (_, StatusMessage::Error(_)) => panic!("Could not read from store."),
     };
     assert_eq!(payload, original_data);
 
@@ -482,11 +489,11 @@ fn test_stronghold_communication() {
         None,
     )) {
         StatusMessage::OK => {}
-        StatusMessage::Error(_) => panic!(),
+        StatusMessage::Error(_) => panic!("Could not write to remote store."),
     }
     let payload = match futures::executor::block_on(local_stronghold.read_from_remote_store(peer_id, loc)) {
         (payload, StatusMessage::OK) => payload,
-        (_, StatusMessage::Error(_)) => panic!(),
+        (_, StatusMessage::Error(_)) => panic!("Could not read from remote store."),
     };
     assert_eq!(payload, original_data);
 

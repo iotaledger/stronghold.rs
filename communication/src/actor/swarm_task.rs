@@ -21,46 +21,58 @@ use std::{
 };
 
 // Separate task that manages the swarm communication.
-pub(super) struct SwarmTask<Req, Res, T, U>
+pub(super) struct SwarmTask<Req, Res, ClientMsg, P>
 where
-    Req: MessageEvent,
+    Req: MessageEvent + ToPermissionVariants<P> + Into<ClientMsg>,
     Res: MessageEvent,
-    T: Message + From<Req>,
-    U: Message + From<FirewallRequest<Req>>,
+    ClientMsg: Message,
+    P: Message + VariantPermission,
 {
     system: ActorSystem,
-    config: CommunicationConfig<Req, T, U>,
+    // client to receive incoming requests
+    client: ActorRef<ClientMsg>,
+    // firewall configuration to check and validate all outgoing and incoming requests
+    firewall: FirewallConfiguration,
+    // the expanded swarm that is used to poll for incoming requests and interact
     swarm: Swarm<P2PNetworkBehaviour<RequestEnvelope<Req>, Res>>,
-    swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, T>, Sender)>,
+    // channel from the communication actor to this task
+    swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, ClientMsg>, Sender)>,
+    // current listener in the swarm
     listener: Option<ListenerId>,
+    // configuration to use optionally use a relay peer if a peer in a remote network can not be reached directly.
     relay: RelayConfig,
+    // maintain the current state of connections and keep-alive configuration
     connection_manager: ConnectionManager,
+    _marker: PhantomData<P>,
 }
 
-impl<Req, Res, T, U> SwarmTask<Req, Res, T, U>
+impl<Req, Res, ClientMsg, P> SwarmTask<Req, Res, ClientMsg, P>
 where
-    Req: MessageEvent,
+    Req: MessageEvent + ToPermissionVariants<P> + Into<ClientMsg>,
     Res: MessageEvent,
-    T: Message + From<Req>,
-    U: Message + From<FirewallRequest<Req>>,
+    ClientMsg: Message,
+    P: Message + VariantPermission,
 {
     pub fn new(
         system: ActorSystem,
+        swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, ClientMsg>, Sender)>,
+        actor_config: CommunicationActorConfig<ClientMsg>,
         keypair: Keypair,
-        config: CommunicationConfig<Req, T, U>,
         behaviour: BehaviourConfig,
-        swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, T>, Sender)>,
     ) -> Result<Self, BehaviourError> {
         // Create a P2PNetworkBehaviour for the swarm communication.
         let swarm = P2PNetworkBehaviour::<RequestEnvelope<Req>, Res>::init_swarm(keypair, behaviour)?;
+        let firewall = FirewallConfiguration::new(actor_config.firewall_default_in, actor_config.firewall_default_out);
         Ok(SwarmTask {
             system,
-            config,
+            client: actor_config.client,
+            firewall,
             swarm,
             swarm_rx,
             listener: None,
             relay: RelayConfig::NoRelay,
             connection_manager: ConnectionManager::new(),
+            _marker: PhantomData,
         })
     }
 
@@ -100,29 +112,10 @@ where
         }
     }
 
-    // Ask the firewall actor for FirewallResponse, return FirewallResponse::Reject on timeout
-    fn ask_req_permission(&mut self, request: Req, remote: PeerId, direction: RequestDirection) -> FirewallResponse {
-        let start = Instant::now();
-        let firewall_request = FirewallRequest::new(request, remote, direction);
-        let mut ask_permission = ask(&self.system, &self.config.firewall, firewall_request);
-        task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
-            match ask_permission.poll_unpin(cx) {
-                Poll::Ready(res) => Poll::Ready(res),
-                Poll::Pending => {
-                    if start.elapsed() > Duration::new(3, 0) {
-                        Poll::Ready(FirewallResponse::Reject)
-                    } else {
-                        Poll::Pending
-                    }
-                }
-            }
-        }))
-    }
-
-    // Ask the firewall actor for FirewallResponse, return FirewallResponse::Drop on timeout
+    // Forward request to client actor and wait for the result, with 3s timeout.
     fn ask_client(&mut self, request: Req) -> Option<Res> {
         let start = Instant::now();
-        let mut ask_client = ask(&self.system, &self.config.client, request);
+        let mut ask_client = ask(&self.system, &self.client, request);
         task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
             match ask_client.poll_unpin(cx) {
                 Poll::Ready(res) => Poll::Ready(Some(res)),
@@ -161,7 +154,7 @@ where
         }
     }
 
-    // Try to connect a remote peer by id or address.
+    // Try to connect a remote peer by id, and if the peer id is not know yet the address is used.
     fn connect_peer(&mut self, target_peer: PeerId, target_addr: Multiaddr) -> Result<PeerId, ConnectPeerError> {
         if let Err(err) = Swarm::dial(&mut self.swarm, &target_peer) {
             match err {
@@ -215,9 +208,13 @@ where
         })
     }
 
-    // Try sending a request to a remote peer if it was approved by the firewall, and return the received Response.
-    // If no reponse is received, a RequestMessageError::Rejected will be returned.
-    fn send_request(&mut self, peer_id: PeerId, envelope: RequestEnvelope<Req>) -> Result<Res, RequestMessageError> {
+    // Try sending a request envelope to a remote peer if it was approved by the firewall, and return the received
+    // Response. If no response is received, a RequestMessageError::Rejected will be returned.
+    fn send_envelope_to_peer(
+        &mut self,
+        peer_id: PeerId,
+        envelope: RequestEnvelope<Req>,
+    ) -> Result<Res, RequestMessageError> {
         let req_id = self.swarm.send_request(&peer_id, envelope);
         let start = Instant::now();
         task::block_on(async {
@@ -265,47 +262,96 @@ where
         })
     }
 
-    // Handle the messages that are received from other actors in the system..
-    fn handle_actor_request(&mut self, event: CommunicationRequest<Req, T>, sender: Sender) {
+    // Wrap the request into an envelope, which enables using a relay peer, and send it to the remote.
+    // Depending on the config, it is ether send directly or via the relay.
+    fn send_request(&mut self, peer_id: PeerId, request: Req) -> Result<Res, RequestMessageError> {
+        let local_peer = Swarm::local_peer_id(&self.swarm);
+        let envelope = RequestEnvelope {
+            source: local_peer.to_string(),
+            message: request,
+            target: peer_id.to_string(),
+        };
+        match self.relay {
+            RelayConfig::NoRelay => self.send_envelope_to_peer(peer_id, envelope),
+            RelayConfig::RelayAlways {
+                peer_id: relay_id,
+                addr: _,
+            } => self.send_envelope_to_peer(relay_id, envelope),
+            RelayConfig::RelayBackup {
+                peer_id: relay_id,
+                addr: _,
+            } => {
+                // try sending directly, otherwise use relay
+                let res = self.send_envelope_to_peer(peer_id, envelope.clone());
+                if let Err(RequestMessageError::Outbound(P2POutboundFailure::DialFailure)) = res {
+                    self.send_envelope_to_peer(relay_id, envelope)
+                } else {
+                    res
+                }
+            }
+        }
+    }
+
+    // Set the new relay configuration. If a relay is use, a keep-alive connection to the relay will be established.
+    fn set_relay(&mut self, config: RelayConfig) -> Result<(), ConnectPeerError> {
+        match config.clone() {
+            RelayConfig::NoRelay => Ok(()),
+            RelayConfig::RelayAlways { peer_id, addr } | RelayConfig::RelayBackup { peer_id, addr } => {
+                let res = self.connect_peer(peer_id, addr.clone());
+                match res {
+                    Ok(_) => {
+                        let endpoint = ConnectedPoint::Dialer { address: addr };
+                        self.connection_manager.insert(peer_id, endpoint, KeepAlive::Unlimited);
+                        self.relay = config;
+                        Ok(())
+                    }
+                    Err(err) => Err(err),
+                }
+            }
+        }
+    }
+
+    fn configure_firewall(&mut self, rule: FirewallRule) {
+        match rule {
+            FirewallRule::SetDefault {
+                direction: RequestDirection::In,
+                permission,
+            } => {
+                self.firewall.set_default_in(permission);
+            }
+            FirewallRule::SetDefault {
+                direction: RequestDirection::Out,
+                permission,
+            } => {
+                self.firewall.set_default_out(permission);
+            }
+            FirewallRule::SetRule {
+                peer_id,
+                direction,
+                permission,
+            } => self.firewall.set_rule(peer_id, &direction, permission),
+            FirewallRule::RemoveRule { peer_id, direction } => self.firewall.remove_rule(&peer_id, &direction),
+        }
+    }
+
+    // Handle the messages that are received from other actors in the system.
+    fn handle_actor_request(&mut self, event: CommunicationRequest<Req, ClientMsg>, sender: Sender) {
         match event {
             CommunicationRequest::RequestMsg { peer_id, request } => {
-                let res = if let FirewallResponse::Accept =
-                    self.ask_req_permission(request.clone(), peer_id, RequestDirection::Out)
+                let res = if self
+                    .firewall
+                    .is_permitted(request.clone(), peer_id, RequestDirection::Out)
                 {
-                    let local_peer = Swarm::local_peer_id(&self.swarm);
-                    let envelope = RequestEnvelope {
-                        source: local_peer.to_string(),
-                        message: request,
-                        target: peer_id.to_string(),
-                    };
-                    match self.relay {
-                        RelayConfig::NoRelay => self.send_request(peer_id, envelope),
-                        RelayConfig::RelayAlways {
-                            peer_id: relay_id,
-                            addr: _,
-                        } => self.send_request(relay_id, envelope),
-                        RelayConfig::RelayBackup {
-                            peer_id: relay_id,
-                            addr: _,
-                        } => {
-                            // try sending directly, otherwise use relay
-                            let res = self.send_request(peer_id, envelope.clone());
-                            if let Err(RequestMessageError::Outbound(P2POutboundFailure::DialFailure)) = res {
-                                self.send_request(relay_id, envelope)
-                            } else {
-                                res
-                            }
-                        }
-                    }
+                    self.send_request(peer_id, request)
                 } else {
                     Err(RequestMessageError::Rejected(FirewallBlocked::Local))
                 };
-                SwarmTask::<Req, Res, T, U>::send_response(CommunicationResults::RequestMsgResult(res), sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::RequestMsgResult(res), sender);
             }
             CommunicationRequest::SetClientRef(client_ref) => {
-                self.config.client = client_ref;
-                let res = CommunicationResults::SetClientRefResult;
-                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
+                self.client = client_ref;
+                let res = CommunicationResults::SetClientRefAck;
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::EstablishConnection {
                 peer_id,
@@ -318,19 +364,19 @@ where
                     self.connection_manager.insert(peer_id, endpoint, keep_alive.clone());
                     self.connection_manager.set_keep_alive(&peer_id, keep_alive);
                 }
-                SwarmTask::<Req, Res, T, U>::send_response(
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(
                     CommunicationResults::EstablishConnectionResult(res),
                     sender,
                 );
             }
             CommunicationRequest::CloseConnection(peer_id) => {
                 self.connection_manager.remove_connection(&peer_id);
-                SwarmTask::<Req, Res, T, U>::send_response(CommunicationResults::ClosedConnection, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::CloseConnectionAck, sender);
             }
             CommunicationRequest::CheckConnection(peer_id) => {
                 let is_connected = Swarm::is_connected(&self.swarm, &peer_id);
-                let res = CommunicationResults::CheckConnectionResult(is_connected);
-                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
+                let res = CommunicationResults::CheckConnectionResult { peer_id, is_connected };
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::GetSwarmInfo => {
                 let peer_id = *Swarm::local_peer_id(&self.swarm);
@@ -341,11 +387,14 @@ where
                     listeners,
                     connections,
                 };
-                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::StartListening(addr) => {
                 let res = self.start_listening(addr);
-                SwarmTask::<Req, Res, T, U>::send_response(CommunicationResults::StartListeningResult(res), sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(
+                    CommunicationResults::StartListeningResult(res),
+                    sender,
+                );
             }
             CommunicationRequest::RemoveListener => {
                 let result = if let Some(listener_id) = self.listener.take() {
@@ -354,35 +403,25 @@ where
                     Err(())
                 };
                 let res = CommunicationResults::RemoveListenerResult(result);
-                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::BanPeer(peer_id) => {
                 Swarm::ban_peer_id(&mut self.swarm, peer_id);
-                let res = CommunicationResults::BannedPeer(peer_id);
-                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
+                let res = CommunicationResults::BannedPeerAck(peer_id);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::UnbanPeer(peer_id) => {
                 Swarm::unban_peer_id(&mut self.swarm, peer_id);
-                let res = CommunicationResults::UnbannedPeer(peer_id);
-                SwarmTask::<Req, Res, T, U>::send_response(res, sender);
+                let res = CommunicationResults::UnbannedPeerAck(peer_id);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
             }
             CommunicationRequest::SetRelay(config) => {
-                let res = match config.clone() {
-                    RelayConfig::NoRelay => Ok(()),
-                    RelayConfig::RelayAlways { peer_id, addr } | RelayConfig::RelayBackup { peer_id, addr } => {
-                        let res = self.connect_peer(peer_id, addr.clone());
-                        match res {
-                            Ok(_) => {
-                                let endpoint = ConnectedPoint::Dialer { address: addr };
-                                self.connection_manager.insert(peer_id, endpoint, KeepAlive::Unlimited);
-                                self.relay = config;
-                                Ok(())
-                            }
-                            Err(err) => Err(err),
-                        }
-                    }
-                };
-                SwarmTask::<Req, Res, T, U>::send_response(CommunicationResults::SetRelayResult(res), sender);
+                let res = self.set_relay(config);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::SetRelayResult(res), sender);
+            }
+            CommunicationRequest::ConfigureFirewall(rule) => {
+                self.configure_firewall(rule);
+                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::ConfigureFirewallAck, sender);
             }
             CommunicationRequest::Shutdown => unreachable!(),
         }
@@ -394,25 +433,25 @@ where
             return;
         }
         if let Ok(source) = PeerId::from_str(&request.source) {
-            // validate that peer is either directly connected or the request was forwarded from the relay
-            if peer_id == source && self.connection_manager.is_active_connection(&peer_id)
-                || match self.relay {
-                    RelayConfig::RelayAlways {
-                        peer_id: relay_id,
-                        addr: _,
-                    }
-                    | RelayConfig::RelayBackup {
-                        peer_id: relay_id,
-                        addr: _,
-                    } => peer_id == relay_id,
-                    RelayConfig::NoRelay => false,
+            let is_active_direct = peer_id == source && self.connection_manager.is_active_connection(&peer_id);
+            let from_relay = match self.relay {
+                RelayConfig::RelayAlways {
+                    peer_id: relay_id,
+                    addr: _,
                 }
-            {
-                let permission = self.ask_req_permission(request.message.clone(), source, RequestDirection::In);
-                if let FirewallResponse::Accept = permission {
-                    if let Some(res) = self.ask_client(request.message) {
-                        let _ = self.swarm.send_response(request_id, res);
-                    }
+                | RelayConfig::RelayBackup {
+                    peer_id: relay_id,
+                    addr: _,
+                } => peer_id == relay_id,
+                RelayConfig::NoRelay => false,
+            };
+            let is_permitted = self
+                .firewall
+                .is_permitted(request.message.clone(), source, RequestDirection::In);
+
+            if (is_active_direct || from_relay) && is_permitted {
+                if let Some(res) = self.ask_client(request.message) {
+                    let _ = self.swarm.send_response(request_id, res);
                 }
             }
         }
@@ -448,6 +487,7 @@ where
                 num_established: 0,
                 cause: _,
             } => {
+                // Re-establish the connection if it was configured.
                 if !self.connection_manager.is_keep_alive(&peer_id) || self.connect_peer(peer_id, address).is_err() {
                     self.connection_manager.remove_connection(&peer_id);
                 }

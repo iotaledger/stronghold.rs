@@ -15,7 +15,6 @@ libp2p = { version = "0.35", default-features = false, features = [
   "dns",
   "identify",
   "mdns",
-  "mplex",
   "noise",
   "request-response",
   "tcp-async-io",
@@ -26,11 +25,13 @@ regex = "1.3"
 thiserror = "1.0"
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
-riker = { version = "0.4", git ="https://github.com/elenaf9/riker", branch = "master" }
+riker =  "0.4"
 
 stronghold-utils = {version = "0.1", path = "../utils"}
 
 [features]
-default = [ "mdns" ]
+default = [ "mdns"]
 mdns = [ ]
 
+[dev-dependencies]
+communication-macros = {path = "../communication/communication-macros"}

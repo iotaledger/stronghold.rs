@@ -36,7 +36,7 @@ use std::collections::HashMap;
 use thiserror::Error as DeriveError;
 pub use types::*;
 
-/// Error upon creating a new NetworkBehaviour
+/// Error upon creating a new [`P2PNetworkBehaviour`]
 #[derive(Debug, DeriveError)]
 pub enum BehaviourError {
     /// Error on the transport layer
@@ -52,9 +52,14 @@ pub enum BehaviourError {
     MdnsError(String),
 }
 
+/// Configuration for initiating the [`P2PNetworkBehaviour`].
 #[derive(Debug, Clone)]
 pub struct BehaviourConfig {
+    /// Timeout for outgoing requests until a [`P2POutboundFailure::Timeout`] is emitted.
+    /// If none is specified, it defaults to 10s.
     timeout: Option<Duration>,
+    /// Duration to keep an idle connection alive when no Request or Response is send.
+    /// If none is specified, it defaults to 10s.
     keep_alive: Option<Duration>,
 }
 
@@ -73,37 +78,38 @@ impl Default for BehaviourConfig {
     }
 }
 
-/// The `P2PNetworkBehaviour` determines the behaviour of the p2p-network.
+/// The [`P2PNetworkBehaviour`] determines the behaviour of the p2p-network.
 /// It combines the following protocols from libp2p
 /// - mDNS for peer discovery within the local network
 /// - identify-protocol to receive identifying information of the remote peer
-/// - RequestResponse Protocol for sending generic request `T` and response `U` messages
+/// - RequestResponse Protocol for sending generic request `Req` and response `Res` messages
 ///
 /// The P2PNetworkBehaviour itself is only useful when a new `Swarm` is created for it, and this
 /// swarm is the entry point for all communication to remote peers, and contains the current state.
 ///
-/// The `P2PNetworkBehaviour` implements a custom poll method that creates `P2PEvent`s from the events of the different
-/// protocols, it can be polled with the `next()` or `next_event()` methods of `libp2p::swarm::ExpandedSwarm`.
+/// The [`P2PNetworkBehaviour`] implements a custom poll method that creates [`P2PEvent`]s from the events of the
+/// different protocols, it can be polled with the `next()` or `next_event()` methods of
+/// [`libp2p::swarm::ExpandedSwarm`].
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "P2PEvent<T, U>", poll_method = "poll")]
-pub struct P2PNetworkBehaviour<T: MessageEvent, U: MessageEvent> {
+#[behaviour(out_event = "P2PEvent<Req, Res>", poll_method = "poll")]
+pub struct P2PNetworkBehaviour<Req: MessageEvent, Res: MessageEvent> {
     #[cfg(feature = "mdns")]
     mdns: Mdns,
     identify: Identify,
-    msg_proto: RequestResponse<MessageCodec<T, U>>,
+    msg_proto: RequestResponse<MessageCodec<Req, Res>>,
     #[behaviour(ignore)]
     peers: HashMap<PeerId, Vec<Multiaddr>>,
     #[behaviour(ignore)]
-    events: Vec<P2PEvent<T, U>>,
+    events: Vec<P2PEvent<Req, Res>>,
     #[behaviour(ignore)]
-    response_channels: HashMap<RequestId, ResponseChannel<U>>,
+    response_channels: HashMap<RequestId, ResponseChannel<Res>>,
 }
 
-impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
-    /// Creates a new `P2PNetworkBehaviour` and returns the swarm for it.
-    /// The returned `Swarm<P2PNetworkBehaviour>` is the entry point for all communication with
+impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
+    /// Creates a new [`P2PNetworkBehaviour`] and returns the swarm for it.
+    /// The returned [`Swarm<P2PNetworkBehaviour>`] is the entry point for all communication with
     /// remote peers, i.g. to send requests and responses.
-    /// Additionally to the methods of the `P2PNetworkBehaviour` there is a range of `libp2p::Swarm`
+    /// Additionally to the methods of the [`P2PNetworkBehaviour`] there is a range of [`libp2p::Swarm`]
     /// functions for swarm interaction, like dialing a new peer, that can be used.
     ///
     ///
@@ -131,7 +137,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
     pub fn init_swarm(
         local_keys: Keypair,
         config: BehaviourConfig,
-    ) -> Result<Swarm<P2PNetworkBehaviour<T, U>>, BehaviourError> {
+    ) -> Result<Swarm<P2PNetworkBehaviour<Req, Res>>, BehaviourError> {
         let local_peer_id = PeerId::from(local_keys.public());
 
         let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
@@ -172,7 +178,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
                 cfg.set_connection_keep_alive(keep_alive);
             }
             let protocols = iter::once((MessageProtocol(), ProtocolSupport::Full));
-            RequestResponse::new(MessageCodec::<T, U>::default(), protocols, cfg)
+            RequestResponse::new(MessageCodec::<Req, Res>::default(), protocols, cfg)
         };
 
         // The behaviour describes how the swarm handles events enables interacting with the
@@ -197,7 +203,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
         &mut self,
         _cx: &mut Context<'_>,
         _params: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<TEv, P2PEvent<T, U>>> {
+    ) -> Poll<NetworkBehaviourAction<TEv, P2PEvent<Req, Res>>> {
         if !self.events.is_empty() {
             return Poll::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)));
         }
@@ -238,11 +244,11 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
         self.mdns.discovered_nodes().collect()
     }
 
-    pub fn send_request(&mut self, peer_id: &PeerId, request: T) -> RequestId {
+    pub fn send_request(&mut self, peer_id: &PeerId, request: Req) -> RequestId {
         self.msg_proto.send_request(peer_id, request)
     }
 
-    pub fn send_response(&mut self, request_id: RequestId, response: U) -> Result<(), U> {
+    pub fn send_response(&mut self, request_id: RequestId, response: Res) -> Result<(), Res> {
         let channel = self
             .response_channels
             .remove(&request_id)
@@ -252,7 +258,7 @@ impl<T: MessageEvent, U: MessageEvent> P2PNetworkBehaviour<T, U> {
 }
 
 #[cfg(feature = "mdns")]
-impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour<T, U> {
+impl<Req: MessageEvent, Res: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> for P2PNetworkBehaviour<Req, Res> {
     // Called when `mdns` produces an event.
     fn inject_event(&mut self, event: MdnsEvent) {
         match event {
@@ -270,11 +276,11 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<MdnsEvent> f
     }
 }
 
-impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestResponseEvent<T, U>>
-    for P2PNetworkBehaviour<T, U>
+impl<Req: MessageEvent, Res: MessageEvent> NetworkBehaviourEventProcess<RequestResponseEvent<Req, Res>>
+    for P2PNetworkBehaviour<Req, Res>
 {
     // Called when a request or response was received.
-    fn inject_event(&mut self, event: RequestResponseEvent<T, U>) {
+    fn inject_event(&mut self, event: RequestResponseEvent<Req, Res>) {
         let communication_event = if let RequestResponseEvent::Message {
             peer,
             message:
@@ -298,7 +304,9 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<RequestRespo
     }
 }
 
-impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEvent> for P2PNetworkBehaviour<T, U> {
+impl<Req: MessageEvent, Res: MessageEvent> NetworkBehaviourEventProcess<IdentifyEvent>
+    for P2PNetworkBehaviour<Req, Res>
+{
     // Called when `identify` produces an event.
     fn inject_event(&mut self, event: IdentifyEvent) {
         if let IdentifyEvent::Received {
@@ -314,147 +322,5 @@ impl<T: MessageEvent, U: MessageEvent> NetworkBehaviourEventProcess<IdentifyEven
             }
         }
         self.events.push(P2PEvent::from(event));
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    #[cfg(not(feature = "mdns"))]
-    use async_std::task;
-    use core::str::FromStr;
-    use libp2p::swarm::SwarmEvent;
-
-    fn mock_swarm() -> Swarm<P2PNetworkBehaviour<String, String>> {
-        let local_keys = Keypair::generate_ed25519();
-        let config = BehaviourConfig::default();
-        P2PNetworkBehaviour::<String, String>::init_swarm(local_keys, config).unwrap()
-    }
-
-    fn mock_addr() -> Multiaddr {
-        Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap()
-    }
-
-    #[test]
-    fn new_behaviour() {
-        let local_keys = Keypair::generate_ed25519();
-        let config = BehaviourConfig::default();
-        let swarm = P2PNetworkBehaviour::<String, String>::init_swarm(local_keys.clone(), config).unwrap();
-        assert_eq!(
-            &PeerId::from_public_key(local_keys.public()),
-            Swarm::local_peer_id(&swarm)
-        );
-        assert!(swarm.get_all_peers().is_empty());
-    }
-
-    #[test]
-    fn add_peer() {
-        let mut swarm = mock_swarm();
-        let peer_id = PeerId::random();
-        let addr = mock_addr();
-        swarm.add_peer_addr(peer_id, addr.clone());
-        assert!(swarm.get_peer_addr(&peer_id).is_some());
-        assert!(swarm.get_all_peers().contains(&&peer_id));
-        let peer_addrs = swarm.remove_peer(&peer_id);
-        assert!(peer_addrs.is_some() && peer_addrs.unwrap().contains(&addr));
-        assert!(swarm.get_peer_addr(&peer_id).is_none());
-        assert!(!swarm.get_all_peers().contains(&&peer_id));
-    }
-
-    #[test]
-    fn listen_addr() {
-        let mut swarm = mock_swarm();
-        let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8085".parse().expect("Invalid Multiaddress.");
-        let listener_id = Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
-        task::block_on(async {
-            loop {
-                match swarm.next_event().await {
-                    SwarmEvent::NewListenAddr(addr) => {
-                        assert_eq!(listen_addr, addr);
-                        break;
-                    }
-                    SwarmEvent::ListenerClosed {
-                        addresses: _,
-                        reason: _,
-                    }
-                    | SwarmEvent::ListenerError { error: _ } => panic!(),
-                    _ => {}
-                }
-            }
-        });
-        Swarm::remove_listener(&mut swarm, listener_id).unwrap();
-        assert!(!Swarm::listeners(&swarm).any(|addr| addr == &listen_addr));
-    }
-
-    #[test]
-    fn zeroed_addr() {
-        let mut swarm = mock_swarm();
-        // empty ip and port
-        let mut listen_addr = "/ip4/0.0.0.0/tcp/0"
-            .parse::<Multiaddr>()
-            .expect("Invalid Multiaddress.");
-        Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
-        let mut actual_addr = task::block_on(async {
-            loop {
-                match swarm.next_event().await {
-                    SwarmEvent::NewListenAddr(addr) => return addr,
-                    SwarmEvent::ListenerClosed {
-                        addresses: _,
-                        reason: _,
-                    }
-                    | SwarmEvent::ListenerError { error: _ } => panic!(),
-                    _ => {}
-                }
-            }
-        });
-        // ip and port should both not be zero
-        assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
-        assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
-
-        // empty ip
-        let mut listen_addr = "/ip4/0.0.0.0/tcp/8086"
-            .parse::<Multiaddr>()
-            .expect("Invalid Multiaddress.");
-        Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
-        let mut actual_addr = task::block_on(async {
-            loop {
-                match swarm.next_event().await {
-                    SwarmEvent::NewListenAddr(addr) => return addr,
-                    SwarmEvent::ListenerClosed {
-                        addresses: _,
-                        reason: _,
-                    }
-                    | SwarmEvent::ListenerError { error: _ } => panic!(),
-                    _ => {}
-                }
-            }
-        });
-        // port should be the same
-        assert_eq!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
-        // ip should not be zero
-        assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
-
-        // empty port
-        let mut listen_addr = "/ip4/127.0.0.1/tcp/0"
-            .parse::<Multiaddr>()
-            .expect("Invalid Multiaddress.");
-        Swarm::listen_on(&mut swarm, listen_addr.clone()).unwrap();
-        let mut actual_addr = task::block_on(async {
-            loop {
-                match swarm.next_event().await {
-                    SwarmEvent::NewListenAddr(addr) => return addr,
-                    SwarmEvent::ListenerClosed {
-                        addresses: _,
-                        reason: _,
-                    }
-                    | SwarmEvent::ListenerError { error: _ } => panic!(),
-                    _ => {}
-                }
-            }
-        });
-        // port should not be zero
-        assert_ne!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
-        // ip should be the same
-        assert_eq!(listen_addr.pop().unwrap(), actual_addr.pop().unwrap());
     }
 }

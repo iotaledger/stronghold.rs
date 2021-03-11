@@ -22,7 +22,7 @@ zeroize_derive = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
 futures = "0.3"
-riker = { version = "0.4", git ="https://github.com/elenaf9/riker", branch = "master" }
+riker =  "0.4"
 
 
 [dependencies.stronghold-engine]
@@ -40,12 +40,16 @@ version = "*"
 path = "../communication"
 optional = true
 
+[dependencies.communication-macros]
+path = "../communication/communication-macros"
+optional = true
+
 [dependencies.stronghold-utils]
 path = "../utils"
 version = "0.1"
 
 [features]
-communication = ["stronghold-communication"]
+communication = ["stronghold-communication", "communication-macros"]
 
 [dev-dependencies]
 hex = "0.4.2"

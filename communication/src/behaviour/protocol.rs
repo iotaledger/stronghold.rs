@@ -31,12 +31,12 @@ impl ProtocolName for MessageProtocol {
 
 /// Describes how messages are read from and written to the io Socket by implementing the RequestResponseCodec
 #[derive(Clone)]
-pub struct MessageCodec<T, U> {
-    p: PhantomData<T>,
-    q: PhantomData<U>,
+pub struct MessageCodec<Req, Res> {
+    p: PhantomData<Req>,
+    q: PhantomData<Res>,
 }
 
-impl<T, U> Default for MessageCodec<T, U> {
+impl<Req, Res> Default for MessageCodec<Req, Res> {
     fn default() -> Self {
         MessageCodec {
             p: PhantomData,
@@ -45,16 +45,16 @@ impl<T, U> Default for MessageCodec<T, U> {
     }
 }
 
-/// Read and write request and responses and parse them into the generic structs T and U
+/// Read and write requests and responses, and parse them into the generic structs Req and Res.
 #[async_trait]
-impl<T, U> RequestResponseCodec for MessageCodec<T, U>
+impl<Req, Res> RequestResponseCodec for MessageCodec<Req, Res>
 where
-    T: MessageEvent,
-    U: MessageEvent,
+    Req: MessageEvent,
+    Res: MessageEvent,
 {
     type Protocol = MessageProtocol;
-    type Request = T;
-    type Response = U;
+    type Request = Req;
+    type Response = Res;
 
     // read requests from remote peers and parse them into the request struct
     async fn read_request<R>(&mut self, _: &MessageProtocol, io: &mut R) -> IOResult<Self::Request>
@@ -113,8 +113,19 @@ mod test {
         io,
         net::{Shutdown, TcpListener, TcpStream},
         task,
+        task::JoinHandle,
     };
     use stronghold_utils::test_utils;
+
+    fn spawn_listener(addr: &str) -> JoinHandle<()> {
+        let listener = task::block_on(async { TcpListener::bind(addr).await.unwrap() });
+        task::spawn(async move {
+            let mut incoming = listener.incoming();
+            let stream = incoming.next().await.unwrap().unwrap();
+            let (reader, writer) = &mut (&stream, &stream);
+            io::copy(reader, writer).await.unwrap();
+        })
+    }
 
     #[test]
     fn send_request() {
@@ -123,18 +134,13 @@ mod test {
             test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
-        let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8081").await.unwrap() });
-        let listener_handle = task::spawn(async move {
-            let mut incoming = listener.incoming();
-            let stream = incoming.next().await.unwrap().unwrap();
-            let (reader, writer) = &mut (&stream, &stream);
-            io::copy(reader, writer).await.unwrap();
-        });
+        let addr = "127.0.0.1:8081";
+        let listener_handle = spawn_listener(addr);
 
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
             let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
-            let mut socket = TcpStream::connect("127.0.0.1:8081").await.unwrap();
+            let mut socket = TcpStream::connect(addr).await.unwrap();
             for bytes in test_vector.iter() {
                 codec
                     .write_request(&protocol, &mut socket, bytes.clone())
@@ -159,18 +165,13 @@ mod test {
             test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
-        let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8082").await.unwrap() });
-        let listener_handle = task::spawn(async move {
-            let mut incoming = listener.incoming();
-            let stream = incoming.next().await.unwrap().unwrap();
-            let (reader, writer) = &mut (&stream, &stream);
-            io::copy(reader, writer).await.unwrap();
-        });
+        let addr = "127.0.0.1:8082";
+        let listener_handle = spawn_listener(addr);
 
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
             let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
-            let mut socket = TcpStream::connect("127.0.0.1:8082").await.unwrap();
+            let mut socket = TcpStream::connect(addr).await.unwrap();
             for bytes in test_vector.iter() {
                 codec
                     .write_response(&protocol, &mut socket, bytes.clone())
@@ -196,18 +197,13 @@ mod test {
             test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
-        let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8083").await.unwrap() });
-        let listener_handle = task::spawn(async move {
-            let mut incoming = listener.incoming();
-            let stream = incoming.next().await.unwrap().unwrap();
-            let (reader, writer) = &mut (&stream, &stream);
-            io::copy(reader, writer).await.unwrap();
-        });
+        let addr = "127.0.0.1:8083";
+        let listener_handle = spawn_listener(addr);
 
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
             let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
-            let mut socket = TcpStream::connect("127.0.0.1:8083").await.unwrap();
+            let mut socket = TcpStream::connect(addr).await.unwrap();
             for bytes in test_vector.clone().iter_mut() {
                 test_utils::corrupt(bytes);
                 codec
@@ -234,18 +230,13 @@ mod test {
             test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
-        let listener = task::block_on(async { TcpListener::bind("127.0.0.1:8084").await.unwrap() });
-        let listener_handle = task::spawn(async move {
-            let mut incoming = listener.incoming();
-            let stream = incoming.next().await.unwrap().unwrap();
-            let (reader, writer) = &mut (&stream, &stream);
-            io::copy(reader, writer).await.unwrap();
-        });
+        let addr = "127.0.0.1:8084";
+        let listener_handle = spawn_listener(addr);
 
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
             let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
-            let mut socket = TcpStream::connect("127.0.0.1:8084").await.unwrap();
+            let mut socket = TcpStream::connect(addr).await.unwrap();
             for bytes in test_vector.clone().iter_mut() {
                 test_utils::corrupt(bytes);
                 codec

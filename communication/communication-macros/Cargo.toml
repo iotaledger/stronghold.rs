@@ -1,0 +1,18 @@
+[package]
+name = "communication-macros"
+version = "0.1.0"
+authors = ["Elena Frank <elena.frank@iota.org>"]
+edition = "2018"
+
+[lib]
+name = "communication_macros"
+proc-macro = true
+
+[dependencies]
+syn = { version ="1.0", features = ["parsing", "full", "extra-traits", "proc-macro"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+
+
+[dev-dependencies]
+stronghold-communication = {path = ".."}
