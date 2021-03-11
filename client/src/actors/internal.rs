@@ -419,7 +419,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             sender,
                         );
                     }
-                    _ => todo!("return error message"),
+                    _ => client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Derive(
+                            ResultMessage::Error("Failed to access vault".into()),
+                        ))),
+                        sender,
+                    ),
                 }
             }
             InternalMsg::SLIP10DeriveFromKey {
@@ -469,7 +474,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             sender,
                         );
                     }
-                    _ => todo!("return error message"),
+                    _ => client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::SLIP10Derive(
+                            ResultMessage::Error("Failed to access vault".into()),
+                        ))),
+                        sender,
+                    ),
                 }
             }
             InternalMsg::BIP39Generate {
@@ -551,62 +561,85 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 );
             }
             InternalMsg::Ed25519PublicKey { vault_id, record_id } => {
-                let key = match self.keystore.get_key(vault_id) {
-                    Some(key) => key,
-                    None => todo!("return error message"),
-                };
-                self.keystore.insert_key(vault_id, key.clone());
-
-                let mut raw = self.bucket.read_data(vault_id, key, record_id);
-                if raw.len() < 32 {
-                    todo!("return error message: insufficient bytes")
-                }
-                raw.truncate(32);
-                let mut bs = [0; 32];
-                bs.copy_from_slice(&raw);
-                let sk = ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
-                let pk = sk.public_key();
-
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-                client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519PublicKey(
-                        ResultMessage::Ok(pk.to_compressed_bytes()),
-                    ))),
-                    sender,
-                );
+
+                if let Some(key) = self.keystore.get_key(vault_id) {
+                    self.keystore.insert_key(vault_id, key.clone());
+
+                    let mut raw = self.bucket.read_data(vault_id, key, record_id);
+                    if raw.len() < 32 {
+                        client.try_tell(
+                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                ProcResult::Ed25519PublicKey(ResultMessage::Error(
+                                    "Incorrect number of key bytes".into(),
+                                )),
+                            )),
+                            sender.clone(),
+                        );
+                    }
+                    raw.truncate(32);
+                    let mut bs = [0; 32];
+                    bs.copy_from_slice(&raw);
+                    let sk = ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                    let pk = sk.public_key();
+
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                            ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk.to_compressed_bytes())),
+                        )),
+                        sender,
+                    );
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                            ProcResult::Ed25519PublicKey(ResultMessage::Error("Failed to access vault".into())),
+                        )),
+                        sender,
+                    )
+                }
             }
             InternalMsg::Ed25519Sign {
                 vault_id,
                 record_id,
                 msg,
             } => {
-                let key_key = match self.keystore.get_key(vault_id) {
-                    Some(key_key) => key_key,
-                    None => todo!("return error message"),
-                };
-                self.keystore.insert_key(vault_id, key_key.clone());
-
-                let mut raw = self.bucket.read_data(vault_id, key_key, record_id);
-                // NB we truncate here to accomodate SLIP10/BIP32 keys without explicit conversion
-                if raw.len() <= 32 {
-                    todo!("return error message: incorrect number of key bytes")
-                }
-                raw.truncate(32);
-                let mut bs = [0; 32];
-                bs.copy_from_slice(&raw);
-                let sk = ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
-
-                let sig = sk.sign(&msg);
-
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-                client.try_tell(
-                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
-                        ResultMessage::Ok(sig.to_bytes()),
-                    ))),
-                    sender,
-                );
+                if let Some(pkey) = self.keystore.get_key(vault_id) {
+                    self.keystore.insert_key(vault_id, pkey.clone());
+
+                    let mut raw = self.bucket.read_data(vault_id, pkey, record_id);
+                    // NB we truncate here to accomodate SLIP10/BIP32 keys without explicit conversion
+                    if raw.len() <= 32 {
+                        client.try_tell(
+                            ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
+                                ResultMessage::Error("incorrect number of key bytes".into()),
+                            ))),
+                            sender.clone(),
+                        );
+                    }
+                    raw.truncate(32);
+                    let mut bs = [0; 32];
+                    bs.copy_from_slice(&raw);
+                    let sk = ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+
+                    let sig = sk.sign(&msg);
+
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
+                            ResultMessage::Ok(sig.to_bytes()),
+                        ))),
+                        sender,
+                    );
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
+                            ResultMessage::Error("Failed to access vault".into()),
+                        ))),
+                        sender,
+                    )
+                }
             }
             InternalMsg::FillSnapshot { data, id } => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
