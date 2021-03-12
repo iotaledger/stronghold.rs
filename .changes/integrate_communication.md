@@ -1,7 +1,6 @@
 ---
 "stronghold-communication": minor
 "iota-stronghold": minor
-"random": patch
 "snapshot": patch
 "vault": patch
 "stronghold-utils": minor
