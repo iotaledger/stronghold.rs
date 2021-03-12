@@ -41,7 +41,9 @@ impl BoxProvider for Provider {
             ad,
             data,
             &mut cipher,
-            tag.as_mut_slice().try_into().expect(""),
+            tag.as_mut_slice()
+                .try_into()
+                .expect("Tag not the correct size: Encrypt"),
         )
         .map_err(|_| vault::Error::CryptoError(String::from("Unable to seal data")))?;
 
@@ -59,10 +61,10 @@ impl BoxProvider for Provider {
         let key = key.bytes();
 
         XChaCha20Poly1305::decrypt(
-            key.as_slice().try_into().expect("Key not the correct size: Encrypt"),
-            nonce.try_into().expect("Nonce not the correct size: Encrypt"),
+            key.as_slice().try_into().expect("Key not the correct size: Decrypt"),
+            nonce.try_into().expect("Nonce not the correct size: Decrypt"),
             ad,
-            tag.try_into().expect("Tag not the correct size: Encrypt"),
+            tag.try_into().expect("Tag not the correct size: Decrypt"),
             &cipher,
             &mut plain,
         )
