@@ -11,10 +11,9 @@ categories = [ "security" ]
 homepage = "https://iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
 
-[features]
-default = []
-stdalloc = []
-
 [dependencies]
 libsodium-sys = "0.2"
 serde = "1.0"
+
+[dev-dependencies]
+quickcheck = "1.0"
