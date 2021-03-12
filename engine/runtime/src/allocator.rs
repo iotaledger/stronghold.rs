@@ -72,7 +72,7 @@ mod test {
     quickcheck! {
         fn prop(v1: Vec<u8>, v2: Vec<u8>) -> bool {
             let mut v1 = v1;
-            if v1.len() == 0 || v2.len() == 0 {
+            if v1.is_empty() || v2.is_empty() {
                 return true;
             }
             let ptr1: *const u8 = &v1[0];
