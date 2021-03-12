@@ -1,7 +1,7 @@
 ---
 "runtime": minor
 "vault": minor
-"client": patch
+"iota-stronghold": patch
 ---
 
 Remove Crypto, Random and Primitives libraries in favor of Crypto.rs
