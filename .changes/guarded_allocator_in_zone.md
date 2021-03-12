@@ -1,5 +1,5 @@
 ---
-"stronghold-runtime": minor
+"runtime": minor
 ---
 
 Add functionality to enable the guarded memory allocator in the zone when

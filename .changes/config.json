@@ -193,6 +193,11 @@
         "stronghold-utils"
       ]
     },
+    "runtime": {
+      "path": "./engine/runtime/",
+      "manager": "rust",
+      "publish": false
+    },
     "store": {
       "path": "./engine/store/",
       "manager": "rust",

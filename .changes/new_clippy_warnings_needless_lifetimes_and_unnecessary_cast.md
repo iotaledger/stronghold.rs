@@ -1,5 +1,5 @@
 ---
-"stronghold-runtime": patch
+"runtime": patch
 "vault": patch
 ---
 
