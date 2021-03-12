@@ -74,6 +74,11 @@
 <span id="71">71</span>
 <span id="72">72</span>
 <span id="73">73</span>
+<span id="74">74</span>
+<span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -112,6 +117,8 @@
 <span class="kw">mod</span> <span class="ident">types</span>;
 <span class="kw">mod</span> <span class="ident">vault</span>;
 
+<span class="kw">use</span> <span class="ident">runtime</span>::<span class="ident">ZeroingAlloc</span>;
+
 <span class="kw">pub</span> <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">base64</span>::{<span class="ident">Base64Decodable</span>, <span class="ident">Base64Encodable</span>},
     <span class="ident">crypto_box</span>::{<span class="ident">BoxProvider</span>, <span class="ident">Decrypt</span>, <span class="ident">Encrypt</span>, <span class="ident">Key</span>},
@@ -120,6 +127,9 @@
         <span class="ident">DBReader</span>, <span class="ident">DBView</span>, <span class="ident">DBWriter</span>, <span class="ident">DeleteRequest</span>, <span class="ident">Kind</span>, <span class="ident">PreparedRead</span>, <span class="ident">ReadRequest</span>, <span class="ident">ReadResult</span>, <span class="ident">RecordId</span>, <span class="ident">WriteRequest</span>,
     },
 };
+
+<span class="attribute">#[<span class="ident">global_allocator</span>]</span>
+<span class="kw">static</span> <span class="ident">ALLOC</span>: <span class="ident">ZeroingAlloc</span><span class="op">&lt;</span><span class="ident">std</span>::<span class="ident">alloc</span>::<span class="ident">System</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">ZeroingAlloc</span>(<span class="ident">std</span>::<span class="ident">alloc</span>::<span class="ident">System</span>);
 
 <span class="doccomment">/// Errors for the Vault Crate</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">DeriveError</span>, <span class="ident">Debug</span>)]</span>

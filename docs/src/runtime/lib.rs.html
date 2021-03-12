@@ -24,6 +24,8 @@
 <span id="21">21</span>
 <span id="22">22</span>
 <span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -40,11 +42,13 @@
 <span class="doccomment">//! Memory allocations are protected by guard pages before and after the</span>
 <span class="doccomment">//! allocation, an underflow canary, and are zeroed out when freed.</span>
 
+<span class="kw">mod</span> <span class="ident">allocator</span>;
 <span class="kw">mod</span> <span class="ident">boxed</span>;
 <span class="kw">mod</span> <span class="ident">guarded</span>;
 <span class="kw">mod</span> <span class="ident">guarded_vec</span>;
 <span class="kw">mod</span> <span class="ident">types</span>;
 
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">allocator</span>::<span class="ident">ZeroingAlloc</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">guarded</span>::<span class="ident">Guarded</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">guarded_vec</span>::<span class="ident">GuardedVec</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">types</span>::<span class="ident">Bytes</span>;

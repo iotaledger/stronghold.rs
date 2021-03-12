@@ -2,7 +2,7 @@ var N = null;var sourcesIndex = {};
 sourcesIndex["communication_macros"] = {"name":"","files":["lib.rs"]};
 sourcesIndex["engine"] = {"name":"","files":["lib.rs"]};
 sourcesIndex["iota_stronghold"] = {"name":"","dirs":[{"name":"actors","files":["client.rs","internal.rs","snapshot.rs"]},{"name":"internals","files":["provider.rs"]},{"name":"state","files":["bucket.rs","client.rs","key_store.rs","snapshot.rs"]},{"name":"utils","files":["ids.rs","types.rs"]}],"files":["actors.rs","interface.rs","internals.rs","lib.rs","state.rs","utils.rs"]};
-sourcesIndex["runtime"] = {"name":"","dirs":[{"name":"types","files":["bytes.rs","const_eq.rs","rand.rs","zero.rs"]}],"files":["boxed.rs","guarded.rs","guarded_vec.rs","lib.rs","types.rs"]};
+sourcesIndex["runtime"] = {"name":"","dirs":[{"name":"types","files":["bytes.rs","const_eq.rs","rand.rs","zero.rs"]}],"files":["allocator.rs","boxed.rs","guarded.rs","guarded_vec.rs","lib.rs","types.rs"]};
 sourcesIndex["snapshot"] = {"name":"","dirs":[{"name":"compression","files":["decoder.rs","encoder.rs"]}],"files":["compression.rs","files.rs","kdf.rs","lib.rs","logic.rs"]};
 sourcesIndex["store"] = {"name":"","dirs":[{"name":"storage","files":["cache.rs"]}],"files":["lib.rs","macros.rs","storage.rs"]};
 sourcesIndex["stronghold_communication"] = {"name":"","dirs":[{"name":"actor","files":["connections.rs","firewall.rs","swarm_task.rs","types.rs"]},{"name":"behaviour","files":["protocol.rs","types.rs"]}],"files":["actor.rs","behaviour.rs","lib.rs"]};

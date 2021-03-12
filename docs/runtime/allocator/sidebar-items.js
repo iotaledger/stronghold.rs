@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["zero","Zeroes out memory at pointer in place based on the given size."]],"struct":[["ZeroingAlloc","A Zeroing Allocator which wraps the standard memory allocator.  This allocator zeroes out memory when it is dropped."]]});
