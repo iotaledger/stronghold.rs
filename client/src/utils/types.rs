@@ -90,9 +90,11 @@ impl AsRef<Location> for Location {
 }
 
 /// Policy options for modifying an entire Stronghold.  Must be specified on creation.
+#[derive(Clone, Debug)]
 pub enum StrongholdFlags {
     IsReadable(bool),
 }
 
 /// Policy options for for a specific vault.  Must be specified on creation.
+#[derive(Clone, Debug)]
 pub enum VaultFlags {}
