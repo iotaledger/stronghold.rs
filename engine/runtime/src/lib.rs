@@ -13,11 +13,13 @@
 //! Memory allocations are protected by guard pages before and after the
 //! allocation, an underflow canary, and are zeroed out when freed.
 
+mod allocator;
 mod boxed;
 mod guarded;
 mod guarded_vec;
 mod types;
 
+pub use allocator::ZeroingAlloc;
 pub use guarded::Guarded;
 pub use guarded_vec::GuardedVec;
 pub use types::Bytes;

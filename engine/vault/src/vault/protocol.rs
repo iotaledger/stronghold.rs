@@ -89,7 +89,7 @@ impl ReadResult {
     }
 
     /// data from record
-    pub fn data(&self) -> Vec<u8> {
+    pub(crate) fn data(&self) -> Vec<u8> {
         (*self.data.borrow()).to_vec()
     }
 }

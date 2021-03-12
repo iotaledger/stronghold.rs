@@ -35,6 +35,8 @@ mod crypto_box;
 mod types;
 mod vault;
 
+use runtime::ZeroingAlloc;
+
 pub use crate::{
     base64::{Base64Decodable, Base64Encodable},
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
@@ -43,6 +45,9 @@ pub use crate::{
         DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult, RecordId, WriteRequest,
     },
 };
+
+#[global_allocator]
+static ALLOC: ZeroingAlloc<std::alloc::System> = ZeroingAlloc(std::alloc::System);
 
 /// Errors for the Vault Crate
 #[derive(DeriveError, Debug)]
