@@ -1,4 +1,9 @@
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use core::alloc::{GlobalAlloc, Layout};
+
+use libsodium_sys::sodium_memzero;
 
 /// A Zeroing Allocator which wraps the standard memory allocator.  This allocator zeroes out memory when it is dropped.
 pub struct ZeroingAlloc<T: GlobalAlloc>(pub T);
@@ -14,6 +19,7 @@ where
     /// Zero the memory before deallocation.
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         zero(ptr, layout.size());
+
         #[cfg(not(test))]
         self.0.dealloc(ptr, layout);
     }
@@ -25,10 +31,7 @@ where
 
 /// Zeroes out memory at pointer in place based on the given size.
 unsafe fn zero(ptr: *mut u8, size: usize) {
-    for i in 0..size {
-        core::ptr::write_volatile(ptr.offset(i as isize), 0);
-    }
-    core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
+    sodium_memzero(ptr as *mut _, size);
 }
 
 #[cfg(test)]
