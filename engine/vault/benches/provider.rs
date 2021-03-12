@@ -1,7 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crypto::{ciphers::chacha::xchacha20poly1305, rand::fill};
+use crypto::{
+    ciphers::{chacha::XChaCha20Poly1305, traits::Aead},
+    utils::rand::fill,
+};
 
 use std::convert::TryInto;
 
@@ -9,8 +12,8 @@ use vault::{BoxProvider, Key};
 #[derive(Ord, PartialEq, Eq, PartialOrd)]
 pub struct Provider;
 impl Provider {
-    const NONCE_LEN: usize = xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE;
-    const TAG_LEN: usize = xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE;
+    const NONCE_LEN: usize = XChaCha20Poly1305::NONCE_LENGTH;
+    const TAG_LEN: usize = XChaCha20Poly1305::TAG_LENGTH;
 }
 
 impl BoxProvider for Provider {
@@ -25,20 +28,20 @@ impl BoxProvider for Provider {
     fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> vault::Result<Vec<u8>> {
         let mut cipher = vec![0u8; data.len()];
 
-        let mut tag = [0u8; 16];
+        let mut tag = vec![0u8; 16];
         let mut nonce: [u8; 24] = [0u8; Self::NONCE_LEN];
 
         Self::random_buf(&mut nonce)?;
 
         let key = key.bytes();
 
-        xchacha20poly1305::encrypt(
-            &mut cipher,
-            &mut tag,
-            data,
-            &key.try_into().expect("Key not the correct size: Encrypt"),
-            &nonce,
+        XChaCha20Poly1305::encrypt(
+            key.as_slice().try_into().expect("Key not the correct size: Encrypt"),
+            &nonce.try_into().expect("Nonce not the correct size: Encrypt"),
             ad,
+            data,
+            &mut cipher,
+            tag.as_mut_slice().try_into().expect(""),
         )
         .map_err(|_| vault::Error::CryptoError(String::from("Unable to seal data")))?;
 
@@ -55,15 +58,15 @@ impl BoxProvider for Provider {
 
         let key = key.bytes();
 
-        xchacha20poly1305::decrypt(
-            &mut plain,
-            cipher,
-            &key.try_into().expect("Key not the correct size: Decrypt"),
-            &tag.try_into().expect("Tag not the correct size: Decrypt"),
-            &nonce.to_vec().try_into().expect("Nonce not the correct size: Decrypt"),
+        XChaCha20Poly1305::decrypt(
+            key.as_slice().try_into().expect("Key not the correct size: Encrypt"),
+            nonce.try_into().expect("Nonce not the correct size: Encrypt"),
             ad,
+            tag.try_into().expect("Tag not the correct size: Encrypt"),
+            &cipher,
+            &mut plain,
         )
-        .map_err(|_| vault::Error::CryptoError(String::from("Invalid Cipher")))?;
+        .map_err(|_| vault::Error::CryptoError(String::from("Unable to unlock data")))?;
 
         Ok(plain)
     }
