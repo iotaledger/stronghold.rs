@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.3.0]
+
+-   Rename the previously incorrectly named combined SLIP10+Ed25519 procedures (now
+    named with a `SLIP10DeriveAnd` prefix) and add back the Ed25519 ("only")
+    procedures.
+        - [e221dcb](https://www.github.com/iotaledger/stronghold.rs/commit/e221dcb31519960e60982012da3c2ac154d989e1) Add back the atomic Ed25519 procedures ([#122](https://www.github.com/iotaledger/stronghold.rs/pull/122)) on 2021-01-08
+        - [8e255bf](https://www.github.com/iotaledger/stronghold.rs/commit/8e255bf4aad8caf69dcddfac24d4cdb07f716177) fix(covector): wrong version bump type ([#128](https://www.github.com/iotaledger/stronghold.rs/pull/128)) on 2021-01-14
+-   Implement a configurable firewall in the communication actor, add a macro to derive permissions for requests.
+    -   [025685f](https://www.github.com/iotaledger/stronghold.rs/commit/025685fb181ba0600f31680a3f4c115c0e2097f7) Feat/communication firewall ([#158](https://www.github.com/iotaledger/stronghold.rs/pull/158)) on 2021-03-11
+-   Refactor the communication actor, enable using a relay peer, and integrate communication as feature into the stronghold interface. 
+    Remove unecessary Option/ Result wraps in `random` and `iota-stronghold`.
+    Rename stronghold-test-utils to stronghold-utils and added riker ask pattern to it.
+        - [9c7cba6](https://www.github.com/iotaledger/stronghold.rs/commit/9c7cba624e2a99f04a2d033b8673f8a4b8735f0b) Feat/integrate comms ([#130](https://www.github.com/iotaledger/stronghold.rs/pull/130)) on 2021-02-26
+        - [fcb62bb](https://www.github.com/iotaledger/stronghold.rs/commit/fcb62bbf966bfcd543b13a79d73839a3fee0219e) fix/covector-2 ([#163](https://www.github.com/iotaledger/stronghold.rs/pull/163)) on 2021-03-12
+-   Remove Crypto, Random and Primitives libraries in favor of Crypto.rs
+    Moved Runtime into the engine. 
+    Add new guarded types for Runtime and remove old logic. 
+
+## Features:
+
+-   Causes segfault upon access without borrow
+-   Protects using mprotect
+-   Adds guard pages proceeding and following the allocated memory.
+-   Adds a canary pointer to detect underflows. 
+-   Locks memory with mlock.
+-   Frees memory using munlock
+-   Memory is zeroed when no longer in use through sodium_free
+-   Can be compared in constant time
+-   Can not be printed using debug
+-   Can not be cloned using the Clone trait.
+
+Implement guarded types in Vault to protect the data and the keys.
+Clean up logic inside of the Client library.
+
+    - [dd65b67](https://www.github.com/iotaledger/stronghold.rs/commit/dd65b67f42718150c7c7dbab9606ee2167cf11ce) add changes. on 2021-03-11
+    - [829ecac](https://www.github.com/iotaledger/stronghold.rs/commit/829ecac2e8090d478706c673cd45f1b91a60b2de) fix(covector) ([#164](https://www.github.com/iotaledger/stronghold.rs/pull/164)) on 2021-03-12
+
+-   Add `Clone`/`Debug` implementations for `StrongholdFlags` and `VaultFlags`.
+    -   [e9fda48](https://www.github.com/iotaledger/stronghold.rs/commit/e9fda4859d0367f3a69265dcb5d4d276bfb07066) Add Clone/Debug implementations for StrongholdFlags/VaultFlags ([#157](https://www.github.com/iotaledger/stronghold.rs/pull/157)) on 2021-03-12
+
 ## [0.2.0]
 
 -   Added the initial client logic and integrated it with the Riker actor model. Change includes a Client/Cache actor, a Bucket actor, a Snapshot actor, and a keystore actor.  All of the Stronghold APIs are available.
