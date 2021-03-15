@@ -50,7 +50,11 @@ impl<T: BoxProvider> Key<T> {
     pub fn random() -> crate::Result<Self> {
         Ok(Self {
             key: GuardedVec::new(T::box_key_len(), |v| {
-                v.copy_from_slice(T::random_vec(T::box_key_len()).unwrap().as_slice())
+                v.copy_from_slice(
+                    T::random_vec(T::box_key_len())
+                        .expect("failed to generate random key")
+                        .as_slice(),
+                )
             }),
 
             _box_provider: PhantomData,

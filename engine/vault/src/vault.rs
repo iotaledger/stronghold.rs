@@ -262,8 +262,7 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
             None | Some((None, _)) => Ok(PreparedRead::NoSuchRecord),
             Some((_, None)) => Ok(PreparedRead::RecordIsEmpty),
             Some((_, Some(tx_id))) => {
-                // TODO: if we use references/boxes instead of ids then these never-failing lookups
-                // can be removed
+                // Should never fail.
                 let tx = self.view.txs.get(&tx_id).unwrap().typed::<DataTransaction>().unwrap();
                 match self.view.cache.get(&tx.blob) {
                     Some(sb) => Ok(PreparedRead::CacheHit(sb.decrypt(&self.view.key, tx.blob)?)),
@@ -275,7 +274,6 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
 
     /// Open a record given a `ReadResult`.  Returns a vector of bytes.
     pub fn read(&self, res: ReadResult) -> crate::Result<Vec<u8>> {
-        // TODO: add parameter to allow the vault to cache the result
         let b = BlobId::try_from(res.id())?;
 
         if self.is_active_blob(&b) {

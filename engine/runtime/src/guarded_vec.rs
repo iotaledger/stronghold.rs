@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn test_init() {
         let _ = GuardedVec::<u64>::new(6, |v| {
-            v.clone_from_slice(&[1, 2, 3, 4, 5, 6][..]);
+            v.copy_from_slice(&[1, 2, 3, 4, 5, 6][..]);
 
             assert_eq!(*v, [1, 2, 3, 4, 5, 6])
         });
@@ -314,12 +314,12 @@ mod tests {
         let mut vec = GuardedVec::<u64>::zero(2);
         let mut v = vec.borrow_mut();
 
-        v.clone_from_slice(&[7, 1][..]);
+        v.copy_from_slice(&[7, 1][..]);
 
         assert_eq!(*v, [7, 1]);
 
         let vec = GuardedVec::<[u8; 2]>::new(2, |v| {
-            v.clone_from_slice(&[[1, 2], [3, 4]][..]);
+            v.copy_from_slice(&[[1, 2], [3, 4]][..]);
         });
 
         assert_eq!(*vec.borrow(), [[1, 2], [3, 4]]);
