@@ -14,7 +14,7 @@ use std::{
 pub fn home_dir() -> crate::Result<PathBuf> {
     let home = match std::env::var("STRONGHOLD") {
         Ok(h) => h.into(),
-        Err(_) => dirs_next::home_dir().unwrap(),
+        Err(_) => dirs_next::home_dir().expect("Failed to get home directory"),
     };
     let home_dir = home.join(".stronghold");
 
