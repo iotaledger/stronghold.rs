@@ -415,6 +415,42 @@ impl Stronghold {
         }
     }
 
+    /// Checks whether a record exists in the client.
+    pub async fn record_exists(&self, location: Location) -> bool {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        if let SHResults::ReturnExistsRecord(b) = ask(
+            &self.system,
+            client,
+            SHRequest::CheckRecord {
+                location: location.clone(),
+            },
+        )
+        .await
+        {
+            b
+        } else {
+            false
+        }
+    }
+
+    /// checks whether a vault exists in the client.
+    pub async fn vault_exists(&self, location: Location) -> bool {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+        let vault_path = &location.vault_path();
+        let vault_path = vault_path.to_vec();
+
+        if let SHResults::ReturnExistsVault(b) = ask(&self.system, client, SHRequest::CheckVault(vault_path)).await {
+            b
+        } else {
+            false
+        }
+    }
+
     /// Reads data from a given snapshot file.  Can only read the data for a single `client_path` at a time. If the new
     /// actor uses a new `client_path` the former client path may be passed into the function call to read the data into
     /// that actor. Also requires keydata to unlock the snapshot. A filename and filepath can be specified. The Keydata
