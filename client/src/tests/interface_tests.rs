@@ -519,7 +519,8 @@ fn test_stronghold_communication() {
     };
 
     match futures::executor::block_on(local_stronghold.remote_runtime_exec(peer_id, procedure)) {
-        Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(_))) => {}
+        ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => {}
+        ProcResult::Error(err) => panic!("Procedure failed: {:?}", err),
         r => panic!("unexpected result: {:?}", r),
     };
 }
