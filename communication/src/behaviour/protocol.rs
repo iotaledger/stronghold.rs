@@ -118,12 +118,18 @@ mod test {
     use stronghold_utils::test_utils;
 
     fn spawn_listener(addr: &str) -> JoinHandle<()> {
-        let listener = task::block_on(async { TcpListener::bind(addr).await.unwrap() });
+        let listener = task::block_on(async { TcpListener::bind(addr).await.expect("Failed to bind tcp listener.") });
         task::spawn(async move {
             let mut incoming = listener.incoming();
-            let stream = incoming.next().await.unwrap().unwrap();
+            let stream = incoming
+                .next()
+                .await
+                .expect("Incoming connection is none.")
+                .expect("Tcp stream is none.");
             let (reader, writer) = &mut (&stream, &stream);
-            io::copy(reader, writer).await.unwrap();
+            io::copy(reader, writer)
+                .await
+                .expect("Failed to copy reader into writer.");
         })
     }
 
@@ -140,18 +146,21 @@ mod test {
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
             let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
-            let mut socket = TcpStream::connect(addr).await.unwrap();
+            let mut socket = TcpStream::connect(addr).await.expect("Failed to connect tcp stream.");
             for bytes in test_vector.iter() {
                 codec
                     .write_request(&protocol, &mut socket, bytes.clone())
                     .await
-                    .unwrap();
+                    .expect("Failed to write request.");
             }
             for bytes in test_vector.iter() {
-                let received = codec.read_request(&protocol, &mut socket).await.unwrap();
+                let received = codec
+                    .read_request(&protocol, &mut socket)
+                    .await
+                    .expect("Failed to read request.");
                 assert_eq!(bytes, &received);
             }
-            socket.shutdown(Shutdown::Both).unwrap();
+            socket.shutdown(Shutdown::Both).expect("Failed to shutdown socket.");
         });
         task::block_on(async {
             future::join(listener_handle, writer_handle).await;
@@ -171,18 +180,21 @@ mod test {
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
             let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
-            let mut socket = TcpStream::connect(addr).await.unwrap();
+            let mut socket = TcpStream::connect(addr).await.expect("Failed to connect tcp stream.");
             for bytes in test_vector.iter() {
                 codec
                     .write_response(&protocol, &mut socket, bytes.clone())
                     .await
-                    .unwrap();
+                    .expect("Failed to write response.");
             }
             for bytes in test_vector.iter() {
-                let received = codec.read_response(&protocol, &mut socket).await.unwrap();
+                let received = codec
+                    .read_response(&protocol, &mut socket)
+                    .await
+                    .expect("Failed to read response.");
                 assert_eq!(bytes, &received);
             }
-            socket.shutdown(Shutdown::Both).unwrap();
+            socket.shutdown(Shutdown::Both).expect("Failed to shutdown socket.");
         });
         task::block_on(async {
             future::join(listener_handle, writer_handle).await;
@@ -190,7 +202,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "All requests are corrupted.")]
     fn corrupt_request() {
         let mut test_vector = Vec::new();
         for _ in 0..20 {
@@ -203,27 +215,33 @@ mod test {
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
             let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
-            let mut socket = TcpStream::connect(addr).await.unwrap();
+            let mut socket = TcpStream::connect(addr).await.expect("Failed to connect tcp stream.");
             for bytes in test_vector.clone().iter_mut() {
                 test_utils::corrupt(bytes);
                 codec
                     .write_request(&protocol, &mut socket, bytes.clone())
                     .await
-                    .unwrap();
+                    .expect("Failed to write request.");
             }
+            let mut results = Vec::new();
             for bytes in test_vector.iter() {
-                let received = codec.read_request(&protocol, &mut socket).await.unwrap();
-                assert_eq!(bytes, &received);
+                let received = codec
+                    .read_request(&protocol, &mut socket)
+                    .await
+                    .expect("Failed to read request.");
+                results.push(bytes == &received)
             }
-            socket.shutdown(Shutdown::Both).unwrap();
+            socket.shutdown(Shutdown::Both).expect("Failed to shutdown socket.");
+            results.iter().any(|res| *res)
         });
         task::block_on(async {
-            future::join(listener_handle, writer_handle).await;
+            let (_, results) = future::join(listener_handle, writer_handle).await;
+            assert!(results, "All requests are corrupted.")
         });
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "All responses are corrupted.")]
     fn corrupt_response() {
         let mut test_vector = Vec::new();
         for _ in 0..20 {
@@ -236,22 +254,28 @@ mod test {
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
             let mut codec = MessageCodec::<Vec<u8>, Vec<u8>>::default();
-            let mut socket = TcpStream::connect(addr).await.unwrap();
+            let mut socket = TcpStream::connect(addr).await.expect("Failed to connect tcp stream.");
             for bytes in test_vector.clone().iter_mut() {
                 test_utils::corrupt(bytes);
                 codec
                     .write_response(&protocol, &mut socket, bytes.clone())
                     .await
-                    .unwrap();
+                    .expect("Failed to write response.");
             }
+            let mut results = Vec::new();
             for bytes in test_vector.iter() {
-                let received = codec.read_response(&protocol, &mut socket).await.unwrap();
-                assert_eq!(bytes, &received);
+                let received = codec
+                    .read_response(&protocol, &mut socket)
+                    .await
+                    .expect("Failed to read response.");
+                results.push(bytes == &received)
             }
-            socket.shutdown(Shutdown::Both).unwrap();
+            socket.shutdown(Shutdown::Both).expect("Failed to shutdown socket.");
+            results.iter().any(|res| *res)
         });
         task::block_on(async {
-            future::join(listener_handle, writer_handle).await;
+            let (_, results) = future::join(listener_handle, writer_handle).await;
+            assert!(results, "All responses are corrupted.")
         });
     }
 }

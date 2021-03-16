@@ -8,7 +8,7 @@ use crate::behaviour::{
 use core::{ops::Deref, str::FromStr, time::Duration};
 use futures::{channel::mpsc::UnboundedReceiver, future, prelude::*, select};
 use libp2p::{
-    core::{connection::ListenerId, ConnectedPoint},
+    core::{connection::ListenerId, multiaddr::Protocol, ConnectedPoint},
     identity::Keypair,
     request_response::RequestId,
     swarm::{DialError, Swarm, SwarmEvent},
@@ -16,6 +16,7 @@ use libp2p::{
 };
 use riker::{actors::*, Message};
 use std::{
+    net::Ipv4Addr,
     task::{Context, Poll},
     time::Instant,
 };
@@ -132,7 +133,11 @@ where
 
     // Start listening on the swarm, if not address is provided, the port will be OS assigned.
     fn start_listening(&mut self, addr: Option<Multiaddr>) -> Result<Multiaddr, ()> {
-        let addr = addr.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."));
+        let addr = addr.unwrap_or_else(|| {
+            Multiaddr::empty()
+                .with(Protocol::Ip4(Ipv4Addr::new(0, 0, 0, 0)))
+                .with(Protocol::Tcp(0u16))
+        });
         if let Ok(listener_id) = Swarm::listen_on(&mut self.swarm, addr) {
             let start = Instant::now();
             task::block_on(async {

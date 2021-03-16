@@ -68,8 +68,12 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
     let target_regex = "(?:\\s+\"(?P<target>[^\"]+)\")?";
     let msg_regex = "(?:\\s+\"(?P<msg>[^\"]+)\")?";
     let regex = "(?P<type>LIST|DIAL|PING|MSG)".to_string() + target_regex + msg_regex;
-    if let Some(captures) = Regex::new(&regex).unwrap().captures(&line) {
-        match captures.name("type").unwrap().as_str() {
+    if let Some(captures) = Regex::new(&regex).expect("Invalid Reqex string.").captures(&line) {
+        match captures
+            .name("type")
+            .expect("No capture for match name 'type'.")
+            .as_str()
+        {
             "LIST" => {
                 println!("Known peers:");
                 for peer in swarm.get_all_peers() {
