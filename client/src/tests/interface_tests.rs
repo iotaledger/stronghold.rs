@@ -7,9 +7,9 @@ use crate::{line_error, Location, RecordHint, Stronghold};
 #[cfg(feature = "communication")]
 use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, StatusMessage};
 #[cfg(feature = "communication")]
-use core::time::Duration;
+use communication::actor::KeepAlive;
 #[cfg(feature = "communication")]
-use stronghold_communication::actor::KeepAlive;
+use core::time::Duration;
 
 #[cfg(feature = "communication")]
 use super::fresh;
@@ -411,7 +411,7 @@ fn test_counters() {
 
 #[cfg(feature = "communication")]
 #[test]
-fn test_stronghold_communication() {
+fn test_communication() {
     let local_sys = ActorSystem::new().unwrap();
     let local_client = b"local".to_vec();
     let mut local_stronghold = Stronghold::init_stronghold_system(local_sys, local_client, vec![]);

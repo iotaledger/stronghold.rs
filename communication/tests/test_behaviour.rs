@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use async_std::task;
-use core::{ops::Deref, str::FromStr, time::Duration};
-use futures::future;
-use serde::{Deserialize, Serialize};
-use std::net::Ipv4Addr;
-use stronghold_communication::{
+use communication::{
     behaviour::{
         BehaviourConfig, MessageEvent, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent, RequestEnvelope,
     },
     libp2p::{Keypair, Multiaddr, PeerId, Protocol, Swarm, SwarmEvent},
 };
+use core::{ops::Deref, str::FromStr, time::Duration};
+use futures::future;
+use serde::{Deserialize, Serialize};
+use std::net::Ipv4Addr;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {

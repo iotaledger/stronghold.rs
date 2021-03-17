@@ -24,7 +24,7 @@ use crate::{
     ClientId, Location, Provider,
 };
 #[cfg(feature = "communication")]
-use stronghold_communication::{
+use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults,
         EstablishedConnection, FirewallPermission, FirewallRule, KeepAlive, RequestDirection, VariantPermission,

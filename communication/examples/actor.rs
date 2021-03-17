@@ -15,16 +15,15 @@
 //! AskActor that sends the request to the communication actor and return upon a response.
 
 use async_std::task;
-use communication_macros::RequestPermissions;
-use riker::actors::*;
-use stronghold_communication::{
+use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults, FirewallPermission,
-        KeepAlive, PermissionValue, VariantPermission,
+        KeepAlive, PermissionValue, RequestPermissions, VariantPermission,
     },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, PeerId},
 };
+use riker::actors::*;
 use stronghold_utils::ask;
 
 use futures::future;

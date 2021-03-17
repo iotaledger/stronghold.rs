@@ -14,10 +14,10 @@
 //!
 //! ```no_run
 //! use async_std::task;
+//! use communication::behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent};
 //! use core::ops::Deref;
 //! use libp2p::identity::Keypair;
 //! use serde::{Deserialize, Serialize};
-//! use stronghold_communication::behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
 //! pub enum Request {
@@ -166,9 +166,9 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
     ///
     /// # Example
     /// ```no_run
+    /// use communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};
     /// use libp2p::identity::Keypair;
     /// use serde::{Deserialize, Serialize};
-    /// use stronghold_communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};
     ///
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// pub enum Request {

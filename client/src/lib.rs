@@ -46,7 +46,7 @@ pub use crate::{
 #[cfg(feature = "communication")]
 pub use crate::actors::SHRequestPermission;
 #[cfg(feature = "communication")]
-pub use stronghold_communication::{
+pub use communication::{
     actor::KeepAlive,
     libp2p::{Multiaddr, PeerId},
 };

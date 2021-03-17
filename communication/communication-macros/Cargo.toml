@@ -9,7 +9,6 @@ repository = "https://github.com/iotaledger/stronghold.rs"
 homepage = "https://www.iota.org"
 
 [lib]
-name = "communication_macros"
 proc-macro = true
 
 [dependencies]

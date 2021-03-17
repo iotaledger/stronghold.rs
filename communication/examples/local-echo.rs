@@ -42,14 +42,14 @@ use async_std::{
     io::{stdin, BufReader},
     task,
 };
+use communication::{
+    behaviour::{BehaviourConfig, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
+    libp2p::{Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
+};
 use core::{ops::Deref, str::FromStr};
 use futures::{prelude::*, select};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use stronghold_communication::{
-    behaviour::{BehaviourConfig, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
-    libp2p::{Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {

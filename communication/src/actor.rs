@@ -16,17 +16,17 @@
 //! to the [`CommunicationActor`].
 //!
 //! ```no_run
+//! use communication::{
+//!     actor::{
+//!         CommunicationActor, CommunicationActorConfig, FirewallPermission, PermissionValue, ToPermissionVariants,
+//!         VariantPermission,
+//!     },
+//!     behaviour::BehaviourConfig,
+//! };
 //! use communication_macros::RequestPermissions;
 //! use libp2p::identity::Keypair;
 //! use riker::actors::*;
 //! use serde::{Deserialize, Serialize};
-//! use stronghold_communication::{
-//!     actor::{
-//!         firewall::{PermissionValue, ToPermissionVariants, VariantPermission},
-//!         CommunicationActor, CommunicationActorConfig, FirewallPermission,
-//!     },
-//!     behaviour::BehaviourConfig,
-//! };
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]
 //! pub enum Request {
@@ -80,7 +80,7 @@
 //! ```
 
 mod connections;
-pub mod firewall;
+mod firewall;
 mod swarm_task;
 mod types;
 use crate::behaviour::{BehaviourConfig, MessageEvent};
@@ -91,7 +91,8 @@ use core::{
 };
 use firewall::*;
 pub use firewall::{
-    FirewallPermission, FirewallRule, PermissionValue, RequestDirection, ToPermissionVariants, VariantPermission,
+    FirewallPermission, FirewallRule, PermissionValue, RequestDirection, RequestPermissions, ToPermissionVariants,
+    VariantPermission,
 };
 use futures::{
     channel::mpsc::{unbounded, SendError, UnboundedSender},

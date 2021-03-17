@@ -6,15 +6,15 @@ use async_std::{
     task,
 };
 use clap::{load_yaml, App, ArgMatches};
+use communication::{
+    behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent, RequestEnvelope},
+    libp2p::{ConnectedPoint, Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
+};
 use core::{ops::Deref, str::FromStr, time::Duration};
 use futures::{prelude::*, select};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Instant};
-use stronghold_communication::{
-    behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent, RequestEnvelope},
-    libp2p::{ConnectedPoint, Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Ack;

@@ -1,6 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+pub use communication_macros::RequestPermissions;
 use libp2p::PeerId;
 use std::collections::HashMap;
 

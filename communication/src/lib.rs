@@ -7,7 +7,7 @@
 //! The main basis for its functionality is the [`libp2p`] crate, which is a system of protocols, specifications
 //! and libraries that enable the development of peer-to-peer network applications
 //!
-//! The library provides two options to use stronghold_communication, either directly with the [`P2PNetworkBehaviour`],
+//! The library provides two options to use communication, either directly with the [`P2PNetworkBehaviour`],
 //! or by using the [`CommunicationActor`] within a [`ActorSystem`].
 //!
 //! ## P2PNetworkBehaviour
@@ -30,9 +30,9 @@
 //!
 //! ### Example
 //! ```no_run
+//! use communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};
 //! use libp2p::identity::Keypair;
 //! use serde::{Deserialize, Serialize};
-//! use stronghold_communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
 //! pub enum Request {
@@ -69,6 +69,7 @@
 pub mod actor;
 pub mod behaviour;
 pub mod libp2p {
+    //! Re-export [`libp2p`] types.
     pub use libp2p::{
         core::{
             connection::ConnectionLimit, identity::Keypair, multiaddr::Protocol, ConnectedPoint, Multiaddr, PeerId,

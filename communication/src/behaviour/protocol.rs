@@ -111,15 +111,20 @@ mod test {
     use super::*;
     use async_std::{
         io,
-        net::{Shutdown, TcpListener, TcpStream},
+        net::{Shutdown, SocketAddr, TcpListener, TcpStream},
         task,
         task::JoinHandle,
     };
     use stronghold_utils::test_utils;
 
-    fn spawn_listener(addr: &str) -> JoinHandle<()> {
-        let listener = task::block_on(async { TcpListener::bind(addr).await.expect("Failed to bind tcp listener.") });
-        task::spawn(async move {
+    fn spawn_listener() -> (SocketAddr, JoinHandle<()>) {
+        let listener = task::block_on(async {
+            TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("Failed to bind tcp listener.")
+        });
+        let addr = listener.local_addr().expect("Faulty local address");
+        let handle = task::spawn(async move {
             let mut incoming = listener.incoming();
             let stream = incoming
                 .next()
@@ -130,7 +135,8 @@ mod test {
             io::copy(reader, writer)
                 .await
                 .expect("Failed to copy reader into writer.");
-        })
+        });
+        (addr, handle)
     }
 
     #[test]
@@ -140,8 +146,7 @@ mod test {
             test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
-        let addr = "127.0.0.1:8081";
-        let listener_handle = spawn_listener(addr);
+        let (addr, listener_handle) = spawn_listener();
 
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
@@ -174,8 +179,7 @@ mod test {
             test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
-        let addr = "127.0.0.1:8082";
-        let listener_handle = spawn_listener(addr);
+        let (addr, listener_handle) = spawn_listener();
 
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
@@ -209,8 +213,7 @@ mod test {
             test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
-        let addr = "127.0.0.1:8083";
-        let listener_handle = spawn_listener(addr);
+        let (addr, listener_handle) = spawn_listener();
 
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();
@@ -248,8 +251,7 @@ mod test {
             test_vector.push(test_utils::fresh::non_empty_bytestring());
         }
 
-        let addr = "127.0.0.1:8084";
-        let listener_handle = spawn_listener(addr);
+        let (addr, listener_handle) = spawn_listener();
 
         let writer_handle = task::spawn(async move {
             let protocol = MessageProtocol();

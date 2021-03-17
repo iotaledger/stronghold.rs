@@ -1,10 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use communication::actor::{FirewallPermission, PermissionValue, ToPermissionVariants, VariantPermission};
 use communication_macros::RequestPermissions;
-use stronghold_communication::actor::firewall::{
-    FirewallPermission, PermissionValue, ToPermissionVariants, VariantPermission,
-};
 
 #[derive(RequestPermissions)]
 enum TestEnum {

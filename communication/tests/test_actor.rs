@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use async_std::task;
-use communication_macros::RequestPermissions;
-use riker::actors::*;
-use stronghold_communication::{
+use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults, ConnectPeerError,
         FirewallBlocked, FirewallPermission, FirewallRule, KeepAlive, PermissionValue, RequestDirection,
-        RequestMessageError, ToPermissionVariants, VariantPermission,
+        RequestMessageError, RequestPermissions, ToPermissionVariants, VariantPermission,
     },
     behaviour::{BehaviourConfig, P2POutboundFailure},
     libp2p::{Keypair, Multiaddr, PeerId},
 };
+use riker::actors::*;
 use stronghold_utils::ask;
 
 use core::task::{Context as TaskContext, Poll};
