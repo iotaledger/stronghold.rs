@@ -693,7 +693,7 @@ impl Stronghold {
 
     /// Change or add rules in the firewall to allow the given requests for the peers, optionally also change the
     /// default rule to allow it. Existing permissions for other `SHRequestPermission`s will not be changed by this.
-    /// If no rule has been set for a given peer, the default rule will use as basis.
+    /// If no rule has been set for a given peer, the default rule will be used as basis.
     pub async fn allow_requests(
         &self,
         peers: Vec<PeerId>,
@@ -711,7 +711,7 @@ impl Stronghold {
 
     /// Change or add rules in the firewall to reject the given requests from the peers, optionally also remove the
     /// permission from the default rule. Existing permissions for other `SHRequestPermission`s will not be changed
-    /// by this. If no rule has been set for a given peer, the default rule will use as basis.
+    /// by this. If no rule has been set for a given peer, the default rule will be used as basis.
     pub async fn reject_requests(
         &self,
         peers: Vec<PeerId>,

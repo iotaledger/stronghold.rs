@@ -241,7 +241,7 @@ fn handle_input_line(
     relay_peer: PeerId,
     remote_target: &mut Option<PeerId>,
 ) {
-    let regex = Regex::new("SET\\s+\"(?P<target>[^\"]+)\"").expect("Invalid Reqex string.");
+    let regex = Regex::new("SET\\s+\"(?P<target>[[:alnum:]]{32,64}?)\"").expect("Invalid Reqex string.");
     if let Some(captures) = regex.captures(&line) {
         if let Some(peer_id) = captures
             .name("target")

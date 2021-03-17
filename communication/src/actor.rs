@@ -1,6 +1,84 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+//! # Actor
+//!
+//! This module provides a riker actor that handles the communication to a remote peer over the swarm.
+//!
+//! The [`CommunicationActor `] sends the [`CommunicationRequest::RequestMsg`]s it receives over the swarm to the
+//! corresponding remote peer and forwards incoming request to the client provided in the [`CommunicationConfig`].
+//! Before forwarding any requests, the request will be validated by the firewall according to the configuration from
+//! [`CommunicationConfig`], additional rules or changed can be set with [`CommunicationRequest::ConfigureFirewall`].
+//! This requires that the [`ToPermissionVariants`] trait is implemented for the generic `Req` type, which can be
+//! derived with the macro [`RequestPermissions`] from [`communication_macros`].
+//!
+//! If remote peers should be able to dial the local system, a [`CommunicationRequest::StartListening`] has to be sent
+//! to the [`CommunicationActor`].
+//!
+//! ```no_run
+//! use communication_macros::RequestPermissions;
+//! use libp2p::identity::Keypair;
+//! use riker::actors::*;
+//! use serde::{Deserialize, Serialize};
+//! use stronghold_communication::{
+//!     actor::{
+//!         firewall::{PermissionValue, ToPermissionVariants, VariantPermission},
+//!         CommunicationActor, CommunicationActorConfig, FirewallPermission,
+//!     },
+//!     behaviour::BehaviourConfig,
+//! };
+//!
+//! #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]
+//! pub enum Request {
+//!     Ping,
+//! }
+//!
+//! #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]
+//! pub enum Response {
+//!     Pong,
+//! }
+//!
+//! // blank client actor without any logic
+//! #[derive(Clone, Debug)]
+//! struct ClientActor;
+//!
+//! impl ActorFactory for ClientActor {
+//!     fn create() -> Self {
+//!         ClientActor
+//!     }
+//! }
+//!
+//! impl Actor for ClientActor {
+//!     type Msg = Request;
+//!
+//!     fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {
+//!         sender
+//!             .expect("Sender exists")
+//!             .try_tell(Response::Pong, None)
+//!             .expect("Sender received response");
+//!     }
+//! }
+//!
+//! let local_keys = Keypair::generate_ed25519();
+//! let sys = ActorSystem::new().expect("Init actor system failed.");
+//! let keys = Keypair::generate_ed25519();
+//! let client = sys
+//!     .actor_of::<ClientActor>("client")
+//!     .expect("Init client actor failed.");
+//! let actor_config = CommunicationActorConfig {
+//!     client,
+//!     firewall_default_in: FirewallPermission::all(),
+//!     firewall_default_out: FirewallPermission::none(),
+//! };
+//! let behaviour_config = BehaviourConfig::default();
+//! let comms_actor = sys
+//!     .actor_of_args::<CommunicationActor<Request, Response, _, _>, _>(
+//!         "communication",
+//!         (local_keys, actor_config, behaviour_config),
+//!     )
+//!     .expect("Init communication actor failed.");
+//! ```
+
 mod connections;
 pub mod firewall;
 mod swarm_task;
@@ -39,76 +117,8 @@ where
     pub firewall_default_out: FirewallPermission,
 }
 
-/// Actor for the communication to a remote peer over the swarm.
-///
-/// Sends the [`CommunicationRequest::RequestMsg`]s it receives over the swarm to the corresponding remote peer and
-/// forwards incoming request to the client provided in the [`CommunicationConfig`].
-/// Before forwarding any requests, the request will be validated by the firewall according to the configuration from
-/// [`CommunicationConfig`], additional rules or changed can be set with [`CommunicationRequest::ConfigureFirewall`].
-/// This requires that the ToPermissionVariants is implemented for the `Req` type, which can be derived with the macro
-/// [`RequestPermissions`] from `communication_macros`.
-///
-/// If remote peers should be able to dial the local system, a [`CommunicationRequest::StartListening`] has to be sent
-/// to the [`CommunicationActor`].
-///
-/// ```no_run
-/// use communication_macros::RequestPermissions;
-/// use libp2p::identity::Keypair;
-/// use riker::actors::*;
-/// use serde::{Deserialize, Serialize};
-/// use stronghold_communication::{
-///     actor::{
-///         firewall::{PermissionValue, ToPermissionVariants, VariantPermission},
-///         CommunicationActor, CommunicationActorConfig, FirewallPermission,
-///     },
-///     behaviour::BehaviourConfig,
-/// };
-///
-/// #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]
-/// pub enum Request {
-///     Ping,
-/// }
-///
-/// #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]
-/// pub enum Response {
-///     Pong,
-/// }
-///
-/// // blank client actor without any logic
-/// #[derive(Clone, Debug)]
-/// struct ClientActor;
-///
-/// impl ActorFactory for ClientActor {
-///     fn create() -> Self {
-///         ClientActor
-///     }
-/// }
-///
-/// impl Actor for ClientActor {
-///     type Msg = Request;
-///
-///     fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, sender: Sender) {}
-/// }
-///
-/// let local_keys = Keypair::generate_ed25519();
-/// let sys = ActorSystem::new().expect("Init actor system failed.");
-/// let keys = Keypair::generate_ed25519();
-/// let client = sys
-///     .actor_of::<ClientActor>("client")
-///     .expect("Init client actor failed.");
-/// let actor_config = CommunicationActorConfig {
-///     client,
-///     firewall_default_in: FirewallPermission::all(),
-///     firewall_default_out: FirewallPermission::none(),
-/// };
-/// let behaviour_config = BehaviourConfig::default();
-/// let comms_actor = sys
-///     .actor_of_args::<CommunicationActor<Request, Response, _, _>, _>(
-///         "communication",
-///         (local_keys, actor_config, behaviour_config),
-///     )
-///     .expect("Init communication actor failed.");
-/// ```
+/// Actor responsible for creating a [`P2PNetworkBehaviour`] and handling all interaction with the Swarm.
+/// For each received [`CommunicationRequest`], a [`CommunicationResults`] is returned to the sender.
 pub struct CommunicationActor<Req, Res, ClientMsg, P>
 where
     Req: MessageEvent + ToPermissionVariants<P> + Into<ClientMsg>,

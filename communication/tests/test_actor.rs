@@ -6,9 +6,9 @@ use communication_macros::RequestPermissions;
 use riker::actors::*;
 use stronghold_communication::{
     actor::{
-        CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults, FirewallBlocked,
-        FirewallRule, KeepAlive, PermissionValue, RequestDirection, RequestMessageError, ToPermissionVariants,
-        VariantPermission,
+        CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults, ConnectPeerError,
+        FirewallBlocked, FirewallPermission, FirewallRule, KeepAlive, PermissionValue, RequestDirection,
+        RequestMessageError, ToPermissionVariants, VariantPermission,
     },
     behaviour::{BehaviourConfig, P2POutboundFailure},
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -19,7 +19,6 @@ use core::task::{Context as TaskContext, Poll};
 use futures::{future, prelude::*};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
-use stronghold_communication::actor::{firewall::FirewallPermission, ConnectPeerError};
 
 fn init_system(
     sys: &ActorSystem,
@@ -34,13 +33,13 @@ fn init_system(
         firewall_default_in: FirewallPermission::all(),
         firewall_default_out: FirewallPermission::all(),
     };
-    let communication_actor_actor = sys
+    let communication_actor = sys
         .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
             "communication",
             (keys, actor_config, behaviour_config),
         )
         .expect("Failed to init actor.");
-    (peer_id, communication_actor_actor)
+    (peer_id, communication_actor)
 }
 
 // the type of the send request and reponse messages
