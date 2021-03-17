@@ -25,7 +25,7 @@ mod protocol;
 
 pub use crate::vault::protocol::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
 
-/// A record identifier
+/// A record identifier.  Contains a ChainID which refers to the "chain" of transactions in the Version.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RecordId(ChainId);
@@ -69,7 +69,7 @@ impl RecordId {
     }
 }
 
-/// A view over the records in a vault
+/// A view over the records in a vault.  Allows for loading and accessing the records.
 pub struct DBView<P: BoxProvider> {
     key: Key<P>,
     txs: HashMap<TransactionId, Transaction>,
@@ -235,6 +235,7 @@ pub struct DBReader<'a, P: BoxProvider> {
     view: &'a DBView<P>,
 }
 
+/// A preparation of the data to read from the database.
 #[derive(Eq, PartialEq)]
 pub enum PreparedRead {
     CacheHit(Vec<u8>),
@@ -312,7 +313,7 @@ impl<'a, P: BoxProvider> DBReader<'a, P> {
     }
 }
 
-/// A writer for the `DBView`
+/// A writer for the `DBView`.  Allows mutation of the underlying data.
 pub struct DBWriter<P: BoxProvider> {
     view: DBView<P>,
     chain: ChainId,

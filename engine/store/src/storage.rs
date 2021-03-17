@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime};
 
 pub mod cache;
 
+/// The general value used for the Store.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Value<T> {
     pub val: T,
