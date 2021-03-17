@@ -7,8 +7,8 @@ use riker::actors::*;
 use stronghold_communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults, FirewallBlocked,
-        FirewallPermission, FirewallRule, KeepAlive, PermissionValue, RequestDirection, RequestMessageError,
-        ToPermissionVariants, VariantPermission,
+        FirewallRule, KeepAlive, PermissionValue, RequestDirection, RequestMessageError, ToPermissionVariants,
+        VariantPermission,
     },
     behaviour::{BehaviourConfig, P2POutboundFailure},
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -19,7 +19,7 @@ use core::task::{Context as TaskContext, Poll};
 use futures::{future, prelude::*};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
-use stronghold_communication::actor::{firewall::PermissionSum, ConnectPeerError};
+use stronghold_communication::actor::{firewall::FirewallPermission, ConnectPeerError};
 
 fn init_system(
     sys: &ActorSystem,
@@ -31,8 +31,8 @@ fn init_system(
     let behaviour_config = BehaviourConfig::default();
     let actor_config = CommunicationActorConfig {
         client,
-        firewall_default_in: FirewallPermission::All,
-        firewall_default_out: FirewallPermission::All,
+        firewall_default_in: FirewallPermission::all(),
+        firewall_default_out: FirewallPermission::all(),
     };
     let communication_actor_actor = sys
         .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
@@ -277,8 +277,9 @@ fn set_firewall_rule(
     match task::block_on(try_ask(
         sys,
         communication_actor,
-        CommunicationRequest::ConfigureFirewall(FirewallRule::SetRule {
-            peer_id,
+        CommunicationRequest::ConfigureFirewall(FirewallRule::SetRules {
+            peers: vec![peer_id],
+            set_default: false,
             direction,
             permission,
         }),
@@ -296,8 +297,8 @@ fn ask_swarm_info() {
     let behaviour_config = BehaviourConfig::default();
     let actor_config = CommunicationActorConfig {
         client,
-        firewall_default_in: FirewallPermission::All,
-        firewall_default_out: FirewallPermission::All,
+        firewall_default_in: FirewallPermission::all(),
+        firewall_default_out: FirewallPermission::all(),
     };
     let communication_actor = sys
         .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
@@ -492,8 +493,8 @@ fn firewall_rules() {
     let behaviour_config = BehaviourConfig::default();
     let actor_config = CommunicationActorConfig {
         client: blank_actor,
-        firewall_default_in: FirewallPermission::None,
-        firewall_default_out: FirewallPermission::None,
+        firewall_default_in: FirewallPermission::none(),
+        firewall_default_out: FirewallPermission::none(),
     };
     let communication_actor_a = sys_a
         .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
@@ -510,8 +511,8 @@ fn firewall_rules() {
     // Set firewall to block all connections per default.
     let actor_config = CommunicationActorConfig {
         client: target_actor,
-        firewall_default_in: FirewallPermission::None,
-        firewall_default_out: FirewallPermission::None,
+        firewall_default_in: FirewallPermission::none(),
+        firewall_default_out: FirewallPermission::none(),
     };
     let communication_actor_b = sys_b
         .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
@@ -537,7 +538,7 @@ fn firewall_rules() {
         &communication_actor_a,
         peer_b_id,
         RequestDirection::Out,
-        FirewallPermission::All,
+        FirewallPermission::all(),
     );
 
     // Incoming request should be blocked by Bs firewall
@@ -553,7 +554,7 @@ fn firewall_rules() {
         &communication_actor_b,
         peer_a_id,
         RequestDirection::In,
-        FirewallPermission::All,
+        FirewallPermission::all(),
     );
 
     // Send request
@@ -566,7 +567,7 @@ fn firewall_rules() {
         &communication_actor_b,
         peer_a_id,
         RequestDirection::In,
-        FirewallPermission::None,
+        FirewallPermission::none(),
     );
 
     // Requests should be blocked from B again
@@ -577,15 +578,20 @@ fn firewall_rules() {
     }
 
     // only allow Request::Ping
-    let ping_permission = RequestPermission::Ping.permission();
-    let allowed = PermissionSum::none().add_permission(ping_permission);
-    set_firewall_rule(
+    let permission = RequestPermission::Ping.permission();
+    match task::block_on(try_ask(
         &sys_b,
         &communication_actor_b,
-        peer_a_id,
-        RequestDirection::In,
-        FirewallPermission::Restricted(allowed),
-    );
+        CommunicationRequest::ConfigureFirewall(FirewallRule::AddPermissions {
+            peers: vec![peer_a_id],
+            change_default: false,
+            direction: RequestDirection::In,
+            permissions: vec![permission],
+        }),
+    )) {
+        Some(CommunicationResults::ConfigureFirewallAck) => {}
+        _ => panic!("Unexpected Response"),
+    }
 
     // Request::Ping should be allowed
     let res = send_request(&sys_a, &communication_actor_a, peer_b_id);

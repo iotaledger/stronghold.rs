@@ -318,24 +318,64 @@ where
 
     fn configure_firewall(&mut self, rule: FirewallRule) {
         match rule {
-            FirewallRule::SetDefault {
-                direction: RequestDirection::In,
-                permission,
-            } => {
-                self.firewall.set_default_in(permission);
-            }
-            FirewallRule::SetDefault {
-                direction: RequestDirection::Out,
-                permission,
-            } => {
-                self.firewall.set_default_out(permission);
-            }
-            FirewallRule::SetRule {
-                peer_id,
+            FirewallRule::SetRules {
                 direction,
+                peers,
+                set_default,
                 permission,
-            } => self.firewall.set_rule(peer_id, &direction, permission),
-            FirewallRule::RemoveRule { peer_id, direction } => self.firewall.remove_rule(&peer_id, &direction),
+            } => {
+                for peer in peers {
+                    self.firewall.set_rule(peer, &direction, permission);
+                }
+                if set_default {
+                    self.firewall.set_default(&direction, permission);
+                }
+            }
+            FirewallRule::AddPermissions {
+                direction,
+                peers,
+                change_default,
+                permissions,
+            } => {
+                for peer in peers {
+                    let init = self
+                        .firewall
+                        .get_rule(&peer, &direction)
+                        .unwrap_or_else(|| self.firewall.get_default(&direction));
+                    let rule = permissions.iter().fold(init, |acc, curr| acc.add_permission(curr));
+                    self.firewall.set_rule(peer, &direction, rule);
+                }
+                if change_default {
+                    let init = self.firewall.get_default(&direction);
+                    let new_default = permissions.iter().fold(init, |acc, curr| acc.add_permission(curr));
+                    self.firewall.set_default(&direction, new_default);
+                }
+            }
+            FirewallRule::RemovePermissions {
+                direction,
+                peers,
+                change_default,
+                permissions,
+            } => {
+                for peer in peers {
+                    let init = self
+                        .firewall
+                        .get_rule(&peer, &direction)
+                        .unwrap_or_else(|| self.firewall.get_default(&direction));
+                    let rule = permissions.iter().fold(init, |acc, curr| acc.remove_permission(curr));
+                    self.firewall.set_rule(peer, &direction, rule);
+                }
+                if change_default {
+                    let init = self.firewall.get_default(&direction);
+                    let new_default = permissions.iter().fold(init, |acc, curr| acc.remove_permission(&curr));
+                    self.firewall.set_default(&direction, new_default)
+                }
+            }
+            FirewallRule::RemoveRule { peers, direction } => {
+                for peer in peers {
+                    self.firewall.remove_rule(&peer, &direction);
+                }
+            }
         }
     }
 

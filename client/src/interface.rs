@@ -10,6 +10,8 @@ use zeroize::Zeroize;
 use engine::vault::RecordHint;
 
 #[cfg(feature = "communication")]
+use crate::actors::SHRequestPermission;
+#[cfg(feature = "communication")]
 use crate::utils::ResultMessage;
 use crate::{
     actors::{InternalActor, InternalMsg, ProcResult, Procedure, SHRequest, SHResults},
@@ -25,7 +27,7 @@ use crate::{
 use stronghold_communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults,
-        EstablishedConnection, FirewallPermission, FirewallRule, KeepAlive,
+        EstablishedConnection, FirewallPermission, FirewallRule, KeepAlive, RequestDirection, VariantPermission,
     },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -577,7 +579,9 @@ impl Stronghold {
 #[cfg(feature = "communication")]
 impl Stronghold {
     /// Spawn the communication actor and swarm.
-    /// Set default configuration for firewall to allow all outgoing requests and no incoming.
+    /// Per default, the firewall allows all outgoing, and reject all incoming requests.
+    /// The `configure_firewall` methods allows to configure this behaviour by either changing the default regulation,
+    /// or adding explicit rules for for specific peers.
     pub fn spawn_communication(&mut self) -> StatusMessage {
         if self.communication_actor.is_some() {
             return StatusMessage::Error(String::from("Communication was already spawned"));
@@ -590,8 +594,8 @@ impl Stronghold {
         let behaviour_config = BehaviourConfig::default();
         let actor_config = CommunicationActorConfig {
             client,
-            firewall_default_in: FirewallPermission::None,
-            firewall_default_out: FirewallPermission::All,
+            firewall_default_in: FirewallPermission::all(),
+            firewall_default_out: FirewallPermission::all(),
         };
 
         let communication_actor = self
@@ -676,19 +680,75 @@ impl Stronghold {
         }
     }
 
-    /// Read from the store of a remote stronghold
-    pub async fn configure_firewall(&self, rule: FirewallRule) -> StatusMessage {
-        match self
-            .ask_communication_actor(CommunicationRequest::ConfigureFirewall(rule))
-            .await
-        {
-            Ok(CommunicationResults::ConfigureFirewallAck) => StatusMessage::OK,
-            Ok(_) => StatusMessage::Error("Invalid communication actor response".into()),
-            Err(err) => StatusMessage::Error(err),
-        }
+    /// Allow all requests from the given peers, optionally also set default to allow all.
+    pub async fn allow_all_requests(&self, peers: Vec<PeerId>, set_default: bool) -> StatusMessage {
+        let rule = FirewallRule::SetRules {
+            direction: RequestDirection::In,
+            peers,
+            set_default,
+            permission: FirewallPermission::all(),
+        };
+        self.configure_firewall(rule).await
     }
 
-    /// Write to the vault of a remote stronghold
+    /// Change or add rules in the firewall to allow the given requests for the peers, optionally also change the
+    /// default rule to allow it. Existing permissions for other `SHRequestPermission`s will not be changed by this.
+    /// If no rule has been set for a given peer, the default rule will use as basis.
+    pub async fn allow_requests(
+        &self,
+        peers: Vec<PeerId>,
+        change_default: bool,
+        requests: Vec<SHRequestPermission>,
+    ) -> StatusMessage {
+        let rule = FirewallRule::AddPermissions {
+            direction: RequestDirection::In,
+            peers,
+            change_default,
+            permissions: requests.iter().map(|req| req.permission()).collect(),
+        };
+        self.configure_firewall(rule).await
+    }
+
+    /// Change or add rules in the firewall to reject the given requests from the peers, optionally also remove the
+    /// permission from the default rule. Existing permissions for other `SHRequestPermission`s will not be changed
+    /// by this. If no rule has been set for a given peer, the default rule will use as basis.
+    pub async fn reject_requests(
+        &self,
+        peers: Vec<PeerId>,
+        change_default: bool,
+        requests: Vec<SHRequestPermission>,
+    ) -> StatusMessage {
+        let rule = FirewallRule::RemovePermissions {
+            direction: RequestDirection::In,
+            peers,
+            change_default,
+            permissions: requests.iter().map(|req| req.permission()).collect(),
+        };
+        self.configure_firewall(rule).await
+    }
+
+    /// Configure the firewall to reject all requests from the given peers, optionally also set default rule to reject
+    /// all.
+    pub async fn reject_all_requests(&self, peers: Vec<PeerId>, set_default: bool) -> StatusMessage {
+        let rule = FirewallRule::SetRules {
+            direction: RequestDirection::In,
+            peers,
+            set_default,
+            permission: FirewallPermission::none(),
+        };
+        self.configure_firewall(rule).await
+    }
+
+    /// Remove peer specific rules from the firewall configuration.
+    pub async fn remove_firewall_rules(&self, peers: Vec<PeerId>) -> StatusMessage {
+        let rule = FirewallRule::RemoveRule {
+            direction: RequestDirection::In,
+            peers,
+        };
+        self.configure_firewall(rule).await
+    }
+
+    /// Write to the vault of a remote Stronghold.
     pub async fn write_remote_vault(
         &self,
         peer_id: PeerId,
@@ -768,7 +828,7 @@ impl Stronghold {
         }
     }
 
-    /// Write to the store of a remote stronghold
+    /// Write to the store of a remote Stronghold.
     pub async fn write_to_remote_store(
         &self,
         peer_id: PeerId,
@@ -793,7 +853,7 @@ impl Stronghold {
         }
     }
 
-    /// Read from the store of a remote stronghold
+    /// Read from the store of a remote Stronghold.
     pub async fn read_from_remote_store(&self, peer_id: PeerId, location: Location) -> (Vec<u8>, StatusMessage) {
         match self.ask_remote(peer_id, SHRequest::ReadFromStore { location }).await {
             Ok(SHResults::ReturnReadStore(payload, status)) => (payload, status),
@@ -805,7 +865,7 @@ impl Stronghold {
         }
     }
 
-    /// Returns a list of the available records and their `RecordHint` values in a remote vault.
+    /// Returns a list of the available records and their `RecordHint` values of a remote vault.
     pub async fn list_remote_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
         peer_id: PeerId,
@@ -821,7 +881,7 @@ impl Stronghold {
         }
     }
 
-    /// Executes a runtime command on a remote stronghold.
+    /// Executes a runtime command at a remote Stronghold.
     pub async fn remote_runtime_exec(&self, peer_id: PeerId, control_request: Procedure) -> ProcResult {
         match self
             .ask_remote(peer_id, SHRequest::ControlRequest(control_request))
@@ -845,6 +905,17 @@ impl Stronghold {
             Ok(CommunicationResults::RequestMsgResult(Err(e))) => Err(format!("Error sending request to peer {:?}", e)),
             Ok(_) => Err("Invalid communication actor response".into()),
             Err(err) => Err(err),
+        }
+    }
+
+    async fn configure_firewall(&self, rule: FirewallRule) -> StatusMessage {
+        match self
+            .ask_communication_actor(CommunicationRequest::ConfigureFirewall(rule))
+            .await
+        {
+            Ok(CommunicationResults::ConfigureFirewallAck) => StatusMessage::OK,
+            Ok(_) => StatusMessage::Error("Invalid communication actor response".into()),
+            Err(err) => StatusMessage::Error(err),
         }
     }
 

@@ -98,8 +98,8 @@ where
 ///     .expect("Init client actor failed.");
 /// let actor_config = CommunicationActorConfig {
 ///     client,
-///     firewall_default_in: FirewallPermission::All,
-///     firewall_default_out: FirewallPermission::None,
+///     firewall_default_in: FirewallPermission::all(),
+///     firewall_default_out: FirewallPermission::none(),
 /// };
 /// let behaviour_config = BehaviourConfig::default();
 /// let comms_actor = sys

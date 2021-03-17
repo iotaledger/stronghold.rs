@@ -9,7 +9,7 @@ use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, StatusMessa
 #[cfg(feature = "communication")]
 use core::time::Duration;
 #[cfg(feature = "communication")]
-use stronghold_communication::actor::{FirewallPermission, FirewallRule, KeepAlive, RequestDirection};
+use stronghold_communication::actor::KeepAlive;
 
 #[cfg(feature = "communication")]
 use super::fresh;
@@ -421,11 +421,7 @@ fn test_stronghold_communication() {
     let remote_client = b"remote".to_vec();
     let mut remote_stronghold = Stronghold::init_stronghold_system(remote_sys, remote_client, vec![]);
     remote_stronghold.spawn_communication();
-    let set_default = FirewallRule::SetDefault {
-        direction: RequestDirection::In,
-        permission: FirewallPermission::All,
-    };
-    if let StatusMessage::Error(_) = futures::executor::block_on(remote_stronghold.configure_firewall(set_default)) {
+    if let StatusMessage::Error(_) = futures::executor::block_on(remote_stronghold.allow_all_requests(vec![], true)) {
         panic!("Could not configure firewall.")
     }
 
