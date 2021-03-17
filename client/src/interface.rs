@@ -32,6 +32,8 @@ use stronghold_communication::{
 };
 use stronghold_utils::ask;
 
+/// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of
+/// metadata to interpret the data in the vault and store.
 pub struct Stronghold {
     // actor system.
     pub system: ActorSystem,

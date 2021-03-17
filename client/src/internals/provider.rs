@@ -9,6 +9,7 @@ use crypto::{
 use std::convert::TryInto;
 
 use engine::vault::{self, BoxProvider, Key};
+/// An implementation of the Vault's `BoxProvider type.  Used to encrypt and decrypt the data in this Stronghold.
 #[derive(Ord, PartialEq, Eq, PartialOrd, Clone, Debug)]
 pub struct Provider;
 impl Provider {
