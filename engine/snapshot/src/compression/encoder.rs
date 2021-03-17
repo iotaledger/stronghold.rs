@@ -17,6 +17,7 @@ pub fn compress_into(input: &[u8], output: &mut Vec<u8>) {
     .complete();
 }
 
+/// Compress data using an LZ4 Algorithm.
 pub fn compress(input: &[u8]) -> Vec<u8> {
     let mut vec = Vec::with_capacity(input.len());
 
