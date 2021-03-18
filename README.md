@@ -1,8 +1,11 @@
 ![banner](./.meta/stronghold_alpha.png)
 
-[![status](https://img.shields.io/badge/Status-Alpha-yellow.svg)](https://github.com/iotaledger/stronghold.rs)
+[![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/stronghold.rs)
 ![Audit](https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev)
 ![Test](https://github.com/iotaledger/stronghold.rs/workflows/Test/badge.svg)
+[![docs](https://img.shields.io/badge/Docs-Official-red.svg)](https://stronghold.docs.iota.org)
+[![coverage](https://coveralls.io/repos/github/iotaledger/stronghold.rs/badge.svg?branch=dev)](https://coveralls.io/github/iotaledger/stronghold.rs?branch=dev)
+[![dependency status](https://deps.rs/repo/github/iotaledger/stronghold.rs/status.svg)](https://deps.rs/repo/github/iotaledger/stronghold.rs)
 
 ## Introduction
 [summary]: #summary

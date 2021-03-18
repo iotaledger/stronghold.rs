@@ -6,7 +6,7 @@ edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/iotaledger/stronghold.rs"
-homepage = "https://www.iota.org"
+homepage = "https://stronghold.docs.iota.org"
 
 [lib]
 name = "communication"

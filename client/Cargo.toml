@@ -1,17 +1,14 @@
 [package]
 name = "iota-stronghold"
 version = "0.2.0"
-authors = [
-  "tensorprogramming <tensordeveloper@gmail.com>",
-  "Daniel Thompson-Yvetot <daniel.yvetot@iota.org>"
-]
+authors = [ "IOTA Stiftung", "tensor-programming <tensordeveloper@gmail.com>" ]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
 description = "Client interface for Stronghold"
 keywords = [ "iota", "stronghold", "security" ]
 categories = [ "security" ]
-homepage = "https://iota.org"
+homepage = "https://stronghold.docs.iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
 
 [dependencies]
