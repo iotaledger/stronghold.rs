@@ -1,10 +1,15 @@
 [package]
 name = "stronghold-communication"
 version = "0.2.0"
-authors = [ "Elena Frank <elena.frank@iota.org>" ]
+authors = ["IOTA Stiftung"]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
+repository = "https://github.com/iotaledger/stronghold.rs"
+homepage = "https://www.iota.org"
+
+[lib]
+name = "communication"
 
 [dependencies]
 async-std = "1.6"
@@ -27,11 +32,10 @@ serde = { version = "1.0", default-features = false, features = [ "alloc", "deri
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 riker =  "0.4"
 
+communication-macros = {path = "communication-macros", version = "0.1.0"}
 stronghold-utils = {version = "0.1", path = "../utils"}
 
 [features]
 default = [ "mdns"]
 mdns = [ ]
 
-[dev-dependencies]
-communication-macros = {path = "../communication/communication-macros"}

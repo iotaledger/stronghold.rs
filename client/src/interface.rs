@@ -10,6 +10,8 @@ use zeroize::Zeroize;
 use engine::vault::RecordHint;
 
 #[cfg(feature = "communication")]
+use crate::actors::SHRequestPermission;
+#[cfg(feature = "communication")]
 use crate::utils::ResultMessage;
 use crate::{
     actors::{InternalActor, InternalMsg, ProcResult, Procedure, SHRequest, SHResults},
@@ -22,10 +24,10 @@ use crate::{
     ClientId, Location, Provider,
 };
 #[cfg(feature = "communication")]
-use stronghold_communication::{
+use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults,
-        EstablishedConnection, FirewallPermission, FirewallRule, KeepAlive,
+        EstablishedConnection, FirewallPermission, FirewallRule, KeepAlive, RequestDirection, VariantPermission,
     },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -595,9 +597,29 @@ impl Stronghold {
         unimplemented!()
     }
 
-    #[cfg(feature = "communication")]
+    /// A test function for reading data from a vault.
+    #[cfg(test)]
+    pub async fn read_secret(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        let res: SHResults = ask(&self.system, client, SHRequest::ReadFromVault { location }).await;
+
+        if let SHResults::ReturnReadVault(payload, status) = res {
+            (Some(payload), status)
+        } else {
+            (None, StatusMessage::Error("Unable to read data".into()))
+        }
+    }
+}
+
+#[cfg(feature = "communication")]
+impl Stronghold {
     /// Spawn the communication actor and swarm.
-    /// Set default configuration for firewall to allow all outgoing requests and no incoming.
+    /// Per default, the firewall allows all outgoing, and reject all incoming requests.
+    /// The `configure_firewall` methods allows to configure this behaviour by either changing the default regulation,
+    /// or adding explicit rules for for specific peers.
     pub fn spawn_communication(&mut self) -> StatusMessage {
         if self.communication_actor.is_some() {
             return StatusMessage::Error(String::from("Communication was already spawned"));
@@ -610,8 +632,8 @@ impl Stronghold {
         let behaviour_config = BehaviourConfig::default();
         let actor_config = CommunicationActorConfig {
             client,
-            firewall_default_in: FirewallPermission::None,
-            firewall_default_out: FirewallPermission::All,
+            firewall_default_in: FirewallPermission::all(),
+            firewall_default_out: FirewallPermission::all(),
         };
 
         let communication_actor = self
@@ -626,59 +648,40 @@ impl Stronghold {
     }
 
     /// Kill communication actor and swarm
-    #[cfg(feature = "communication")]
     pub fn stop_communication(&mut self) {
         if let Some(communication_actor) = self.communication_actor.as_ref() {
             self.system.stop(communication_actor);
         }
     }
 
-    #[cfg(feature = "communication")]
     ///  Start listening on the swarm
     pub async fn start_listening(&self, addr: Option<Multiaddr>) -> ResultMessage<Multiaddr> {
-        if self.communication_actor.is_none() {
-            return ResultMessage::Error(String::from("No communication spawned"));
-        }
-
-        match ask::<_, _, CommunicationResults<SHResults>, _>(
-            &self.system,
-            self.communication_actor.as_ref().unwrap(),
-            CommunicationRequest::StartListening(addr),
-        )
-        .await
+        match self
+            .ask_communication_actor(CommunicationRequest::StartListening(addr))
+            .await
         {
-            CommunicationResults::StartListeningResult(Ok(addr)) => ResultMessage::Ok(addr),
-            CommunicationResults::StartListeningResult(Err(_)) => ResultMessage::Error("Listener Error".into()),
-            _ => ResultMessage::Error("Received invalid communication actor response".into()),
+            Ok(CommunicationResults::StartListeningResult(Ok(addr))) => ResultMessage::Ok(addr),
+            Ok(CommunicationResults::StartListeningResult(Err(_))) => ResultMessage::Error("Listener Error".into()),
+            Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
+            Err(err) => ResultMessage::Error(err),
         }
     }
 
-    #[cfg(feature = "communication")]
     ///  Get the peer id and listening addresses of the local peer
     pub async fn get_swarm_info(
         &self,
     ) -> ResultMessage<(PeerId, Vec<Multiaddr>, Vec<(PeerId, EstablishedConnection)>)> {
-        if self.communication_actor.is_none() {
-            return ResultMessage::Error(String::from("No communication spawned"));
-        }
-
-        match ask::<_, _, CommunicationResults<SHResults>, _>(
-            &self.system,
-            self.communication_actor.as_ref().unwrap(),
-            CommunicationRequest::GetSwarmInfo,
-        )
-        .await
-        {
-            CommunicationResults::SwarmInfo {
+        match self.ask_communication_actor(CommunicationRequest::GetSwarmInfo).await {
+            Ok(CommunicationResults::SwarmInfo {
                 peer_id,
                 listeners,
                 connections,
-            } => ResultMessage::Ok((peer_id, listeners, connections)),
-            _ => ResultMessage::Error("Failed to obtain swarm information".into()),
+            }) => ResultMessage::Ok((peer_id, listeners, connections)),
+            Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
+            Err(err) => ResultMessage::Error(err),
         }
     }
 
-    #[cfg(feature = "communication")]
     /// Connect a remote peer either by id if the peer is known, or alternatively by the address.
     pub async fn establish_connection(
         &self,
@@ -686,69 +689,104 @@ impl Stronghold {
         addr: Multiaddr,
         keep_alive: KeepAlive,
     ) -> ResultMessage<PeerId> {
-        if self.communication_actor.is_none() {
-            return ResultMessage::Error(String::from("No communication spawned"));
-        }
-
-        match ask::<_, _, CommunicationResults<SHResults>, _>(
-            &self.system,
-            self.communication_actor.as_ref().unwrap(),
-            CommunicationRequest::EstablishConnection {
+        match self
+            .ask_communication_actor(CommunicationRequest::EstablishConnection {
                 peer_id,
                 addr,
                 keep_alive,
-            },
-        )
-        .await
+            })
+            .await
         {
-            CommunicationResults::EstablishConnectionResult(Ok(peer_id)) => ResultMessage::Ok(peer_id),
-            CommunicationResults::EstablishConnectionResult(Err(reason)) => {
-                ResultMessage::Error(format!("Error connecting peer: {:?}", reason))
+            Ok(CommunicationResults::EstablishConnectionResult(Ok(peer_id))) => ResultMessage::Ok(peer_id),
+            Ok(CommunicationResults::EstablishConnectionResult(Err(err))) => {
+                ResultMessage::Error(format!("Error connecting peer: {:?}", err))
             }
-            _ => ResultMessage::Error("Invalid communication event".into()),
+            Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
+            Err(err) => ResultMessage::Error(err),
         }
     }
 
-    #[cfg(feature = "communication")]
     /// Close the connection to a remote peer so that no more request can be received.
     pub async fn close_connection(&self, peer_id: PeerId) -> StatusMessage {
-        if self.communication_actor.is_none() {
-            return StatusMessage::Error(String::from("No communication spawned"));
-        }
-
-        match ask::<_, _, CommunicationResults<SHResults>, _>(
-            &self.system,
-            self.communication_actor.as_ref().unwrap(),
-            CommunicationRequest::CloseConnection(peer_id),
-        )
-        .await
+        match self
+            .ask_communication_actor(CommunicationRequest::CloseConnection(peer_id))
+            .await
         {
-            CommunicationResults::CloseConnectionAck => StatusMessage::OK,
-            _ => StatusMessage::Error("Invalid communication event".into()),
+            Ok(CommunicationResults::CloseConnectionAck) => StatusMessage::OK,
+            Ok(_) => StatusMessage::Error("Invalid communication actor response".into()),
+            Err(err) => StatusMessage::Error(err),
         }
     }
 
-    #[cfg(feature = "communication")]
-    /// Read from the store of a remote stronghold
-    pub async fn configure_firewall(&self, rule: FirewallRule) -> StatusMessage {
-        if self.communication_actor.is_none() {
-            return StatusMessage::Error(String::from("No communication spawned"));
-        }
-
-        match ask::<_, _, CommunicationResults<SHResults>, _>(
-            &self.system,
-            self.communication_actor.as_ref().unwrap(),
-            CommunicationRequest::ConfigureFirewall(rule),
-        )
-        .await
-        {
-            CommunicationResults::ConfigureFirewallAck => StatusMessage::OK,
-            _ => StatusMessage::Error("Invalid communication event".into()),
-        }
+    /// Allow all requests from the given peers, optionally also set default to allow all.
+    pub async fn allow_all_requests(&self, peers: Vec<PeerId>, set_default: bool) -> StatusMessage {
+        let rule = FirewallRule::SetRules {
+            direction: RequestDirection::In,
+            peers,
+            set_default,
+            permission: FirewallPermission::all(),
+        };
+        self.configure_firewall(rule).await
     }
 
-    #[cfg(feature = "communication")]
-    /// Write to the vault of a remote stronghold
+    /// Change or add rules in the firewall to allow the given requests for the peers, optionally also change the
+    /// default rule to allow it. Existing permissions for other `SHRequestPermission`s will not be changed by this.
+    /// If no rule has been set for a given peer, the default rule will be used as basis.
+    pub async fn allow_requests(
+        &self,
+        peers: Vec<PeerId>,
+        change_default: bool,
+        requests: Vec<SHRequestPermission>,
+    ) -> StatusMessage {
+        let rule = FirewallRule::AddPermissions {
+            direction: RequestDirection::In,
+            peers,
+            change_default,
+            permissions: requests.iter().map(|req| req.permission()).collect(),
+        };
+        self.configure_firewall(rule).await
+    }
+
+    /// Change or add rules in the firewall to reject the given requests from the peers, optionally also remove the
+    /// permission from the default rule. Existing permissions for other `SHRequestPermission`s will not be changed
+    /// by this. If no rule has been set for a given peer, the default rule will be used as basis.
+    pub async fn reject_requests(
+        &self,
+        peers: Vec<PeerId>,
+        change_default: bool,
+        requests: Vec<SHRequestPermission>,
+    ) -> StatusMessage {
+        let rule = FirewallRule::RemovePermissions {
+            direction: RequestDirection::In,
+            peers,
+            change_default,
+            permissions: requests.iter().map(|req| req.permission()).collect(),
+        };
+        self.configure_firewall(rule).await
+    }
+
+    /// Configure the firewall to reject all requests from the given peers, optionally also set default rule to reject
+    /// all.
+    pub async fn reject_all_requests(&self, peers: Vec<PeerId>, set_default: bool) -> StatusMessage {
+        let rule = FirewallRule::SetRules {
+            direction: RequestDirection::In,
+            peers,
+            set_default,
+            permission: FirewallPermission::none(),
+        };
+        self.configure_firewall(rule).await
+    }
+
+    /// Remove peer specific rules from the firewall configuration.
+    pub async fn remove_firewall_rules(&self, peers: Vec<PeerId>) -> StatusMessage {
+        let rule = FirewallRule::RemoveRule {
+            direction: RequestDirection::In,
+            peers,
+        };
+        self.configure_firewall(rule).await
+    }
+
+    /// Write to the vault of a remote Stronghold.
     pub async fn write_remote_vault(
         &self,
         peer_id: PeerId,
@@ -757,10 +795,6 @@ impl Stronghold {
         hint: RecordHint,
         _options: Vec<VaultFlags>,
     ) -> StatusMessage {
-        if self.communication_actor.is_none() {
-            return StatusMessage::Error(String::from("No communication spawned"));
-        }
-
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
         // check if vault exists
@@ -768,8 +802,9 @@ impl Stronghold {
             .ask_remote(peer_id, SHRequest::CheckVault(vault_path.clone()))
             .await
         {
-            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnExistsVault(b))) => b,
-            other => return StatusMessage::Error(Stronghold::handle_response_failure(other, "write data")),
+            Ok(SHResults::ReturnExistsVault(b)) => b,
+            Ok(_) => return StatusMessage::Error("Failed to check at remote if vault exists".into()),
+            Err(err) => return StatusMessage::Error(err),
         };
         if vault_exists {
             // check if record exists
@@ -782,8 +817,9 @@ impl Stronghold {
                 )
                 .await
             {
-                CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnExistsRecord(b))) => b,
-                other => return StatusMessage::Error(Stronghold::handle_response_failure(other, "check record")),
+                Ok(SHResults::ReturnExistsRecord(b)) => b,
+                Ok(_) => return StatusMessage::Error("Failed to check at remote if record exists".into()),
+                Err(err) => return StatusMessage::Error(err),
             };
             if !record_exists {
                 // initialize a new record
@@ -796,10 +832,9 @@ impl Stronghold {
                     )
                     .await
                 {
-                    CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnInitRecord(status))) => status,
-                    other => {
-                        return StatusMessage::Error(Stronghold::handle_response_failure(other, "initialize record"))
-                    }
+                    Ok(SHResults::ReturnInitRecord(status)) => status,
+                    Ok(_) => return StatusMessage::Error("Failed to initialize record at remote".into()),
+                    Err(err) => return StatusMessage::Error(err),
                 };
             }
         } else {
@@ -808,8 +843,9 @@ impl Stronghold {
                 .ask_remote(peer_id, SHRequest::CreateNewVault(location.clone()))
                 .await
             {
-                CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnCreateVault(_))) => {}
-                other => return StatusMessage::Error(Stronghold::handle_response_failure(other, "create vault")),
+                Ok(SHResults::ReturnCreateVault(_)) => {}
+                Ok(_) => return StatusMessage::Error("Failed to create vault at remote".into()),
+                Err(err) => return StatusMessage::Error(err),
             };
         }
         // write data
@@ -824,13 +860,13 @@ impl Stronghold {
             )
             .await
         {
-            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnWriteVault(status))) => status,
-            other => StatusMessage::Error(Stronghold::handle_response_failure(other, "write data")),
+            Ok(SHResults::ReturnWriteVault(status)) => status,
+            Ok(_) => StatusMessage::Error("Failed to write the data at remote vault".into()),
+            Err(err) => StatusMessage::Error(err),
         }
     }
 
-    #[cfg(feature = "communication")]
-    /// Write to the store of a remote stronghold
+    /// Write to the store of a remote Stronghold.
     pub async fn write_to_remote_store(
         &self,
         peer_id: PeerId,
@@ -838,10 +874,6 @@ impl Stronghold {
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> StatusMessage {
-        if self.communication_actor.is_none() {
-            return StatusMessage::Error(String::from("No communication spawned"));
-        }
-
         match self
             .ask_remote(
                 peer_id,
@@ -853,111 +885,88 @@ impl Stronghold {
             )
             .await
         {
-            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnWriteStore(status))) => status,
-            other => StatusMessage::Error(Stronghold::handle_response_failure(other, "write to the store")),
+            Ok(SHResults::ReturnWriteStore(status)) => status,
+            Ok(_) => StatusMessage::Error("Failed to write at the remote store".into()),
+            Err(err) => StatusMessage::Error(err),
         }
     }
 
-    #[cfg(feature = "communication")]
-    /// Read from the store of a remote stronghold
+    /// Read from the store of a remote Stronghold.
     pub async fn read_from_remote_store(&self, peer_id: PeerId, location: Location) -> (Vec<u8>, StatusMessage) {
-        if self.communication_actor.is_none() {
-            return (vec![], StatusMessage::Error(String::from("No communication spawned")));
-        }
-
         match self.ask_remote(peer_id, SHRequest::ReadFromStore { location }).await {
-            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnReadStore(payload, status))) => {
-                (payload, status)
-            }
-            other => (
+            Ok(SHResults::ReturnReadStore(payload, status)) => (payload, status),
+            Ok(_) => (
                 vec![],
-                StatusMessage::Error(Stronghold::handle_response_failure(other, "write to the store")),
+                StatusMessage::Error("Failed to read at the remote store".into()),
             ),
+            Err(err) => (vec![], StatusMessage::Error(err)),
         }
     }
 
-    #[cfg(feature = "communication")]
-    /// Returns a list of the available records and their `RecordHint` values in a remote vault.
+    /// Returns a list of the available records and their `RecordHint` values of a remote vault.
     pub async fn list_remote_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
         peer_id: PeerId,
         vault_path: V,
     ) -> (Vec<(usize, RecordHint)>, StatusMessage) {
-        if self.communication_actor.is_none() {
-            return (vec![], StatusMessage::Error(String::from("No communication spawned")));
-        }
-
         match self.ask_remote(peer_id, SHRequest::ListIds(vault_path.into())).await {
-            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnList(ids, status))) => (ids, status),
-            other => (
+            Ok(SHResults::ReturnList(ids, status)) => (ids, status),
+            Ok(_) => (
                 vec![],
-                StatusMessage::Error(Stronghold::handle_response_failure(
-                    other,
-                    "list hints and indexes from the vault",
-                )),
+                StatusMessage::Error("Failed to list hints and indexes from at remote vault".into()),
             ),
+            Err(err) => (vec![], StatusMessage::Error(err)),
         }
     }
 
-    #[cfg(feature = "communication")]
-    /// Executes a runtime command on a remote stronghold.
-    pub async fn remote_runtime_exec(&self, peer_id: PeerId, control_request: Procedure) -> Result<ProcResult, String> {
-        if self.communication_actor.is_none() {
-            return Err(String::from("No communication spawned"));
-        }
-
+    /// Executes a runtime command at a remote Stronghold.
+    pub async fn remote_runtime_exec(&self, peer_id: PeerId, control_request: Procedure) -> ProcResult {
         match self
             .ask_remote(peer_id, SHRequest::ControlRequest(control_request))
             .await
         {
-            CommunicationResults::RequestMsgResult(Ok(SHResults::ReturnControlRequest(pr))) => Ok(pr),
-            other => Err(Stronghold::handle_response_failure(other, "execute procedure")),
+            Ok(SHResults::ReturnControlRequest(pr)) => pr,
+            Ok(_) => ProcResult::Error("Invalid procedure result".into()),
+            Err(err) => ProcResult::Error(err),
         }
     }
 
-    #[cfg(feature = "communication")]
-    // Create an error message for received CommunicationResults.
-    // It assumes that the received event is some sort of failure.
-    // The returned error messages depends on source of that failure:
-    // - Response is okay, but the request procedure at the remote stronghold was not successful.
-    // - Response is an error: request could not be send or no response was received.
-    // - Invalid event was returned from the communication actor.
-    fn handle_response_failure(res: CommunicationResults<SHResults>, procedure: &str) -> String {
-        match res {
-            CommunicationResults::RequestMsgResult(Ok(_)) => format!("Failed to {}", procedure),
-            CommunicationResults::RequestMsgResult(Err(e)) => {
-                format!("Error messaging peer {:?}", e)
-            }
-            _ => "Received invalid communication actor response".into(),
+    // Wrap the SHRequest in an CommunicationRequest::RequestMsg and send it to the communication actor, to send it to
+    // the remote peer. Fails if no communication actor is present, if sending the request failed or if an invalid event
+    // was returned from the communication actor,
+    async fn ask_remote(&self, peer_id: PeerId, request: SHRequest) -> Result<SHResults, String> {
+        match self
+            .ask_communication_actor(CommunicationRequest::RequestMsg { peer_id, request })
+            .await
+        {
+            Ok(CommunicationResults::RequestMsgResult(Ok(ok))) => Ok(ok),
+            Ok(CommunicationResults::RequestMsgResult(Err(e))) => Err(format!("Error sending request to peer {:?}", e)),
+            Ok(_) => Err("Invalid communication actor response".into()),
+            Err(err) => Err(err),
         }
     }
 
-    #[cfg(feature = "communication")]
-    // Wrap the SHRequest in an CommunicationRequest::RequestMsg, send it to the CommunicationActor and
-    // wait for it to return a result from the remote peer.
-    // This method assumes that a communication actor was spawned and exists in self.
-    async fn ask_remote(&self, peer_id: PeerId, request: SHRequest) -> CommunicationResults<SHResults> {
-        ask(
-            &self.system,
-            self.communication_actor.as_ref().unwrap(),
-            CommunicationRequest::RequestMsg { peer_id, request },
-        )
-        .await
+    async fn configure_firewall(&self, rule: FirewallRule) -> StatusMessage {
+        match self
+            .ask_communication_actor(CommunicationRequest::ConfigureFirewall(rule))
+            .await
+        {
+            Ok(CommunicationResults::ConfigureFirewallAck) => StatusMessage::OK,
+            Ok(_) => StatusMessage::Error("Invalid communication actor response".into()),
+            Err(err) => StatusMessage::Error(err),
+        }
     }
 
-    /// A test function for reading data from a vault.
-    #[cfg(test)]
-    pub async fn read_secret(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
-        let res: SHResults = ask(&self.system, client, SHRequest::ReadFromVault { location }).await;
-
-        if let SHResults::ReturnReadVault(payload, status) = res {
-            (Some(payload), status)
+    // Send request to communication actor, fails if none is present.
+    async fn ask_communication_actor(
+        &self,
+        request: CommunicationRequest<SHRequest, ClientMsg>,
+    ) -> Result<CommunicationResults<SHResults>, String> {
+        if let Some(communication_actor) = self.communication_actor.as_ref() {
+            let res = ask(&self.system, communication_actor, request).await;
+            Ok(res)
         } else {
-            (None, StatusMessage::Error("Unable to read data".into()))
+            Err(String::from("No communication spawned"))
         }
     }
 }

@@ -152,7 +152,6 @@
         "stronghold-communication",
         "stronghold-utils",
         "runtime",
-        "communication-macros"
       ]
     },
     "stronghold-engine": {

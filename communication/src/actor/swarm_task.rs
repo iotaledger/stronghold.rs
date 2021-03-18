@@ -8,7 +8,7 @@ use crate::behaviour::{
 use core::{ops::Deref, str::FromStr, time::Duration};
 use futures::{channel::mpsc::UnboundedReceiver, future, prelude::*, select};
 use libp2p::{
-    core::{connection::ListenerId, ConnectedPoint},
+    core::{connection::ListenerId, multiaddr::Protocol, ConnectedPoint},
     identity::Keypair,
     request_response::RequestId,
     swarm::{DialError, Swarm, SwarmEvent},
@@ -16,6 +16,7 @@ use libp2p::{
 };
 use riker::{actors::*, Message};
 use std::{
+    net::Ipv4Addr,
     task::{Context, Poll},
     time::Instant,
 };
@@ -132,7 +133,11 @@ where
 
     // Start listening on the swarm, if not address is provided, the port will be OS assigned.
     fn start_listening(&mut self, addr: Option<Multiaddr>) -> Result<Multiaddr, ()> {
-        let addr = addr.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."));
+        let addr = addr.unwrap_or_else(|| {
+            Multiaddr::empty()
+                .with(Protocol::Ip4(Ipv4Addr::new(0, 0, 0, 0)))
+                .with(Protocol::Tcp(0u16))
+        });
         if let Ok(listener_id) = Swarm::listen_on(&mut self.swarm, addr) {
             let start = Instant::now();
             task::block_on(async {
@@ -313,24 +318,64 @@ where
 
     fn configure_firewall(&mut self, rule: FirewallRule) {
         match rule {
-            FirewallRule::SetDefault {
-                direction: RequestDirection::In,
-                permission,
-            } => {
-                self.firewall.set_default_in(permission);
-            }
-            FirewallRule::SetDefault {
-                direction: RequestDirection::Out,
-                permission,
-            } => {
-                self.firewall.set_default_out(permission);
-            }
-            FirewallRule::SetRule {
-                peer_id,
+            FirewallRule::SetRules {
                 direction,
+                peers,
+                set_default,
                 permission,
-            } => self.firewall.set_rule(peer_id, &direction, permission),
-            FirewallRule::RemoveRule { peer_id, direction } => self.firewall.remove_rule(&peer_id, &direction),
+            } => {
+                for peer in peers {
+                    self.firewall.set_rule(peer, &direction, permission);
+                }
+                if set_default {
+                    self.firewall.set_default(&direction, permission);
+                }
+            }
+            FirewallRule::AddPermissions {
+                direction,
+                peers,
+                change_default,
+                permissions,
+            } => {
+                for peer in peers {
+                    let init = self
+                        .firewall
+                        .get_rule(&peer, &direction)
+                        .unwrap_or_else(|| self.firewall.get_default(&direction));
+                    let rule = permissions.iter().fold(init, |acc, curr| acc.add_permission(curr));
+                    self.firewall.set_rule(peer, &direction, rule);
+                }
+                if change_default {
+                    let init = self.firewall.get_default(&direction);
+                    let new_default = permissions.iter().fold(init, |acc, curr| acc.add_permission(curr));
+                    self.firewall.set_default(&direction, new_default);
+                }
+            }
+            FirewallRule::RemovePermissions {
+                direction,
+                peers,
+                change_default,
+                permissions,
+            } => {
+                for peer in peers {
+                    let init = self
+                        .firewall
+                        .get_rule(&peer, &direction)
+                        .unwrap_or_else(|| self.firewall.get_default(&direction));
+                    let rule = permissions.iter().fold(init, |acc, curr| acc.remove_permission(curr));
+                    self.firewall.set_rule(peer, &direction, rule);
+                }
+                if change_default {
+                    let init = self.firewall.get_default(&direction);
+                    let new_default = permissions.iter().fold(init, |acc, curr| acc.remove_permission(&curr));
+                    self.firewall.set_default(&direction, new_default)
+                }
+            }
+            FirewallRule::RemoveRule { peers, direction } => {
+                for peer in peers {
+                    self.firewall.remove_rule(&peer, &direction);
+                }
+            }
         }
     }
 
@@ -346,12 +391,12 @@ where
                 } else {
                     Err(RequestMessageError::Rejected(FirewallBlocked::Local))
                 };
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::RequestMsgResult(res), sender);
+                Self::send_response(CommunicationResults::RequestMsgResult(res), sender);
             }
             CommunicationRequest::SetClientRef(client_ref) => {
                 self.client = client_ref;
                 let res = CommunicationResults::SetClientRefAck;
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
+                Self::send_response(res, sender);
             }
             CommunicationRequest::EstablishConnection {
                 peer_id,
@@ -364,19 +409,16 @@ where
                     self.connection_manager.insert(peer_id, endpoint, keep_alive.clone());
                     self.connection_manager.set_keep_alive(&peer_id, keep_alive);
                 }
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(
-                    CommunicationResults::EstablishConnectionResult(res),
-                    sender,
-                );
+                Self::send_response(CommunicationResults::EstablishConnectionResult(res), sender);
             }
             CommunicationRequest::CloseConnection(peer_id) => {
                 self.connection_manager.remove_connection(&peer_id);
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::CloseConnectionAck, sender);
+                Self::send_response(CommunicationResults::CloseConnectionAck, sender);
             }
             CommunicationRequest::CheckConnection(peer_id) => {
                 let is_connected = Swarm::is_connected(&self.swarm, &peer_id);
                 let res = CommunicationResults::CheckConnectionResult { peer_id, is_connected };
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
+                Self::send_response(res, sender);
             }
             CommunicationRequest::GetSwarmInfo => {
                 let peer_id = *Swarm::local_peer_id(&self.swarm);
@@ -387,14 +429,11 @@ where
                     listeners,
                     connections,
                 };
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
+                Self::send_response(res, sender);
             }
             CommunicationRequest::StartListening(addr) => {
                 let res = self.start_listening(addr);
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(
-                    CommunicationResults::StartListeningResult(res),
-                    sender,
-                );
+                Self::send_response(CommunicationResults::StartListeningResult(res), sender);
             }
             CommunicationRequest::RemoveListener => {
                 let result = if let Some(listener_id) = self.listener.take() {
@@ -403,25 +442,25 @@ where
                     Err(())
                 };
                 let res = CommunicationResults::RemoveListenerResult(result);
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
+                Self::send_response(res, sender);
             }
             CommunicationRequest::BanPeer(peer_id) => {
                 Swarm::ban_peer_id(&mut self.swarm, peer_id);
                 let res = CommunicationResults::BannedPeerAck(peer_id);
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
+                Self::send_response(res, sender);
             }
             CommunicationRequest::UnbanPeer(peer_id) => {
                 Swarm::unban_peer_id(&mut self.swarm, peer_id);
                 let res = CommunicationResults::UnbannedPeerAck(peer_id);
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(res, sender);
+                Self::send_response(res, sender);
             }
             CommunicationRequest::SetRelay(config) => {
                 let res = self.set_relay(config);
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::SetRelayResult(res), sender);
+                Self::send_response(CommunicationResults::SetRelayResult(res), sender);
             }
             CommunicationRequest::ConfigureFirewall(rule) => {
                 self.configure_firewall(rule);
-                SwarmTask::<Req, Res, ClientMsg, P>::send_response(CommunicationResults::ConfigureFirewallAck, sender);
+                Self::send_response(CommunicationResults::ConfigureFirewallAck, sender);
             }
             CommunicationRequest::Shutdown => unreachable!(),
         }

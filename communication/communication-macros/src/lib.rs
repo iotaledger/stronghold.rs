@@ -9,9 +9,9 @@ use syn::{punctuated::Punctuated, token::Comma, Data, DataEnum, DeriveInput, Fie
 
 /// Implements the [`VariantPermission`] for struct/ unions with PermissionValue(1).
 /// For enums, it implements [`ToPermissionVariants`], which creates an according new enum <Ident>Permission with Unit
-/// variants, and implements [`VariantPermission`] by assigning a permission value for each variant.
+/// variants, and implements [`VariantPermission`] by assigning different [`PermissionValue`] for each variant.
 /// The permission value is the "index" in the enum as exponent for the power of 2, thus from top to bottom 1, 2, 4,
-/// 8... This enables using it within the [`CommunicationActor`] and allows the [`CommunicationFirewall`] to handle it.
+/// 8...
 #[proc_macro_derive(RequestPermissions)]
 pub fn permissions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let derive_input = syn::parse_macro_input!(input as DeriveInput);
@@ -34,10 +34,8 @@ pub fn permissions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             quote! {
                 impl VariantPermission for #ident {
                     fn permission(&self) -> PermissionValue {
-                        1
-                    }
-                    fn is_permitted(&self, permission: PermissionValue) -> bool {
-                        permission % 2 != 0
+                        // Only panics for values > 31.
+                        PermissionValue::new(0).unwrap()
                     }
                 }
 
@@ -121,7 +119,7 @@ fn impl_to_permissioned(input: &Ident, name: &Ident, data_enum: &DataEnum) -> To
 
 fn impl_permission(name: &Ident, data_enum: &DataEnum) -> TokenStream {
     if data_enum.variants.len() > 32 {
-        panic!("More then 32 variants on enums are not allowed.");
+        panic!("More then 32 variants on enums are not supported.");
     }
     let mut i = 0u8;
     let permissions = data_enum
@@ -142,7 +140,8 @@ fn impl_permission(name: &Ident, data_enum: &DataEnum) -> TokenStream {
                 let n = match self {
                     #permissions
                 };
-                PermissionValue::new(n)
+                // Only panics if the enum has more than 32 variants, which has already been checked.
+                PermissionValue::new(n).unwrap()
             }
         }
     }

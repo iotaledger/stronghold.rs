@@ -43,6 +43,14 @@ pub use crate::{
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
+#[cfg(feature = "communication")]
+pub use crate::actors::SHRequestPermission;
+#[cfg(feature = "communication")]
+pub use communication::{
+    actor::KeepAlive,
+    libp2p::{Multiaddr, PeerId},
+};
+
 pub use engine::snapshot::{
     files::{home_dir, snapshot_dir},
     kdf::naive_kdf,

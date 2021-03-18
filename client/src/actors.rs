@@ -10,3 +10,6 @@ pub use self::{
     internal::{InternalActor, InternalMsg, InternalResults},
     snapshot::SMsg,
 };
+
+#[cfg(feature = "communication")]
+pub use self::client::SHRequestPermission;

@@ -6,20 +6,20 @@ use async_std::{
     task,
 };
 use clap::{load_yaml, App, ArgMatches};
+use communication::{
+    behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent, RequestEnvelope},
+    libp2p::{ConnectedPoint, Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
+};
 use core::{ops::Deref, str::FromStr, time::Duration};
 use futures::{prelude::*, select};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Instant};
-use stronghold_communication::{
-    behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent, RequestEnvelope},
-    libp2p::{ConnectedPoint, Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Ack;
 
-// Start a mailbox that publishes record for other peers
+// Starts a relay that forwards RequestEnvelopes from source to target peer.
 fn run_relay(matches: &ArgMatches) {
     if matches.subcommand_matches("start-relay").is_some() {
         let local_keys = Keypair::generate_ed25519();
@@ -205,19 +205,21 @@ fn handle_event(
                     target,
                 },
         } => {
-            if target != Swarm::local_peer_id(&swarm).to_string() {
+            // Verify that the request correctly targets the local peer.
+            if PeerId::from_str(&target).ok() != Some(*Swarm::local_peer_id(&swarm)) {
                 return;
             }
-            if source != peer_id.to_string() && peer_id != relay_peer {
-                return;
-            }
-            if remote_target.is_some() && remote_target.unwrap().to_string() == source {
+            if let Ok(source) = PeerId::from_str(&source) {
+                if source != peer_id && relay_peer != peer_id {
+                    return;
+                }
+                if Some(source) != *remote_target {
+                    println!("\n==== Message from {:?}\n\n", source);
+                    remote_target.replace(source);
+                }
                 println!("> {:?}", message);
-            } else if let Ok(source) = PeerId::from_str(&source) {
-                println!("\n==== Message from {:?}\n\n>{:?}", source, message);
-                remote_target.replace(source);
+                swarm.send_response(request_id, Ack).expect("Failed to send ack back.")
             }
-            swarm.send_response(request_id, Ack).expect("Failed to send ack back.")
         }
         // Response to an request that out local peer send before
         P2PReqResEvent::Res {
@@ -239,7 +241,7 @@ fn handle_input_line(
     relay_peer: PeerId,
     remote_target: &mut Option<PeerId>,
 ) {
-    let regex = Regex::new("SET\\s+\"(?P<target>[^\"]+)\"").unwrap();
+    let regex = Regex::new("SET\\s+\"(?P<target>[[:alnum:]]{32,64}?)\"").expect("Invalid Reqex string.");
     if let Some(captures) = regex.captures(&line) {
         if let Some(peer_id) = captures
             .name("target")

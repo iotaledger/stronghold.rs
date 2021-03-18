@@ -40,16 +40,12 @@ version = "*"
 path = "../communication"
 optional = true
 
-[dependencies.communication-macros]
-path = "../communication/communication-macros"
-optional = true
-
 [dependencies.stronghold-utils]
 path = "../utils"
 version = "0.1"
 
 [features]
-communication = ["stronghold-communication", "communication-macros"]
+communication = ["stronghold-communication"]
 
 [dev-dependencies]
 hex = "0.4.2"

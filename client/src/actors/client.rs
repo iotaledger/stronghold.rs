@@ -23,9 +23,7 @@ use core::{
 use std::{path::PathBuf, time::Duration};
 
 #[cfg(feature = "communication")]
-use communication_macros::RequestPermissions;
-#[cfg(feature = "communication")]
-use stronghold_communication::actor::firewall::{PermissionValue, ToPermissionVariants, VariantPermission};
+use communication::actor::{PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission};
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
 #[derive(Debug, Clone, Serialize, Deserialize)]

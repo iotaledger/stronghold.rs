@@ -7,7 +7,6 @@ members = [
   "engine/runtime",
   "client",
   "communication",
-  "communication/communication-macros",
   "utils",
 ]
 exclude = [
