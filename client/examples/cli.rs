@@ -22,7 +22,8 @@ macro_rules! line_error {
     };
 }
 
-// handle the encryption command.
+// Writes data to the unencrypted store. Requires a password, the plaintext and the record path.  Record path must be a
+// number.
 fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("write") {
         if let Some(pass) = matches.value_of("password") {
@@ -45,11 +46,13 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
                         ));
                     }
 
-                    block_on(stronghold.write_to_store(
-                        Location::counter::<_, usize>("test", Some(rid.parse::<usize>().unwrap())),
+                    let status = block_on(stronghold.write_to_store(
+                        Location::generic(rid, rid),
                         plain.as_bytes().to_vec(),
                         None,
                     ));
+
+                    println!("{:?}", status);
 
                     block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 };
@@ -58,6 +61,8 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
     }
 }
 
+/// Writes data to the encrypted vault.  Requires a password, the plaintext and the record path.  Record path must be a
+/// number.
 fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("encrypt") {
         if let Some(pass) = matches.value_of("password") {
@@ -80,12 +85,14 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                         ));
                     }
 
-                    block_on(stronghold.write_to_vault(
-                        Location::counter::<_, usize>("test", Some(rid.parse::<usize>().unwrap())),
+                    let status = block_on(stronghold.write_to_vault(
+                        Location::generic(rid, rid),
                         plain.as_bytes().to_vec(),
                         RecordHint::new("some hint").expect(line_error!()),
                         vec![],
                     ));
+
+                    println!("{:?}", status);
 
                     block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 };
@@ -94,7 +101,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
     }
 }
 
-// handle the snapshot command.
+// Writes the state of the stronghold to a snapshot. Requires a password and an optional snapshot path.
 fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("snapshot") {
         if let Some(ref pass) = matches.value_of("password") {
@@ -134,44 +141,11 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
     }
 }
 
-// handle the list command.
+// Lists the records in the stronghold. Requires a password to unlock the snapshot.
 fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("list") {
         if let Some(ref pass) = matches.value_of("password") {
-            let mut key = [0u8; 32];
-            let salt = [0u8; 32];
-            naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
-
-            let home_dir = home_dir().expect(line_error!());
-            let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
-
-            if snapshot.exists() {
-                block_on(stronghold.read_snapshot(
-                    client_path,
-                    None,
-                    &key.to_vec(),
-                    Some("commandline".to_string()),
-                    None,
-                ));
-
-                let (list, status) = block_on(stronghold.list_hints_and_ids(b"test".to_vec()));
-
-                println!("{:?}", status);
-                println!("{:?}", list);
-            } else {
-                println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-                return;
-            }
-        }
-    }
-}
-
-// handle the read command.
-fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
-    if let Some(matches) = matches.subcommand_matches("read") {
-        if let Some(ref pass) = matches.value_of("password") {
-            if let Some(ref rpath) = matches.value_of("rpath") {
+            if let Some(path) = matches.value_of("rpath") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
                 naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
@@ -188,10 +162,45 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
                         None,
                     ));
 
-                    let (data, status) = block_on(stronghold.read_from_store(Location::counter::<_, usize>(
-                        "test",
-                        Some(rpath.parse::<usize>().unwrap()),
-                    )));
+                    println!("reading");
+
+                    let (list, status) =
+                        block_on(stronghold.list_hints_and_ids(Location::generic(path, path).vault_path().to_vec()));
+
+                    println!("{:?}", status);
+                    println!("{:?}", list);
+                } else {
+                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+
+                    return;
+                }
+            }
+        }
+    }
+}
+
+// Reads a record from the unencrypted store.  Requires a snapshot password.
+fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
+    if let Some(matches) = matches.subcommand_matches("read") {
+        if let Some(ref pass) = matches.value_of("password") {
+            if let Some(rpath) = matches.value_of("rpath") {
+                let mut key = [0u8; 32];
+                let salt = [0u8; 32];
+                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+
+                let home_dir = home_dir().expect(line_error!());
+                let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+
+                if snapshot.exists() {
+                    block_on(stronghold.read_snapshot(
+                        client_path,
+                        None,
+                        &key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ));
+
+                    let (data, status) = block_on(stronghold.read_from_store(Location::generic(rpath, rpath)));
 
                     println!("{:?}", status);
                     println!("Data: {:?}", std::str::from_utf8(&data).unwrap());
@@ -205,11 +214,12 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
     }
 }
 
-// create a record with a revoke transaction.  Data isn't actually deleted until it is garbage collected.
+// Revoke a record.  Data isn't actually deleted until it is garbage collected.  Accepts a password and the record id
+// that you want to revoke.
 fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("revoke") {
         if let Some(ref pass) = matches.value_of("password") {
-            if let Some(ref id) = matches.value_of("id") {
+            if let Some(id) = matches.value_of("rpath") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
                 naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
@@ -226,10 +236,7 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
                         None,
                     ));
 
-                    let status = block_on(stronghold.delete_data(
-                        Location::counter::<_, usize>("test", Some(id.parse::<usize>().unwrap())),
-                        false,
-                    ));
+                    let status = block_on(stronghold.delete_data(Location::generic(id, id), false));
 
                     println!("{:?}", status);
 
@@ -244,14 +251,14 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
     }
 }
 
-// garbage collect the chain.  Remove any revoked data from the chain.
+// garbage collect the chain.  Remove any revoked data from the chain.  Requires the password.
 fn garbage_collect_vault_command(
     matches: &ArgMatches,
     stronghold: &mut iota_stronghold::Stronghold,
     client_path: Vec<u8>,
 ) {
     if let Some(matches) = matches.subcommand_matches("garbage_collect") {
-        if let Some(ref pass) = matches.value_of("password") {
+        if let Some(pass) = matches.value_of("password") {
             let mut key = [0u8; 32];
             let salt = [0u8; 32];
             naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
@@ -270,7 +277,10 @@ fn garbage_collect_vault_command(
 
                 let status = block_on(stronghold.garbage_collect(b"test".to_vec()));
 
+                let (list, _) = block_on(stronghold.list_hints_and_ids(b"test".to_vec()));
+
                 println!("{:?}", status);
+                println!("{:?}", list);
 
                 block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
             } else {
@@ -282,11 +292,12 @@ fn garbage_collect_vault_command(
     }
 }
 
-// Purge a record from the chain: revoke and then garbage collect.
+// Purge a record from the chain.  Calls revoke and garabge collect in one command.  Requires a password and the record
+// id.
 fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("purge") {
         if let Some(ref pass) = matches.value_of("password") {
-            if let Some(ref id) = matches.value_of("id") {
+            if let Some(id) = matches.value_of("id") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
                 naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
@@ -303,10 +314,7 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
                         None,
                     ));
 
-                    let status = block_on(stronghold.delete_data(
-                        Location::counter::<_, usize>(b"test".to_vec(), Some(id.parse::<usize>().unwrap())),
-                        true,
-                    ));
+                    let status = block_on(stronghold.delete_data(Location::generic(id, id), true));
 
                     println!("{:?}", status);
 
