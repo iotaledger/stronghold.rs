@@ -7,9 +7,9 @@ use crate::{line_error, Location, RecordHint, Stronghold};
 #[cfg(feature = "communication")]
 use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, StatusMessage};
 #[cfg(feature = "communication")]
-use core::time::Duration;
+use communication::actor::KeepAlive;
 #[cfg(feature = "communication")]
-use stronghold_communication::actor::{FirewallPermission, FirewallRule, KeepAlive, RequestDirection};
+use core::time::Duration;
 
 #[cfg(feature = "communication")]
 use super::fresh;
@@ -411,7 +411,7 @@ fn test_counters() {
 
 #[cfg(feature = "communication")]
 #[test]
-fn test_stronghold_communication() {
+fn test_communication() {
     let local_sys = ActorSystem::new().unwrap();
     let local_client = b"local".to_vec();
     let mut local_stronghold = Stronghold::init_stronghold_system(local_sys, local_client, vec![]);
@@ -421,11 +421,7 @@ fn test_stronghold_communication() {
     let remote_client = b"remote".to_vec();
     let mut remote_stronghold = Stronghold::init_stronghold_system(remote_sys, remote_client, vec![]);
     remote_stronghold.spawn_communication();
-    let set_default = FirewallRule::SetDefault {
-        direction: RequestDirection::In,
-        permission: FirewallPermission::All,
-    };
-    if let StatusMessage::Error(_) = futures::executor::block_on(remote_stronghold.configure_firewall(set_default)) {
+    if let StatusMessage::Error(_) = futures::executor::block_on(remote_stronghold.allow_all_requests(vec![], true)) {
         panic!("Could not configure firewall.")
     }
 
@@ -519,7 +515,8 @@ fn test_stronghold_communication() {
     };
 
     match futures::executor::block_on(local_stronghold.remote_runtime_exec(peer_id, procedure)) {
-        Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(_))) => {}
+        ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => {}
+        ProcResult::Error(err) => panic!("Procedure failed: {:?}", err),
         r => panic!("unexpected result: {:?}", r),
     };
 }

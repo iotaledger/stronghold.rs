@@ -1,11 +1,14 @@
 [package]
 name = "communication-macros"
 version = "0.1.0"
-authors = ["Elena Frank <elena.frank@iota.org>"]
+authors = ["IOTA Stiftung"]
 edition = "2018"
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/iotaledger/stronghold.rs"
+homepage = "https://www.iota.org"
 
 [lib]
-name = "communication_macros"
 proc-macro = true
 
 [dependencies]

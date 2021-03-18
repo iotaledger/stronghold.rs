@@ -80,13 +80,13 @@
 
 use async_std::task;
 use clap::{load_yaml, App, ArgMatches};
-use core::{ops::Deref, str::FromStr};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use stronghold_communication::{
+use communication::{
     behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent},
     libp2p::{ConnectedPoint, Keypair, Multiaddr, Swarm, SwarmEvent},
 };
+use core::{ops::Deref, str::FromStr};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub type Key = String;
 pub type Value = String;

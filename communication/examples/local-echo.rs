@@ -42,14 +42,14 @@ use async_std::{
     io::{stdin, BufReader},
     task,
 };
+use communication::{
+    behaviour::{BehaviourConfig, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
+    libp2p::{Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
+};
 use core::{ops::Deref, str::FromStr};
 use futures::{prelude::*, select};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use stronghold_communication::{
-    behaviour::{BehaviourConfig, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
-    libp2p::{Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
@@ -65,11 +65,15 @@ pub enum Response {
 
 // Parse the user input line and handle the commands
 fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, line: &str) {
-    let target_regex = "(?:\\s+\"(?P<target>[^\"]+)\")?";
+    let target_regex = "(?:\\s+\"(?P<target>[[:alnum:]]{32,64}?)\")?";
     let msg_regex = "(?:\\s+\"(?P<msg>[^\"]+)\")?";
     let regex = "(?P<type>LIST|DIAL|PING|MSG)".to_string() + target_regex + msg_regex;
-    if let Some(captures) = Regex::new(&regex).unwrap().captures(&line) {
-        match captures.name("type").unwrap().as_str() {
+    if let Some(captures) = Regex::new(&regex).expect("Invalid Reqex string.").captures(&line) {
+        match captures
+            .name("type")
+            .expect("No capture for match name 'type'.")
+            .as_str()
+        {
             "LIST" => {
                 println!("Known peers:");
                 for peer in swarm.get_all_peers() {
@@ -184,7 +188,7 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
             } = event.deref().clone()
             {
                 println!(
-                    "Received identify event: {:?} observes us at {:?}",
+                    "Received identify event: {:?} observes us at {:?}\n",
                     peer_id, observed_addr
                 );
             }

@@ -1,6 +1,58 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+//! # P2PNetworkBehaviour
+//!
+//! This module implements the [`P2PNetworkBehaviour`] that creates a [`ExpandedSwarm`] as entry point for all
+//! communication. It provides an interface to send request/ responses to other peers, manage the known peers, and poll
+//! for incoming events.
+//!
+//!
+//! # Example
+//!
+//! The below example initiates, and polls from a Swarm, and reponds to each incoming Ping with a Pong.
+//!
+//! ```no_run
+//! use async_std::task;
+//! use communication::behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent};
+//! use core::ops::Deref;
+//! use libp2p::identity::Keypair;
+//! use serde::{Deserialize, Serialize};
+//!
+//! #[derive(Debug, Clone, Serialize, Deserialize)]
+//! pub enum Request {
+//!     Ping,
+//! }
+//!
+//! #[derive(Debug, Clone, Serialize, Deserialize)]
+//! pub enum Response {
+//!     Pong,
+//! }
+//!
+//! let local_keys = Keypair::generate_ed25519();
+//! let config = BehaviourConfig::default();
+//! let mut swarm =
+//!     P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Init swarm failed.");
+//!
+//! task::block_on(async {
+//!     loop {
+//!         if let P2PEvent::RequestResponse(boxed_event) = swarm.next().await {
+//!             if let P2PReqResEvent::Req {
+//!                 peer_id,
+//!                 request_id,
+//!                 request: Request::Ping,
+//!             } = boxed_event.deref().clone()
+//!             {
+//!                 let res = swarm.send_response(request_id, Response::Pong);
+//!                 if res.is_err() {
+//!                     break;
+//!                 }
+//!             }
+//!         }
+//!     }
+//! });
+//! ```
+
 mod protocol;
 mod types;
 
@@ -84,12 +136,11 @@ impl Default for BehaviourConfig {
 /// - identify-protocol to receive identifying information of the remote peer
 /// - RequestResponse Protocol for sending generic request `Req` and response `Res` messages
 ///
-/// The P2PNetworkBehaviour itself is only useful when a new `Swarm` is created for it, and this
+/// The P2PNetworkBehaviour itself is only effective if a new [`ExpandedSwarm`] is created for it, this
 /// swarm is the entry point for all communication to remote peers, and contains the current state.
 ///
 /// The [`P2PNetworkBehaviour`] implements a custom poll method that creates [`P2PEvent`]s from the events of the
-/// different protocols, it can be polled with the `next()` or `next_event()` methods of
-/// [`libp2p::swarm::ExpandedSwarm`].
+/// different protocols, it can be polled with the `next()` or `next_event()` methods of the [`ExpandedSwarm`].
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "P2PEvent<Req, Res>", poll_method = "poll")]
 pub struct P2PNetworkBehaviour<Req: MessageEvent, Res: MessageEvent> {
@@ -109,15 +160,15 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
     /// Creates a new [`P2PNetworkBehaviour`] and returns the swarm for it.
     /// The returned [`Swarm<P2PNetworkBehaviour>`] is the entry point for all communication with
     /// remote peers, i.g. to send requests and responses.
-    /// Additionally to the methods of the [`P2PNetworkBehaviour`] there is a range of [`libp2p::Swarm`]
-    /// functions for swarm interaction, like dialing a new peer, that can be used.
+    /// Additionally to the methods of the [`P2PNetworkBehaviour`] there is a range of [`libp2p::ExpandedSwarm`]
+    /// functions that can be used for swarm interaction like dialing a new peer.
     ///
     ///
     /// # Example
     /// ```no_run
+    /// use communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};
     /// use libp2p::identity::Keypair;
     /// use serde::{Deserialize, Serialize};
-    /// use stronghold_communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};
     ///
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// pub enum Request {

@@ -1,21 +1,25 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+pub use communication_macros::RequestPermissions;
 use libp2p::PeerId;
 use std::collections::HashMap;
 
 /// The permission value for request variants.
 /// It is a  bit that is set at a certain index, therefore the value is always a power of 2.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PermissionValue(u32);
 
 impl PermissionValue {
-    /// Create a new permission value for an index, max allowed index is 31.
-    /// The value equals 2 to the power of the index.
-    /// For index > 31 the value will result in O, and [`PermissionSum::permits`] will always return false.
-    pub fn new(index: u8) -> Self {
-        let value = 1u32 << index;
-        PermissionValue(value)
+    /// Create a new permission value for an index, the value equals 2 to the power of the index.
+    /// Max allowed index is 31, otherwise [`None`] will be returned.
+    pub fn new(index: u8) -> Option<Self> {
+        if index < 32 {
+            let value = 1u32 << index;
+            Some(PermissionValue(value))
+        } else {
+            None
+        }
     }
 
     fn value(&self) -> u32 {
@@ -31,30 +35,30 @@ impl PartialEq<u32> for PermissionValue {
 
 /// The sum of allowed permissions.
 /// This is using the same concepts as e.g. permission values in Unix systems.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PermissionSum(u32);
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FirewallPermission(u32);
 
-impl PermissionSum {
+impl FirewallPermission {
     /// No values are allowed.
     pub fn none() -> Self {
-        PermissionSum(0u32)
+        FirewallPermission(0u32)
     }
 
     /// All values are allowed.
     pub fn all() -> Self {
-        PermissionSum(u32::MAX)
+        FirewallPermission(u32::MAX)
     }
 
     /// Adds a new value to the sum and therefore allows this value.
-    pub fn add_permission(self, other: PermissionValue) -> Self {
+    pub fn add_permission(self, other: &PermissionValue) -> Self {
         let sum = self.value() | other.value();
-        PermissionSum(sum)
+        FirewallPermission(sum)
     }
 
     /// Remove a certain value from the sum to remove permission.
-    pub fn remove_permission(self, other: PermissionValue) -> Self {
+    pub fn remove_permission(self, other: &PermissionValue) -> Self {
         let sub = self.value() & !other.value();
-        PermissionSum(sub)
+        FirewallPermission(sub)
     }
 
     /// Check if the sum includes this value i.g. if a certain bit is set.
@@ -67,13 +71,13 @@ impl PermissionSum {
     }
 }
 
-impl From<u32> for PermissionSum {
+impl From<u32> for FirewallPermission {
     fn from(value: u32) -> Self {
-        PermissionSum(value)
+        FirewallPermission(value)
     }
 }
 
-impl PartialEq<u32> for PermissionSum {
+impl PartialEq<u32> for FirewallPermission {
     fn eq(&self, other: &u32) -> bool {
         self.value() == *other
     }
@@ -90,7 +94,6 @@ pub trait VariantPermission {
 pub trait ToPermissionVariants<P: VariantPermission> {
     fn to_permissioned(&self) -> P;
 }
-
 impl<T: VariantPermission + Clone> ToPermissionVariants<T> for T {
     fn to_permissioned(&self) -> T {
         self.clone()
@@ -106,30 +109,33 @@ pub enum RequestDirection {
     Out,
 }
 
-/// Permission that is set in the Firewall.
-/// In case of [`FirewallPermission::Restricted`], only selected variants in a enum are allowed,
-/// the [`VariantPermission`] of the request message is used for each individual request to validate it.
-#[derive(Debug, Clone)]
-pub enum FirewallPermission {
-    None,
-    Restricted(PermissionSum),
-    All,
-}
-
 /// Configure the firewall.
 #[derive(Debug, Clone)]
 pub enum FirewallRule {
-    SetDefault {
+    /// Set new rules either for specific peers, or the default rule.
+    SetRules {
         direction: RequestDirection,
+        peers: Vec<PeerId>,
+        set_default: bool,
         permission: FirewallPermission,
     },
-    SetRule {
-        peer_id: PeerId,
+    /// Add specific permissions for certain peers and optionally also to the default rule.
+    AddPermissions {
         direction: RequestDirection,
-        permission: FirewallPermission,
+        peers: Vec<PeerId>,
+        change_default: bool,
+        permissions: Vec<PermissionValue>,
     },
+    /// Remove specific permissions from certain peers and optionally also from the default rule.
+    RemovePermissions {
+        direction: RequestDirection,
+        peers: Vec<PeerId>,
+        change_default: bool,
+        permissions: Vec<PermissionValue>,
+    },
+    /// Remove a rule for a specific peer, which results in using the default rule for that peer.
     RemoveRule {
-        peer_id: PeerId,
+        peers: Vec<PeerId>,
         direction: RequestDirection,
     },
 }
@@ -150,8 +156,8 @@ pub(super) struct FirewallConfiguration {
 impl Default for FirewallConfiguration {
     fn default() -> Self {
         FirewallConfiguration {
-            default_in: FirewallPermission::None,
-            default_out: FirewallPermission::All,
+            default_in: FirewallPermission::none(),
+            default_out: FirewallPermission::all(),
             rules_in: HashMap::new(),
             rules_out: HashMap::new(),
         }
@@ -168,12 +174,25 @@ impl FirewallConfiguration {
         }
     }
 
-    pub fn set_default_in(&mut self, default: FirewallPermission) {
-        self.default_in = default;
+    pub fn get_default(&mut self, direction: &RequestDirection) -> FirewallPermission {
+        match direction {
+            RequestDirection::In => self.default_in,
+            RequestDirection::Out => self.default_out,
+        }
     }
 
-    pub fn set_default_out(&mut self, default: FirewallPermission) {
-        self.default_out = default;
+    pub fn set_default(&mut self, direction: &RequestDirection, default: FirewallPermission) {
+        match direction {
+            RequestDirection::In => self.default_in = default,
+            RequestDirection::Out => self.default_out = default,
+        }
+    }
+
+    pub fn get_rule(&mut self, peer_id: &PeerId, direction: &RequestDirection) -> Option<FirewallPermission> {
+        match direction {
+            RequestDirection::In => self.rules_in.get(peer_id).copied(),
+            RequestDirection::Out => self.rules_out.get(peer_id).copied(),
+        }
     }
 
     pub fn set_rule(&mut self, peer_id: PeerId, direction: &RequestDirection, permission: FirewallPermission) {
@@ -199,8 +218,7 @@ impl FirewallConfiguration {
     }
 
     // Uses a rule if one is specified for that peer, otherwise use default.
-    // In case of FirewallPermission::Restricted, the permission is checked for the required permissions of the specific
-    // request variant.
+    // The firewall permission is checked for the required permissions of the specific request variant.
     pub fn is_permitted<Req: ToPermissionVariants<P>, P: VariantPermission>(
         &self,
         variant: Req,
@@ -208,13 +226,9 @@ impl FirewallConfiguration {
         direction: RequestDirection,
     ) -> bool {
         let permissions = match direction {
-            RequestDirection::In => self.rules_in.get(&peer_id).unwrap_or(&self.default_in).clone(),
-            RequestDirection::Out => self.rules_out.get(&peer_id).unwrap_or(&self.default_out).clone(),
+            RequestDirection::In => *self.rules_in.get(&peer_id).unwrap_or(&self.default_in),
+            RequestDirection::Out => *self.rules_out.get(&peer_id).unwrap_or(&self.default_out),
         };
-        match permissions {
-            FirewallPermission::None => false,
-            FirewallPermission::All => true,
-            FirewallPermission::Restricted(sum) => sum.permits(&variant.to_permissioned().permission()),
-        }
+        permissions.permits(&variant.to_permissioned().permission())
     }
 }
