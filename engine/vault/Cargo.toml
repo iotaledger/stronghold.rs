@@ -18,9 +18,9 @@ version = "0.2"
 
 [dependencies.iota-crypto]
 git = "https://github.com/iotaledger/crypto.rs"
-rev = "b849861b86c3f7357b7477de4253b7352b363627"
+rev = "46c14870998f2a1083095c3a64e9fa0ed1cf51e8"
 features = [ "random", "chacha" ]
-version = "*"
+version = "0.4.2"
 # Note: We are only adding a version so that we can publish to crates.io
 
 [dev-dependencies]
