@@ -1,4 +1,5 @@
 (function() {var implementors = {};
+implementors["communication"] = [{"text":"impl Copy for PermissionValue","synthetic":false,"types":[]},{"text":"impl Copy for FirewallPermission","synthetic":false,"types":[]}];
 implementors["iota_stronghold"] = [{"text":"impl Copy for ClientId","synthetic":false,"types":[]},{"text":"impl Copy for VaultId","synthetic":false,"types":[]},{"text":"impl Copy for ID","synthetic":false,"types":[]}];
 implementors["runtime"] = [{"text":"impl Copy for Prot","synthetic":false,"types":[]}];
 implementors["snapshot"] = [{"text":"impl Copy for Duplicate","synthetic":false,"types":[]}];

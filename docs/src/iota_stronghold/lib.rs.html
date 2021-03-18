@@ -76,6 +76,14 @@
 <span id="73">73</span>
 <span id="74">74</span>
 <span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
+<span id="79">79</span>
+<span id="80">80</span>
+<span id="81">81</span>
+<span id="82">82</span>
+<span id="83">83</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -120,6 +128,14 @@
     <span class="ident">interface</span>::<span class="ident">Stronghold</span>,
     <span class="ident">internals</span>::<span class="ident">Provider</span>,
     <span class="ident">utils</span>::{<span class="ident">Location</span>, <span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>, <span class="ident">StrongholdFlags</span>, <span class="ident">VaultFlags</span>},
+};
+
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
+<span class="kw">pub</span> <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">actors</span>::<span class="ident">SHRequestPermission</span>;
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">communication</span>::{
+    <span class="ident">actor</span>::<span class="ident">KeepAlive</span>,
+    <span class="ident">libp2p</span>::{<span class="ident">Multiaddr</span>, <span class="ident">PeerId</span>},
 };
 
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">snapshot</span>::{

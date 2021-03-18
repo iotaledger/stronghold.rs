@@ -926,6 +926,15 @@
 <span id="923">923</span>
 <span id="924">924</span>
 <span id="925">925</span>
+<span id="926">926</span>
+<span id="927">927</span>
+<span id="928">928</span>
+<span id="929">929</span>
+<span id="930">930</span>
+<span id="931">931</span>
+<span id="932">932</span>
+<span id="933">933</span>
+<span id="934">934</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -939,6 +948,8 @@
 <span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::<span class="ident">RecordHint</span>;
 
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
+<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">actors</span>::<span class="ident">SHRequestPermission</span>;
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">utils</span>::<span class="ident">ResultMessage</span>;
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">actors</span>::{<span class="ident">InternalActor</span>, <span class="ident">InternalMsg</span>, <span class="ident">ProcResult</span>, <span class="ident">Procedure</span>, <span class="ident">SHRequest</span>, <span class="ident">SHResults</span>},
@@ -951,10 +962,10 @@
     <span class="ident">ClientId</span>, <span class="ident">Location</span>, <span class="ident">Provider</span>,
 };
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-<span class="kw">use</span> <span class="ident">stronghold_communication</span>::{
+<span class="kw">use</span> <span class="ident">communication</span>::{
     <span class="ident">actor</span>::{
         <span class="ident">CommunicationActor</span>, <span class="ident">CommunicationActorConfig</span>, <span class="ident">CommunicationRequest</span>, <span class="ident">CommunicationResults</span>,
-        <span class="ident">EstablishedConnection</span>, <span class="ident">FirewallPermission</span>, <span class="ident">FirewallRule</span>, <span class="ident">KeepAlive</span>,
+        <span class="ident">EstablishedConnection</span>, <span class="ident">FirewallPermission</span>, <span class="ident">FirewallRule</span>, <span class="ident">KeepAlive</span>, <span class="ident">RequestDirection</span>, <span class="ident">VariantPermission</span>,
     },
     <span class="ident">behaviour</span>::<span class="ident">BehaviourConfig</span>,
     <span class="ident">libp2p</span>::{<span class="ident">Keypair</span>, <span class="ident">Multiaddr</span>, <span class="ident">PeerId</span>},
@@ -1486,9 +1497,29 @@
         <span class="macro">unimplemented</span><span class="macro">!</span>()
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
+    <span class="doccomment">/// A test function for reading data from a vault.</span>
+    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_secret</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
+        <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">current_target</span>;
+
+        <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
+
+        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromVault</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
+
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnReadVault</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
+            (<span class="prelude-val">Some</span>(<span class="ident">payload</span>), <span class="ident">status</span>)
+        } <span class="kw">else</span> {
+            (<span class="prelude-val">None</span>, <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to read data&quot;</span>.<span class="ident">into</span>()))
+        }
+    }
+}
+
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
+<span class="kw">impl</span> <span class="ident">Stronghold</span> {
     <span class="doccomment">/// Spawn the communication actor and swarm.</span>
-    <span class="doccomment">/// Set default configuration for firewall to allow all outgoing requests and no incoming.</span>
+    <span class="doccomment">/// Per default, the firewall allows all outgoing, and reject all incoming requests.</span>
+    <span class="doccomment">/// The `configure_firewall` methods allows to configure this behaviour by either changing the default regulation,</span>
+    <span class="doccomment">/// or adding explicit rules for for specific peers.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">spawn_communication</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_some</span>() {
             <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;Communication was already spawned&quot;</span>));
@@ -1501,8 +1532,8 @@
         <span class="kw">let</span> <span class="ident">behaviour_config</span> <span class="op">=</span> <span class="ident">BehaviourConfig</span>::<span class="ident">default</span>();
         <span class="kw">let</span> <span class="ident">actor_config</span> <span class="op">=</span> <span class="ident">CommunicationActorConfig</span> {
             <span class="ident">client</span>,
-            <span class="ident">firewall_default_in</span>: <span class="ident">FirewallPermission</span>::<span class="prelude-val">None</span>,
-            <span class="ident">firewall_default_out</span>: <span class="ident">FirewallPermission</span>::<span class="ident">All</span>,
+            <span class="ident">firewall_default_in</span>: <span class="ident">FirewallPermission</span>::<span class="ident">all</span>(),
+            <span class="ident">firewall_default_out</span>: <span class="ident">FirewallPermission</span>::<span class="ident">all</span>(),
         };
 
         <span class="kw">let</span> <span class="ident">communication_actor</span> <span class="op">=</span> <span class="self">self</span>
@@ -1517,59 +1548,40 @@
     }
 
     <span class="doccomment">/// Kill communication actor and swarm</span>
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">stop_communication</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">communication_actor</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">as_ref</span>() {
             <span class="self">self</span>.<span class="ident">system</span>.<span class="ident">stop</span>(<span class="ident">communication_actor</span>);
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
     <span class="doccomment">///  Start listening on the swarm</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">start_listening</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">addr</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_none</span>() {
-            <span class="kw">return</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>));
-        }
-
-        <span class="kw">match</span> <span class="ident">ask</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">CommunicationResults</span><span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span>(
-            <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
-            <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap</span>(),
-            <span class="ident">CommunicationRequest</span>::<span class="ident">StartListening</span>(<span class="ident">addr</span>),
-        )
-        .<span class="kw">await</span>
+        <span class="kw">match</span> <span class="self">self</span>
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">StartListening</span>(<span class="ident">addr</span>))
+            .<span class="kw">await</span>
         {
-            <span class="ident">CommunicationResults</span>::<span class="ident">StartListeningResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">addr</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">addr</span>),
-            <span class="ident">CommunicationResults</span>::<span class="ident">StartListeningResult</span>(<span class="prelude-val">Err</span>(<span class="kw">_</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Listener Error&quot;</span>.<span class="ident">into</span>()),
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Received invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">StartListeningResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">addr</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">addr</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">StartListeningResult</span>(<span class="prelude-val">Err</span>(<span class="kw">_</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Listener Error&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
     <span class="doccomment">///  Get the peer id and listening addresses of the local peer</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">get_swarm_info</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span>(<span class="ident">PeerId</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>, <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">PeerId</span>, <span class="ident">EstablishedConnection</span>)<span class="op">&gt;</span>)<span class="op">&gt;</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_none</span>() {
-            <span class="kw">return</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>));
-        }
-
-        <span class="kw">match</span> <span class="ident">ask</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">CommunicationResults</span><span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span>(
-            <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
-            <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap</span>(),
-            <span class="ident">CommunicationRequest</span>::<span class="ident">GetSwarmInfo</span>,
-        )
-        .<span class="kw">await</span>
-        {
-            <span class="ident">CommunicationResults</span>::<span class="ident">SwarmInfo</span> {
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">GetSwarmInfo</span>).<span class="kw">await</span> {
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">SwarmInfo</span> {
                 <span class="ident">peer_id</span>,
                 <span class="ident">listeners</span>,
                 <span class="ident">connections</span>,
-            } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>((<span class="ident">peer_id</span>, <span class="ident">listeners</span>, <span class="ident">connections</span>)),
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to obtain swarm information&quot;</span>.<span class="ident">into</span>()),
+            }) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>((<span class="ident">peer_id</span>, <span class="ident">listeners</span>, <span class="ident">connections</span>)),
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
     <span class="doccomment">/// Connect a remote peer either by id if the peer is known, or alternatively by the address.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">establish_connection</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
@@ -1577,69 +1589,104 @@
         <span class="ident">addr</span>: <span class="ident">Multiaddr</span>,
         <span class="ident">keep_alive</span>: <span class="ident">KeepAlive</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_none</span>() {
-            <span class="kw">return</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>));
-        }
-
-        <span class="kw">match</span> <span class="ident">ask</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">CommunicationResults</span><span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span>(
-            <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
-            <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap</span>(),
-            <span class="ident">CommunicationRequest</span>::<span class="ident">EstablishConnection</span> {
+        <span class="kw">match</span> <span class="self">self</span>
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">EstablishConnection</span> {
                 <span class="ident">peer_id</span>,
                 <span class="ident">addr</span>,
                 <span class="ident">keep_alive</span>,
-            },
-        )
-        .<span class="kw">await</span>
+            })
+            .<span class="kw">await</span>
         {
-            <span class="ident">CommunicationResults</span>::<span class="ident">EstablishConnectionResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">peer_id</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">peer_id</span>),
-            <span class="ident">CommunicationResults</span>::<span class="ident">EstablishConnectionResult</span>(<span class="prelude-val">Err</span>(<span class="ident">reason</span>)) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;Error connecting peer: {:?}&quot;</span>, <span class="ident">reason</span>))
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">EstablishConnectionResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">peer_id</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">peer_id</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">EstablishConnectionResult</span>(<span class="prelude-val">Err</span>(<span class="ident">err</span>))) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;Error connecting peer: {:?}&quot;</span>, <span class="ident">err</span>))
             }
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication event&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
     <span class="doccomment">/// Close the connection to a remote peer so that no more request can be received.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">close_connection</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_none</span>() {
-            <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>));
-        }
-
-        <span class="kw">match</span> <span class="ident">ask</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">CommunicationResults</span><span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span>(
-            <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
-            <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap</span>(),
-            <span class="ident">CommunicationRequest</span>::<span class="ident">CloseConnection</span>(<span class="ident">peer_id</span>),
-        )
-        .<span class="kw">await</span>
+        <span class="kw">match</span> <span class="self">self</span>
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">CloseConnection</span>(<span class="ident">peer_id</span>))
+            .<span class="kw">await</span>
         {
-            <span class="ident">CommunicationResults</span>::<span class="ident">CloseConnectionAck</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">OK</span>,
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication event&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">CloseConnectionAck</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">OK</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-    <span class="doccomment">/// Read from the store of a remote stronghold</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">configure_firewall</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">rule</span>: <span class="ident">FirewallRule</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_none</span>() {
-            <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>));
-        }
-
-        <span class="kw">match</span> <span class="ident">ask</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">CommunicationResults</span><span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span>(
-            <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
-            <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap</span>(),
-            <span class="ident">CommunicationRequest</span>::<span class="ident">ConfigureFirewall</span>(<span class="ident">rule</span>),
-        )
-        .<span class="kw">await</span>
-        {
-            <span class="ident">CommunicationResults</span>::<span class="ident">ConfigureFirewallAck</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">OK</span>,
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication event&quot;</span>.<span class="ident">into</span>()),
-        }
+    <span class="doccomment">/// Allow all requests from the given peers, optionally also set default to allow all.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">allow_all_requests</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peers</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>, <span class="ident">set_default</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule</span>::<span class="ident">SetRules</span> {
+            <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+            <span class="ident">peers</span>,
+            <span class="ident">set_default</span>,
+            <span class="ident">permission</span>: <span class="ident">FirewallPermission</span>::<span class="ident">all</span>(),
+        };
+        <span class="self">self</span>.<span class="ident">configure_firewall</span>(<span class="ident">rule</span>).<span class="kw">await</span>
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-    <span class="doccomment">/// Write to the vault of a remote stronghold</span>
+    <span class="doccomment">/// Change or add rules in the firewall to allow the given requests for the peers, optionally also change the</span>
+    <span class="doccomment">/// default rule to allow it. Existing permissions for other `SHRequestPermission`s will not be changed by this.</span>
+    <span class="doccomment">/// If no rule has been set for a given peer, the default rule will be used as basis.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">allow_requests</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">peers</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>,
+        <span class="ident">change_default</span>: <span class="ident">bool</span>,
+        <span class="ident">requests</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SHRequestPermission</span><span class="op">&gt;</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule</span>::<span class="ident">AddPermissions</span> {
+            <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+            <span class="ident">peers</span>,
+            <span class="ident">change_default</span>,
+            <span class="ident">permissions</span>: <span class="ident">requests</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">req</span><span class="op">|</span> <span class="ident">req</span>.<span class="ident">permission</span>()).<span class="ident">collect</span>(),
+        };
+        <span class="self">self</span>.<span class="ident">configure_firewall</span>(<span class="ident">rule</span>).<span class="kw">await</span>
+    }
+
+    <span class="doccomment">/// Change or add rules in the firewall to reject the given requests from the peers, optionally also remove the</span>
+    <span class="doccomment">/// permission from the default rule. Existing permissions for other `SHRequestPermission`s will not be changed</span>
+    <span class="doccomment">/// by this. If no rule has been set for a given peer, the default rule will be used as basis.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">reject_requests</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">peers</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>,
+        <span class="ident">change_default</span>: <span class="ident">bool</span>,
+        <span class="ident">requests</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SHRequestPermission</span><span class="op">&gt;</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule</span>::<span class="ident">RemovePermissions</span> {
+            <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+            <span class="ident">peers</span>,
+            <span class="ident">change_default</span>,
+            <span class="ident">permissions</span>: <span class="ident">requests</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">req</span><span class="op">|</span> <span class="ident">req</span>.<span class="ident">permission</span>()).<span class="ident">collect</span>(),
+        };
+        <span class="self">self</span>.<span class="ident">configure_firewall</span>(<span class="ident">rule</span>).<span class="kw">await</span>
+    }
+
+    <span class="doccomment">/// Configure the firewall to reject all requests from the given peers, optionally also set default rule to reject</span>
+    <span class="doccomment">/// all.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">reject_all_requests</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peers</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>, <span class="ident">set_default</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule</span>::<span class="ident">SetRules</span> {
+            <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+            <span class="ident">peers</span>,
+            <span class="ident">set_default</span>,
+            <span class="ident">permission</span>: <span class="ident">FirewallPermission</span>::<span class="ident">none</span>(),
+        };
+        <span class="self">self</span>.<span class="ident">configure_firewall</span>(<span class="ident">rule</span>).<span class="kw">await</span>
+    }
+
+    <span class="doccomment">/// Remove peer specific rules from the firewall configuration.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remove_firewall_rules</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peers</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule</span>::<span class="ident">RemoveRule</span> {
+            <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+            <span class="ident">peers</span>,
+        };
+        <span class="self">self</span>.<span class="ident">configure_firewall</span>(<span class="ident">rule</span>).<span class="kw">await</span>
+    }
+
+    <span class="doccomment">/// Write to the vault of a remote Stronghold.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">write_remote_vault</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">peer_id</span>: <span class="ident">PeerId</span>,
@@ -1648,10 +1695,6 @@
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
         <span class="ident">_options</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">VaultFlags</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_none</span>() {
-            <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>));
-        }
-
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">location</span>.<span class="ident">vault_path</span>();
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">vault_path</span>.<span class="ident">to_vec</span>();
         <span class="comment">// check if vault exists</span>
@@ -1659,8 +1702,9 @@
             .<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest</span>::<span class="ident">CheckVault</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>()))
             .<span class="kw">await</span>
         {
-            <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnExistsVault</span>(<span class="ident">b</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">b</span>,
-            <span class="ident">other</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">Stronghold</span>::<span class="ident">handle_response_failure</span>(<span class="ident">other</span>, <span class="string">&quot;write data&quot;</span>)),
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnExistsVault</span>(<span class="ident">b</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">b</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to check at remote if vault exists&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
         };
         <span class="kw">if</span> <span class="ident">vault_exists</span> {
             <span class="comment">// check if record exists</span>
@@ -1673,8 +1717,9 @@
                 )
                 .<span class="kw">await</span>
             {
-                <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnExistsRecord</span>(<span class="ident">b</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">b</span>,
-                <span class="ident">other</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">Stronghold</span>::<span class="ident">handle_response_failure</span>(<span class="ident">other</span>, <span class="string">&quot;check record&quot;</span>)),
+                <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnExistsRecord</span>(<span class="ident">b</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">b</span>,
+                <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to check at remote if record exists&quot;</span>.<span class="ident">into</span>()),
+                <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
             };
             <span class="kw">if</span> <span class="op">!</span><span class="ident">record_exists</span> {
                 <span class="comment">// initialize a new record</span>
@@ -1687,10 +1732,9 @@
                     )
                     .<span class="kw">await</span>
                 {
-                    <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnInitRecord</span>(<span class="ident">status</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">status</span>,
-                    <span class="ident">other</span> <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">Stronghold</span>::<span class="ident">handle_response_failure</span>(<span class="ident">other</span>, <span class="string">&quot;initialize record&quot;</span>))
-                    }
+                    <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnInitRecord</span>(<span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">status</span>,
+                    <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to initialize record at remote&quot;</span>.<span class="ident">into</span>()),
+                    <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
                 };
             }
         } <span class="kw">else</span> {
@@ -1699,8 +1743,9 @@
                 .<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest</span>::<span class="ident">CreateNewVault</span>(<span class="ident">location</span>.<span class="ident">clone</span>()))
                 .<span class="kw">await</span>
             {
-                <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnCreateVault</span>(<span class="kw">_</span>))) <span class="op">=</span><span class="op">&gt;</span> {}
-                <span class="ident">other</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">Stronghold</span>::<span class="ident">handle_response_failure</span>(<span class="ident">other</span>, <span class="string">&quot;create vault&quot;</span>)),
+                <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnCreateVault</span>(<span class="kw">_</span>)) <span class="op">=</span><span class="op">&gt;</span> {}
+                <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to create vault at remote&quot;</span>.<span class="ident">into</span>()),
+                <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
             };
         }
         <span class="comment">// write data</span>
@@ -1715,13 +1760,13 @@
             )
             .<span class="kw">await</span>
         {
-            <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnWriteVault</span>(<span class="ident">status</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">status</span>,
-            <span class="ident">other</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">Stronghold</span>::<span class="ident">handle_response_failure</span>(<span class="ident">other</span>, <span class="string">&quot;write data&quot;</span>)),
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnWriteVault</span>(<span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">status</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to write the data at remote vault&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-    <span class="doccomment">/// Write to the store of a remote stronghold</span>
+    <span class="doccomment">/// Write to the store of a remote Stronghold.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">write_to_remote_store</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">peer_id</span>: <span class="ident">PeerId</span>,
@@ -1729,10 +1774,6 @@
         <span class="ident">payload</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
         <span class="ident">lifetime</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_none</span>() {
-            <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>));
-        }
-
         <span class="kw">match</span> <span class="self">self</span>
             .<span class="ident">ask_remote</span>(
                 <span class="ident">peer_id</span>,
@@ -1744,111 +1785,88 @@
             )
             .<span class="kw">await</span>
         {
-            <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnWriteStore</span>(<span class="ident">status</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">status</span>,
-            <span class="ident">other</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">Stronghold</span>::<span class="ident">handle_response_failure</span>(<span class="ident">other</span>, <span class="string">&quot;write to the store&quot;</span>)),
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnWriteStore</span>(<span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">status</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to write at the remote store&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-    <span class="doccomment">/// Read from the store of a remote stronghold</span>
+    <span class="doccomment">/// Read from the store of a remote Stronghold.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_from_remote_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_none</span>() {
-            <span class="kw">return</span> (<span class="macro">vec</span><span class="macro">!</span>[], <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>)));
-        }
-
         <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
-            <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnReadStore</span>(<span class="ident">payload</span>, <span class="ident">status</span>))) <span class="op">=</span><span class="op">&gt;</span> {
-                (<span class="ident">payload</span>, <span class="ident">status</span>)
-            }
-            <span class="ident">other</span> <span class="op">=</span><span class="op">&gt;</span> (
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnReadStore</span>(<span class="ident">payload</span>, <span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">payload</span>, <span class="ident">status</span>),
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> (
                 <span class="macro">vec</span><span class="macro">!</span>[],
-                <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">Stronghold</span>::<span class="ident">handle_response_failure</span>(<span class="ident">other</span>, <span class="string">&quot;write to the store&quot;</span>)),
+                <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to read at the remote store&quot;</span>.<span class="ident">into</span>()),
             ),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="macro">vec</span><span class="macro">!</span>[], <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>)),
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-    <span class="doccomment">/// Returns a list of the available records and their `RecordHint` values in a remote vault.</span>
+    <span class="doccomment">/// Returns a list of the available records and their `RecordHint` values of a remote vault.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">list_remote_hints_and_ids</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">peer_id</span>: <span class="ident">PeerId</span>,
         <span class="ident">vault_path</span>: <span class="ident">V</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">usize</span>, <span class="ident">RecordHint</span>)<span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_none</span>() {
-            <span class="kw">return</span> (<span class="macro">vec</span><span class="macro">!</span>[], <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>)));
-        }
-
         <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest</span>::<span class="ident">ListIds</span>(<span class="ident">vault_path</span>.<span class="ident">into</span>())).<span class="kw">await</span> {
-            <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnList</span>(<span class="ident">ids</span>, <span class="ident">status</span>))) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">ids</span>, <span class="ident">status</span>),
-            <span class="ident">other</span> <span class="op">=</span><span class="op">&gt;</span> (
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnList</span>(<span class="ident">ids</span>, <span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">ids</span>, <span class="ident">status</span>),
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> (
                 <span class="macro">vec</span><span class="macro">!</span>[],
-                <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">Stronghold</span>::<span class="ident">handle_response_failure</span>(
-                    <span class="ident">other</span>,
-                    <span class="string">&quot;list hints and indexes from the vault&quot;</span>,
-                )),
+                <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to list hints and indexes from at remote vault&quot;</span>.<span class="ident">into</span>()),
             ),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="macro">vec</span><span class="macro">!</span>[], <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>)),
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-    <span class="doccomment">/// Executes a runtime command on a remote stronghold.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remote_runtime_exec</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">control_request</span>: <span class="ident">Procedure</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">ProcResult</span>, <span class="ident">String</span><span class="op">&gt;</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_none</span>() {
-            <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>));
-        }
-
+    <span class="doccomment">/// Executes a runtime command at a remote Stronghold.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remote_runtime_exec</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">control_request</span>: <span class="ident">Procedure</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ProcResult</span> {
         <span class="kw">match</span> <span class="self">self</span>
             .<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest</span>::<span class="ident">ControlRequest</span>(<span class="ident">control_request</span>))
             .<span class="kw">await</span>
         {
-            <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">pr</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">pr</span>),
-            <span class="ident">other</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">Stronghold</span>::<span class="ident">handle_response_failure</span>(<span class="ident">other</span>, <span class="string">&quot;execute procedure&quot;</span>)),
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">pr</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">pr</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProcResult</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid procedure result&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProcResult</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-    <span class="comment">// Create an error message for received CommunicationResults.</span>
-    <span class="comment">// It assumes that the received event is some sort of failure.</span>
-    <span class="comment">// The returned error messages depends on source of that failure:</span>
-    <span class="comment">// - Response is okay, but the request procedure at the remote stronghold was not successful.</span>
-    <span class="comment">// - Response is an error: request could not be send or no response was received.</span>
-    <span class="comment">// - Invalid event was returned from the communication actor.</span>
-    <span class="kw">fn</span> <span class="ident">handle_response_failure</span>(<span class="ident">res</span>: <span class="ident">CommunicationResults</span><span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span>, <span class="ident">procedure</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">String</span> {
-        <span class="kw">match</span> <span class="ident">res</span> {
-            <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="kw">_</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;Failed to {}&quot;</span>, <span class="ident">procedure</span>),
-            <span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Err</span>(<span class="ident">e</span>)) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;Error messaging peer {:?}&quot;</span>, <span class="ident">e</span>)
-            }
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="string">&quot;Received invalid communication actor response&quot;</span>.<span class="ident">into</span>(),
+    <span class="comment">// Wrap the SHRequest in an CommunicationRequest::RequestMsg and send it to the communication actor, to send it to</span>
+    <span class="comment">// the remote peer. Fails if no communication actor is present, if sending the request failed or if an invalid event</span>
+    <span class="comment">// was returned from the communication actor,</span>
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">ask_remote</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">request</span>: <span class="ident">SHRequest</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">SHResults</span>, <span class="ident">String</span><span class="op">&gt;</span> {
+        <span class="kw">match</span> <span class="self">self</span>
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">RequestMsg</span> { <span class="ident">peer_id</span>, <span class="ident">request</span> })
+            .<span class="kw">await</span>
+        {
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">ok</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ok</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Err</span>(<span class="ident">e</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;Error sending request to peer {:?}&quot;</span>, <span class="ident">e</span>)),
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>),
         }
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-    <span class="comment">// Wrap the SHRequest in an CommunicationRequest::RequestMsg, send it to the CommunicationActor and</span>
-    <span class="comment">// wait for it to return a result from the remote peer.</span>
-    <span class="comment">// This method assumes that a communication actor was spawned and exists in self.</span>
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">ask_remote</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">request</span>: <span class="ident">SHRequest</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">CommunicationResults</span><span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span> {
-        <span class="ident">ask</span>(
-            <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
-            <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap</span>(),
-            <span class="ident">CommunicationRequest</span>::<span class="ident">RequestMsg</span> { <span class="ident">peer_id</span>, <span class="ident">request</span> },
-        )
-        .<span class="kw">await</span>
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">configure_firewall</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">rule</span>: <span class="ident">FirewallRule</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+        <span class="kw">match</span> <span class="self">self</span>
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">ConfigureFirewall</span>(<span class="ident">rule</span>))
+            .<span class="kw">await</span>
+        {
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">ConfigureFirewallAck</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">OK</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+        }
     }
 
-    <span class="doccomment">/// A test function for reading data from a vault.</span>
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_secret</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">current_target</span>;
-
-        <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">actors</span>[<span class="ident">idx</span>];
-
-        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">client</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromVault</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
-
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnReadVault</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
-            (<span class="prelude-val">Some</span>(<span class="ident">payload</span>), <span class="ident">status</span>)
+    <span class="comment">// Send request to communication actor, fails if none is present.</span>
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">ask_communication_actor</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">request</span>: <span class="ident">CommunicationRequest</span><span class="op">&lt;</span><span class="ident">SHRequest</span>, <span class="ident">ClientMsg</span><span class="op">&gt;</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">CommunicationResults</span><span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span>, <span class="ident">String</span><span class="op">&gt;</span> {
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">communication_actor</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">as_ref</span>() {
+            <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">communication_actor</span>, <span class="ident">request</span>).<span class="kw">await</span>;
+            <span class="prelude-val">Ok</span>(<span class="ident">res</span>)
         } <span class="kw">else</span> {
-            (<span class="prelude-val">None</span>, <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to read data&quot;</span>.<span class="ident">into</span>()))
+            <span class="prelude-val">Err</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>))
         }
     }
 }
