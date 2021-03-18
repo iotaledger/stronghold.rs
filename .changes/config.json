@@ -151,7 +151,7 @@
         "store",
         "stronghold-communication",
         "stronghold-utils",
-        "runtime",
+        "runtime"
       ]
     },
     "stronghold-engine": {
