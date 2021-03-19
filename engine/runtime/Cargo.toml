@@ -1,7 +1,10 @@
 [package]
 name = "runtime"
-version = "0.2.0"
-authors = [ "IOTA Stiftung", "tensor-programming <tensordeveloper@gmail.com>" ]
+version = "0.3.0"
+authors = [
+  "IOTA Stiftung",
+  "tensor-programming <tensordeveloper@gmail.com>"
+]
 edition = "2018"
 license = "Apache-2.0"
 description = "Runtime and allocation primitives for stronghold"

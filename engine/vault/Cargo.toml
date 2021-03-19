@@ -1,7 +1,10 @@
 [package]
 name = "vault"
-version = "0.2.0"
-authors = [ "IOTA Stiftung", "tensor-programming <tensordeveloper@gmail.com>" ]
+version = "0.3.0"
+authors = [
+  "IOTA Stiftung",
+  "tensor-programming <tensordeveloper@gmail.com>"
+]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
@@ -12,26 +15,25 @@ thiserror = "1.0"
 anyhow = "1.0"
 serde = { version = "1.0", features = [ "derive" ] }
 
-[dependencies.runtime]
-path = "../runtime"
-version = "0.2"
+  [dependencies.runtime]
+  path = "../runtime"
+  version = "0.2"
 
-[dependencies.iota-crypto]
-git = "https://github.com/iotaledger/crypto.rs"
-rev = "b849861b86c3f7357b7477de4253b7352b363627"
-features = [ "random", "chacha" ]
-version = "*"
+  [dependencies.iota-crypto]
+  git = "https://github.com/iotaledger/crypto.rs"
+  rev = "b849861b86c3f7357b7477de4253b7352b363627"
+  features = [ "random", "chacha" ]
+  version = "*"
 
 [dev-dependencies]
 json = "0.12"
 rand = "0.8.3"
 criterion = "0.3.3"
 
-[dev-dependencies.stronghold-utils]
-path = "../../utils"
-version = "0.1"
+  [dev-dependencies.stronghold-utils]
+  path = "../../utils"
+  version = "0.1"
 
 [[bench]]
 name = "benchmark"
 harness = false
-
