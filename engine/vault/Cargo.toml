@@ -17,7 +17,7 @@ serde = { version = "1.0", features = [ "derive" ] }
 
   [dependencies.runtime]
   path = "../runtime"
-  version = "0.2"
+  version = "0.3"
 
   [dependencies.iota-crypto]
   git = "https://github.com/iotaledger/crypto.rs"
@@ -32,7 +32,7 @@ criterion = "0.3.3"
 
   [dev-dependencies.stronghold-utils]
   path = "../../utils"
-  version = "0.1"
+  version = "0.2"
 
 [[bench]]
 name = "benchmark"

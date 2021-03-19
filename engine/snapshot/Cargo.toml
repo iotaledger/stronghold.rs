@@ -33,7 +33,7 @@ criterion = "0.3.3"
 
   [dev-dependencies.stronghold-utils]
   path = "../../utils"
-  version = "0.1"
+  version = "0.2"
 
 [[bench]]
 name = "benchmark"
