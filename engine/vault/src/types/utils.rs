@@ -12,7 +12,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-/// a record hint
+/// a record hint.  Used as a hint to what this data is.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RecordHint([u8; 24]);
@@ -97,7 +97,7 @@ impl Debug for Val {
     }
 }
 
-/// A chain identifier
+/// A chain identifier.  Used to identify a set of transactions in a version.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ChainId([u8; 24]);

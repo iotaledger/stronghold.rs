@@ -8,7 +8,7 @@ readme = "README.md"
 keywords = [ "iota", "stronghold", "cryptography", "security" ]
 categories = [ "security" ]
 description = "A rust implementation of the IOTA Stronghold low-level libraries"
-homepage = "https://iota.org"
+homepage = "https://stronghold.docs.iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
 
 [lib]

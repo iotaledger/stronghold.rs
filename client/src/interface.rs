@@ -34,6 +34,8 @@ use communication::{
 };
 use stronghold_utils::ask;
 
+/// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of
+/// metadata to interpret the data in the vault and store.
 pub struct Stronghold {
     // actor system.
     pub system: ActorSystem,
@@ -414,6 +416,42 @@ impl Stronghold {
         match shr {
             SHResults::ReturnControlRequest(pr) => pr,
             _ => ProcResult::Error("Invalid communication event".into()),
+        }
+    }
+
+    /// Checks whether a record exists in the client.
+    pub async fn record_exists(&self, location: Location) -> bool {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+
+        if let SHResults::ReturnExistsRecord(b) = ask(
+            &self.system,
+            client,
+            SHRequest::CheckRecord {
+                location: location.clone(),
+            },
+        )
+        .await
+        {
+            b
+        } else {
+            false
+        }
+    }
+
+    /// checks whether a vault exists in the client.
+    pub async fn vault_exists(&self, location: Location) -> bool {
+        let idx = self.current_target;
+
+        let client = &self.actors[idx];
+        let vault_path = &location.vault_path();
+        let vault_path = vault_path.to_vec();
+
+        if let SHResults::ReturnExistsVault(b) = ask(&self.system, client, SHRequest::CheckVault(vault_path)).await {
+            b
+        } else {
+            false
         }
     }
 

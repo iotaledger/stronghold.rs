@@ -105,7 +105,6 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
 pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
     // TODO: if path exists and is a symlink, resolve it and then append the salt
     // TODO: if the sibling tempfile isn't writeable (e.g. directory permissions), write to
-    // env::temp_dir()
 
     let compressed_plain = compress(plain);
 

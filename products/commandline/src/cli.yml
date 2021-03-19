@@ -74,6 +74,12 @@ subcommands:
             about: the password for the snapshot.
             required: true
             takes_value: true
+        - rpath:
+            short: r
+            long: record_path
+            value_name: Record Path value
+            required: true
+            takes_value: true
    
   - read:
       about: Read the data from a record in the unencrypted store. 

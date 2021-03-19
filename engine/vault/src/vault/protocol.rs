@@ -12,13 +12,14 @@ use std::fmt::{self, Debug, Formatter};
 
 use runtime::GuardedVec;
 
+/// Enum that describes the type of a transaction.
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Kind {
     Transaction = 1,
     Blob = 2,
 }
 
-/// a read call
+/// A read request call.  Contains the ID and Kind for the referred transaction.
 #[derive(Clone, PartialEq, Eq)]
 pub struct ReadRequest {
     kind: Kind,
@@ -61,7 +62,8 @@ impl ReadRequest {
     }
 }
 
-/// a read result
+/// A Read Result which contains the data from the read request.  Contains the Kind, id and data of the transaction.
+/// The data is guarded and needs to be unlocked and decrypted before it can be used.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ReadResult {
     kind: Kind,
@@ -106,7 +108,7 @@ impl Debug for ReadResult {
     }
 }
 
-/// a write call
+/// A Write Request.  Contains the id, kind and data of the transaction that will be mutated.
 #[derive(Clone)]
 pub struct WriteRequest {
     kind: Kind,
@@ -149,7 +151,7 @@ impl WriteRequest {
     }
 }
 
-/// a delete call
+/// A delete a transaction Request. Contains the id and Kind of the transaction to be revoked.
 #[derive(Clone)]
 pub struct DeleteRequest {
     kind: Kind,

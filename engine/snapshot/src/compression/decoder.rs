@@ -14,6 +14,7 @@ pub fn decompress_into(input: &[u8], output: &mut Vec<u8>) -> crate::Result<()> 
     Ok(())
 }
 
+/// Decompress data using an LZ4 Algorithm.
 pub fn decompress(input: &[u8]) -> crate::Result<Vec<u8>> {
     let mut vec = Vec::with_capacity(4096);
 

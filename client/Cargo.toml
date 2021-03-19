@@ -1,17 +1,14 @@
 [package]
 name = "iota-stronghold"
 version = "0.2.0"
-authors = [
-  "tensorprogramming <tensordeveloper@gmail.com>",
-  "Daniel Thompson-Yvetot <daniel.yvetot@iota.org>"
-]
+authors = [ "IOTA Stiftung", "tensor-programming <tensordeveloper@gmail.com>" ]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
 description = "Client interface for Stronghold"
 keywords = [ "iota", "stronghold", "security" ]
 categories = [ "security" ]
-homepage = "https://iota.org"
+homepage = "https://stronghold.docs.iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
 
 [dependencies]
@@ -34,7 +31,6 @@ git = "https://github.com/iotaledger/crypto.rs"
 rev = "b849861b86c3f7357b7477de4253b7352b363627"
 features = [ "random", "ed25519", "sha", "hmac", "bip39-en", "slip10", "chacha" ]
 version = "*"
-# Note: We are only adding a version so that we can publish to crates.io
 
 [dependencies.stronghold-communication]
 path = "../communication"

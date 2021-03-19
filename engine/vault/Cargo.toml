@@ -1,9 +1,11 @@
 [package]
 name = "vault"
 version = "0.2.0"
-authors = [ "tensor-programming <tensordeveloper@gmail.com>" ]
+authors = [ "IOTA Stiftung", "tensor-programming <tensordeveloper@gmail.com>" ]
 edition = "2018"
+license = "Apache-2.0"
 readme = "README.md"
+homepage = "https://iota.org"
 
 [dependencies]
 thiserror = "1.0"
@@ -19,7 +21,6 @@ git = "https://github.com/iotaledger/crypto.rs"
 rev = "b849861b86c3f7357b7477de4253b7352b363627"
 features = [ "random", "chacha" ]
 version = "*"
-# Note: We are only adding a version so that we can publish to crates.io
 
 [dev-dependencies]
 json = "0.12"

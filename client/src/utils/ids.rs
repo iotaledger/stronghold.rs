@@ -15,21 +15,17 @@ use std::{
 
 use crate::line_error;
 
-/// TODO: Implement
-/// Messages to interact with Stronghold
-/// HMAC(Key, Path0) -> Hash to VaultId
-/// Paths become IDS
-/// Persist to the snapshot.
-/// HMAC(Key, VaultId + Path1) = RecordId
-
+/// Client ID type used to identify a client.
 #[repr(transparent)]
 #[derive(Copy, Clone, Default, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ClientId(ID);
 
+/// Vault ID type used to identify a vault.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VaultId(ID);
 
+/// A generic ID type used as the underlying type for the `ClientId` and `VaultId` types.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Default, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 struct ID([u8; 24]);
@@ -41,6 +37,7 @@ impl AsRef<[u8]> for ID {
 }
 
 pub trait LoadFromPath: Sized {
+    /// Load from some data and a path.
     fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self>;
 }
 
@@ -62,6 +59,7 @@ impl Debug for ID {
 }
 
 impl ID {
+    /// Create a new random `ID`.
     pub fn random<P: BoxProvider>() -> crate::Result<Self> {
         let mut buf = [0; 24];
         P::random_buf(&mut buf)?;
@@ -69,6 +67,7 @@ impl ID {
         Ok(Self(buf))
     }
 
+    /// Load an `ID` from some data.
     pub fn load(data: &[u8]) -> crate::Result<Self> {
         data.try_into()
     }
@@ -86,10 +85,12 @@ impl LoadFromPath for ID {
 }
 
 impl VaultId {
+    /// Create a new random `VaultId`.
     pub fn random<P: BoxProvider>() -> crate::Result<Self> {
         Ok(VaultId(ID::random::<P>()?))
     }
 
+    /// Load a `VaultId` from some data.
     pub fn load(data: &[u8]) -> crate::Result<Self> {
         Ok(VaultId(ID::load(data)?))
     }
@@ -102,10 +103,12 @@ impl LoadFromPath for VaultId {
 }
 
 impl ClientId {
+    /// Create a new random `ClientId`.
     pub fn random<P: BoxProvider>() -> crate::Result<Self> {
         Ok(ClientId(ID::random::<P>()?))
     }
 
+    /// Load a `ClientId` from some data.
     pub fn load(data: &[u8]) -> crate::Result<Self> {
         Ok(ClientId(ID::load(data)?))
     }

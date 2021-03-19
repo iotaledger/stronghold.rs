@@ -50,7 +50,11 @@ impl<T: BoxProvider> Key<T> {
     pub fn random() -> crate::Result<Self> {
         Ok(Self {
             key: GuardedVec::new(T::box_key_len(), |v| {
-                v.copy_from_slice(T::random_vec(T::box_key_len()).unwrap().as_slice())
+                v.copy_from_slice(
+                    T::random_vec(T::box_key_len())
+                        .expect("failed to generate random key")
+                        .as_slice(),
+                )
             }),
 
             _box_provider: PhantomData,
@@ -116,7 +120,7 @@ impl<T: BoxProvider> Debug for Key<T> {
     }
 }
 
-/// trait for encryptable data
+/// trait for encryptable data. Allows the data to be encrypted.
 pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
     /// encrypts a raw data and creates a type T from the ciphertext
     fn encrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> crate::Result<T> {
@@ -125,7 +129,7 @@ pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
     }
 }
 
-/// Trait for decryptable data
+/// Trait for decryptable data.  Allows the data to be decrypted.
 pub trait Decrypt<E, T: TryFrom<Vec<u8>, Error = E>>: AsRef<[u8]> {
     /// decrypts raw data and creates a new type T from the plaintext
     fn decrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> crate::Result<T> {

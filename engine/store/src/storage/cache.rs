@@ -12,6 +12,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+/// The cache struct used to store the data in an ordered format.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Cache<K, V>
 where

@@ -17,6 +17,7 @@ pub fn compress_into(input: &[u8], output: &mut Vec<u8>) {
     .complete();
 }
 
+/// Compress data using an LZ4 Algorithm.
 pub fn compress(input: &[u8]) -> Vec<u8> {
     let mut vec = Vec::with_capacity(input.len());
 
@@ -66,6 +67,7 @@ impl<'a> LZ4Encoder<'a> {
     fn get(&self, n: usize) -> u32 {
         debug_assert!(self.remaining(), "Reading a partial batch.");
 
+        // Should never fail.
         u32::from_ne_bytes(self.input[n..n + 4].try_into().unwrap())
     }
 

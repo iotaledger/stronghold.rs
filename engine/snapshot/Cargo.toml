@@ -1,8 +1,9 @@
 [package]
 name = "snapshot"
 version = "0.2.0"
-authors = [ "tensor-programming <tensordeveloper@gmail.com>" ]
+authors = [ "IOTA Stiftung", "tensor-programming <tensordeveloper@gmail.com>" ]
 edition = "2018"
+license = "Apache-2.0"
 readme = "README.md"
 
 [dependencies]
@@ -20,7 +21,6 @@ git = "https://github.com/iotaledger/crypto.rs"
 rev = "c3bf565eba62d0b81144174c2ff917bfde282e49"
 features = [ "random", "chacha", "hmac", "sha", "x25519", "blake2b" ]
 version = "*"
-# Note: We are only adding a version so that we can publish to crates.io
 
 [dev-dependencies]
 tempfile = "3.1.0"

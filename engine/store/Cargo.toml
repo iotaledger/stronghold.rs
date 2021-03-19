@@ -1,9 +1,11 @@
 [package]
 name = "store"
 version = "0.2.0"
-authors = ["tensor-programming <tensordeveloper@gmail.com>"]
+authors = [ "IOTA Stiftung", "tensor-programming <tensordeveloper@gmail.com>" ]
 edition = "2018"
-
+license = "Apache-2.0"
+readme = "README.md"
+homepage = "https://iota.org"
 
 [dependencies]
 paste = "1.0.1"
