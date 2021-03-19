@@ -16,7 +16,7 @@ async-std = "1.6"
 async-trait = "0.1"
 futures = "0.3"
 clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
-libp2p = { version = "0.35", default-features = false, features = [
+libp2p = { version = "0.36", default-features = false, features = [
   "dns",
   "identify",
   "mdns",
