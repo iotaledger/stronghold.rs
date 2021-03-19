@@ -11,7 +11,14 @@ RUSTFLAGS="-Zinstrument-coverage" LLVM_PROFILE_FILE="stronghold-rs-%m.profraw" c
 
 # Merge all .profraw files into "stronghold-rs.profdata"
 echo "Merging coverage data..."
-cargo +nightly profdata -- merge stronghold-rs-*.profraw -o stronghold-rs.profdata
+PROFRAW=""
+for file in $(find . -type f -name "*.profraw");
+do
+  echo "Found $file"
+  PROFRAW="${PROFRAW} $file"
+done
+
+cargo +nightly profdata -- merge ${PROFRAW} -o stronghold-rs.profdata
 
 # List the test binaries
 echo "Locating test binaries..."
