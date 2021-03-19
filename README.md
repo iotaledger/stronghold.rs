@@ -14,16 +14,11 @@
 
 There are four main components of Stronghold:
 1. **Client**: The high-level interface to Stronghold (prefers Riker, functional integration also available)
-2. **Engine**: Combines a persistence store (Snapshot) with an in-memory state interface (Vault).
-3. **Runtime**: Is a process fork with limited permissions within which cryptographic operations take place
-4. **Communication**: Enables Strongholds in different processes or on different devices to communicate with each other securely.
-
-Read more about the [Alpha Release](https://blog.iota.org/stronghold-alpha-release/).
+2. **Engine**: Combines a persistence store (Snapshot) with an in-memory state interface (Vault), a read/write key:value system (Store) and memory protection services (Runtime).
+3. **Communication**: Enables Strongholds in different processes or on different devices to communicate with each other securely.
 
 ## WARNING
-These libraries are being prepared for a number of external security audits in early 2021, so they are not yet verifiably safe. Until this warning is removed, the IOTA Foundation makes no guarantees to the fitness of these libraries for any purposes.
-
-As such, they are to be seen as **experimental** and not ready for real-world applications.
+These libraries have been reviewed internally and are being prepared for a full external security audit in mid 2021, so they are not yet verifiably safe. Until this warning is removed, the IOTA Foundation makes no guarantees to the fitness of these libraries for use by third parties.
 
 Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out with any concerns or suggestions you may have.
 
@@ -65,10 +60,15 @@ Here are some of the features and tasks that we are working on.
 - [ ] Move entirely to FPGA
 
 ## API Reference
+### RUSTDOCS
+- [client](https://stronghold.docs.iota.org/docs/iota_stronghold/index.html)
+- [engine](https://stronghold.docs.iota.org/docs/stronghold_engine/index.html)
+- [communication](https://stronghold.docs.iota.org/docs/stronghold_communication/index.html)
+
+### Do it yourself
 ```
 cargo doc --workspace --no-deps --open
 ```
-
 ## Running Tests
 ```
 cargo test --all --all-features

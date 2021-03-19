@@ -4,17 +4,15 @@ This is the documentation for the official IOTA Strongold Software.
 IOTA Stronghold is a secure software implementation with the sole purpose of isolating digital secrets like IOTA seeds and private keys.
 
 ## 🚧 Beta Version 🚧
-[![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/strongold.rs)
+[![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/stronghold.rs)
 
 ## RUSTDOCS
-[client](https://stronghold.docs.iota.org/docs/iota_stronghold/index.html)
-[engine](https://stronghold.docs.iota.org/docs/stronghold_engine/index.html)
-[communication](https://stronghold.docs.iota.org/docs/stronghold_communication/index.html)
+- [client](https://stronghold.docs.iota.org/docs/iota_stronghold/index.html)
+- [engine](https://stronghold.docs.iota.org/docs/stronghold_engine/index.html)
+- [communication](https://stronghold.docs.iota.org/docs/stronghold_communication/index.html)
 
 
 These libraries have been reviewed internally and are being prepared for a full external security audit in mid 2021, so they are not yet verifiably safe. Until this warning is removed, the IOTA Foundation makes no guarantees to the fitness of these libraries for any purposes.
-
-As such, they are to be seen as experimental and not ready for real-world applications.
 
 Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out with any concerns or suggestions you may have.
 
