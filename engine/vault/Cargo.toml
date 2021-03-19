@@ -15,15 +15,15 @@ thiserror = "1.0"
 anyhow = "1.0"
 serde = { version = "1.0", features = [ "derive" ] }
 
-  [dependencies.runtime]
-  path = "../runtime"
-  version = "0.3"
+[dependencies.runtime]
+path = "../runtime"
+version = "0.3"
 
-  [dependencies.iota-crypto]
-  git = "https://github.com/iotaledger/crypto.rs"
-  rev = "b849861b86c3f7357b7477de4253b7352b363627"
-  features = [ "random", "chacha" ]
-  version = "*"
+[dependencies.iota-crypto]
+git = "https://github.com/iotaledger/crypto.rs"
+branch = "dev"
+features = [ "random", "chacha" ]
+version = "0.4.2"
 
 [dev-dependencies]
 json = "0.12"

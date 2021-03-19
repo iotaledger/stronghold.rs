@@ -9,7 +9,8 @@ use std::{
 };
 
 use crypto::{
-    ciphers::chacha::xchacha20poly1305,
+    ciphers::chacha::XChaCha20Poly1305,
+    ciphers::traits::Aead,
     hashes::{blake2b, Digest},
     keys::x25519,
     utils::rand,
@@ -26,7 +27,7 @@ pub const VERSION: [u8; 2] = [0x2, 0x0];
 const KEY_SIZE: usize = 32;
 pub type Key = [u8; KEY_SIZE];
 
-const NONCE_SIZE: usize = xchacha20poly1305::XCHACHA20POLY1305_NONCE_SIZE;
+const NONCE_SIZE: usize = XChaCha20Poly1305::NONCE_LENGTH;
 pub type Nonce = [u8; NONCE_SIZE];
 
 /// Encrypt the opaque plaintext bytestring using the specified key and optional associated data
@@ -51,10 +52,10 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
         v
     };
 
-    let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
+    let mut tag = [0; XChaCha20Poly1305::TAG_LENGTH];
 
     let mut ct = vec![0; plain.len()];
-    xchacha20poly1305::encrypt(&mut ct, &mut tag, &plain, &shared.to_bytes(), &nonce, associated_data)?;
+    XChaCha20Poly1305::try_encrypt(&shared.to_bytes(), &nonce, associated_data, &plain, &mut ct, &mut tag)?;
 
     output.write_all(&tag)?;
     output.write_all(&ct)?;
@@ -85,14 +86,14 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
         v
     };
 
-    let mut tag = [0; xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE];
+    let mut tag = [0; XChaCha20Poly1305::TAG_LENGTH];
     input.read_exact(&mut tag)?;
 
     let mut ct = Vec::new();
     input.read_to_end(&mut ct)?;
 
     let mut pt = vec![0; ct.len()];
-    xchacha20poly1305::decrypt(&mut pt, &ct, &shared.to_bytes(), &tag, &nonce, associated_data)?;
+    XChaCha20Poly1305::try_decrypt(&shared.to_bytes(), &nonce, associated_data, &mut pt, &ct, &tag)?;
 
     Ok(pt)
 }
@@ -135,7 +136,7 @@ pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> crate::Resul
 }
 
 fn check_min_file_len(input: &mut File) -> crate::Result<()> {
-    let min = MAGIC.len() + VERSION.len() + x25519::PUBLIC_KEY_LEN + xchacha20poly1305::XCHACHA20POLY1305_TAG_SIZE;
+    let min = MAGIC.len() + VERSION.len() + x25519::PUBLIC_KEY_LEN + XChaCha20Poly1305::TAG_LENGTH;
     if input.metadata()?.len() >= min as u64 {
         Ok(())
     } else {

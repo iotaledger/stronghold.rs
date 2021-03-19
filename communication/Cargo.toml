@@ -32,7 +32,10 @@ serde = { version = "1.0", default-features = false, features = [ "alloc", "deri
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 riker = "0.4"
 communication-macros = { path = "communication-macros", version = "0.1.0" }
-stronghold-utils = { version = "0.2", path = "../utils" }
+
+[dependencies.stronghold-utils]
+path = "../utils"
+version = "0.2"
 
 [features]
 default = [ "mdns" ]

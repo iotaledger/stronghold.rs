@@ -24,31 +24,33 @@ thiserror = "1.0"
 futures = "0.3"
 riker = "0.4"
 
-  [dependencies.stronghold-engine]
-  path = "../engine"
-  version = "0.3"
+[dependencies.stronghold-engine]
+path = "../engine"
+version = "0.3"
 
-  [dependencies.iota-crypto]
-  git = "https://github.com/iotaledger/crypto.rs"
-  rev = "b849861b86c3f7357b7477de4253b7352b363627"
-  features = [
-  "random",
-  "ed25519",
-  "sha",
-  "hmac",
-  "bip39-en",
-  "slip10",
-  "chacha"
+[dependencies.iota-crypto]
+git = "https://github.com/iotaledger/crypto.rs"
+branch = "dev"
+features = [
+"random",
+"ed25519",
+"sha",
+"hmac",
+"bip39-en",
+"slip10",
+"chacha"
 ]
-  version = "*"
 
-  [dependencies.stronghold-communication]
-  path = "../communication"
-  optional = true
+version = "0.4.2"
 
-  [dependencies.stronghold-utils]
-  path = "../utils"
-  version = "0.2"
+[dependencies.stronghold-communication]
+path = "../communication"
+optional = true
+version = "0.3.0"
+
+[dependencies.stronghold-utils]
+path = "../utils"
+version = "0.2"
 
 [features]
 communication = [ "stronghold-communication" ]

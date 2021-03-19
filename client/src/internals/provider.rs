@@ -6,8 +6,6 @@ use crypto::{
     utils::rand::fill,
 };
 
-use std::convert::TryInto;
-
 use engine::vault::{self, BoxProvider, Key};
 /// An implementation of the Vault's `BoxProvider type.  Used to encrypt and decrypt the data in this Stronghold.
 #[derive(Ord, PartialEq, Eq, PartialOrd, Clone, Debug)]
@@ -36,17 +34,8 @@ impl BoxProvider for Provider {
 
         let key = key.bytes();
 
-        XChaCha20Poly1305::encrypt(
-            key.as_slice().try_into().expect("Key not the correct size: Encrypt"),
-            &nonce.try_into().expect("Nonce not the correct size: Encrypt"),
-            ad,
-            data,
-            &mut cipher,
-            tag.as_mut_slice()
-                .try_into()
-                .expect("Tag not the correct size: Encrypt"),
-        )
-        .map_err(|_| vault::Error::CryptoError(String::from("Unable to seal data")))?;
+        XChaCha20Poly1305::try_encrypt(&key, &nonce, ad, data, &mut cipher, &mut tag)
+            .map_err(|_| vault::Error::CryptoError(String::from("Unable to seal data")))?;
 
         let r#box = [tag.to_vec(), nonce.to_vec(), cipher].concat();
 
@@ -61,15 +50,8 @@ impl BoxProvider for Provider {
 
         let key = key.bytes();
 
-        XChaCha20Poly1305::decrypt(
-            key.as_slice().try_into().expect("Key not the correct size: Decrypt"),
-            nonce.try_into().expect("Nonce not the correct size: Decrypt"),
-            ad,
-            tag.try_into().expect("Tag not the correct size: Decrypt"),
-            &cipher,
-            &mut plain,
-        )
-        .map_err(|_| vault::Error::CryptoError(String::from("Unable to unlock data")))?;
+        XChaCha20Poly1305::try_decrypt(&key, &nonce, &ad, &mut plain, &cipher, &tag)
+            .map_err(|_| vault::Error::CryptoError(String::from("Unable to unlock data")))?;
 
         Ok(plain)
     }
