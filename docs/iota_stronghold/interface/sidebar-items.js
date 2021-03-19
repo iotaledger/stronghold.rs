@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Stronghold",""]]});
+initSidebarItems({"struct":[["Stronghold","The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of metadata to interpret the data in the vault and store."]]});

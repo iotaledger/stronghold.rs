@@ -76,6 +76,8 @@
 <span id="73">73</span>
 <span id="74">74</span>
 <span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -87,6 +89,8 @@
 
 <span class="kw">const</span> <span class="ident">GARBAGE_VALUE</span>: <span class="ident">u8</span> <span class="op">=</span> <span class="number">0xdb</span>;
 
+<span class="doccomment">/// A trait for dealing with Bytes.  Used as the underlying type for the `Guarded` and `GuardedVec` types.  For a type</span>
+<span class="doccomment">/// to be able to be placed in one of these values, it must implement this trait.</span>
 <span class="kw">pub</span> <span class="kw">unsafe</span> <span class="kw">trait</span> <span class="ident">Bytes</span>: <span class="ident">Sized</span> <span class="op">+</span> <span class="ident">Copy</span> {
     <span class="kw">fn</span> <span class="ident">uninitialized</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">val</span> <span class="op">=</span> <span class="ident">MaybeUninit</span>::<span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>::<span class="ident">uninit</span>();

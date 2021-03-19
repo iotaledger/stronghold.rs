@@ -178,6 +178,8 @@
 <span id="175">175</span>
 <span id="176">176</span>
 <span id="177">177</span>
+<span id="178">178</span>
+<span id="179">179</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -193,13 +195,14 @@
 
 <span class="kw">use</span> <span class="ident">runtime</span>::<span class="ident">GuardedVec</span>;
 
+<span class="doccomment">/// Enum that describes the type of a transaction.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Copy</span>, <span class="ident">Clone</span>, <span class="ident">Hash</span>, <span class="ident">Eq</span>, <span class="ident">PartialEq</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Kind</span> {
     <span class="ident">Transaction</span> <span class="op">=</span> <span class="number">1</span>,
     <span class="ident">Blob</span> <span class="op">=</span> <span class="number">2</span>,
 }
 
-<span class="doccomment">/// a read call</span>
+<span class="doccomment">/// A read request call.  Contains the ID and Kind for the referred transaction.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">ReadRequest</span> {
     <span class="ident">kind</span>: <span class="ident">Kind</span>,
@@ -242,7 +245,8 @@
     }
 }
 
-<span class="doccomment">/// a read result</span>
+<span class="doccomment">/// A Read Result which contains the data from the read request.  Contains the Kind, id and data of the transaction.</span>
+<span class="doccomment">/// The data is guarded and needs to be unlocked and decrypted before it can be used.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">ReadResult</span> {
     <span class="ident">kind</span>: <span class="ident">Kind</span>,
@@ -287,7 +291,7 @@
     }
 }
 
-<span class="doccomment">/// a write call</span>
+<span class="doccomment">/// A Write Request.  Contains the id, kind and data of the transaction that will be mutated.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">WriteRequest</span> {
     <span class="ident">kind</span>: <span class="ident">Kind</span>,
@@ -330,7 +334,7 @@
     }
 }
 
-<span class="doccomment">/// a delete call</span>
+<span class="doccomment">/// A delete a transaction Request. Contains the id and Kind of the transaction to be revoked.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">DeleteRequest</span> {
     <span class="ident">kind</span>: <span class="ident">Kind</span>,

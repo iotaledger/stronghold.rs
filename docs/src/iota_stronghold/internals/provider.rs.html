@@ -80,6 +80,7 @@
 <span id="77">77</span>
 <span id="78">78</span>
 <span id="79">79</span>
+<span id="80">80</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -92,6 +93,7 @@
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">convert</span>::<span class="ident">TryInto</span>;
 
 <span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::{<span class="self">self</span>, <span class="ident">BoxProvider</span>, <span class="ident">Key</span>};
+<span class="doccomment">/// An implementation of the Vault&#39;s `BoxProvider type.  Used to encrypt and decrypt the data in this Stronghold.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Ord</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">PartialOrd</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Provider</span>;
 <span class="kw">impl</span> <span class="ident">Provider</span> {

@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Cache",""]]});
+initSidebarItems({"struct":[["Cache","The cache struct used to store the data in an ordered format."]]});

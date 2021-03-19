@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["naive_kdf",""],["recommended_kdf","derive a key from password and salt using the currently recommended key derivation function and parameters"]]});
+initSidebarItems({"fn":[["naive_kdf","a wrapper around the `HMAC_SHA256` function used to derive a hash from a given password."]]});

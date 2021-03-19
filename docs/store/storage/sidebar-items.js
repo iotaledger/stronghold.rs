@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["cache",""]],"struct":[["Value",""]]});
+initSidebarItems({"mod":[["cache",""]],"struct":[["Value","The general value used for the Store."]]});

@@ -686,7 +686,7 @@
     <span class="attribute">#[<span class="ident">test</span>]</span>
     <span class="kw">fn</span> <span class="ident">test_init</span>() {
         <span class="kw">let</span> <span class="kw">_</span> <span class="op">=</span> <span class="ident">GuardedVec</span>::<span class="op">&lt;</span><span class="ident">u64</span><span class="op">&gt;</span>::<span class="ident">new</span>(<span class="number">6</span>, <span class="op">|</span><span class="ident">v</span><span class="op">|</span> {
-            <span class="ident">v</span>.<span class="ident">clone_from_slice</span>(<span class="kw-2">&amp;</span>[<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>][..]);
+            <span class="ident">v</span>.<span class="ident">copy_from_slice</span>(<span class="kw-2">&amp;</span>[<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>][..]);
 
             <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="kw-2">*</span><span class="ident">v</span>, [<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>])
         });
@@ -704,12 +704,12 @@
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">vec</span> <span class="op">=</span> <span class="ident">GuardedVec</span>::<span class="op">&lt;</span><span class="ident">u64</span><span class="op">&gt;</span>::<span class="ident">zero</span>(<span class="number">2</span>);
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">v</span> <span class="op">=</span> <span class="ident">vec</span>.<span class="ident">borrow_mut</span>();
 
-        <span class="ident">v</span>.<span class="ident">clone_from_slice</span>(<span class="kw-2">&amp;</span>[<span class="number">7</span>, <span class="number">1</span>][..]);
+        <span class="ident">v</span>.<span class="ident">copy_from_slice</span>(<span class="kw-2">&amp;</span>[<span class="number">7</span>, <span class="number">1</span>][..]);
 
         <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="kw-2">*</span><span class="ident">v</span>, [<span class="number">7</span>, <span class="number">1</span>]);
 
         <span class="kw">let</span> <span class="ident">vec</span> <span class="op">=</span> <span class="ident">GuardedVec</span>::<span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="number">2</span>]<span class="op">&gt;</span>::<span class="ident">new</span>(<span class="number">2</span>, <span class="op">|</span><span class="ident">v</span><span class="op">|</span> {
-            <span class="ident">v</span>.<span class="ident">clone_from_slice</span>(<span class="kw-2">&amp;</span>[[<span class="number">1</span>, <span class="number">2</span>], [<span class="number">3</span>, <span class="number">4</span>]][..]);
+            <span class="ident">v</span>.<span class="ident">copy_from_slice</span>(<span class="kw-2">&amp;</span>[[<span class="number">1</span>, <span class="number">2</span>], [<span class="number">3</span>, <span class="number">4</span>]][..]);
         });
 
         <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="kw-2">*</span><span class="ident">vec</span>.<span class="ident">borrow</span>(), [[<span class="number">1</span>, <span class="number">2</span>], [<span class="number">3</span>, <span class="number">4</span>]]);
