@@ -20,6 +20,7 @@ version = "0.2"
 git = "https://github.com/iotaledger/crypto.rs"
 rev = "b849861b86c3f7357b7477de4253b7352b363627"
 features = [ "random", "chacha" ]
+version = "*"
 
 [dev-dependencies]
 json = "0.12"
