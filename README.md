@@ -1,4 +1,4 @@
-![banner](./.meta/stronghold_alpha.png)
+![banner](./.meta/stronghold_beta.png)
 
 [![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/stronghold.rs)
 ![Audit](https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev)
@@ -71,7 +71,7 @@ cargo doc --workspace --no-deps --open
 
 ## Running Tests
 ```
-cargo test --all
+cargo test --all --all-features
 ```
 
 ## Joining the discussion
