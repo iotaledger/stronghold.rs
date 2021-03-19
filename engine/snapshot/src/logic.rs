@@ -9,8 +9,7 @@ use std::{
 };
 
 use crypto::{
-    ciphers::chacha::XChaCha20Poly1305,
-    ciphers::traits::Aead,
+    ciphers::{chacha::XChaCha20Poly1305, traits::Aead},
     hashes::{blake2b, Digest},
     keys::x25519,
     utils::rand,
