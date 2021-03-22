@@ -755,7 +755,7 @@
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Bytes</span><span class="op">&gt;</span> <span class="ident">Clone</span> <span class="kw">for</span> <span class="ident">Boxed</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
     <span class="kw">fn</span> <span class="ident">clone</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span>::<span class="ident">new</span>(<span class="self">self</span>.<span class="ident">len</span>, <span class="op">|</span><span class="ident">b</span><span class="op">|</span> {
-            <span class="ident">b</span>.<span class="ident">as_mut_slice</span>().<span class="ident">clone_from_slice</span>(<span class="self">self</span>.<span class="ident">unlock</span>().<span class="ident">as_slice</span>());
+            <span class="ident">b</span>.<span class="ident">as_mut_slice</span>().<span class="ident">copy_from_slice</span>(<span class="self">self</span>.<span class="ident">unlock</span>().<span class="ident">as_slice</span>());
             <span class="self">self</span>.<span class="ident">lock</span>();
         })
     }
@@ -844,7 +844,7 @@
     <span class="attribute">#[<span class="ident">test</span>]</span>
     <span class="kw">fn</span> <span class="ident">test_custom_init</span>() {
         <span class="kw">let</span> <span class="ident">boxed</span> <span class="op">=</span> <span class="ident">Boxed</span>::<span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>::<span class="ident">new</span>(<span class="number">1</span>, <span class="op">|</span><span class="ident">secret</span><span class="op">|</span> {
-            <span class="ident">secret</span>.<span class="ident">as_mut_slice</span>().<span class="ident">clone_from_slice</span>(<span class="string">b&quot;\x04&quot;</span>);
+            <span class="ident">secret</span>.<span class="ident">as_mut_slice</span>().<span class="ident">copy_from_slice</span>(<span class="string">b&quot;\x04&quot;</span>);
         });
 
         <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">boxed</span>.<span class="ident">unlock</span>().<span class="ident">as_slice</span>(), [<span class="number">0x04</span>]);
