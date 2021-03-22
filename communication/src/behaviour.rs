@@ -29,12 +29,12 @@
 //!     Pong,
 //! }
 //!
-//! let local_keys = Keypair::generate_ed25519();
-//! let config = BehaviourConfig::default();
-//! let mut swarm =
-//!     P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Init swarm failed.");
-//!
 //! task::block_on(async {
+//!     let local_keys = Keypair::generate_ed25519();
+//!     let config = BehaviourConfig::default();
+//!     let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config)
+//!         .await
+//!         .expect("Init swarm failed.");
 //!     loop {
 //!         if let P2PEvent::RequestResponse(boxed_event) = swarm.next().await {
 //!             if let P2PReqResEvent::Req {
@@ -56,8 +56,6 @@
 mod protocol;
 mod types;
 
-#[cfg(feature = "mdns")]
-use async_std::task;
 use core::{
     iter,
     result::Result,
@@ -71,6 +69,7 @@ use libp2p::{
     dns::DnsConfig,
     identify::{Identify, IdentifyEvent},
     identity::Keypair,
+    mdns::MdnsConfig,
     noise::{self, NoiseConfig},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
@@ -113,11 +112,25 @@ pub struct BehaviourConfig {
     /// Duration to keep an idle connection alive when no Request or Response is send.
     /// If none is specified, it defaults to 10s.
     keep_alive: Option<Duration>,
+    /// TTL to use for mDNS record
+    mdns_ttl: Option<Duration>,
+    /// Frequency for new peers via mDNS
+    mdns_query_interval: Option<Duration>,
 }
 
 impl BehaviourConfig {
-    pub fn new(timeout: Option<Duration>, keep_alive: Option<Duration>) -> Self {
-        BehaviourConfig { timeout, keep_alive }
+    pub fn new(
+        timeout: Option<Duration>,
+        keep_alive: Option<Duration>,
+        mdns_ttl: Option<Duration>,
+        mdns_query_interval: Option<Duration>,
+    ) -> Self {
+        BehaviourConfig {
+            timeout,
+            keep_alive,
+            mdns_ttl,
+            mdns_query_interval,
+        }
     }
 }
 
@@ -126,6 +139,8 @@ impl Default for BehaviourConfig {
         BehaviourConfig {
             timeout: None,
             keep_alive: None,
+            mdns_ttl: None,
+            mdns_query_interval: None,
         }
     }
 }
@@ -166,6 +181,7 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
     ///
     /// # Example
     /// ```no_run
+    /// use async_std::task;
     /// use communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};
     /// use libp2p::identity::Keypair;
     /// use serde::{Deserialize, Serialize};
@@ -182,10 +198,10 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
     ///
     /// let local_keys = Keypair::generate_ed25519();
     /// let config = BehaviourConfig::default();
-    /// let mut swarm =
-    ///     P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Init swarm failed.");
+    /// let mut swarm = task::block_on(P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config))
+    ///     .expect("Init swarm failed.");
     /// ```
-    pub fn init_swarm(
+    pub async fn init_swarm(
         local_keys: Keypair,
         config: BehaviourConfig,
     ) -> Result<Swarm<P2PNetworkBehaviour<Req, Res>>, BehaviourError> {
@@ -197,7 +213,8 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
         // Use XX handshake pattern
         let noise = NoiseConfig::xx(noise_keys).into_authenticated();
         // Tcp layer with wrapper to resolve dns addresses
-        let dns_transport = DnsConfig::new(TcpConfig::new())
+        let dns_transport = DnsConfig::system(TcpConfig::new())
+            .await
             .map_err(|e| BehaviourError::TransportError(format!("Could not create transport: {:?}", e)))?;
         // The configured transport establishes connections via tcp with websockets as fallback, and
         // negotiates authentification and multiplexing on all connections
@@ -211,7 +228,18 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
 
         // multicast DNS for peer discovery within a local network
         #[cfg(feature = "mdns")]
-        let mdns = task::block_on(Mdns::new()).map_err(|e| BehaviourError::MdnsError(e.to_string()))?;
+        let mdns = {
+            let mut mdns_config = MdnsConfig::default();
+            if let Some(ttl) = config.mdns_ttl {
+                mdns_config.ttl = ttl;
+            }
+            if let Some(query_interval) = config.mdns_query_interval {
+                mdns_config.query_interval = query_interval;
+            }
+            Mdns::new(mdns_config)
+                .await
+                .map_err(|e| BehaviourError::MdnsError(e.to_string()))
+        }?;
         // Identify protocol to receive identifying information of a remote peer once a connection
         // was established
         let identify = Identify::new(

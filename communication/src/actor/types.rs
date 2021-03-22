@@ -193,6 +193,8 @@ pub enum ConnectPeerError {
     Handler,
     /// Timout on connection attempt
     Timeout,
+    /// The address given for dialing is invalid.
+    InvalidAddress(Multiaddr),
 }
 
 impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
@@ -212,6 +214,7 @@ impl From<DialError> for ConnectPeerError {
             DialError::Banned => ConnectPeerError::Banned,
             DialError::ConnectionLimit(limit) => ConnectPeerError::ConnectionLimit(limit),
             DialError::NoAddresses => ConnectPeerError::NoAddresses,
+            DialError::InvalidAddress(addr) => ConnectPeerError::InvalidAddress(addr),
         }
     }
 }

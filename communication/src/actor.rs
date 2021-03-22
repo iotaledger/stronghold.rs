@@ -174,8 +174,13 @@ where
             self.swarm_tx = Some(swarm_tx);
 
             let actor_system = ctx.system.clone();
-            let swarm_task =
-                SwarmTask::<_, Res, _, _>::new(actor_system, swarm_rx, actor_config, keypair, behaviour_config);
+            let swarm_task = task::block_on(SwarmTask::<_, Res, _, _>::new(
+                actor_system,
+                swarm_rx,
+                actor_config,
+                keypair,
+                behaviour_config,
+            ));
             if let Ok(swarm_task) = swarm_task {
                 // Kick off the swarm communication.
                 self.poll_swarm_handle = ctx.run(swarm_task.poll_swarm()).ok();

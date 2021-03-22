@@ -54,7 +54,7 @@ where
     ClientMsg: Message,
     P: Message + VariantPermission,
 {
-    pub fn new(
+    pub async fn new(
         system: ActorSystem,
         swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, ClientMsg>, Sender)>,
         actor_config: CommunicationActorConfig<ClientMsg>,
@@ -62,7 +62,7 @@ where
         behaviour: BehaviourConfig,
     ) -> Result<Self, BehaviourError> {
         // Create a P2PNetworkBehaviour for the swarm communication.
-        let swarm = P2PNetworkBehaviour::<RequestEnvelope<Req>, Res>::init_swarm(keypair, behaviour)?;
+        let swarm = P2PNetworkBehaviour::<RequestEnvelope<Req>, Res>::init_swarm(keypair, behaviour).await?;
         let firewall = FirewallConfiguration::new(actor_config.firewall_default_in, actor_config.firewall_default_out);
         Ok(SwarmTask {
             system,
@@ -164,8 +164,8 @@ where
         if let Err(err) = Swarm::dial(&mut self.swarm, &target_peer) {
             match err {
                 DialError::NoAddresses => {
-                    if let Err(limit) = Swarm::dial_addr(&mut self.swarm, target_addr.clone()) {
-                        return Err(ConnectPeerError::ConnectionLimit(limit));
+                    if let Err(err) = Swarm::dial_addr(&mut self.swarm, target_addr.clone()) {
+                        return Err(err.into());
                     }
                 }
                 _ => {

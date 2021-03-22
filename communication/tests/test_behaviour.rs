@@ -29,7 +29,7 @@ pub struct Empty;
 fn mock_swarm<Req: MessageEvent, Res: MessageEvent>() -> Swarm<P2PNetworkBehaviour<Req, Res>> {
     let local_keys = Keypair::generate_ed25519();
     let config = BehaviourConfig::default();
-    P2PNetworkBehaviour::init_swarm(local_keys, config).expect("Failed to init swarm.")
+    task::block_on(P2PNetworkBehaviour::init_swarm(local_keys, config)).expect("Failed to init swarm.")
 }
 
 fn mock_addr() -> Multiaddr {
@@ -96,8 +96,11 @@ fn establish_connection<Req: MessageEvent, Res: MessageEvent>(
 fn new_behaviour() {
     let local_keys = Keypair::generate_ed25519();
     let config = BehaviourConfig::default();
-    let swarm =
-        P2PNetworkBehaviour::<String, String>::init_swarm(local_keys.clone(), config).expect("Failed to init swarm.");
+    let swarm = task::block_on(P2PNetworkBehaviour::<String, String>::init_swarm(
+        local_keys.clone(),
+        config,
+    ))
+    .expect("Failed to init swarm.");
     assert_eq!(
         &PeerId::from_public_key(local_keys.public()),
         Swarm::local_peer_id(&swarm)
@@ -137,7 +140,7 @@ fn zeroed_addr() {
     let mut listen_addr = "/ip4/0.0.0.0/tcp/0"
         .parse::<Multiaddr>()
         .expect("Invalid Multiaddress.");
-    Swarm::listen_on(&mut swarm, listen_addr.clone()).expect("Listening to swarm failed.");
+    let listener = Swarm::listen_on(&mut swarm, listen_addr.clone()).expect("Listening to swarm failed.");
     let mut actual_addr = start_listening(&mut swarm).expect("Start listening failed.");
     // ip and port should both not be zero
     assert_ne!(
@@ -148,12 +151,13 @@ fn zeroed_addr() {
         listen_addr.pop().expect("Missing listener ipv4 address."),
         actual_addr.pop().expect("Missing listener ipv4 address.")
     );
+    Swarm::remove_listener(&mut swarm, listener).expect("No listener with this ID.");
 
     // empty ip
     let mut listen_addr = "/ip4/0.0.0.0/tcp/8086"
         .parse::<Multiaddr>()
         .expect("Invalid Multiaddress.");
-    Swarm::listen_on(&mut swarm, listen_addr.clone()).expect("Listening to swarm failed.");
+    let listener = Swarm::listen_on(&mut swarm, listen_addr.clone()).expect("Listening to swarm failed.");
     let mut actual_addr = start_listening(&mut swarm).expect("Start listening failed.");
     // port should be the same
     assert_eq!(
@@ -165,12 +169,13 @@ fn zeroed_addr() {
         listen_addr.pop().expect("Missing listener ipv4 address."),
         actual_addr.pop().expect("Missing listener ipv4 address.")
     );
+    Swarm::remove_listener(&mut swarm, listener).expect("No listener with this ID.");
 
     // empty port
     let mut listen_addr = "/ip4/127.0.0.1/tcp/0"
         .parse::<Multiaddr>()
         .expect("Invalid Multiaddress.");
-    Swarm::listen_on(&mut swarm, listen_addr.clone()).expect("Listening to swarm failed.");
+    let listener = Swarm::listen_on(&mut swarm, listen_addr.clone()).expect("Listening to swarm failed.");
     let mut actual_addr = start_listening(&mut swarm).expect("Start listening failed.");
     // port should not be zero
     assert_ne!(
@@ -182,6 +187,7 @@ fn zeroed_addr() {
         listen_addr.pop().expect("Missing listener ipv4 address."),
         actual_addr.pop().expect("Missing listener ipv4 address.")
     );
+    Swarm::remove_listener(&mut swarm, listener).expect("No listener with this ID.");
 }
 
 #[test]
