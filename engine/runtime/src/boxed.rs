@@ -241,7 +241,7 @@ impl<T: Bytes> Debug for Boxed<T> {
 impl<T: Bytes> Clone for Boxed<T> {
     fn clone(&self) -> Self {
         Self::new(self.len, |b| {
-            b.as_mut_slice().clone_from_slice(self.unlock().as_slice());
+            b.as_mut_slice().copy_from_slice(self.unlock().as_slice());
             self.lock();
         })
     }
@@ -330,7 +330,7 @@ mod test {
     #[test]
     fn test_custom_init() {
         let boxed = Boxed::<u8>::new(1, |secret| {
-            secret.as_mut_slice().clone_from_slice(b"\x04");
+            secret.as_mut_slice().copy_from_slice(b"\x04");
         });
 
         assert_eq!(boxed.unlock().as_slice(), [0x04]);
