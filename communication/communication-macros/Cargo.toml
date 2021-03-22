@@ -18,4 +18,4 @@ proc-macro2 = "1.0"
 
 
 [dev-dependencies]
-stronghold-communication = {path = ".."}
+stronghold-communication = {path = "..", version = "0.3.0"}

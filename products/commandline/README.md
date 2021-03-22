@@ -1,28 +1,17 @@
 # A Stronghold commandline interface
 
-To show off the features of this set of libraries, an MVP command line tool was
-created. This CLI is bare bones and based heavily off of the vault fuzz client.
+To show off the features of this set of libraries, an MVP command line tool was created. 
 Its main purpose is to show off the libraries in a minimal yet meaningful
-manner. The structure of this application follows a kind of server/client
-pattern.  The state of the database is maintained in a hashmap wrapped in a
-RwLock and an Arc which is globally available via a lazy static macro. On the
-frontend, there is a client which contains the client ID and a Vault structure.
+manner.  The command line tool uses the client to interface with the vault and store.   
 The Vault structure contains the client’s key and a data view so that it can
 interact with the data. The key implements a provider which inherits from the
-box provider trait and this is where the encryption algorithm is defined. The
-client and the backend are connected through a simple connection structure with
-some basic logic to access the state hashmap.
+box provider trait and this is where the encryption algorithm is defined..
 
-Unlike the original vault fuzz client, this application needs to upload and
-offload its data to and from a snapshot. To achieve this, a snapshot structure
-was made; it consists of the client’s id and key as well as the database’s
-hashmap. Each time a user runs this CLI they must submit a password to unlock
-the snapshot so that the state can be loaded into the application. The id and
-key are used to create a new client and a garbage collection operation is
-executed to recreate the data chain from the incoming data. This operation
-creates a new Initial Transaction and it iterates through each of the
-transactions to verify that they are owned by the owner.  Any foreign data is
-discarded in this process.
+This application does not use a daemon therefore it must upload and offload its data 
+to a snapshot after every command. To achieve this, a snapshot structure
+was made; it consists of the client’s id and key as well as the state from the client. 
+Each time a user runs this CLI they must submit a password to unlock
+the snapshot so that the state can be loaded into the application. 
 
 ## Installation
 Build and install using [cargo](https://doc.rust-lang.org/cargo/):
@@ -53,23 +42,23 @@ directory. The location can be overridden by setting the `STRONGHOLD`
 environment variable.
 
 Create a new chain by encrypting some data and get back the status result; with `Ok(())` 
-signifying that the operation succeeded. The record path must be a number. 
+signifying that the operation succeeded. The record path can be a string or a number. 
 ```shell
-> stronghold encrypt --pass foo --plain secret --record_path 0
+> stronghold encrypt --pass foo --plain secret --record_path "some path"
 Ok(())
 ```
 (Note that if you haven't/don't want to install the executable you can still
-run this as: `cargo run -- encrypt --pass foo --plain secret --record_path 0`.)
+run this as: `cargo run -- encrypt --pass foo --plain secret --record_path "some path"`.)
 
-To write insecure data to the stronghold's cache, use the write command.  Again, the record path must be a number. 
+To write insecure data to the stronghold's cache, use the write command.  Again, the record path can be a number or a string. 
 ```shell
-> stronghold write --pass foo --record_path 0 --plain test data
+> stronghold write --pass foo --record_path "some path" --plain test
 Ok(())
 ```
 
 To read from the stronghold's cache, use the read command:
 ```shell
-> stronghold read --pass foo --record_path 0
+> stronghold read --pass foo --record_path "some path"
 Ok(())
 Data: "test"
 ```
@@ -78,40 +67,40 @@ Note that the vault and the cache are two separate databases so you can reuse re
 
 In order to make the following examples less trivial, we create another entry:
 ```shell
-> stronghold encrypt --pass foo --plain secret --record_path 0
+> stronghold encrypt --pass foo --plain secret --record_path "some other path"
 Ok(())
 ```
-And now we can list the two records we currently have stored:
+And now we can use the list command to see the record stored on this path:
 ```shell
-> stronghold list --pass foo
+> stronghold list --pass foo --record_path "some other path"
 Ok(())
-[(0, c29tZSBoaW50AAAAAAAAAAAAAAAAAAAA), (1, c29tZSBoaW50AAAAAAAAAAAAAAAAAAAA)]
+[(2, c29tZSBoaW50AAAAAAAAAAAAAAAAAAAA)]
 ```
 
 When we grow tired of keeping the record we can `revoke` it:
 ```shell
-> stronghold revoke --pass foo --record_path 0
+> stronghold revoke --pass foo --record_path "some other path"
 Ok(())
 ```
 And running the `list` command again we see that it has disappeared:
 ```shell
-> stronghold list --pass foo
-[(1, c29tZSBoaW50AAAAAAAAAAAAAAAAAAAA)]
+> stronghold list --pass foo --record_path "some other path"
+[]
 ```
 But! The record is not actually removed until a garbage collection of the
 chain has taken place.
 
 So let's make sure it's actually removed:
 ```shell
-> stronghold garbage_collect --pass foo
+> stronghold garbage_collect --pass foo --record_path "some other path"
 Ok(())
-[(1, c29tZSBoaW50AAAAAAAAAAAAAAAAAAAA)]
+[]
 ```
 
 ## Usage
 ```
-Engine POC CLI 1.0
-Tensor Programming <tensordeveloper@gmail.com>
+Stronghold CLI 2.0
+IOTA Stiftung, Tensor Programming <tensordeveloper@gmail.com>
 Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
 
 USAGE:
@@ -123,15 +112,14 @@ FLAGS:
 
 SUBCOMMANDS:
     encrypt            Encrypt data to the vault. Writes to the snapshot.
-    garbage_collect    Garbage collect the vault and remove revoked records.
+    garbage_collect    Garbage collect the vault and remove revoked records by record id.
     help               Prints this message or the help of the given subcommand(s)
-    list               Lists the ids of the records inside of your stronghold's vault; lists the
-                       record path and the hint hash.
-    purge              Revoke a record by id and perform a gargbage collect
+    list               Lists the ids of the records inside of your stronghold's vault by
+                       inputted record id.
+    purge              Revoke a record by id and perform a gargbage collect on the record id
     read               Read the data from a record in the unencrypted store.
     revoke             Revoke a record from the vault.
     snapshot           load from an existing snapshot by path.
-    take_ownership     Take ownership of an existing chain to give it to a new user.
     write              Write data to the unencrypted cache store.
 ```
 
@@ -191,17 +179,18 @@ OPTIONS:
 
 ### list
 ```
-Lists the ids of the records inside of your stronghold's vault; lists the record path and the hint hash.
+Lists the ids of the records inside of your stronghold's vault by inputted record id.
 
 USAGE:
-    stronghold.exe list --pass <password>
+    stronghold.exe list --pass <password> --record_path <Record Path value>
 
 FLAGS:
     -h, --help       Prints help information
     -V, --version    Prints version information
 
 OPTIONS:
-    -w, --pass <password>    the password for the snapshot.
+    -w, --pass <password>                    the password for the snapshot.
+    -r, --record_path <Record Path value>
 ```
 
 ### revoke
@@ -222,7 +211,7 @@ OPTIONS:
 
 ### purge
 ```
-Revoke a record by id and perform a gargbage collect
+Revoke a record by id and perform a gargbage collect on the record id
 
 USAGE:
     stronghold.exe purge --pass <password> --id <id>
@@ -251,19 +240,3 @@ OPTIONS:
     -w, --pass <password>         the password for the snapshot you want to load.
     -p, --path <snapshot path>
 ```
-
-### take_ownership
-```
-Take ownership of an existing chain to give it to a new user.
-
-USAGE:
-    stronghold.exe take_ownership --pass <password>
-
-FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
-
-OPTIONS:
-    -w, --pass <password>    the password for the snapshot.
-```
-

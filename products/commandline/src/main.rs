@@ -37,13 +37,15 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
                     let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                     if snapshot.exists() {
-                        block_on(stronghold.read_snapshot(
+                        if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
                             client_path,
                             None,
                             &key.to_vec(),
                             Some("commandline".to_string()),
                             None,
-                        ));
+                        )) {
+                            panic!("{:?}", e);
+                        }
                     }
 
                     let status = block_on(stronghold.write_to_store(
@@ -76,13 +78,15 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                     let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                     if snapshot.exists() {
-                        block_on(stronghold.read_snapshot(
+                        if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
                             client_path,
                             None,
                             &key.to_vec(),
                             Some("commandline".to_string()),
                             None,
-                        ));
+                        )) {
+                            panic!("{:?}", e);
+                        }
                     }
 
                     let status = block_on(stronghold.write_to_vault(
@@ -154,13 +158,15 @@ fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongho
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    block_on(stronghold.read_snapshot(
+                    if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
                         client_path,
                         None,
                         &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
-                    ));
+                    )) {
+                        panic!("{:?}", e);
+                    }
 
                     println!("reading");
 
@@ -192,13 +198,15 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    block_on(stronghold.read_snapshot(
+                    if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
                         client_path,
                         None,
                         &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
-                    ));
+                    )) {
+                        panic!("{:?}", e);
+                    }
 
                     let (data, status) = block_on(stronghold.read_from_store(Location::generic(rpath, rpath)));
 
@@ -228,13 +236,15 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    block_on(stronghold.read_snapshot(
+                    if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
                         client_path,
                         None,
                         &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
-                    ));
+                    )) {
+                        panic!("{:?}", e);
+                    }
 
                     let status = block_on(stronghold.delete_data(Location::generic(id, id), false));
 
@@ -259,34 +269,39 @@ fn garbage_collect_vault_command(
 ) {
     if let Some(matches) = matches.subcommand_matches("garbage_collect") {
         if let Some(pass) = matches.value_of("password") {
-            let mut key = [0u8; 32];
-            let salt = [0u8; 32];
-            naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+            if let Some(id) = matches.value_of("rpath") {
+                let mut key = [0u8; 32];
+                let salt = [0u8; 32];
+                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-            let home_dir = home_dir().expect(line_error!());
-            let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+                let home_dir = home_dir().expect(line_error!());
+                let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
-            if snapshot.exists() {
-                block_on(stronghold.read_snapshot(
-                    client_path,
-                    None,
-                    &key.to_vec(),
-                    Some("commandline".to_string()),
-                    None,
-                ));
+                if snapshot.exists() {
+                    if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
+                        client_path,
+                        None,
+                        &key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    )) {
+                        panic!("{:?}", e);
+                    }
 
-                let status = block_on(stronghold.garbage_collect(b"test".to_vec()));
+                    let status = block_on(stronghold.garbage_collect(Location::generic(id, id).vault_path().to_vec()));
 
-                let (list, _) = block_on(stronghold.list_hints_and_ids(b"test".to_vec()));
+                    let (list, _) =
+                        block_on(stronghold.list_hints_and_ids(Location::generic(id, id).vault_path().to_vec()));
 
-                println!("{:?}", status);
-                println!("{:?}", list);
+                    println!("{:?}", status);
+                    println!("{:?}", list);
 
-                block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
-            } else {
-                println!("Could not find a snapshot at the home path.  Try writing first. ");
+                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
+                } else {
+                    println!("Could not find a snapshot at the home path.  Try writing first. ");
 
-                return;
+                    return;
+                }
             }
         }
     }
@@ -306,13 +321,15 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    block_on(stronghold.read_snapshot(
+                    if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
                         client_path,
                         None,
                         &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
-                    ));
+                    )) {
+                        panic!("{:?}", e);
+                    }
 
                     let status = block_on(stronghold.delete_data(Location::generic(id, id), true));
 

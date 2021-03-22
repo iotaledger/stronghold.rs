@@ -1,7 +1,7 @@
 [package]
 name = "stronghold-engine"
 version = "0.3.0"
-authors = [ "tensorprogramming <tensordeveloper@gmail.com>" ]
+authors = [ "IOTA Stiftung", "tensorprogramming <tensordeveloper@gmail.com>" ]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
