@@ -198,13 +198,14 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
 }
 
 // Create a swarm and poll for events from that swarm
-fn listen() {
+async fn listen() {
     let local_keys = Keypair::generate_ed25519();
     let config = BehaviourConfig::default();
 
     // Create a Swarm that implementes the Request-Reponse-, Identify-, and mDNS-Protocol
-    let mut swarm =
-        P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Could not create swarm.");
+    let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config)
+        .await
+        .expect("Could not create swarm.");
     Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
         .expect("Listening Error.");
 
@@ -218,35 +219,33 @@ fn listen() {
 
     let mut stdin = BufReader::new(stdin()).lines();
     // Start polling for user input and events in the network
-    task::block_on(async {
-        loop {
-            select! {
-                // User input from stdin
-                stdin_input = stdin.next().fuse()=> {
-                    if let Some(Ok(command)) = stdin_input {
-                        handle_input_line(&mut swarm, &command);
-                    } else {
-                        // stdin closed
-                        break;
-                    }
-                },
-                // Events from the swarm
-                swarm_event = swarm.next_event().fuse() => {
-                    match swarm_event {
-                        SwarmEvent::Behaviour(event) => handle_event(&mut swarm, event),
-                        SwarmEvent::NewListenAddr(addr) => println!("Listen on {:?}", addr),
-                        SwarmEvent::ListenerError{error} => {
-                            eprintln!("ListenerError: {:?}", error);
-                            return;
-                        },
-                        _ => {},
-                    }
-                },
-            };
-        }
-    });
+    loop {
+        select! {
+            // User input from stdin
+            stdin_input = stdin.next().fuse()=> {
+                if let Some(Ok(command)) = stdin_input {
+                    handle_input_line(&mut swarm, &command);
+                } else {
+                    // stdin closed
+                    break;
+                }
+            },
+            // Events from the swarm
+            swarm_event = swarm.next_event().fuse() => {
+                match swarm_event {
+                    SwarmEvent::Behaviour(event) => handle_event(&mut swarm, event),
+                    SwarmEvent::NewListenAddr(addr) => println!("Listen on {:?}", addr),
+                    SwarmEvent::ListenerError{error} => {
+                        eprintln!("ListenerError: {:?}", error);
+                        return;
+                    },
+                    _ => {},
+                }
+            },
+        };
+    }
 }
 
 fn main() {
-    listen()
+    task::block_on(listen())
 }

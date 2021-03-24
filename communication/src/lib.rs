@@ -30,6 +30,7 @@
 //!
 //! ### Example
 //! ```no_run
+//! use async_std::task;
 //! use communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};
 //! use libp2p::identity::Keypair;
 //! use serde::{Deserialize, Serialize};
@@ -46,8 +47,8 @@
 //!
 //! let local_keys = Keypair::generate_ed25519();
 //! let config = BehaviourConfig::default();
-//! let mut swarm =
-//!     P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Init swarm failed.");
+//! let mut swarm = task::block_on(P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config))
+//!     .expect("Init swarm failed.");
 //! ```
 //!
 //! ## CommunicationActor
