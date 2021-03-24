@@ -227,6 +227,9 @@
 <span id="224">224</span>
 <span id="225">225</span>
 <span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
+<span id="229">229</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -423,6 +426,8 @@
     <span class="ident">Handler</span>,
     <span class="doccomment">/// Timout on connection attempt</span>
     <span class="ident">Timeout</span>,
+    <span class="doccomment">/// The address given for dialing is invalid.</span>
+    <span class="ident">InvalidAddress</span>(<span class="ident">Multiaddr</span>),
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">TTransErr</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">PendingConnectionError</span><span class="op">&lt;</span><span class="ident">TTransErr</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">ConnectPeerError</span> {
@@ -442,6 +447,7 @@
             <span class="ident">DialError</span>::<span class="ident">Banned</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">Banned</span>,
             <span class="ident">DialError</span>::<span class="ident">ConnectionLimit</span>(<span class="ident">limit</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">ConnectionLimit</span>(<span class="ident">limit</span>),
             <span class="ident">DialError</span>::<span class="ident">NoAddresses</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">NoAddresses</span>,
+            <span class="ident">DialError</span>::<span class="ident">InvalidAddress</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">InvalidAddress</span>(<span class="ident">addr</span>),
         }
     }
 }

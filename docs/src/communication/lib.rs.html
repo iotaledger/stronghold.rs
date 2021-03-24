@@ -80,6 +80,7 @@
 <span id="77">77</span>
 <span id="78">78</span>
 <span id="79">79</span>
+<span id="80">80</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -113,6 +114,7 @@
 <span class="doccomment">//!</span>
 <span class="doccomment">//! ### Example</span>
 <span class="doccomment">//! ```no_run</span>
+<span class="doccomment">//! use async_std::task;</span>
 <span class="doccomment">//! use communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};</span>
 <span class="doccomment">//! use libp2p::identity::Keypair;</span>
 <span class="doccomment">//! use serde::{Deserialize, Serialize};</span>
@@ -129,8 +131,8 @@
 <span class="doccomment">//!</span>
 <span class="doccomment">//! let local_keys = Keypair::generate_ed25519();</span>
 <span class="doccomment">//! let config = BehaviourConfig::default();</span>
-<span class="doccomment">//! let mut swarm =</span>
-<span class="doccomment">//!     P2PNetworkBehaviour::&lt;Request, Response&gt;::init_swarm(local_keys, config).expect(&quot;Init swarm failed.&quot;);</span>
+<span class="doccomment">//! let mut swarm = task::block_on(P2PNetworkBehaviour::&lt;Request, Response&gt;::init_swarm(local_keys, config))</span>
+<span class="doccomment">//!     .expect(&quot;Init swarm failed.&quot;);</span>
 <span class="doccomment">//! ```</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//! ## CommunicationActor</span>

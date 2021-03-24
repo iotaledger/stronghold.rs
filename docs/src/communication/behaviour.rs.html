@@ -378,6 +378,34 @@
 <span id="375">375</span>
 <span id="376">376</span>
 <span id="377">377</span>
+<span id="378">378</span>
+<span id="379">379</span>
+<span id="380">380</span>
+<span id="381">381</span>
+<span id="382">382</span>
+<span id="383">383</span>
+<span id="384">384</span>
+<span id="385">385</span>
+<span id="386">386</span>
+<span id="387">387</span>
+<span id="388">388</span>
+<span id="389">389</span>
+<span id="390">390</span>
+<span id="391">391</span>
+<span id="392">392</span>
+<span id="393">393</span>
+<span id="394">394</span>
+<span id="395">395</span>
+<span id="396">396</span>
+<span id="397">397</span>
+<span id="398">398</span>
+<span id="399">399</span>
+<span id="400">400</span>
+<span id="401">401</span>
+<span id="402">402</span>
+<span id="403">403</span>
+<span id="404">404</span>
+<span id="405">405</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -410,12 +438,12 @@
 <span class="doccomment">//!     Pong,</span>
 <span class="doccomment">//! }</span>
 <span class="doccomment">//!</span>
-<span class="doccomment">//! let local_keys = Keypair::generate_ed25519();</span>
-<span class="doccomment">//! let config = BehaviourConfig::default();</span>
-<span class="doccomment">//! let mut swarm =</span>
-<span class="doccomment">//!     P2PNetworkBehaviour::&lt;Request, Response&gt;::init_swarm(local_keys, config).expect(&quot;Init swarm failed.&quot;);</span>
-<span class="doccomment">//!</span>
 <span class="doccomment">//! task::block_on(async {</span>
+<span class="doccomment">//!     let local_keys = Keypair::generate_ed25519();</span>
+<span class="doccomment">//!     let config = BehaviourConfig::default();</span>
+<span class="doccomment">//!     let mut swarm = P2PNetworkBehaviour::&lt;Request, Response&gt;::init_swarm(local_keys, config)</span>
+<span class="doccomment">//!         .await</span>
+<span class="doccomment">//!         .expect(&quot;Init swarm failed.&quot;);</span>
 <span class="doccomment">//!     loop {</span>
 <span class="doccomment">//!         if let P2PEvent::RequestResponse(boxed_event) = swarm.next().await {</span>
 <span class="doccomment">//!             if let P2PReqResEvent::Req {</span>
@@ -437,8 +465,6 @@
 <span class="kw">mod</span> <span class="ident">protocol</span>;
 <span class="kw">mod</span> <span class="ident">types</span>;
 
-<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
-<span class="kw">use</span> <span class="ident">async_std</span>::<span class="ident">task</span>;
 <span class="kw">use</span> <span class="ident">core</span>::{
     <span class="ident">iter</span>,
     <span class="ident">result</span>::<span class="prelude-ty">Result</span>,
@@ -452,6 +478,7 @@
     <span class="ident">dns</span>::<span class="ident">DnsConfig</span>,
     <span class="ident">identify</span>::{<span class="ident">Identify</span>, <span class="ident">IdentifyEvent</span>},
     <span class="ident">identity</span>::<span class="ident">Keypair</span>,
+    <span class="ident">mdns</span>::<span class="ident">MdnsConfig</span>,
     <span class="ident">noise</span>::{<span class="self">self</span>, <span class="ident">NoiseConfig</span>},
     <span class="ident">request_response</span>::{
         <span class="ident">ProtocolSupport</span>, <span class="ident">RequestId</span>, <span class="ident">RequestResponse</span>, <span class="ident">RequestResponseConfig</span>, <span class="ident">RequestResponseEvent</span>,
@@ -494,11 +521,25 @@
     <span class="doccomment">/// Duration to keep an idle connection alive when no Request or Response is send.</span>
     <span class="doccomment">/// If none is specified, it defaults to 10s.</span>
     <span class="ident">keep_alive</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// TTL to use for mDNS record</span>
+    <span class="ident">mdns_ttl</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// Frequency for new peers via mDNS</span>
+    <span class="ident">mdns_query_interval</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span> <span class="ident">BehaviourConfig</span> {
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">timeout</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>, <span class="ident">keep_alive</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="ident">BehaviourConfig</span> { <span class="ident">timeout</span>, <span class="ident">keep_alive</span> }
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(
+        <span class="ident">timeout</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
+        <span class="ident">keep_alive</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
+        <span class="ident">mdns_ttl</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
+        <span class="ident">mdns_query_interval</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="ident">BehaviourConfig</span> {
+            <span class="ident">timeout</span>,
+            <span class="ident">keep_alive</span>,
+            <span class="ident">mdns_ttl</span>,
+            <span class="ident">mdns_query_interval</span>,
+        }
     }
 }
 
@@ -507,6 +548,8 @@
         <span class="ident">BehaviourConfig</span> {
             <span class="ident">timeout</span>: <span class="prelude-val">None</span>,
             <span class="ident">keep_alive</span>: <span class="prelude-val">None</span>,
+            <span class="ident">mdns_ttl</span>: <span class="prelude-val">None</span>,
+            <span class="ident">mdns_query_interval</span>: <span class="prelude-val">None</span>,
         }
     }
 }
@@ -547,6 +590,7 @@
     <span class="doccomment">///</span>
     <span class="doccomment">/// # Example</span>
     <span class="doccomment">/// ```no_run</span>
+    <span class="doccomment">/// use async_std::task;</span>
     <span class="doccomment">/// use communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};</span>
     <span class="doccomment">/// use libp2p::identity::Keypair;</span>
     <span class="doccomment">/// use serde::{Deserialize, Serialize};</span>
@@ -563,10 +607,10 @@
     <span class="doccomment">///</span>
     <span class="doccomment">/// let local_keys = Keypair::generate_ed25519();</span>
     <span class="doccomment">/// let config = BehaviourConfig::default();</span>
-    <span class="doccomment">/// let mut swarm =</span>
-    <span class="doccomment">///     P2PNetworkBehaviour::&lt;Request, Response&gt;::init_swarm(local_keys, config).expect(&quot;Init swarm failed.&quot;);</span>
+    <span class="doccomment">/// let mut swarm = task::block_on(P2PNetworkBehaviour::&lt;Request, Response&gt;::init_swarm(local_keys, config))</span>
+    <span class="doccomment">///     .expect(&quot;Init swarm failed.&quot;);</span>
     <span class="doccomment">/// ```</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">init_swarm</span>(
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">init_swarm</span>(
         <span class="ident">local_keys</span>: <span class="ident">Keypair</span>,
         <span class="ident">config</span>: <span class="ident">BehaviourConfig</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Swarm</span><span class="op">&lt;</span><span class="ident">P2PNetworkBehaviour</span><span class="op">&lt;</span><span class="ident">Req</span>, <span class="ident">Res</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">BehaviourError</span><span class="op">&gt;</span> {
@@ -578,7 +622,8 @@
         <span class="comment">// Use XX handshake pattern</span>
         <span class="kw">let</span> <span class="ident">noise</span> <span class="op">=</span> <span class="ident">NoiseConfig</span>::<span class="ident">xx</span>(<span class="ident">noise_keys</span>).<span class="ident">into_authenticated</span>();
         <span class="comment">// Tcp layer with wrapper to resolve dns addresses</span>
-        <span class="kw">let</span> <span class="ident">dns_transport</span> <span class="op">=</span> <span class="ident">DnsConfig</span>::<span class="ident">new</span>(<span class="ident">TcpConfig</span>::<span class="ident">new</span>())
+        <span class="kw">let</span> <span class="ident">dns_transport</span> <span class="op">=</span> <span class="ident">DnsConfig</span>::<span class="ident">system</span>(<span class="ident">TcpConfig</span>::<span class="ident">new</span>())
+            .<span class="kw">await</span>
             .<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">BehaviourError</span>::<span class="ident">TransportError</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;Could not create transport: {:?}&quot;</span>, <span class="ident">e</span>)))<span class="question-mark">?</span>;
         <span class="comment">// The configured transport establishes connections via tcp with websockets as fallback, and</span>
         <span class="comment">// negotiates authentification and multiplexing on all connections</span>
@@ -592,7 +637,18 @@
 
         <span class="comment">// multicast DNS for peer discovery within a local network</span>
         <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
-        <span class="kw">let</span> <span class="ident">mdns</span> <span class="op">=</span> <span class="ident">task</span>::<span class="ident">block_on</span>(<span class="ident">Mdns</span>::<span class="ident">new</span>()).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">BehaviourError</span>::<span class="ident">MdnsError</span>(<span class="ident">e</span>.<span class="ident">to_string</span>()))<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">mdns</span> <span class="op">=</span> {
+            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">mdns_config</span> <span class="op">=</span> <span class="ident">MdnsConfig</span>::<span class="ident">default</span>();
+            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ttl</span>) <span class="op">=</span> <span class="ident">config</span>.<span class="ident">mdns_ttl</span> {
+                <span class="ident">mdns_config</span>.<span class="ident">ttl</span> <span class="op">=</span> <span class="ident">ttl</span>;
+            }
+            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">query_interval</span>) <span class="op">=</span> <span class="ident">config</span>.<span class="ident">mdns_query_interval</span> {
+                <span class="ident">mdns_config</span>.<span class="ident">query_interval</span> <span class="op">=</span> <span class="ident">query_interval</span>;
+            }
+            <span class="ident">Mdns</span>::<span class="ident">new</span>(<span class="ident">mdns_config</span>)
+                .<span class="kw">await</span>
+                .<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">BehaviourError</span>::<span class="ident">MdnsError</span>(<span class="ident">e</span>.<span class="ident">to_string</span>()))
+        }<span class="question-mark">?</span>;
         <span class="comment">// Identify protocol to receive identifying information of a remote peer once a connection</span>
         <span class="comment">// was established</span>
         <span class="kw">let</span> <span class="ident">identify</span> <span class="op">=</span> <span class="ident">Identify</span>::<span class="ident">new</span>(
