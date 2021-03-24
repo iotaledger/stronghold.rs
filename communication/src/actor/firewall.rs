@@ -221,13 +221,13 @@ impl FirewallConfiguration {
     // The firewall permission is checked for the required permissions of the specific request variant.
     pub fn is_permitted<Req: ToPermissionVariants<P>, P: VariantPermission>(
         &self,
-        variant: Req,
-        peer_id: PeerId,
+        variant: &Req,
+        peer_id: &PeerId,
         direction: RequestDirection,
     ) -> bool {
         let permissions = match direction {
-            RequestDirection::In => *self.rules_in.get(&peer_id).unwrap_or(&self.default_in),
-            RequestDirection::Out => *self.rules_out.get(&peer_id).unwrap_or(&self.default_out),
+            RequestDirection::In => *self.rules_in.get(peer_id).unwrap_or(&self.default_in),
+            RequestDirection::Out => *self.rules_out.get(peer_id).unwrap_or(&self.default_out),
         };
         permissions.permits(&variant.to_permissioned().permission())
     }

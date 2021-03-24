@@ -33,11 +33,6 @@ impl ConnectionManager {
         }
     }
 
-    // Check is peer is in the currently active/ allowed connections.
-    pub fn is_active_connection(&self, peer_id: &PeerId) -> bool {
-        self.map.get(peer_id).is_some()
-    }
-
     pub fn is_keep_alive(&self, peer_id: &PeerId) -> bool {
         self.map
             .get(&peer_id)

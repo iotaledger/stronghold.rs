@@ -194,15 +194,15 @@ async fn run_mailbox() {
                         // tree
                         Request::PutRecord(record) => {
                             local_records.insert(record.key(), record.value());
-                            let _ = swarm.send_response(request_id, Response::Outcome(RequestOutcome::Success));
+                            let _ = swarm.send_response(&request_id, Response::Outcome(RequestOutcome::Success));
                         }
                         // Send the record for that key to the remote peer
                         Request::GetRecord(key) => {
                             if let Some((key, value)) = local_records.get_key_value(&key) {
                                 let record = MailboxRecord::new(key.clone(), value.clone());
-                                let _ = swarm.send_response(request_id, Response::Record(record));
+                                let _ = swarm.send_response(&request_id, Response::Record(record));
                             } else {
-                                let _ = swarm.send_response(request_id, Response::Outcome(RequestOutcome::Error));
+                                let _ = swarm.send_response(&request_id, Response::Outcome(RequestOutcome::Error));
                             }
                         }
                     };

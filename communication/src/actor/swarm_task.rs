@@ -3,9 +3,9 @@
 
 use super::{connections::ConnectionManager, *};
 use crate::behaviour::{
-    BehaviourError, MessageEvent, P2PEvent, P2PNetworkBehaviour, P2POutboundFailure, P2PReqResEvent, RequestEnvelope,
+    BehaviourError, MessageEvent, P2PEvent, P2PNetworkBehaviour, P2POutboundFailure, P2PReqResEvent,
 };
-use core::{ops::Deref, str::FromStr, time::Duration};
+use core::{ops::Deref, time::Duration};
 use futures::{channel::mpsc::UnboundedReceiver, future, prelude::*, select};
 use libp2p::{
     core::{connection::ListenerId, multiaddr::Protocol, ConnectedPoint},
@@ -21,6 +21,37 @@ use std::{
     time::Instant,
 };
 
+macro_rules! match_reqres_event {
+    ($boxed:expr, {$($case:ident$fields:tt => $ret:expr),+ } ) => {
+        match $boxed.clone().deref().clone() {
+             $( P2PReqResEvent::$case$fields => $ret, )+
+             _ => {}
+        }
+    }
+}
+
+macro_rules! poll_swarm{
+    ($self:expr,
+        timeout: $time:literal secs => $err:expr,
+        $($case:ident$fields:tt => $ret:expr),+
+    ) => {
+        task::block_on( async {
+            let start = Instant::now();
+            loop {
+                let event = $self.swarm.next_event().await;
+                match &event {
+                     $( SwarmEvent::$case$fields => $ret, )+
+                     _ => {}
+                }
+                if start.elapsed() > Duration::new($time, 0) {
+                    return Err($err);
+                }
+                $self.handle_swarm_event(event)
+            }
+        })
+    }
+}
+
 // Separate task that manages the swarm communication.
 pub(super) struct SwarmTask<Req, Res, ClientMsg, P>
 where
@@ -35,7 +66,7 @@ where
     // firewall configuration to check and validate all outgoing and incoming requests
     firewall: FirewallConfiguration,
     // the expanded swarm that is used to poll for incoming requests and interact
-    swarm: Swarm<P2PNetworkBehaviour<RequestEnvelope<Req>, Res>>,
+    swarm: Swarm<P2PNetworkBehaviour<Req, Res>>,
     // channel from the communication actor to this task
     swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, ClientMsg>, Sender)>,
     // current listener in the swarm
@@ -62,7 +93,7 @@ where
         behaviour: BehaviourConfig,
     ) -> Result<Self, BehaviourError> {
         // Create a P2PNetworkBehaviour for the swarm communication.
-        let swarm = P2PNetworkBehaviour::<RequestEnvelope<Req>, Res>::init_swarm(keypair, behaviour).await?;
+        let swarm = P2PNetworkBehaviour::<Req, Res>::init_swarm(keypair, behaviour).await?;
         let firewall = FirewallConfiguration::new(actor_config.firewall_default_in, actor_config.firewall_default_out);
         Ok(SwarmTask {
             system,
@@ -106,7 +137,7 @@ where
         self.swarm_rx.close();
     }
 
-    // Send a reponse to the sender of a previous [`CommunicationRequest`]
+    // Send a response to the sender of a previous [`CommunicationRequest`]
     fn send_response(result: CommunicationResults<Res>, sender: Sender) {
         if let Some(sender) = sender {
             let _ = sender.try_tell(result, None);
@@ -118,15 +149,12 @@ where
         let start = Instant::now();
         let mut ask_client = ask(&self.system, &self.client, request);
         task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
-            match ask_client.poll_unpin(cx) {
-                Poll::Ready(res) => Poll::Ready(Some(res)),
-                Poll::Pending => {
-                    if start.elapsed() > Duration::new(3, 0) {
-                        Poll::Ready(None)
-                    } else {
-                        Poll::Pending
-                    }
-                }
+            if let Poll::Ready(res) = ask_client.poll_unpin(cx) {
+                Poll::Ready(Some(res))
+            } else if start.elapsed() > Duration::new(3, 0) {
+                Poll::Ready(None)
+            } else {
+                Poll::Pending
             }
         }))
     }
@@ -138,158 +166,70 @@ where
                 .with(Protocol::Ip4(Ipv4Addr::new(0, 0, 0, 0)))
                 .with(Protocol::Tcp(0u16))
         });
-        if let Ok(listener_id) = Swarm::listen_on(&mut self.swarm, addr) {
-            let start = Instant::now();
-            task::block_on(async {
-                loop {
-                    match self.swarm.next_event().await {
-                        SwarmEvent::NewListenAddr(addr) => {
-                            self.listener = Some(listener_id);
-                            return Ok(addr);
-                        }
-                        other => self.handle_swarm_event(other),
-                    }
-                    if start.elapsed() > Duration::new(3, 0) {
-                        return Err(());
-                    }
-                }
-            })
-        } else {
-            Err(())
-        }
+        let listener_id = Swarm::listen_on(&mut self.swarm, addr).map_err(|_| ())?;
+        poll_swarm!(self, timeout: 3 secs => (),
+            NewListenAddr(addr) => {
+                self.listener = Some(listener_id);
+                return Ok(addr.clone());
+            }
+        )
     }
 
     // Try to connect a remote peer by id, and if the peer id is not know yet the address is used.
     fn connect_peer(&mut self, target_peer: PeerId, target_addr: Multiaddr) -> Result<PeerId, ConnectPeerError> {
-        if let Err(err) = Swarm::dial(&mut self.swarm, &target_peer) {
-            match err {
-                DialError::NoAddresses => {
-                    if let Err(err) = Swarm::dial_addr(&mut self.swarm, target_addr.clone()) {
-                        return Err(err.into());
-                    }
-                }
-                _ => {
-                    return Err(err.into());
-                }
+        Swarm::dial(&mut self.swarm, &target_peer).or_else(|err| {
+            if let DialError::NoAddresses = err {
+                Swarm::dial_addr(&mut self.swarm, target_addr.clone())
+            } else {
+                Err(err)
             }
-        }
-        let start = Instant::now();
-        task::block_on(async {
-            loop {
-                let event = self.swarm.next_event().await;
-                match event {
-                    SwarmEvent::ConnectionEstablished {
-                        peer_id,
-                        endpoint: ConnectedPoint::Dialer { address: _ },
-                        num_established: _,
-                    } => {
-                        if peer_id == target_peer {
-                            return Ok(peer_id);
-                        } else {
-                            self.handle_swarm_event(event)
-                        }
-                    }
-                    SwarmEvent::UnreachableAddr {
-                        peer_id,
-                        address: _,
-                        error,
-                        attempts_remaining: 0,
-                    } => {
-                        if peer_id == target_peer {
-                            return Err(ConnectPeerError::from(error));
-                        }
-                    }
-                    SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {
-                        if address == target_addr {
-                            return Err(ConnectPeerError::from(error));
-                        }
-                    }
-                    _ => self.handle_swarm_event(event),
-                }
-                if start.elapsed() > Duration::new(3, 0) {
-                    return Err(ConnectPeerError::Timeout);
-                }
+        })?;
+        poll_swarm!(self, timeout: 3 secs => ConnectPeerError::Timeout,
+            ConnectionEstablished {peer_id, ..} => if peer_id == &target_peer {
+                return Ok(*peer_id);
+            },
+            UnreachableAddr { peer_id, error, attempts_remaining: 0, ..} => if peer_id == &target_peer {
+                return Err(ConnectPeerError::from(error));
+            },
+            UnknownPeerUnreachableAddr { address, error } => if address == &target_addr {
+                return Err(ConnectPeerError::from(error));
             }
-        })
+        )
     }
 
     // Try sending a request envelope to a remote peer if it was approved by the firewall, and return the received
     // Response. If no response is received, a RequestMessageError::Rejected will be returned.
-    fn send_envelope_to_peer(
-        &mut self,
-        peer_id: PeerId,
-        envelope: RequestEnvelope<Req>,
-    ) -> Result<Res, RequestMessageError> {
-        let req_id = self.swarm.send_request(&peer_id, envelope);
-        let start = Instant::now();
-        task::block_on(async {
-            loop {
-                let event = self.swarm.next_event().await;
-                match event {
-                    SwarmEvent::Behaviour(P2PEvent::RequestResponse(ref boxed_event)) => {
-                        match boxed_event.clone().deref().clone() {
-                            P2PReqResEvent::Res {
-                                peer_id: _,
-                                request_id,
-                                response,
-                            } => {
-                                if request_id == req_id {
-                                    return Ok(response);
-                                }
-                            }
-                            P2PReqResEvent::InboundFailure {
-                                peer_id: _,
-                                request_id,
-                                error,
-                            } => {
-                                if request_id == req_id {
-                                    return Err(RequestMessageError::Inbound(error));
-                                }
-                            }
-                            P2PReqResEvent::OutboundFailure {
-                                peer_id: _,
-                                request_id,
-                                error,
-                            } => {
-                                if request_id == req_id {
-                                    return Err(RequestMessageError::Outbound(error));
-                                }
-                            }
-                            _ => self.handle_swarm_event(event),
-                        }
+    fn send_request_to_peer(&mut self, peer_id: PeerId, req: Req) -> Result<Res, RequestMessageError> {
+        let req_id = self.swarm.send_request(&peer_id, req);
+        poll_swarm!(self,
+            timeout: 3 secs => RequestMessageError::Rejected(FirewallBlocked::Remote),
+            Behaviour(P2PEvent::RequestResponse(ref boxed_event)) => {
+                match_reqres_event!(boxed_event, {
+                    Res { request_id, response, ..} => if request_id == req_id {
+                        return Ok(response);
+                    },
+                    InboundFailure { request_id, error, ..} => if request_id == req_id {
+                        return Err(RequestMessageError::Inbound(error));
+                    },
+                    OutboundFailure { request_id, error, ..} => if request_id == req_id {
+                        return Err(RequestMessageError::Outbound(error));
                     }
-                    _ => self.handle_swarm_event(event),
-                }
-                if start.elapsed() > Duration::new(3, 0) {
-                    return Err(RequestMessageError::Rejected(FirewallBlocked::Remote));
-                }
+                });
             }
-        })
+        )
     }
 
     // Wrap the request into an envelope, which enables using a relay peer, and send it to the remote.
     // Depending on the config, it is ether send directly or via the relay.
     fn send_request(&mut self, peer_id: PeerId, request: Req) -> Result<Res, RequestMessageError> {
-        let local_peer = Swarm::local_peer_id(&self.swarm);
-        let envelope = RequestEnvelope {
-            source: local_peer.to_string(),
-            message: request,
-            target: peer_id.to_string(),
-        };
         match self.relay {
-            RelayConfig::NoRelay => self.send_envelope_to_peer(peer_id, envelope),
-            RelayConfig::RelayAlways {
-                peer_id: relay_id,
-                addr: _,
-            } => self.send_envelope_to_peer(relay_id, envelope),
-            RelayConfig::RelayBackup {
-                peer_id: relay_id,
-                addr: _,
-            } => {
+            RelayConfig::NoRelay => self.send_request_to_peer(peer_id, request),
+            RelayConfig::RelayAlways { peer_id: relay_id, .. } => self.send_request_to_peer(relay_id, request),
+            RelayConfig::RelayBackup { peer_id: relay_id, .. } => {
                 // try sending directly, otherwise use relay
-                let res = self.send_envelope_to_peer(peer_id, envelope.clone());
+                let res = self.send_request_to_peer(peer_id, request.clone());
                 if let Err(RequestMessageError::Outbound(P2POutboundFailure::DialFailure)) = res {
-                    self.send_envelope_to_peer(relay_id, envelope)
+                    self.send_request_to_peer(relay_id, request)
                 } else {
                     res
                 }
@@ -383,14 +323,11 @@ where
     fn handle_actor_request(&mut self, event: CommunicationRequest<Req, ClientMsg>, sender: Sender) {
         match event {
             CommunicationRequest::RequestMsg { peer_id, request } => {
-                let res = if self
+                let res = self
                     .firewall
-                    .is_permitted(request.clone(), peer_id, RequestDirection::Out)
-                {
-                    self.send_request(peer_id, request)
-                } else {
-                    Err(RequestMessageError::Rejected(FirewallBlocked::Local))
-                };
+                    .is_permitted(&request, &peer_id, RequestDirection::Out)
+                    .then(|| self.send_request(peer_id, request))
+                    .unwrap_or(Err(RequestMessageError::Rejected(FirewallBlocked::Local)));
                 Self::send_response(CommunicationResults::RequestMsgResult(res), sender);
             }
             CommunicationRequest::SetClientRef(client_ref) => {
@@ -436,11 +373,11 @@ where
                 Self::send_response(CommunicationResults::StartListeningResult(res), sender);
             }
             CommunicationRequest::RemoveListener => {
-                let result = if let Some(listener_id) = self.listener.take() {
-                    Swarm::remove_listener(&mut self.swarm, listener_id)
-                } else {
-                    Err(())
-                };
+                let result = self
+                    .listener
+                    .take()
+                    .ok_or(())
+                    .and_then(|listener_id| Swarm::remove_listener(&mut self.swarm, listener_id));
                 let res = CommunicationResults::RemoveListenerResult(result);
                 Self::send_response(res, sender);
             }
@@ -467,52 +404,24 @@ where
     }
 
     // Handle incoming enveloped from either a peer directly or via the relay peer.
-    fn handle_incoming_envelope(&mut self, peer_id: PeerId, request_id: RequestId, request: RequestEnvelope<Req>) {
-        if Swarm::local_peer_id(&self.swarm).to_string() != request.target {
-            return;
-        }
-        if let Ok(source) = PeerId::from_str(&request.source) {
-            let is_active_direct = peer_id == source && self.connection_manager.is_active_connection(&peer_id);
-            let from_relay = match self.relay {
-                RelayConfig::RelayAlways {
-                    peer_id: relay_id,
-                    addr: _,
-                }
-                | RelayConfig::RelayBackup {
-                    peer_id: relay_id,
-                    addr: _,
-                } => peer_id == relay_id,
-                RelayConfig::NoRelay => false,
-            };
-            let is_permitted = self
-                .firewall
-                .is_permitted(request.message.clone(), source, RequestDirection::In);
-
-            if (is_active_direct || from_relay) && is_permitted {
-                if let Some(res) = self.ask_client(request.message) {
-                    let _ = self.swarm.send_response(request_id, res);
-                }
+    fn handle_incoming_request(&mut self, peer_id: &PeerId, request_id: &RequestId, request: Req) {
+        let is_permitted = self.firewall.is_permitted(&request, &peer_id, RequestDirection::In);
+        if is_permitted {
+            if let Some(res) = self.ask_client(request) {
+                let _ = self.swarm.send_response(&request_id, res);
             }
         }
     }
 
     // Send incoming request to the client.
     // Eventually other swarm events lik e.g. incoming connection should also be send to some top level actor.
-    fn handle_swarm_event<HandleErr>(&mut self, event: SwarmEvent<P2PEvent<RequestEnvelope<Req>, Res>, HandleErr>) {
+    fn handle_swarm_event<HandleErr>(&mut self, event: SwarmEvent<P2PEvent<Req, Res>, HandleErr>) {
         match event {
-            SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
-                P2PEvent::RequestResponse(boxed_event) => {
-                    if let P2PReqResEvent::Req {
-                        peer_id,
-                        request_id,
-                        request,
-                    } = boxed_event.deref().clone()
-                    {
-                        self.handle_incoming_envelope(peer_id, request_id, request);
-                    }
-                }
-                P2PEvent::Identify(_) | P2PEvent::Mdns(_) => {}
-            },
+            SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
+                match_reqres_event!(boxed_event, {
+                    Req { peer_id, request_id, request} => self.handle_incoming_request(&peer_id, &request_id, request)
+                })
+            }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
                 endpoint,
@@ -522,12 +431,17 @@ where
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
-                endpoint: ConnectedPoint::Dialer { address },
+                endpoint,
                 num_established: 0,
                 cause: _,
             } => {
                 // Re-establish the connection if it was configured.
-                if !self.connection_manager.is_keep_alive(&peer_id) || self.connect_peer(peer_id, address).is_err() {
+                let reconnected = self
+                    .connection_manager
+                    .is_keep_alive(&peer_id)
+                    .then(|| self.connect_peer(peer_id, endpoint.get_remote_address().clone()).ok())
+                    .flatten();
+                if reconnected.is_none() {
                     self.connection_manager.remove_connection(&peer_id);
                 }
             }
