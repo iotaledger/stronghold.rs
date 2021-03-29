@@ -124,6 +124,13 @@ subcommands:
             about: the password for the snapshot.
             required: true
             takes_value: true
+        - id:
+            short: i
+            long: id
+            value_name: id
+            about: the id of the entry
+            required: true
+            takes_value: true
   - purge:
       about: Revoke a record by id and perform a gargbage collect
       args:
