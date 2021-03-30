@@ -5,7 +5,7 @@
 
 use riker::actors::*;
 
-use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
+use std::{collections::HashMap, convert::TryFrom, path::PathBuf};
 
 use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 

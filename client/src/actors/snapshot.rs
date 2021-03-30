@@ -5,7 +5,7 @@
 
 use riker::actors::*;
 
-use std::{fmt::Debug, path::PathBuf};
+use std::path::PathBuf;
 
 use engine::{
     snapshot,
