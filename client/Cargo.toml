@@ -49,7 +49,7 @@ optional = true
 version = "0.3.0"
 
 [dependencies.stronghold-utils]
-path = "../utils"
+path = "../utils/utils"
 version = "0.2"
 
 [features]

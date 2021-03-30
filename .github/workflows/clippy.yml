@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [engine, client, products/commandline]
+        project: [engine, client, products/commandline, utils/utils, utils/utils-derive]
 
     steps:
       - uses: actions/checkout@v2
