@@ -9,6 +9,8 @@ use crate::{
     Location,
 };
 
+use stronghold_utils::GuardDebug;
+
 use crypto::keys::slip10::{Chain, ChainCode};
 
 use engine::{snapshot, vault::RecordHint};
@@ -26,7 +28,7 @@ use std::{path::PathBuf, time::Duration};
 use communication::actor::{PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission};
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(GuardDebug, Clone, Serialize, Deserialize)]
 pub enum SLIP10DeriveInput {
     /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
     Seed(Location),
@@ -35,7 +37,7 @@ pub enum SLIP10DeriveInput {
 
 /// Procedure type used to call to the runtime via `Strongnhold.runtime_exec(...)`.
 #[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(GuardDebug, Clone, Serialize, Deserialize)]
 pub enum Procedure {
     /// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in the
     /// `output` location
@@ -178,7 +180,7 @@ impl From<ProcResult> for SerdeProcResult {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, GuardDebug, Serialize, Deserialize)]
 #[cfg_attr(feature = "communication", derive(RequestPermissions))]
 pub enum SHRequest {
     // check if vault exists.

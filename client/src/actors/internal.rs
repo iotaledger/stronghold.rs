@@ -9,6 +9,8 @@ use std::{collections::HashMap, convert::TryFrom, fmt::Debug, path::PathBuf};
 
 use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
 
+use stronghold_utils::GuardDebug;
+
 use crypto::{
     keys::{
         bip39,
@@ -40,7 +42,7 @@ pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
 }
 
 /// Messages used for the KeyStore Actor.
-#[derive(Clone, Debug)]
+#[derive(Clone, GuardDebug)]
 pub enum InternalMsg {
     CreateVault(VaultId, RecordId),
     #[cfg(test)]
@@ -120,7 +122,7 @@ pub enum InternalMsg {
 }
 
 /// Messages used internally by the client.
-#[derive(Clone, Debug)]
+#[derive(Clone, GuardDebug)]
 pub enum InternalResults {
     ReturnCreateVault(StatusMessage),
     ReturnWriteVault(StatusMessage),

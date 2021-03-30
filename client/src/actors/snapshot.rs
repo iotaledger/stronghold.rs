@@ -7,9 +7,12 @@ use riker::actors::*;
 
 use std::{fmt::Debug, path::PathBuf};
 
-use engine::snapshot;
+use engine::{
+    snapshot,
+    vault::{Key, ReadResult},
+};
 
-use engine::vault::{Key, ReadResult};
+use stronghold_utils::GuardDebug;
 
 use crate::{
     actors::{InternalMsg, SHResults},
@@ -25,7 +28,7 @@ use crate::{
 use std::collections::HashMap;
 
 /// Messages used for the Snapshot Actor.
-#[derive(Clone, Debug)]
+#[derive(Clone, GuardDebug)]
 pub enum SMsg {
     WriteSnapshot {
         key: snapshot::Key,
