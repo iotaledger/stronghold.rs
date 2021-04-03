@@ -83,23 +83,14 @@ pub enum CommunicationRequest<Req, ClientMsg: Message> {
     Shutdown,
 }
 
-/// The firewall that rejected or dropped the request
-#[derive(Debug, Clone)]
-pub enum FirewallBlocked {
-    /// The local firewall block between the request was forwarded to the swarm.
-    Local,
-    /// The remote peer did not response.
-    Remote,
-}
-
 #[derive(Debug, Clone)]
 pub enum RequestMessageError {
     /// Possible failures occurring in the context of sending an outbound request and receiving the response.
     Outbound(P2POutboundFailure),
     /// Possible failures occurring in the context of receiving an inbound request and sending a response.
     Inbound(P2PInboundFailure),
-    /// The request was rejected or dropped by the local or remote firewall.
-    Rejected(FirewallBlocked),
+    /// The request was rejected by the local firewall.
+    LocalFirewallRejected,
 }
 
 /// Information about the connection with a remote peer as maintained in the ConnectionManager.

@@ -6,7 +6,7 @@ use communication::{
     behaviour::{BehaviourConfig, MessageEvent, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
     libp2p::{Keypair, Multiaddr, PeerId, Protocol, Swarm, SwarmEvent},
 };
-use core::{ops::Deref, time::Duration};
+use core::time::Duration;
 use futures::future;
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
@@ -206,7 +206,7 @@ fn request_response() {
     let remote_handle = task::spawn(async move {
         loop {
             if let P2PEvent::RequestResponse(boxed_event) = swarm_a.next().await {
-                match boxed_event.deref().clone() {
+                match *boxed_event {
                     P2PReqResEvent::Req {
                         peer_id,
                         request_id,
@@ -237,7 +237,7 @@ fn request_response() {
                     peer_id,
                     request_id: _,
                     response: Response::Pong,
-                } = boxed_event.deref().clone()
+                } = *boxed_event
                 {
                     assert_eq!(peer_id, peer_a_id);
                     std::thread::sleep(Duration::from_millis(50));
@@ -277,14 +277,14 @@ fn identify_event() {
         let mut received = false;
         while !sent || !received {
             if let SwarmEvent::Behaviour(P2PEvent::Identify(boxed_event)) = swarm_a.next_event().await {
-                match boxed_event.deref().clone() {
+                match *boxed_event {
                     P2PIdentifyEvent::Received {
                         peer_id,
                         info,
                         observed_addr: _,
                     } => {
                         if peer_id == peer_b_id {
-                            assert_eq!(PeerId::from_public_key(info.clone().public_key), peer_id);
+                            assert_eq!(PeerId::from_public_key(info.public_key), peer_id);
                             assert!(info.listen_addrs.contains(&addr_b));
                             received = true;
                         }
@@ -308,7 +308,7 @@ fn identify_event() {
         let mut received = false;
         while !sent || !received {
             if let SwarmEvent::Behaviour(P2PEvent::Identify(boxed_event)) = swarm_b.next_event().await {
-                match boxed_event.deref().clone() {
+                match *boxed_event {
                     P2PIdentifyEvent::Received {
                         peer_id,
                         info,

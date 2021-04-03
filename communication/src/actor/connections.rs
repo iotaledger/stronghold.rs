@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 // Maintain the current connection state to remote peers.
 // If a connection is closed in the ConnectionManager, no request from that peer will be forwarded anymore, but the
-// connection within the swarn is still alive. A connection in the swarm can only actively be closed by banning the
+// connection within the swarm is still alive. A connection in the swarm can only actively be closed by banning the
 // peer, otherwise it closes on timeout.
 //
 // If multiple connections to a peer exist, the ConnectionManager will keep the properties of the first connection.

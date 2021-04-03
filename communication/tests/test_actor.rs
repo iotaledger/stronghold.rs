@@ -5,8 +5,8 @@ use async_std::task;
 use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults, ConnectPeerError,
-        FirewallBlocked, FirewallPermission, FirewallRule, KeepAlive, PermissionValue, RequestDirection,
-        RequestMessageError, RequestPermissions, ToPermissionVariants, VariantPermission,
+        FirewallPermission, FirewallRule, KeepAlive, PermissionValue, RequestDirection, RequestMessageError,
+        RequestPermissions, ToPermissionVariants, VariantPermission,
     },
     behaviour::{BehaviourConfig, P2POutboundFailure},
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -526,7 +526,7 @@ fn firewall_rules() {
 
     // Outgoing request should be blocked by As firewall
     match send_request(&sys_a, &communication_actor_a, peer_b_id) {
-        Err(RequestMessageError::Rejected(FirewallBlocked::Local)) => {}
+        Err(RequestMessageError::LocalFirewallRejected) => {}
         _ => panic!("Local firewall should have blocked the request."),
     }
 
@@ -541,8 +541,7 @@ fn firewall_rules() {
 
     // Incoming request should be blocked by Bs firewall
     match send_request(&sys_a, &communication_actor_a, peer_b_id) {
-        Err(RequestMessageError::Rejected(FirewallBlocked::Remote))
-        | Err(RequestMessageError::Outbound(P2POutboundFailure::Timeout)) => {}
+        Err(RequestMessageError::Outbound(P2POutboundFailure::Timeout)) => {}
         _ => panic!("Remote firewall should have blocked the request"),
     }
 
@@ -570,8 +569,7 @@ fn firewall_rules() {
 
     // Requests should be blocked from B again
     match send_request(&sys_a, &communication_actor_a, peer_b_id) {
-        Err(RequestMessageError::Rejected(FirewallBlocked::Remote))
-        | Err(RequestMessageError::Outbound(P2POutboundFailure::Timeout)) => {}
+        Err(RequestMessageError::Outbound(P2POutboundFailure::Timeout)) => {}
         _ => panic!("Remote firewall should have blocked the request"),
     }
 
@@ -605,8 +603,7 @@ fn firewall_rules() {
         },
     )) {
         match res {
-            Err(RequestMessageError::Rejected(FirewallBlocked::Remote))
-            | Err(RequestMessageError::Outbound(P2POutboundFailure::Timeout)) => {}
+            Err(RequestMessageError::Outbound(P2POutboundFailure::Timeout)) => {}
             _ => panic!("Remote firewall should have blocked the request"),
         }
     } else {
