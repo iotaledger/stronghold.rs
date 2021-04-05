@@ -2,72 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    base64::Base64Encodable,
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
     types::{
         transactions::{
             DataTransaction, InitTransaction, RevocationTransaction, SealedBlob, SealedTransaction, Transaction,
         },
-        utils::{BlobId, ChainId, RecordHint, TransactionId, Val},
+        utils::{BlobId, ChainId, RecordHint, RecordId, TransactionId, Val},
     },
 };
 
-use serde::{Deserialize, Serialize};
-
 use std::{
     collections::HashMap,
-    convert::{TryFrom, TryInto},
-    fmt::{self, Debug, Display, Formatter},
+    convert::TryFrom,
+    fmt::{self, Debug, Formatter},
 };
 
 mod chain;
 mod protocol;
 
 pub use crate::vault::protocol::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
-
-/// A record identifier.  Contains a ChainID which refers to the "chain" of transactions in the Version.
-#[repr(transparent)]
-#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RecordId(ChainId);
-
-impl Debug for RecordId {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "Record({})", self.0.as_ref().base64())
-    }
-}
-
-impl Display for RecordId {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self.0.as_ref().base64())
-    }
-}
-
-impl TryFrom<Vec<u8>> for RecordId {
-    type Error = crate::Error;
-
-    fn try_from(bs: Vec<u8>) -> Result<Self, Self::Error> {
-        Ok(RecordId(bs.try_into()?))
-    }
-}
-
-impl TryFrom<&[u8]> for RecordId {
-    type Error = crate::Error;
-
-    fn try_from(bs: &[u8]) -> Result<Self, Self::Error> {
-        Ok(RecordId(bs.try_into()?))
-    }
-}
-
-impl RecordId {
-    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
-        Ok(RecordId(ChainId::random::<P>()?))
-    }
-
-    /// load record_id from data
-    pub fn load(data: &[u8]) -> crate::Result<Self> {
-        Ok(RecordId(ChainId::load(data)?))
-    }
-}
 
 /// A view over the records in a vault.  Allows for loading and accessing the records.
 pub struct DBView<P: BoxProvider> {

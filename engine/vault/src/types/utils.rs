@@ -5,7 +5,7 @@ use crate::{base64::Base64Encodable, crypto_box::BoxProvider};
 use std::{
     cmp::Ordering,
     convert::{TryFrom, TryInto},
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     hash::Hash,
     ops::{Add, AddAssign},
 };
@@ -243,6 +243,100 @@ impl TryFrom<&[u8]> for BlobId {
 }
 
 impl BlobId {
+    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
+        let mut buf = [0; 24];
+        P::random_buf(&mut buf)?;
+        Ok(Self(buf))
+    }
+}
+
+/// A record identifier.  Contains a ChainID which refers to the "chain" of transactions in the Version.
+#[repr(transparent)]
+#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RecordId(pub(crate) ChainId);
+
+impl Debug for RecordId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "Record({})", self.0.as_ref().base64())
+    }
+}
+
+impl Display for RecordId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self.0.as_ref().base64())
+    }
+}
+
+impl TryFrom<Vec<u8>> for RecordId {
+    type Error = crate::Error;
+
+    fn try_from(bs: Vec<u8>) -> Result<Self, Self::Error> {
+        Ok(RecordId(bs.try_into()?))
+    }
+}
+
+impl TryFrom<&[u8]> for RecordId {
+    type Error = crate::Error;
+
+    fn try_from(bs: &[u8]) -> Result<Self, Self::Error> {
+        Ok(RecordId(bs.try_into()?))
+    }
+}
+
+impl RecordId {
+    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
+        Ok(RecordId(ChainId::random::<P>()?))
+    }
+
+    /// load record_id from data
+    pub fn load(data: &[u8]) -> crate::Result<Self> {
+        Ok(RecordId(ChainId::load(data)?))
+    }
+}
+
+#[repr(transparent)]
+#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+pub struct VaultId([u8; 24]);
+
+impl AsRef<[u8]> for VaultId {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<VaultId> for Vec<u8> {
+    fn from(id: VaultId) -> Self {
+        id.0.to_vec()
+    }
+}
+
+impl From<&VaultId> for Vec<u8> {
+    fn from(id: &VaultId) -> Self {
+        id.0.to_vec()
+    }
+}
+
+impl Debug for VaultId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "Blob({})", self.0.base64())
+    }
+}
+
+impl TryFrom<&[u8]> for VaultId {
+    type Error = crate::Error;
+
+    fn try_from(bs: &[u8]) -> Result<Self, Self::Error> {
+        if bs.len() != 24 {
+            return Err(crate::Error::InterfaceError);
+        }
+
+        let mut tmp = [0; 24];
+        tmp.copy_from_slice(bs);
+        Ok(Self(tmp))
+    }
+}
+
+impl VaultId {
     pub fn random<P: BoxProvider>() -> crate::Result<Self> {
         let mut buf = [0; 24];
         P::random_buf(&mut buf)?;
