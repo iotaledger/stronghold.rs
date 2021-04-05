@@ -29,13 +29,46 @@ pub struct Vault<P: BoxProvider> {
 /// A bit of data inside of a Vault.
 pub struct Entry {
     id: ChainId,
-
     data: SealedTransaction,
     revoke: Option<SealedTransaction>,
     blob: SealedBlob,
 }
 
 impl<P: BoxProvider> Vault<P> {
+    /// Adds a new entry to the vault if the entry doesn't already exist. Otherwise, updates the data in the existing
+    /// entry as long as it hasn't been revoked.
+    pub fn add_or_update_entry(
+        &mut self,
+        key: &Key<P>,
+        id: ChainId,
+        data: &[u8],
+        record_hint: RecordHint,
+    ) -> crate::Result<()> {
+        let blob_id = BlobId::random::<P>()?;
+
+        if key == &self.key {
+            self.entries
+                .entry(id)
+                .and_modify(|entry| {
+                    entry.update(key, id, data).expect("Unable to update entry");
+                })
+                .or_insert(Entry::new(key, id, blob_id, data, record_hint)?);
+        }
+        Ok(())
+    }
+
+    /// Revokes an entry by its chain id.  Does nothing if the entry doesn't exist.
+    pub fn revoke(&mut self, key: &Key<P>, id: ChainId) -> crate::Result<()> {
+        if key == &self.key {
+            if let Some(entry) = self.entries.get_mut(&id) {
+                entry.revoke(key, id)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Sorts through all of the vault entries and garbage collects any revoked entries.
     pub fn garbage_collect(&mut self) {
         // get the keys of the entries with the revocation transactions.
         let garbage: Vec<ChainId> = self
@@ -55,7 +88,7 @@ impl<P: BoxProvider> Vault<P> {
 impl Entry {
     // create a new entry in the vault.
     pub fn new<P: BoxProvider>(
-        key: Key<P>,
+        key: &Key<P>,
         id: ChainId,
         blob: BlobId,
         data: &[u8],
@@ -64,8 +97,8 @@ impl Entry {
         let len = data.len() as u64;
         let dtx = DataTransaction::new(id, len, blob, hint);
 
-        let blob: SealedBlob = data.encrypt(&key, blob)?;
-        let data = dtx.encrypt(&key, id)?;
+        let blob: SealedBlob = data.encrypt(key, blob)?;
+        let data = dtx.encrypt(key, id)?;
 
         Ok(Entry {
             id,
@@ -76,19 +109,19 @@ impl Entry {
     }
 
     /// Get the blob from this entry.
-    pub fn get_blob<P: BoxProvider>(&self, key: Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
+    pub fn get_blob<P: BoxProvider>(&self, key: &Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
         // check if id id and tx id match.
         if self.id == id {
             // check if there is a revocation transaction.
             if let None = self.revoke {
-                let tx = self.data.decrypt(&key, self.id).expect("Unable to decrypt tx");
+                let tx = self.data.decrypt(key, self.id).expect("Unable to decrypt tx");
                 let tx = tx
                     .typed::<DataTransaction>()
                     .expect("Failed to cast as data transaction");
 
                 let guarded = GuardedVec::new(tx.len.u64() as usize, |i| {
                     let blob = SealedBlob::from(self.data.as_ref())
-                        .decrypt(&key, tx.blob)
+                        .decrypt(key, tx.blob)
                         .expect("Unable to decrypt the data");
 
                     i.copy_from_slice(blob.as_ref());
@@ -102,28 +135,28 @@ impl Entry {
             }
         } else {
             Err(crate::Error::DatabaseError(
-                "Invalid ids for entry. Id's must match a valid entry.".to_string(),
+                "Invalid id for entry. Ids must match a valid entry.".to_string(),
             ))
         }
     }
 
     /// Update the data in an existing entry.
-    pub fn update<P: BoxProvider>(&mut self, key: Key<P>, id: ChainId, new_data: &[u8]) -> crate::Result<()> {
+    pub fn update<P: BoxProvider>(&mut self, key: &Key<P>, id: ChainId, new_data: &[u8]) -> crate::Result<()> {
         // check if ids match
         if self.id == id {
             // check if a revocation transaction exists.
             if let None = self.revoke {
                 // decrypt data transaction.
-                let tx = self.data.decrypt(&key, self.id)?;
+                let tx = self.data.decrypt(key, self.id)?;
                 let tx = tx
                     .typed::<DataTransaction>()
                     .expect("Unable to cast to data transaction");
 
                 // create a new sealed blob with the new_data.
-                let blob: SealedBlob = new_data.encrypt(&key, tx.blob)?;
+                let blob: SealedBlob = new_data.encrypt(key, tx.blob)?;
                 // create a new sealed transaction with the new_data length.
                 let dtx = DataTransaction::new(tx.id, new_data.len() as u64, tx.blob, tx.record_hint);
-                let data = dtx.encrypt(&key, tx.id)?;
+                let data = dtx.encrypt(key, tx.id)?;
 
                 self.blob = blob;
                 self.data = data;
@@ -134,14 +167,14 @@ impl Entry {
     }
 
     // add a recovation transaction to an entry.
-    pub fn revoke<P: BoxProvider>(&mut self, key: Key<P>, id: ChainId) -> crate::Result<()> {
+    pub fn revoke<P: BoxProvider>(&mut self, key: &Key<P>, id: ChainId) -> crate::Result<()> {
         // check if id and id match.
         if self.id == id {
             // check if revoke transaction already exists.
             if let None = self.revoke {
                 let revoke = RevocationTransaction::new(self.id);
 
-                self.revoke = Some(revoke.encrypt(&key, self.id)?);
+                self.revoke = Some(revoke.encrypt(key, self.id)?);
             }
         }
 
