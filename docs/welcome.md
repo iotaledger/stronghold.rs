@@ -1,5 +1,5 @@
 # Welcome
-This is the documentation for the official IOTA Strongold Software.
+This is the documentation for the official IOTA Stronghold Software.
 
 IOTA Stronghold is a secure software implementation with the sole purpose of isolating digital secrets like IOTA seeds and private keys.
 
