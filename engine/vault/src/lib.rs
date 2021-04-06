@@ -32,7 +32,7 @@ use thiserror::Error as DeriveError;
 
 mod base64;
 mod crypto_box;
-mod nvault;
+pub mod nvault;
 mod types;
 mod vault;
 
@@ -41,7 +41,7 @@ use runtime::ZeroingAlloc;
 pub use crate::{
     base64::{Base64Decodable, Base64Encodable},
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
-    types::utils::{ChainId, RecordHint, RecordId},
+    types::utils::{ChainId, RecordHint, RecordId, VaultId},
     vault::{DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult, WriteRequest},
 };
 

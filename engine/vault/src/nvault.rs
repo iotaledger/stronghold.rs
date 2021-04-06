@@ -5,7 +5,7 @@ use crate::{
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
     types::{
         ntransactions::{DataTransaction, RevocationTransaction, SealedBlob, SealedTransaction},
-        utils::{BlobId, ChainId, RecordHint, VaultId},
+        utils::{BlobId, ChainId, RecordHint, RecordId, VaultId},
     },
 };
 
@@ -17,7 +17,7 @@ use runtime::GuardedVec;
 
 /// A view over the data inside of the Stronghold database.
 pub struct DbView<P: BoxProvider> {
-    vaults: HashMap<VaultId, Vault<P>>,
+    pub vaults: HashMap<VaultId, Vault<P>>,
 }
 
 /// A enclave of data that is encrypted under one key.
@@ -34,7 +34,60 @@ pub struct Entry {
     blob: SealedBlob,
 }
 
+impl<P: BoxProvider> DbView<P> {
+    pub fn new() -> DbView<P> {
+        let vaults = HashMap::new();
+
+        Self { vaults }
+    }
+
+    pub fn init_vault(&mut self, key: &Key<P>, vid: VaultId) -> crate::Result<()> {
+        self.vaults.entry(vid).or_insert(Vault::init_vault(key)?);
+
+        Ok(())
+    }
+
+    pub fn write(
+        &mut self,
+        key: &Key<P>,
+        vid: VaultId,
+        rid: RecordId,
+        data: &[u8],
+        record_hint: RecordHint,
+    ) -> crate::Result<()> {
+        self.vaults.entry(vid).and_modify(|vault| {
+            vault
+                .add_or_update_entry(key, rid.0, data, record_hint)
+                .expect("unable to write record")
+        });
+
+        Ok(())
+    }
+
+    pub fn execute_proc<F>(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId, f: F) -> crate::Result<()>
+    where
+        F: FnOnce(GuardedVec<u8>) -> crate::Result<()>,
+    {
+        if let Some(vault) = self.vaults.get_mut(&vid) {
+            let guard = vault.get_guard(key, rid.0)?;
+
+            f(guard)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl<P: BoxProvider> Vault<P> {
+    pub fn init_vault(key: &Key<P>) -> crate::Result<Vault<P>> {
+        let entries = HashMap::new();
+
+        Ok(Self {
+            entries,
+            key: key.clone(),
+        })
+    }
+
     /// Adds a new entry to the vault if the entry doesn't already exist. Otherwise, updates the data in the existing
     /// entry as long as it hasn't been revoked.
     pub fn add_or_update_entry(
@@ -66,6 +119,18 @@ impl<P: BoxProvider> Vault<P> {
         }
 
         Ok(())
+    }
+
+    pub fn get_guard(&mut self, key: &Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
+        if key == &self.key {
+            if let Some(entry) = self.entries.get(&id) {
+                entry.get_blob(key, id)
+            } else {
+                Err(crate::Error::DatabaseError("Invalid record id.".into()))
+            }
+        } else {
+            Err(crate::Error::DatabaseError("Invalid key.".into()))
+        }
     }
 
     /// Sorts through all of the vault entries and garbage collects any revoked entries.
@@ -120,9 +185,9 @@ impl Entry {
                     .expect("Failed to cast as data transaction");
 
                 let guarded = GuardedVec::new(tx.len.u64() as usize, |i| {
-                    let blob = SealedBlob::from(self.data.as_ref())
+                    let blob = SealedBlob::from(self.blob.as_ref())
                         .decrypt(key, tx.blob)
-                        .expect("Unable to decrypt the data");
+                        .expect("Unable to decrypt blob");
 
                     i.copy_from_slice(blob.as_ref());
                 });
