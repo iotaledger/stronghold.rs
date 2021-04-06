@@ -38,22 +38,24 @@ fn bench_write(c: &mut Criterion) {
 
 fn bench_nvault_write(c: &mut Criterion) {
     c.bench_function("Write to new vault", |b| {
-        let mut view: DbView<Provider> = DbView::new();
-        let key0 = Key::random().unwrap();
-        let vid0 = VaultId::random::<Provider>().unwrap();
-        let rid0 = RecordId::random::<Provider>().unwrap();
+        b.iter(|| {
+            let mut view: DbView<Provider> = DbView::new();
+            let key0 = Key::random().unwrap();
+            let vid0 = VaultId::random::<Provider>().unwrap();
+            let rid0 = RecordId::random::<Provider>().unwrap();
 
-        view.init_vault(&key0, vid0).unwrap();
+            view.init_vault(&key0, vid0).unwrap();
 
-        // write to vault0 and record0
-        view.write(
-            &key0,
-            vid0,
-            rid0,
-            b"abcdefghijklmnopqrstuvwxyz1234567890",
-            RecordHint::new(b"test").unwrap(),
-        )
-        .unwrap();
+            // write to vault0 and record0
+            view.write(
+                &key0,
+                vid0,
+                rid0,
+                b"abcdefghijklmnopqrstuvwxyz1234567890",
+                RecordHint::new(b"test").unwrap(),
+            )
+            .unwrap();
+        });
     });
 }
 
