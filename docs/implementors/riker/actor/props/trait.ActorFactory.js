@@ -1,3 +1,3 @@
 (function() {var implementors = {};
-implementors["iota_stronghold"] = [{"text":"impl ActorFactory for Snapshot","synthetic":false,"types":[]}];
+implementors["iota_stronghold"] = [{"text":"impl ActorFactory for <a class=\"struct\" href=\"iota_stronghold/state/snapshot/struct.Snapshot.html\" title=\"struct iota_stronghold::state::snapshot::Snapshot\">Snapshot</a>","synthetic":false,"types":["iota_stronghold::state::snapshot::Snapshot"]}];
 if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

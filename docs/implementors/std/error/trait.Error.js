@@ -1,6 +1,6 @@
 (function() {var implementors = {};
-implementors["communication"] = [{"text":"impl Error for BehaviourError","synthetic":false,"types":[]}];
-implementors["iota_stronghold"] = [{"text":"impl Error for Error","synthetic":false,"types":[]}];
-implementors["snapshot"] = [{"text":"impl Error for Error","synthetic":false,"types":[]}];
-implementors["vault"] = [{"text":"impl Error for Error","synthetic":false,"types":[]}];
+implementors["communication"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/std/error/trait.Error.html\" title=\"trait std::error::Error\">Error</a> for <a class=\"enum\" href=\"communication/behaviour/enum.BehaviourError.html\" title=\"enum communication::behaviour::BehaviourError\">BehaviourError</a>","synthetic":false,"types":["communication::behaviour::BehaviourError"]}];
+implementors["iota_stronghold"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/std/error/trait.Error.html\" title=\"trait std::error::Error\">Error</a> for <a class=\"enum\" href=\"iota_stronghold/enum.Error.html\" title=\"enum iota_stronghold::Error\">Error</a>","synthetic":false,"types":["iota_stronghold::Error"]}];
+implementors["snapshot"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/std/error/trait.Error.html\" title=\"trait std::error::Error\">Error</a> for <a class=\"enum\" href=\"snapshot/enum.Error.html\" title=\"enum snapshot::Error\">Error</a>","synthetic":false,"types":["snapshot::Error"]}];
+implementors["vault"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/std/error/trait.Error.html\" title=\"trait std::error::Error\">Error</a> for <a class=\"enum\" href=\"vault/enum.Error.html\" title=\"enum vault::Error\">Error</a>","synthetic":false,"types":["vault::Error"]}];
 if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
