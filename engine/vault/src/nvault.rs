@@ -79,6 +79,24 @@ impl<P: BoxProvider> DbView<P> {
 
         Ok(())
     }
+
+    pub fn revoke_record(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId) -> crate::Result<()> {
+        if let Some(vault) = self.vaults.get_mut(&vid) {
+            vault.revoke(key, rid.0)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn garbage_collect_vault(&mut self, key: &Key<P>, vid: VaultId) -> crate::Result<()> {
+        if let Some(vault) = self.vaults.get_mut(&vid) {
+            if &vault.key == key {
+                vault.garbage_collect();
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<P: BoxProvider> Vault<P> {
