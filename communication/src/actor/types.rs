@@ -14,34 +14,11 @@ use riker::{actors::ActorRef, Message};
 use crate::actor::firewall::FirewallRule;
 use std::time::Instant;
 
-/// Relay peer for outgoing request.
 #[derive(Debug, Clone)]
-pub enum RelayConfig {
-    /// No relay should be used, peers can only be dialed directly.
-    NoRelay,
-    /// Always send requests to remote peers via the relay.
-    RelayAlways { peer_id: PeerId, addr: Multiaddr },
-    /// Use relay peer if sending the request directly failed,
-    RelayBackup { peer_id: PeerId, addr: Multiaddr },
-}
-
-/// Determines if the local system should actively keep the connection alive
-#[derive(Debug, Clone)]
-pub enum KeepAlive {
-    /// No keep-alive.
-    None,
-    /// Keep alive for a limited duration.
-    Limited {
-        /// End timestamp after whom the connection will not actively be kept alive anymore.
-        /// This does not automatically mean that the connection is closed, since request-response message might keep
-        /// it alive.
-        ///
-        /// If the connection should be completely stopped, the CommunicationRequest::CloseConnection should be send to
-        /// the [`CommunicationActor`].
-        end: Instant,
-    },
-    /// Keep alive until one of the peers close the connection.
-    Unlimited,
+pub enum RelayDirection {
+    Dialing,
+    Listening,
+    Both,
 }
 
 /// Requests for the [`CommunicationActor`].
@@ -52,30 +29,34 @@ pub enum CommunicationRequest<Req, ClientMsg: Message> {
     RequestMsg { peer_id: PeerId, request: Req },
     /// Set the actor reference that incoming request are forwarded to.
     SetClientRef(ActorRef<ClientMsg>),
-    /// Connect to a remote peer.
-    /// If the peer id is know it will attempt to use a know address of it, otherwise the `addr` will be dialed.
-    EstablishConnection {
-        addr: Multiaddr,
+    /// Add the address of a peer.
+    /// This will attempt to connect to the peer to verify that the address can be dialed.
+    /// If the targeted peer is not a relay, and can not be reached directly, it will be attempted to reach
+    /// it through a relay, if there are any.
+    AddPeer {
         peer_id: PeerId,
-        keep_alive: KeepAlive,
+        addr: Mutliaddr,
+        is_relay: Option<RelayDirection>,
     },
-    /// Close the connection to a remote peer so that no more requests from that peer will be allowed.
-    /// This does not directly close the underlying transport connection, which will close on timeout instead.
-    CloseConnection(PeerId),
-    /// Check if a connection to that peer is currently active.
-    CheckConnection(PeerId),
-    /// Obtain information about the swarm.
+    /// Get information about the swarm.
     GetSwarmInfo,
-    /// Ban a peer, which prevents any connection to that peer.
+    /// Ban a peer, which prevents any communication from / to that peer.
     BanPeer(PeerId),
     /// Unban a peer to allow future communication.
     UnbanPeer(PeerId),
-    /// Start listening to a port on the swarm. If no `Multiaddr` is provided, the address will be OS assigned.
-    StartListening(Option<Multiaddr>),
+    /// Start listening to a port on the swarm.
+    /// If no `Multiaddr` is provided, the address will either use the same that is used for listening to the relay,
+    /// or create a new one that is OS assigned.
+    AddListener(Option<Multiaddr>),
     /// Stop listening to the swarm. Without a listener, the local peer can not be dialed from remote.
     RemoveListener,
-    /// Configured if a relay peer should be used for requests
-    SetRelay(RelayConfig),
+    /// Configure to use a peer as relay for dialing, listening, or both.
+    /// The peer has to be known, which means that it has to be added with `CommunicationRequest::AddPeer` before.
+    /// Existing relay configuration for the same peer is overwritten with this.
+    /// If the the direction includes listening on the relay.
+    ConfigRelay { peer_id: PeerId, config: RelayDirection },
+    /// Stop using the peer as relay.
+    RemoveRelay(PeerId),
     /// Add or remove a rule of the firewall.
     /// If a rule for a peer & direction combination already exists, it is overwritten.
     ConfigureFirewall(FirewallRule),
@@ -97,28 +78,17 @@ pub enum RequestMessageError {
 #[derive(Clone, Debug)]
 pub struct EstablishedConnection {
     start: Instant,
-    keep_alive: KeepAlive,
+    is_relay: Option<RelayDirection>,
     connected_point: ConnectedPoint,
 }
 
 impl EstablishedConnection {
-    pub fn new(keep_alive: KeepAlive, connected_point: ConnectedPoint) -> Self {
+    pub fn new(is_relay: Option<RelayDirection>, connected_point: ConnectedPoint) -> Self {
         EstablishedConnection {
             start: Instant::now(),
-            keep_alive,
+            is_relay,
             connected_point,
         }
-    }
-    pub(super) fn is_keep_alive(&self) -> bool {
-        match self.keep_alive {
-            KeepAlive::Unlimited => true,
-            KeepAlive::Limited { end } => Instant::now() <= end,
-            _ => false,
-        }
-    }
-
-    pub(super) fn set_keep_alive(&mut self, keep_alive: KeepAlive) {
-        self.keep_alive = keep_alive;
     }
 }
 
@@ -129,10 +99,8 @@ pub enum CommunicationResults<Res> {
     RequestMsgResult(Result<Res, RequestMessageError>),
     /// New client actor reference was set.
     SetClientRefAck,
-    /// Result of trying to connect a peer.
-    EstablishConnectionResult(Result<PeerId, ConnectPeerError>),
-    /// Closed connection to peer.
-    CloseConnectionAck,
+    /// Result of trying to connect a peer after adding it.
+    AddPeerResult(Result<PeerId, ConnectPeerError>),
     /// Check if the connection exists.
     CheckConnectionResult {
         peer_id: PeerId,
@@ -156,9 +124,11 @@ pub enum CommunicationResults<Res> {
     StartListeningResult(Result<Multiaddr, ()>),
     /// Stopped listening to the swarm for incoming connections.
     RemoveListenerResult(Result<(), ()>),
-    /// Setting relay result.
-    /// Error if the relay peer could not be connected.
-    SetRelayResult(Result<(), ConnectPeerError>),
+    /// Result for configuring the Relay.
+    /// Error if the relay could not be reached because no address is known or dialing the address failed.
+    ConfigRelayResult(Result<(), ConnectPeerError>),
+    /// Successfully removed relay.
+    RemoveRelayAck,
     /// Successfully set firewall rule.
     ConfigureFirewallAck,
 }

@@ -235,7 +235,7 @@ mod test {
                 results.push(bytes == &received)
             }
             socket.shutdown(Shutdown::Both).expect("Failed to shutdown socket.");
-            results.iter().any(|res| *res)
+            results.into_iter().any(|res| res)
         });
         task::block_on(async {
             let (_, results) = future::join(listener_handle, writer_handle).await;
@@ -273,7 +273,7 @@ mod test {
                 results.push(bytes == &received)
             }
             socket.shutdown(Shutdown::Both).expect("Failed to shutdown socket.");
-            results.iter().any(|res| *res)
+            results.into_iter().any(|res| res)
         });
         task::block_on(async {
             let (_, results) = future::join(listener_handle, writer_handle).await;

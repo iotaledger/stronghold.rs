@@ -26,23 +26,10 @@ impl ConnectionManager {
     }
 
     // Insert connection information for new peer, if that peer is not known yet.
-    pub fn insert(&mut self, peer_id: PeerId, connected_point: ConnectedPoint, keep_alive: KeepAlive) {
+    pub fn insert(&mut self, peer_id: PeerId, connected_point: ConnectedPoint) {
         if self.map.get(&peer_id).is_none() {
             let new_connection = EstablishedConnection::new(keep_alive, connected_point);
             self.map.insert(peer_id, new_connection);
-        }
-    }
-
-    pub fn is_keep_alive(&self, peer_id: &PeerId) -> bool {
-        self.map
-            .get(&peer_id)
-            .map(|connection| connection.is_keep_alive())
-            .unwrap_or(false)
-    }
-
-    pub fn set_keep_alive(&mut self, peer_id: &PeerId, keep_alive: KeepAlive) {
-        if let Some(connection) = self.map.get_mut(peer_id) {
-            connection.set_keep_alive(keep_alive)
         }
     }
 

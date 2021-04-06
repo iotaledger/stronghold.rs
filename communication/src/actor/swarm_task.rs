@@ -14,6 +14,7 @@ use libp2p::{
     swarm::{DialError, IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler, Swarm, SwarmEvent},
 };
 use riker::{actors::*, Message};
+use std::collections::HashMap;
 use std::{
     net::Ipv4Addr,
     task::{Context, Poll},
@@ -40,10 +41,12 @@ where
     swarm: Swarm<P2PNetworkBehaviour<Req, Res>>,
     // channel from the communication actor to this task
     swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, ClientMsg>, Sender)>,
-    // current listener in the swarm
+    // Listener in the local swarm
     listener: Option<ListenerId>,
-    // configuration to use optionally use a relay peer if a peer in a remote network can not be reached directly.
-    relay: RelayConfig,
+    // relays that are tried if a peer can not be reached directly
+    dialing_relays: HashMap<PeerId, Multiaddr>,
+    // relays that are used for listening
+    listening_relays: HashMap<PeerId, (Multiaddr, ListenerId)>,
     // maintain the current state of connections and keep-alive configuration
     connection_manager: ConnectionManager,
     _marker: PhantomData<P>,
@@ -73,7 +76,8 @@ where
             swarm,
             swarm_rx,
             listener: None,
-            relay: RelayConfig::NoRelay,
+            dialing_relays: HashMap::new(),
+            listening_relays: HashMap::new(),
             connection_manager: ConnectionManager::new(),
             _marker: PhantomData,
         })
@@ -231,21 +235,40 @@ where
         }
     }
 
+    fn add_listener_relay(&mut self, peer_id: PeerId) -> Result<(), ConnectPeerError>{
+        if !self.listeners.contains_key(&peer_d) {
+            let local_id = *Swarm::local_peer_id(&self);
+            let relay_addr = self.swarm.get_peer_addr(&peer_id).ok_or(ConnectPeerError::NoAddresses)?;
+            let addr = relay_addr
+                .with(Protocol::P2p(peer_id.into()))
+                .with(Protocol::P2pCircuit)
+                .with(Protocol::P2p(local_id.into()));
+            self.start_listening(Some(addr));
+        }
+        Ok(())
+    }
+
     // Set the new relay configuration. If a relay is use, a keep-alive connection to the relay will be established.
-    fn set_relay(&mut self, config: RelayConfig) -> Result<(), ConnectPeerError> {
-        match config.clone() {
-            RelayConfig::NoRelay => Ok(()),
-            RelayConfig::RelayAlways { peer_id, addr } | RelayConfig::RelayBackup { peer_id, addr } => {
-                let res = self.connect_peer(peer_id, addr.clone());
-                match res {
-                    Ok(_) => {
-                        let endpoint = ConnectedPoint::Dialer { address: addr };
-                        self.connection_manager.insert(peer_id, endpoint, KeepAlive::Unlimited);
-                        self.relay = config;
-                        Ok(())
-                    }
-                    Err(err) => Err(err),
+    fn set_relay(&mut self, peer_id: PeerId, config: RelayDirection) -> Result<(), ConnectPeerError> {
+        match config {
+            RelayDirection::Dialing => {
+                if let Some(listener) = self.listeners.remove(&peer_id) {
+                    Swarm::remove_listener(&mut self.swarm, listener);
                 }
+                if !self.dialing_relays.contains(&peer_id) {
+                    self.dialing_relays.push(peer_id);
+                }
+                Ok(())
+            },
+            RelayDirection::Listening  => {
+                self.dialing_relays.retain(|p| p == peer_id);
+                self.add_listener_relay(peer_id)
+            }
+            RelayDirection::Both => {
+                if !self.dialing_relays.contains(&peer_id) {
+                    self.dialing_relays.push(peer_id);
+                }
+                self.add_listener_relay(peer_id)
             }
         }
     }
@@ -260,19 +283,18 @@ where
     ) {
         let default = self.firewall.get_default(direction);
         let (have_rule, no_rule) = peers
-            .iter()
-            .partition::<Vec<PeerId>, _>(|p| self.firewall.has_rule(p, direction));
+            .into_iter()
+            .partition::<Vec<PeerId>, _>(|p| self.firewall.has_rule(&p, direction));
         if !no_rule.is_empty() || is_change_default {
             let new_default = is_add
                 .then(|| default.add_permissions(&permissions))
                 .unwrap_or_else(|| default.remove_permissions(&permissions));
             no_rule
-                .iter()
-                .cloned()
+                .into_iter()
                 .for_each(|peer| self.firewall.set_rule(peer, direction, new_default));
             is_change_default.then(|| self.firewall.set_default(&direction, new_default));
         }
-        have_rule.iter().cloned().for_each(|peer| {
+        have_rule.into_iter().for_each(|peer| {
             if let Some(rule) = self.firewall.get_rule(&peer, direction) {
                 let update = is_add
                     .then(|| rule.add_permissions(&permissions))
@@ -323,6 +345,7 @@ where
 
     // Handle the messages that are received from other actors in the system.
     fn handle_actor_request(&mut self, event: CommunicationRequest<Req, ClientMsg>, sender: Sender) {
+        self.swarm.addresses_of_peer(&PeerId::random());
         match event {
             CommunicationRequest::RequestMsg { peer_id, request } => {
                 let res = self
@@ -337,16 +360,15 @@ where
                 let res = CommunicationResults::SetClientRefAck;
                 Self::send_response(res, sender);
             }
-            CommunicationRequest::EstablishConnection {
+            CommunicationRequest::AddPeer {
                 peer_id,
                 addr,
-                keep_alive,
+                is_relay,
             } => {
                 let res = self.connect_peer(peer_id, addr.clone());
                 if res.is_ok() {
                     let endpoint = ConnectedPoint::Dialer { address: addr };
-                    self.connection_manager.insert(peer_id, endpoint, keep_alive.clone());
-                    self.connection_manager.set_keep_alive(&peer_id, keep_alive);
+                    self.connection_manager.insert(peer_id, endpoint);
                 }
                 Self::send_response(CommunicationResults::EstablishConnectionResult(res), sender);
             }
@@ -393,8 +415,8 @@ where
                 let res = CommunicationResults::UnbannedPeerAck(peer_id);
                 Self::send_response(res, sender);
             }
-            CommunicationRequest::SetRelay(config) => {
-                let res = self.set_relay(config);
+            CommunicationRequest::ConfigRelay { peer_id, config } => {
+                let res = self.set_relay(peer_id, config);
                 Self::send_response(CommunicationResults::SetRelayResult(res), sender);
             }
             CommunicationRequest::ConfigureFirewall(rule) => {
@@ -434,7 +456,7 @@ where
                 endpoint,
                 num_established: _,
             } => {
-                self.connection_manager.insert(peer_id, endpoint, KeepAlive::None);
+                self.connection_manager.insert(peer_id, endpoint);
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
@@ -442,13 +464,13 @@ where
                 num_established: 0,
                 cause: _,
             } => {
-                // Re-establish the connection if it was configured.
-                let reconnected = self
-                    .connection_manager
-                    .is_keep_alive(&peer_id)
-                    .then(|| self.connect_peer(peer_id, endpoint.get_remote_address().clone()).ok())
-                    .flatten();
-                if reconnected.is_none() {
+                if self
+                    .listeners
+                    .contains_key(&peer_id)
+                    .and_then(|| self.connect_peer(peer_id, endpoint.get_remote_address().clone()))
+                    .is_none()
+                {
+                    self.listeners.remove(&peer_id);
                     self.connection_manager.remove_connection(&peer_id);
                 }
             }

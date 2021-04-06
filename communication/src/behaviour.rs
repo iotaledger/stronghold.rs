@@ -218,12 +218,11 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
         let dns_transport = DnsConfig::system(TcpConfig::new())
             .await
             .map_err(|e| BehaviourError::TransportError(format!("Could not create transport: {:?}", e)))?;
-        // The configured transport establishes connections via tcp with websockets as fallback, and
-        // negotiates authentification and multiplexing on all connections
+        // The configured transport establishes connections via tcp with websockets as fallback
         let transport = dns_transport.clone().or_transport(WsConfig::new(dns_transport));
 
         let (relay_transport, relay_behaviour) = new_transport_and_behaviour(RelayConfig::default(), transport);
-
+        // Negotiate authentication and multiplexing on all connections
         let upgraded_transport = relay_transport
             .upgrade(upgrade::Version::V1)
             .authenticate(noise)
