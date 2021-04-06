@@ -38,18 +38,21 @@ pub struct Entry {
 }
 
 impl<P: BoxProvider> DbView<P> {
+    /// Create a new Database View.
     pub fn new() -> DbView<P> {
         let vaults = HashMap::new();
 
         Self { vaults }
     }
 
+    /// Initialize a new vault.
     pub fn init_vault(&mut self, key: &Key<P>, vid: VaultId) -> crate::Result<()> {
         self.vaults.entry(vid).or_insert(Vault::init_vault(key)?);
 
         Ok(())
     }
 
+    /// Write a new record to the Vault.
     pub fn write(
         &mut self,
         key: &Key<P>,
@@ -67,6 +70,7 @@ impl<P: BoxProvider> DbView<P> {
         Ok(())
     }
 
+    /// execute a procedure on the guarded record data.
     pub fn execute_proc<F>(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId, f: F) -> crate::Result<()>
     where
         F: FnOnce(GuardedVec<u8>) -> crate::Result<()>,
@@ -80,6 +84,7 @@ impl<P: BoxProvider> DbView<P> {
         Ok(())
     }
 
+    /// mark a record as revoked.
     pub fn revoke_record(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId) -> crate::Result<()> {
         if let Some(vault) = self.vaults.get_mut(&vid) {
             vault.revoke(key, rid.0)?;
@@ -88,6 +93,7 @@ impl<P: BoxProvider> DbView<P> {
         Ok(())
     }
 
+    /// Garbage collect a vault.
     pub fn garbage_collect_vault(&mut self, key: &Key<P>, vid: VaultId) -> crate::Result<()> {
         if let Some(vault) = self.vaults.get_mut(&vid) {
             if &vault.key == key {
