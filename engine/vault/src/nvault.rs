@@ -16,17 +16,20 @@ use std::collections::HashMap;
 use runtime::GuardedVec;
 
 /// A view over the data inside of the Stronghold database.
+#[derive(Deserialize, Serialize)]
 pub struct DbView<P: BoxProvider> {
     pub vaults: HashMap<VaultId, Vault<P>>,
 }
 
 /// A enclave of data that is encrypted under one key.
+#[derive(Deserialize, Serialize)]
 pub struct Vault<P: BoxProvider> {
     key: Key<P>,
     entries: HashMap<ChainId, Entry>,
 }
 
 /// A bit of data inside of a Vault.
+#[derive(Deserialize, Serialize)]
 pub struct Entry {
     id: ChainId,
     data: SealedTransaction,
