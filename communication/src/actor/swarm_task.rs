@@ -294,8 +294,8 @@ where
     }
 
     // Set the new relay configuration. If a relay is use, a keep-alive connection to the relay will be established.
-    fn set_relay(&mut self, peer_id: PeerId, config: RelayDirection) -> Result<PeerId, ConnectPeerError> {
-        match config {
+    fn set_relay(&mut self, peer_id: PeerId, direction: RelayDirection) -> Result<PeerId, ConnectPeerError> {
+        match direction {
             RelayDirection::Dialing => {
                 if let Some(listener) = self.listening_relays.remove(&peer_id) {
                     let _ = Swarm::remove_listener(&mut self.swarm, listener);
@@ -455,8 +455,8 @@ where
                 let res = CommunicationResults::UnbannedPeerAck(peer_id);
                 Self::send_response(res, sender);
             }
-            CommunicationRequest::ConfigRelay { peer_id, config } => {
-                let res = self.set_relay(peer_id, config);
+            CommunicationRequest::ConfigRelay { peer_id, direction } => {
+                let res = self.set_relay(peer_id, direction);
                 Self::send_response(CommunicationResults::ConfigRelayResult(res), sender);
             }
             CommunicationRequest::RemoveRelay(relay_id) => {

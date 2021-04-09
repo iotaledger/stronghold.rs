@@ -433,7 +433,7 @@ fn test_communication() {
 
     assert!(listeners.as_slice().contains(&addr));
 
-    match futures::executor::block_on(local_stronghold.add_peer(peer_id, Some(addr))) {
+    match futures::executor::block_on(local_stronghold.add_peer(peer_id, Some(addr), None)) {
         ResultMessage::Ok(_) => {}
         ResultMessage::Error(_) => panic!("Could not establish connection to remote."),
     }

@@ -14,10 +14,15 @@ use riker::{actors::ActorRef, Message};
 use crate::actor::firewall::FirewallRule;
 use std::time::Instant;
 
+/// Direction for which a relay peer is used.
 #[derive(Debug, Clone)]
 pub enum RelayDirection {
+    /// Use the relay if a peer can not be dialed directly.
     Dialing,
+    /// Maintain a keep-alive connection to a relay peer that then can relay
+    /// messages from remote peers to the local peer.
     Listening,
+    /// Use the peer for Dialing and Listening.
     Both,
 }
 
@@ -33,6 +38,7 @@ pub enum CommunicationRequest<Req, ClientMsg: Message> {
     /// This will attempt to connect to the peer to verify that the address can be dialed.
     /// If the targeted peer is not a relay, and can not be reached directly, it will be attempted to reach
     /// it through a relay, if there are any.
+    /// If the given peer is a relay, a address has to be provided.
     AddPeer {
         peer_id: PeerId,
         addr: Option<Multiaddr>,
@@ -54,7 +60,7 @@ pub enum CommunicationRequest<Req, ClientMsg: Message> {
     /// The peer has to be known, which means that it has to be added with `CommunicationRequest::AddPeer` before.
     /// Existing relay configuration for the same peer is overwritten with this.
     /// If the the direction includes listening on the relay.
-    ConfigRelay { peer_id: PeerId, config: RelayDirection },
+    ConfigRelay { peer_id: PeerId, direction: RelayDirection },
     /// Stop using the peer as relay.
     RemoveRelay(PeerId),
     /// Add or remove a rule of the firewall.

@@ -23,6 +23,7 @@ use crate::{
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     ClientId, Location, Provider,
 };
+use communication::actor::RelayDirection;
 #[cfg(feature = "communication")]
 use communication::{
     actor::{
@@ -683,15 +684,23 @@ impl Stronghold {
     }
 
     /// Add dial information for a remote peers.
-    /// This will attempt to connect the peer either directly or alternatively via an relay,
-    /// if there are any. If not address is given, it will only attempt to connect via relay.
-    /// If the address can successfully be dialed, it will be used to send potential requests.
-    pub async fn add_peer(&self, peer_id: PeerId, addr: Option<Multiaddr>) -> ResultMessage<PeerId> {
+    /// This will attempt to connect the peer directly either by via the peer id if the peer is already
+    /// known e.g. via multicast DNS, or with the given address if one is provided.
+    /// If the peer is a relay, an address has to be provided.
+    /// Relays can be used to listen for incoming request, or to connect to a remote peer that can not
+    /// be reached directly, and is listening to the same relay.
+    /// Once the peer was successfully added, it can be used as target for operations on the remote stronghold.
+    pub async fn add_peer(
+        &self,
+        peer_id: PeerId,
+        addr: Option<Multiaddr>,
+        is_relay: Option<RelayDirection>,
+    ) -> ResultMessage<PeerId> {
         match self
             .ask_communication_actor(CommunicationRequest::AddPeer {
                 peer_id,
                 addr,
-                is_relay: None,
+                is_relay,
             })
             .await
         {
@@ -699,6 +708,38 @@ impl Stronghold {
             Ok(CommunicationResults::AddPeerResult(Err(err))) => {
                 ResultMessage::Error(format!("Error connecting peer: {:?}", err))
             }
+            Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
+            Err(err) => ResultMessage::Error(err),
+        }
+    }
+
+    /// Set / overwrite the direction for which relay is used.
+    /// RelayDirection::Dialing adds the relay to the list of relay nodes that are tried if a peer can not
+    /// be reached directly.
+    /// RelayDirection::Listening connect the local system with the given relay and allows that it can
+    /// be reached by remote peers that use the same relay for dialing.
+    /// The relay has to be added beforehand with its multi-address via the `add_peer` method.
+    pub async fn change_relay_direction(&self, peer_id: PeerId, direction: RelayDirection) -> ResultMessage<PeerId> {
+        match self
+            .ask_communication_actor(CommunicationRequest::ConfigRelay { peer_id, direction })
+            .await
+        {
+            Ok(CommunicationResults::ConfigRelayResult(Ok(peer_id))) => ResultMessage::Ok(peer_id),
+            Ok(CommunicationResults::ConfigRelayResult(Err(err))) => {
+                ResultMessage::Error(format!("Error connecting peer: {:?}", err))
+            }
+            Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
+            Err(err) => ResultMessage::Error(err),
+        }
+    }
+
+    /// Remove a relay so that it will not be used anymore for dialing or listening.
+    pub async fn remove_relay(&self, peer_id: PeerId) -> StatusMessage {
+        match self
+            .ask_communication_actor(CommunicationRequest::RemoveRelay(peer_id))
+            .await
+        {
+            Ok(CommunicationResults::RemoveRelayAck) => StatusMessage::OK,
             Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
             Err(err) => ResultMessage::Error(err),
         }
