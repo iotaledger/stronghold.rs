@@ -25,12 +25,12 @@ pub struct DbView<P: BoxProvider> {
 #[derive(Deserialize, Serialize)]
 pub struct Vault<P: BoxProvider> {
     key: Key<P>,
-    entries: HashMap<ChainId, Entry>,
+    entries: HashMap<ChainId, Record>,
 }
 
 /// A bit of data inside of a Vault.
 #[derive(Deserialize, Serialize)]
-pub struct Entry {
+pub struct Record {
     id: ChainId,
     data: SealedTransaction,
     revoke: Option<SealedTransaction>,
@@ -70,8 +70,28 @@ impl<P: BoxProvider> DbView<P> {
         Ok(())
     }
 
+    /// Lists all of the hints and ids for the given vault.
+    pub fn list_hints_and_ids(&self, key: &Key<P>, vid: VaultId) -> crate::Result<Vec<(RecordId, RecordHint)>> {
+        let mut buf: Vec<(RecordId, RecordHint)> = Vec::new();
+
+        if let Some(vault) = self.vaults.get(&vid) {
+            buf = vault.list_hints_and_ids(&key)?;
+        }
+
+        Ok(buf)
+    }
+
+    /// Check to see if vault contains a specific record id.
+    pub fn contains_record(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId) -> bool {
+        if let Some(vault) = self.vaults.get(&vid) {
+            vault.contains_record(key, rid)
+        } else {
+            false
+        }
+    }
+
     /// execute a procedure on the guarded record data.
-    pub fn execute_proc<F>(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId, f: F) -> crate::Result<()>
+    pub fn get_guard<F>(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId, f: F) -> crate::Result<()>
     where
         F: FnOnce(GuardedVec<u8>) -> crate::Result<()>,
     {
@@ -79,6 +99,35 @@ impl<P: BoxProvider> DbView<P> {
             let guard = vault.get_guard(key, rid.0)?;
 
             f(guard)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn exec_proc<F>(
+        &mut self,
+        key0: &Key<P>,
+        vid0: VaultId,
+        rid0: RecordId,
+        key1: &Key<P>,
+        vid1: VaultId,
+        rid1: RecordId,
+        hint: RecordHint,
+        f: F,
+    ) -> crate::Result<()>
+    where
+        F: FnOnce(GuardedVec<u8>) -> crate::Result<Vec<u8>>,
+    {
+        if let Some(vault) = self.vaults.get_mut(&vid0) {
+            let guard = vault.get_guard(key0, rid0.0)?;
+
+            let data = f(guard)?;
+
+            if let None = self.vaults.get(&vid1) {
+                self.init_vault(&key1, vid1)?;
+            }
+
+            self.write(&key1, vid1, rid1, &data, hint)?;
         }
 
         Ok(())
@@ -132,9 +181,33 @@ impl<P: BoxProvider> Vault<P> {
                 .and_modify(|entry| {
                     entry.update(key, id, data).expect("Unable to update entry");
                 })
-                .or_insert(Entry::new(key, id, blob_id, data, record_hint)?);
+                .or_insert(Record::new(key, id, blob_id, data, record_hint)?);
         }
         Ok(())
+    }
+
+    /// List the hints and ids of the specified vault.
+    pub(crate) fn list_hints_and_ids(&self, key: &Key<P>) -> crate::Result<Vec<(RecordId, RecordHint)>> {
+        let mut buf: Vec<(RecordId, RecordHint)> = Vec::new();
+
+        if key == &self.key {
+            buf = self
+                .entries
+                .values()
+                .into_iter()
+                .filter_map(|entry| entry.get_hint_and_id(&key))
+                .collect();
+        }
+
+        Ok(buf)
+    }
+
+    fn contains_record(&self, key: &Key<P>, rid: RecordId) -> bool {
+        if key == &self.key {
+            self.entries.values().into_iter().any(|entry| entry.check_id(rid))
+        } else {
+            false
+        }
     }
 
     /// Revokes an entry by its chain id.  Does nothing if the entry doesn't exist.
@@ -148,7 +221,7 @@ impl<P: BoxProvider> Vault<P> {
         Ok(())
     }
 
-    pub fn get_guard(&mut self, key: &Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
+    pub fn get_guard(&self, key: &Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
         if key == &self.key {
             if let Some(entry) = self.entries.get(&id) {
                 entry.get_blob(key, id)
@@ -177,7 +250,7 @@ impl<P: BoxProvider> Vault<P> {
     }
 }
 
-impl Entry {
+impl Record {
     // create a new entry in the vault.
     pub fn new<P: BoxProvider>(
         key: &Key<P>,
@@ -185,14 +258,14 @@ impl Entry {
         blob: BlobId,
         data: &[u8],
         hint: RecordHint,
-    ) -> crate::Result<Entry> {
+    ) -> crate::Result<Record> {
         let len = data.len() as u64;
         let dtx = DataTransaction::new(id, len, blob, hint);
 
         let blob: SealedBlob = data.encrypt(key, blob)?;
         let data = dtx.encrypt(key, id)?;
 
-        Ok(Entry {
+        Ok(Record {
             id,
             data,
             blob,
@@ -200,8 +273,39 @@ impl Entry {
         })
     }
 
+    /// Get the id and record hint for this record.
+    fn get_hint_and_id<P: BoxProvider>(&self, key: &Key<P>) -> Option<(RecordId, RecordHint)> {
+        if let None = self.revoke {
+            let tx = self.data.decrypt(key, self.id).expect("Unable to decrypt transaction");
+
+            let tx = tx
+                .typed::<DataTransaction>()
+                .expect("Failed to convert to data transaction");
+
+            let hint = tx.record_hint;
+            let id = RecordId(self.id);
+
+            Some((id, hint))
+        } else {
+            None
+        }
+    }
+
+    /// Check to see if a record id is in this vault.
+    fn check_id(&self, rid: RecordId) -> bool {
+        if let None = self.revoke {
+            if rid.0 == self.id {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
     /// Get the blob from this entry.
-    pub fn get_blob<P: BoxProvider>(&self, key: &Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
+    fn get_blob<P: BoxProvider>(&self, key: &Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
         // check if id id and tx id match.
         if self.id == id {
             // check if there is a revocation transaction.
@@ -222,7 +326,7 @@ impl Entry {
                 Ok(guarded)
             } else {
                 Err(crate::Error::ValueError(
-                    "Entry has been revoked and can't be read.".to_string(),
+                    "Record has been revoked and can't be read.".to_string(),
                 ))
             }
         } else {
@@ -233,7 +337,7 @@ impl Entry {
     }
 
     /// Update the data in an existing entry.
-    pub fn update<P: BoxProvider>(&mut self, key: &Key<P>, id: ChainId, new_data: &[u8]) -> crate::Result<()> {
+    fn update<P: BoxProvider>(&mut self, key: &Key<P>, id: ChainId, new_data: &[u8]) -> crate::Result<()> {
         // check if ids match
         if self.id == id {
             // check if a revocation transaction exists.
@@ -259,7 +363,7 @@ impl Entry {
     }
 
     // add a recovation transaction to an entry.
-    pub fn revoke<P: BoxProvider>(&mut self, key: &Key<P>, id: ChainId) -> crate::Result<()> {
+    fn revoke<P: BoxProvider>(&mut self, key: &Key<P>, id: ChainId) -> crate::Result<()> {
         // check if id and id match.
         if self.id == id {
             // check if revoke transaction already exists.
