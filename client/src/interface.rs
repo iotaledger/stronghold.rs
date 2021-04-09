@@ -34,7 +34,7 @@ use communication::{
 };
 use stronghold_utils::ask;
 
-use engine::vault::ClientId;
+use engine::vault::{ClientId, RecordId};
 
 /// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of
 /// metadata to interpret the data in the vault and store.
@@ -177,62 +177,20 @@ impl Stronghold {
         {
             // check if vault exists
             if b {
-                if let SHResults::ReturnExistsRecord(b) = ask(
+                if let SHResults::ReturnWriteVault(status) = ask(
                     &self.system,
                     client,
-                    SHRequest::CheckRecord {
+                    SHRequest::WriteToVault {
                         location: location.clone(),
+                        payload: payload.clone(),
+                        hint,
                     },
                 )
                 .await
                 {
-                    if b {
-                        if let SHResults::ReturnWriteVault(status) = ask(
-                            &self.system,
-                            client,
-                            SHRequest::WriteToVault {
-                                location: location.clone(),
-                                payload: payload.clone(),
-                                hint,
-                            },
-                        )
-                        .await
-                        {
-                            return status;
-                        } else {
-                            return StatusMessage::Error("Error Writing data".into());
-                        };
-                    } else {
-                        let (_idx, _) = if let SHResults::ReturnInitRecord(status) = ask(
-                            &self.system,
-                            client,
-                            SHRequest::InitRecord {
-                                location: location.clone(),
-                            },
-                        )
-                        .await
-                        {
-                            (Some(idx), status)
-                        } else {
-                            (None, StatusMessage::Error("Unable to initialize record".into()))
-                        };
-
-                        if let SHResults::ReturnWriteVault(status) = ask(
-                            &self.system,
-                            client,
-                            SHRequest::WriteToVault {
-                                location: location.clone(),
-                                payload: payload.clone(),
-                                hint,
-                            },
-                        )
-                        .await
-                        {
-                            return status;
-                        } else {
-                            return StatusMessage::Error("Error Writing data".into());
-                        };
-                    }
+                    return status;
+                } else {
+                    return StatusMessage::Error("Error Writing data".into());
                 };
             } else {
                 // no vault so create new one before writing.
@@ -391,7 +349,7 @@ impl Stronghold {
     pub async fn list_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
         vault_path: V,
-    ) -> (Vec<(usize, RecordHint)>, StatusMessage) {
+    ) -> (Vec<(RecordId, RecordHint)>, StatusMessage) {
         let idx = self.current_target;
 
         let client = &self.actors[idx];
@@ -808,38 +766,7 @@ impl Stronghold {
             Ok(_) => return StatusMessage::Error("Failed to check at remote if vault exists".into()),
             Err(err) => return StatusMessage::Error(err),
         };
-        if vault_exists {
-            // check if record exists
-            let record_exists = match self
-                .ask_remote(
-                    peer_id,
-                    SHRequest::CheckRecord {
-                        location: location.clone(),
-                    },
-                )
-                .await
-            {
-                Ok(SHResults::ReturnExistsRecord(b)) => b,
-                Ok(_) => return StatusMessage::Error("Failed to check at remote if record exists".into()),
-                Err(err) => return StatusMessage::Error(err),
-            };
-            if !record_exists {
-                // initialize a new record
-                match self
-                    .ask_remote(
-                        peer_id,
-                        SHRequest::InitRecord {
-                            location: location.clone(),
-                        },
-                    )
-                    .await
-                {
-                    Ok(SHResults::ReturnInitRecord(status)) => status,
-                    Ok(_) => return StatusMessage::Error("Failed to initialize record at remote".into()),
-                    Err(err) => return StatusMessage::Error(err),
-                };
-            }
-        } else {
+        if !vault_exists {
             // no vault so create new one before writing.
             match self
                 .ask_remote(peer_id, SHRequest::CreateNewVault(location.clone()))
@@ -910,7 +837,7 @@ impl Stronghold {
         &self,
         peer_id: PeerId,
         vault_path: V,
-    ) -> (Vec<(usize, RecordHint)>, StatusMessage) {
+    ) -> (Vec<(RecordId, RecordHint)>, StatusMessage) {
         match self.ask_remote(peer_id, SHRequest::ListIds(vault_path.into())).await {
             Ok(SHResults::ReturnList(ids, status)) => (ids, status),
             Ok(_) => (

@@ -15,7 +15,7 @@ use crypto::keys::slip10::{Chain, ChainCode};
 
 use engine::{
     snapshot,
-    vault::{ClientId, RecordHint},
+    vault::{ClientId, RecordHint, RecordId},
 };
 use serde::{Deserialize, Serialize};
 
@@ -214,10 +214,7 @@ pub enum SHRequest {
         payload: Vec<u8>,
         hint: RecordHint,
     },
-    // Moves the head forward in the specified Vault and opens a new record.  Returns `ReturnInit`.
-    InitRecord {
-        location: Location,
-    },
+
     // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not
     // specified, it reads the head.  Returns with `ReturnRead`.
     #[cfg(test)]
@@ -269,11 +266,10 @@ pub enum SHResults {
     ReturnDeleteStore(StatusMessage),
     ReturnCreateVault(StatusMessage),
     ReturnWriteVault(StatusMessage),
-    ReturnInitRecord(StatusMessage),
     ReturnReadVault(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
-    ReturnList(Vec<(usize, RecordHint)>, StatusMessage),
+    ReturnList(Vec<(RecordId, RecordHint)>, StatusMessage),
     ReturnFillSnap(StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
@@ -378,19 +374,19 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::WriteToVault(vid, rid, payload, hint), sender);
             }
-            SHRequest::InitRecord { location } => {
-                let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
+            // SHRequest::InitRecord { location } => {
+            //     let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
 
-                let client_str = self.get_client_str();
+            //     let client_str = self.get_client_str();
 
-                self.add_record_to_vault(vid, rid);
+            //     self.add_record_to_vault(vid, rid);
 
-                let internal = ctx
-                    .select(&format!("/user/internal-{}/", client_str))
-                    .expect(line_error!());
+            //     let internal = ctx
+            //         .select(&format!("/user/internal-{}/", client_str))
+            //         .expect(line_error!());
 
-                internal.try_tell(InternalMsg::InitRecord(vid, rid), sender);
-            }
+            //     internal.try_tell(InternalMsg::InitRecord(vid, rid), sender);
+            // }
             #[cfg(test)]
             SHRequest::ReadFromVault { location } => {
                 let (vid, rid) = self.resolve_location(location, ReadWrite::Read);
@@ -721,13 +717,7 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnCreateVault(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnInitRecord(status) => {
-                sender
-                    .as_ref()
-                    .expect(line_error!())
-                    .try_tell(SHResults::ReturnInitRecord(status), None)
-                    .expect(line_error!());
-            }
+
             InternalResults::ReturnReadVault(payload, status) => {
                 sender
                     .as_ref()
@@ -736,18 +726,10 @@ impl Receive<InternalResults> for Client {
                     .expect(line_error!());
             }
             InternalResults::ReturnList(vpath, list, status) => {
-                let ids: Vec<(usize, RecordHint)> = list
-                    .into_iter()
-                    .map(|(rid, hint)| {
-                        let idx = self.get_index_from_record_id(&vpath, rid);
-                        (idx, hint)
-                    })
-                    .collect();
-
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnList(ids, status), None)
+                    .try_tell(SHResults::ReturnList(list, status), None)
                     .expect(line_error!());
             }
             InternalResults::RebuildCache(state, status) => {
