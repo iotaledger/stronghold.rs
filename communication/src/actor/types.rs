@@ -35,7 +35,7 @@ pub enum CommunicationRequest<Req, ClientMsg: Message> {
     /// it through a relay, if there are any.
     AddPeer {
         peer_id: PeerId,
-        addr: Mutliaddr,
+        addr: Multiaddr,
         is_relay: Option<RelayDirection>,
     },
     /// Get information about the swarm.
@@ -47,7 +47,7 @@ pub enum CommunicationRequest<Req, ClientMsg: Message> {
     /// Start listening to a port on the swarm.
     /// If no `Multiaddr` is provided, the address will either use the same that is used for listening to the relay,
     /// or create a new one that is OS assigned.
-    AddListener(Option<Multiaddr>),
+    StartListening(Option<Multiaddr>),
     /// Stop listening to the swarm. Without a listener, the local peer can not be dialed from remote.
     RemoveListener,
     /// Configure to use a peer as relay for dialing, listening, or both.
@@ -78,16 +78,16 @@ pub enum RequestMessageError {
 #[derive(Clone, Debug)]
 pub struct EstablishedConnection {
     start: Instant,
-    is_relay: Option<RelayDirection>,
     connected_point: ConnectedPoint,
+    is_relay: Option<RelayDirection>,
 }
 
 impl EstablishedConnection {
-    pub fn new(is_relay: Option<RelayDirection>, connected_point: ConnectedPoint) -> Self {
+    pub fn new(connected_point: ConnectedPoint, is_relay: Option<RelayDirection>) -> Self {
         EstablishedConnection {
             start: Instant::now(),
-            is_relay,
             connected_point,
+            is_relay,
         }
     }
 }
@@ -126,7 +126,7 @@ pub enum CommunicationResults<Res> {
     RemoveListenerResult(Result<(), ()>),
     /// Result for configuring the Relay.
     /// Error if the relay could not be reached because no address is known or dialing the address failed.
-    ConfigRelayResult(Result<(), ConnectPeerError>),
+    ConfigRelayResult(Result<PeerId, ConnectPeerError>),
     /// Successfully removed relay.
     RemoveRelayAck,
     /// Successfully set firewall rule.

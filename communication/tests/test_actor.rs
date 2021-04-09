@@ -5,8 +5,8 @@ use async_std::task;
 use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults, ConnectPeerError,
-        FirewallPermission, FirewallRule, KeepAlive, PermissionValue, RequestDirection, RequestMessageError,
-        RequestPermissions, ToPermissionVariants, VariantPermission,
+        FirewallPermission, FirewallRule, PermissionValue, RequestDirection, RequestMessageError, RequestPermissions,
+        ToPermissionVariants, VariantPermission,
     },
     behaviour::{BehaviourConfig, P2POutboundFailure},
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -115,7 +115,7 @@ fn msg_external_actor() {
         fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Sender) {
             if let CommunicationResults::RequestMsgResult(Ok(_)) = msg {
                 ctx.stop(&ctx.myself);
-            } else if let CommunicationResults::EstablishConnectionResult(result) = msg {
+            } else if let CommunicationResults::AddPeerResult(result) = msg {
                 let peer_id = result.expect("Panic due to no network connection");
                 let req = CommunicationRequest::<Request, Request>::RequestMsg {
                     peer_id,
@@ -173,10 +173,10 @@ fn msg_external_actor() {
     std::thread::sleep(Duration::new(1, 0));
 
     // send request, use actor A  as target for the response
-    let req = CommunicationRequest::<Request, Request>::EstablishConnection {
+    let req = CommunicationRequest::<Request, Request>::AddPeer {
         addr: addr_b,
         peer_id: peer_b_id,
-        keep_alive: KeepAlive::Unlimited,
+        is_relay: None,
     };
     communication_actor_a.tell(req, actor_a.clone().into());
 
@@ -211,7 +211,7 @@ async fn try_ask(
     }))
 }
 
-fn establish_connection(
+fn add_peer(
     sys: &ActorSystem,
     communication_actor: &ActorRef<CommunicationRequest<Request, Request>>,
     peer_id: PeerId,
@@ -220,13 +220,13 @@ fn establish_connection(
     match task::block_on(try_ask(
         sys,
         communication_actor,
-        CommunicationRequest::EstablishConnection {
+        CommunicationRequest::AddPeer {
             addr,
             peer_id,
-            keep_alive: KeepAlive::Unlimited,
+            is_relay: None,
         },
     )) {
-        Some(CommunicationResults::EstablishConnectionResult(res)) => res,
+        Some(CommunicationResults::AddPeerResult(res)) => res,
         other => panic!(other),
     }
 }
@@ -353,7 +353,7 @@ fn ask_request() {
     };
 
     // connect peer A with peer B
-    let connected_peer = establish_connection(
+    let connected_peer = add_peer(
         &sys_a,
         &communication_actor_a,
         peer_b_id,
@@ -387,7 +387,7 @@ fn no_soliloquize() {
 
     for addr in listeners {
         // try connect self
-        let res = establish_connection(&sys, &communication_actor, own_peer_id, addr);
+        let res = add_peer(&sys, &communication_actor, own_peer_id, addr);
         assert!(res.is_err())
     }
     // try send request to self
@@ -402,7 +402,7 @@ fn connect_invalid() {
     let client = sys.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
     let (_, communication_actor) = init_system(&sys, client);
     let addr = "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress.");
-    if establish_connection(&sys, &communication_actor, PeerId::random(), addr).is_err() {
+    if add_peer(&sys, &communication_actor, PeerId::random(), addr).is_err() {
         panic!("Could not establish connection");
     }
 }
@@ -427,7 +427,7 @@ fn manage_connection() {
     let addr_b = start_listening(&sys_b, &communication_actor_b, None);
 
     // establish connection
-    let res = establish_connection(&sys_a, &communication_actor_a, peer_b_id, addr_b);
+    let res = add_peer(&sys_a, &communication_actor_a, peer_b_id, addr_b);
     assert!(res.is_ok());
 
     // check if peer A is listed in peer Bs connections
@@ -466,19 +466,19 @@ fn manage_connection() {
     let res = send_request(&sys_a, &communication_actor_a, peer_b_id);
     assert!(res.is_ok());
 
-    // // Peer B closes connection
-    // match task::block_on(try_ask(
-    //     &sys_b,
-    //     &communication_actor_b,
-    //     CommunicationRequest::CloseConnection(peer_a_id),
-    // )) {
-    //     Some(CommunicationResults::CloseConnectionAck) => {}
-    //     _ => panic!("Unexpected Response"),
-    // };
-    //
-    // // send request after peer B closed connection
-    // let res = send_request(&sys_a, &communication_actor_a, peer_b_id);
-    // assert!(res.is_err());
+    // Peer B bans Peer A
+    match task::block_on(try_ask(
+        &sys_b,
+        &communication_actor_b,
+        CommunicationRequest::BanPeer(peer_a_id),
+    )) {
+        Some(CommunicationResults::BannedPeerAck(peer_id)) => assert_eq!(peer_id, peer_a_id),
+        _ => panic!("Unexpected Response"),
+    };
+
+    // send request after peer B closed connection
+    let res = send_request(&sys_a, &communication_actor_a, peer_b_id);
+    assert!(res.is_err());
 }
 
 #[test]
@@ -521,7 +521,7 @@ fn firewall_rules() {
 
     let addr_b = start_listening(&sys_b, &communication_actor_b, None);
 
-    let res = establish_connection(&sys_a, &communication_actor_a, peer_b_id, addr_b);
+    let res = add_peer(&sys_a, &communication_actor_a, peer_b_id, addr_b);
     assert!(res.is_ok());
 
     // Outgoing request should be blocked by As firewall

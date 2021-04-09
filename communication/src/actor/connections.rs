@@ -1,7 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{EstablishedConnection, KeepAlive};
+use super::EstablishedConnection;
+use crate::actor::RelayDirection;
 use libp2p::{core::ConnectedPoint, PeerId};
 use std::collections::HashMap;
 
@@ -26,9 +27,9 @@ impl ConnectionManager {
     }
 
     // Insert connection information for new peer, if that peer is not known yet.
-    pub fn insert(&mut self, peer_id: PeerId, connected_point: ConnectedPoint) {
+    pub fn insert(&mut self, peer_id: PeerId, connected_point: ConnectedPoint, is_relay: Option<RelayDirection>) {
         if self.map.get(&peer_id).is_none() {
-            let new_connection = EstablishedConnection::new(keep_alive, connected_point);
+            let new_connection = EstablishedConnection::new(connected_point, is_relay);
             self.map.insert(peer_id, new_connection);
         }
     }

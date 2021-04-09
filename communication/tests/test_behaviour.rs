@@ -7,7 +7,11 @@ use communication::{
     libp2p::{Keypair, Multiaddr, PeerId, Protocol, Swarm, SwarmEvent},
 };
 use core::time::Duration;
-use futures::future;
+use futures::{
+    executor::LocalPool,
+    future::{self, FutureExt},
+    task::Spawn,
+};
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
 
@@ -43,11 +47,7 @@ fn start_listening<Req: MessageEvent, Res: MessageEvent>(
         loop {
             match swarm.next_event().await {
                 SwarmEvent::NewListenAddr(addr) => return Some(addr),
-                SwarmEvent::ListenerClosed {
-                    addresses: _,
-                    reason: _,
-                }
-                | SwarmEvent::ListenerError { error: _ } => return None,
+                SwarmEvent::ListenerClosed { .. } | SwarmEvent::ListenerError { .. } => return None,
                 _ => {}
             }
         }
@@ -59,31 +59,19 @@ fn establish_connection<Req: MessageEvent, Res: MessageEvent>(
     target_addr: Multiaddr,
     swarm: &mut Swarm<P2PNetworkBehaviour<Req, Res>>,
 ) -> Option<()> {
-    Swarm::dial_addr(swarm, target_addr).expect("Failed to dial address.");
+    Swarm::dial_addr(swarm, target_addr.clone()).expect("Failed to dial address.");
     task::block_on(async {
         loop {
-            match swarm.next_event().await {
-                SwarmEvent::ConnectionEstablished {
-                    peer_id,
-                    endpoint: _,
-                    num_established: _,
-                } => {
-                    assert_eq!(peer_id, target_id);
+            let event = swarm.next_event().await;
+            match event {
+                SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == target_id => {
                     return Some(());
                 }
-                SwarmEvent::ConnectionClosed {
-                    peer_id: _,
-                    endpoint: _,
-                    num_established: _,
-                    cause: _,
-                }
-                | SwarmEvent::UnreachableAddr {
-                    peer_id: _,
-                    address: _,
-                    error: _,
-                    attempts_remaining: 0,
-                }
-                | SwarmEvent::UnknownPeerUnreachableAddr { address: _, error: _ } => return None,
+                SwarmEvent::ConnectionClosed { .. } => panic!(target_addr),
+                SwarmEvent::UnreachableAddr {
+                    attempts_remaining: 0, ..
+                } => panic!(target_addr),
+                SwarmEvent::UnknownPeerUnreachableAddr { .. } => panic!(target_addr),
                 _ => {}
             }
         }
@@ -341,125 +329,168 @@ fn identify_event() {
     a.and(b).expect("Invalid event received from swarm.");
 }
 
-// #[test]
-// fn relay() {
-// let mut swarm = mock_swarm::<RequestEnvelope<Request>, Response>();
-// let relay_peer_id = *Swarm::local_peer_id(&swarm);
-// Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
-// .expect("Listening to swarm failed.");
-// let relay_addr = start_listening(&mut swarm).expect("Start listening failed.");
-// start relay peer
-// let relay_handle = task::spawn(async move {
-// let mut original_request = None;
-// let mut relayed_request = None;
-// let mut source_peer = None;
-// let mut target_peer = None;
-// loop {
-// if let P2PEvent::RequestResponse(boxed_event) = swarm.next().await {
-// match boxed_event.deref().clone() {
-// P2PReqResEvent::Req {
-// peer_id,
-// request_id,
-// request,
-// } => {
-// let source = PeerId::from_str(&request.source).expect("Invalid PeerId.");
-// assert_eq!(peer_id, source);
-// let target = PeerId::from_str(&request.target).expect("Invalid PeerId.");
-// let relayed_req_id = swarm.send_request(&target, request);
-// relayed_request = Some(relayed_req_id);
-// original_request = Some(request_id);
-// source_peer = Some(source);
-// target_peer = Some(target);
-// }
-// P2PReqResEvent::Res {
-// peer_id,
-// request_id,
-// response,
-// } => {
-// assert_eq!(peer_id, target_peer.expect("No target peer known."));
-// assert_eq!(request_id, relayed_request.expect("No relayed request known."));
-// swarm
-// .send_response(original_request.expect("No original request known."), response)
-// .expect("Sending response failed.");
-// }
-// P2PReqResEvent::ResSent { peer_id, request_id } => {
-// assert_eq!(peer_id, source_peer.expect("No source peer known."));
-// assert_eq!(request_id, original_request.expect("No original request known."));
-// std::thread::sleep(Duration::from_millis(50));
-// return Ok(());
-// }
-// _error => return Err(()),
-// }
-// }
-// }
-// });
-//
-// let mut swarm_a = mock_swarm::<RequestEnvelope<Request>, Response>();
-// let peer_a_id = *Swarm::local_peer_id(&swarm_a);
-// establish_connection(relay_peer_id, relay_addr.clone(), &mut swarm_a).expect("Failed to establish a connection.");
-//
-// let mut swarm_b = mock_swarm::<RequestEnvelope<Request>, Response>();
-// let peer_b_id = *Swarm::local_peer_id(&swarm_b);
-// establish_connection(relay_peer_id, relay_addr, &mut swarm_b).expect("Failed to establish a connection.");
-//
-// start peer a to send a message to peer b
-// let handle_a = task::spawn(async move {
-// let envelope = RequestEnvelope {
-// source: peer_a_id.to_string(),
-// message: Request::Ping,
-// target: peer_b_id.to_string(),
-// };
-// swarm_a.send_request(&relay_peer_id, envelope);
-// loop {
-// if let P2PEvent::RequestResponse(boxed_event) = swarm_a.next().await {
-// if let P2PReqResEvent::Res {
-// peer_id,
-// request_id: _,
-// response: _,
-// } = boxed_event.deref().clone()
-// {
-// assert_eq!(peer_id, relay_peer_id);
-// std::thread::sleep(Duration::from_millis(50));
-// return Ok(());
-// } else {
-// return Err(());
-// }
-// }
-// }
-// });
-//
-// start peer b to respond to message from peer a
-// let handle_b = task::spawn(async move {
-// loop {
-// if let P2PEvent::RequestResponse(boxed_event) = swarm_b.next().await {
-// match boxed_event.deref().clone() {
-// P2PReqResEvent::Req {
-// peer_id,
-// request_id,
-// request:
-// RequestEnvelope {
-// source,
-// message: _,
-// target,
-// },
-// } => {
-// assert_eq!(peer_id, relay_peer_id);
-// assert_eq!(source, peer_a_id.to_string());
-// assert_eq!(target, peer_b_id.to_string());
-// swarm_b
-// .send_response(&request_id, Response::Pong)
-// .expect("Sending response failed.");
-// }
-// P2PReqResEvent::ResSent { peer_id, request_id: _ } => {
-// assert_eq!(peer_id, relay_peer_id);
-// std::thread::sleep(Duration::from_millis(50));
-// return Ok(());
-// }
-// _ => return Err(()),
-// }
-// }
-// }
-// });
-// let (a, b, relay) = task::block_on(async { future::join3(handle_a, handle_b, relay_handle).await });
-// a.and(b).and(relay).expect("Invalid event received from swarm.");
-// }
+#[test]
+fn relay() {
+    let mut pool = LocalPool::new();
+
+    let mut src_swarm = mock_swarm::<Request, Response>();
+    let mut dst_swarm = mock_swarm::<Request, Response>();
+    let mut relay_swarm = mock_swarm::<Request, Response>();
+
+    let src_peer_id = Swarm::local_peer_id(&src_swarm).clone();
+    let dst_peer_id = Swarm::local_peer_id(&dst_swarm).clone();
+    let relay_peer_id = Swarm::local_peer_id(&relay_swarm).clone();
+
+    let relay_addr = Multiaddr::empty()
+        .with(Protocol::Ip4(Ipv4Addr::new(127, 0, 0, 1)))
+        .with(Protocol::Tcp(8081));
+    let dst_listen_addr_via_relay = relay_addr
+        .clone()
+        .with(Protocol::P2p(relay_peer_id.into()))
+        .with(Protocol::P2pCircuit);
+    let dst_addr_via_relay = dst_listen_addr_via_relay
+        .clone()
+        .with(Protocol::P2p(dst_peer_id.into()));
+
+    Swarm::listen_on(&mut relay_swarm, relay_addr.clone()).unwrap();
+    pool.spawner()
+        .spawn_obj(
+            async move {
+                loop {
+                    relay_swarm.next_event().await;
+                }
+            }
+            .boxed()
+            .into(),
+        )
+        .unwrap();
+
+    Swarm::listen_on(&mut dst_swarm, dst_listen_addr_via_relay.clone()).unwrap();
+
+    pool.run_until(async {
+        // Destination Node dialing Relay.
+        match dst_swarm.next_event().await {
+            SwarmEvent::Dialing(peer_id) => assert_eq!(peer_id, relay_peer_id),
+            e => panic!("{:?}", e),
+        }
+
+        // Destination Node establishing connection to Relay.
+        match dst_swarm.next_event().await {
+            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                assert_eq!(peer_id, relay_peer_id);
+            }
+            e => panic!("{:?}", e),
+        }
+
+        // Destination Node reporting listen address via relay.
+        loop {
+            match dst_swarm.next_event().await {
+                SwarmEvent::NewListenAddr(addr) if addr == dst_listen_addr_via_relay => break,
+                SwarmEvent::Behaviour(_) => {}
+                e => panic!("{:?}", e),
+            }
+        }
+
+        let dst = async move {
+            // Destination Node receiving connection from Source Node via Relay.
+            loop {
+                match dst_swarm.next_event().await {
+                    SwarmEvent::IncomingConnection { send_back_addr, .. } => {
+                        assert_eq!(send_back_addr, Protocol::P2p(src_peer_id.clone().into()).into());
+                        break;
+                    }
+                    SwarmEvent::Behaviour(_) => {}
+                    e => panic!("{:?}", e),
+                }
+            }
+
+            // Destination Node establishing connection from Source Node via Relay.
+            loop {
+                match dst_swarm.next_event().await {
+                    SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == src_peer_id => {
+                        break;
+                    }
+                    SwarmEvent::Behaviour(_) => {}
+                    e => panic!("{:?}", e),
+                }
+            }
+
+            // Destination Node waiting for Request from Source Node via Relay.
+            loop {
+                match dst_swarm.next_event().await {
+                    SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed)) => {
+                        if let P2PReqResEvent::Req {
+                            peer_id, request_id, ..
+                        } = *boxed
+                        {
+                            if peer_id == src_peer_id {
+                                dst_swarm
+                                    .send_response(&request_id, Response::Pong)
+                                    .expect("Failed to send response");
+                                break;
+                            }
+                        }
+                    }
+                    e => panic!("{:?}", e),
+                }
+            }
+
+            // Destination Node waiting for Ping from Source Node via Relay.
+            loop {
+                match dst_swarm.next_event().await {
+                    SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed)) => {
+                        if let P2PReqResEvent::ResSent { peer_id, .. } = *boxed {
+                            if peer_id == src_peer_id {
+                                break;
+                            }
+                        }
+                    }
+                    SwarmEvent::ConnectionClosed { .. } => {}
+                    e => panic!("{:?}", e),
+                }
+            }
+        };
+
+        Swarm::dial_addr(&mut src_swarm, dst_addr_via_relay).unwrap();
+        let src = async move {
+            // Source Node dialing Relay to connect to Destination Node.
+            match src_swarm.next_event().await {
+                SwarmEvent::Dialing(peer_id) if peer_id == relay_peer_id => {}
+                e => panic!("{:?}", e),
+            }
+
+            // Source Node establishing connection to Relay to connect to Destination Node.
+            match src_swarm.next_event().await {
+                SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == relay_peer_id => {}
+                e => panic!("{:?}", e),
+            }
+
+            // Source Node establishing connection to destination node via Relay.
+            loop {
+                match src_swarm.next_event().await {
+                    SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == dst_peer_id => break,
+                    SwarmEvent::Behaviour(_) => {}
+                    e => panic!("{:?}", e),
+                }
+            }
+            src_swarm.send_request(&dst_peer_id, Request::Ping);
+
+            // Source Node waiting for response from destination node.
+            loop {
+                match src_swarm.next_event().await {
+                    SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed)) => {
+                        if let P2PReqResEvent::Res { peer_id, .. } = *boxed {
+                            if peer_id == dst_peer_id {
+                                break;
+                            }
+                        }
+                    }
+                    SwarmEvent::ConnectionClosed { .. } => {}
+                    e => panic!("{:?}", e),
+                }
+            }
+        };
+
+        futures::future::join(dst, src).await
+    });
+}
