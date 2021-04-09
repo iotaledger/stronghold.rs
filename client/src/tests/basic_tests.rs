@@ -3,8 +3,10 @@
 
 use riker::actors::*;
 
-use crate::{line_error, utils::LoadFromPath, ClientId, Location, RecordHint, ResultMessage, Stronghold, VaultId};
+use crate::{line_error, utils::LoadFromPath, Location, RecordHint, ResultMessage, Stronghold};
 use crypto::macs::hmac::HMAC_SHA512;
+
+use engine::vault::{ClientId, VaultId};
 
 fn setup_stronghold() -> Stronghold {
     let sys = ActorSystem::new().unwrap();

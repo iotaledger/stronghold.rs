@@ -5,7 +5,7 @@ use crate::{
     actors::{InternalMsg, InternalResults, SMsg},
     line_error,
     state::client::{Client, ClientMsg, ReadWrite},
-    utils::{ClientId, ResultMessage, StatusMessage},
+    utils::{ResultMessage, StatusMessage},
     Location,
 };
 
@@ -13,7 +13,10 @@ use stronghold_utils::GuardDebug;
 
 use crypto::keys::slip10::{Chain, ChainCode};
 
-use engine::{snapshot, vault::RecordHint};
+use engine::{
+    snapshot,
+    vault::{ClientId, RecordHint},
+};
 use serde::{Deserialize, Serialize};
 
 use riker::actors::*;

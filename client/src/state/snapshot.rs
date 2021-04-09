@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use engine::{
     snapshot::{self, read_from, write_to, Key},
-    vault::{Key as PKey, ReadResult},
+    vault::{ClientId, Key as PKey, ReadResult, VaultId},
 };
 
-use crate::{line_error, state::client::Client, ClientId, Provider, VaultId};
+use crate::{line_error, state::client::Client, Provider};
 
 use std::path::Path;
 

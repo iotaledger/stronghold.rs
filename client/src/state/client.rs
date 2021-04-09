@@ -5,10 +5,13 @@ use crate::{
     actors::{InternalResults, SHRequest, SHResults},
     line_error,
     utils::LoadFromPath,
-    ClientId, Location, VaultId,
+    Location,
 };
 
-use engine::{store::Cache, vault::RecordId};
+use engine::{
+    store::Cache,
+    vault::{ClientId, RecordId, VaultId},
+};
 
 use riker::actors::*;
 

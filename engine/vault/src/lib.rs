@@ -41,7 +41,7 @@ use runtime::ZeroingAlloc;
 pub use crate::{
     base64::{Base64Decodable, Base64Encodable},
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
-    types::utils::{ChainId, RecordHint, RecordId, VaultId},
+    types::utils::{ChainId, ClientId, Id, RecordHint, RecordId, VaultId},
     vault::{DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult, WriteRequest},
 };
 

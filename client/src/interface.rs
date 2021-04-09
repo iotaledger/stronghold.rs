@@ -21,7 +21,7 @@ use crate::{
         snapshot::Snapshot,
     },
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
-    ClientId, Location, Provider,
+    Location, Provider,
 };
 #[cfg(feature = "communication")]
 use communication::{
@@ -33,6 +33,8 @@ use communication::{
     libp2p::{Keypair, Multiaddr, PeerId},
 };
 use stronghold_utils::ask;
+
+use engine::vault::ClientId;
 
 /// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of
 /// metadata to interpret the data in the vault and store.

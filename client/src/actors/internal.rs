@@ -7,7 +7,7 @@ use riker::actors::*;
 
 use std::{collections::HashMap, convert::TryFrom, path::PathBuf};
 
-use engine::vault::{BoxProvider, Key, ReadResult, RecordHint, RecordId};
+use engine::vault::{BoxProvider, ClientId, Key, ReadResult, RecordHint, RecordId, VaultId};
 
 use stronghold_utils::GuardDebug;
 
@@ -31,8 +31,7 @@ use crate::{
         client::{Client, ClientMsg},
         key_store::KeyStore,
     },
-    utils::{ResultMessage, StatusMessage, VaultId},
-    ClientId,
+    utils::{ResultMessage, StatusMessage},
 };
 
 pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {

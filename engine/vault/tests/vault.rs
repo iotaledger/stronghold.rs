@@ -240,44 +240,47 @@ fn test_rekove_then_write() -> Result<()> {
     Ok(())
 }
 
-#[test]
-#[ignore = "not yet implemented: we need some kind of checksum in the data transaction to protect against this case: when the users key is compromised"]
-fn test_ensure_authenticty_of_blob() -> Result<()> {
-    let k: Key<Provider> = Key::random()?;
-    let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
+// #[test]
+// #[ignore = "not yet implemented: we need some kind of checksum in the data transaction to protect against this case: when the users key is compromised"]
+// fn test_ensure_authenticty_of_blob() -> Result<()> {
+//     let k: Key<Provider> = Key::random()?;
+//     let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
 
-    let mut writes = vec![];
+//     let mut writes = vec![];
 
-    let id = RecordId::random::<Provider>()?;
-    let mut w = v0.writer(id);
-    writes.push(w.truncate()?);
-    let hint = fresh_record_hint();
-    let bid = match w.write(&fresh::bytestring(), hint)?.as_slice() {
-        [w0, w1] => {
-            assert_eq!(w0.kind(), Kind::Transaction);
-            writes.push(w0.clone());
+//     let id = RecordId::random::<Provider>()?;
+//     let mut w = v0.writer(id);
+//     writes.push(w.truncate()?);
+//     let hint = fresh_record_hint();
+//     let bid = match w.write(&fresh::bytestring(), hint)?.as_slice() {
+//         [w0, w1] => {
+//             assert_eq!(w0.kind(), Kind::Transaction);
+//             writes.push(w0.clone());
 
-            assert_eq!(w1.kind(), Kind::Blob);
-            w1.id().to_vec()
-        }
-        ws => panic!("{} unexpected writes", ws.len()),
-    };
+//             assert_eq!(w1.kind(), Kind::Blob);
+//             w1.id().to_vec()
+//         }
+//         ws => panic!("{} unexpected writes", ws.len()),
+//     };
 
-    let v1 = DBView::load(k.clone(), writes.iter().map(write_to_read))?;
+//     let v1 = DBView::load(k.clone(), writes.iter().map(write_to_read))?;
 
-    let r = v1.reader();
-    let res = match r.prepare_read(&id)? {
-        PreparedRead::CacheMiss(req) => req.result(fresh::bytestring().encrypt(&k, bid)?.as_ref().to_vec()),
-        x => panic!("unexpected value: {:?}", x),
-    };
+//     let r = v1.reader();
+//     let res = match r.prepare_read(&id)? {
+//         PreparedRead::CacheMiss(req) => {
+//             let data: SealedBlob = fresh::bytestring().encrypt(&k, bid)?;
+//             req.result(data.as_ref().to_vec())
+//         }
+//         x => panic!("unexpected value: {:?}", x),
+//     };
 
-    match r.read(res) {
-        Err(vault::Error::ProtocolError(_)) => (),
-        Err(_) | Ok(_) => panic!("unexpected result"),
-    }
+//     match r.read(res) {
+//         Err(vault::Error::ProtocolError(_)) => (),
+//         Err(_) | Ok(_) => panic!("unexpected result"),
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 #[test]
 fn test_storage_returns_stale_blob() -> Result<()> {

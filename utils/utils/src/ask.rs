@@ -26,11 +26,7 @@ where
     let actor = ctx.tmp_actor_of_props(props).unwrap();
     receiver.tell(msg, Some(actor.into()));
 
-    ctx.run(rx.map(|r| {
-        println!("{:?}", r);
-        r.unwrap()
-    }))
-    .unwrap()
+    ctx.run(rx.map(|r| r.unwrap())).unwrap()
 }
 
 struct AskActor<Msg> {

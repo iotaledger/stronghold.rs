@@ -3,12 +3,12 @@
 
 use engine::{
     store::Cache,
-    vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest},
+    vault::{BoxProvider, DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, VaultId, WriteRequest},
 };
 
 use std::collections::HashMap;
 
-use crate::{line_error, VaultId};
+use crate::line_error;
 
 type Store = Cache<Vec<u8>, Vec<u8>>;
 

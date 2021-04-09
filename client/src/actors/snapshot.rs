@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use engine::{
     snapshot,
-    vault::{Key, ReadResult},
+    vault::{ClientId, Key, ReadResult, VaultId},
 };
 
 use stronghold_utils::GuardDebug;
@@ -22,7 +22,7 @@ use crate::{
         snapshot::{Snapshot, SnapshotState},
     },
     utils::StatusMessage,
-    ClientId, Provider, VaultId,
+    Provider,
 };
 
 use std::collections::HashMap;

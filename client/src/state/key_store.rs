@@ -1,11 +1,11 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use engine::vault::{BoxProvider, Key};
+use engine::vault::{BoxProvider, Key, VaultId};
 
 use std::collections::HashMap;
 
-use crate::{line_error, VaultId};
+use crate::line_error;
 
 pub struct KeyStore<P: BoxProvider + Clone + Send + Sync + 'static> {
     store: HashMap<VaultId, Key<P>>,
