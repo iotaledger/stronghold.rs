@@ -35,7 +35,7 @@ pub enum CommunicationRequest<Req, ClientMsg: Message> {
     /// it through a relay, if there are any.
     AddPeer {
         peer_id: PeerId,
-        addr: Multiaddr,
+        addr: Option<Multiaddr>,
         is_relay: Option<RelayDirection>,
     },
     /// Get information about the swarm.

@@ -27,7 +27,7 @@ use crate::{
 use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults,
-        EstablishedConnection, FirewallPermission, FirewallRule, KeepAlive, RequestDirection, VariantPermission,
+        EstablishedConnection, FirewallPermission, FirewallRule, RequestDirection, VariantPermission,
     },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -682,39 +682,25 @@ impl Stronghold {
         }
     }
 
-    /// Connect a remote peer either by id if the peer is known, or alternatively by the address.
-    pub async fn establish_connection(
-        &self,
-        peer_id: PeerId,
-        addr: Multiaddr,
-        keep_alive: KeepAlive,
-    ) -> ResultMessage<PeerId> {
+    /// Add dial information for a remote peers.
+    /// This will attempt to connect the peer either directly or alternatively via an relay,
+    /// if there are any. If not address is given, it will only attempt to connect via relay.
+    /// If the address can successfully be dialed, it will be used to send potential requests.
+    pub async fn add_peer(&self, peer_id: PeerId, addr: Option<Multiaddr>) -> ResultMessage<PeerId> {
         match self
-            .ask_communication_actor(CommunicationRequest::EstablishConnection {
+            .ask_communication_actor(CommunicationRequest::AddPeer {
                 peer_id,
                 addr,
-                keep_alive,
+                is_relay: None,
             })
             .await
         {
-            Ok(CommunicationResults::EstablishConnectionResult(Ok(peer_id))) => ResultMessage::Ok(peer_id),
-            Ok(CommunicationResults::EstablishConnectionResult(Err(err))) => {
+            Ok(CommunicationResults::AddPeerResult(Ok(peer_id))) => ResultMessage::Ok(peer_id),
+            Ok(CommunicationResults::AddPeerResult(Err(err))) => {
                 ResultMessage::Error(format!("Error connecting peer: {:?}", err))
             }
             Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
             Err(err) => ResultMessage::Error(err),
-        }
-    }
-
-    /// Close the connection to a remote peer so that no more request can be received.
-    pub async fn close_connection(&self, peer_id: PeerId) -> StatusMessage {
-        match self
-            .ask_communication_actor(CommunicationRequest::CloseConnection(peer_id))
-            .await
-        {
-            Ok(CommunicationResults::CloseConnectionAck) => StatusMessage::OK,
-            Ok(_) => StatusMessage::Error("Invalid communication actor response".into()),
-            Err(err) => StatusMessage::Error(err),
         }
     }
 

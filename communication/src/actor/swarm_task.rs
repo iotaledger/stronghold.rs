@@ -11,7 +11,7 @@ use libp2p::{
     core::{connection::ListenerId, multiaddr::Protocol, ConnectedPoint, Multiaddr, PeerId},
     identity::Keypair,
     request_response::RequestId,
-    swarm::{DialError, IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler, Swarm, SwarmEvent},
+    swarm::{IntoProtocolsHandler, NetworkBehaviour, ProtocolsHandler, Swarm, SwarmEvent},
 };
 use riker::{actors::*, Message};
 use std::{
@@ -165,11 +165,11 @@ where
     fn await_connect_result(
         &mut self,
         target_peer: &PeerId,
-        target_addr: &Multiaddr,
-    ) -> Result<(PeerId, ConnectedPoint), ConnectPeerError> {
+        target_addr: &Option<Multiaddr>,
+    ) -> Result<ConnectedPoint, ConnectPeerError> {
         let match_event = |event: &SwarmEvent<P2PEvent<Req, Res>, _>| match event {
             SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } if peer_id == target_peer => {
-                Some(Ok((*peer_id, endpoint.clone())))
+                Some(Ok(endpoint.clone()))
             }
             SwarmEvent::UnreachableAddr {
                 peer_id,
@@ -177,7 +177,7 @@ where
                 attempts_remaining: 0,
                 ..
             } if peer_id == target_peer => Some(Err(ConnectPeerError::from(error))),
-            SwarmEvent::UnknownPeerUnreachableAddr { address, error } if address == target_addr => {
+            SwarmEvent::UnknownPeerUnreachableAddr { address, error } if Some(address) == target_addr.as_ref() => {
                 Some(Err(ConnectPeerError::from(error)))
             }
             _ => None,
@@ -185,21 +185,20 @@ where
         let res = self.await_event(Duration::from_secs(3), &match_event);
         res.unwrap_or(Err(ConnectPeerError::Timeout))
     }
-
     // Try to connect a remote peer by id, and if the peer id is not know yet the address is used.
-    fn connect_peer(
+    fn connect_peer_via_addr(
         &mut self,
         target_peer: &PeerId,
         target_addr: Multiaddr,
-    ) -> Result<(PeerId, ConnectedPoint), ConnectPeerError> {
-        Swarm::dial(&mut self.swarm, target_peer).or_else(|err| {
-            if let DialError::NoAddresses = err {
-                Swarm::dial_addr(&mut self.swarm, target_addr.clone())
-            } else {
-                Err(err)
-            }
-        })?;
-        self.await_connect_result(target_peer, &target_addr)
+    ) -> Result<ConnectedPoint, ConnectPeerError> {
+        Swarm::dial_addr(&mut self.swarm, target_addr.clone())?;
+        self.await_connect_result(target_peer, &Some(target_addr))
+    }
+
+    // Try to connect a remote peer by id, and if the peer id is not know yet the address is used.
+    fn connect_peer(&mut self, target_peer: &PeerId) -> Result<ConnectedPoint, ConnectPeerError> {
+        Swarm::dial(&mut self.swarm, target_peer)?;
+        self.await_connect_result(target_peer, &None)
     }
 
     // Add a new peer with it's address. If the peer can not be dialed directly and is not a relay, try to reach it via
@@ -207,12 +206,21 @@ where
     fn add_peer(
         &mut self,
         target_peer: PeerId,
-        target_addr: Multiaddr,
+        target_addr: Option<Multiaddr>,
         is_relay: Option<RelayDirection>,
     ) -> Result<PeerId, ConnectPeerError> {
-        let mut res = self
-            .connect_peer(&target_peer, target_addr)
-            .map(|(_, connected)| connected);
+        let mut res = match target_addr {
+            Some(addr) => self.connect_peer_via_addr(&target_peer, addr),
+            None if is_relay.is_none() => self.connect_peer(&target_peer),
+            _ => {
+                let addr = self
+                    .relay_addr
+                    .get(&target_peer)
+                    .ok_or(ConnectPeerError::NoAddresses)?
+                    .clone();
+                self.connect_peer_via_addr(&target_peer, addr)
+            }
+        };
         let is_eligible_to_try_relayed = match res {
             Err(ConnectPeerError::NoAddresses)
             | Err(ConnectPeerError::Transport)
@@ -230,9 +238,7 @@ where
                     .with(Protocol::P2p(relay.clone().into()))
                     .with(Protocol::P2pCircuit)
                     .with(Protocol::P2p(target_peer.into()));
-                self.connect_peer(&target_peer, relayed_addr)
-                    .map(|(_, connected)| Ok(connected))
-                    .ok()
+                self.connect_peer_via_addr(&target_peer, relayed_addr).map(Ok).ok()
             });
             res = try_relayed.unwrap_or(res);
         }
@@ -281,7 +287,7 @@ where
             self.start_listening(Some(addr.clone()))
                 .map_err(|()| ConnectPeerError::IO)?;
             if !Swarm::is_connected(&self.swarm, &relay_id) {
-                return self.await_connect_result(&relay_id, &addr).map(|(peer_id, _)| peer_id);
+                return self.await_connect_result(&relay_id, &Some(addr)).map(|_| relay_id);
             }
         }
         Ok(relay_id)
@@ -516,13 +522,7 @@ where
                 num_established: 0,
                 ..
             } => {
-                if self
-                    .relay_addr
-                    .get(&peer_id)
-                    .cloned()
-                    .and_then(|addr| self.connect_peer(&peer_id, addr).ok())
-                    .is_none()
-                {
+                if !self.listening_relays.contains_key(&peer_id) || self.connect_peer(&peer_id).is_err() {
                     self.remove_relay(&peer_id);
                     self.connection_manager.remove_connection(&peer_id);
                 }

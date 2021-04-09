@@ -46,10 +46,7 @@ pub use crate::{
 #[cfg(feature = "communication")]
 pub use crate::actors::SHRequestPermission;
 #[cfg(feature = "communication")]
-pub use communication::{
-    actor::KeepAlive,
-    libp2p::{Multiaddr, PeerId},
-};
+pub use communication::libp2p::{Multiaddr, PeerId};
 
 pub use engine::snapshot::{
     files::{home_dir, snapshot_dir},

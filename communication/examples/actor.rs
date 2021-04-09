@@ -132,7 +132,7 @@ fn main() -> Result<(), String> {
             &sys_a,
             &communication_actor_a,
             CommunicationRequest::AddPeer {
-                addr: addr_b,
+                addr: Some(addr_b),
                 peer_id: peer_b,
                 is_relay: None,
             },

@@ -174,7 +174,7 @@ fn msg_external_actor() {
 
     // send request, use actor A  as target for the response
     let req = CommunicationRequest::<Request, Request>::AddPeer {
-        addr: addr_b,
+        addr: Some(addr_b),
         peer_id: peer_b_id,
         is_relay: None,
     };
@@ -221,13 +221,13 @@ fn add_peer(
         sys,
         communication_actor,
         CommunicationRequest::AddPeer {
-            addr,
+            addr: Some(addr),
             peer_id,
             is_relay: None,
         },
     )) {
         Some(CommunicationResults::AddPeerResult(res)) => res,
-        other => panic!(other),
+        other => panic!("{:?}", other),
     }
 }
 
