@@ -5,8 +5,8 @@ use async_std::task;
 use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults, ConnectPeerError,
-        FirewallPermission, FirewallRule, PermissionValue, RequestDirection, RequestMessageError, RequestPermissions,
-        ToPermissionVariants, VariantPermission,
+        EstablishedConnection, FirewallPermission, FirewallRule, PermissionValue, RelayDirection, RequestDirection,
+        RequestMessageError, RequestPermissions, ToPermissionVariants, VariantPermission,
     },
     behaviour::{BehaviourConfig, P2POutboundFailure},
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -215,15 +215,16 @@ fn add_peer(
     sys: &ActorSystem,
     communication_actor: &ActorRef<CommunicationRequest<Request, Request>>,
     peer_id: PeerId,
-    addr: Multiaddr,
+    addr: Option<Multiaddr>,
+    is_relay: Option<RelayDirection>,
 ) -> Result<PeerId, ConnectPeerError> {
     match task::block_on(try_ask(
         sys,
         communication_actor,
         CommunicationRequest::AddPeer {
-            addr: Some(addr),
+            addr,
             peer_id,
-            is_relay: None,
+            is_relay,
         },
     )) {
         Some(CommunicationResults::AddPeerResult(res)) => res,
@@ -286,6 +287,35 @@ fn set_firewall_rule(
         _ => panic!("Unexpected Response"),
     }
 }
+fn config_relay(
+    sys: &ActorSystem,
+    communication_actor: &ActorRef<CommunicationRequest<Request, Request>>,
+    peer_id: PeerId,
+    direction: RelayDirection,
+) -> PeerId {
+    match task::block_on(try_ask(
+        sys,
+        communication_actor,
+        CommunicationRequest::ConfigRelay { peer_id, direction },
+    )) {
+        Some(CommunicationResults::ConfigRelayResult(peer_id)) => peer_id.expect("Failed to config relay."),
+        _ => panic!("Unexpected Response"),
+    }
+}
+
+fn get_swarm_info(
+    sys: &ActorSystem,
+    communication_actor: &ActorRef<CommunicationRequest<Request, Request>>,
+) -> (PeerId, Vec<Multiaddr>, Vec<(PeerId, EstablishedConnection)>) {
+    match task::block_on(try_ask(sys, communication_actor, CommunicationRequest::GetSwarmInfo)) {
+        Some(CommunicationResults::SwarmInfo {
+            peer_id,
+            listeners,
+            connections,
+        }) => (peer_id, listeners, connections),
+        _ => panic!("Unexpected Response"),
+    }
+}
 
 #[test]
 fn ask_swarm_info() {
@@ -309,19 +339,10 @@ fn ask_swarm_info() {
     let actual_addr = start_listening(&sys, &communication_actor, Some(addr.clone()));
     assert_eq!(addr, actual_addr);
 
-    let result = task::block_on(try_ask(&sys, &communication_actor, CommunicationRequest::GetSwarmInfo));
-    match result {
-        Some(CommunicationResults::SwarmInfo {
-            peer_id,
-            listeners,
-            connections,
-        }) => {
-            assert_eq!(PeerId::from(keys.public()), peer_id);
-            assert!(listeners.contains(&addr));
-            assert_eq!(connections.len(), 0)
-        }
-        _ => panic!("Unexpected Response"),
-    }
+    let (peer_id, listeners, connections) = get_swarm_info(&sys, &communication_actor);
+    assert_eq!(PeerId::from(keys.public()), peer_id);
+    assert!(listeners.contains(&addr));
+    assert_eq!(connections.len(), 0);
 }
 
 #[test]
@@ -339,25 +360,15 @@ fn ask_request() {
     let (_, communication_actor_a) = init_system(&sys_a, blank_actor);
 
     // obtain information about peer Bs id and listeners
-    let (peer_b_id, listeners) = match task::block_on(try_ask(
-        &sys_b,
-        &communication_actor_b,
-        CommunicationRequest::GetSwarmInfo,
-    )) {
-        Some(CommunicationResults::SwarmInfo {
-            peer_id,
-            listeners,
-            connections: _,
-        }) => (peer_id, listeners),
-        _ => panic!("Unexpected Response"),
-    };
+    let (peer_b_id, listeners, _) = get_swarm_info(&sys_b, &communication_actor_b);
 
     // connect peer A with peer B
     let connected_peer = add_peer(
         &sys_a,
         &communication_actor_a,
         peer_b_id,
-        listeners.last().expect("No listeners for peer.").clone(),
+        listeners.last().cloned(),
+        None,
     )
     .expect("Could not establish connection.");
     assert_eq!(connected_peer, peer_b_id);
@@ -376,18 +387,10 @@ fn no_soliloquize() {
     let (own_peer_id, communication_actor) = init_system(&sys, client);
     start_listening(&sys, &communication_actor, None);
 
-    let listeners = match task::block_on(try_ask(&sys, &communication_actor, CommunicationRequest::GetSwarmInfo)) {
-        Some(CommunicationResults::SwarmInfo {
-            peer_id: _,
-            listeners,
-            connections: _,
-        }) => listeners,
-        _ => panic!("Unexpected Response"),
-    };
-
+    let (_, listeners, _) = get_swarm_info(&sys, &communication_actor);
     for addr in listeners {
         // try connect self
-        let res = add_peer(&sys, &communication_actor, own_peer_id, addr);
+        let res = add_peer(&sys, &communication_actor, own_peer_id, Some(addr), None);
         assert!(res.is_err())
     }
     // try send request to self
@@ -401,8 +404,7 @@ fn connect_invalid() {
     let sys = ActorSystem::new().expect("Failed to create actor system.");
     let client = sys.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
     let (_, communication_actor) = init_system(&sys, client);
-    let addr = "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress.");
-    if add_peer(&sys, &communication_actor, PeerId::random(), addr).is_err() {
+    if add_peer(&sys, &communication_actor, PeerId::random(), None, None).is_err() {
         panic!("Could not establish connection");
     }
 }
@@ -427,40 +429,16 @@ fn manage_connection() {
     let addr_b = start_listening(&sys_b, &communication_actor_b, None);
 
     // establish connection
-    let res = add_peer(&sys_a, &communication_actor_a, peer_b_id, addr_b);
+    let res = add_peer(&sys_a, &communication_actor_a, peer_b_id, Some(addr_b), None);
     assert!(res.is_ok());
 
     // check if peer A is listed in peer Bs connections
-    match task::block_on(try_ask(
-        &sys_b,
-        &communication_actor_b,
-        CommunicationRequest::GetSwarmInfo,
-    )) {
-        Some(CommunicationResults::SwarmInfo {
-            peer_id: _,
-            listeners: _,
-            connections,
-        }) => {
-            assert!(connections.into_iter().any(|(peer, _)| peer == peer_a_id))
-        }
-        _ => panic!("Unexpected Response"),
-    };
+    let (_, _, connections) = get_swarm_info(&sys_b, &communication_actor_b);
+    assert!(connections.into_iter().any(|(peer, _)| peer == peer_a_id));
 
     // check if peer B is listed in peer As connections
-    match task::block_on(try_ask(
-        &sys_a,
-        &communication_actor_a,
-        CommunicationRequest::GetSwarmInfo,
-    )) {
-        Some(CommunicationResults::SwarmInfo {
-            peer_id: _,
-            listeners: _,
-            connections,
-        }) => {
-            assert!(connections.into_iter().any(|(peer, _)| peer == peer_b_id))
-        }
-        _ => panic!("Unexpected Response"),
-    };
+    let (_, _, connections) = get_swarm_info(&sys_a, &communication_actor_a);
+    assert!(connections.into_iter().any(|(peer, _)| peer == peer_b_id));
 
     // send request after peers established a connection
     let res = send_request(&sys_a, &communication_actor_a, peer_b_id);
@@ -521,7 +499,7 @@ fn firewall_rules() {
 
     let addr_b = start_listening(&sys_b, &communication_actor_b, None);
 
-    let res = add_peer(&sys_a, &communication_actor_a, peer_b_id, addr_b);
+    let res = add_peer(&sys_a, &communication_actor_a, peer_b_id, Some(addr_b), None);
     assert!(res.is_ok());
 
     // Outgoing request should be blocked by As firewall
@@ -609,4 +587,63 @@ fn firewall_rules() {
     } else {
         panic!("Unexpected Response");
     }
+}
+
+#[test]
+fn relay() {
+    // init relay system and start listening
+    let relay_sys = ActorSystem::new().expect("Failed to create actor system.");
+    let client = relay_sys
+        .actor_of::<BlankActor>("blank")
+        .expect("Failed to init actor.");
+    let (relay_peer_id, relay_comms_actor) = init_system(&relay_sys, client);
+    let relay_addr = start_listening(&relay_sys, &relay_comms_actor, None);
+
+    // init source system and add relay for dialing
+    let src_sys = ActorSystem::new().expect("Failed to create actor system.");
+    let client = src_sys.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
+    let (src_peer_id, src_comms_actor) = init_system(&src_sys, client);
+    let peer_id = add_peer(
+        &src_sys,
+        &src_comms_actor,
+        relay_peer_id,
+        Some(relay_addr.clone()),
+        Some(RelayDirection::Dialing),
+    );
+    assert_eq!(peer_id.expect("Peer could not be reached."), relay_peer_id);
+
+    // init destination and add relay for listening and dialing
+    let dest_sys = ActorSystem::new().expect("Failed to create actor system.");
+    let client = dest_sys
+        .actor_of::<ReplyActor>("destination")
+        .expect("Failed to init actor.");
+    let (dest_peer_id, dest_comms_actor) = init_system(&dest_sys, client);
+    let peer_id = add_peer(
+        &dest_sys,
+        &dest_comms_actor,
+        relay_peer_id,
+        Some(relay_addr),
+        Some(RelayDirection::Both),
+    );
+    assert_eq!(peer_id.expect("Peer could not be reached."), relay_peer_id);
+
+    // source peer adds dst peer without address, so that relay is used
+    let peer_id = add_peer(&src_sys, &src_comms_actor, dest_peer_id, None, None);
+    assert_eq!(peer_id.expect("Peer could not be reached."), dest_peer_id);
+
+    // destination peer should not be able to reach source peer since it only uses relay for dialing
+    let peer_id = add_peer(&dest_sys, &dest_comms_actor, src_peer_id, None, None);
+    assert!(peer_id.is_err());
+
+    // Sending request from source to destination should be successful
+    let res = send_request(&src_sys, &src_comms_actor, dest_peer_id);
+    assert!(res.is_ok());
+
+    // destination stops listening to relay and only uses it for Dialing
+    let peer_id = config_relay(&dest_sys, &dest_comms_actor, relay_peer_id, RelayDirection::Dialing);
+    assert_eq!(peer_id, relay_peer_id);
+
+    // Sending request from source to destination should not be allowed anymore
+    let res = send_request(&src_sys, &src_comms_actor, dest_peer_id);
+    assert!(res.is_err());
 }
