@@ -161,7 +161,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
         match msg {
             InternalMsg::CreateVault(vid, _rid) => {
                 let key = self.keystore.create_key(vid);
-
                 self.db.init_vault(&key, vid).expect(line_error!());
 
                 let cstr: String = self.client_id.into();
@@ -399,6 +398,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 match self.keystore.get_key(seed_vault_id) {
                     Some(seed_key) => {
+                        self.keystore.insert_key(seed_vault_id, seed_key.clone());
                         let dk_key = if !self.keystore.vault_exists(key_vault_id) {
                             let key = self.keystore.create_key(key_vault_id);
                             self.db.init_vault(&key, key_vault_id).expect(line_error!());
