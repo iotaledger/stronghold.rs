@@ -469,7 +469,7 @@ fn firewall_forbid_in() {
 
     // Actor B with firewall that rejects all connections.
     let sys_b = ActorSystem::new().expect("Failed to create actor system.");
-    let target_actor = sys_a.actor_of::<ReplyActor>("blank").expect("Failed to init actor.");
+    let target_actor = sys_b.actor_of::<ReplyActor>("target").expect("Failed to init actor.");
     let (peer_b_id, communication_actor_b) = init_system(&sys_b, target_actor, FirewallPermission::none());
 
     let addr_b = start_listening(&sys_b, &communication_actor_b, None);
@@ -521,7 +521,7 @@ fn firewall_forbid_out() {
 
     // Actor B that allows all traffic
     let sys_b = ActorSystem::new().expect("Failed to create actor system.");
-    let target_actor = sys_a.actor_of::<ReplyActor>("blank").expect("Failed to init actor.");
+    let target_actor = sys_b.actor_of::<ReplyActor>("target").expect("Failed to init actor.");
     let (peer_b_id, communication_actor_b) = init_system(&sys_b, target_actor, FirewallPermission::all());
 
     let addr_b = start_listening(&sys_b, &communication_actor_b, None);
@@ -573,7 +573,7 @@ fn firewall_rules_selective() {
 
     // Actor B with firewall that rejects all connections.
     let sys_b = ActorSystem::new().expect("Failed to create actor system.");
-    let target_actor = sys_a.actor_of::<ReplyActor>("blank").expect("Failed to init actor.");
+    let target_actor = sys_b.actor_of::<ReplyActor>("target").expect("Failed to init actor.");
     let (peer_b_id, communication_actor_b) = init_system(&sys_b, target_actor, FirewallPermission::none());
 
     let addr_b = start_listening(&sys_b, &communication_actor_b, None);
