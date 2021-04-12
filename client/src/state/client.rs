@@ -223,7 +223,6 @@ mod test {
         let (vid2, rid2) = client.resolve_location(vidlochead2.clone());
 
         client.add_new_vault(vid);
-
         client.add_new_vault(vid2);
 
         let (_, rid_head) = client.resolve_location(vidlochead.clone());
@@ -232,11 +231,17 @@ mod test {
         assert_eq!(rid, rid_head);
         assert_eq!(rid2, rid_head_2);
 
+        let vidlochead = vidlochead.increment_counter();
+        let vidlochead2 = vidlochead2.increment_counter();
+
         let (vid, rid) = client.resolve_location(vidlochead.clone());
         let (vid2, rid2) = client.resolve_location(vidlochead2.clone());
 
-        let (_, rid_head) = client.resolve_location(vidlochead);
-        let (_, rid_head_2) = client.resolve_location(vidlochead2);
+        let (vid0, rid_head) = client.resolve_location(vidlochead);
+        let (vid1, rid_head_2) = client.resolve_location(vidlochead2);
+
+        assert_eq!(vid0, vid);
+        assert_eq!(vid2, vid1);
 
         assert_eq!(rid, rid_head);
         assert_eq!(rid2, rid_head_2);

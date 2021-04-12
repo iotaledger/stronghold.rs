@@ -42,16 +42,11 @@ pub struct Stronghold {
     // actor system.
     pub system: ActorSystem,
     // clients in the system.
-    client_ids: Vec<ClientId>,
-
-    // Actor references in the system.
-    actors: Vec<ActorRef<ClientMsg>>,
+    clients: HashMap<ClientId, ActorRef<ClientMsg>>,
+    target: ActorRef<ClientMsg>,
 
     // data derived from the client_paths.
     derive_data: HashMap<Vec<u8>, Vec<u8>>,
-
-    // current index of the client.
-    current_target: usize,
 
     #[cfg(feature = "communication")]
     // communication actor ref
@@ -64,7 +59,7 @@ impl Stronghold {
     pub fn init_stronghold_system(system: ActorSystem, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> Self {
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
         let id_str: String = client_id.into();
-        let client_ids = vec![client_id];
+        let mut clients = HashMap::new();
 
         let mut derive_data = HashMap::new();
 
@@ -79,14 +74,14 @@ impl Stronghold {
 
         system.actor_of::<Snapshot>("snapshot").expect(line_error!());
 
-        let actors = vec![client];
+        clients.insert(client_id, client.clone());
 
         Self {
             system,
-            client_ids,
+            clients,
             derive_data,
-            actors,
-            current_target: 0,
+            target: client,
+
             #[cfg(feature = "communication")]
             communication_actor: None,
         }
@@ -101,9 +96,8 @@ impl Stronghold {
     ) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
         let id_str: String = client_id.into();
-        let counter = self.actors.len();
 
-        if self.client_ids.contains(&client_id) {
+        if self.clients.contains_key(&client_id) {
             self.switch_actor_target(client_path).await;
         } else {
             let client = self
@@ -114,10 +108,9 @@ impl Stronghold {
                 .actor_of_args::<InternalActor<Provider>, _>(&format!("internal-{}", id_str), client_id)
                 .expect(line_error!());
 
-            self.actors.push(client);
-            self.client_ids.push(client_id);
+            self.clients.insert(client_id, client.clone());
             self.derive_data.insert(client_path.clone(), client_path);
-            self.current_target = counter;
+            self.target = client;
         }
 
         StatusMessage::OK
@@ -127,25 +120,21 @@ impl Stronghold {
     pub async fn switch_actor_target(&mut self, client_path: Vec<u8>) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
 
-        if self.client_ids.contains(&client_id) {
-            let idx = self.client_ids.iter().position(|cid| cid == &client_id);
+        if let Some(client) = self.clients.get(&client_id) {
+            self.target = client.clone();
 
-            if let Some(idx) = idx {
-                self.current_target = idx;
-
-                #[cfg(feature = "communication")]
-                if let Some(communication_actor) = self.communication_actor.as_ref() {
-                    match ask(
-                        &self.system,
-                        communication_actor,
-                        CommunicationRequest::SetClientRef(self.actors[idx].clone()),
-                    )
-                    .await
-                    {
-                        CommunicationResults::<SHResults>::SetClientRefAck => {}
-                        _ => {
-                            return StatusMessage::Error("Could not set communication client target".into());
-                        }
+            #[cfg(feature = "communication")]
+            if let Some(communication_actor) = self.communication_actor.as_ref() {
+                match ask(
+                    &self.system,
+                    communication_actor,
+                    CommunicationRequest::SetClientRef(client.clone()),
+                )
+                .await
+                {
+                    CommunicationResults::<SHResults>::SetClientRefAck => {}
+                    _ => {
+                        return StatusMessage::Error("Could not set communication client target".into());
                     }
                 }
             }
@@ -165,21 +154,17 @@ impl Stronghold {
         hint: RecordHint,
         _options: Vec<VaultFlags>,
     ) -> StatusMessage {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
 
         if let SHResults::ReturnExistsVault(b) =
-            ask(&self.system, client, SHRequest::CheckVault(vault_path.clone())).await
+            ask(&self.system, &self.target, SHRequest::CheckVault(vault_path.clone())).await
         {
             // check if vault exists
             if b {
                 if let SHResults::ReturnWriteVault(status) = ask(
                     &self.system,
-                    client,
+                    &self.target,
                     SHRequest::WriteToVault {
                         location: location.clone(),
                         payload: payload.clone(),
@@ -195,7 +180,7 @@ impl Stronghold {
             } else {
                 // no vault so create new one before writing.
                 if let SHResults::ReturnCreateVault(status) =
-                    ask(&self.system, client, SHRequest::CreateNewVault(location.clone())).await
+                    ask(&self.system, &self.target, SHRequest::CreateNewVault(location.clone())).await
                 {
                     status
                 } else {
@@ -204,7 +189,7 @@ impl Stronghold {
 
                 if let SHResults::ReturnWriteVault(status) = ask(
                     &self.system,
-                    client,
+                    &self.target,
                     SHRequest::WriteToVault {
                         location,
                         payload,
@@ -233,13 +218,9 @@ impl Stronghold {
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> StatusMessage {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
         let res: SHResults = ask(
             &self.system,
-            client,
+            &self.target,
             SHRequest::WriteToStore {
                 location,
                 payload,
@@ -260,11 +241,7 @@ impl Stronghold {
     /// `StatusMessage`.  Note: One store is mapped to
     /// one client. Can specify the same location across multiple clients.
     pub async fn read_from_store(&self, location: Location) -> (Vec<u8>, StatusMessage) {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
-        let res: SHResults = ask(&self.system, client, SHRequest::ReadFromStore { location }).await;
+        let res: SHResults = ask(&self.system, &self.target, SHRequest::ReadFromStore { location }).await;
 
         if let SHResults::ReturnReadStore(payload, status) = res {
             (payload, status)
@@ -276,11 +253,7 @@ impl Stronghold {
     /// A method to delete data from an insecure cache. This method, accepts a `Location` and returns a `StatusMessage`.
     /// Note: One store is mapped to one client. Can specify the same location across multiple clients.
     pub async fn delete_from_store(&self, location: Location) -> StatusMessage {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
-        let res: SHResults = ask(&self.system, client, SHRequest::DeleteFromStore(location)).await;
+        let res: SHResults = ask(&self.system, &self.target, SHRequest::DeleteFromStore(location)).await;
 
         if let SHResults::ReturnDeleteStore(status) = res {
             status
@@ -293,22 +266,24 @@ impl Stronghold {
     /// from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call with
     /// automatically cleanup the revoke. Otherwise, the data is just marked as revoked.
     pub async fn delete_data(&self, location: Location, should_gc: bool) -> StatusMessage {
-        let idx = self.current_target;
-        let status;
-        let client = &self.actors[idx];
         let vault_path = location.vault_path().to_vec();
+        let status;
 
         if should_gc {
             let _ = if let SHResults::ReturnRevoke(status) =
-                ask(&self.system, client, SHRequest::RevokeData { location }).await
+                ask(&self.system, &self.target, SHRequest::RevokeData { location }).await
             {
                 status
             } else {
                 return StatusMessage::Error("Could not revoke data".into());
             };
 
-            status = if let SHResults::ReturnGarbage(status) =
-                ask(&self.system, client, SHRequest::GarbageCollect(vault_path.clone())).await
+            status = if let SHResults::ReturnGarbage(status) = ask(
+                &self.system,
+                &self.target,
+                SHRequest::GarbageCollect(vault_path.clone()),
+            )
+            .await
             {
                 status
             } else {
@@ -318,7 +293,7 @@ impl Stronghold {
             status
         } else {
             status = if let SHResults::ReturnRevoke(status) =
-                ask(&self.system, client, SHRequest::RevokeData { location }).await
+                ask(&self.system, &self.target, SHRequest::RevokeData { location }).await
             {
                 status
             } else {
@@ -331,11 +306,8 @@ impl Stronghold {
 
     /// Garbage collects any revokes in a Vault based on the given vault_path and the current target actor.
     pub async fn garbage_collect(&self, vault_path: Vec<u8>) -> StatusMessage {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
-        if let SHResults::ReturnGarbage(status) = ask(&self.system, client, SHRequest::GarbageCollect(vault_path)).await
+        if let SHResults::ReturnGarbage(status) =
+            ask(&self.system, &self.target, SHRequest::GarbageCollect(vault_path)).await
         {
             status
         } else {
@@ -350,12 +322,8 @@ impl Stronghold {
         &self,
         vault_path: V,
     ) -> (Vec<(RecordId, RecordHint)>, StatusMessage) {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
         if let SHResults::ReturnList(ids, status) =
-            ask(&self.system, client, SHRequest::ListIds(vault_path.into())).await
+            ask(&self.system, &self.target, SHRequest::ListIds(vault_path.into())).await
         {
             (ids, status)
         } else {
@@ -369,10 +337,7 @@ impl Stronghold {
     /// Executes a runtime command given a `Procedure`.  Returns a `ProcResult` based off of the control_request
     /// specified.
     pub async fn runtime_exec(&self, control_request: Procedure) -> ProcResult {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-        let shr = ask(&self.system, client, SHRequest::ControlRequest(control_request)).await;
+        let shr = ask(&self.system, &self.target, SHRequest::ControlRequest(control_request)).await;
         match shr {
             SHResults::ReturnControlRequest(pr) => pr,
             _ => ProcResult::Error("Invalid communication event".into()),
@@ -381,13 +346,9 @@ impl Stronghold {
 
     /// Checks whether a record exists in the client.
     pub async fn record_exists(&self, location: Location) -> bool {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
         if let SHResults::ReturnExistsRecord(b) = ask(
             &self.system,
-            client,
+            &self.target,
             SHRequest::CheckRecord {
                 location: location.clone(),
             },
@@ -402,13 +363,12 @@ impl Stronghold {
 
     /// checks whether a vault exists in the client.
     pub async fn vault_exists(&self, location: Location) -> bool {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
 
-        if let SHResults::ReturnExistsVault(b) = ask(&self.system, client, SHRequest::CheckVault(vault_path)).await {
+        if let SHResults::ReturnExistsVault(b) =
+            ask(&self.system, &self.target, SHRequest::CheckVault(vault_path)).await
+        {
             b
         } else {
             false
@@ -438,35 +398,28 @@ impl Stronghold {
             None
         };
 
-        let idx = self.client_ids.iter().position(|id| id == &client_id);
-        if let Some(idx) = idx {
-            let client = &self.actors[idx];
+        let mut key: [u8; 32] = [0u8; 32];
 
-            let mut key: [u8; 32] = [0u8; 32];
+        let keydata = keydata.as_ref();
 
-            let keydata = keydata.as_ref();
+        key.copy_from_slice(keydata);
 
-            key.copy_from_slice(keydata);
-
-            if let SHResults::ReturnReadSnap(status) = ask(
-                &self.system,
-                client,
-                SHRequest::ReadSnapshot {
-                    key,
-                    filename,
-                    path,
-                    cid: client_id,
-                    former_cid,
-                },
-            )
-            .await
-            {
-                status
-            } else {
-                StatusMessage::Error("Unable to read snapshot".into())
-            }
+        if let SHResults::ReturnReadSnap(status) = ask(
+            &self.system,
+            &self.target,
+            SHRequest::ReadSnapshot {
+                key,
+                filename,
+                path,
+                cid: client_id,
+                former_cid,
+            },
+        )
+        .await
+        {
+            status
         } else {
-            StatusMessage::Error("Unable to find client actor".into())
+            StatusMessage::Error("Unable to read snapshot".into())
         }
     }
 
@@ -479,9 +432,7 @@ impl Stronghold {
         filename: Option<String>,
         path: Option<PathBuf>,
     ) -> StatusMessage {
-        let num_of_actors = self.actors.len();
-        let idx = self.current_target;
-        let client = &self.actors[idx];
+        let num_of_actors = self.clients.len();
 
         let mut futures = vec![];
         let mut key: [u8; 32] = [0u8; 32];
@@ -491,7 +442,7 @@ impl Stronghold {
         key.copy_from_slice(keydata);
 
         if num_of_actors != 0 {
-            for (_, actor) in self.actors.iter().enumerate() {
+            for actor in self.clients.values() {
                 let res: RemoteHandle<SHResults> = ask(&self.system, actor, SHRequest::FillSnapshot);
                 futures.push(res);
             }
@@ -503,7 +454,12 @@ impl Stronghold {
             fut.await;
         }
 
-        let res: SHResults = ask(&self.system, client, SHRequest::WriteSnapshot { key, filename, path }).await;
+        let res: SHResults = ask(
+            &self.system,
+            &self.target,
+            SHRequest::WriteSnapshot { key, filename, path },
+        )
+        .await;
 
         if let SHResults::ReturnWriteSnap(status) = res {
             status
@@ -519,35 +475,27 @@ impl Stronghold {
         let data = self.derive_data.get(&client_path).expect(line_error!());
         let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
 
-        let idx = self.client_ids.iter().position(|id| id == &client_id);
-
         let client_str: String = client_id.into();
 
-        if let Some(idx) = idx {
-            if kill_actor {
-                let client = &self.actors.remove(idx);
-                self.client_ids.remove(idx);
-                self.derive_data.remove(&client_path).expect(line_error!());
+        if kill_actor {
+            let client = &self.clients.remove(&client_id);
 
-                self.system.stop(client);
-                let internal = self
-                    .system
-                    .select(&format!("/user/internal-{}/", client_str))
-                    .expect(line_error!());
-                internal.try_tell(InternalMsg::KillInternal, None);
+            self.derive_data.remove(&client_path).expect(line_error!());
 
-                StatusMessage::OK
-            } else {
-                let client = &self.actors[idx];
+            self.system.stop(&self.target);
+            let internal = self
+                .system
+                .select(&format!("/user/internal-{}/", client_str))
+                .expect(line_error!());
+            internal.try_tell(InternalMsg::KillInternal, None);
 
-                if let SHResults::ReturnClearCache(status) = ask(&self.system, client, SHRequest::ClearCache).await {
-                    status
-                } else {
-                    StatusMessage::Error("Unable to clear the cache".into())
-                }
-            }
+            StatusMessage::OK
         } else {
-            StatusMessage::Error("Unable to find client actor".into())
+            if let SHResults::ReturnClearCache(status) = ask(&self.system, &self.target, SHRequest::ClearCache).await {
+                status
+            } else {
+                StatusMessage::Error("Unable to clear the cache".into())
+            }
         }
     }
 
@@ -560,11 +508,7 @@ impl Stronghold {
     /// A test function for reading data from a vault.
     #[cfg(test)]
     pub async fn read_secret(&self, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
-        let idx = self.current_target;
-
-        let client = &self.actors[idx];
-
-        let res: SHResults = ask(&self.system, client, SHRequest::ReadFromVault { location }).await;
+        let res: SHResults = ask(&self.system, &self.target, SHRequest::ReadFromVault { location }).await;
 
         if let SHResults::ReturnReadVault(payload, status) = res {
             (Some(payload), status)
@@ -585,13 +529,10 @@ impl Stronghold {
             return StatusMessage::Error(String::from("Communication was already spawned"));
         }
 
-        let idx = self.current_target;
-        let client = self.actors[idx].clone();
-
         let local_keys = Keypair::generate_ed25519();
         let behaviour_config = BehaviourConfig::default();
         let actor_config = CommunicationActorConfig {
-            client,
+            client: self.target.clone(),
             firewall_default_in: FirewallPermission::all(),
             firewall_default_out: FirewallPermission::all(),
         };
