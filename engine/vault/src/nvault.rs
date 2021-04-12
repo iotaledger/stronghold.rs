@@ -45,7 +45,7 @@ impl<P: BoxProvider> DbView<P> {
         Self { vaults }
     }
 
-    /// Initialize a new vault.
+    /// Initialize a new vault if it doesn't exist.
     pub fn init_vault(&mut self, key: &Key<P>, vid: VaultId) -> crate::Result<()> {
         self.vaults.entry(vid).or_insert(Vault::init_vault(key)?);
 
@@ -61,9 +61,13 @@ impl<P: BoxProvider> DbView<P> {
         data: &[u8],
         record_hint: RecordHint,
     ) -> crate::Result<()> {
+        if !self.vaults.contains_key(&vid) {
+            self.init_vault(&key, vid)?;
+        }
+
         self.vaults.entry(vid).and_modify(|vault| {
             vault
-                .add_or_update_entry(key, rid.0, data, record_hint)
+                .add_or_update_record(key, rid.0, data, record_hint)
                 .expect("unable to write record")
         });
 
@@ -76,6 +80,8 @@ impl<P: BoxProvider> DbView<P> {
 
         if let Some(vault) = self.vaults.get(&vid) {
             buf = vault.list_hints_and_ids(&key)?;
+        } else {
+            buf = vec![];
         }
 
         Ok(buf)
@@ -166,7 +172,7 @@ impl<P: BoxProvider> Vault<P> {
 
     /// Adds a new entry to the vault if the entry doesn't already exist. Otherwise, updates the data in the existing
     /// entry as long as it hasn't been revoked.
-    pub fn add_or_update_entry(
+    pub fn add_or_update_record(
         &mut self,
         key: &Key<P>,
         id: ChainId,
@@ -325,9 +331,7 @@ impl Record {
 
                 Ok(guarded)
             } else {
-                Err(crate::Error::ValueError(
-                    "Record has been revoked and can't be read.".to_string(),
-                ))
+                Ok(GuardedVec::zero(0))
             }
         } else {
             Err(crate::Error::DatabaseError(

@@ -31,7 +31,7 @@ fn init_read_vault(stronghold: Stronghold) -> Stronghold {
 fn init_write_vault(stronghold: Stronghold) -> Stronghold {
     for i in 0..5 {
         block_on(stronghold.write_to_vault(
-            Location::counter::<_, usize>("test", Some(i)),
+            Location::counter::<_, usize>("test", i),
             format!("test data {}", i).as_bytes().to_vec(),
             RecordHint::new(b"test").unwrap(),
             vec![],
@@ -72,7 +72,7 @@ fn bench_stronghold_write_init(c: &mut Criterion) {
     c.bench_function("write to stronghold while initializing records", |b| {
         b.iter(|| {
             block_on(stronghold.write_to_vault(
-                Location::counter::<_, usize>("test", black_box(Some(6))),
+                Location::counter::<_, usize>("test", black_box(6)),
                 b"test data".to_vec(),
                 RecordHint::new(b"test").unwrap(),
                 vec![],
@@ -127,8 +127,6 @@ criterion_group!(
     benches,
     bench_stronghold_write_create,
     bench_stronghold_write_init,
-    bench_write_snapshot,
-    bench_read_from_snapshot,
     bench_write_store,
     bench_read_store
 );

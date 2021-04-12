@@ -48,7 +48,7 @@ pub enum InternalMsg {
     WriteToVault(VaultId, RecordId, Vec<u8>, RecordHint),
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
-    ListIds(Vec<u8>, VaultId),
+    ListIds(VaultId),
 
     ReadSnapshot(
         snapshot::Key,
@@ -126,7 +126,7 @@ pub enum InternalResults {
     ReturnReadVault(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
-    ReturnList(Vec<u8>, Vec<(RecordId, RecordHint)>, StatusMessage),
+    ReturnList(Vec<(RecordId, RecordHint)>, StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnControlRequest(ProcResult),
     RebuildCache(Client, StatusMessage),
@@ -288,7 +288,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
-            InternalMsg::ListIds(vault_path, vid) => {
+            InternalMsg::ListIds(vid) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
@@ -297,13 +297,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.keystore.insert_key(vid, key);
 
                     client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnList(vault_path, ids, StatusMessage::OK)),
+                        ClientMsg::InternalResults(InternalResults::ReturnList(ids, StatusMessage::OK)),
                         sender,
                     );
                 } else {
                     client.try_tell(
                         ClientMsg::InternalResults(InternalResults::ReturnList(
-                            vault_path,
                             vec![],
                             StatusMessage::Error("Failed to get list, vault wasn't found".into()),
                         )),
@@ -373,10 +372,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 self.keystore.insert_key(vault_id, key.clone());
 
-                // if !self.db.record_exists_in_vault(vault_id, key.clone(), record_id) {
-                //     self.bucket.create_and_init_vault(vault_id, key.clone(), record_id);
-                // }
-
                 let mut seed = vec![0u8; size_bytes];
                 fill(&mut seed).expect(line_error!());
 
@@ -405,7 +400,10 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 match self.keystore.get_key(seed_vault_id) {
                     Some(seed_key) => {
                         let dk_key = if !self.keystore.vault_exists(key_vault_id) {
-                            self.keystore.create_key(key_vault_id)
+                            let key = self.keystore.create_key(key_vault_id);
+                            self.db.init_vault(&key, key_vault_id).expect(line_error!());
+
+                            key
                         } else {
                             self.keystore.get_key(key_vault_id).expect(line_error!())
                         };
@@ -462,7 +460,10 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     Some(parent_key) => {
                         self.keystore.insert_key(parent_vault_id, parent_key.clone());
                         let child_key = if !self.keystore.vault_exists(child_vault_id) {
-                            self.keystore.create_key(child_vault_id)
+                            let key = self.keystore.create_key(child_vault_id);
+                            self.db.init_vault(&key, child_vault_id).expect(line_error!());
+
+                            key
                         } else {
                             self.keystore.get_key(child_vault_id).expect(line_error!())
                         };
