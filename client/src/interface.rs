@@ -23,12 +23,11 @@ use crate::{
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     ClientId, Location, Provider,
 };
-use communication::actor::RelayDirection;
 #[cfg(feature = "communication")]
 use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults,
-        EstablishedConnection, FirewallPermission, FirewallRule, RequestDirection, VariantPermission,
+        EstablishedConnection, FirewallPermission, FirewallRule, RelayDirection, RequestDirection, VariantPermission,
     },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},

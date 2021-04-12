@@ -303,7 +303,7 @@ where
                 .with(Protocol::P2p(local_id.into()));
             let (listener_id, _) = self
                 .start_listening(Some(addr.clone()))
-                .map_err(|()| ConnectPeerError::IO)?;
+                .map_err(|()| ConnectPeerError::Io)?;
             if !Swarm::is_connected(&self.swarm, &relay_id) {
                 self.await_connect_result(&relay_id, &Some(addr))?;
             }

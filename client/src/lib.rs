@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![allow(dead_code)]
+#![allow(clippy::from_over_into)]
+#![allow(clippy::upper_case_acronyms)]
 
 /// An interface for implementing the stronghold engine. Using the Riker Actor model, this library provides a
 /// mechanism to manage secret data between multiple users. Stronghold may be accessed via the `Stronghold`

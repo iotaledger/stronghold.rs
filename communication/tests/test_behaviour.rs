@@ -360,6 +360,27 @@ fn relay() {
         .with(Protocol::P2p(peer_b_id.into()));
     let relayed_addr_b_clone = relayed_addr_b.clone();
 
+    // wait for peer b to connect to relay and start listening
+    task::block_on(async {
+        Swarm::listen_on(&mut swarm_b, relayed_addr_b_clone.clone()).expect("Start listening failed.");
+
+        // connect to relay
+        loop {
+            match swarm_b.next_event().await {
+                SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == relay_peer_id => break,
+                SwarmEvent::Dialing(peer_id) if peer_id == relay_peer_id => {}
+                e => panic!("{:?}", e),
+            }
+        }
+
+        loop {
+            match swarm_b.next_event().await {
+                SwarmEvent::NewListenAddr(addr) if addr == relayed_addr_b_clone => break,
+                e => panic!("{:?}", e),
+            }
+        }
+    });
+
     // start peer a to send a message to peer b
     let handle_a = task::spawn(async move {
         Swarm::dial_addr(&mut swarm_a, relayed_addr_b).expect("Failed to dial address.");
@@ -396,26 +417,19 @@ fn relay() {
                     }
                 }
                 P2PEvent::Identify(_) => {}
+                // _ => {},
                 e => panic!("{:?}", e),
             }
         }
     });
 
     let handle_b = task::spawn(async move {
-        Swarm::listen_on(&mut swarm_b, relayed_addr_b_clone.clone()).expect("Start listening failed.");
-
-        // connect to relay
+        // Connection from peer a
         loop {
             match swarm_b.next_event().await {
-                SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == relay_peer_id => break,
-                SwarmEvent::Dialing(peer_id) if peer_id == relay_peer_id => {}
-                e => panic!("{:?}", e),
-            }
-        }
-
-        loop {
-            match swarm_b.next_event().await {
-                SwarmEvent::NewListenAddr(addr) if addr == relayed_addr_b_clone => break,
+                SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == peer_a_id => break,
+                SwarmEvent::IncomingConnection { .. } => {}
+                SwarmEvent::Behaviour(P2PEvent::Identify(_)) => {}
                 e => panic!("{:?}", e),
             }
         }
@@ -438,6 +452,7 @@ fn relay() {
                     }
                 }
                 P2PEvent::Identify(_) => {}
+                // _ => {}
                 e => panic!("{:?}", e),
             }
         }
@@ -453,6 +468,7 @@ fn relay() {
                         panic!("{:?}", *boxed_event);
                     }
                 }
+                // _ => {}
                 e => panic!("{:?}", e),
             }
         }

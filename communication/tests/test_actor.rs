@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 fn init_system(
     sys: &ActorSystem,
     client: ActorRef<Request>,
+    default: FirewallPermission,
 ) -> (PeerId, ActorRef<CommunicationRequest<Request, Request>>) {
     // init actor system
     let keys = Keypair::generate_ed25519();
@@ -29,8 +30,8 @@ fn init_system(
     let behaviour_config = BehaviourConfig::default();
     let actor_config = CommunicationActorConfig {
         client,
-        firewall_default_in: FirewallPermission::all(),
-        firewall_default_out: FirewallPermission::all(),
+        firewall_default_in: default,
+        firewall_default_out: default,
     };
     let communication_actor = sys
         .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
@@ -132,7 +133,7 @@ fn msg_external_actor() {
     // actor A system
     let sys_a = ActorSystem::new().expect("Failed to create actor system.");
     let client = sys_a.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
-    let (_, communication_actor_a) = init_system(&sys_a, client);
+    let (_, communication_actor_a) = init_system(&sys_a, client, FirewallPermission::all());
     let actor_a = sys_a.actor_of::<ActorA>("actor-a").expect("Failed to init actor.");
 
     // remote actor that responds to a requests from actor A system
@@ -164,7 +165,7 @@ fn msg_external_actor() {
     let client = sys_b
         .actor_of_args::<ActorB, _>("actor-b", addr_b.clone())
         .expect("Failed to init actor.");
-    let (peer_b_id, communication_actor_b) = init_system(&sys_b, client);
+    let (peer_b_id, communication_actor_b) = init_system(&sys_b, client, FirewallPermission::all());
 
     // communication B start listening on the port
     let req = CommunicationRequest::<Request, Request>::StartListening(Some(addr_b.clone()));
@@ -350,14 +351,14 @@ fn ask_request() {
     // start actor B system
     let sys_b = ActorSystem::new().expect("Failed to create actor system.");
     let target_actor = sys_b.actor_of::<ReplyActor>("target").expect("Failed to init actor.");
-    let (_, communication_actor_b) = init_system(&sys_b, target_actor);
+    let (_, communication_actor_b) = init_system(&sys_b, target_actor, FirewallPermission::all());
 
     start_listening(&sys_b, &communication_actor_b, None);
 
     // start actor A system
     let sys_a = ActorSystem::new().expect("Failed to create actor system.");
     let blank_actor = sys_a.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
-    let (_, communication_actor_a) = init_system(&sys_a, blank_actor);
+    let (_, communication_actor_a) = init_system(&sys_a, blank_actor, FirewallPermission::all());
 
     // obtain information about peer Bs id and listeners
     let (peer_b_id, listeners, _) = get_swarm_info(&sys_b, &communication_actor_b);
@@ -384,7 +385,7 @@ fn ask_request() {
 fn no_soliloquize() {
     let sys = ActorSystem::new().expect("Failed to create actor system.");
     let client = sys.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
-    let (own_peer_id, communication_actor) = init_system(&sys, client);
+    let (own_peer_id, communication_actor) = init_system(&sys, client, FirewallPermission::all());
     start_listening(&sys, &communication_actor, None);
 
     let (_, listeners, _) = get_swarm_info(&sys, &communication_actor);
@@ -403,7 +404,7 @@ fn no_soliloquize() {
 fn connect_invalid() {
     let sys = ActorSystem::new().expect("Failed to create actor system.");
     let client = sys.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
-    let (_, communication_actor) = init_system(&sys, client);
+    let (_, communication_actor) = init_system(&sys, client, FirewallPermission::all());
     if add_peer(&sys, &communication_actor, PeerId::random(), None, None).is_err() {
         panic!("Could not establish connection");
     }
@@ -414,12 +415,12 @@ fn manage_connection() {
     // init actor A
     let sys_a = ActorSystem::new().expect("Failed to create actor system.");
     let client = sys_a.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
-    let (peer_a_id, communication_actor_a) = init_system(&sys_a, client);
+    let (peer_a_id, communication_actor_a) = init_system(&sys_a, client, FirewallPermission::all());
 
     // init actor B
     let sys_b = ActorSystem::new().expect("Failed to create actor system.");
     let client = sys_b.actor_of::<ReplyActor>("target").expect("Failed to init actor.");
-    let (peer_b_id, communication_actor_b) = init_system(&sys_b, client);
+    let (peer_b_id, communication_actor_b) = init_system(&sys_b, client, FirewallPermission::all());
 
     // try to send a request between the peers without connecting them first
     let res = send_request(&sys_a, &communication_actor_a, peer_b_id);
@@ -460,62 +461,21 @@ fn manage_connection() {
 }
 
 #[test]
-fn firewall_rules() {
-    // Actor A
+fn firewall_forbid_in() {
+    // Actor A with firewall that allows all connections.
     let sys_a = ActorSystem::new().expect("Failed to create actor system.");
     let blank_actor = sys_a.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
-    let keys = Keypair::generate_ed25519();
-    let peer_a_id = PeerId::from(keys.public());
-    let behaviour_config = BehaviourConfig::default();
-    let actor_config = CommunicationActorConfig {
-        client: blank_actor,
-        firewall_default_in: FirewallPermission::none(),
-        firewall_default_out: FirewallPermission::none(),
-    };
-    let communication_actor_a = sys_a
-        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
-            "communication",
-            (keys, actor_config, behaviour_config.clone()),
-        )
-        .expect("Failed to init actor.");
+    let (peer_a_id, communication_actor_a) = init_system(&sys_a, blank_actor, FirewallPermission::all());
 
     // Actor B with firewall that rejects all connections.
     let sys_b = ActorSystem::new().expect("Failed to create actor system.");
-    let target_actor = sys_b.actor_of::<ReplyActor>("target").expect("Failed to init actor.");
-    let keys = Keypair::generate_ed25519();
-    let peer_b_id = PeerId::from(keys.public());
-    // Set firewall to block all connections per default.
-    let actor_config = CommunicationActorConfig {
-        client: target_actor,
-        firewall_default_in: FirewallPermission::none(),
-        firewall_default_out: FirewallPermission::none(),
-    };
-    let communication_actor_b = sys_b
-        .actor_of_args::<CommunicationActor<_, Response, _, _>, _>(
-            "communication",
-            (keys, actor_config, behaviour_config),
-        )
-        .expect("Failed to init actor.");
+    let target_actor = sys_a.actor_of::<ReplyActor>("blank").expect("Failed to init actor.");
+    let (peer_b_id, communication_actor_b) = init_system(&sys_b, target_actor, FirewallPermission::none());
 
     let addr_b = start_listening(&sys_b, &communication_actor_b, None);
 
     let res = add_peer(&sys_a, &communication_actor_a, peer_b_id, Some(addr_b), None);
     assert!(res.is_ok());
-
-    // Outgoing request should be blocked by As firewall
-    match send_request(&sys_a, &communication_actor_a, peer_b_id) {
-        Err(RequestMessageError::LocalFirewallRejected) => {}
-        _ => panic!("Local firewall should have blocked the request."),
-    }
-
-    // Set rule for As firewall to allow requests to B
-    set_firewall_rule(
-        &sys_a,
-        &communication_actor_a,
-        peer_b_id,
-        RequestDirection::Out,
-        FirewallPermission::all(),
-    );
 
     // Incoming request should be blocked by Bs firewall
     match send_request(&sys_a, &communication_actor_a, peer_b_id) {
@@ -550,8 +510,78 @@ fn firewall_rules() {
         Err(RequestMessageError::Outbound(P2POutboundFailure::Timeout)) => {}
         _ => panic!("Remote firewall should have blocked the request"),
     }
+}
 
-    // only allow Request::Ping
+#[test]
+fn firewall_forbid_out() {
+    // Actor A that rejects all traffic
+    let sys_a = ActorSystem::new().expect("Failed to create actor system.");
+    let blank_actor = sys_a.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
+    let (_, communication_actor_a) = init_system(&sys_a, blank_actor, FirewallPermission::none());
+
+    // Actor B that allows all traffic
+    let sys_b = ActorSystem::new().expect("Failed to create actor system.");
+    let target_actor = sys_a.actor_of::<ReplyActor>("blank").expect("Failed to init actor.");
+    let (peer_b_id, communication_actor_b) = init_system(&sys_b, target_actor, FirewallPermission::all());
+
+    let addr_b = start_listening(&sys_b, &communication_actor_b, None);
+
+    let res = add_peer(&sys_a, &communication_actor_a, peer_b_id, Some(addr_b), None);
+    assert!(res.is_ok());
+
+    // Outgoing request should be blocked by As firewall
+    match send_request(&sys_a, &communication_actor_a, peer_b_id) {
+        Err(RequestMessageError::LocalFirewallRejected) => {}
+        _ => panic!("Local firewall should have blocked the request."),
+    }
+
+    // Set rule for As firewall to allow requests to B
+    set_firewall_rule(
+        &sys_a,
+        &communication_actor_a,
+        peer_b_id,
+        RequestDirection::Out,
+        FirewallPermission::all(),
+    );
+
+    // Send request
+    let res = send_request(&sys_a, &communication_actor_a, peer_b_id);
+    assert!(res.is_ok());
+
+    // Forbid requests to B again
+    set_firewall_rule(
+        &sys_a,
+        &communication_actor_a,
+        peer_b_id,
+        RequestDirection::Out,
+        FirewallPermission::none(),
+    );
+
+    // Requests should be blocked from A again
+    match send_request(&sys_a, &communication_actor_a, peer_b_id) {
+        Err(RequestMessageError::LocalFirewallRejected) => {}
+        _ => panic!("Remote firewall should have blocked the request"),
+    }
+}
+
+#[test]
+fn firewall_rules_selective() {
+    // Actor A that allows all traffic
+    let sys_a = ActorSystem::new().expect("Failed to create actor system.");
+    let blank_actor = sys_a.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
+    let (peer_a_id, communication_actor_a) = init_system(&sys_a, blank_actor, FirewallPermission::all());
+
+    // Actor B with firewall that rejects all connections.
+    let sys_b = ActorSystem::new().expect("Failed to create actor system.");
+    let target_actor = sys_a.actor_of::<ReplyActor>("blank").expect("Failed to init actor.");
+    let (peer_b_id, communication_actor_b) = init_system(&sys_b, target_actor, FirewallPermission::none());
+
+    let addr_b = start_listening(&sys_b, &communication_actor_b, None);
+
+    let res = add_peer(&sys_a, &communication_actor_a, peer_b_id, Some(addr_b), None);
+    assert!(res.is_ok());
+
+    // set B's firewall to only allow Request::Ping
     let permission = RequestPermission::Ping.permission();
     match task::block_on(try_ask(
         &sys_b,
@@ -596,13 +626,13 @@ fn relay() {
     let client = relay_sys
         .actor_of::<BlankActor>("blank")
         .expect("Failed to init actor.");
-    let (relay_peer_id, relay_comms_actor) = init_system(&relay_sys, client);
+    let (relay_peer_id, relay_comms_actor) = init_system(&relay_sys, client, FirewallPermission::all());
     let relay_addr = start_listening(&relay_sys, &relay_comms_actor, None);
 
     // init source system and add relay for dialing
     let src_sys = ActorSystem::new().expect("Failed to create actor system.");
     let client = src_sys.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
-    let (src_peer_id, src_comms_actor) = init_system(&src_sys, client);
+    let (src_peer_id, src_comms_actor) = init_system(&src_sys, client, FirewallPermission::all());
     let peer_id = add_peer(
         &src_sys,
         &src_comms_actor,
@@ -617,7 +647,7 @@ fn relay() {
     let client = dest_sys
         .actor_of::<ReplyActor>("destination")
         .expect("Failed to init actor.");
-    let (dest_peer_id, dest_comms_actor) = init_system(&dest_sys, client);
+    let (dest_peer_id, dest_comms_actor) = init_system(&dest_sys, client, FirewallPermission::all());
     let peer_id = add_peer(
         &dest_sys,
         &dest_comms_actor,
