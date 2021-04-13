@@ -34,27 +34,27 @@ pub enum CommunicationRequest<Req, ClientMsg: Message> {
     RequestMsg { peer_id: PeerId, request: Req },
     /// Set the actor reference that incoming request are forwarded to.
     SetClientRef(ActorRef<ClientMsg>),
-    /// Add the address of a peer.
-    /// This will attempt to connect to the peer to verify that the address can be dialed.
+    /// Add dialing information for a peer.
+    /// This will attempt to connect to the peer either by the address or by peer id if it is already known due to e.g.
+    /// mDNS.
     /// If the targeted peer is not a relay, and can not be reached directly, it will be attempted to reach
     /// it through a relay, if there are any.
-    /// If the given peer is a relay, a address has to be provided.
     AddPeer {
         peer_id: PeerId,
         addr: Option<Multiaddr>,
         is_relay: Option<RelayDirection>,
     },
-    /// Get information about the swarm.
+    /// Get information about the swarm with local peer id, listening addresses and active connections.
     GetSwarmInfo,
     /// Ban a peer, which prevents any communication from / to that peer.
     BanPeer(PeerId),
     /// Unban a peer to allow future communication.
     UnbanPeer(PeerId),
     /// Start listening to a port on the swarm.
-    /// If no `Multiaddr` is provided, the address will either use the same that is used for listening to the relay,
-    /// or create a new one that is OS assigned.
+    /// If no `Multiaddr` is provided, the address will be OS assigned.
     StartListening(Option<Multiaddr>),
-    /// Stop listening to the swarm. Without a listener, the local peer can not be dialed from remote.
+    /// Stop listening locally to the swarm. Without a listener, the local peer can not be directly dialed from remote.
+    /// Relayed listening addresses will not be removed with this.
     RemoveListener,
     /// Configure to use a peer as relay for dialing, listening, or both.
     /// The peer has to be known, which means that it has to be added with `CommunicationRequest::AddPeer` before.
@@ -129,7 +129,7 @@ pub enum CommunicationResults<Res> {
     /// If it was successful, one of the listening addresses is returned, which will show the listening port.
     StartListeningResult(Result<Multiaddr, ()>),
     /// Stopped listening to the swarm for incoming connections.
-    RemoveListenerResult(Result<(), ()>),
+    RemoveListenerAck,
     /// Result for configuring the Relay.
     /// Error if the relay could not be reached because no address is known or dialing the address failed.
     ConfigRelayResult(Result<PeerId, ConnectPeerError>),

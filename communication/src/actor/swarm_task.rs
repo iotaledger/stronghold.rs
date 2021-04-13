@@ -43,9 +43,9 @@ where
     swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, ClientMsg>, Sender)>,
     // Listener in the local swarm
     listener: Option<(ListenerId, Multiaddr)>,
-    // relay_addr that are tried if a peer can not be reached directly
+    // relays that are tried if a peer can not be reached directly
     dialing_relays: Vec<PeerId>,
-    // relay_addr that are used for listening
+    // relays that are used for listening
     listening_relays: HashMap<PeerId, ListenerId>,
     // relay addresses
     relay_addr: HashMap<PeerId, Multiaddr>,
@@ -115,7 +115,7 @@ where
         self.swarm_rx.close();
     }
 
-    // Send a response to the sender of a previous [`CommunicationRequest`]
+    // Send a response to the sender of a previous CommunicationRequest
     fn send_response(result: CommunicationResults<Res>, sender: Sender) {
         if let Some(sender) = sender {
             let _ = sender.try_tell(result, None);
@@ -161,7 +161,7 @@ where
         res.map(|addr| (listener_id, addr)).ok_or(())
     }
 
-    // Start listening on the swarm, if not address is provided, the port will be OS assigned.
+    // Stop listening to the swarm.
     fn stop_listening(&mut self, listener: ListenerId, addr: &Multiaddr) -> Result<(), ()> {
         Swarm::remove_listener(&mut self.swarm, listener)?;
         let match_event = |event: &SwarmEvent<P2PEvent<Req, Res>, _>| match event {
@@ -172,6 +172,7 @@ where
         self.await_event(Duration::from_secs(3), &match_event).ok_or(())
     }
 
+    // Poll for the result of an connection attempt to a remote peer.
     fn await_connect_result(
         &mut self,
         target_peer: &PeerId,
@@ -195,7 +196,8 @@ where
         let res = self.await_event(Duration::from_secs(3), &match_event);
         res.unwrap_or(Err(ConnectPeerError::Timeout))
     }
-    // Try to connect a remote peer by id, and if the peer id is not know yet the address is used.
+
+    // Try to connect a remote peer by address.
     fn connect_peer_via_addr(
         &mut self,
         target_peer: &PeerId,
@@ -205,7 +207,8 @@ where
         self.await_connect_result(target_peer, &Some(target_addr))
     }
 
-    // Try to connect a remote peer by id, and if the peer id is not know yet the address is used.
+    // Try to connect a remote peer by id.
+    // This may be successful if the address was formerly known or e.g. discovered via mDNS.
     fn connect_peer(&mut self, target_peer: &PeerId) -> Result<ConnectedPoint, ConnectPeerError> {
         Swarm::dial(&mut self.swarm, target_peer)?;
         self.await_connect_result(target_peer, &None)
@@ -219,17 +222,10 @@ where
         target_addr: Option<Multiaddr>,
         is_relay: Option<RelayDirection>,
     ) -> Result<PeerId, ConnectPeerError> {
+        let target_addr = target_addr.or_else(|| is_relay.as_ref().and(self.relay_addr.get(&target_peer).cloned()));
         let mut res = match target_addr {
             Some(addr) => self.connect_peer_via_addr(&target_peer, addr),
-            None if is_relay.is_none() => self.connect_peer(&target_peer),
-            _ => {
-                let addr = self
-                    .relay_addr
-                    .get(&target_peer)
-                    .ok_or(ConnectPeerError::NoAddresses)?
-                    .clone();
-                self.connect_peer_via_addr(&target_peer, addr)
-            }
+            None => self.connect_peer(&target_peer),
         };
 
         let is_eligible_to_try_relayed = match res {
@@ -268,8 +264,8 @@ where
         })
     }
 
-    // Try sending a request envelope to a remote peer if it was approved by the firewall, and return the received
-    // Response. If no response is received, a RequestMessageError::Rejected will be returned.
+    // Try sending a request to a remote peer if it was approved by the firewall, and return the received
+    // Response. If no response is received, a timeout error will be returned.
     fn send_request(&mut self, peer_id: PeerId, req: Req) -> Result<Res, RequestMessageError> {
         let req_id = self.swarm.send_request(&peer_id, req);
         let match_event = |event: &SwarmEvent<P2PEvent<Req, Res>, _>| match event {
@@ -292,6 +288,8 @@ where
     }
 
     #[allow(clippy::map_entry)]
+    // Add a relay for listening if it is not already known.
+    // This will start listening on the relayed address and attempt to connect to the relay, if it is not connected yet.
     fn add_listener_relay(&mut self, relay_id: PeerId) -> Result<PeerId, ConnectPeerError> {
         if !self.listening_relays.contains_key(&relay_id) {
             let local_id = *Swarm::local_peer_id(&self.swarm);
@@ -312,7 +310,7 @@ where
         Ok(relay_id)
     }
 
-    // Set the new relay configuration. If a relay is use, a keep-alive connection to the relay will be established.
+    // Set the new relay configuration to use the relay for dialing, listening or both.
     fn set_relay(&mut self, peer_id: PeerId, direction: RelayDirection) -> Result<PeerId, ConnectPeerError> {
         match direction {
             RelayDirection::Dialing => {
@@ -340,14 +338,18 @@ where
         }
     }
 
+    // Remove relay from listeners and dialing relays.
+    // Keep the address in case that the relay will be used in the future again.
     fn remove_relay(&mut self, relay_id: &PeerId) {
         if let Some(listener) = self.listening_relays.remove(relay_id) {
             let _ = Swarm::remove_listener(&mut self.swarm, listener);
         }
         self.dialing_relays.retain(|r| r == relay_id);
-        self.relay_addr.remove(relay_id);
     }
 
+    // Change or add rules to adjust the permissions specific peers or the default rule.
+    // If a permission is added / removed for a peer that has no rule yet, a new rule will be added
+    // for that peer based on the default rule with changed permissions.
     fn update_firewall_rule(
         &mut self,
         peers: Vec<PeerId>,
@@ -360,15 +362,17 @@ where
         let (have_rule, no_rule) = peers
             .into_iter()
             .partition::<Vec<PeerId>, _>(|p| self.firewall.has_rule(&p, direction));
+
         if !no_rule.is_empty() || is_change_default {
-            let new_default = is_add
+            let updated_default = is_add
                 .then(|| default.add_permissions(&permissions))
                 .unwrap_or_else(|| default.remove_permissions(&permissions));
             no_rule
                 .into_iter()
-                .for_each(|peer| self.firewall.set_rule(peer, direction, new_default));
-            is_change_default.then(|| self.firewall.set_default(&direction, new_default));
+                .for_each(|peer| self.firewall.set_rule(peer, direction, updated_default));
+            is_change_default.then(|| self.firewall.set_default(&direction, updated_default));
         }
+
         have_rule.into_iter().for_each(|peer| {
             if let Some(rule) = self.firewall.get_rule(&peer, direction) {
                 let update = is_add
@@ -379,6 +383,7 @@ where
         })
     }
 
+    // Configure the firewall by either adding, changing, overwriting, or removing rules.
     fn configure_firewall(&mut self, rule: FirewallRule) {
         match rule {
             FirewallRule::SetRules {
@@ -441,13 +446,10 @@ where
                 Self::send_response(CommunicationResults::StartListeningResult(res), sender);
             }
             CommunicationRequest::RemoveListener => {
-                let result = self
-                    .listener
-                    .take()
-                    .ok_or(())
-                    .and_then(|(listener, addr)| self.stop_listening(listener, &addr));
-                let res = CommunicationResults::RemoveListenerResult(result);
-                Self::send_response(res, sender);
+                if let Some((listener, addr)) = self.listener.take() {
+                    let _ = self.stop_listening(listener, &addr);
+                }
+                Self::send_response(CommunicationResults::RemoveListenerAck, sender);
             }
             CommunicationRequest::AddPeer {
                 peer_id,
