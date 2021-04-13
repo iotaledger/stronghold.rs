@@ -1,13 +1,14 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{EstablishedConnection, KeepAlive};
+use super::EstablishedConnection;
+use crate::actor::RelayDirection;
 use libp2p::{core::ConnectedPoint, PeerId};
 use std::collections::HashMap;
 
 // Maintain the current connection state to remote peers.
 // If a connection is closed in the ConnectionManager, no request from that peer will be forwarded anymore, but the
-// connection within the swarn is still alive. A connection in the swarm can only actively be closed by banning the
+// connection within the swarm is still alive. A connection in the swarm can only actively be closed by banning the
 // peer, otherwise it closes on timeout.
 //
 // If multiple connections to a peer exist, the ConnectionManager will keep the properties of the first connection.
@@ -26,28 +27,10 @@ impl ConnectionManager {
     }
 
     // Insert connection information for new peer, if that peer is not known yet.
-    pub fn insert(&mut self, peer_id: PeerId, connected_point: ConnectedPoint, keep_alive: KeepAlive) {
+    pub fn insert(&mut self, peer_id: PeerId, connected_point: ConnectedPoint, is_relay: Option<RelayDirection>) {
         if self.map.get(&peer_id).is_none() {
-            let new_connection = EstablishedConnection::new(keep_alive, connected_point);
+            let new_connection = EstablishedConnection::new(connected_point, is_relay);
             self.map.insert(peer_id, new_connection);
-        }
-    }
-
-    // Check is peer is in the currently active/ allowed connections.
-    pub fn is_active_connection(&self, peer_id: &PeerId) -> bool {
-        self.map.get(peer_id).is_some()
-    }
-
-    pub fn is_keep_alive(&self, peer_id: &PeerId) -> bool {
-        self.map
-            .get(&peer_id)
-            .map(|connection| connection.is_keep_alive())
-            .unwrap_or(false)
-    }
-
-    pub fn set_keep_alive(&mut self, peer_id: &PeerId, keep_alive: KeepAlive) {
-        if let Some(connection) = self.map.get_mut(peer_id) {
-            connection.set_keep_alive(keep_alive)
         }
     }
 

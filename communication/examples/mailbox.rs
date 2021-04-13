@@ -194,15 +194,15 @@ async fn run_mailbox() {
                         // tree
                         Request::PutRecord(record) => {
                             local_records.insert(record.key(), record.value());
-                            let _ = swarm.send_response(request_id, Response::Outcome(RequestOutcome::Success));
+                            let _ = swarm.send_response(&request_id, Response::Outcome(RequestOutcome::Success));
                         }
                         // Send the record for that key to the remote peer
                         Request::GetRecord(key) => {
                             if let Some((key, value)) = local_records.get_key_value(&key) {
                                 let record = MailboxRecord::new(key.clone(), value.clone());
-                                let _ = swarm.send_response(request_id, Response::Record(record));
+                                let _ = swarm.send_response(&request_id, Response::Record(record));
                             } else {
-                                let _ = swarm.send_response(request_id, Response::Outcome(RequestOutcome::Error));
+                                let _ = swarm.send_response(&request_id, Response::Outcome(RequestOutcome::Error));
                             }
                         }
                     };
@@ -231,7 +231,7 @@ async fn put_record(matches: &ArgMatches) {
         loop {
             match swarm.next_event().await {
                 SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
-                    let event = boxed_event.deref().clone();
+                    let event = *boxed_event;
                     if let P2PReqResEvent::Res {
                         peer_id: _,
                         request_id: _,
@@ -285,11 +285,11 @@ async fn get_record(matches: &ArgMatches) {
                         peer_id: _,
                         request_id: _,
                         response: Response::Record(record),
-                    } = boxed_event.deref().clone()
+                    } = *boxed_event
                     {
                         println!("{:?}:\n{:?}", record.key(), record.value());
                     } else {
-                        println!("{:?}", boxed_event.deref().clone());
+                        println!("{:?}", *boxed_event);
                     }
                     return;
                 }

@@ -9,19 +9,9 @@ use libp2p::{
     request_response::{InboundFailure, OutboundFailure, RequestId, RequestResponseEvent, RequestResponseMessage},
     swarm::ProtocolsHandlerUpgrErr,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 #[cfg(feature = "mdns")]
 use libp2p::mdns::MdnsEvent;
-
-/// Wrapped request message to allow using a relay peer that forward messages from source to target.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RequestEnvelope<Req: Debug + Clone + Serialize + DeserializeOwned> {
-    pub source: String,
-    #[serde(bound = "Req: Debug + Clone + Serialize + DeserializeOwned")]
-    pub message: Req,
-    pub target: String,
-}
 
 /// Event that can be produced by the `Mdns` behaviour.
 #[derive(Debug, Clone, PartialEq)]

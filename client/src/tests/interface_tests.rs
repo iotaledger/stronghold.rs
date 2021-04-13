@@ -6,10 +6,6 @@ use riker::actors::*;
 use crate::{line_error, Location, RecordHint, Stronghold};
 #[cfg(feature = "communication")]
 use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, StatusMessage};
-#[cfg(feature = "communication")]
-use communication::actor::KeepAlive;
-#[cfg(feature = "communication")]
-use core::time::Duration;
 
 #[cfg(feature = "communication")]
 use super::fresh;
@@ -425,8 +421,6 @@ fn test_communication() {
         panic!("Could not configure firewall.")
     }
 
-    std::thread::sleep(Duration::new(1, 0));
-
     let addr = match futures::executor::block_on(remote_stronghold.start_listening(None)) {
         ResultMessage::Ok(addr) => addr,
         ResultMessage::Error(_) => panic!("Could not start listening"),
@@ -439,7 +433,7 @@ fn test_communication() {
 
     assert!(listeners.as_slice().contains(&addr));
 
-    match futures::executor::block_on(local_stronghold.establish_connection(peer_id, addr, KeepAlive::None)) {
+    match futures::executor::block_on(local_stronghold.add_peer(peer_id, Some(addr), None)) {
         ResultMessage::Ok(_) => {}
         ResultMessage::Error(_) => panic!("Could not establish connection to remote."),
     }

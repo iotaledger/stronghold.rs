@@ -47,6 +47,7 @@ mod test {
     static ALLOC: ZeroingAlloc<std::alloc::System> = ZeroingAlloc(std::alloc::System);
 
     #[test]
+    #[allow(clippy::vec_init_then_push)]
     fn test_vec() {
         use std::vec::Vec;
 

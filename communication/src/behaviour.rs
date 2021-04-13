@@ -43,7 +43,7 @@
 //!                 request: Request::Ping,
 //!             } = boxed_event.deref().clone()
 //!             {
-//!                 let res = swarm.send_response(request_id, Response::Pong);
+//!                 let res = swarm.send_response(&request_id, Response::Pong);
 //!                 if res.is_err() {
 //!                     break;
 //!                 }
@@ -71,6 +71,7 @@ use libp2p::{
     identity::Keypair,
     mdns::MdnsConfig,
     noise::{self, NoiseConfig},
+    relay::{new_transport_and_behaviour, Relay, RelayConfig},
     request_response::{
         ProtocolSupport, RequestId, RequestResponse, RequestResponseConfig, RequestResponseEvent,
         RequestResponseMessage, ResponseChannel,
@@ -163,6 +164,7 @@ pub struct P2PNetworkBehaviour<Req: MessageEvent, Res: MessageEvent> {
     mdns: Mdns,
     identify: Identify,
     msg_proto: RequestResponse<MessageCodec<Req, Res>>,
+    relay: Relay,
     #[behaviour(ignore)]
     peers: HashMap<PeerId, Vec<Multiaddr>>,
     #[behaviour(ignore)]
@@ -216,11 +218,12 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
         let dns_transport = DnsConfig::system(TcpConfig::new())
             .await
             .map_err(|e| BehaviourError::TransportError(format!("Could not create transport: {:?}", e)))?;
-        // The configured transport establishes connections via tcp with websockets as fallback, and
-        // negotiates authentification and multiplexing on all connections
-        let transport = dns_transport
-            .clone()
-            .or_transport(WsConfig::new(dns_transport))
+        // The configured transport establishes connections via tcp with websockets as fallback
+        let transport = dns_transport.clone().or_transport(WsConfig::new(dns_transport));
+
+        let (relay_transport, relay_behaviour) = new_transport_and_behaviour(RelayConfig::default(), transport);
+        // Negotiate authentication and multiplexing on all connections
+        let upgraded_transport = relay_transport
             .upgrade(upgrade::Version::V1)
             .authenticate(noise)
             .multiplex(YamuxConfig::default())
@@ -267,6 +270,7 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
             mdns,
             msg_proto,
             identify,
+            relay: relay_behaviour,
             peers: HashMap::new(),
             events: Vec::new(),
             response_channels: HashMap::new(),
@@ -274,7 +278,7 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
 
         // The swarm manages a pool of connections established through the transport and drives the
         // NetworkBehaviour through emitting events triggered by activity on the managed connections.
-        Ok(Swarm::new(transport, behaviour, local_peer_id))
+        Ok(Swarm::new(upgraded_transport, behaviour, local_peer_id))
     }
 
     // Custom function that is called when the swarm is polled
@@ -327,10 +331,10 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
         self.msg_proto.send_request(peer_id, request)
     }
 
-    pub fn send_response(&mut self, request_id: RequestId, response: Res) -> Result<(), Res> {
+    pub fn send_response(&mut self, request_id: &RequestId, response: Res) -> Result<(), Res> {
         let channel = self
             .response_channels
-            .remove(&request_id)
+            .remove(request_id)
             .ok_or_else(|| response.clone())?;
         self.msg_proto.send_response(channel, response)
     }
@@ -402,4 +406,8 @@ impl<Req: MessageEvent, Res: MessageEvent> NetworkBehaviourEventProcess<Identify
         }
         self.events.push(P2PEvent::from(event));
     }
+}
+
+impl<Req: MessageEvent, Res: MessageEvent> NetworkBehaviourEventProcess<()> for P2PNetworkBehaviour<Req, Res> {
+    fn inject_event(&mut self, _: ()) {}
 }

@@ -13,7 +13,7 @@ use libp2p::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 // TODO: support no_std
-use std::io::{Error as IOError, ErrorKind as IOErrorKind, Result as IOResult};
+use std::io::{Error as IoError, ErrorKind as IoErrorKind, Result as IOResult};
 
 /// Trait for the generic Request and Response types
 pub trait MessageEvent: Serialize + DeserializeOwned + Debug + Send + Clone + Sync + 'static {}
@@ -64,9 +64,9 @@ where
         read_one(io, usize::MAX)
             .map(|req| match req {
                 Ok(bytes) => {
-                    serde_json::from_slice(bytes.as_slice()).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))
+                    serde_json::from_slice(bytes.as_slice()).map_err(|e| IoError::new(IoErrorKind::InvalidData, e))
                 }
-                Err(e) => Err(IOError::new(IOErrorKind::InvalidData, e)),
+                Err(e) => Err(IoError::new(IoErrorKind::InvalidData, e)),
             })
             .await
     }
@@ -79,9 +79,9 @@ where
         read_one(io, usize::MAX)
             .map(|res| match res {
                 Ok(bytes) => {
-                    serde_json::from_slice(bytes.as_slice()).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))
+                    serde_json::from_slice(bytes.as_slice()).map_err(|e| IoError::new(IoErrorKind::InvalidData, e))
                 }
-                Err(e) => Err(IOError::new(IOErrorKind::InvalidData, e)),
+                Err(e) => Err(IoError::new(IoErrorKind::InvalidData, e)),
             })
             .await
     }
@@ -91,7 +91,7 @@ where
     where
         R: AsyncWrite + Unpin + Send,
     {
-        let buf = serde_json::to_vec(&req).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?;
+        let buf = serde_json::to_vec(&req).map_err(|e| IoError::new(IoErrorKind::InvalidData, e))?;
         write_one(io, buf).await
     }
 
@@ -100,7 +100,7 @@ where
     where
         R: AsyncWrite + Unpin + Send,
     {
-        let buf = serde_json::to_vec(&res).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?;
+        let buf = serde_json::to_vec(&res).map_err(|e| IoError::new(IoErrorKind::InvalidData, e))?;
         write_one(io, buf).await
     }
 }
@@ -235,7 +235,7 @@ mod test {
                 results.push(bytes == &received)
             }
             socket.shutdown(Shutdown::Both).expect("Failed to shutdown socket.");
-            results.iter().any(|res| *res)
+            results.into_iter().any(|res| res)
         });
         task::block_on(async {
             let (_, results) = future::join(listener_handle, writer_handle).await;
@@ -273,7 +273,7 @@ mod test {
                 results.push(bytes == &received)
             }
             socket.shutdown(Shutdown::Both).expect("Failed to shutdown socket.");
-            results.iter().any(|res| *res)
+            results.into_iter().any(|res| res)
         });
         task::block_on(async {
             let (_, results) = future::join(listener_handle, writer_handle).await;

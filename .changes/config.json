@@ -206,6 +206,14 @@
       "path": "./utils/",
       "manager": "rust",
       "publish": false
+    },
+    "commandline": {
+      "path": "./products/commandline/",
+      "manager": "rust",
+      "publish": false,
+      "dependencies": [
+        "iota-stronghold"
+      ]
     }
   }
 }
