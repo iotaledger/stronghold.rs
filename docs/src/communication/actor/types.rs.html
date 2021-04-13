@@ -208,28 +208,6 @@
 <span id="205">205</span>
 <span id="206">206</span>
 <span id="207">207</span>
-<span id="208">208</span>
-<span id="209">209</span>
-<span id="210">210</span>
-<span id="211">211</span>
-<span id="212">212</span>
-<span id="213">213</span>
-<span id="214">214</span>
-<span id="215">215</span>
-<span id="216">216</span>
-<span id="217">217</span>
-<span id="218">218</span>
-<span id="219">219</span>
-<span id="220">220</span>
-<span id="221">221</span>
-<span id="222">222</span>
-<span id="223">223</span>
-<span id="224">224</span>
-<span id="225">225</span>
-<span id="226">226</span>
-<span id="227">227</span>
-<span id="228">228</span>
-<span id="229">229</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -247,34 +225,16 @@
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">actor</span>::<span class="ident">firewall</span>::<span class="ident">FirewallRule</span>;
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">time</span>::<span class="ident">Instant</span>;
 
-<span class="doccomment">/// Relay peer for outgoing request.</span>
+<span class="doccomment">/// Direction for which a relay peer is used.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">RelayConfig</span> {
-    <span class="doccomment">/// No relay should be used, peers can only be dialed directly.</span>
-    <span class="ident">NoRelay</span>,
-    <span class="doccomment">/// Always send requests to remote peers via the relay.</span>
-    <span class="ident">RelayAlways</span> { <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">addr</span>: <span class="ident">Multiaddr</span> },
-    <span class="doccomment">/// Use relay peer if sending the request directly failed,</span>
-    <span class="ident">RelayBackup</span> { <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">addr</span>: <span class="ident">Multiaddr</span> },
-}
-
-<span class="doccomment">/// Determines if the local system should actively keep the connection alive</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">KeepAlive</span> {
-    <span class="doccomment">/// No keep-alive.</span>
-    <span class="prelude-val">None</span>,
-    <span class="doccomment">/// Keep alive for a limited duration.</span>
-    <span class="ident">Limited</span> {
-        <span class="doccomment">/// End timestamp after whom the connection will not actively be kept alive anymore.</span>
-        <span class="doccomment">/// This does not automatically mean that the connection is closed, since request-response message might keep</span>
-        <span class="doccomment">/// it alive.</span>
-        <span class="doccomment">///</span>
-        <span class="doccomment">/// If the connection should be completely stopped, the CommunicationRequest::CloseConnection should be send to</span>
-        <span class="doccomment">/// the [`CommunicationActor`].</span>
-        <span class="ident">end</span>: <span class="ident">Instant</span>,
-    },
-    <span class="doccomment">/// Keep alive until one of the peers close the connection.</span>
-    <span class="ident">Unlimited</span>,
+<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">RelayDirection</span> {
+    <span class="doccomment">/// Use the relay if a peer can not be dialed directly.</span>
+    <span class="ident">Dialing</span>,
+    <span class="doccomment">/// Maintain a keep-alive connection to a relay peer that then can relay</span>
+    <span class="doccomment">/// messages from remote peers to the local peer.</span>
+    <span class="ident">Listening</span>,
+    <span class="doccomment">/// Use the peer for Dialing and Listening.</span>
+    <span class="ident">Both</span>,
 }
 
 <span class="doccomment">/// Requests for the [`CommunicationActor`].</span>
@@ -285,44 +245,40 @@
     <span class="ident">RequestMsg</span> { <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">request</span>: <span class="ident">Req</span> },
     <span class="doccomment">/// Set the actor reference that incoming request are forwarded to.</span>
     <span class="ident">SetClientRef</span>(<span class="ident">ActorRef</span><span class="op">&lt;</span><span class="ident">ClientMsg</span><span class="op">&gt;</span>),
-    <span class="doccomment">/// Connect to a remote peer.</span>
-    <span class="doccomment">/// If the peer id is know it will attempt to use a know address of it, otherwise the `addr` will be dialed.</span>
-    <span class="ident">EstablishConnection</span> {
-        <span class="ident">addr</span>: <span class="ident">Multiaddr</span>,
+    <span class="doccomment">/// Add dialing information for a peer.</span>
+    <span class="doccomment">/// This will attempt to connect to the peer either by the address or by peer id if it is already known due to e.g.</span>
+    <span class="doccomment">/// mDNS.</span>
+    <span class="doccomment">/// If the targeted peer is not a relay, and can not be reached directly, it will be attempted to reach</span>
+    <span class="doccomment">/// it through a relay, if there are any.</span>
+    <span class="ident">AddPeer</span> {
         <span class="ident">peer_id</span>: <span class="ident">PeerId</span>,
-        <span class="ident">keep_alive</span>: <span class="ident">KeepAlive</span>,
+        <span class="ident">addr</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>,
+        <span class="ident">is_relay</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">RelayDirection</span><span class="op">&gt;</span>,
     },
-    <span class="doccomment">/// Close the connection to a remote peer so that no more requests from that peer will be allowed.</span>
-    <span class="doccomment">/// This does not directly close the underlying transport connection, which will close on timeout instead.</span>
-    <span class="ident">CloseConnection</span>(<span class="ident">PeerId</span>),
-    <span class="doccomment">/// Check if a connection to that peer is currently active.</span>
-    <span class="ident">CheckConnection</span>(<span class="ident">PeerId</span>),
-    <span class="doccomment">/// Obtain information about the swarm.</span>
+    <span class="doccomment">/// Get information about the swarm with local peer id, listening addresses and active connections.</span>
     <span class="ident">GetSwarmInfo</span>,
-    <span class="doccomment">/// Ban a peer, which prevents any connection to that peer.</span>
+    <span class="doccomment">/// Ban a peer, which prevents any communication from / to that peer.</span>
     <span class="ident">BanPeer</span>(<span class="ident">PeerId</span>),
     <span class="doccomment">/// Unban a peer to allow future communication.</span>
     <span class="ident">UnbanPeer</span>(<span class="ident">PeerId</span>),
-    <span class="doccomment">/// Start listening to a port on the swarm. If no `Multiaddr` is provided, the address will be OS assigned.</span>
+    <span class="doccomment">/// Start listening to a port on the swarm.</span>
+    <span class="doccomment">/// If no `Multiaddr` is provided, the address will be OS assigned.</span>
     <span class="ident">StartListening</span>(<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>),
-    <span class="doccomment">/// Stop listening to the swarm. Without a listener, the local peer can not be dialed from remote.</span>
+    <span class="doccomment">/// Stop listening locally to the swarm. Without a listener, the local peer can not be directly dialed from remote.</span>
+    <span class="doccomment">/// Relayed listening addresses will not be removed with this.</span>
     <span class="ident">RemoveListener</span>,
-    <span class="doccomment">/// Configured if a relay peer should be used for requests</span>
-    <span class="ident">SetRelay</span>(<span class="ident">RelayConfig</span>),
+    <span class="doccomment">/// Configure to use a peer as relay for dialing, listening, or both.</span>
+    <span class="doccomment">/// The peer has to be known, which means that it has to be added with `CommunicationRequest::AddPeer` before.</span>
+    <span class="doccomment">/// Existing relay configuration for the same peer is overwritten with this.</span>
+    <span class="doccomment">/// If the the direction includes listening on the relay.</span>
+    <span class="ident">ConfigRelay</span> { <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">direction</span>: <span class="ident">RelayDirection</span> },
+    <span class="doccomment">/// Stop using the peer as relay.</span>
+    <span class="ident">RemoveRelay</span>(<span class="ident">PeerId</span>),
     <span class="doccomment">/// Add or remove a rule of the firewall.</span>
     <span class="doccomment">/// If a rule for a peer &amp; direction combination already exists, it is overwritten.</span>
     <span class="ident">ConfigureFirewall</span>(<span class="ident">FirewallRule</span>),
     <span class="doccomment">/// Shutdown communication actor.</span>
     <span class="ident">Shutdown</span>,
-}
-
-<span class="doccomment">/// The firewall that rejected or dropped the request</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">FirewallBlocked</span> {
-    <span class="doccomment">/// The local firewall block between the request was forwarded to the swarm.</span>
-    <span class="ident">Local</span>,
-    <span class="doccomment">/// The remote peer did not response.</span>
-    <span class="ident">Remote</span>,
 }
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
@@ -331,36 +287,25 @@
     <span class="ident">Outbound</span>(<span class="ident">P2POutboundFailure</span>),
     <span class="doccomment">/// Possible failures occurring in the context of receiving an inbound request and sending a response.</span>
     <span class="ident">Inbound</span>(<span class="ident">P2PInboundFailure</span>),
-    <span class="doccomment">/// The request was rejected or dropped by the local or remote firewall.</span>
-    <span class="ident">Rejected</span>(<span class="ident">FirewallBlocked</span>),
+    <span class="doccomment">/// The request was rejected by the local firewall.</span>
+    <span class="ident">LocalFirewallRejected</span>,
 }
 
 <span class="doccomment">/// Information about the connection with a remote peer as maintained in the ConnectionManager.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">EstablishedConnection</span> {
     <span class="ident">start</span>: <span class="ident">Instant</span>,
-    <span class="ident">keep_alive</span>: <span class="ident">KeepAlive</span>,
     <span class="ident">connected_point</span>: <span class="ident">ConnectedPoint</span>,
+    <span class="ident">is_relay</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">RelayDirection</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span> <span class="ident">EstablishedConnection</span> {
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">keep_alive</span>: <span class="ident">KeepAlive</span>, <span class="ident">connected_point</span>: <span class="ident">ConnectedPoint</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">connected_point</span>: <span class="ident">ConnectedPoint</span>, <span class="ident">is_relay</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">RelayDirection</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="ident">EstablishedConnection</span> {
             <span class="ident">start</span>: <span class="ident">Instant</span>::<span class="ident">now</span>(),
-            <span class="ident">keep_alive</span>,
             <span class="ident">connected_point</span>,
+            <span class="ident">is_relay</span>,
         }
-    }
-    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn</span> <span class="ident">is_keep_alive</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">keep_alive</span> {
-            <span class="ident">KeepAlive</span>::<span class="ident">Unlimited</span> <span class="op">=</span><span class="op">&gt;</span> <span class="bool-val">true</span>,
-            <span class="ident">KeepAlive</span>::<span class="ident">Limited</span> { <span class="ident">end</span> } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">Instant</span>::<span class="ident">now</span>() <span class="op">&lt;</span><span class="op">=</span> <span class="ident">end</span>,
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="bool-val">false</span>,
-        }
-    }
-
-    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn</span> <span class="ident">set_keep_alive</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">keep_alive</span>: <span class="ident">KeepAlive</span>) {
-        <span class="self">self</span>.<span class="ident">keep_alive</span> <span class="op">=</span> <span class="ident">keep_alive</span>;
     }
 }
 
@@ -371,10 +316,8 @@
     <span class="ident">RequestMsgResult</span>(<span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Res</span>, <span class="ident">RequestMessageError</span><span class="op">&gt;</span>),
     <span class="doccomment">/// New client actor reference was set.</span>
     <span class="ident">SetClientRefAck</span>,
-    <span class="doccomment">/// Result of trying to connect a peer.</span>
-    <span class="ident">EstablishConnectionResult</span>(<span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">PeerId</span>, <span class="ident">ConnectPeerError</span><span class="op">&gt;</span>),
-    <span class="doccomment">/// Closed connection to peer.</span>
-    <span class="ident">CloseConnectionAck</span>,
+    <span class="doccomment">/// Result of trying to connect a peer after adding it.</span>
+    <span class="ident">AddPeerResult</span>(<span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">PeerId</span>, <span class="ident">ConnectPeerError</span><span class="op">&gt;</span>),
     <span class="doccomment">/// Check if the connection exists.</span>
     <span class="ident">CheckConnectionResult</span> {
         <span class="ident">peer_id</span>: <span class="ident">PeerId</span>,
@@ -397,10 +340,12 @@
     <span class="doccomment">/// If it was successful, one of the listening addresses is returned, which will show the listening port.</span>
     <span class="ident">StartListeningResult</span>(<span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Multiaddr</span>, ()<span class="op">&gt;</span>),
     <span class="doccomment">/// Stopped listening to the swarm for incoming connections.</span>
-    <span class="ident">RemoveListenerResult</span>(<span class="prelude-ty">Result</span><span class="op">&lt;</span>(), ()<span class="op">&gt;</span>),
-    <span class="doccomment">/// Setting relay result.</span>
-    <span class="doccomment">/// Error if the relay peer could not be connected.</span>
-    <span class="ident">SetRelayResult</span>(<span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">ConnectPeerError</span><span class="op">&gt;</span>),
+    <span class="ident">RemoveListenerAck</span>,
+    <span class="doccomment">/// Result for configuring the Relay.</span>
+    <span class="doccomment">/// Error if the relay could not be reached because no address is known or dialing the address failed.</span>
+    <span class="ident">ConfigRelayResult</span>(<span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">PeerId</span>, <span class="ident">ConnectPeerError</span><span class="op">&gt;</span>),
+    <span class="doccomment">/// Successfully removed relay.</span>
+    <span class="ident">RemoveRelayAck</span>,
     <span class="doccomment">/// Successfully set firewall rule.</span>
     <span class="ident">ConfigureFirewallAck</span>,
 }
@@ -421,7 +366,7 @@
     <span class="doccomment">/// for a peer has been reached.</span>
     <span class="ident">ConnectionLimit</span>(<span class="ident">ConnectionLimit</span>),
     <span class="doccomment">/// An I/O error occurred on the connection.</span>
-    <span class="ident">IO</span>,
+    <span class="ident">Io</span>,
     <span class="doccomment">/// The connection handler produced an error.</span>
     <span class="ident">Handler</span>,
     <span class="doccomment">/// Timout on connection attempt</span>
@@ -436,7 +381,18 @@
             <span class="ident">PendingConnectionError</span>::<span class="ident">Transport</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">Transport</span>,
             <span class="ident">PendingConnectionError</span>::<span class="ident">InvalidPeerId</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">InvalidPeerId</span>,
             <span class="ident">PendingConnectionError</span>::<span class="ident">ConnectionLimit</span>(<span class="ident">limit</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">ConnectionLimit</span>(<span class="ident">limit</span>),
-            <span class="ident">PendingConnectionError</span>::<span class="ident">IO</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">IO</span>,
+            <span class="ident">PendingConnectionError</span>::<span class="ident">IO</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">Io</span>,
+        }
+    }
+}
+
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">TTransErr</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">PendingConnectionError</span><span class="op">&lt;</span><span class="ident">TTransErr</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">ConnectPeerError</span> {
+    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">error</span>: <span class="kw-2">&amp;</span><span class="ident">PendingConnectionError</span><span class="op">&lt;</span><span class="ident">TTransErr</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="kw">match</span> <span class="ident">error</span> {
+            <span class="ident">PendingConnectionError</span>::<span class="ident">Transport</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">Transport</span>,
+            <span class="ident">PendingConnectionError</span>::<span class="ident">InvalidPeerId</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">InvalidPeerId</span>,
+            <span class="ident">PendingConnectionError</span>::<span class="ident">ConnectionLimit</span>(<span class="ident">limit</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">ConnectionLimit</span>(<span class="ident">limit</span>.<span class="ident">clone</span>()),
+            <span class="ident">PendingConnectionError</span>::<span class="ident">IO</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">Io</span>,
         }
     }
 }
@@ -456,7 +412,7 @@
     <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">error</span>: <span class="ident">ConnectionError</span><span class="op">&lt;</span><span class="ident">THandlerErr</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="kw">match</span> <span class="ident">error</span> {
             <span class="ident">ConnectionError</span>::<span class="ident">Handler</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">Handler</span>,
-            <span class="ident">ConnectionError</span>::<span class="ident">IO</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">IO</span>,
+            <span class="ident">ConnectionError</span>::<span class="ident">IO</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ConnectPeerError</span>::<span class="ident">Io</span>,
         }
     }
 }

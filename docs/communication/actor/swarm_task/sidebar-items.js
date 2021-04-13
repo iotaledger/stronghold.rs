@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["SwarmTask",""]]});
+initSidebarItems({"struct":[["SwarmTask",""]],"type":[["HandleErr",""],["P2PSwarmEvent",""]]});

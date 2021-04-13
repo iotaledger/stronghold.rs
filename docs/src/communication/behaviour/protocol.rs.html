@@ -300,7 +300,7 @@
 };
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de</span>::<span class="ident">DeserializeOwned</span>, <span class="ident">Serialize</span>};
 <span class="comment">// TODO: support no_std</span>
-<span class="kw">use</span> <span class="ident">std</span>::<span class="ident">io</span>::{<span class="ident">Error</span> <span class="kw">as</span> <span class="ident">IOError</span>, <span class="ident">ErrorKind</span> <span class="kw">as</span> <span class="ident">IOErrorKind</span>, <span class="prelude-ty">Result</span> <span class="kw">as</span> <span class="ident">IOResult</span>};
+<span class="kw">use</span> <span class="ident">std</span>::<span class="ident">io</span>::{<span class="ident">Error</span> <span class="kw">as</span> <span class="ident">IoError</span>, <span class="ident">ErrorKind</span> <span class="kw">as</span> <span class="ident">IoErrorKind</span>, <span class="prelude-ty">Result</span> <span class="kw">as</span> <span class="ident">IOResult</span>};
 
 <span class="doccomment">/// Trait for the generic Request and Response types</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">MessageEvent</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Debug</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="lifetime">&#39;static</span> {}
@@ -351,9 +351,9 @@
         <span class="ident">read_one</span>(<span class="ident">io</span>, <span class="ident">usize</span>::<span class="ident">MAX</span>)
             .<span class="ident">map</span>(<span class="op">|</span><span class="ident">req</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">req</span> {
                 <span class="prelude-val">Ok</span>(<span class="ident">bytes</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="ident">serde_json</span>::<span class="ident">from_slice</span>(<span class="ident">bytes</span>.<span class="ident">as_slice</span>()).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">IOError</span>::<span class="ident">new</span>(<span class="ident">IOErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>))
+                    <span class="ident">serde_json</span>::<span class="ident">from_slice</span>(<span class="ident">bytes</span>.<span class="ident">as_slice</span>()).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">IoError</span>::<span class="ident">new</span>(<span class="ident">IoErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>))
                 }
-                <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">IOError</span>::<span class="ident">new</span>(<span class="ident">IOErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>)),
+                <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">IoError</span>::<span class="ident">new</span>(<span class="ident">IoErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>)),
             })
             .<span class="kw">await</span>
     }
@@ -366,9 +366,9 @@
         <span class="ident">read_one</span>(<span class="ident">io</span>, <span class="ident">usize</span>::<span class="ident">MAX</span>)
             .<span class="ident">map</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">res</span> {
                 <span class="prelude-val">Ok</span>(<span class="ident">bytes</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="ident">serde_json</span>::<span class="ident">from_slice</span>(<span class="ident">bytes</span>.<span class="ident">as_slice</span>()).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">IOError</span>::<span class="ident">new</span>(<span class="ident">IOErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>))
+                    <span class="ident">serde_json</span>::<span class="ident">from_slice</span>(<span class="ident">bytes</span>.<span class="ident">as_slice</span>()).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">IoError</span>::<span class="ident">new</span>(<span class="ident">IoErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>))
                 }
-                <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">IOError</span>::<span class="ident">new</span>(<span class="ident">IOErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>)),
+                <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">IoError</span>::<span class="ident">new</span>(<span class="ident">IoErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>)),
             })
             .<span class="kw">await</span>
     }
@@ -378,7 +378,7 @@
     <span class="kw">where</span>
         <span class="ident">R</span>: <span class="ident">AsyncWrite</span> <span class="op">+</span> <span class="ident">Unpin</span> <span class="op">+</span> <span class="ident">Send</span>,
     {
-        <span class="kw">let</span> <span class="ident">buf</span> <span class="op">=</span> <span class="ident">serde_json</span>::<span class="ident">to_vec</span>(<span class="kw-2">&amp;</span><span class="ident">req</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">IOError</span>::<span class="ident">new</span>(<span class="ident">IOErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>))<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">buf</span> <span class="op">=</span> <span class="ident">serde_json</span>::<span class="ident">to_vec</span>(<span class="kw-2">&amp;</span><span class="ident">req</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">IoError</span>::<span class="ident">new</span>(<span class="ident">IoErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>))<span class="question-mark">?</span>;
         <span class="ident">write_one</span>(<span class="ident">io</span>, <span class="ident">buf</span>).<span class="kw">await</span>
     }
 
@@ -387,7 +387,7 @@
     <span class="kw">where</span>
         <span class="ident">R</span>: <span class="ident">AsyncWrite</span> <span class="op">+</span> <span class="ident">Unpin</span> <span class="op">+</span> <span class="ident">Send</span>,
     {
-        <span class="kw">let</span> <span class="ident">buf</span> <span class="op">=</span> <span class="ident">serde_json</span>::<span class="ident">to_vec</span>(<span class="kw-2">&amp;</span><span class="ident">res</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">IOError</span>::<span class="ident">new</span>(<span class="ident">IOErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>))<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">buf</span> <span class="op">=</span> <span class="ident">serde_json</span>::<span class="ident">to_vec</span>(<span class="kw-2">&amp;</span><span class="ident">res</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">IoError</span>::<span class="ident">new</span>(<span class="ident">IoErrorKind</span>::<span class="ident">InvalidData</span>, <span class="ident">e</span>))<span class="question-mark">?</span>;
         <span class="ident">write_one</span>(<span class="ident">io</span>, <span class="ident">buf</span>).<span class="kw">await</span>
     }
 }
@@ -522,7 +522,7 @@
                 <span class="ident">results</span>.<span class="ident">push</span>(<span class="ident">bytes</span> <span class="op">=</span><span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">received</span>)
             }
             <span class="ident">socket</span>.<span class="ident">shutdown</span>(<span class="ident">Shutdown</span>::<span class="ident">Both</span>).<span class="ident">expect</span>(<span class="string">&quot;Failed to shutdown socket.&quot;</span>);
-            <span class="ident">results</span>.<span class="ident">iter</span>().<span class="ident">any</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">res</span>)
+            <span class="ident">results</span>.<span class="ident">into_iter</span>().<span class="ident">any</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="ident">res</span>)
         });
         <span class="ident">task</span>::<span class="ident">block_on</span>(<span class="kw">async</span> {
             <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">results</span>) <span class="op">=</span> <span class="ident">future</span>::<span class="ident">join</span>(<span class="ident">listener_handle</span>, <span class="ident">writer_handle</span>).<span class="kw">await</span>;
@@ -560,7 +560,7 @@
                 <span class="ident">results</span>.<span class="ident">push</span>(<span class="ident">bytes</span> <span class="op">=</span><span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">received</span>)
             }
             <span class="ident">socket</span>.<span class="ident">shutdown</span>(<span class="ident">Shutdown</span>::<span class="ident">Both</span>).<span class="ident">expect</span>(<span class="string">&quot;Failed to shutdown socket.&quot;</span>);
-            <span class="ident">results</span>.<span class="ident">iter</span>().<span class="ident">any</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">res</span>)
+            <span class="ident">results</span>.<span class="ident">into_iter</span>().<span class="ident">any</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="ident">res</span>)
         });
         <span class="ident">task</span>::<span class="ident">block_on</span>(<span class="kw">async</span> {
             <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">results</span>) <span class="op">=</span> <span class="ident">future</span>::<span class="ident">join</span>(<span class="ident">listener_handle</span>, <span class="ident">writer_handle</span>).<span class="kw">await</span>;

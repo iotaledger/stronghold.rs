@@ -84,11 +84,15 @@
 <span id="81">81</span>
 <span id="82">82</span>
 <span id="83">83</span>
+<span id="84">84</span>
+<span id="85">85</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
 
 <span class="attribute">#![<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>
+<span class="attribute">#![<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">from_over_into</span>)]</span>
+<span class="attribute">#![<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">upper_case_acronyms</span>)]</span>
 
 <span class="doccomment">/// An interface for implementing the stronghold engine. Using the Riker Actor model, this library provides a</span>
 <span class="doccomment">/// mechanism to manage secret data between multiple users. Stronghold may be accessed via the `Stronghold`</span>
@@ -134,7 +138,7 @@
 <span class="kw">pub</span> <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">actors</span>::<span class="ident">SHRequestPermission</span>;
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">communication</span>::{
-    <span class="ident">actor</span>::<span class="ident">KeepAlive</span>,
+    <span class="ident">actor</span>::<span class="ident">RelayDirection</span>,
     <span class="ident">libp2p</span>::{<span class="ident">Multiaddr</span>, <span class="ident">PeerId</span>},
 };
 

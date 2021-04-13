@@ -91,6 +91,7 @@
 <span id="88">88</span>
 <span id="89">89</span>
 <span id="90">90</span>
+<span id="91">91</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -141,6 +142,7 @@
     <span class="kw">static</span> <span class="ident">ALLOC</span>: <span class="ident">ZeroingAlloc</span><span class="op">&lt;</span><span class="ident">std</span>::<span class="ident">alloc</span>::<span class="ident">System</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">ZeroingAlloc</span>(<span class="ident">std</span>::<span class="ident">alloc</span>::<span class="ident">System</span>);
 
     <span class="attribute">#[<span class="ident">test</span>]</span>
+    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">vec_init_then_push</span>)]</span>
     <span class="kw">fn</span> <span class="ident">test_vec</span>() {
         <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">vec</span>::<span class="ident">Vec</span>;
 

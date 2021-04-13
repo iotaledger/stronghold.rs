@@ -265,16 +265,6 @@
 <span id="262">262</span>
 <span id="263">263</span>
 <span id="264">264</span>
-<span id="265">265</span>
-<span id="266">266</span>
-<span id="267">267</span>
-<span id="268">268</span>
-<span id="269">269</span>
-<span id="270">270</span>
-<span id="271">271</span>
-<span id="272">272</span>
-<span id="273">273</span>
-<span id="274">274</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -287,19 +277,9 @@
     <span class="ident">request_response</span>::{<span class="ident">InboundFailure</span>, <span class="ident">OutboundFailure</span>, <span class="ident">RequestId</span>, <span class="ident">RequestResponseEvent</span>, <span class="ident">RequestResponseMessage</span>},
     <span class="ident">swarm</span>::<span class="ident">ProtocolsHandlerUpgrErr</span>,
 };
-<span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de</span>::<span class="ident">DeserializeOwned</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
 
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
 <span class="kw">use</span> <span class="ident">libp2p</span>::<span class="ident">mdns</span>::<span class="ident">MdnsEvent</span>;
-
-<span class="doccomment">/// Wrapped request message to allow using a relay peer that forward messages from source to target.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">RequestEnvelope</span><span class="op">&lt;</span><span class="ident">Req</span>: <span class="ident">Debug</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span><span class="op">&gt;</span> {
-    <span class="kw">pub</span> <span class="ident">source</span>: <span class="ident">String</span>,
-    <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">bound</span> <span class="op">=</span> <span class="string">&quot;Req: Debug + Clone + Serialize + DeserializeOwned&quot;</span>)]</span>
-    <span class="kw">pub</span> <span class="ident">message</span>: <span class="ident">Req</span>,
-    <span class="kw">pub</span> <span class="ident">target</span>: <span class="ident">String</span>,
-}
 
 <span class="doccomment">/// Event that can be produced by the `Mdns` behaviour.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">PartialEq</span>)]</span>
