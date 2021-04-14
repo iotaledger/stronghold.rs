@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 
 use iota_stronghold::{Location, RecordHint, Stronghold};
 
@@ -28,19 +28,6 @@ fn init_read_vault(stronghold: Stronghold) -> Stronghold {
     stronghold
 }
 
-fn init_write_vault(stronghold: Stronghold) -> Stronghold {
-    for i in 0..5 {
-        block_on(stronghold.write_to_vault(
-            Location::counter::<_, usize>("test", i),
-            format!("test data {}", i).as_bytes().to_vec(),
-            RecordHint::new(b"test").unwrap(),
-            vec![],
-        ));
-    }
-
-    stronghold
-}
-
 fn init_read_snap(stronghold: Stronghold, key_data: &[u8]) -> Stronghold {
     let mut stronghold = init_read_vault(stronghold);
 
@@ -56,23 +43,6 @@ fn bench_stronghold_write_create(c: &mut Criterion) {
         b.iter(|| {
             block_on(stronghold.write_to_vault(
                 Location::generic("test", "some_record"),
-                b"test data".to_vec(),
-                RecordHint::new(b"test").unwrap(),
-                vec![],
-            ));
-        });
-    });
-}
-
-fn bench_stronghold_write_init(c: &mut Criterion) {
-    let stronghold = init_stronghold();
-
-    let stronghold = init_write_vault(stronghold);
-
-    c.bench_function("write to stronghold while initializing records", |b| {
-        b.iter(|| {
-            block_on(stronghold.write_to_vault(
-                Location::counter::<_, usize>("test", black_box(6)),
                 b"test data".to_vec(),
                 RecordHint::new(b"test").unwrap(),
                 vec![],
@@ -126,7 +96,8 @@ fn bench_read_store(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_stronghold_write_create,
-    bench_stronghold_write_init,
+    bench_read_from_snapshot,
+    bench_write_snapshot,
     bench_write_store,
     bench_read_store
 );

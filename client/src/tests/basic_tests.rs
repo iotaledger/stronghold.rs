@@ -3,7 +3,7 @@
 
 use riker::actors::*;
 
-use crate::{line_error, utils::LoadFromPath, Location, RecordHint, ResultMessage, Stronghold};
+use crate::{line_error, utils::LoadFromPath, Location, RecordHint, Stronghold};
 use crypto::macs::hmac::HMAC_SHA512;
 
 use engine::vault::{ClientId, VaultId};
@@ -89,6 +89,13 @@ fn test_multi_write_read_counter_head() {
     let (list, _) = futures::executor::block_on(stronghold.list_hints_and_ids("path"));
 
     assert_eq!(20, list.len());
+
+    let b = futures::executor::block_on(stronghold.record_exists(loc5.clone()));
+    assert!(b);
+    let b = futures::executor::block_on(stronghold.record_exists(loc19.clone()));
+    assert!(b);
+    let b = futures::executor::block_on(stronghold.record_exists(loc15.clone()));
+    assert!(b);
 
     let (p, _) = futures::executor::block_on(stronghold.read_secret(loc19));
     assert_eq!(Some(b"test 19".to_vec()), p);

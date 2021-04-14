@@ -29,7 +29,7 @@ fn test_vaults() {
     view.write(&key1, vid1, rid1, b"test1", RecordHint::new(b"hint").unwrap())
         .unwrap();
 
-    let list0 = view.list_hints_and_ids(&key0, vid0).unwrap();
+    let list0 = view.list_hints_and_ids(&key0, vid0);
 
     assert_eq!(list0.len(), 2);
 
@@ -61,14 +61,14 @@ fn test_vaults() {
     view.revoke_record(&key0, vid0, rid01).unwrap();
     view.revoke_record(&key1, vid1, rid1).unwrap();
 
-    let list0 = view.list_hints_and_ids(&key0, vid0).unwrap();
+    let list0 = view.list_hints_and_ids(&key0, vid0);
 
     assert_eq!(list0.len(), 1);
 
     // garbage collect vid0.
     view.garbage_collect_vault(&key0, vid0).unwrap();
 
-    let list0 = view.list_hints_and_ids(&key0, vid0).unwrap();
+    let list0 = view.list_hints_and_ids(&key0, vid0);
 
     assert_eq!(list0.len(), 1);
 

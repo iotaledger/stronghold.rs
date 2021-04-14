@@ -227,7 +227,7 @@ fn establish_connection(
         },
     )) {
         Some(CommunicationResults::EstablishConnectionResult(res)) => res,
-        other => panic!(other),
+        other => panic!("{:?}", other),
     }
 }
 

@@ -478,9 +478,9 @@ impl Stronghold {
         let client_str: String = client_id.into();
 
         if kill_actor {
-            let client = &self.clients.remove(&client_id);
+            &self.clients.remove(&client_id);
 
-            self.derive_data.remove(&client_path).expect(line_error!());
+            self.derive_data.remove(&client_path);
 
             self.system.stop(&self.target);
             let internal = self

@@ -168,7 +168,7 @@ async fn start_peer(matches: &ArgMatches) {
                     } | SwarmEvent::UnknownPeerUnreachableAddr {
                         address,
                         error,
-                    } => panic!(format!("Unreachable addr: {:?}\n{:?}", address, error)),
+                    } => panic!("Unreachable addr: {:?}\n{:?}", address, error),
                     _ => {}
                 }
             }

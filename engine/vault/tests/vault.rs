@@ -6,7 +6,7 @@ use utils::provider::Provider;
 
 use stronghold_utils::test_utils::fresh;
 
-use vault::{DBView, Encrypt, Key, Kind, PreparedRead, ReadResult, RecordHint, RecordId, Result, WriteRequest};
+use vault::{DBView, Key, Kind, PreparedRead, ReadResult, RecordHint, RecordId, Result, WriteRequest};
 
 use std::{collections::HashMap, iter::empty};
 

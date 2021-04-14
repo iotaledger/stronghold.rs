@@ -75,14 +75,14 @@ impl<P: BoxProvider> DbView<P> {
     }
 
     /// Lists all of the hints and ids for the given vault.
-    pub fn list_hints_and_ids(&self, key: &Key<P>, vid: VaultId) -> crate::Result<Vec<(RecordId, RecordHint)>> {
+    pub fn list_hints_and_ids(&self, key: &Key<P>, vid: VaultId) -> Vec<(RecordId, RecordHint)> {
         let buf: Vec<(RecordId, RecordHint)> = if let Some(vault) = self.vaults.get(&vid) {
-            vault.list_hints_and_ids(&key)?
+            vault.list_hints_and_ids(&key)
         } else {
             vec![]
         };
 
-        Ok(buf)
+        buf
     }
 
     /// Check to see if vault contains a specific record id.
@@ -108,6 +108,7 @@ impl<P: BoxProvider> DbView<P> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn exec_proc<F>(
         &mut self,
         key0: &Key<P>,
@@ -127,7 +128,7 @@ impl<P: BoxProvider> DbView<P> {
 
             let data = f(guard)?;
 
-            if let None = self.vaults.get(&vid1) {
+            if self.vaults.get(&vid1).is_none() {
                 self.init_vault(&key1, vid1)?;
             }
 
@@ -197,7 +198,7 @@ impl<P: BoxProvider> Vault<P> {
     }
 
     /// List the hints and ids of the specified vault.
-    pub(crate) fn list_hints_and_ids(&self, key: &Key<P>) -> crate::Result<Vec<(RecordId, RecordHint)>> {
+    pub(crate) fn list_hints_and_ids(&self, key: &Key<P>) -> Vec<(RecordId, RecordHint)> {
         let mut buf: Vec<(RecordId, RecordHint)> = Vec::new();
 
         if key == &self.key {
@@ -209,7 +210,7 @@ impl<P: BoxProvider> Vault<P> {
                 .collect();
         }
 
-        Ok(buf)
+        buf
     }
 
     fn contains_record(&self, key: &Key<P>, rid: RecordId) -> bool {
@@ -285,7 +286,7 @@ impl Record {
 
     /// Get the id and record hint for this record.
     fn get_hint_and_id<P: BoxProvider>(&self, key: &Key<P>) -> Option<(RecordId, RecordHint)> {
-        if let None = self.revoke {
+        if self.revoke.is_none() {
             let tx = self.data.decrypt(key, self.id).expect("Unable to decrypt transaction");
 
             let tx = tx
@@ -303,12 +304,8 @@ impl Record {
 
     /// Check to see if a record id is in this vault.
     fn check_id(&self, rid: RecordId) -> bool {
-        if let None = self.revoke {
-            if rid.0 == self.id {
-                true
-            } else {
-                false
-            }
+        if self.revoke.is_none() {
+            rid.0 == self.id
         } else {
             false
         }
@@ -319,7 +316,7 @@ impl Record {
         // check if id id and tx id match.
         if self.id == id {
             // check if there is a revocation transaction.
-            if let None = self.revoke {
+            if self.revoke.is_none() {
                 let tx = self.data.decrypt(key, self.id).expect("Unable to decrypt tx");
                 let tx = tx
                     .typed::<DataTransaction>()
@@ -349,7 +346,7 @@ impl Record {
         // check if ids match
         if self.id == id {
             // check if a revocation transaction exists.
-            if let None = self.revoke {
+            if self.revoke.is_none() {
                 // decrypt data transaction.
                 let tx = self.data.decrypt(key, self.id)?;
                 let tx = tx
@@ -375,7 +372,7 @@ impl Record {
         // check if id and id match.
         if self.id == id {
             // check if revoke transaction already exists.
-            if let None = self.revoke {
+            if self.revoke.is_none() {
                 let revoke = RevocationTransaction::new(self.id);
 
                 self.revoke = Some(revoke.encrypt(key, self.id)?);

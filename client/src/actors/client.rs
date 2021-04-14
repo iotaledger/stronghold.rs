@@ -339,13 +339,14 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
             }
             SHRequest::CheckRecord { location } => {
-                // let (vid, rid) = self.resolve_location(location);
-                // Todo Add check by calling internal actor.
-                // sender
-                //     .as_ref()
-                //     .expect(line_error!())
-                //     .try_tell(SHResults::ReturnExistsRecord(res), None)
-                //     .expect(line_error!());
+                let client_str = self.get_client_str();
+                let (vid, rid) = self.resolve_location(location);
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                internal.try_tell(InternalMsg::CheckRecord(vid, rid), sender);
             }
             SHRequest::CreateNewVault(location) => {
                 let (vid, rid) = self.resolve_location(location);
@@ -672,6 +673,13 @@ impl Receive<InternalResults> for Client {
                     .as_ref()
                     .expect(line_error!())
                     .try_tell(SHResults::ReturnCreateVault(status), None)
+                    .expect(line_error!());
+            }
+            InternalResults::ReturnCheckRecord(res) => {
+                sender
+                    .as_ref()
+                    .expect(line_error!())
+                    .try_tell(SHResults::ReturnExistsRecord(res), None)
                     .expect(line_error!());
             }
 

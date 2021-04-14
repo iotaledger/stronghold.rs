@@ -6,3 +6,4 @@ imports_granularity = "Crate"
 normalize_comments = true
 normalize_doc_attributes = true
 wrap_comments = true
+upper_case_acronyms = true

@@ -154,7 +154,7 @@ fn run_stronghold_multi_actors() {
     let client_path3 = b"test d".to_vec();
 
     let loc0 = Location::counter::<_, usize>("path", 0);
-    let loc1 = Location::counter::<_, usize>("path", 1);
+
     let loc2 = Location::counter::<_, usize>("path", 2);
     let loc3 = Location::counter::<_, usize>("path", 3);
     let loc4 = Location::counter::<_, usize>("path", 4);
@@ -310,7 +310,7 @@ fn test_stronghold_generics() {
     let (p, _) = futures::executor::block_on(stronghold.read_secret(slip10_seed));
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
-    // futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data.to_vec(), Some("generic".into()), None));
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data.to_vec(), Some("generic".into()), None));
 }
 
 #[cfg(feature = "communication")]

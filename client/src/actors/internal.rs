@@ -53,6 +53,7 @@ pub enum InternalMsg {
     RevokeData(VaultId, RecordId),
     GarbageCollect(VaultId),
     ListIds(VaultId),
+    CheckRecord(VaultId, RecordId),
 
     ReadSnapshot(
         snapshot::Key,
@@ -124,6 +125,7 @@ pub enum InternalResults {
     ReturnCreateVault(StatusMessage),
     ReturnWriteVault(StatusMessage),
     ReturnReadVault(Vec<u8>, StatusMessage),
+    ReturnCheckRecord(bool),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
     ReturnList(Vec<(RecordId, RecordHint)>, StatusMessage),
@@ -209,6 +211,25 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     );
                 }
             }
+            InternalMsg::CheckRecord(vid, rid) => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+                if let Some(key) = self.keystore.get_key(vid) {
+                    let res = self.db.contains_record(&key, vid, rid);
+
+                    self.keystore.insert_key(vid, key);
+
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnCheckRecord(res)),
+                        sender,
+                    );
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnCheckRecord(false)),
+                        sender,
+                    );
+                }
+            }
             InternalMsg::WriteToVault(vid, rid, payload, hint) => {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
@@ -280,7 +301,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 let cstr: String = self.client_id.into();
                 let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
                 if let Some(key) = self.keystore.get_key(vid) {
-                    let ids = self.db.list_hints_and_ids(&key, vid).expect(line_error!());
+                    let ids = self.db.list_hints_and_ids(&key, vid);
 
                     self.keystore.insert_key(vid, key);
 
