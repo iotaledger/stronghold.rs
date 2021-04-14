@@ -135,6 +135,6 @@ pub trait Decrypt<E, T: TryFrom<Vec<u8>, Error = E>>: AsRef<[u8]> {
     /// decrypts raw data and creates a new type T from the plaintext
     fn decrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> crate::Result<T> {
         let opened = B::box_open(key, ad.as_ref(), self.as_ref())?;
-        Ok(T::try_from(opened).map_err(|_| crate::Error::DatabaseError(String::from("Invalid Entry")))?)
+        T::try_from(opened).map_err(|_| crate::Error::DatabaseError(String::from("Invalid Entry")))
     }
 }

@@ -21,6 +21,7 @@ libp2p = { version = "0.36", default-features = false, features = [
   "identify",
   "mdns",
   "noise",
+  "relay",
   "request-response",
   "tcp-async-io",
   "yamux",

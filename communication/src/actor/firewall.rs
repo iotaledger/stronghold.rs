@@ -54,11 +54,22 @@ impl FirewallPermission {
         let sum = self.value() | other.value();
         FirewallPermission(sum)
     }
+    /// Adds a new value to the sum and therefore allows this value.
+    pub fn add_permissions<'a>(self, permissions: impl IntoIterator<Item = &'a PermissionValue>) -> Self {
+        permissions.into_iter().fold(self, |acc, curr| acc.add_permission(curr))
+    }
 
     /// Remove a certain value from the sum to remove permission.
     pub fn remove_permission(self, other: &PermissionValue) -> Self {
         let sub = self.value() & !other.value();
         FirewallPermission(sub)
+    }
+
+    /// Remove a certain value from the sum to remove permission.
+    pub fn remove_permissions<'a>(self, permissions: impl IntoIterator<Item = &'a PermissionValue>) -> Self {
+        permissions
+            .into_iter()
+            .fold(self, |acc, curr| acc.remove_permission(curr))
     }
 
     /// Check if the sum includes this value i.g. if a certain bit is set.
@@ -188,6 +199,13 @@ impl FirewallConfiguration {
         }
     }
 
+    pub fn has_rule(&mut self, peer_id: &PeerId, direction: &RequestDirection) -> bool {
+        match direction {
+            RequestDirection::In => self.rules_in.contains_key(peer_id),
+            RequestDirection::Out => self.rules_in.contains_key(peer_id),
+        }
+    }
+
     pub fn get_rule(&mut self, peer_id: &PeerId, direction: &RequestDirection) -> Option<FirewallPermission> {
         match direction {
             RequestDirection::In => self.rules_in.get(peer_id).copied(),
@@ -221,13 +239,13 @@ impl FirewallConfiguration {
     // The firewall permission is checked for the required permissions of the specific request variant.
     pub fn is_permitted<Req: ToPermissionVariants<P>, P: VariantPermission>(
         &self,
-        variant: Req,
-        peer_id: PeerId,
+        variant: &Req,
+        peer_id: &PeerId,
         direction: RequestDirection,
     ) -> bool {
         let permissions = match direction {
-            RequestDirection::In => *self.rules_in.get(&peer_id).unwrap_or(&self.default_in),
-            RequestDirection::Out => *self.rules_out.get(&peer_id).unwrap_or(&self.default_out),
+            RequestDirection::In => *self.rules_in.get(peer_id).unwrap_or(&self.default_in),
+            RequestDirection::Out => *self.rules_out.get(peer_id).unwrap_or(&self.default_out),
         };
         permissions.permits(&variant.to_permissioned().permission())
     }

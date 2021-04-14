@@ -27,7 +27,7 @@ use crate::{
 use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults,
-        EstablishedConnection, FirewallPermission, FirewallRule, KeepAlive, RequestDirection, VariantPermission,
+        EstablishedConnection, FirewallPermission, FirewallRule, RelayDirection, RequestDirection, VariantPermission,
     },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, Multiaddr, PeerId},
@@ -522,8 +522,6 @@ impl Stronghold {
 impl Stronghold {
     /// Spawn the communication actor and swarm.
     /// Per default, the firewall allows all outgoing, and reject all incoming requests.
-    /// The `configure_firewall` methods allows to configure this behaviour by either changing the default regulation,
-    /// or adding explicit rules for for specific peers.
     pub fn spawn_communication(&mut self) -> StatusMessage {
         if self.communication_actor.is_some() {
             return StatusMessage::Error(String::from("Communication was already spawned"));
@@ -548,14 +546,14 @@ impl Stronghold {
         StatusMessage::OK
     }
 
-    /// Kill communication actor and swarm
+    /// Gracefully stop the communication actor and swarm
     pub fn stop_communication(&mut self) {
         if let Some(communication_actor) = self.communication_actor.as_ref() {
             self.system.stop(communication_actor);
         }
     }
 
-    ///  Start listening on the swarm
+    ///  Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.
     pub async fn start_listening(&self, addr: Option<Multiaddr>) -> ResultMessage<Multiaddr> {
         match self
             .ask_communication_actor(CommunicationRequest::StartListening(addr))
@@ -568,7 +566,7 @@ impl Stronghold {
         }
     }
 
-    ///  Get the peer id and listening addresses of the local peer
+    ///  Get the peer id, listening addresses and connection info of the local peer
     pub async fn get_swarm_info(
         &self,
     ) -> ResultMessage<(PeerId, Vec<Multiaddr>, Vec<(PeerId, EstablishedConnection)>)> {
@@ -583,23 +581,30 @@ impl Stronghold {
         }
     }
 
-    /// Connect a remote peer either by id if the peer is known, or alternatively by the address.
-    pub async fn establish_connection(
+    /// Add dial information for a remote peers.
+    /// This will attempt to connect the peer directly either by the address if one is provided, or by peer id
+    /// if the peer is already known e.g. from multicast DNS.
+    /// If the peer is not a relay and can not be reached directly, it will be attempted to reach it via the relays,
+    /// if there are any.
+    /// Relays can be used to listen for incoming request, or to connect to a remote peer that can not
+    /// be reached directly, and is listening to the same relay.
+    /// Once the peer was successfully added, it can be used as target for operations on the remote stronghold.
+    pub async fn add_peer(
         &self,
         peer_id: PeerId,
-        addr: Multiaddr,
-        keep_alive: KeepAlive,
+        addr: Option<Multiaddr>,
+        is_relay: Option<RelayDirection>,
     ) -> ResultMessage<PeerId> {
         match self
-            .ask_communication_actor(CommunicationRequest::EstablishConnection {
+            .ask_communication_actor(CommunicationRequest::AddPeer {
                 peer_id,
                 addr,
-                keep_alive,
+                is_relay,
             })
             .await
         {
-            Ok(CommunicationResults::EstablishConnectionResult(Ok(peer_id))) => ResultMessage::Ok(peer_id),
-            Ok(CommunicationResults::EstablishConnectionResult(Err(err))) => {
+            Ok(CommunicationResults::AddPeerResult(Ok(peer_id))) => ResultMessage::Ok(peer_id),
+            Ok(CommunicationResults::AddPeerResult(Err(err))) => {
                 ResultMessage::Error(format!("Error connecting peer: {:?}", err))
             }
             Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
@@ -607,15 +612,35 @@ impl Stronghold {
         }
     }
 
-    /// Close the connection to a remote peer so that no more request can be received.
-    pub async fn close_connection(&self, peer_id: PeerId) -> StatusMessage {
+    /// Set / overwrite the direction for which relay is used.
+    /// RelayDirection::Dialing adds the relay to the list of relay nodes that are tried if a peer can not
+    /// be reached directly.
+    /// RelayDirection::Listening connect the local system with the given relay and allows that it can
+    /// be reached by remote peers that use the same relay for dialing.
+    /// The relay has to be added beforehand with its multi-address via the `add_peer` method.
+    pub async fn change_relay_direction(&self, peer_id: PeerId, direction: RelayDirection) -> ResultMessage<PeerId> {
         match self
-            .ask_communication_actor(CommunicationRequest::CloseConnection(peer_id))
+            .ask_communication_actor(CommunicationRequest::ConfigRelay { peer_id, direction })
             .await
         {
-            Ok(CommunicationResults::CloseConnectionAck) => StatusMessage::OK,
-            Ok(_) => StatusMessage::Error("Invalid communication actor response".into()),
-            Err(err) => StatusMessage::Error(err),
+            Ok(CommunicationResults::ConfigRelayResult(Ok(peer_id))) => ResultMessage::Ok(peer_id),
+            Ok(CommunicationResults::ConfigRelayResult(Err(err))) => {
+                ResultMessage::Error(format!("Error connecting peer: {:?}", err))
+            }
+            Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
+            Err(err) => ResultMessage::Error(err),
+        }
+    }
+
+    /// Remove a relay so that it will not be used anymore for dialing or listening.
+    pub async fn remove_relay(&self, peer_id: PeerId) -> StatusMessage {
+        match self
+            .ask_communication_actor(CommunicationRequest::RemoveRelay(peer_id))
+            .await
+        {
+            Ok(CommunicationResults::RemoveRelayAck) => StatusMessage::OK,
+            Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
+            Err(err) => ResultMessage::Error(err),
         }
     }
 
@@ -631,7 +656,14 @@ impl Stronghold {
     }
 
     /// Change or add rules in the firewall to allow the given requests for the peers, optionally also change the
-    /// default rule to allow it. Existing permissions for other `SHRequestPermission`s will not be changed by this.
+    /// default rule to allow it.
+    /// The `SHRequestPermission` copy the `SHRequest` with Unit-type variants with individual permission, e.g.
+    /// ```no_run
+    /// use iota_stronghold::SHRequestPermission;
+    ///
+    /// let permissions = vec![SHRequestPermission::CheckVault, SHRequestPermission::CheckRecord];
+    /// ```
+    /// Existing permissions for other `SHRequestPermission`s will not be changed by this.
     /// If no rule has been set for a given peer, the default rule will be used as basis.
     pub async fn allow_requests(
         &self,
@@ -649,7 +681,14 @@ impl Stronghold {
     }
 
     /// Change or add rules in the firewall to reject the given requests from the peers, optionally also remove the
-    /// permission from the default rule. Existing permissions for other `SHRequestPermission`s will not be changed
+    /// permission from the default rule.
+    /// The `SHRequestPermission` copy the `SHRequest` with Unit-type variants with individual permission, e.g.
+    /// ```no_run
+    /// use iota_stronghold::SHRequestPermission;
+    ///
+    /// let permissions = vec![SHRequestPermission::CheckVault, SHRequestPermission::CheckRecord];
+    /// ```
+    /// Existing permissions for other `SHRequestPermission`s will not be changed
     /// by this. If no rule has been set for a given peer, the default rule will be used as basis.
     pub async fn reject_requests(
         &self,
@@ -688,6 +727,7 @@ impl Stronghold {
     }
 
     /// Write to the vault of a remote Stronghold.
+    /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn write_remote_vault(
         &self,
         peer_id: PeerId,
@@ -737,6 +777,7 @@ impl Stronghold {
     }
 
     /// Write to the store of a remote Stronghold.
+    /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn write_to_remote_store(
         &self,
         peer_id: PeerId,
@@ -762,6 +803,7 @@ impl Stronghold {
     }
 
     /// Read from the store of a remote Stronghold.
+    /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn read_from_remote_store(&self, peer_id: PeerId, location: Location) -> (Vec<u8>, StatusMessage) {
         match self.ask_remote(peer_id, SHRequest::ReadFromStore { location }).await {
             Ok(SHResults::ReturnReadStore(payload, status)) => (payload, status),
@@ -774,6 +816,7 @@ impl Stronghold {
     }
 
     /// Returns a list of the available records and their `RecordHint` values of a remote vault.
+    /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn list_remote_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
         peer_id: PeerId,
@@ -790,6 +833,7 @@ impl Stronghold {
     }
 
     /// Executes a runtime command at a remote Stronghold.
+    /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn remote_runtime_exec(&self, peer_id: PeerId, control_request: Procedure) -> ProcResult {
         match self
             .ask_remote(peer_id, SHRequest::ControlRequest(control_request))
@@ -816,6 +860,7 @@ impl Stronghold {
         }
     }
 
+    // Send a request to the communication actor to configure the firewall by adding, changing or removing rules.
     async fn configure_firewall(&self, rule: FirewallRule) -> StatusMessage {
         match self
             .ask_communication_actor(CommunicationRequest::ConfigureFirewall(rule))

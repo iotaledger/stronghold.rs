@@ -18,7 +18,7 @@ use async_std::task;
 use communication::{
     actor::{
         CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults, FirewallPermission,
-        KeepAlive, PermissionValue, RequestPermissions, VariantPermission,
+        PermissionValue, RequestPermissions, VariantPermission,
     },
     behaviour::BehaviourConfig,
     libp2p::{Keypair, PeerId},
@@ -131,16 +131,16 @@ fn main() -> Result<(), String> {
         match ask(
             &sys_a,
             &communication_actor_a,
-            CommunicationRequest::EstablishConnection {
-                addr: addr_b,
+            CommunicationRequest::AddPeer {
+                addr: Some(addr_b),
                 peer_id: peer_b,
-                keep_alive: KeepAlive::None,
+                is_relay: None,
             },
         )
         .await
         {
-            CommunicationResults::<Answer>::EstablishConnectionResult(Ok(_)) => Ok(()),
-            CommunicationResults::<Answer>::EstablishConnectionResult(Err(e)) => {
+            CommunicationResults::<Answer>::AddPeerResult(Ok(_)) => Ok(()),
+            CommunicationResults::<Answer>::AddPeerResult(Err(e)) => {
                 Err(format!("Failed to establish connection: {:?}", e))
             }
             _ => unreachable!("EstablishConnection always returns EstablishConnectionResult."),

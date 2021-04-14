@@ -1,6 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(clippy::upper_case_acronyms)]
+
 //! This crate defines and implements the encrypted offline storage format used by
 //! the Stronghold ecosystem.
 //!
