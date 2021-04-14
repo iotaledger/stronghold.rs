@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use engine::{
     snapshot::{self, read_from, write_to, Key},
-    vault::nvault::DbView,
-    vault::{ClientId, Key as PKey, VaultId},
+    vault::{nvault::DbView, ClientId, Key as PKey, VaultId},
 };
 
 use crate::{line_error, state::client::Store, Provider};

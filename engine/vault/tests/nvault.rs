@@ -1,8 +1,7 @@
 mod utils;
 use utils::provider::Provider;
 
-use vault::nvault::DbView;
-use vault::{Key, RecordHint, RecordId, VaultId};
+use vault::{nvault::DbView, Key, RecordHint, RecordId, VaultId};
 
 #[test]
 fn test_vaults() {

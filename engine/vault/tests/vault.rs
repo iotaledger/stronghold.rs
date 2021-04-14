@@ -241,8 +241,8 @@ fn test_rekove_then_write() -> Result<()> {
 }
 
 // #[test]
-// #[ignore = "not yet implemented: we need some kind of checksum in the data transaction to protect against this case: when the users key is compromised"]
-// fn test_ensure_authenticty_of_blob() -> Result<()> {
+// #[ignore = "not yet implemented: we need some kind of checksum in the data transaction to protect against this case:
+// when the users key is compromised"] fn test_ensure_authenticty_of_blob() -> Result<()> {
 //     let k: Key<Provider> = Key::random()?;
 //     let v0 = DBView::load(k.clone(), empty::<ReadResult>())?;
 

@@ -3,8 +3,7 @@
 
 mod provider;
 
-use vault::nvault::DbView;
-use vault::{DBView, Key, ReadResult, RecordHint, RecordId, VaultId};
+use vault::{nvault::DbView, DBView, Key, ReadResult, RecordHint, RecordId, VaultId};
 
 use std::iter::empty;
 
