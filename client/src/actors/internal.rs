@@ -325,7 +325,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 let (keystore, state, store) = *data;
 
-                let vids = keystore.keys().map(|v| *v).collect::<HashSet<VaultId>>();
+                let vids = keystore.keys().copied().collect::<HashSet<VaultId>>();
 
                 self.keystore.rebuild_keystore(keystore);
 

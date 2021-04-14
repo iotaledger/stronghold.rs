@@ -479,7 +479,7 @@ impl Stronghold {
         let client_str: String = client_id.into();
 
         if kill_actor {
-            &self.clients.remove(&client_id);
+            self.clients.remove(&client_id);
 
             self.derive_data.remove(&client_path);
 

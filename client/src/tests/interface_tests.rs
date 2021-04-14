@@ -232,7 +232,7 @@ fn run_stronghold_multi_actors() {
         vec![],
     ));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc3.clone()));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc3));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test"));
 

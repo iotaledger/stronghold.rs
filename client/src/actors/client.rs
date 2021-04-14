@@ -306,7 +306,7 @@ impl Receive<SHRequest> for Client {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, sender: Sender) {
         macro_rules! ensure_vault_exists {
             ( $x:expr, $V:tt, $k:expr ) => {
-                if let None = self.vault_exist($x) {
+                if self.vault_exist($x).is_none() {
                     sender
                         .as_ref()
                         .expect(line_error!())
@@ -326,11 +326,7 @@ impl Receive<SHRequest> for Client {
         match msg {
             SHRequest::CheckVault(vpath) => {
                 let vid = self.derive_vault_id(vpath);
-                let res = if let Some(_) = self.vault_exist(vid) {
-                    true
-                } else {
-                    false
-                };
+                let res = matches!(self.vault_exist(vid), Some(_));
 
                 sender
                     .as_ref()
@@ -528,7 +524,7 @@ impl Receive<SHRequest> for Client {
                     } => {
                         let (vid, rid) = self.resolve_location(output);
 
-                        if let None = self.vault_exist(vid) {
+                        if self.vault_exist(vid).is_none() {
                             self.add_new_vault(vid);
                         }
 
@@ -553,7 +549,7 @@ impl Receive<SHRequest> for Client {
 
                         let (key_vault_id, key_record_id) = self.resolve_location(output);
 
-                        if let None = self.vault_exist(key_vault_id) {
+                        if self.vault_exist(key_vault_id).is_none() {
                             self.add_new_vault(key_vault_id);
                         }
 
@@ -580,7 +576,7 @@ impl Receive<SHRequest> for Client {
 
                         let (child_vault_id, child_record_id) = self.resolve_location(output);
 
-                        if let None = self.vault_exist(child_vault_id) {
+                        if self.vault_exist(child_vault_id).is_none() {
                             self.add_new_vault(child_vault_id);
                         }
 
@@ -603,7 +599,7 @@ impl Receive<SHRequest> for Client {
                     } => {
                         let (vault_id, record_id) = self.resolve_location(output);
 
-                        if let None = self.vault_exist(vault_id) {
+                        if self.vault_exist(vault_id).is_none() {
                             self.add_new_vault(vault_id);
                         }
 
@@ -625,7 +621,7 @@ impl Receive<SHRequest> for Client {
                     } => {
                         let (vault_id, record_id) = self.resolve_location(output);
 
-                        if let None = self.vault_exist(vault_id) {
+                        if self.vault_exist(vault_id).is_none() {
                             self.add_new_vault(vault_id);
                         }
 
