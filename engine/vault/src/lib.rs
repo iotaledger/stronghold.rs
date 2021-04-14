@@ -1,6 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(clippy::from_over_into)]
 #![allow(clippy::upper_case_acronyms)]
 
 //! Vault is an in-memory database specification which is designed to work without a central server. The data in
