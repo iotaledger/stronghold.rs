@@ -335,7 +335,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     ClientMsg::InternalResults(InternalResults::RebuildCache {
                         id,
                         vaults: vids,
-                        status: status,
+                        status,
                         store,
                     }),
                     sender,

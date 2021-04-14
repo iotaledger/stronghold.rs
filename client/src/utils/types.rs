@@ -73,10 +73,7 @@ impl Location {
                 vault_path,
                 record_path,
             },
-            Location::Counter { vault_path, counter } => Location::Counter {
-                vault_path,
-                counter: counter,
-            },
+            Location::Counter { vault_path, counter } => Location::Counter { vault_path, counter },
         }
     }
 

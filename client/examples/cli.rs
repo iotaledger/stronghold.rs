@@ -278,7 +278,7 @@ fn garbage_collect_vault_command(
 
                     let location = Location::generic(id, id);
 
-                    let status = block_on(stronghold.garbage_collect(location.clone().vault_path().to_vec()));
+                    let status = block_on(stronghold.garbage_collect(location.vault_path().to_vec()));
 
                     let (list, _) = block_on(stronghold.list_hints_and_ids(location.vault_path().to_vec()));
 

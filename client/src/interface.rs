@@ -97,6 +97,7 @@ impl Stronghold {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
         let id_str: String = client_id.into();
 
+        #[allow(clippy::map_entry)]
         if self.clients.contains_key(&client_id) {
             self.switch_actor_target(client_path).await;
         } else {
@@ -490,12 +491,11 @@ impl Stronghold {
             internal.try_tell(InternalMsg::KillInternal, None);
 
             StatusMessage::OK
+        } else if let SHResults::ReturnClearCache(status) = ask(&self.system, &self.target, SHRequest::ClearCache).await
+        {
+            status
         } else {
-            if let SHResults::ReturnClearCache(status) = ask(&self.system, &self.target, SHRequest::ClearCache).await {
-                status
-            } else {
-                StatusMessage::Error("Unable to clear the cache".into())
-            }
+            StatusMessage::Error("Unable to clear the cache".into())
         }
     }
 
