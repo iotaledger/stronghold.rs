@@ -19,7 +19,7 @@ use std::{collections::HashSet, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
-type Store = Cache<Vec<u8>, Vec<u8>>;
+pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
 /// A `Client` Cache Actor which routes external messages to the rest of the Stronghold system.
 #[actor(SHResults, SHRequest, InternalResults)]
@@ -27,9 +27,9 @@ type Store = Cache<Vec<u8>, Vec<u8>>;
 pub struct Client {
     pub client_id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
-    vaults: HashSet<VaultId>,
+    pub vaults: HashSet<VaultId>,
     // Contains the Record Ids for the most recent Record in each vault.
-    store: Store,
+    pub store: Store,
 }
 
 impl Client {
@@ -90,10 +90,11 @@ impl Client {
         Some(())
     }
 
-    pub fn rebuild_cache(&mut self, state: Client) {
+    pub fn rebuild_cache(&mut self, id: ClientId, vaults: HashSet<VaultId>, store: Store) {
         *self = Self {
-            client_id: self.client_id,
-            ..state
+            client_id: id,
+            vaults,
+            store,
         }
     }
 
@@ -144,7 +145,6 @@ impl Client {
     pub fn get_index_from_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, record_id: RecordId) -> usize {
         let mut ctr = 0;
         let vault_path = vault_path.as_ref();
-        let vault_id = self.derive_vault_id(vault_path);
 
         while ctr <= 32_000_000 {
             let rid = self.derive_record_id(vault_path, ctr);
@@ -167,7 +167,6 @@ mod test {
     #[test]
     fn test_add() {
         let vid = VaultId::random::<Provider>().expect(line_error!());
-        let rid = RecordId::random::<Provider>().expect(line_error!());
 
         let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
 
@@ -188,8 +187,8 @@ mod test {
         let mut ctr = 0;
         let mut ctr2 = 0;
 
-        let rid = client.derive_record_id(vault_path.clone(), ctr);
-        let rid2 = client.derive_record_id(vault_path.clone(), ctr2);
+        let _rid = client.derive_record_id(vault_path.clone(), ctr);
+        let _rid2 = client.derive_record_id(vault_path.clone(), ctr2);
 
         client.add_new_vault(vid);
 
@@ -198,16 +197,18 @@ mod test {
         ctr += 1;
         ctr2 += 1;
 
-        let rid = client.derive_record_id(vault_path.clone(), ctr);
-        let rid2 = client.derive_record_id(vault_path.clone(), ctr2);
+        let _rid = client.derive_record_id(vault_path.clone(), ctr);
+        let _rid2 = client.derive_record_id(vault_path.clone(), ctr2);
 
         ctr += 1;
 
         let rid = client.derive_record_id(vault_path.clone(), ctr);
 
-        let test_rid = client.derive_record_id(vault_path, 2);
+        let test_rid = client.derive_record_id(vault_path.clone(), 2);
+        let ctr = client.get_index_from_record_id(vault_path, rid);
 
         assert_eq!(test_rid, rid);
+        assert_eq!(2, ctr);
     }
 
     #[test]

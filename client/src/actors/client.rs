@@ -339,7 +339,7 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
             }
             SHRequest::CheckRecord { location } => {
-                let (vid, rid) = self.resolve_location(location);
+                // let (vid, rid) = self.resolve_location(location);
                 // Todo Add check by calling internal actor.
                 // sender
                 //     .as_ref()
@@ -374,19 +374,7 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::WriteToVault(vid, rid, payload, hint), sender);
             }
-            // SHRequest::InitRecord { location } => {
-            //     let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
 
-            //     let client_str = self.get_client_str();
-
-            //     self.add_record_to_vault(vid, rid);
-
-            //     let internal = ctx
-            //         .select(&format!("/user/internal-{}/", client_str))
-            //         .expect(line_error!());
-
-            //     internal.try_tell(InternalMsg::InitRecord(vid, rid), sender);
-            // }
             #[cfg(test)]
             SHRequest::ReadFromVault { location } => {
                 let (vid, rid) = self.resolve_location(location);
@@ -466,13 +454,7 @@ impl Receive<SHRequest> for Client {
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(
-                    InternalMsg::FillSnapshot {
-                        id: self.client_id,
-                        data: self.clone(),
-                    },
-                    sender,
-                )
+                internal.try_tell(InternalMsg::FillSnapshot { client: self.clone() }, sender)
             }
             SHRequest::WriteSnapshot { key, filename, path } => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
@@ -707,10 +689,15 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnList(list, status), None)
                     .expect(line_error!());
             }
-            InternalResults::RebuildCache(state, status) => {
+            InternalResults::RebuildCache {
+                id,
+                vaults,
+                store,
+                status,
+            } => {
                 self.clear_cache();
 
-                self.rebuild_cache(state);
+                self.rebuild_cache(id, vaults, store);
 
                 sender
                     .as_ref()

@@ -7,31 +7,22 @@ use serde::{Deserialize, Serialize};
 
 use engine::{
     snapshot::{self, read_from, write_to, Key},
-    vault::{ClientId, Key as PKey, ReadResult, VaultId},
+    vault::nvault::DbView,
+    vault::{ClientId, Key as PKey, VaultId},
 };
 
-use crate::{line_error, state::client::Client, Provider};
+use crate::{line_error, state::client::Store, Provider};
 
 use std::path::Path;
 
 use std::collections::HashMap;
 
-#[derive(Clone)]
 pub struct Snapshot {
     pub state: SnapshotState,
 }
 
-#[derive(Deserialize, Serialize, Clone, Default, Debug)]
-pub struct SnapshotState(
-    HashMap<
-        ClientId,
-        (
-            Client,
-            HashMap<VaultId, PKey<Provider>>,
-            HashMap<VaultId, Vec<ReadResult>>,
-        ),
-    >,
-);
+#[derive(Deserialize, Serialize, Default)]
+pub struct SnapshotState(HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
 
 impl Snapshot {
     /// Creates a new `Snapshot` from a buffer of `Vec<u8>` state.
@@ -39,17 +30,10 @@ impl Snapshot {
         Self { state }
     }
 
-    pub fn get_state(
-        &mut self,
-        id: ClientId,
-    ) -> (
-        Client,
-        HashMap<VaultId, PKey<Provider>>,
-        HashMap<VaultId, Vec<ReadResult>>,
-    ) {
+    pub fn get_state(&mut self, id: ClientId) -> (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store) {
         match self.state.0.remove(&id) {
             Some(t) => t,
-            None => (Client::new(id), HashMap::default(), HashMap::default()),
+            None => (HashMap::default(), DbView::default(), Store::default()),
         }
     }
 
@@ -72,7 +56,7 @@ impl Snapshot {
 
     /// Writes state to the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn write_to_snapshot(self, name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<()> {
+    pub fn write_to_snapshot(&self, name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<()> {
         let data = self.state.serialize();
 
         // TODO: This is a hack and probably should be removed when we add proper error handling.
@@ -91,29 +75,14 @@ impl Snapshot {
 }
 
 impl SnapshotState {
-    pub fn new(
-        id: ClientId,
-        data: (
-            Client,
-            HashMap<VaultId, PKey<Provider>>,
-            HashMap<VaultId, Vec<ReadResult>>,
-        ),
-    ) -> Self {
+    pub fn new(id: ClientId, data: (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)) -> Self {
         let mut state = HashMap::new();
         state.insert(id, data);
 
         Self(state)
     }
 
-    pub fn add_data(
-        &mut self,
-        id: ClientId,
-        data: (
-            Client,
-            HashMap<VaultId, PKey<Provider>>,
-            HashMap<VaultId, Vec<ReadResult>>,
-        ),
-    ) {
+    pub fn add_data(&mut self, id: ClientId, data: (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)) {
         self.0.insert(id, data);
     }
 

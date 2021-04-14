@@ -16,20 +16,20 @@ use std::collections::HashMap;
 use runtime::GuardedVec;
 
 /// A view over the data inside of the Stronghold database.
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone, Default)]
 pub struct DbView<P: BoxProvider> {
     pub vaults: HashMap<VaultId, Vault<P>>,
 }
 
 /// A enclave of data that is encrypted under one key.
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct Vault<P: BoxProvider> {
     key: Key<P>,
     entries: HashMap<ChainId, Record>,
 }
 
 /// A bit of data inside of a Vault.
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct Record {
     id: ChainId,
     data: SealedTransaction,
@@ -158,6 +158,12 @@ impl<P: BoxProvider> DbView<P> {
 
         Ok(())
     }
+
+    pub fn clear(&mut self) -> crate::Result<()> {
+        self.vaults.clear();
+
+        Ok(())
+    }
 }
 
 impl<P: BoxProvider> Vault<P> {
@@ -232,7 +238,7 @@ impl<P: BoxProvider> Vault<P> {
             if let Some(entry) = self.entries.get(&id) {
                 entry.get_blob(key, id)
             } else {
-                Err(crate::Error::DatabaseError("Invalid record id.".into()))
+                Ok(GuardedVec::random(0))
             }
         } else {
             Err(crate::Error::DatabaseError("Invalid key.".into()))

@@ -212,7 +212,7 @@ impl AsView<RevocationTransaction> for Transaction {}
 impl AsViewMut<RevocationTransaction> for Transaction {}
 
 /// a sealed transaction
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct SealedTransaction(Vec<u8>);
 
 impl From<Vec<u8>> for SealedTransaction {
@@ -243,7 +243,7 @@ impl Encrypt<SealedTransaction> for Transaction {}
 impl Decrypt<(), Transaction> for SealedTransaction {}
 
 /// a sealed blob
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct SealedBlob(Vec<u8>);
 
 impl From<Vec<u8>> for SealedBlob {
