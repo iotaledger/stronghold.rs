@@ -34,7 +34,7 @@ riker = "0.4"
 communication-macros = { path = "communication-macros", version = "0.1.0" }
 
 [dependencies.stronghold-utils]
-path = "../utils"
+path = "../utils/utils"
 version = "0.2"
 
 [features]

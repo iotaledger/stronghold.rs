@@ -8,7 +8,7 @@ use super::{Block, Duplicate};
 const DICT_SIZE: usize = 4096;
 
 pub fn compress_into(input: &[u8], output: &mut Vec<u8>) {
-    LZ4Encoder {
+    Lz4Encoder {
         input,
         output,
         cursor: 0,
@@ -26,14 +26,14 @@ pub fn compress(input: &[u8]) -> Vec<u8> {
     vec
 }
 
-struct LZ4Encoder<'a> {
+struct Lz4Encoder<'a> {
     input: &'a [u8],
     output: &'a mut Vec<u8>,
     cursor: usize,
     dict: [usize; DICT_SIZE],
 }
 
-impl<'a> LZ4Encoder<'a> {
+impl<'a> Lz4Encoder<'a> {
     fn step_forward(&mut self, steps: usize) -> bool {
         for _ in 0..steps {
             self.insert_cursor();

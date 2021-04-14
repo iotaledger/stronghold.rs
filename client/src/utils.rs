@@ -5,7 +5,7 @@ mod ids;
 mod types;
 
 pub use self::{
-    ids::{ClientId, LoadFromPath, VaultId},
+    ids::LoadFromPath,
     types::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 

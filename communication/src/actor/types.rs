@@ -188,7 +188,7 @@ pub enum ConnectPeerError {
     /// for a peer has been reached.
     ConnectionLimit(ConnectionLimit),
     /// An I/O error occurred on the connection.
-    IO,
+    Io,
     /// The connection handler produced an error.
     Handler,
     /// Timout on connection attempt
@@ -203,7 +203,7 @@ impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
             PendingConnectionError::Transport(_) => ConnectPeerError::Transport,
             PendingConnectionError::InvalidPeerId => ConnectPeerError::InvalidPeerId,
             PendingConnectionError::ConnectionLimit(limit) => ConnectPeerError::ConnectionLimit(limit),
-            PendingConnectionError::IO(_) => ConnectPeerError::IO,
+            PendingConnectionError::IO(_) => ConnectPeerError::Io,
         }
     }
 }
@@ -223,7 +223,7 @@ impl<THandlerErr> From<ConnectionError<THandlerErr>> for ConnectPeerError {
     fn from(error: ConnectionError<THandlerErr>) -> Self {
         match error {
             ConnectionError::Handler(_) => ConnectPeerError::Handler,
-            ConnectionError::IO(_) => ConnectPeerError::IO,
+            ConnectionError::IO(_) => ConnectPeerError::Io,
         }
     }
 }
