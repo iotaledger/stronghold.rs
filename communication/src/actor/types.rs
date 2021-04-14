@@ -175,6 +175,17 @@ impl<TTransErr> From<PendingConnectionError<TTransErr>> for ConnectPeerError {
     }
 }
 
+impl<TTransErr> From<&PendingConnectionError<TTransErr>> for ConnectPeerError {
+    fn from(error: &PendingConnectionError<TTransErr>) -> Self {
+        match error {
+            PendingConnectionError::Transport(_) => ConnectPeerError::Transport,
+            PendingConnectionError::InvalidPeerId => ConnectPeerError::InvalidPeerId,
+            PendingConnectionError::ConnectionLimit(limit) => ConnectPeerError::ConnectionLimit(limit.clone()),
+            PendingConnectionError::IO(_) => ConnectPeerError::Io,
+        }
+    }
+}
+
 impl From<DialError> for ConnectPeerError {
     fn from(error: DialError) -> Self {
         match error {

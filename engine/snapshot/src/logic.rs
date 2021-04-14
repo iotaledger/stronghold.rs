@@ -21,8 +21,8 @@ use crate::{compress, decompress};
 pub const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
 
 /// Current version bytes (bytes 5-6 in a snapshot file)
-pub const VERSION: [u8; 2] = [0x3, 0x0];
-pub const OLD_VERSION: [u8; 2] = [0x2, 0x0];
+pub const VERSION: [u8; 2] = [0x2, 0x0];
+// pub const OLD_VERSION: [u8; 2] = [0x2, 0x0];
 
 const KEY_SIZE: usize = 32;
 pub type Key = [u8; KEY_SIZE];
