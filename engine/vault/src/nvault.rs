@@ -76,13 +76,11 @@ impl<P: BoxProvider> DbView<P> {
 
     /// Lists all of the hints and ids for the given vault.
     pub fn list_hints_and_ids(&self, key: &Key<P>, vid: VaultId) -> crate::Result<Vec<(RecordId, RecordHint)>> {
-        let mut buf: Vec<(RecordId, RecordHint)> = Vec::new();
-
-        if let Some(vault) = self.vaults.get(&vid) {
-            buf = vault.list_hints_and_ids(&key)?;
+        let buf: Vec<(RecordId, RecordHint)> = if let Some(vault) = self.vaults.get(&vid) {
+            vault.list_hints_and_ids(&key)?
         } else {
-            buf = vec![];
-        }
+            vec![]
+        };
 
         Ok(buf)
     }

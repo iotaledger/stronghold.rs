@@ -12,7 +12,7 @@ use crate::{
     },
 };
 use std::{
-    convert::{Infallible, TryFrom, TryInto},
+    convert::{Infallible, TryFrom},
     fmt::{self, Debug, Formatter},
     hash::Hash,
 };
@@ -76,12 +76,6 @@ pub struct UntypedTransaction {
 
     /// id identifer
     pub id: ChainId,
-}
-
-impl UntypedTransaction {
-    pub fn r#type(&self) -> crate::Result<TransactionType> {
-        self.type_id.try_into()
-    }
 }
 
 /// a data transaction

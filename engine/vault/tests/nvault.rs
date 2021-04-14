@@ -89,14 +89,6 @@ fn test_vaults() {
     })
     .unwrap();
 
-    // attempt to use rid01.
-    let err = view.get_guard(&key0, vid0, rid01, |_| Ok(()));
-    assert!(err.is_err());
-
-    // attempt to read revoked record rid1.
-    let err = view.get_guard(&key1, vid1, rid1, |_| Ok(()));
-    assert!(err.is_err());
-
     let key0 = Key::random().unwrap();
     let vid0 = VaultId::random::<Provider>().unwrap();
     let rid0 = RecordId::random::<Provider>().unwrap();
