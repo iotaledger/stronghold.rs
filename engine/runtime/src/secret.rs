@@ -1,3 +1,6 @@
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{sodium::*, types::*};
 
 use core::{
@@ -6,15 +9,43 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
+/// A Type for guarding secrets allocated to the stack.
+///
+/// Provides the following security features and guarentees:
+/// * The Memory is locked with `mlock`.
+/// * When the memory is freed, `munlock` is called.
+/// * the memory is zeroed out when non longer in use.
+/// * values are compared in constant time.
+/// * values are prevented from being Debugged.
+/// * Values can not be cloned.
+
 pub struct Secret<T: Bytes> {
+    /// Internally protected data for the [`Secret`].
     data: T,
 }
 
+/// A mutable [`Deref`] wrapper around the [`Secret`]'s internal data. Intercepts calls to [`Clone`] and [`Debug`] the
+/// data in the secret.
 pub struct RefMut<'a, T: Bytes> {
+    /// a reference to the underlying secret data that will be derefed
     data: &'a mut T,
 }
 
 impl<T: Bytes> Secret<T> {
+    /// Creates a new [`Secret`] and invokes the provided callback with
+    /// a wrapper to the protected memory.
+    ///
+    /// ```
+    /// # use runtime::Secret;
+    /// let sec = [0u8, 1u8];
+    /// // Wraps the sec data in a secret.
+    /// Secret::<[u8; 2]>::new(|mut s| {
+    ///    s.copy_from_slice(&sec[..]);
+    //     assert_eq!(*s, [0u8, 1u8]);
+    /// });
+    ///
+    /// ```
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_ret_no_self))]
     pub fn new<F, A>(f: F) -> A
     where
         F: FnOnce(RefMut<'_, T>) -> A,
@@ -32,6 +63,15 @@ impl<T: Bytes> Secret<T> {
 }
 
 impl<T: Bytes + Zeroed> Secret<T> {
+    /// Creates a new [`Secret`] filled with zeroed bytes and invokes the
+    /// callback with a wrapper to the protected memory.
+    ///
+    /// ```
+    /// # use runtime::Secret;
+    /// Secret::<u8>::zero(|s| {
+    ///     assert_eq!(*s, 0);
+    /// });
+    /// ```
     pub fn zero<F, A>(f: F) -> A
     where
         F: FnOnce(RefMut<'_, T>) -> A,
@@ -42,6 +82,21 @@ impl<T: Bytes + Zeroed> Secret<T> {
         })
     }
 
+    /// Creates a new [`Secret`] from existing, unprotected data, and
+    /// immediately zeroes out the memory of the data being moved in.
+    /// ```
+    /// # use runtime::Secret;
+    /// let mut value = [1u8, 2u8];
+    ///
+    /// // the contents of `value` will be copied into the Secret before
+    /// // being zeroed out
+    /// Secret::from(&mut value, |s| {
+    ///     assert_eq!(*s, [1, 2]);
+    /// });
+    ///
+    /// // the contents of `value` have been zeroed
+    /// assert_eq!(value, [0, 0]);
+    /// ```
     pub fn from<F, A>(v: &mut T, f: F) -> A
     where
         F: FnOnce(RefMut<'_, T>) -> A,
@@ -54,6 +109,15 @@ impl<T: Bytes + Zeroed> Secret<T> {
 }
 
 impl<T: Bytes + Randomized> Secret<T> {
+    /// Creates a new [`Secret`] filled with random bytes and invokes
+    /// the callback with a wrapper to the protected memory.
+    ///
+    /// ```
+    /// # use runtime::Secret;
+    /// Secret::<u128>::random(|s| {
+    ///     // s is filled with random bytes
+    /// })
+    /// ```
     pub fn random<F, U>(f: F) -> U
     where
         F: FnOnce(RefMut<'_, T>) -> U,
@@ -66,6 +130,8 @@ impl<T: Bytes + Randomized> Secret<T> {
 }
 
 impl<T: Bytes> Drop for Secret<T> {
+    /// Ensures that the [`Secret`]'s underlying memory is `munlock`ed
+    /// and zeroed when it leaves scope.
     fn drop(&mut self) {
         unsafe {
             munlock(&mut self.data);
@@ -74,6 +140,7 @@ impl<T: Bytes> Drop for Secret<T> {
 }
 
 impl<'a, T: Bytes> RefMut<'a, T> {
+    /// Creates a new `RefMut`.
     pub(crate) fn new(data: &'a mut T) -> Self {
         Self { data }
     }
@@ -135,6 +202,7 @@ mod tests {
 
     #[test]
     fn test_zeroed() {
+        // Bit of a hack but works.
         unsafe {
             let mut ptr: *const _ = ptr::null();
 
