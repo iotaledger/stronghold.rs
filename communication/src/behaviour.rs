@@ -63,13 +63,12 @@ use core::{
     time::Duration,
 };
 #[cfg(feature = "mdns")]
-use libp2p::mdns::{Mdns, MdnsEvent};
+use libp2p::mdns::{Mdns, MdnsConfig, MdnsEvent};
 use libp2p::{
     core::{upgrade, Multiaddr, PeerId},
     dns::DnsConfig,
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
-    mdns::MdnsConfig,
     noise::{self, NoiseConfig},
     relay::{new_transport_and_behaviour, Relay, RelayConfig},
     request_response::{
