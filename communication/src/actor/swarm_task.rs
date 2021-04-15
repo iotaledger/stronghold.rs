@@ -110,7 +110,7 @@ where
 
     fn shutdown(mut self) {
         if let Some((listener_id, _)) = self.listener.take() {
-            let _ = Swarm::remove_listener(&mut self.swarm, listener_id);
+            let _ = self.swarm.remove_listener(listener_id);
         }
         self.swarm_rx.close();
     }
@@ -152,7 +152,7 @@ where
                 .with(Protocol::Ip4(Ipv4Addr::new(0, 0, 0, 0)))
                 .with(Protocol::Tcp(0u16))
         });
-        let listener_id = Swarm::listen_on(&mut self.swarm, addr).map_err(|_| ())?;
+        let listener_id = self.swarm.listen_on(addr).map_err(|_| ())?;
         let match_event = |event: &SwarmEvent<P2PEvent<Req, Res>, _>| match event {
             SwarmEvent::NewListenAddr(addr) => Some(addr.clone()),
             _ => None,
@@ -163,7 +163,7 @@ where
 
     // Stop listening to the swarm.
     fn stop_listening(&mut self, listener: ListenerId, addr: &Multiaddr) -> Result<(), ()> {
-        Swarm::remove_listener(&mut self.swarm, listener)?;
+        self.swarm.remove_listener(listener)?;
         let match_event = |event: &SwarmEvent<P2PEvent<Req, Res>, _>| match event {
             SwarmEvent::ExpiredListenAddr(address) if address == addr => Some(()),
             SwarmEvent::ListenerClosed { addresses, .. } if addresses.contains(&addr) => Some(()),
@@ -203,14 +203,14 @@ where
         target_peer: &PeerId,
         target_addr: Multiaddr,
     ) -> Result<ConnectedPoint, ConnectPeerError> {
-        Swarm::dial_addr(&mut self.swarm, target_addr.clone())?;
+        self.swarm.dial_addr(target_addr.clone())?;
         self.await_connect_result(target_peer, &Some(target_addr))
     }
 
     // Try to connect a remote peer by id.
     // This may be successful if the address was formerly known or e.g. discovered via mDNS.
     fn connect_peer(&mut self, target_peer: &PeerId) -> Result<ConnectedPoint, ConnectPeerError> {
-        Swarm::dial(&mut self.swarm, target_peer)?;
+        self.swarm.dial(target_peer)?;
         self.await_connect_result(target_peer, &None)
     }
 
@@ -267,7 +267,7 @@ where
     // Try sending a request to a remote peer if it was approved by the firewall, and return the received
     // Response. If no response is received, a timeout error will be returned.
     fn send_request(&mut self, peer_id: PeerId, req: Req) -> Result<Res, RequestMessageError> {
-        let req_id = self.swarm.send_request(&peer_id, req);
+        let req_id = self.swarm.behaviour_mut().send_request(&peer_id, req);
         let match_event = |event: &SwarmEvent<P2PEvent<Req, Res>, _>| match event {
             SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed)) => match boxed.deref().clone() {
                 P2PReqResEvent::Res {
@@ -292,7 +292,7 @@ where
     // This will start listening on the relayed address and attempt to connect to the relay, if it is not connected yet.
     fn add_listener_relay(&mut self, relay_id: PeerId) -> Result<PeerId, ConnectPeerError> {
         if !self.listening_relays.contains_key(&relay_id) {
-            let local_id = *Swarm::local_peer_id(&self.swarm);
+            let local_id = *self.swarm.local_peer_id();
             let relay_addr = self.relay_addr.get(&relay_id).ok_or(ConnectPeerError::NoAddresses)?;
             let addr = relay_addr
                 .clone()
@@ -302,7 +302,7 @@ where
             let (listener_id, _) = self
                 .start_listening(Some(addr.clone()))
                 .map_err(|()| ConnectPeerError::Io)?;
-            if !Swarm::is_connected(&self.swarm, &relay_id) {
+            if !self.swarm.is_connected(&relay_id) {
                 self.await_connect_result(&relay_id, &Some(addr))?;
             }
             self.listening_relays.insert(relay_id, listener_id);
@@ -317,7 +317,7 @@ where
                 if let Some(listener) = self.listening_relays.remove(&peer_id) {
                     let _ = match self.relay_addr.get(&peer_id).cloned() {
                         Some(addr) => self.stop_listening(listener, &addr),
-                        None => Swarm::remove_listener(&mut self.swarm, listener),
+                        None => self.swarm.remove_listener(listener),
                     };
                 }
                 if !self.dialing_relays.contains(&peer_id) {
@@ -342,7 +342,7 @@ where
     // Keep the address in case that the relay will be used in the future again.
     fn remove_relay(&mut self, relay_id: &PeerId) {
         if let Some(listener) = self.listening_relays.remove(relay_id) {
-            let _ = Swarm::remove_listener(&mut self.swarm, listener);
+            let _ = self.swarm.remove_listener(listener);
         }
         self.dialing_relays.retain(|r| r == relay_id);
     }
@@ -425,7 +425,6 @@ where
 
     // Handle the messages that are received from other actors in the system.
     fn handle_actor_request(&mut self, event: CommunicationRequest<Req, ClientMsg>, sender: Sender) {
-        self.swarm.addresses_of_peer(&PeerId::random());
         match event {
             CommunicationRequest::SetClientRef(client_ref) => {
                 self.client = client_ref;
@@ -468,8 +467,8 @@ where
                 Self::send_response(CommunicationResults::RequestMsgResult(res), sender);
             }
             CommunicationRequest::GetSwarmInfo => {
-                let peer_id = *Swarm::local_peer_id(&self.swarm);
-                let listeners = Swarm::listeners(&self.swarm).cloned().collect();
+                let peer_id = *self.swarm.local_peer_id();
+                let listeners = self.swarm.listeners().cloned().collect();
                 let connections = self.connection_manager.current_connections();
                 let res = CommunicationResults::SwarmInfo {
                     peer_id,
@@ -479,12 +478,12 @@ where
                 Self::send_response(res, sender);
             }
             CommunicationRequest::BanPeer(peer_id) => {
-                Swarm::ban_peer_id(&mut self.swarm, peer_id);
+                self.swarm.ban_peer_id(peer_id);
                 let res = CommunicationResults::BannedPeerAck(peer_id);
                 Self::send_response(res, sender);
             }
             CommunicationRequest::UnbanPeer(peer_id) => {
-                Swarm::unban_peer_id(&mut self.swarm, peer_id);
+                self.swarm.unban_peer_id(peer_id);
                 let res = CommunicationResults::UnbannedPeerAck(peer_id);
                 Self::send_response(res, sender);
             }
@@ -524,7 +523,7 @@ where
         let is_permitted = self.firewall.is_permitted(&request, &peer_id, RequestDirection::In);
         if is_permitted {
             if let Some(res) = self.ask_client(request) {
-                let _ = self.swarm.send_response(&request_id, res);
+                let _ = self.swarm.behaviour_mut().send_response(&request_id, res);
             }
         }
     }
@@ -543,11 +542,7 @@ where
                     self.handle_incoming_request(&peer_id, &request_id, request)
                 }
             }
-            SwarmEvent::ConnectionEstablished {
-                peer_id,
-                endpoint,
-                num_established: _,
-            } => {
+            SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                 self.connection_manager.insert(peer_id, endpoint, None);
             }
             SwarmEvent::ConnectionClosed {

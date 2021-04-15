@@ -43,7 +43,7 @@
 //!                 request: Request::Ping,
 //!             } = boxed_event.deref().clone()
 //!             {
-//!                 let res = swarm.send_response(&request_id, Response::Pong);
+//!                 let res = swarm.behaviour_mut().send_response(&request_id, Response::Pong);
 //!                 if res.is_err() {
 //!                     break;
 //!                 }
@@ -63,13 +63,12 @@ use core::{
     time::Duration,
 };
 #[cfg(feature = "mdns")]
-use libp2p::mdns::{Mdns, MdnsEvent};
+use libp2p::mdns::{Mdns, MdnsConfig, MdnsEvent};
 use libp2p::{
     core::{upgrade, Multiaddr, PeerId},
     dns::DnsConfig,
-    identify::{Identify, IdentifyEvent},
+    identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::Keypair,
-    mdns::MdnsConfig,
     noise::{self, NoiseConfig},
     relay::{new_transport_and_behaviour, Relay, RelayConfig},
     request_response::{
@@ -245,11 +244,7 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
         }?;
         // Identify protocol to receive identifying information of a remote peer once a connection
         // was established
-        let identify = Identify::new(
-            "/identify/0.1.0".into(),
-            "stronghold-communication".into(),
-            local_keys.public(),
-        );
+        let identify = Identify::new(IdentifyConfig::new("/identify/0.1.0".into(), local_keys.public()));
         // Enable Request- and Response-Messages with the generic MessageProtocol
         let msg_proto = {
             let mut cfg = RequestResponseConfig::default();
@@ -392,12 +387,7 @@ impl<Req: MessageEvent, Res: MessageEvent> NetworkBehaviourEventProcess<Identify
 {
     // Called when `identify` produces an event.
     fn inject_event(&mut self, event: IdentifyEvent) {
-        if let IdentifyEvent::Received {
-            peer_id,
-            ref info,
-            observed_addr: _,
-        } = event
-        {
+        if let IdentifyEvent::Received { peer_id, ref info } = event {
             if self.get_peer_addr(&peer_id).is_none() {
                 for addr in &info.listen_addrs {
                     self.add_peer_addr(peer_id, addr.clone());

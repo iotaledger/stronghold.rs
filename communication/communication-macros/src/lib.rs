@@ -4,8 +4,8 @@
 extern crate proc_macro;
 
 use proc_macro2::{Ident, TokenStream};
-use quote::{quote, ToTokens};
-use syn::{punctuated::Punctuated, token::Comma, Data, DataEnum, DeriveInput, Fields};
+use quote::quote;
+use syn::{Data, DataEnum, DeriveInput, Fields};
 
 /// Implements the [`VariantPermission`] for struct/ unions with PermissionValue(1).
 /// For enums, it implements [`ToPermissionVariants`], which creates an according new enum <Ident>Permission with Unit
@@ -67,30 +67,8 @@ fn build_plain(name: &Ident, data_enum: &DataEnum) -> TokenStream {
 fn match_fields(fields: &Fields) -> TokenStream {
     match fields {
         Fields::Unit => TokenStream::new(),
-        Fields::Unnamed(fields_unnamed) => {
-            let blanked = fields_unnamed
-                .unnamed
-                .iter()
-                .map(|_| quote! {_})
-                .collect::<Punctuated<TokenStream, Comma>>()
-                .to_token_stream();
-            quote! { (#blanked) }
-        }
-        Fields::Named(fields_named) => {
-            let blanked = fields_named
-                .named
-                .iter()
-                .filter_map(|field| {
-                    if let Some(ident) = field.ident.as_ref() {
-                        Some(quote! {#ident: _})
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Punctuated<TokenStream, Comma>>()
-                .to_token_stream();
-            quote! { { #blanked } }
-        }
+        Fields::Unnamed(..) => quote! { (..) },
+        Fields::Named(..) => quote! { { .. } },
     }
 }
 

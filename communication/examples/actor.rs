@@ -166,7 +166,7 @@ fn main() -> Result<(), String> {
         }?;
 
         // Shutdown both actor systems
-        let (_, _) = future::join(sys_a.shutdown(), sys_b.shutdown()).await;
+        let (..) = future::join(sys_a.shutdown(), sys_b.shutdown()).await;
         Ok(answer)
     })?;
 

@@ -28,9 +28,9 @@ will generate
 impl ToPermissionVariants<RequestPermission> for Request {
     fn to_permission_variants(&self) -> RequestPermission {
         match self {
-            Request::VariantA {inner: _} => RequestPermission::VariantA,
+            Request::VariantA { .. } => RequestPermission::VariantA,
             Request::VariantB(_) => RequestPermission::VariantB,
-            Request::VariantC=> RequestPermission::VariantC,
+            Request::VariantC => RequestPermission::VariantC,
         }
     }
 }
