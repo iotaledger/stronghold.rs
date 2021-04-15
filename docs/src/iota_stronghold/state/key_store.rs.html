@@ -69,11 +69,11 @@
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
 
-<span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::{<span class="ident">BoxProvider</span>, <span class="ident">Key</span>};
+<span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::{<span class="ident">BoxProvider</span>, <span class="ident">Key</span>, <span class="ident">VaultId</span>};
 
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">collections</span>::<span class="ident">HashMap</span>;
 
-<span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">line_error</span>, <span class="ident">VaultId</span>};
+<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">line_error</span>;
 
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">KeyStore</span><span class="op">&lt;</span><span class="ident">P</span>: <span class="ident">BoxProvider</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="lifetime">&#39;static</span><span class="op">&gt;</span> {
     <span class="ident">store</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span><span class="op">&gt;</span>,

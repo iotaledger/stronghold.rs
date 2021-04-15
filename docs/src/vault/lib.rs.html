@@ -87,6 +87,7 @@
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
 
+<span class="attribute">#![<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">from_over_into</span>)]</span>
 <span class="attribute">#![<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">upper_case_acronyms</span>)]</span>
 
 <span class="doccomment">//! Vault is an in-memory database specification which is designed to work without a central server. The data in</span>
@@ -120,6 +121,7 @@
 
 <span class="kw">mod</span> <span class="ident">base64</span>;
 <span class="kw">mod</span> <span class="ident">crypto_box</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">nvault</span>;
 <span class="kw">mod</span> <span class="ident">types</span>;
 <span class="kw">mod</span> <span class="ident">vault</span>;
 
@@ -128,10 +130,8 @@
 <span class="kw">pub</span> <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">base64</span>::{<span class="ident">Base64Decodable</span>, <span class="ident">Base64Encodable</span>},
     <span class="ident">crypto_box</span>::{<span class="ident">BoxProvider</span>, <span class="ident">Decrypt</span>, <span class="ident">Encrypt</span>, <span class="ident">Key</span>},
-    <span class="ident">types</span>::<span class="ident">utils</span>::{<span class="ident">ChainId</span>, <span class="ident">RecordHint</span>},
-    <span class="ident">vault</span>::{
-        <span class="ident">DBReader</span>, <span class="ident">DBView</span>, <span class="ident">DBWriter</span>, <span class="ident">DeleteRequest</span>, <span class="ident">Kind</span>, <span class="ident">PreparedRead</span>, <span class="ident">ReadRequest</span>, <span class="ident">ReadResult</span>, <span class="ident">RecordId</span>, <span class="ident">WriteRequest</span>,
-    },
+    <span class="ident">types</span>::<span class="ident">utils</span>::{<span class="ident">ChainId</span>, <span class="ident">ClientId</span>, <span class="ident">Id</span>, <span class="ident">RecordHint</span>, <span class="ident">RecordId</span>, <span class="ident">VaultId</span>},
+    <span class="ident">vault</span>::{<span class="ident">DBReader</span>, <span class="ident">DBView</span>, <span class="ident">DBWriter</span>, <span class="ident">DeleteRequest</span>, <span class="ident">Kind</span>, <span class="ident">PreparedRead</span>, <span class="ident">ReadRequest</span>, <span class="ident">ReadResult</span>, <span class="ident">WriteRequest</span>},
 };
 
 <span class="doccomment">/// A Zeroing Allocator which wraps the standard memory allocator. This allocator zeroes out memory when it is dropped.</span>

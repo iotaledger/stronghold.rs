@@ -140,6 +140,7 @@
 <span id="137">137</span>
 <span id="138">138</span>
 <span id="139">139</span>
+<span id="140">140</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -217,6 +218,7 @@
 
     <span class="doccomment">/// get the key&#39;s bytes</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">bytes</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span> {
+        <span class="comment">// hacks the guarded type.  Probably not the best solution.</span>
         (<span class="kw-2">*</span><span class="self">self</span>.<span class="ident">key</span>.<span class="ident">borrow</span>()).<span class="ident">to_vec</span>()
     }
 }

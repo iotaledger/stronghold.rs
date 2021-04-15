@@ -758,53 +758,6 @@
 <span id="755">755</span>
 <span id="756">756</span>
 <span id="757">757</span>
-<span id="758">758</span>
-<span id="759">759</span>
-<span id="760">760</span>
-<span id="761">761</span>
-<span id="762">762</span>
-<span id="763">763</span>
-<span id="764">764</span>
-<span id="765">765</span>
-<span id="766">766</span>
-<span id="767">767</span>
-<span id="768">768</span>
-<span id="769">769</span>
-<span id="770">770</span>
-<span id="771">771</span>
-<span id="772">772</span>
-<span id="773">773</span>
-<span id="774">774</span>
-<span id="775">775</span>
-<span id="776">776</span>
-<span id="777">777</span>
-<span id="778">778</span>
-<span id="779">779</span>
-<span id="780">780</span>
-<span id="781">781</span>
-<span id="782">782</span>
-<span id="783">783</span>
-<span id="784">784</span>
-<span id="785">785</span>
-<span id="786">786</span>
-<span id="787">787</span>
-<span id="788">788</span>
-<span id="789">789</span>
-<span id="790">790</span>
-<span id="791">791</span>
-<span id="792">792</span>
-<span id="793">793</span>
-<span id="794">794</span>
-<span id="795">795</span>
-<span id="796">796</span>
-<span id="797">797</span>
-<span id="798">798</span>
-<span id="799">799</span>
-<span id="800">800</span>
-<span id="801">801</span>
-<span id="802">802</span>
-<span id="803">803</span>
-<span id="804">804</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -812,14 +765,19 @@
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">actors</span>::{<span class="ident">InternalMsg</span>, <span class="ident">InternalResults</span>, <span class="ident">SMsg</span>},
     <span class="ident">line_error</span>,
-    <span class="ident">state</span>::<span class="ident">client</span>::{<span class="ident">Client</span>, <span class="ident">ClientMsg</span>, <span class="ident">ReadWrite</span>},
-    <span class="ident">utils</span>::{<span class="ident">ClientId</span>, <span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>},
+    <span class="ident">state</span>::<span class="ident">client</span>::{<span class="ident">Client</span>, <span class="ident">ClientMsg</span>},
+    <span class="ident">utils</span>::{<span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>},
     <span class="ident">Location</span>,
 };
 
+<span class="kw">use</span> <span class="ident">stronghold_utils</span>::<span class="ident">GuardDebug</span>;
+
 <span class="kw">use</span> <span class="ident">crypto</span>::<span class="ident">keys</span>::<span class="ident">slip10</span>::{<span class="ident">Chain</span>, <span class="ident">ChainCode</span>};
 
-<span class="kw">use</span> <span class="ident">engine</span>::{<span class="ident">snapshot</span>, <span class="ident">vault</span>::<span class="ident">RecordHint</span>};
+<span class="kw">use</span> <span class="ident">engine</span>::{
+    <span class="ident">snapshot</span>,
+    <span class="ident">vault</span>::{<span class="ident">ClientId</span>, <span class="ident">RecordHint</span>, <span class="ident">RecordId</span>},
+};
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
 
 <span class="kw">use</span> <span class="ident">riker</span>::<span class="ident">actors</span>::<span class="kw-2">*</span>;
@@ -834,7 +792,7 @@
 <span class="kw">use</span> <span class="ident">communication</span>::<span class="ident">actor</span>::{<span class="ident">PermissionValue</span>, <span class="ident">RequestPermissions</span>, <span class="ident">ToPermissionVariants</span>, <span class="ident">VariantPermission</span>};
 
 <span class="doccomment">/// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">GuardDebug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">SLIP10DeriveInput</span> {
     <span class="doccomment">/// Note that BIP39 seeds are allowed to be used as SLIP10 seeds</span>
     <span class="ident">Seed</span>(<span class="ident">Location</span>),
@@ -843,7 +801,7 @@
 
 <span class="doccomment">/// Procedure type used to call to the runtime via `Strongnhold.runtime_exec(...)`.</span>
 <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">GuardDebug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Procedure</span> {
     <span class="doccomment">/// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in the</span>
     <span class="doccomment">/// `output` location</span>
@@ -986,7 +944,7 @@
 }
 
 <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">GuardDebug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="attribute">#[<span class="ident">cfg_attr</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>, <span class="ident">derive</span>(<span class="ident">RequestPermissions</span>))]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">SHRequest</span> {
     <span class="comment">// check if vault exists.</span>
@@ -1017,10 +975,7 @@
         <span class="ident">payload</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
     },
-    <span class="comment">// Moves the head forward in the specified Vault and opens a new record.  Returns `ReturnInit`.</span>
-    <span class="ident">InitRecord</span> {
-        <span class="ident">location</span>: <span class="ident">Location</span>,
-    },
+
     <span class="comment">// Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not</span>
     <span class="comment">// specified, it reads the head.  Returns with `ReturnRead`.</span>
     <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
@@ -1072,11 +1027,10 @@
     <span class="ident">ReturnDeleteStore</span>(<span class="ident">StatusMessage</span>),
     <span class="ident">ReturnCreateVault</span>(<span class="ident">StatusMessage</span>),
     <span class="ident">ReturnWriteVault</span>(<span class="ident">StatusMessage</span>),
-    <span class="ident">ReturnInitRecord</span>(<span class="ident">StatusMessage</span>),
     <span class="ident">ReturnReadVault</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>),
     <span class="ident">ReturnRevoke</span>(<span class="ident">StatusMessage</span>),
     <span class="ident">ReturnGarbage</span>(<span class="ident">StatusMessage</span>),
-    <span class="ident">ReturnList</span>(<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">usize</span>, <span class="ident">RecordHint</span>)<span class="op">&gt;</span>, <span class="ident">StatusMessage</span>),
+    <span class="ident">ReturnList</span>(<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordId</span>, <span class="ident">RecordHint</span>)<span class="op">&gt;</span>, <span class="ident">StatusMessage</span>),
     <span class="ident">ReturnFillSnap</span>(<span class="ident">StatusMessage</span>),
     <span class="ident">ReturnWriteSnap</span>(<span class="ident">StatusMessage</span>),
     <span class="ident">ReturnReadSnap</span>(<span class="ident">StatusMessage</span>),
@@ -1113,7 +1067,7 @@
     <span class="kw">fn</span> <span class="ident">receive</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="ident">Context</span><span class="op">&lt;</span><span class="self">Self</span>::<span class="ident">Msg</span><span class="op">&gt;</span>, <span class="ident">msg</span>: <span class="ident">SHRequest</span>, <span class="ident">sender</span>: <span class="ident">Sender</span>) {
         <span class="macro">macro_rules</span><span class="macro">!</span> <span class="ident">ensure_vault_exists</span> {
             ( <span class="macro-nonterminal">$</span><span class="macro-nonterminal">x</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">V</span>:<span class="ident">tt</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">k</span>:<span class="ident">expr</span> ) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">x</span>) {
+                <span class="kw">if</span> <span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">x</span>).<span class="ident">is_none</span>() {
                     <span class="ident">sender</span>
                         .<span class="ident">as_ref</span>()
                         .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>())
@@ -1133,7 +1087,7 @@
         <span class="kw">match</span> <span class="ident">msg</span> {
             <span class="ident">SHRequest</span>::<span class="ident">CheckVault</span>(<span class="ident">vpath</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">vid</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">derive_vault_id</span>(<span class="ident">vpath</span>);
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">vid</span>);
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="macro">matches</span><span class="macro">!</span>(<span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">vid</span>), <span class="prelude-val">Some</span>(<span class="kw">_</span>));
 
                 <span class="ident">sender</span>
                     .<span class="ident">as_ref</span>()
@@ -1142,21 +1096,20 @@
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
             }
             <span class="ident">SHRequest</span>::<span class="ident">CheckRecord</span> { <span class="ident">location</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>, <span class="ident">ReadWrite</span>::<span class="ident">Write</span>);
+                <span class="kw">let</span> <span class="ident">client_str</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_client_str</span>();
+                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>);
 
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">record_exists_in_vault</span>(<span class="ident">vid</span>, <span class="ident">rid</span>);
-                <span class="ident">sender</span>
-                    .<span class="ident">as_ref</span>()
-                    .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>())
-                    .<span class="ident">try_tell</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnExistsRecord</span>(<span class="ident">res</span>), <span class="prelude-val">None</span>)
+                <span class="kw">let</span> <span class="ident">internal</span> <span class="op">=</span> <span class="ident">ctx</span>
+                    .<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/internal-{}/&quot;</span>, <span class="ident">client_str</span>))
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+
+                <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">CheckRecord</span>(<span class="ident">vid</span>, <span class="ident">rid</span>), <span class="ident">sender</span>);
             }
             <span class="ident">SHRequest</span>::<span class="ident">CreateNewVault</span>(<span class="ident">location</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>, <span class="ident">ReadWrite</span>::<span class="ident">Write</span>);
+                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>);
                 <span class="kw">let</span> <span class="ident">client_str</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_client_str</span>();
 
                 <span class="self">self</span>.<span class="ident">add_new_vault</span>(<span class="ident">vid</span>);
-                <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">vid</span>, <span class="ident">rid</span>);
 
                 <span class="kw">let</span> <span class="ident">internal</span> <span class="op">=</span> <span class="ident">ctx</span>
                     .<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/internal-{}/&quot;</span>, <span class="ident">client_str</span>))
@@ -1169,11 +1122,9 @@
                 <span class="ident">payload</span>,
                 <span class="ident">hint</span>,
             } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>, <span class="ident">ReadWrite</span>::<span class="ident">Write</span>);
+                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>);
 
                 <span class="kw">let</span> <span class="ident">client_str</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_client_str</span>();
-
-                <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">vid</span>);
 
                 <span class="kw">let</span> <span class="ident">internal</span> <span class="op">=</span> <span class="ident">ctx</span>
                     .<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/internal-{}/&quot;</span>, <span class="ident">client_str</span>))
@@ -1181,22 +1132,10 @@
 
                 <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">WriteToVault</span>(<span class="ident">vid</span>, <span class="ident">rid</span>, <span class="ident">payload</span>, <span class="ident">hint</span>), <span class="ident">sender</span>);
             }
-            <span class="ident">SHRequest</span>::<span class="ident">InitRecord</span> { <span class="ident">location</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>, <span class="ident">ReadWrite</span>::<span class="ident">Write</span>);
 
-                <span class="kw">let</span> <span class="ident">client_str</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_client_str</span>();
-
-                <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">vid</span>, <span class="ident">rid</span>);
-
-                <span class="kw">let</span> <span class="ident">internal</span> <span class="op">=</span> <span class="ident">ctx</span>
-                    .<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/internal-{}/&quot;</span>, <span class="ident">client_str</span>))
-                    .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
-
-                <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">InitRecord</span>(<span class="ident">vid</span>, <span class="ident">rid</span>), <span class="ident">sender</span>);
-            }
             <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
             <span class="ident">SHRequest</span>::<span class="ident">ReadFromVault</span> { <span class="ident">location</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>, <span class="ident">ReadWrite</span>::<span class="ident">Read</span>);
+                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>);
 
                 <span class="kw">let</span> <span class="ident">client_str</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_client_str</span>();
 
@@ -1207,7 +1146,7 @@
                 <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">ReadFromVault</span>(<span class="ident">vid</span>, <span class="ident">rid</span>), <span class="ident">sender</span>);
             }
             <span class="ident">SHRequest</span>::<span class="ident">RevokeData</span> { <span class="ident">location</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>, <span class="ident">ReadWrite</span>::<span class="ident">Read</span>);
+                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>);
 
                 <span class="kw">let</span> <span class="ident">client_str</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_client_str</span>();
 
@@ -1229,7 +1168,7 @@
                 <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">GarbageCollect</span>(<span class="ident">vid</span>), <span class="ident">sender</span>);
             }
             <span class="ident">SHRequest</span>::<span class="ident">ListIds</span>(<span class="ident">vpath</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">vid</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">derive_vault_id</span>(<span class="kw-2">&amp;</span><span class="ident">vpath</span>);
+                <span class="kw">let</span> <span class="ident">vid</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">derive_vault_id</span>(<span class="ident">vpath</span>);
 
                 <span class="kw">let</span> <span class="ident">client_str</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_client_str</span>();
 
@@ -1237,7 +1176,7 @@
                     .<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/internal-{}/&quot;</span>, <span class="ident">client_str</span>))
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
-                <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">ListIds</span>(<span class="ident">vpath</span>, <span class="ident">vid</span>), <span class="ident">sender</span>);
+                <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">ListIds</span>(<span class="ident">vid</span>), <span class="ident">sender</span>);
             }
 
             <span class="ident">SHRequest</span>::<span class="ident">ReadSnapshot</span> {
@@ -1273,13 +1212,7 @@
                     .<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;/user/internal-{}/&quot;</span>, <span class="ident">client_str</span>))
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
-                <span class="ident">internal</span>.<span class="ident">try_tell</span>(
-                    <span class="ident">InternalMsg</span>::<span class="ident">FillSnapshot</span> {
-                        <span class="ident">id</span>: <span class="self">self</span>.<span class="ident">client_id</span>,
-                        <span class="ident">data</span>: <span class="self">self</span>.<span class="ident">clone</span>(),
-                    },
-                    <span class="ident">sender</span>,
-                )
+                <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">FillSnapshot</span> { <span class="ident">client</span>: <span class="self">self</span>.<span class="ident">clone</span>() }, <span class="ident">sender</span>)
             }
             <span class="ident">SHRequest</span>::<span class="ident">WriteSnapshot</span> { <span class="ident">key</span>, <span class="ident">filename</span>, <span class="ident">path</span> } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">snapshot</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="string">&quot;/user/snapshot/&quot;</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
@@ -1287,7 +1220,7 @@
                 <span class="ident">snapshot</span>.<span class="ident">try_tell</span>(<span class="ident">SMsg</span>::<span class="ident">WriteSnapshot</span> { <span class="ident">key</span>, <span class="ident">filename</span>, <span class="ident">path</span> }, <span class="ident">sender</span>);
             }
             <span class="ident">SHRequest</span>::<span class="ident">DeleteFromStore</span>(<span class="ident">loc</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">loc</span>, <span class="ident">ReadWrite</span>::<span class="ident">Read</span>);
+                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">loc</span>);
 
                 <span class="self">self</span>.<span class="ident">store_delete_item</span>(<span class="ident">vid</span>.<span class="ident">into</span>());
 
@@ -1302,7 +1235,7 @@
                 <span class="ident">payload</span>,
                 <span class="ident">lifetime</span>,
             } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>, <span class="ident">ReadWrite</span>::<span class="ident">Write</span>);
+                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>);
 
                 <span class="self">self</span>.<span class="ident">write_to_store</span>(<span class="ident">vid</span>.<span class="ident">into</span>(), <span class="ident">payload</span>, <span class="ident">lifetime</span>);
 
@@ -1313,7 +1246,7 @@
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
             }
             <span class="ident">SHRequest</span>::<span class="ident">ReadFromStore</span> { <span class="ident">location</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>, <span class="ident">ReadWrite</span>::<span class="ident">Read</span>);
+                <span class="kw">let</span> (<span class="ident">vid</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">location</span>);
 
                 <span class="kw">let</span> <span class="ident">payload</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">read_from_store</span>(<span class="ident">vid</span>.<span class="ident">into</span>());
 
@@ -1350,15 +1283,10 @@
                         <span class="ident">hint</span>,
                         <span class="ident">size_bytes</span>,
                     } <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">output</span>, <span class="ident">ReadWrite</span>::<span class="ident">Write</span>);
+                        <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">output</span>);
 
-                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">vid</span>) {
+                        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">vid</span>).<span class="ident">is_none</span>() {
                             <span class="self">self</span>.<span class="ident">add_new_vault</span>(<span class="ident">vid</span>);
-                            <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">vid</span>, <span class="ident">rid</span>);
-                            <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">vid</span>);
-                        } <span class="kw">else</span> {
-                            <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">vid</span>, <span class="ident">rid</span>);
-                            <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">vid</span>);
                         }
 
                         <span class="ident">internal</span>.<span class="ident">try_tell</span>(
@@ -1377,18 +1305,13 @@
                         <span class="ident">output</span>,
                         <span class="ident">hint</span>,
                     } <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">let</span> (<span class="ident">seed_vault_id</span>, <span class="ident">seed_record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">seed</span>, <span class="ident">ReadWrite</span>::<span class="ident">Write</span>);
+                        <span class="kw">let</span> (<span class="ident">seed_vault_id</span>, <span class="ident">seed_record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">seed</span>);
                         <span class="macro">ensure_vault_exists</span><span class="macro">!</span>(<span class="ident">seed_vault_id</span>, <span class="ident">SLIP10Derive</span>, <span class="string">&quot;seed&quot;</span>);
 
-                        <span class="kw">let</span> (<span class="ident">key_vault_id</span>, <span class="ident">key_record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">output</span>, <span class="ident">ReadWrite</span>::<span class="ident">Write</span>);
+                        <span class="kw">let</span> (<span class="ident">key_vault_id</span>, <span class="ident">key_record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">output</span>);
 
-                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">key_vault_id</span>) {
+                        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">key_vault_id</span>).<span class="ident">is_none</span>() {
                             <span class="self">self</span>.<span class="ident">add_new_vault</span>(<span class="ident">key_vault_id</span>);
-                            <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">key_vault_id</span>, <span class="ident">key_record_id</span>);
-                            <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">key_vault_id</span>);
-                        } <span class="kw">else</span> {
-                            <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">key_vault_id</span>, <span class="ident">key_record_id</span>);
-                            <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">key_vault_id</span>);
                         }
 
                         <span class="ident">internal</span>.<span class="ident">try_tell</span>(
@@ -1409,18 +1332,13 @@
                         <span class="ident">output</span>,
                         <span class="ident">hint</span>,
                     } <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">let</span> (<span class="ident">parent_vault_id</span>, <span class="ident">parent_record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">parent</span>, <span class="ident">ReadWrite</span>::<span class="ident">Read</span>);
+                        <span class="kw">let</span> (<span class="ident">parent_vault_id</span>, <span class="ident">parent_record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">parent</span>);
                         <span class="macro">ensure_vault_exists</span><span class="macro">!</span>(<span class="ident">parent_vault_id</span>, <span class="ident">SLIP10Derive</span>, <span class="string">&quot;parent key&quot;</span>);
 
-                        <span class="kw">let</span> (<span class="ident">child_vault_id</span>, <span class="ident">child_record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">output</span>, <span class="ident">ReadWrite</span>::<span class="ident">Write</span>);
+                        <span class="kw">let</span> (<span class="ident">child_vault_id</span>, <span class="ident">child_record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">output</span>);
 
-                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">child_vault_id</span>) {
+                        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">child_vault_id</span>).<span class="ident">is_none</span>() {
                             <span class="self">self</span>.<span class="ident">add_new_vault</span>(<span class="ident">child_vault_id</span>);
-                            <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">child_vault_id</span>, <span class="ident">child_record_id</span>);
-                            <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">child_vault_id</span>);
-                        } <span class="kw">else</span> {
-                            <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">child_vault_id</span>, <span class="ident">child_record_id</span>);
-                            <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">child_vault_id</span>);
                         }
 
                         <span class="ident">internal</span>.<span class="ident">try_tell</span>(
@@ -1440,15 +1358,10 @@
                         <span class="ident">output</span>,
                         <span class="ident">hint</span>,
                     } <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">let</span> (<span class="ident">vault_id</span>, <span class="ident">record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">output</span>, <span class="ident">ReadWrite</span>::<span class="ident">Read</span>);
+                        <span class="kw">let</span> (<span class="ident">vault_id</span>, <span class="ident">record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">output</span>);
 
-                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">vault_id</span>) {
+                        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">vault_id</span>).<span class="ident">is_none</span>() {
                             <span class="self">self</span>.<span class="ident">add_new_vault</span>(<span class="ident">vault_id</span>);
-                            <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">vault_id</span>, <span class="ident">record_id</span>);
-                            <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">vault_id</span>);
-                        } <span class="kw">else</span> {
-                            <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">vault_id</span>, <span class="ident">record_id</span>);
-                            <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">vault_id</span>);
                         }
 
                         <span class="ident">internal</span>.<span class="ident">try_tell</span>(
@@ -1467,15 +1380,10 @@
                         <span class="ident">output</span>,
                         <span class="ident">hint</span>,
                     } <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">let</span> (<span class="ident">vault_id</span>, <span class="ident">record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">output</span>, <span class="ident">ReadWrite</span>::<span class="ident">Write</span>);
+                        <span class="kw">let</span> (<span class="ident">vault_id</span>, <span class="ident">record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">output</span>);
 
-                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">vault_id</span>) {
+                        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">vault_exist</span>(<span class="ident">vault_id</span>).<span class="ident">is_none</span>() {
                             <span class="self">self</span>.<span class="ident">add_new_vault</span>(<span class="ident">vault_id</span>);
-                            <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">vault_id</span>, <span class="ident">record_id</span>);
-                            <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">vault_id</span>);
-                        } <span class="kw">else</span> {
-                            <span class="self">self</span>.<span class="ident">add_record_to_vault</span>(<span class="ident">vault_id</span>, <span class="ident">record_id</span>);
-                            <span class="self">self</span>.<span class="ident">increment_counter</span>(<span class="ident">vault_id</span>);
                         }
 
                         <span class="ident">internal</span>.<span class="ident">try_tell</span>(
@@ -1492,11 +1400,11 @@
                     <span class="comment">// Not implemented yet.</span>
                     <span class="ident">Procedure</span>::<span class="ident">BIP39MnemonicSentence</span> { .. } <span class="op">=</span><span class="op">&gt;</span> <span class="macro">unimplemented</span><span class="macro">!</span>(),
                     <span class="ident">Procedure</span>::<span class="ident">Ed25519PublicKey</span> { <span class="ident">private_key</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">let</span> (<span class="ident">vault_id</span>, <span class="ident">record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">private_key</span>, <span class="ident">ReadWrite</span>::<span class="ident">Read</span>);
+                        <span class="kw">let</span> (<span class="ident">vault_id</span>, <span class="ident">record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">private_key</span>);
                         <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">Ed25519PublicKey</span> { <span class="ident">vault_id</span>, <span class="ident">record_id</span> }, <span class="ident">sender</span>)
                     }
                     <span class="ident">Procedure</span>::<span class="ident">Ed25519Sign</span> { <span class="ident">private_key</span>, <span class="ident">msg</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">let</span> (<span class="ident">vault_id</span>, <span class="ident">record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">private_key</span>, <span class="ident">ReadWrite</span>::<span class="ident">Read</span>);
+                        <span class="kw">let</span> (<span class="ident">vault_id</span>, <span class="ident">record_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_location</span>(<span class="ident">private_key</span>);
                         <span class="ident">internal</span>.<span class="ident">try_tell</span>(
                             <span class="ident">InternalMsg</span>::<span class="ident">Ed25519Sign</span> {
                                 <span class="ident">vault_id</span>,
@@ -1524,13 +1432,14 @@
                     .<span class="ident">try_tell</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnCreateVault</span>(<span class="ident">status</span>), <span class="prelude-val">None</span>)
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
             }
-            <span class="ident">InternalResults</span>::<span class="ident">ReturnInitRecord</span>(<span class="ident">status</span>) <span class="op">=</span><span class="op">&gt;</span> {
+            <span class="ident">InternalResults</span>::<span class="ident">ReturnCheckRecord</span>(<span class="ident">res</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="ident">sender</span>
                     .<span class="ident">as_ref</span>()
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>())
-                    .<span class="ident">try_tell</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnInitRecord</span>(<span class="ident">status</span>), <span class="prelude-val">None</span>)
+                    .<span class="ident">try_tell</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnExistsRecord</span>(<span class="ident">res</span>), <span class="prelude-val">None</span>)
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
             }
+
             <span class="ident">InternalResults</span>::<span class="ident">ReturnReadVault</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="ident">sender</span>
                     .<span class="ident">as_ref</span>()
@@ -1538,25 +1447,22 @@
                     .<span class="ident">try_tell</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnReadVault</span>(<span class="ident">payload</span>, <span class="ident">status</span>), <span class="prelude-val">None</span>)
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
             }
-            <span class="ident">InternalResults</span>::<span class="ident">ReturnList</span>(<span class="ident">vpath</span>, <span class="ident">list</span>, <span class="ident">status</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">ids</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">usize</span>, <span class="ident">RecordHint</span>)<span class="op">&gt;</span> <span class="op">=</span> <span class="ident">list</span>
-                    .<span class="ident">into_iter</span>()
-                    .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">rid</span>, <span class="ident">hint</span>)<span class="op">|</span> {
-                        <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_index_from_record_id</span>(<span class="kw-2">&amp;</span><span class="ident">vpath</span>, <span class="ident">rid</span>);
-                        (<span class="ident">idx</span>, <span class="ident">hint</span>)
-                    })
-                    .<span class="ident">collect</span>();
-
+            <span class="ident">InternalResults</span>::<span class="ident">ReturnList</span>(<span class="ident">list</span>, <span class="ident">status</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="ident">sender</span>
                     .<span class="ident">as_ref</span>()
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>())
-                    .<span class="ident">try_tell</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnList</span>(<span class="ident">ids</span>, <span class="ident">status</span>), <span class="prelude-val">None</span>)
+                    .<span class="ident">try_tell</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnList</span>(<span class="ident">list</span>, <span class="ident">status</span>), <span class="prelude-val">None</span>)
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
             }
-            <span class="ident">InternalResults</span>::<span class="ident">RebuildCache</span>(<span class="ident">state</span>, <span class="ident">status</span>) <span class="op">=</span><span class="op">&gt;</span> {
+            <span class="ident">InternalResults</span>::<span class="ident">RebuildCache</span> {
+                <span class="ident">id</span>,
+                <span class="ident">vaults</span>,
+                <span class="ident">store</span>,
+                <span class="ident">status</span>,
+            } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="self">self</span>.<span class="ident">clear_cache</span>();
 
-                <span class="self">self</span>.<span class="ident">rebuild_cache</span>(<span class="ident">state</span>);
+                <span class="self">self</span>.<span class="ident">rebuild_cache</span>(<span class="ident">id</span>, <span class="ident">vaults</span>, <span class="ident">store</span>);
 
                 <span class="ident">sender</span>
                     .<span class="ident">as_ref</span>()

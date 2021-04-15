@@ -84,8 +84,6 @@
 <span id="81">81</span>
 <span id="82">82</span>
 <span id="83">83</span>
-<span id="84">84</span>
-<span id="85">85</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -124,8 +122,6 @@
 <span class="comment">// Tests exist as a sub-module because they need to be able to test internal concepts without exposing them publicly.</span>
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
 <span class="kw">mod</span> <span class="ident">tests</span>;
-
-<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">utils</span>::{<span class="ident">ClientId</span>, <span class="ident">VaultId</span>};
 
 <span class="kw">pub</span> <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">actors</span>::{<span class="ident">ProcResult</span>, <span class="ident">Procedure</span>, <span class="ident">SLIP10DeriveInput</span>},

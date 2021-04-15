@@ -101,6 +101,14 @@
 <span id="98"> 98</span>
 <span id="99"> 99</span>
 <span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -137,14 +145,8 @@
 <span class="doccomment">/// chain while on Write, the `None` location is the next record in the version chain.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Location</span> {
-    <span class="ident">Generic</span> {
-        <span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
-        <span class="ident">record_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
-    },
-    <span class="ident">Counter</span> {
-        <span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
-        <span class="ident">counter</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>,
-    },
+    <span class="ident">Generic</span> { <span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">record_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span> },
+    <span class="ident">Counter</span> { <span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">counter</span>: <span class="ident">usize</span> },
 }
 
 <span class="kw">impl</span> <span class="ident">Location</span> {
@@ -166,10 +168,24 @@
 
     <span class="doccomment">/// Creates a counter location from a type that implements `Into&lt;Vec&lt;u8&gt;&gt;` and a counter type that implements</span>
     <span class="doccomment">/// `Into&lt;usize&gt;`</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">counter</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">C</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="ident">vault_path</span>: <span class="ident">V</span>, <span class="ident">counter</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">C</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">counter</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">C</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="ident">vault_path</span>: <span class="ident">V</span>, <span class="ident">counter</span>: <span class="ident">C</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span>::<span class="ident">Counter</span> {
             <span class="ident">vault_path</span>: <span class="ident">vault_path</span>.<span class="ident">into</span>(),
-            <span class="ident">counter</span>: <span class="ident">counter</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">c</span><span class="op">|</span> <span class="ident">c</span>.<span class="ident">into</span>()),
+            <span class="ident">counter</span>: <span class="ident">counter</span>.<span class="ident">into</span>(),
+        }
+    }
+
+    <span class="doccomment">/// Helper method used to increment counter locations.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">increment_counter</span>(<span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="kw">match</span> <span class="self">self</span> {
+            <span class="ident">Location</span>::<span class="ident">Generic</span> {
+                <span class="ident">vault_path</span>,
+                <span class="ident">record_path</span>,
+            } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">Location</span>::<span class="ident">Generic</span> {
+                <span class="ident">vault_path</span>,
+                <span class="ident">record_path</span>,
+            },
+            <span class="ident">Location</span>::<span class="ident">Counter</span> { <span class="ident">vault_path</span>, <span class="ident">counter</span> } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">Location</span>::<span class="ident">Counter</span> { <span class="ident">vault_path</span>, <span class="ident">counter</span> },
         }
     }
 
@@ -182,7 +198,7 @@
     }
 
     <span class="doccomment">/// used to generate a constant counter location.</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">const_counter</span>(<span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">counter</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">const_counter</span>(<span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">counter</span>: <span class="ident">usize</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span>::<span class="ident">Counter</span> { <span class="ident">vault_path</span>, <span class="ident">counter</span> }
     }
 }

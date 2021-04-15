@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["ClientId","Client ID type used to identify a client."],["ID","A generic ID type used as the underlying type for the `ClientId` and `VaultId` types."],["VaultId","Vault ID type used to identify a vault."]],"trait":[["LoadFromPath",""]]});
+initSidebarItems({"trait":[["LoadFromPath",""]]});

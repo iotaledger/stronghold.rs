@@ -63,6 +63,9 @@
 <span id="60">60</span>
 <span id="61">61</span>
 <span id="62">62</span>
+<span id="63">63</span>
+<span id="64">64</span>
+<span id="65">65</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -73,8 +76,11 @@
 };
 
 <span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::{<span class="self">self</span>, <span class="ident">BoxProvider</span>, <span class="ident">Key</span>};
+
+<span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
+
 <span class="doccomment">/// An implementation of the Vault&#39;s `BoxProvider type.  Used to encrypt and decrypt the data in this Stronghold.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Ord</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">PartialOrd</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Ord</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">PartialOrd</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>, <span class="ident">Default</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Provider</span>;
 <span class="kw">impl</span> <span class="ident">Provider</span> {
     <span class="kw">const</span> <span class="ident">NONCE_LEN</span>: <span class="ident">usize</span> <span class="op">=</span> <span class="ident">XChaCha20Poly1305</span>::<span class="ident">NONCE_LENGTH</span>;

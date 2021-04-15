@@ -137,6 +137,18 @@
 <span id="134">134</span>
 <span id="135">135</span>
 <span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -145,27 +157,30 @@
 
 <span class="kw">use</span> <span class="ident">riker</span>::<span class="ident">actors</span>::<span class="kw-2">*</span>;
 
-<span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">fmt</span>::<span class="ident">Debug</span>, <span class="ident">path</span>::<span class="ident">PathBuf</span>};
+<span class="kw">use</span> <span class="ident">std</span>::<span class="ident">path</span>::<span class="ident">PathBuf</span>;
 
-<span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">snapshot</span>;
+<span class="kw">use</span> <span class="ident">engine</span>::{
+    <span class="ident">snapshot</span>,
+    <span class="ident">vault</span>::{<span class="ident">nvault</span>::<span class="ident">DbView</span>, <span class="ident">ClientId</span>, <span class="ident">Key</span>, <span class="ident">VaultId</span>},
+};
 
-<span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::{<span class="ident">Key</span>, <span class="ident">ReadResult</span>};
+<span class="kw">use</span> <span class="ident">stronghold_utils</span>::<span class="ident">GuardDebug</span>;
 
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">actors</span>::{<span class="ident">InternalMsg</span>, <span class="ident">SHResults</span>},
     <span class="ident">line_error</span>,
     <span class="ident">state</span>::{
-        <span class="ident">client</span>::<span class="ident">Client</span>,
+        <span class="ident">client</span>::<span class="ident">Store</span>,
         <span class="ident">snapshot</span>::{<span class="ident">Snapshot</span>, <span class="ident">SnapshotState</span>},
     },
     <span class="ident">utils</span>::<span class="ident">StatusMessage</span>,
-    <span class="ident">ClientId</span>, <span class="ident">Provider</span>, <span class="ident">VaultId</span>,
+    <span class="ident">Provider</span>,
 };
 
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">collections</span>::<span class="ident">HashMap</span>;
 
 <span class="doccomment">/// Messages used for the Snapshot Actor.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">GuardDebug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">SMsg</span> {
     <span class="ident">WriteSnapshot</span> {
         <span class="ident">key</span>: <span class="ident">snapshot</span>::<span class="ident">Key</span>,
@@ -173,11 +188,7 @@
         <span class="ident">path</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PathBuf</span><span class="op">&gt;</span>,
     },
     <span class="ident">FillSnapshot</span> {
-        <span class="ident">data</span>: <span class="ident">Box</span><span class="op">&lt;</span>(
-            <span class="ident">Client</span>,
-            <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-            <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReadResult</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-        )<span class="op">&gt;</span>,
+        <span class="ident">data</span>: <span class="ident">Box</span><span class="op">&lt;</span>(<span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">DbView</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="ident">Store</span>)<span class="op">&gt;</span>,
         <span class="ident">id</span>: <span class="ident">ClientId</span>,
     },
     <span class="ident">ReadFromSnapshot</span> {
@@ -232,7 +243,14 @@
                 <span class="kw">if</span> <span class="self">self</span>.<span class="ident">has_data</span>(<span class="ident">cid</span>) {
                     <span class="kw">let</span> <span class="ident">data</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_state</span>(<span class="ident">cid</span>);
 
-                    <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">ReloadData</span>(<span class="ident">Box</span>::<span class="ident">new</span>(<span class="ident">data</span>), <span class="ident">StatusMessage</span>::<span class="ident">OK</span>), <span class="ident">sender</span>);
+                    <span class="ident">internal</span>.<span class="ident">try_tell</span>(
+                        <span class="ident">InternalMsg</span>::<span class="ident">ReloadData</span> {
+                            <span class="ident">id</span>: <span class="ident">cid</span>,
+                            <span class="ident">data</span>: <span class="ident">Box</span>::<span class="ident">new</span>(<span class="ident">data</span>),
+                            <span class="ident">status</span>: <span class="ident">StatusMessage</span>::<span class="ident">OK</span>,
+                        },
+                        <span class="ident">sender</span>,
+                    );
                 } <span class="kw">else</span> {
                     <span class="kw">match</span> <span class="ident">Snapshot</span>::<span class="ident">read_from_snapshot</span>(<span class="ident">filename</span>.<span class="ident">as_deref</span>(), <span class="ident">path</span>.<span class="ident">as_deref</span>(), <span class="ident">key</span>) {
                         <span class="prelude-val">Ok</span>(<span class="kw-2">mut</span> <span class="ident">snapshot</span>) <span class="op">=</span><span class="op">&gt;</span> {
@@ -240,7 +258,14 @@
 
                             <span class="kw-2">*</span><span class="self">self</span> <span class="op">=</span> <span class="ident">snapshot</span>;
 
-                            <span class="ident">internal</span>.<span class="ident">try_tell</span>(<span class="ident">InternalMsg</span>::<span class="ident">ReloadData</span>(<span class="ident">Box</span>::<span class="ident">new</span>(<span class="ident">data</span>), <span class="ident">StatusMessage</span>::<span class="ident">OK</span>), <span class="ident">sender</span>);
+                            <span class="ident">internal</span>.<span class="ident">try_tell</span>(
+                                <span class="ident">InternalMsg</span>::<span class="ident">ReloadData</span> {
+                                    <span class="ident">id</span>: <span class="ident">cid</span>,
+                                    <span class="ident">data</span>: <span class="ident">Box</span>::<span class="ident">new</span>(<span class="ident">data</span>),
+                                    <span class="ident">status</span>: <span class="ident">StatusMessage</span>::<span class="ident">OK</span>,
+                                },
+                                <span class="ident">sender</span>,
+                            );
                         }
                         <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> {
                             <span class="ident">sender</span>
@@ -259,8 +284,7 @@
                 };
             }
             <span class="ident">SMsg</span>::<span class="ident">WriteSnapshot</span> { <span class="ident">key</span>, <span class="ident">filename</span>, <span class="ident">path</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="self">self</span>.<span class="ident">clone</span>()
-                    .<span class="ident">write_to_snapshot</span>(<span class="ident">filename</span>.<span class="ident">as_deref</span>(), <span class="ident">path</span>.<span class="ident">as_deref</span>(), <span class="ident">key</span>)
+                <span class="self">self</span>.<span class="ident">write_to_snapshot</span>(<span class="ident">filename</span>.<span class="ident">as_deref</span>(), <span class="ident">path</span>.<span class="ident">as_deref</span>(), <span class="ident">key</span>)
                     .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
 
                 <span class="self">self</span>.<span class="ident">state</span> <span class="op">=</span> <span class="ident">SnapshotState</span>::<span class="ident">default</span>();

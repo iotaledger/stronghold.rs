@@ -7,5 +7,6 @@ sourcesIndex["runtime"] = {"name":"","dirs":[{"name":"types","files":["bytes.rs"
 sourcesIndex["snapshot"] = {"name":"","dirs":[{"name":"compression","files":["decoder.rs","encoder.rs"]}],"files":["compression.rs","files.rs","kdf.rs","lib.rs","logic.rs"]};
 sourcesIndex["store"] = {"name":"","dirs":[{"name":"storage","files":["cache.rs"]}],"files":["lib.rs","macros.rs","storage.rs"]};
 sourcesIndex["stronghold_utils"] = {"name":"","dirs":[{"name":"test_utils","files":["fresh.rs","mod.rs"]}],"files":["ask.rs","lib.rs"]};
-sourcesIndex["vault"] = {"name":"","dirs":[{"name":"types","files":["transactions.rs","utils.rs"]},{"name":"vault","files":["chain.rs","protocol.rs"]}],"files":["base64.rs","crypto_box.rs","lib.rs","types.rs","vault.rs"]};
+sourcesIndex["utils_derive"] = {"name":"","files":["lib.rs"]};
+sourcesIndex["vault"] = {"name":"","dirs":[{"name":"types","files":["ntransactions.rs","transactions.rs","utils.rs"]},{"name":"vault","files":["chain.rs","protocol.rs"]}],"files":["base64.rs","crypto_box.rs","lib.rs","nvault.rs","types.rs","vault.rs"]};
 createSourceSidebar();

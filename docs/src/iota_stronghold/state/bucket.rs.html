@@ -211,12 +211,12 @@
 
 <span class="kw">use</span> <span class="ident">engine</span>::{
     <span class="ident">store</span>::<span class="ident">Cache</span>,
-    <span class="ident">vault</span>::{<span class="ident">BoxProvider</span>, <span class="ident">DBView</span>, <span class="ident">Key</span>, <span class="ident">PreparedRead</span>, <span class="ident">ReadResult</span>, <span class="ident">RecordHint</span>, <span class="ident">RecordId</span>, <span class="ident">WriteRequest</span>},
+    <span class="ident">vault</span>::{<span class="ident">BoxProvider</span>, <span class="ident">DBView</span>, <span class="ident">Key</span>, <span class="ident">PreparedRead</span>, <span class="ident">ReadResult</span>, <span class="ident">RecordHint</span>, <span class="ident">RecordId</span>, <span class="ident">VaultId</span>, <span class="ident">WriteRequest</span>},
 };
 
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">collections</span>::<span class="ident">HashMap</span>;
 
-<span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">line_error</span>, <span class="ident">VaultId</span>};
+<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">line_error</span>;
 
 <span class="kw">type</span> <span class="ident">Store</span> <span class="op">=</span> <span class="ident">Cache</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 

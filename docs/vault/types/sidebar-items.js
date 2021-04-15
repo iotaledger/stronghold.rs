@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["transactions",""],["utils",""]],"trait":[["AsView","a view over raw data."],["AsViewMut","a mutable view over raw data."]]});
+initSidebarItems({"mod":[["ntransactions",""],["transactions",""],["utils",""]],"trait":[["AsView","a view over raw data."],["AsViewMut","a mutable view over raw data."]]});
