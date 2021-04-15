@@ -4,7 +4,7 @@
 use std::convert::TryInto;
 
 pub fn decompress_into(input: &[u8], output: &mut Vec<u8>) -> crate::Result<()> {
-    LZ4Decoder {
+    Lz4Decoder {
         input,
         output,
         token: 0,
@@ -23,13 +23,13 @@ pub fn decompress(input: &[u8]) -> crate::Result<Vec<u8>> {
     Ok(vec)
 }
 
-struct LZ4Decoder<'a> {
+struct Lz4Decoder<'a> {
     input: &'a [u8],
     output: &'a mut Vec<u8>,
     token: u8,
 }
 
-impl<'a> LZ4Decoder<'a> {
+impl<'a> Lz4Decoder<'a> {
     fn take(&mut self, size: usize) -> crate::Result<&[u8]> {
         Self::take_internal(&mut self.input, size)
     }
@@ -37,7 +37,7 @@ impl<'a> LZ4Decoder<'a> {
     #[inline]
     fn take_internal(input: &mut &'a [u8], size: usize) -> crate::Result<&'a [u8]> {
         if input.len() < size {
-            Err(crate::Error::LZ4Error("Unexpected End".into()))
+            Err(crate::Error::Lz4Error("Unexpected End".into()))
         } else {
             let res = Ok(&input[..size]);
 
@@ -105,7 +105,7 @@ impl<'a> LZ4Decoder<'a> {
 
             Ok(())
         } else {
-            Err(crate::Error::LZ4Error("Invalid Duplicate".into()))
+            Err(crate::Error::Lz4Error("Invalid Duplicate".into()))
         }
     }
 

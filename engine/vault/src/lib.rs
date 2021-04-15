@@ -1,6 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(clippy::from_over_into)]
 #![allow(clippy::upper_case_acronyms)]
 
 //! Vault is an in-memory database specification which is designed to work without a central server. The data in
@@ -34,6 +35,7 @@ use thiserror::Error as DeriveError;
 
 mod base64;
 mod crypto_box;
+pub mod nvault;
 mod types;
 mod vault;
 
@@ -42,10 +44,8 @@ use runtime::ZeroingAlloc;
 pub use crate::{
     base64::{Base64Decodable, Base64Encodable},
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
-    types::utils::{ChainId, RecordHint},
-    vault::{
-        DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult, RecordId, WriteRequest,
-    },
+    types::utils::{ChainId, ClientId, Id, RecordHint, RecordId, VaultId},
+    vault::{DBReader, DBView, DBWriter, DeleteRequest, Kind, PreparedRead, ReadRequest, ReadResult, WriteRequest},
 };
 
 /// A Zeroing Allocator which wraps the standard memory allocator. This allocator zeroes out memory when it is dropped.

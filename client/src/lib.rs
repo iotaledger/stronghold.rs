@@ -36,8 +36,6 @@ mod utils;
 #[cfg(test)]
 mod tests;
 
-use crate::utils::{ClientId, VaultId};
-
 pub use crate::{
     actors::{ProcResult, Procedure, SLIP10DeriveInput},
     interface::Stronghold,

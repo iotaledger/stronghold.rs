@@ -259,34 +259,38 @@ fn garbage_collect_vault_command(
 ) {
     if let Some(matches) = matches.subcommand_matches("garbage_collect") {
         if let Some(pass) = matches.value_of("password") {
-            let mut key = [0u8; 32];
-            let salt = [0u8; 32];
-            naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+            if let Some(id) = matches.value_of("id") {
+                let mut key = [0u8; 32];
+                let salt = [0u8; 32];
+                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-            let home_dir = home_dir().expect(line_error!());
-            let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+                let home_dir = home_dir().expect(line_error!());
+                let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
-            if snapshot.exists() {
-                block_on(stronghold.read_snapshot(
-                    client_path,
-                    None,
-                    &key.to_vec(),
-                    Some("commandline".to_string()),
-                    None,
-                ));
+                if snapshot.exists() {
+                    block_on(stronghold.read_snapshot(
+                        client_path,
+                        None,
+                        &key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ));
 
-                let status = block_on(stronghold.garbage_collect(b"test".to_vec()));
+                    let location = Location::generic(id, id);
 
-                let (list, _) = block_on(stronghold.list_hints_and_ids(b"test".to_vec()));
+                    let status = block_on(stronghold.garbage_collect(location.vault_path().to_vec()));
 
-                println!("{:?}", status);
-                println!("{:?}", list);
+                    let (list, _) = block_on(stronghold.list_hints_and_ids(location.vault_path().to_vec()));
 
-                block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
-            } else {
-                println!("Could not find a snapshot at the home path.  Try writing first. ");
+                    println!("{:?}", status);
+                    println!("{:?}", list);
 
-                return;
+                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
+                } else {
+                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+
+                    return;
+                }
             }
         }
     }
@@ -314,9 +318,14 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
                         None,
                     ));
 
-                    let status = block_on(stronghold.delete_data(Location::generic(id, id), true));
+                    let location = Location::generic(id, id);
+
+                    let status = block_on(stronghold.delete_data(location.clone(), true));
+
+                    let (list, _) = block_on(stronghold.list_hints_and_ids(location.vault_path().to_vec()));
 
                     println!("{:?}", status);
+                    println!("{:?}", list);
 
                     block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 } else {

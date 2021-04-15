@@ -34,13 +34,13 @@ pub use logic::*;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("IOError: `{0}`")]
-    IOError(#[from] std::io::Error),
+    IoError(#[from] std::io::Error),
     #[error("Snapshot Error: `{0}`")]
     SnapshotError(String),
     #[error("Crypto Error: `{0}`")]
     CryptoError(crypto::Error),
     #[error("LZ4 Error: `{0}`")]
-    LZ4Error(String),
+    Lz4Error(String),
     #[error("TryInto Error: `{0}`")]
     TryIntoError(#[from] std::array::TryFromSliceError),
 }

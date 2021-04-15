@@ -4,14 +4,19 @@
 use crate::{
     actors::{InternalMsg, InternalResults, SMsg},
     line_error,
-    state::client::{Client, ClientMsg, ReadWrite},
-    utils::{ClientId, ResultMessage, StatusMessage},
+    state::client::{Client, ClientMsg},
+    utils::{ResultMessage, StatusMessage},
     Location,
 };
 
+use stronghold_utils::GuardDebug;
+
 use crypto::keys::slip10::{Chain, ChainCode};
 
-use engine::{snapshot, vault::RecordHint};
+use engine::{
+    snapshot,
+    vault::{ClientId, RecordHint, RecordId},
+};
 use serde::{Deserialize, Serialize};
 
 use riker::actors::*;
@@ -26,7 +31,7 @@ use std::{path::PathBuf, time::Duration};
 use communication::actor::{PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission};
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(GuardDebug, Clone, Serialize, Deserialize)]
 pub enum SLIP10DeriveInput {
     /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
     Seed(Location),
@@ -35,7 +40,7 @@ pub enum SLIP10DeriveInput {
 
 /// Procedure type used to call to the runtime via `Strongnhold.runtime_exec(...)`.
 #[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(GuardDebug, Clone, Serialize, Deserialize)]
 pub enum Procedure {
     /// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in the
     /// `output` location
@@ -178,7 +183,7 @@ impl From<ProcResult> for SerdeProcResult {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, GuardDebug, Serialize, Deserialize)]
 #[cfg_attr(feature = "communication", derive(RequestPermissions))]
 pub enum SHRequest {
     // check if vault exists.
@@ -209,10 +214,7 @@ pub enum SHRequest {
         payload: Vec<u8>,
         hint: RecordHint,
     },
-    // Moves the head forward in the specified Vault and opens a new record.  Returns `ReturnInit`.
-    InitRecord {
-        location: Location,
-    },
+
     // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not
     // specified, it reads the head.  Returns with `ReturnRead`.
     #[cfg(test)]
@@ -264,11 +266,10 @@ pub enum SHResults {
     ReturnDeleteStore(StatusMessage),
     ReturnCreateVault(StatusMessage),
     ReturnWriteVault(StatusMessage),
-    ReturnInitRecord(StatusMessage),
     ReturnReadVault(Vec<u8>, StatusMessage),
     ReturnRevoke(StatusMessage),
     ReturnGarbage(StatusMessage),
-    ReturnList(Vec<(usize, RecordHint)>, StatusMessage),
+    ReturnList(Vec<(RecordId, RecordHint)>, StatusMessage),
     ReturnFillSnap(StatusMessage),
     ReturnWriteSnap(StatusMessage),
     ReturnReadSnap(StatusMessage),
@@ -305,7 +306,7 @@ impl Receive<SHRequest> for Client {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SHRequest, sender: Sender) {
         macro_rules! ensure_vault_exists {
             ( $x:expr, $V:tt, $k:expr ) => {
-                if !self.vault_exist($x) {
+                if self.vault_exist($x).is_none() {
                     sender
                         .as_ref()
                         .expect(line_error!())
@@ -325,7 +326,7 @@ impl Receive<SHRequest> for Client {
         match msg {
             SHRequest::CheckVault(vpath) => {
                 let vid = self.derive_vault_id(vpath);
-                let res = self.vault_exist(vid);
+                let res = matches!(self.vault_exist(vid), Some(_));
 
                 sender
                     .as_ref()
@@ -334,21 +335,20 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
             }
             SHRequest::CheckRecord { location } => {
-                let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
+                let client_str = self.get_client_str();
+                let (vid, rid) = self.resolve_location(location);
 
-                let res = self.record_exists_in_vault(vid, rid);
-                sender
-                    .as_ref()
-                    .expect(line_error!())
-                    .try_tell(SHResults::ReturnExistsRecord(res), None)
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
+
+                internal.try_tell(InternalMsg::CheckRecord(vid, rid), sender);
             }
             SHRequest::CreateNewVault(location) => {
-                let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
+                let (vid, rid) = self.resolve_location(location);
                 let client_str = self.get_client_str();
 
                 self.add_new_vault(vid);
-                self.add_record_to_vault(vid, rid);
 
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
@@ -361,11 +361,9 @@ impl Receive<SHRequest> for Client {
                 payload,
                 hint,
             } => {
-                let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
+                let (vid, rid) = self.resolve_location(location);
 
                 let client_str = self.get_client_str();
-
-                self.increment_counter(vid);
 
                 let internal = ctx
                     .select(&format!("/user/internal-{}/", client_str))
@@ -373,22 +371,10 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::WriteToVault(vid, rid, payload, hint), sender);
             }
-            SHRequest::InitRecord { location } => {
-                let (vid, rid) = self.resolve_location(location, ReadWrite::Write);
 
-                let client_str = self.get_client_str();
-
-                self.add_record_to_vault(vid, rid);
-
-                let internal = ctx
-                    .select(&format!("/user/internal-{}/", client_str))
-                    .expect(line_error!());
-
-                internal.try_tell(InternalMsg::InitRecord(vid, rid), sender);
-            }
             #[cfg(test)]
             SHRequest::ReadFromVault { location } => {
-                let (vid, rid) = self.resolve_location(location, ReadWrite::Read);
+                let (vid, rid) = self.resolve_location(location);
 
                 let client_str = self.get_client_str();
 
@@ -399,7 +385,7 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::ReadFromVault(vid, rid), sender);
             }
             SHRequest::RevokeData { location } => {
-                let (vid, rid) = self.resolve_location(location, ReadWrite::Read);
+                let (vid, rid) = self.resolve_location(location);
 
                 let client_str = self.get_client_str();
 
@@ -421,7 +407,7 @@ impl Receive<SHRequest> for Client {
                 internal.try_tell(InternalMsg::GarbageCollect(vid), sender);
             }
             SHRequest::ListIds(vpath) => {
-                let vid = self.derive_vault_id(&vpath);
+                let vid = self.derive_vault_id(vpath);
 
                 let client_str = self.get_client_str();
 
@@ -429,7 +415,7 @@ impl Receive<SHRequest> for Client {
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::ListIds(vpath, vid), sender);
+                internal.try_tell(InternalMsg::ListIds(vid), sender);
             }
 
             SHRequest::ReadSnapshot {
@@ -465,13 +451,7 @@ impl Receive<SHRequest> for Client {
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(
-                    InternalMsg::FillSnapshot {
-                        id: self.client_id,
-                        data: self.clone(),
-                    },
-                    sender,
-                )
+                internal.try_tell(InternalMsg::FillSnapshot { client: self.clone() }, sender)
             }
             SHRequest::WriteSnapshot { key, filename, path } => {
                 let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
@@ -479,7 +459,7 @@ impl Receive<SHRequest> for Client {
                 snapshot.try_tell(SMsg::WriteSnapshot { key, filename, path }, sender);
             }
             SHRequest::DeleteFromStore(loc) => {
-                let (vid, _) = self.resolve_location(loc, ReadWrite::Read);
+                let (vid, _) = self.resolve_location(loc);
 
                 self.store_delete_item(vid.into());
 
@@ -494,7 +474,7 @@ impl Receive<SHRequest> for Client {
                 payload,
                 lifetime,
             } => {
-                let (vid, _) = self.resolve_location(location, ReadWrite::Write);
+                let (vid, _) = self.resolve_location(location);
 
                 self.write_to_store(vid.into(), payload, lifetime);
 
@@ -505,7 +485,7 @@ impl Receive<SHRequest> for Client {
                     .expect(line_error!());
             }
             SHRequest::ReadFromStore { location } => {
-                let (vid, _) = self.resolve_location(location, ReadWrite::Read);
+                let (vid, _) = self.resolve_location(location);
 
                 let payload = self.read_from_store(vid.into());
 
@@ -542,15 +522,10 @@ impl Receive<SHRequest> for Client {
                         hint,
                         size_bytes,
                     } => {
-                        let (vid, rid) = self.resolve_location(output, ReadWrite::Write);
+                        let (vid, rid) = self.resolve_location(output);
 
-                        if !self.vault_exist(vid) {
+                        if self.vault_exist(vid).is_none() {
                             self.add_new_vault(vid);
-                            self.add_record_to_vault(vid, rid);
-                            self.increment_counter(vid);
-                        } else {
-                            self.add_record_to_vault(vid, rid);
-                            self.increment_counter(vid);
                         }
 
                         internal.try_tell(
@@ -569,18 +544,13 @@ impl Receive<SHRequest> for Client {
                         output,
                         hint,
                     } => {
-                        let (seed_vault_id, seed_record_id) = self.resolve_location(seed, ReadWrite::Write);
+                        let (seed_vault_id, seed_record_id) = self.resolve_location(seed);
                         ensure_vault_exists!(seed_vault_id, SLIP10Derive, "seed");
 
-                        let (key_vault_id, key_record_id) = self.resolve_location(output, ReadWrite::Write);
+                        let (key_vault_id, key_record_id) = self.resolve_location(output);
 
-                        if !self.vault_exist(key_vault_id) {
+                        if self.vault_exist(key_vault_id).is_none() {
                             self.add_new_vault(key_vault_id);
-                            self.add_record_to_vault(key_vault_id, key_record_id);
-                            self.increment_counter(key_vault_id);
-                        } else {
-                            self.add_record_to_vault(key_vault_id, key_record_id);
-                            self.increment_counter(key_vault_id);
                         }
 
                         internal.try_tell(
@@ -601,18 +571,13 @@ impl Receive<SHRequest> for Client {
                         output,
                         hint,
                     } => {
-                        let (parent_vault_id, parent_record_id) = self.resolve_location(parent, ReadWrite::Read);
+                        let (parent_vault_id, parent_record_id) = self.resolve_location(parent);
                         ensure_vault_exists!(parent_vault_id, SLIP10Derive, "parent key");
 
-                        let (child_vault_id, child_record_id) = self.resolve_location(output, ReadWrite::Write);
+                        let (child_vault_id, child_record_id) = self.resolve_location(output);
 
-                        if !self.vault_exist(child_vault_id) {
+                        if self.vault_exist(child_vault_id).is_none() {
                             self.add_new_vault(child_vault_id);
-                            self.add_record_to_vault(child_vault_id, child_record_id);
-                            self.increment_counter(child_vault_id);
-                        } else {
-                            self.add_record_to_vault(child_vault_id, child_record_id);
-                            self.increment_counter(child_vault_id);
                         }
 
                         internal.try_tell(
@@ -632,15 +597,10 @@ impl Receive<SHRequest> for Client {
                         output,
                         hint,
                     } => {
-                        let (vault_id, record_id) = self.resolve_location(output, ReadWrite::Read);
+                        let (vault_id, record_id) = self.resolve_location(output);
 
-                        if !self.vault_exist(vault_id) {
+                        if self.vault_exist(vault_id).is_none() {
                             self.add_new_vault(vault_id);
-                            self.add_record_to_vault(vault_id, record_id);
-                            self.increment_counter(vault_id);
-                        } else {
-                            self.add_record_to_vault(vault_id, record_id);
-                            self.increment_counter(vault_id);
                         }
 
                         internal.try_tell(
@@ -659,15 +619,10 @@ impl Receive<SHRequest> for Client {
                         output,
                         hint,
                     } => {
-                        let (vault_id, record_id) = self.resolve_location(output, ReadWrite::Write);
+                        let (vault_id, record_id) = self.resolve_location(output);
 
-                        if !self.vault_exist(vault_id) {
+                        if self.vault_exist(vault_id).is_none() {
                             self.add_new_vault(vault_id);
-                            self.add_record_to_vault(vault_id, record_id);
-                            self.increment_counter(vault_id);
-                        } else {
-                            self.add_record_to_vault(vault_id, record_id);
-                            self.increment_counter(vault_id);
                         }
 
                         internal.try_tell(
@@ -684,11 +639,11 @@ impl Receive<SHRequest> for Client {
                     // Not implemented yet.
                     Procedure::BIP39MnemonicSentence { .. } => unimplemented!(),
                     Procedure::Ed25519PublicKey { private_key } => {
-                        let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
+                        let (vault_id, record_id) = self.resolve_location(private_key);
                         internal.try_tell(InternalMsg::Ed25519PublicKey { vault_id, record_id }, sender)
                     }
                     Procedure::Ed25519Sign { private_key, msg } => {
-                        let (vault_id, record_id) = self.resolve_location(private_key, ReadWrite::Read);
+                        let (vault_id, record_id) = self.resolve_location(private_key);
                         internal.try_tell(
                             InternalMsg::Ed25519Sign {
                                 vault_id,
@@ -716,13 +671,14 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnCreateVault(status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnInitRecord(status) => {
+            InternalResults::ReturnCheckRecord(res) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnInitRecord(status), None)
+                    .try_tell(SHResults::ReturnExistsRecord(res), None)
                     .expect(line_error!());
             }
+
             InternalResults::ReturnReadVault(payload, status) => {
                 sender
                     .as_ref()
@@ -730,25 +686,22 @@ impl Receive<InternalResults> for Client {
                     .try_tell(SHResults::ReturnReadVault(payload, status), None)
                     .expect(line_error!());
             }
-            InternalResults::ReturnList(vpath, list, status) => {
-                let ids: Vec<(usize, RecordHint)> = list
-                    .into_iter()
-                    .map(|(rid, hint)| {
-                        let idx = self.get_index_from_record_id(&vpath, rid);
-                        (idx, hint)
-                    })
-                    .collect();
-
+            InternalResults::ReturnList(list, status) => {
                 sender
                     .as_ref()
                     .expect(line_error!())
-                    .try_tell(SHResults::ReturnList(ids, status), None)
+                    .try_tell(SHResults::ReturnList(list, status), None)
                     .expect(line_error!());
             }
-            InternalResults::RebuildCache(state, status) => {
+            InternalResults::RebuildCache {
+                id,
+                vaults,
+                store,
+                status,
+            } => {
                 self.clear_cache();
 
-                self.rebuild_cache(state);
+                self.rebuild_cache(id, vaults, store);
 
                 sender
                     .as_ref()

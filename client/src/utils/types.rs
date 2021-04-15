@@ -33,14 +33,8 @@ impl<T> From<Result<T, String>> for ResultMessage<T> {
 /// chain while on Write, the `None` location is the next record in the version chain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Location {
-    Generic {
-        vault_path: Vec<u8>,
-        record_path: Vec<u8>,
-    },
-    Counter {
-        vault_path: Vec<u8>,
-        counter: Option<usize>,
-    },
+    Generic { vault_path: Vec<u8>, record_path: Vec<u8> },
+    Counter { vault_path: Vec<u8>, counter: usize },
 }
 
 impl Location {
@@ -62,10 +56,24 @@ impl Location {
 
     /// Creates a counter location from a type that implements `Into<Vec<u8>>` and a counter type that implements
     /// `Into<usize>`
-    pub fn counter<V: Into<Vec<u8>>, C: Into<usize>>(vault_path: V, counter: Option<C>) -> Self {
+    pub fn counter<V: Into<Vec<u8>>, C: Into<usize>>(vault_path: V, counter: C) -> Self {
         Self::Counter {
             vault_path: vault_path.into(),
-            counter: counter.map(|c| c.into()),
+            counter: counter.into(),
+        }
+    }
+
+    /// Helper method used to increment counter locations.
+    pub fn increment_counter(self) -> Self {
+        match self {
+            Location::Generic {
+                vault_path,
+                record_path,
+            } => Location::Generic {
+                vault_path,
+                record_path,
+            },
+            Location::Counter { vault_path, counter } => Location::Counter { vault_path, counter },
         }
     }
 
@@ -78,7 +86,7 @@ impl Location {
     }
 
     /// used to generate a constant counter location.
-    pub const fn const_counter(vault_path: Vec<u8>, counter: Option<usize>) -> Self {
+    pub const fn const_counter(vault_path: Vec<u8>, counter: usize) -> Self {
         Self::Counter { vault_path, counter }
     }
 }

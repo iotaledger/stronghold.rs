@@ -74,6 +74,7 @@ impl<T: BoxProvider> Key<T> {
 
     /// get the key's bytes
     pub fn bytes(&self) -> Vec<u8> {
+        // hacks the guarded type.  Probably not the best solution.
         (*self.key.borrow()).to_vec()
     }
 }

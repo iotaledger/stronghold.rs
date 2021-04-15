@@ -203,7 +203,15 @@
       "publish": false
     },
     "stronghold-utils": {
-      "path": "./utils/",
+      "path": "./utils/utils/",
+      "manager": "rust",
+      "publish": false,
+      "dependencies": [
+        "utils-derive"
+      ]
+    },
+    "utils-derive": {
+      "path": "./utils/utils-derive/",
       "manager": "rust",
       "publish": false
     },

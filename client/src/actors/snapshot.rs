@@ -5,27 +5,30 @@
 
 use riker::actors::*;
 
-use std::{fmt::Debug, path::PathBuf};
+use std::path::PathBuf;
 
-use engine::snapshot;
+use engine::{
+    snapshot,
+    vault::{nvault::DbView, ClientId, Key, VaultId},
+};
 
-use engine::vault::{Key, ReadResult};
+use stronghold_utils::GuardDebug;
 
 use crate::{
     actors::{InternalMsg, SHResults},
     line_error,
     state::{
-        client::Client,
+        client::Store,
         snapshot::{Snapshot, SnapshotState},
     },
     utils::StatusMessage,
-    ClientId, Provider, VaultId,
+    Provider,
 };
 
 use std::collections::HashMap;
 
 /// Messages used for the Snapshot Actor.
-#[derive(Clone, Debug)]
+#[derive(Clone, GuardDebug)]
 pub enum SMsg {
     WriteSnapshot {
         key: snapshot::Key,
@@ -33,11 +36,7 @@ pub enum SMsg {
         path: Option<PathBuf>,
     },
     FillSnapshot {
-        data: Box<(
-            Client,
-            HashMap<VaultId, Key<Provider>>,
-            HashMap<VaultId, Vec<ReadResult>>,
-        )>,
+        data: Box<(HashMap<VaultId, Key<Provider>>, DbView<Provider>, Store)>,
         id: ClientId,
     },
     ReadFromSnapshot {
@@ -92,7 +91,14 @@ impl Receive<SMsg> for Snapshot {
                 if self.has_data(cid) {
                     let data = self.get_state(cid);
 
-                    internal.try_tell(InternalMsg::ReloadData(Box::new(data), StatusMessage::OK), sender);
+                    internal.try_tell(
+                        InternalMsg::ReloadData {
+                            id: cid,
+                            data: Box::new(data),
+                            status: StatusMessage::OK,
+                        },
+                        sender,
+                    );
                 } else {
                     match Snapshot::read_from_snapshot(filename.as_deref(), path.as_deref(), key) {
                         Ok(mut snapshot) => {
@@ -100,7 +106,14 @@ impl Receive<SMsg> for Snapshot {
 
                             *self = snapshot;
 
-                            internal.try_tell(InternalMsg::ReloadData(Box::new(data), StatusMessage::OK), sender);
+                            internal.try_tell(
+                                InternalMsg::ReloadData {
+                                    id: cid,
+                                    data: Box::new(data),
+                                    status: StatusMessage::OK,
+                                },
+                                sender,
+                            );
                         }
                         Err(e) => {
                             sender
@@ -119,8 +132,7 @@ impl Receive<SMsg> for Snapshot {
                 };
             }
             SMsg::WriteSnapshot { key, filename, path } => {
-                self.clone()
-                    .write_to_snapshot(filename.as_deref(), path.as_deref(), key)
+                self.write_to_snapshot(filename.as_deref(), path.as_deref(), key)
                     .expect(line_error!());
 
                 self.state = SnapshotState::default();
