@@ -54,7 +54,7 @@ fn establish_connection<Req: MessageEvent, Res: MessageEvent>(
     target_addr: Multiaddr,
     swarm: &mut Swarm<P2PNetworkBehaviour<Req, Res>>,
 ) {
-    Swarm::dial_addr(swarm, target_addr.clone()).expect("Failed to dial address.");
+    swarm.dial_addr(target_addr.clone()).expect("Failed to dial address.");
     task::block_on(async {
         loop {
             let event = swarm.next_event().await;
@@ -80,11 +80,8 @@ fn new_behaviour() {
         config,
     ))
     .expect("Failed to init swarm.");
-    assert_eq!(
-        &PeerId::from_public_key(local_keys.public()),
-        Swarm::local_peer_id(&swarm)
-    );
-    assert!(swarm.get_all_peers().is_empty());
+    assert_eq!(&PeerId::from_public_key(local_keys.public()), swarm.local_peer_id());
+    assert!(swarm.behaviour().get_all_peers().is_empty());
 }
 
 #[test]
@@ -92,24 +89,26 @@ fn add_peer() {
     let mut swarm = mock_swarm::<Empty, Empty>();
     let peer_id = PeerId::random();
     let addr = mock_addr();
-    swarm.add_peer_addr(peer_id, addr.clone());
-    assert!(swarm.get_peer_addr(&peer_id).is_some());
-    assert!(swarm.get_all_peers().contains(&&peer_id));
-    let peer_addrs = swarm.remove_peer(&peer_id);
+    swarm.behaviour_mut().add_peer_addr(peer_id, addr.clone());
+    assert!(swarm.behaviour().get_peer_addr(&peer_id).is_some());
+    assert!(swarm.behaviour().get_all_peers().contains(&&peer_id));
+    let peer_addrs = swarm.behaviour_mut().remove_peer(&peer_id);
     assert!(peer_addrs.is_some() && peer_addrs.expect("No address for peer known.").contains(&addr));
-    assert!(swarm.get_peer_addr(&peer_id).is_none());
-    assert!(!swarm.get_all_peers().contains(&&peer_id));
+    assert!(swarm.behaviour().get_peer_addr(&peer_id).is_none());
+    assert!(!swarm.behaviour().get_all_peers().contains(&&peer_id));
 }
 
 #[test]
 fn listen_addr() {
     let mut swarm = mock_swarm::<Empty, Empty>();
     let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8085".parse().expect("Invalid Multiaddress.");
-    let listener_id = Swarm::listen_on(&mut swarm, listen_addr.clone()).expect("Listening to swarm failed.");
+    let listener_id = swarm
+        .listen_on(listen_addr.clone())
+        .expect("Listening to swarm failed.");
     let actual_addr = start_listening(&mut swarm).expect("Start listening failed.");
     assert_eq!(listen_addr, actual_addr);
-    Swarm::remove_listener(&mut swarm, listener_id).expect("No listener with this id.");
-    assert!(!Swarm::listeners(&swarm).any(|addr| addr == &listen_addr));
+    swarm.remove_listener(listener_id).expect("No listener with this id.");
+    assert!(!swarm.listeners().any(|addr| addr == &listen_addr));
 }
 
 #[test]
@@ -119,7 +118,9 @@ fn zeroed_addr() {
     let mut listen_addr = "/ip4/0.0.0.0/tcp/0"
         .parse::<Multiaddr>()
         .expect("Invalid Multiaddress.");
-    let listener = Swarm::listen_on(&mut swarm, listen_addr.clone()).expect("Listening to swarm failed.");
+    let listener = swarm
+        .listen_on(listen_addr.clone())
+        .expect("Listening to swarm failed.");
     let mut actual_addr = start_listening(&mut swarm).expect("Start listening failed.");
     // ip and port should both not be zero
     assert_ne!(
@@ -130,13 +131,15 @@ fn zeroed_addr() {
         listen_addr.pop().expect("Missing listener ipv4 address."),
         actual_addr.pop().expect("Missing listener ipv4 address.")
     );
-    Swarm::remove_listener(&mut swarm, listener).expect("No listener with this ID.");
+    swarm.remove_listener(listener).expect("No listener with this ID.");
 
     // empty ip
     let mut listen_addr = "/ip4/0.0.0.0/tcp/8086"
         .parse::<Multiaddr>()
         .expect("Invalid Multiaddress.");
-    let listener = Swarm::listen_on(&mut swarm, listen_addr.clone()).expect("Listening to swarm failed.");
+    let listener = swarm
+        .listen_on(listen_addr.clone())
+        .expect("Listening to swarm failed.");
     let mut actual_addr = start_listening(&mut swarm).expect("Start listening failed.");
     // port should be the same
     assert_eq!(
@@ -148,13 +151,15 @@ fn zeroed_addr() {
         listen_addr.pop().expect("Missing listener ipv4 address."),
         actual_addr.pop().expect("Missing listener ipv4 address.")
     );
-    Swarm::remove_listener(&mut swarm, listener).expect("No listener with this ID.");
+    swarm.remove_listener(listener).expect("No listener with this ID.");
 
     // empty port
     let mut listen_addr = "/ip4/127.0.0.1/tcp/0"
         .parse::<Multiaddr>()
         .expect("Invalid Multiaddress.");
-    let listener = Swarm::listen_on(&mut swarm, listen_addr.clone()).expect("Listening to swarm failed.");
+    let listener = swarm
+        .listen_on(listen_addr.clone())
+        .expect("Listening to swarm failed.");
     let mut actual_addr = start_listening(&mut swarm).expect("Start listening failed.");
     // port should not be zero
     assert_ne!(
@@ -166,21 +171,19 @@ fn zeroed_addr() {
         listen_addr.pop().expect("Missing listener ipv4 address."),
         actual_addr.pop().expect("Missing listener ipv4 address.")
     );
-    Swarm::remove_listener(&mut swarm, listener).expect("No listener with this ID.");
+    swarm.remove_listener(listener).expect("No listener with this ID.");
 }
 
 #[test]
 fn request_response() {
     let mut swarm_a = mock_swarm::<Request, Response>();
-    let peer_a_id = *Swarm::local_peer_id(&swarm_a);
-    Swarm::listen_on(
-        &mut swarm_a,
-        "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."),
-    )
-    .expect("Listening to swarm failed.");
+    let peer_a_id = *swarm_a.local_peer_id();
+    swarm_a
+        .listen_on("/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
+        .expect("Listening to swarm failed.");
 
     let mut swarm_b = mock_swarm::<Request, Response>();
-    let peer_b_id = *Swarm::local_peer_id(&swarm_b);
+    let peer_b_id = *swarm_b.local_peer_id();
 
     let addr_a = start_listening(&mut swarm_a).expect("Start listening failed.");
 
@@ -195,6 +198,7 @@ fn request_response() {
                     } => {
                         assert_eq!(peer_id, peer_b_id);
                         swarm_a
+                            .behaviour_mut()
                             .send_response(&request_id, Response::Pong)
                             .expect("Sending response failed.");
                     }
@@ -221,7 +225,7 @@ fn request_response() {
     });
 
     establish_connection(peer_a_id, addr_a, &mut swarm_b);
-    swarm_b.send_request(&peer_a_id, Request::Ping);
+    swarm_b.behaviour_mut().send_request(&peer_a_id, Request::Ping);
     let local_handle = task::spawn(async move {
         loop {
             if let P2PEvent::RequestResponse(boxed_event) = swarm_b.next().await {
@@ -245,23 +249,19 @@ fn request_response() {
 #[test]
 fn identify_event() {
     let mut swarm_a = mock_swarm::<Empty, Empty>();
-    let peer_a_id = *Swarm::local_peer_id(&swarm_a);
-    let listener_id_a = Swarm::listen_on(
-        &mut swarm_a,
-        "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."),
-    )
-    .expect("Listening to swarm failed.");
+    let peer_a_id = *swarm_a.local_peer_id();
+    let listener_id_a = swarm_a
+        .listen_on("/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
+        .expect("Listening to swarm failed.");
     let addr_a = start_listening(&mut swarm_a).expect("Start listening failed.");
     let mut swarm_b = mock_swarm::<Empty, Empty>();
-    let peer_b_id = *Swarm::local_peer_id(&swarm_b);
-    let listener_id_b = Swarm::listen_on(
-        &mut swarm_b,
-        "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."),
-    )
-    .expect("Listening to swarm failed.");
+    let peer_b_id = *swarm_b.local_peer_id();
+    let listener_id_b = swarm_b
+        .listen_on("/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
+        .expect("Listening to swarm failed.");
     let addr_b = start_listening(&mut swarm_b).expect("Start listening failed.");
 
-    Swarm::dial_addr(&mut swarm_a, addr_b.clone()).expect("Failed to dial address.");
+    swarm_a.dial_addr(addr_b.clone()).expect("Failed to dial address.");
     let handle_a = task::spawn(async move {
         let mut sent = false;
         let mut received = false;
@@ -281,6 +281,7 @@ fn identify_event() {
                             std::thread::sleep(Duration::from_millis(50));
                         }
                     }
+                    P2PIdentifyEvent::Pushed { .. } => {}
                     P2PIdentifyEvent::Error { error, .. } => panic!("{:?}", error),
                 },
                 SwarmEvent::ConnectionClosed { peer_id, .. } => {
@@ -294,7 +295,9 @@ fn identify_event() {
             }
         }
         assert!(sent && received);
-        Swarm::remove_listener(&mut swarm_a, listener_id_a).expect("No listener with this id.");
+        swarm_a
+            .remove_listener(listener_id_a)
+            .expect("No listener with this id.");
     });
 
     let handle_b = task::spawn(async move {
@@ -315,6 +318,7 @@ fn identify_event() {
                             sent = true;
                         }
                     }
+                    P2PIdentifyEvent::Pushed { .. } => {}
                     P2PIdentifyEvent::Error { error, .. } => panic!("{:?}", error),
                 },
                 SwarmEvent::ConnectionClosed { peer_id, .. } => {
@@ -328,7 +332,9 @@ fn identify_event() {
             }
         }
         assert!(sent && received);
-        Swarm::remove_listener(&mut swarm_b, listener_id_b).expect("No listener with this id.");
+        swarm_b
+            .remove_listener(listener_id_b)
+            .expect("No listener with this id.");
     });
     task::block_on(async { future::join(handle_a, handle_b).await });
 }
@@ -336,8 +342,9 @@ fn identify_event() {
 #[test]
 fn relay() {
     let mut swarm = mock_swarm::<Request, Response>();
-    let relay_peer_id = *Swarm::local_peer_id(&swarm);
-    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
+    let relay_peer_id = *swarm.local_peer_id();
+    swarm
+        .listen_on("/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
         .expect("Listening to swarm failed.");
 
     let relay_addr = start_listening(&mut swarm).expect("Start listening failed.");
@@ -350,10 +357,10 @@ fn relay() {
     });
 
     let mut swarm_a = mock_swarm::<Request, Response>();
-    let peer_a_id = *Swarm::local_peer_id(&swarm_a);
+    let peer_a_id = *swarm_a.local_peer_id();
 
     let mut swarm_b = mock_swarm::<Request, Response>();
-    let peer_b_id = *Swarm::local_peer_id(&swarm_b);
+    let peer_b_id = *swarm_b.local_peer_id();
     let relayed_addr_b = relay_addr
         .with(Protocol::P2p(relay_peer_id.into()))
         .with(Protocol::P2pCircuit)
@@ -362,7 +369,9 @@ fn relay() {
 
     // wait for peer b to connect to relay and start listening
     task::block_on(async {
-        Swarm::listen_on(&mut swarm_b, relayed_addr_b_clone.clone()).expect("Start listening failed.");
+        swarm_b
+            .listen_on(relayed_addr_b_clone.clone())
+            .expect("Start listening failed.");
 
         // connect to relay
         loop {
@@ -383,7 +392,7 @@ fn relay() {
 
     // start peer a to send a message to peer b
     let handle_a = task::spawn(async move {
-        Swarm::dial_addr(&mut swarm_a, relayed_addr_b).expect("Failed to dial address.");
+        swarm_a.dial_addr(relayed_addr_b).expect("Failed to dial address.");
         // Connect to relay
         loop {
             match swarm_a.next_event().await {
@@ -403,7 +412,7 @@ fn relay() {
             }
         }
 
-        swarm_a.send_request(&peer_b_id, Request::Ping);
+        swarm_a.behaviour_mut().send_request(&peer_b_id, Request::Ping);
 
         // Wait for response from b
         loop {
@@ -444,6 +453,7 @@ fn relay() {
                     {
                         assert_eq!(peer_id, peer_a_id);
                         swarm_b
+                            .behaviour_mut()
                             .send_response(&request_id, Response::Pong)
                             .expect("Sending response failed.");
                         break;

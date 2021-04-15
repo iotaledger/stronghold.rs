@@ -76,7 +76,7 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
         {
             "LIST" => {
                 println!("Known peers:");
-                for peer in swarm.get_all_peers() {
+                for peer in swarm.behaviour().get_all_peers() {
                     println!("{:?}", peer);
                 }
             }
@@ -87,7 +87,7 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                     .name("target")
                     .and_then(|peer_match| Multiaddr::from_str(peer_match.as_str()).ok())
                 {
-                    if Swarm::dial_addr(swarm, peer_addr.clone()).is_ok() {
+                    if swarm.dial_addr(peer_addr.clone()).is_ok() {
                         println!("Dialed {:?}", peer_addr);
                     }
                 } else {
@@ -101,7 +101,7 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                     .name("target")
                     .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
                 {
-                    swarm.send_request(&peer_id, Request::Ping);
+                    swarm.behaviour_mut().send_request(&peer_id, Request::Ping);
                     println!("Pinged {:?}", peer_id);
                 } else {
                     eprintln!("Missing or invalid peer id");
@@ -115,7 +115,7 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                     .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
                 {
                     if let Some(msg) = captures.name("msg").map(|msg_match| msg_match.as_str().to_string()) {
-                        swarm.send_request(&peer_id, Request::Msg(msg.clone()));
+                        swarm.behaviour_mut().send_request(&peer_id, Request::Msg(msg.clone()));
                         println!("Send msg {:?} to peer {:?}", msg, peer_id);
                         return;
                     }
@@ -144,7 +144,7 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                 println!("Received message from peer {:?}\n{:?}", peer_id, request);
                 match request {
                     Request::Ping => {
-                        let response = swarm.send_response(&request_id, Response::Pong);
+                        let response = swarm.behaviour_mut().send_response(&request_id, Response::Pong);
                         if response.is_ok() {
                             println!("Send Pong back");
                         } else {
@@ -152,7 +152,9 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                         }
                     }
                     Request::Msg(msg) => {
-                        let response = swarm.send_response(&request_id, Response::Msg(format!("echo: {}", msg)));
+                        let response = swarm
+                            .behaviour_mut()
+                            .send_response(&request_id, Response::Msg(format!("echo: {}", msg)));
                         if response.is_ok() {
                             println!("Echoed message");
                         } else {
@@ -170,10 +172,7 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                 "Response from peer {:?} for Request {:?}:\n{:?}\n",
                 peer_id, request_id, response
             ),
-            P2PReqResEvent::ResSent {
-                peer_id: _,
-                request_id: _,
-            } => {}
+            P2PReqResEvent::ResSent { .. } => {}
             error => {
                 println!("Error {:?}", error)
             }
@@ -181,15 +180,10 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
         // Identify event that is send by the identify-protocol once two peer establish a
         // connection
         P2PEvent::Identify(event) => {
-            if let P2PIdentifyEvent::Received {
-                peer_id,
-                info: _,
-                observed_addr,
-            } = event.deref().clone()
-            {
+            if let P2PIdentifyEvent::Received { peer_id, info } = event.deref().clone() {
                 println!(
                     "Received identify event: {:?} observes us at {:?}\n",
-                    peer_id, observed_addr
+                    peer_id, info.observed_addr
                 );
             }
         }
@@ -206,12 +200,13 @@ async fn listen() {
     let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config)
         .await
         .expect("Could not create swarm.");
-    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
+    swarm
+        .listen_on("/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
         .expect("Listening Error.");
 
     println!(
         "Local PeerId: {:?}\ncommands:\nPING <peer_id>\nMSG <peer_id>\nDIAL <peer_addr>\nLIST",
-        Swarm::local_peer_id(&swarm)
+        swarm.local_peer_id()
     );
     if cfg!(not(feature = "mdns")) {
         println!("Since mdns is not enabled, peers have to be DIALed first to connect before PING / MSG them");

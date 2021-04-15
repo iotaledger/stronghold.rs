@@ -163,12 +163,10 @@ async fn create_swarm() -> Swarm<P2PNetworkBehaviour<Request, Response>> {
 // Start a mailbox that publishes record for other peers
 async fn run_mailbox() {
     let mut swarm = create_swarm().await;
-    Swarm::listen_on(
-        &mut swarm,
-        "/ip4/0.0.0.0/tcp/16384".parse().expect("Invalid Multiaddress."),
-    )
-    .expect("Listening error.");
-    println!("Local PeerId: {:?}", Swarm::local_peer_id(&swarm));
+    swarm
+        .listen_on("/ip4/0.0.0.0/tcp/16384".parse().expect("Invalid Multiaddress."))
+        .expect("Listening error.");
+    println!("Local PeerId: {:?}", swarm.local_peer_id());
     // temporary key-value store
     let mut local_records = HashMap::new();
     // Poll for events from the swarm
@@ -184,9 +182,7 @@ async fn run_mailbox() {
             SwarmEvent::Behaviour(P2PEvent::RequestResponse(event)) => {
                 // Handle messages from remote peers
                 if let P2PReqResEvent::Req {
-                    peer_id: _,
-                    request_id,
-                    request,
+                    request_id, request, ..
                 } = event.deref().clone()
                 {
                     match request {
@@ -194,15 +190,21 @@ async fn run_mailbox() {
                         // tree
                         Request::PutRecord(record) => {
                             local_records.insert(record.key(), record.value());
-                            let _ = swarm.send_response(&request_id, Response::Outcome(RequestOutcome::Success));
+                            let _ = swarm
+                                .behaviour_mut()
+                                .send_response(&request_id, Response::Outcome(RequestOutcome::Success));
                         }
                         // Send the record for that key to the remote peer
                         Request::GetRecord(key) => {
                             if let Some((key, value)) = local_records.get_key_value(&key) {
                                 let record = MailboxRecord::new(key.clone(), value.clone());
-                                let _ = swarm.send_response(&request_id, Response::Record(record));
+                                let _ = swarm
+                                    .behaviour_mut()
+                                    .send_response(&request_id, Response::Record(record));
                             } else {
-                                let _ = swarm.send_response(&request_id, Response::Outcome(RequestOutcome::Error));
+                                let _ = swarm
+                                    .behaviour_mut()
+                                    .send_response(&request_id, Response::Outcome(RequestOutcome::Error));
                             }
                         }
                     };
@@ -223,7 +225,7 @@ async fn put_record(matches: &ArgMatches) {
     {
         let mut swarm = create_swarm().await;
 
-        if let Err(err) = Swarm::dial_addr(&mut swarm, mail_addr.clone()) {
+        if let Err(err) = swarm.dial_addr(mail_addr.clone()) {
             println!("Error dialing address{:?}, {:?}", mail_addr, err);
             return;
         }
@@ -232,12 +234,7 @@ async fn put_record(matches: &ArgMatches) {
             match swarm.next_event().await {
                 SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
                     let event = *boxed_event;
-                    if let P2PReqResEvent::Res {
-                        peer_id: _,
-                        request_id: _,
-                        response,
-                    } = event
-                    {
+                    if let P2PReqResEvent::Res { response, .. } = event {
                         println!("{:?}", response);
                     } else {
                         println!("{:?}", event);
@@ -248,14 +245,14 @@ async fn put_record(matches: &ArgMatches) {
                 SwarmEvent::ConnectionEstablished {
                     peer_id,
                     endpoint: ConnectedPoint::Dialer { address },
-                    num_established: _,
+                    ..
                 } => {
                     if address == mail_addr {
                         let record = MailboxRecord::new(key.clone(), value.clone());
-                        swarm.send_request(&peer_id, Request::PutRecord(record));
+                        swarm.behaviour_mut().send_request(&peer_id, Request::PutRecord(record));
                     }
                 }
-                SwarmEvent::UnknownPeerUnreachableAddr { address, error: _ } => {
+                SwarmEvent::UnknownPeerUnreachableAddr { address, .. } => {
                     if address == mail_addr {
                         println!("Could not dial address {:?}", address);
                         return;
@@ -273,7 +270,7 @@ async fn put_record(matches: &ArgMatches) {
 async fn get_record(matches: &ArgMatches) {
     if let Some(Matches { mail_addr, key, .. }) = eval_arg_matches(matches) {
         let mut swarm = create_swarm().await;
-        if let Err(err) = Swarm::dial_addr(&mut swarm, mail_addr.clone()) {
+        if let Err(err) = swarm.dial_addr(mail_addr.clone()) {
             println!("Error dialing address{:?}, {:?}", mail_addr, err);
             return;
         }
@@ -282,9 +279,8 @@ async fn get_record(matches: &ArgMatches) {
             match swarm.next_event().await {
                 SwarmEvent::Behaviour(P2PEvent::RequestResponse(boxed_event)) => {
                     if let P2PReqResEvent::Res {
-                        peer_id: _,
-                        request_id: _,
                         response: Response::Record(record),
+                        ..
                     } = *boxed_event
                     {
                         println!("{:?}:\n{:?}", record.key(), record.value());
@@ -297,10 +293,12 @@ async fn get_record(matches: &ArgMatches) {
                 SwarmEvent::ConnectionEstablished {
                     peer_id,
                     endpoint: ConnectedPoint::Dialer { address },
-                    num_established: _,
+                    ..
                 } => {
                     if address == mail_addr {
-                        swarm.send_request(&peer_id, Request::GetRecord(key.clone()));
+                        swarm
+                            .behaviour_mut()
+                            .send_request(&peer_id, Request::GetRecord(key.clone()));
                     }
                 }
                 SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {

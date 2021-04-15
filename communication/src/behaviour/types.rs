@@ -4,7 +4,7 @@
 use core::fmt::Debug;
 use libp2p::{
     core::{Multiaddr, PeerId},
-    identify::IdentifyEvent,
+    identify::{IdentifyEvent, IdentifyInfo},
     identity::PublicKey,
     request_response::{InboundFailure, OutboundFailure, RequestId, RequestResponseEvent, RequestResponseMessage},
     swarm::ProtocolsHandlerUpgrErr,
@@ -37,6 +37,8 @@ pub struct P2PIdentifyInfo {
     pub listen_addrs: Vec<Multiaddr>,
     /// The list of protocols supported by the peer, e.g. `/p2p/ping/1.0.0`.
     pub protocols: Vec<String>,
+    /// The address observed by the peer for the local node.
+    pub observed_addr: Multiaddr,
 }
 
 /// Error that can happen on an outbound substream opening attempt.
@@ -54,14 +56,15 @@ pub enum P2PProtocolsHandlerUpgrErr {
 #[derive(Debug, Clone, PartialEq)]
 pub enum P2PIdentifyEvent {
     /// Identifying information has been received from a peer.
-    Received {
-        peer_id: PeerId,
-        info: P2PIdentifyInfo,
-        /// The address observed by the peer for the local node.
-        observed_addr: Multiaddr,
-    },
+    Received { peer_id: PeerId, info: P2PIdentifyInfo },
     /// Identifying information of the local node has been sent to a peer.
     Sent { peer_id: PeerId },
+    /// Identification information of the local node has been actively pushed to
+    /// a peer.
+    Pushed {
+        /// The peer that the information has been sent to.
+        peer_id: PeerId,
+    },
     /// Error while attempting to identify the remote.
     Error {
         peer_id: PeerId,
@@ -172,20 +175,28 @@ impl<Req, Res> From<IdentifyEvent> for P2PEvent<Req, Res> {
         match event {
             IdentifyEvent::Received {
                 peer_id,
-                info,
-                observed_addr,
+                info:
+                    IdentifyInfo {
+                        public_key,
+                        protocol_version,
+                        agent_version,
+                        listen_addrs,
+                        protocols,
+                        observed_addr,
+                    },
             } => P2PEvent::Identify(Box::new(P2PIdentifyEvent::Received {
                 peer_id,
                 info: P2PIdentifyInfo {
-                    public_key: info.public_key,
-                    protocol_version: info.protocol_version,
-                    agent_version: info.agent_version,
-                    listen_addrs: info.listen_addrs,
-                    protocols: info.protocols,
+                    public_key,
+                    protocol_version,
+                    agent_version,
+                    listen_addrs,
+                    protocols,
+                    observed_addr,
                 },
-                observed_addr,
             })),
             IdentifyEvent::Sent { peer_id } => P2PEvent::Identify(Box::new(P2PIdentifyEvent::Sent { peer_id })),
+            IdentifyEvent::Pushed { peer_id } => P2PEvent::Identify(Box::new(P2PIdentifyEvent::Pushed { peer_id })),
             IdentifyEvent::Error { peer_id, error } => {
                 let error = match error {
                     ProtocolsHandlerUpgrErr::Timeout => P2PProtocolsHandlerUpgrErr::Timeout,
@@ -203,9 +214,7 @@ impl<Req, Res> From<RequestResponseEvent<Req, Res>> for P2PEvent<Req, Res> {
         match event {
             RequestResponseEvent::Message { peer, message } => match message {
                 RequestResponseMessage::Request {
-                    request_id,
-                    request,
-                    channel: _,
+                    request_id, request, ..
                 } => P2PEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
                     peer_id: peer,
                     request_id,
