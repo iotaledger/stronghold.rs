@@ -17,9 +17,12 @@ mod allocator;
 mod boxed;
 mod guarded;
 mod guarded_vec;
+mod secret;
+mod sodium;
 mod types;
 
 pub use allocator::ZeroingAlloc;
 pub use guarded::Guarded;
 pub use guarded_vec::GuardedVec;
+pub use secret::Secret;
 pub use types::Bytes;
