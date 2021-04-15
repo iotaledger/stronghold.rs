@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["mlock","A wrapper around the [`sodium_mlock`] function."],["munlock","A wrapper around the [`sodium_munlock`] function."]]});

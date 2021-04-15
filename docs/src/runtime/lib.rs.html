@@ -26,6 +26,9 @@
 <span id="23">23</span>
 <span id="24">24</span>
 <span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -46,11 +49,14 @@
 <span class="kw">mod</span> <span class="ident">boxed</span>;
 <span class="kw">mod</span> <span class="ident">guarded</span>;
 <span class="kw">mod</span> <span class="ident">guarded_vec</span>;
+<span class="kw">mod</span> <span class="ident">secret</span>;
+<span class="kw">mod</span> <span class="ident">sodium</span>;
 <span class="kw">mod</span> <span class="ident">types</span>;
 
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">allocator</span>::<span class="ident">ZeroingAlloc</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">guarded</span>::<span class="ident">Guarded</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">guarded_vec</span>::<span class="ident">GuardedVec</span>;
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">secret</span>::<span class="ident">Secret</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">types</span>::<span class="ident">Bytes</span>;
 </pre></div>
 </section><section id="search" class="content hidden"></section><section class="footer"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="runtime"></div>
