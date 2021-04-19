@@ -14,7 +14,7 @@ use crate::actors::SHRequestPermission;
 #[cfg(feature = "communication")]
 use crate::utils::ResultMessage;
 use crate::{
-    actors::{InternalActor, InternalMsg, ProcResult, Procedure, SHRequest, SHResults},
+    actors::{InternalActor, ProcResult, Procedure, SHRequest, SHResults},
     line_error,
     state::{
         client::{Client, ClientMsg},
@@ -45,9 +45,6 @@ pub struct Stronghold {
     clients: HashMap<ClientId, ActorRef<ClientMsg>>,
     target: ActorRef<ClientMsg>,
 
-    // data derived from the client_paths.
-    derive_data: HashMap<Vec<u8>, Vec<u8>>,
-
     #[cfg(feature = "communication")]
     // communication actor ref
     communication_actor: Option<ActorRef<CommunicationRequest<SHRequest, ClientMsg>>>,
@@ -60,10 +57,6 @@ impl Stronghold {
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
         let id_str: String = client_id.into();
         let mut clients = HashMap::new();
-
-        let mut derive_data = HashMap::new();
-
-        derive_data.insert(client_path.clone(), client_path);
 
         let client = system
             .actor_of_args::<Client, _>(&id_str, client_id)
@@ -79,7 +72,7 @@ impl Stronghold {
         Self {
             system,
             clients,
-            derive_data,
+
             target: client,
 
             #[cfg(feature = "communication")]
@@ -110,7 +103,7 @@ impl Stronghold {
                 .expect(line_error!());
 
             self.clients.insert(client_id, client.clone());
-            self.derive_data.insert(client_path.clone(), client_path);
+
             self.target = client;
         }
 
@@ -388,12 +381,9 @@ impl Stronghold {
         filename: Option<String>,
         path: Option<PathBuf>,
     ) -> StatusMessage {
-        let data = self.derive_data.get(&client_path).expect(line_error!());
-        let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
+        let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
 
         let former_cid = if let Some(cp) = former_client_path {
-            self.derive_data.insert(cp.clone(), cp.clone());
-
             Some(ClientId::load_from_path(&cp, &cp).expect(line_error!()))
         } else {
             None
@@ -473,29 +463,19 @@ impl Stronghold {
     /// `kill_actor` is `true` both the internal actor and the client actor will be killed.  Otherwise, the cache of the
     /// current target actor will be cleared.
     pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StatusMessage {
-        let data = self.derive_data.get(&client_path).expect(line_error!());
-        let client_id = ClientId::load_from_path(&data.as_ref(), &client_path).expect(line_error!());
-
-        let client_str: String = client_id.into();
+        let client_id = ClientId::load_from_path(&client_path.clone(), &client_path).expect(line_error!());
+        self.switch_actor_target(client_path).await;
 
         if kill_actor {
             self.clients.remove(&client_id);
+        }
 
-            self.derive_data.remove(&client_path);
-
-            self.system.stop(&self.target);
-            let internal = self
-                .system
-                .select(&format!("/user/internal-{}/", client_str))
-                .expect(line_error!());
-            internal.try_tell(InternalMsg::KillInternal, None);
-
-            StatusMessage::OK
-        } else if let SHResults::ReturnClearCache(status) = ask(&self.system, &self.target, SHRequest::ClearCache).await
+        if let SHResults::ReturnClearCache(status) =
+            ask(&self.system, &self.target, SHRequest::ClearCache { kill: kill_actor }).await
         {
             status
         } else {
-            StatusMessage::Error("Unable to clear the cache".into())
+            StatusMessage::Error("Unable to clear cache".into())
         }
     }
 

@@ -252,7 +252,9 @@ pub enum SHRequest {
     FillSnapshot,
 
     // Clear the cache of the bucket.
-    ClearCache,
+    ClearCache {
+        kill: bool,
+    },
 
     // Interact with the runtime.
     ControlRequest(Procedure),
@@ -433,7 +435,7 @@ impl Receive<SHRequest> for Client {
 
                 internal.try_tell(InternalMsg::ReadSnapshot(key, filename, path, cid, former_cid), sender);
             }
-            SHRequest::ClearCache => {
+            SHRequest::ClearCache { kill } => {
                 self.clear_cache();
 
                 let client_str = self.get_client_str();
@@ -442,7 +444,19 @@ impl Receive<SHRequest> for Client {
                     .select(&format!("/user/internal-{}/", client_str))
                     .expect(line_error!());
 
-                internal.try_tell(InternalMsg::ClearCache, sender);
+                if kill {
+                    internal.try_tell(InternalMsg::KillInternal, None);
+
+                    sender
+                        .as_ref()
+                        .expect(line_error!())
+                        .try_tell(SHResults::ReturnClearCache(ResultMessage::Ok(())), None)
+                        .expect(line_error!());
+
+                    ctx.stop(ctx.myself());
+                } else {
+                    internal.try_tell(InternalMsg::ClearCache, sender);
+                }
             }
             SHRequest::FillSnapshot => {
                 let client_str = self.get_client_str();
