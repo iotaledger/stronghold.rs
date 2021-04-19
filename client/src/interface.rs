@@ -14,7 +14,7 @@ use crate::actors::SHRequestPermission;
 #[cfg(feature = "communication")]
 use crate::utils::ResultMessage;
 use crate::{
-    actors::{InternalActor, InternalMsg, ProcResult, Procedure, SHRequest, SHResults},
+    actors::{InternalActor, ProcResult, Procedure, SHRequest, SHResults},
     line_error,
     state::{
         client::{Client, ClientMsg},
@@ -464,25 +464,18 @@ impl Stronghold {
     /// current target actor will be cleared.
     pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path.clone(), &client_path).expect(line_error!());
-
-        let client_str: String = client_id.into();
+        self.switch_actor_target(client_path).await;
 
         if kill_actor {
             self.clients.remove(&client_id);
+        }
 
-            self.system.stop(&self.target);
-            let internal = self
-                .system
-                .select(&format!("/user/internal-{}/", client_str))
-                .expect(line_error!());
-            internal.try_tell(InternalMsg::KillInternal, None);
-
-            StatusMessage::OK
-        } else if let SHResults::ReturnClearCache(status) = ask(&self.system, &self.target, SHRequest::ClearCache).await
+        if let SHResults::ReturnClearCache(status) =
+            ask(&self.system, &self.target, SHRequest::ClearCache { kill: kill_actor }).await
         {
             status
         } else {
-            StatusMessage::Error("Unable to clear the cache".into())
+            StatusMessage::Error("Unable to clear cache".into())
         }
     }
 
