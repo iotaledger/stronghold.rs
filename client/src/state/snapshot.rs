@@ -10,7 +10,7 @@ use engine::{
     vault::{nvault::DbView, ClientId, Key as PKey, VaultId},
 };
 
-use crate::{line_error, state::client::Store, Provider};
+use crate::{line_error, state::client::Store, state::old_snapshot::OldSnapshotState, Provider};
 
 use std::path::Path;
 
@@ -43,12 +43,21 @@ impl Snapshot {
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
     pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<Self> {
-        let state = match path {
-            Some(p) => read_from(p, &key, &[])?,
-            None => read_from(&snapshot::files::get_path(name)?, &key, &[])?,
+        let (old, state) = match path {
+            Some(p) => (snapshot::is_old_version(p)?, read_from(p, &key, &[])?),
+            None => (
+                snapshot::is_old_version(&snapshot::files::get_path(name)?)?,
+                read_from(&snapshot::files::get_path(name)?, &key, &[])?,
+            ),
         };
 
-        let data = SnapshotState::deserialize(state);
+        let data = if old {
+            let old = OldSnapshotState::deserialize(state);
+            let state = old.convert();
+            SnapshotState::from_old(state)
+        } else {
+            SnapshotState::deserialize(state)
+        };
 
         Ok(Self::new(data))
     }
@@ -78,6 +87,10 @@ impl SnapshotState {
         let mut state = HashMap::new();
         state.insert(id, data);
 
+        Self(state)
+    }
+
+    pub fn from_old(state: HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>) -> Self {
         Self(state)
     }
 

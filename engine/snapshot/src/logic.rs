@@ -22,7 +22,7 @@ pub const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
 
 /// Current version bytes (bytes 5-6 in a snapshot file)
 pub const VERSION: [u8; 2] = [0x2, 0x0];
-// pub const OLD_VERSION: [u8; 2] = [0x2, 0x0];
+pub const OLD_VERSION: [u8; 2] = [0x2, 0x0];
 
 const KEY_SIZE: usize = 32;
 pub type Key = [u8; KEY_SIZE];
@@ -163,6 +163,19 @@ fn check_header<I: Read>(input: &mut I) -> crate::Result<()> {
     }
 
     Ok(())
+}
+
+pub fn is_old_version(path: &Path) -> crate::Result<bool> {
+    let mut f: File = OpenOptions::new().read(true).open(path)?;
+    check_min_file_len(&mut f)?;
+
+    let mut magic = [0u8; 5];
+    f.read_exact(&mut magic)?;
+
+    let mut version = [0u8; 2];
+    f.read_exact(&mut version)?;
+
+    Ok(version != OLD_VERSION)
 }
 
 #[cfg(test)]

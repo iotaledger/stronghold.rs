@@ -18,8 +18,8 @@ use std::path::Path;
 use std::collections::HashMap;
 
 #[derive(Clone)]
-pub struct Snapshot {
-    pub state: SnapshotState,
+pub struct OldSnapshot {
+    pub state: OldSnapshotState,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -32,7 +32,7 @@ pub struct Client {
 }
 
 #[derive(Deserialize, Serialize, Clone, Default, Debug)]
-pub struct SnapshotState(
+pub struct OldSnapshotState(
     HashMap<
         ClientId,
         (
@@ -43,9 +43,9 @@ pub struct SnapshotState(
     >,
 );
 
-impl Snapshot {
-    /// Creates a new `Snapshot` from a buffer of `Vec<u8>` state.
-    pub fn new(state: SnapshotState) -> Self {
+impl OldSnapshot {
+    /// Creates a new `OldSnapshot` from a buffer of `Vec<u8>` state.
+    pub fn new(state: OldSnapshotState) -> Self {
         Self { state }
     }
 
@@ -75,7 +75,7 @@ impl Snapshot {
             None => read_from(&snapshot::files::get_path(name)?, &key, &[])?,
         };
 
-        let data = SnapshotState::deserialize(state);
+        let data = OldSnapshotState::deserialize(state);
 
         Ok(Self::new(data))
     }
@@ -100,7 +100,7 @@ impl Snapshot {
     }
 }
 
-impl SnapshotState {
+impl OldSnapshotState {
     pub fn new(
         id: ClientId,
         data: (

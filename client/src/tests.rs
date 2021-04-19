@@ -7,3 +7,4 @@ mod fresh;
 mod basic_tests;
 mod interface_tests;
 mod procedures_tests;
+mod snapshot_tests;
