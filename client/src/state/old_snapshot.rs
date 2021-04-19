@@ -7,10 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use engine::{
     snapshot::{self, read_from, write_to, Key},
-    vault::{ClientId, Key as PKey, ReadResult, VaultId},
+    vault::nvault::DbView,
+    vault::{ClientId, DBView, Key as PKey, PreparedRead, ReadResult, RecordHint, RecordId, VaultId},
 };
 
-use crate::{line_error, state::client::Client, Provider};
+use crate::{line_error, state::client::Store, Provider};
 
 use std::path::Path;
 
@@ -19,6 +20,15 @@ use std::collections::HashMap;
 #[derive(Clone)]
 pub struct Snapshot {
     pub state: SnapshotState,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Client {
+    pub client_id: ClientId,
+    pub vaults: HashMap<VaultId, (usize, Vec<RecordId>)>,
+    heads: Vec<RecordId>,
+    counters: Vec<usize>,
+    store: Store,
 }
 
 #[derive(Deserialize, Serialize, Clone, Default, Debug)]
@@ -123,5 +133,60 @@ impl SnapshotState {
 
     pub fn deserialize(data: Vec<u8>) -> Self {
         bincode::deserialize(&data).expect(line_error!())
+    }
+
+    pub fn convert(self) -> HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)> {
+        let mut data = HashMap::new();
+
+        self.0.into_iter().for_each(|(cid, (cl, key_store, reads))| {
+            let mut vrecord: HashMap<VaultId, Vec<RecordId>> = HashMap::new();
+            let mut v = DbView::<Provider>::new();
+
+            cl.vaults.into_iter().for_each(|(vid, (_, rid))| {
+                vrecord.insert(vid, rid);
+            });
+
+            key_store.iter().for_each(|(vid, key)| {
+                if let Some(rds) = reads.get(&vid) {
+                    let view = DBView::load(key.clone(), rds.into_iter()).expect(line_error!());
+                    let hints: Vec<(RecordId, RecordHint)> = view.records().collect();
+                    let reader = view.reader();
+
+                    if let Some(rids) = vrecord.get(&vid) {
+                        rids.into_iter().for_each(|rid| {
+                            let read = reader.prepare_read(rid).expect(line_error!());
+
+                            if let Some((_, hint)) = hints.iter().find(|(r, _)| r == rid) {
+                                if let PreparedRead::CacheHit(data) = read {
+                                    v.write(&key, *vid, *rid, &data, *hint).expect(line_error!());
+                                }
+                            }
+                        });
+                    }
+                };
+            });
+
+            data.insert(cid, (key_store, v, cl.store));
+        });
+
+        data
+    }
+}
+
+impl Client {
+    pub fn new(client_id: ClientId) -> Self {
+        let vaults = HashMap::new();
+        let heads = vec![];
+
+        let counters = vec![0];
+        let store = Store::new();
+
+        Self {
+            client_id,
+            vaults,
+            heads,
+            counters,
+            store,
+        }
     }
 }

@@ -4,4 +4,5 @@
 pub mod bucket;
 pub mod client;
 pub mod key_store;
+pub mod old_snapshot;
 pub mod snapshot;
