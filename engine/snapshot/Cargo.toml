@@ -20,10 +20,8 @@ optional = true
 default-features = false
 
 [dependencies.iota-crypto]
-git = "https://github.com/iotaledger/crypto.rs"
-branch = "dev"
-features = [ "random", "chacha", "hmac", "sha", "x25519", "blake2b" ]
 version = "0.5.0"
+features = [ "random", "chacha", "hmac", "sha", "x25519", "blake2b" ]
 
 [dev-dependencies]
 tempfile = "3.1.0"

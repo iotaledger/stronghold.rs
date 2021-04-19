@@ -18,11 +18,8 @@ path = "../../vault"
 version = "0.2"
 
 [dependencies.iota-crypto]
-git = "https://github.com/iotaledger/crypto.rs"
-rev = "46c14870998f2a1083095c3a64e9fa0ed1cf51e8"
-features = [ "random", "chacha" ]
 version = "0.5.0"
-# Note: We are only adding a version so that we can publish to crates.io
+features = [ "random", "chacha" ]
 
 [profile.release]
 overflow-checks = true

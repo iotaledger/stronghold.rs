@@ -29,8 +29,7 @@ path = "../engine"
 version = "0.3"
 
 [dependencies.iota-crypto]
-git = "https://github.com/iotaledger/crypto.rs"
-branch = "dev"
+version = "0.5.0"
 features = [
 "random",
 "ed25519",
@@ -41,7 +40,6 @@ features = [
 "chacha"
 ]
 
-version = "0.5.0"
 
 [dependencies.stronghold-communication]
 path = "../communication"

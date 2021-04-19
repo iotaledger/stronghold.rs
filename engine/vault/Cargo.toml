@@ -20,10 +20,8 @@ path = "../runtime"
 version = "0.3"
 
 [dependencies.iota-crypto]
-git = "https://github.com/iotaledger/crypto.rs"
-branch = "dev"
-features = [ "random", "chacha" ]
 version = "0.5.0"
+features = [ "random", "chacha" ]
 
 [dev-dependencies]
 json = "0.12"
