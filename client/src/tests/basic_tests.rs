@@ -310,3 +310,47 @@ fn test_vault_id() {
 
     assert_eq!(VaultId::load(test).unwrap(), id);
 }
+
+#[test]
+fn test_large_snapshot() {
+    let mut stronghold = setup_stronghold();
+
+    let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
+    let client_path = b"test".to_vec();
+
+    for i in 0..400 {
+        futures::executor::block_on(async {
+            let data = format!("test {:?}", i);
+
+            let loc = Location::counter::<_, usize>("path", i);
+
+            stronghold
+                .write_to_vault(
+                    loc,
+                    data.as_bytes().to_vec(),
+                    RecordHint::new(data).expect(line_error!()),
+                    vec![],
+                )
+                .await;
+        });
+    }
+
+    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, Some("test2".into()), None));
+
+    futures::executor::block_on(stronghold.kill_stronghold(client_path.clone(), true));
+
+    futures::executor::block_on(stronghold.spawn_stronghold_actor(client_path.clone(), vec![]));
+
+    futures::executor::block_on(stronghold.read_snapshot(client_path, None, &key_data, Some("test2".into()), None));
+
+    for i in 0..400 {
+        let loc = Location::counter::<_, usize>("path", i);
+        futures::executor::block_on(async {
+            let (p, _) = stronghold.read_secret(loc.clone()).await;
+
+            let res = format!("test {:?}", i);
+
+            assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));
+        });
+    }
+}
