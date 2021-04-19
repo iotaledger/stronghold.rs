@@ -23,7 +23,7 @@ default-features = false
 git = "https://github.com/iotaledger/crypto.rs"
 branch = "dev"
 features = [ "random", "chacha", "hmac", "sha", "x25519", "blake2b" ]
-version = "0.4.2"
+version = "0.5.0"
 
 [dev-dependencies]
 tempfile = "3.1.0"
