@@ -4,6 +4,7 @@ members = [
   "engine/runtime",
   "client",
   "communication",
+  "communication-refactored",
   "utils",
   "derive"
 ]
