@@ -271,71 +271,6 @@
 <span id="268">268</span>
 <span id="269">269</span>
 <span id="270">270</span>
-<span id="271">271</span>
-<span id="272">272</span>
-<span id="273">273</span>
-<span id="274">274</span>
-<span id="275">275</span>
-<span id="276">276</span>
-<span id="277">277</span>
-<span id="278">278</span>
-<span id="279">279</span>
-<span id="280">280</span>
-<span id="281">281</span>
-<span id="282">282</span>
-<span id="283">283</span>
-<span id="284">284</span>
-<span id="285">285</span>
-<span id="286">286</span>
-<span id="287">287</span>
-<span id="288">288</span>
-<span id="289">289</span>
-<span id="290">290</span>
-<span id="291">291</span>
-<span id="292">292</span>
-<span id="293">293</span>
-<span id="294">294</span>
-<span id="295">295</span>
-<span id="296">296</span>
-<span id="297">297</span>
-<span id="298">298</span>
-<span id="299">299</span>
-<span id="300">300</span>
-<span id="301">301</span>
-<span id="302">302</span>
-<span id="303">303</span>
-<span id="304">304</span>
-<span id="305">305</span>
-<span id="306">306</span>
-<span id="307">307</span>
-<span id="308">308</span>
-<span id="309">309</span>
-<span id="310">310</span>
-<span id="311">311</span>
-<span id="312">312</span>
-<span id="313">313</span>
-<span id="314">314</span>
-<span id="315">315</span>
-<span id="316">316</span>
-<span id="317">317</span>
-<span id="318">318</span>
-<span id="319">319</span>
-<span id="320">320</span>
-<span id="321">321</span>
-<span id="322">322</span>
-<span id="323">323</span>
-<span id="324">324</span>
-<span id="325">325</span>
-<span id="326">326</span>
-<span id="327">327</span>
-<span id="328">328</span>
-<span id="329">329</span>
-<span id="330">330</span>
-<span id="331">331</span>
-<span id="332">332</span>
-<span id="333">333</span>
-<span id="334">334</span>
-<span id="335">335</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -346,12 +281,13 @@
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">crypto_box</span>::{<span class="ident">Decrypt</span>, <span class="ident">Encrypt</span>},
     <span class="ident">types</span>::{
-        <span class="ident">utils</span>::{<span class="ident">BlobId</span>, <span class="ident">ChainId</span>, <span class="ident">RecordHint</span>, <span class="ident">TransactionId</span>, <span class="ident">Val</span>},
+        <span class="ident">utils</span>::{<span class="ident">BlobId</span>, <span class="ident">ChainId</span>, <span class="ident">RecordHint</span>, <span class="ident">Val</span>},
         <span class="ident">AsView</span>, <span class="ident">AsViewMut</span>,
     },
 };
+
 <span class="kw">use</span> <span class="ident">std</span>::{
-    <span class="ident">convert</span>::{<span class="ident">Infallible</span>, <span class="ident">TryFrom</span>, <span class="ident">TryInto</span>},
+    <span class="ident">convert</span>::{<span class="ident">Infallible</span>, <span class="ident">TryFrom</span>},
     <span class="ident">fmt</span>::{<span class="self">self</span>, <span class="ident">Debug</span>, <span class="ident">Formatter</span>},
     <span class="ident">hash</span>::<span class="ident">Hash</span>,
 };
@@ -364,7 +300,6 @@
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">TransactionType</span> {
     <span class="ident">Data</span> <span class="op">=</span> <span class="number">1</span>,
     <span class="ident">Revocation</span> <span class="op">=</span> <span class="number">2</span>,
-    <span class="ident">Init</span> <span class="op">=</span> <span class="number">10</span>,
 }
 
 <span class="kw">impl</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">Val</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">TransactionType</span> {
@@ -374,7 +309,7 @@
         <span class="kw">match</span> <span class="ident">v</span>.<span class="ident">u64</span>() {
             <span class="number">1</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">TransactionType</span>::<span class="ident">Data</span>),
             <span class="number">2</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">TransactionType</span>::<span class="ident">Revocation</span>),
-            <span class="number">10</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">TransactionType</span>::<span class="ident">Init</span>),
+
             <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="kw">crate</span>::<span class="ident">Error</span>::<span class="ident">ValueError</span>(<span class="macro">format</span><span class="macro">!</span>(
                 <span class="string">&quot;{:?} is not a valid transaction type&quot;</span>,
                 <span class="ident">v</span>
@@ -403,7 +338,6 @@
                 <span class="kw-2">&amp;</span><span class="ident">TransactionType</span>::<span class="ident">try_from</span>(<span class="ident">t</span>.<span class="ident">type_id</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">fmt</span>::<span class="ident">Error</span> {})<span class="question-mark">?</span>,
             )
             .<span class="ident">field</span>(<span class="string">&quot;id&quot;</span>, <span class="kw-2">&amp;</span><span class="ident">t</span>.<span class="ident">id</span>)
-            .<span class="ident">field</span>(<span class="string">&quot;ctr&quot;</span>, <span class="kw-2">&amp;</span><span class="ident">t</span>.<span class="ident">ctr</span>)
             .<span class="ident">finish</span>()
     }
 }
@@ -415,20 +349,8 @@
     <span class="doccomment">/// transaction type</span>
     <span class="kw">pub</span> <span class="ident">type_id</span>: <span class="ident">Val</span>,
 
-    <span class="doccomment">/// unique identifer for this transaction</span>
-    <span class="kw">pub</span> <span class="ident">id</span>: <span class="ident">TransactionId</span>,
-
-    <span class="doccomment">/// chain identifer</span>
-    <span class="kw">pub</span> <span class="ident">chain</span>: <span class="ident">ChainId</span>,
-
-    <span class="doccomment">/// counter value</span>
-    <span class="kw">pub</span> <span class="ident">ctr</span>: <span class="ident">Val</span>,
-}
-
-<span class="kw">impl</span> <span class="ident">UntypedTransaction</span> {
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">r#type</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">TransactionType</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">type_id</span>.<span class="ident">try_into</span>()
-    }
+    <span class="doccomment">/// id identifer</span>
+    <span class="kw">pub</span> <span class="ident">id</span>: <span class="ident">ChainId</span>,
 }
 
 <span class="doccomment">/// a data transaction</span>
@@ -439,16 +361,12 @@
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">unused</span>)]</span>
     <span class="kw">pub</span> <span class="ident">type_id</span>: <span class="ident">Val</span>,
 
-    <span class="doccomment">/// unique id for this transaction</span>
-    <span class="kw">pub</span> <span class="ident">id</span>: <span class="ident">TransactionId</span>,
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">unused</span>)]</span>
+    <span class="doccomment">/// Length of the unencrypted blob data</span>
+    <span class="kw">pub</span> <span class="ident">len</span>: <span class="ident">Val</span>,
 
-    <span class="doccomment">/// chain identifer</span>
-    <span class="kw">pub</span> <span class="ident">chain</span>: <span class="ident">ChainId</span>,
+    <span class="doccomment">/// id identifer</span>
+    <span class="kw">pub</span> <span class="ident">id</span>: <span class="ident">ChainId</span>,
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">unused</span>)]</span>
-
-    <span class="doccomment">/// counter value</span>
-    <span class="kw">pub</span> <span class="ident">ctr</span>: <span class="ident">Val</span>,
 
     <span class="doccomment">/// the blob identifier for the data referred to by this transaction</span>
     <span class="kw">pub</span> <span class="ident">blob</span>: <span class="ident">BlobId</span>,
@@ -470,44 +388,18 @@
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">unused</span>)]</span>
     <span class="kw">pub</span> <span class="ident">type_id</span>: <span class="ident">Val</span>,
 
-    <span class="doccomment">/// unique identifer for this transaction</span>
-    <span class="kw">pub</span> <span class="ident">id</span>: <span class="ident">TransactionId</span>,
-
-    <span class="doccomment">/// chain identifer</span>
-    <span class="kw">pub</span> <span class="ident">chain</span>: <span class="ident">ChainId</span>,
-
-    <span class="doccomment">/// counter</span>
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">unused</span>)]</span>
-    <span class="kw">pub</span> <span class="ident">ctr</span>: <span class="ident">Val</span>,
-}
-
-<span class="doccomment">/// transaction that initializes a new chain</span>
-<span class="attribute">#[<span class="ident">repr</span>(<span class="ident">packed</span>)]</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">InitTransaction</span> {
-    <span class="doccomment">/// transaction type</span>
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">unused</span>)]</span>
-    <span class="kw">pub</span> <span class="ident">type_id</span>: <span class="ident">Val</span>,
-
-    <span class="doccomment">/// unique identifer for this transaction</span>
-    <span class="kw">pub</span> <span class="ident">id</span>: <span class="ident">TransactionId</span>,
-
-    <span class="doccomment">/// chain identifer</span>
-    <span class="kw">pub</span> <span class="ident">chain</span>: <span class="ident">ChainId</span>,
-
-    <span class="doccomment">/// counter value</span>
-    <span class="kw">pub</span> <span class="ident">ctr</span>: <span class="ident">Val</span>,
+    <span class="doccomment">/// id identifer</span>
+    <span class="kw">pub</span> <span class="ident">id</span>: <span class="ident">ChainId</span>,
 }
 
 <span class="kw">impl</span> <span class="ident">DataTransaction</span> {
     <span class="doccomment">/// create a new data transaction.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">chain</span>: <span class="ident">ChainId</span>, <span class="ident">ctr</span>: <span class="ident">Val</span>, <span class="ident">id</span>: <span class="ident">TransactionId</span>, <span class="ident">blob</span>: <span class="ident">BlobId</span>, <span class="ident">record_hint</span>: <span class="ident">RecordHint</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Transaction</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">id</span>: <span class="ident">ChainId</span>, <span class="ident">len</span>: <span class="ident">u64</span>, <span class="ident">blob</span>: <span class="ident">BlobId</span>, <span class="ident">record_hint</span>: <span class="ident">RecordHint</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Transaction</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">transaction</span> <span class="op">=</span> <span class="ident">Transaction</span>::<span class="ident">default</span>();
         <span class="kw">let</span> <span class="ident">view</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span> <span class="op">=</span> <span class="ident">transaction</span>.<span class="ident">view_mut</span>();
 
         <span class="ident">view</span>.<span class="ident">type_id</span> <span class="op">=</span> (<span class="ident">TransactionType</span>::<span class="ident">Data</span> <span class="kw">as</span> <span class="ident">u64</span>).<span class="ident">into</span>();
-        <span class="ident">view</span>.<span class="ident">chain</span> <span class="op">=</span> <span class="ident">chain</span>;
-        <span class="ident">view</span>.<span class="ident">ctr</span> <span class="op">=</span> <span class="ident">ctr</span>;
+        <span class="ident">view</span>.<span class="ident">len</span> <span class="op">=</span> <span class="ident">len</span>.<span class="ident">into</span>();
         <span class="ident">view</span>.<span class="ident">id</span> <span class="op">=</span> <span class="ident">id</span>;
         <span class="ident">view</span>.<span class="ident">blob</span> <span class="op">=</span> <span class="ident">blob</span>;
         <span class="ident">view</span>.<span class="ident">record_hint</span> <span class="op">=</span> <span class="ident">record_hint</span>;
@@ -523,13 +415,11 @@
 
 <span class="kw">impl</span> <span class="ident">RevocationTransaction</span> {
     <span class="doccomment">/// create a new revocation transaction.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">chain</span>: <span class="ident">ChainId</span>, <span class="ident">ctr</span>: <span class="ident">Val</span>, <span class="ident">id</span>: <span class="ident">TransactionId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Transaction</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">id</span>: <span class="ident">ChainId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Transaction</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">transaction</span> <span class="op">=</span> <span class="ident">Transaction</span>::<span class="ident">default</span>();
         <span class="kw">let</span> <span class="ident">view</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span> <span class="op">=</span> <span class="ident">transaction</span>.<span class="ident">view_mut</span>();
 
         <span class="ident">view</span>.<span class="ident">type_id</span> <span class="op">=</span> (<span class="ident">TransactionType</span>::<span class="ident">Revocation</span> <span class="kw">as</span> <span class="ident">u64</span>).<span class="ident">into</span>();
-        <span class="ident">view</span>.<span class="ident">chain</span> <span class="op">=</span> <span class="ident">chain</span>;
-        <span class="ident">view</span>.<span class="ident">ctr</span> <span class="op">=</span> <span class="ident">ctr</span>;
         <span class="ident">view</span>.<span class="ident">id</span> <span class="op">=</span> <span class="ident">id</span>;
         <span class="ident">transaction</span>
     }
@@ -553,26 +443,6 @@
             <span class="ident">type_id</span> <span class="kw">if</span> <span class="ident">type_id</span> <span class="op">=</span><span class="op">=</span> <span class="ident">T</span>::<span class="ident">type_id</span>() <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="self">self</span>.<span class="ident">view</span>()),
             <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">None</span>,
         }
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">InitTransaction</span> {
-    <span class="doccomment">/// create a new init transaction.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">chain</span>: <span class="ident">ChainId</span>, <span class="ident">id</span>: <span class="ident">TransactionId</span>, <span class="ident">ctr</span>: <span class="ident">Val</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Transaction</span> {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">transaction</span> <span class="op">=</span> <span class="ident">Transaction</span>::<span class="ident">default</span>();
-        <span class="kw">let</span> <span class="ident">view</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span> <span class="op">=</span> <span class="ident">transaction</span>.<span class="ident">view_mut</span>();
-
-        <span class="ident">view</span>.<span class="ident">type_id</span> <span class="op">=</span> (<span class="ident">TransactionType</span>::<span class="ident">Init</span> <span class="kw">as</span> <span class="ident">u64</span>).<span class="ident">into</span>();
-        <span class="ident">view</span>.<span class="ident">id</span> <span class="op">=</span> <span class="ident">id</span>;
-        <span class="ident">view</span>.<span class="ident">chain</span> <span class="op">=</span> <span class="ident">chain</span>;
-        <span class="ident">view</span>.<span class="ident">ctr</span> <span class="op">=</span> <span class="ident">ctr</span>;
-        <span class="ident">transaction</span>
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">TypedTransaction</span> <span class="kw">for</span> <span class="ident">InitTransaction</span> {
-    <span class="kw">fn</span> <span class="ident">type_id</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Val</span> {
-        <span class="ident">TransactionType</span>::<span class="ident">Init</span>.<span class="ident">val</span>()
     }
 }
 
@@ -609,10 +479,9 @@
 <span class="kw">impl</span> <span class="ident">AsViewMut</span><span class="op">&lt;</span><span class="ident">DataTransaction</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Transaction</span> {}
 <span class="kw">impl</span> <span class="ident">AsView</span><span class="op">&lt;</span><span class="ident">RevocationTransaction</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Transaction</span> {}
 <span class="kw">impl</span> <span class="ident">AsViewMut</span><span class="op">&lt;</span><span class="ident">RevocationTransaction</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Transaction</span> {}
-<span class="kw">impl</span> <span class="ident">AsView</span><span class="op">&lt;</span><span class="ident">InitTransaction</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Transaction</span> {}
-<span class="kw">impl</span> <span class="ident">AsViewMut</span><span class="op">&lt;</span><span class="ident">InitTransaction</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Transaction</span> {}
 
 <span class="doccomment">/// a sealed transaction</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>, <span class="ident">Clone</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">SealedTransaction</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>);
 
 <span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">SealedTransaction</span> {
@@ -643,6 +512,7 @@
 <span class="kw">impl</span> <span class="ident">Decrypt</span><span class="op">&lt;</span>(), <span class="ident">Transaction</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">SealedTransaction</span> {}
 
 <span class="doccomment">/// a sealed blob</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>, <span class="ident">Clone</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">SealedBlob</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>);
 
 <span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">SealedBlob</span> {

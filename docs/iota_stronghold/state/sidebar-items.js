@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["bucket",""],["client",""],["key_store",""],["snapshot",""]]});
+initSidebarItems({"mod":[["client",""],["key_store",""],["snapshot",""]]});
