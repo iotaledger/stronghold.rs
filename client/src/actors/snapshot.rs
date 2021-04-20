@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use engine::{
     snapshot,
-    vault::{nvault::DbView, ClientId, Key, VaultId},
+    vault::{ClientId, DbView, Key, VaultId},
 };
 
 use stronghold_utils::GuardDebug;

@@ -4,317 +4,381 @@
 use crate::{
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
     types::{
-        transactions::{
-            DataTransaction, InitTransaction, RevocationTransaction, SealedBlob, SealedTransaction, Transaction,
-        },
-        utils::{BlobId, ChainId, RecordHint, RecordId, TransactionId, Val},
+        transactions::{DataTransaction, RevocationTransaction, SealedBlob, SealedTransaction},
+        utils::{BlobId, ChainId, RecordHint, RecordId, VaultId},
     },
 };
 
-use std::{
-    collections::HashMap,
-    convert::TryFrom,
-    fmt::{self, Debug, Formatter},
-};
+use serde::{Deserialize, Serialize};
 
-mod chain;
-mod protocol;
+use std::collections::HashMap;
 
-pub use crate::vault::protocol::{DeleteRequest, Kind, ReadRequest, ReadResult, WriteRequest};
+use runtime::GuardedVec;
 
-/// A view over the records in a vault.  Allows for loading and accessing the records.
-pub struct DBView<P: BoxProvider> {
-    key: Key<P>,
-    txs: HashMap<TransactionId, Transaction>,
-    chains: HashMap<ChainId, chain::Chain>,
-    blobs: HashMap<BlobId, Vec<TransactionId>>,
-    cache: HashMap<BlobId, SealedBlob>,
+/// A view over the data inside of the Stronghold database.
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct DbView<P: BoxProvider> {
+    pub vaults: HashMap<VaultId, Vault<P>>,
 }
 
-impl<P: BoxProvider> DBView<P> {
-    /// Opens a vault using a key. Accepts the `ReadResult`:s of the vault transactions you want to load.
-    pub fn load<R: AsRef<ReadResult>>(key: Key<P>, reads: impl Iterator<Item = R>) -> crate::Result<Self> {
-        let mut txs = HashMap::new();
-        let mut raw_chains: HashMap<_, Vec<TransactionId>> = HashMap::new();
-        let mut cache = HashMap::new();
-        let mut blobs: HashMap<_, Vec<_>> = HashMap::new();
+/// A enclave of data that is encrypted under one key.
+#[derive(Deserialize, Serialize, Clone)]
+pub struct Vault<P: BoxProvider> {
+    key: Key<P>,
+    entries: HashMap<ChainId, Record>,
+}
 
-        for r in reads {
-            let r = r.as_ref();
-            match r.kind() {
-                Kind::Transaction => {
-                    let id = TransactionId::try_from(r.id())?;
-                    let tx = SealedTransaction::from(r.data()).decrypt(&key, r.id())?;
-                    if id != tx.untyped().id {
-                        // TODO: more precise error w/ the failing transaction id
-                        return Err(crate::Error::InterfaceError);
-                    }
+/// A bit of data inside of a Vault.
+#[derive(Deserialize, Serialize, Clone)]
+pub struct Record {
+    id: ChainId,
+    data: SealedTransaction,
+    revoke: Option<SealedTransaction>,
+    blob: SealedBlob,
+}
 
-                    if let Some(dtx) = tx.typed::<DataTransaction>() {
-                        blobs.entry(dtx.blob).or_default().push(id);
-                    }
+impl<P: BoxProvider> DbView<P> {
+    /// Create a new Database View.
+    pub fn new() -> DbView<P> {
+        let vaults = HashMap::new();
 
-                    raw_chains.entry(tx.untyped().chain).or_default().push(id);
-                    txs.insert(id, tx);
-                }
-                Kind::Blob => {
-                    let id = BlobId::try_from(r.id())?;
-                    cache.insert(id, SealedBlob::from(r.data()));
-                    blobs.entry(id).or_default();
-                }
+        Self { vaults }
+    }
+
+    /// Initialize a new vault if it doesn't exist.
+    pub fn init_vault(&mut self, key: &Key<P>, vid: VaultId) -> crate::Result<()> {
+        self.vaults.entry(vid).or_insert(Vault::init_vault(key)?);
+
+        Ok(())
+    }
+
+    /// Write a new record to the Vault.
+    pub fn write(
+        &mut self,
+        key: &Key<P>,
+        vid: VaultId,
+        rid: RecordId,
+        data: &[u8],
+        record_hint: RecordHint,
+    ) -> crate::Result<()> {
+        if !self.vaults.contains_key(&vid) {
+            self.init_vault(&key, vid)?;
+        }
+
+        self.vaults.entry(vid).and_modify(|vault| {
+            vault
+                .add_or_update_record(key, rid.0, data, record_hint)
+                .expect("unable to write record")
+        });
+
+        Ok(())
+    }
+
+    /// Lists all of the hints and ids for the given vault.
+    pub fn list_hints_and_ids(&self, key: &Key<P>, vid: VaultId) -> Vec<(RecordId, RecordHint)> {
+        let buf: Vec<(RecordId, RecordHint)> = if let Some(vault) = self.vaults.get(&vid) {
+            vault.list_hints_and_ids(&key)
+        } else {
+            vec![]
+        };
+
+        buf
+    }
+
+    /// Check to see if vault contains a specific record id.
+    pub fn contains_record(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId) -> bool {
+        if let Some(vault) = self.vaults.get(&vid) {
+            vault.contains_record(key, rid)
+        } else {
+            false
+        }
+    }
+
+    /// execute a procedure on the guarded record data.
+    pub fn get_guard<F>(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId, f: F) -> crate::Result<()>
+    where
+        F: FnOnce(GuardedVec<u8>) -> crate::Result<()>,
+    {
+        if let Some(vault) = self.vaults.get_mut(&vid) {
+            let guard = vault.get_guard(key, rid.0)?;
+
+            f(guard)?;
+        }
+
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn exec_proc<F>(
+        &mut self,
+        key0: &Key<P>,
+        vid0: VaultId,
+        rid0: RecordId,
+        key1: &Key<P>,
+        vid1: VaultId,
+        rid1: RecordId,
+        hint: RecordHint,
+        f: F,
+    ) -> crate::Result<()>
+    where
+        F: FnOnce(GuardedVec<u8>) -> crate::Result<Vec<u8>>,
+    {
+        if let Some(vault) = self.vaults.get_mut(&vid0) {
+            let guard = vault.get_guard(key0, rid0.0)?;
+
+            let data = f(guard)?;
+
+            if self.vaults.get(&vid1).is_none() {
+                self.init_vault(&key1, vid1)?;
+            }
+
+            self.write(&key1, vid1, rid1, &data, hint)?;
+        }
+
+        Ok(())
+    }
+
+    /// mark a record as revoked.
+    pub fn revoke_record(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId) -> crate::Result<()> {
+        if let Some(vault) = self.vaults.get_mut(&vid) {
+            vault.revoke(key, rid.0)?;
+        }
+
+        Ok(())
+    }
+
+    /// Garbage collect a vault.
+    pub fn garbage_collect_vault(&mut self, key: &Key<P>, vid: VaultId) -> crate::Result<()> {
+        if let Some(vault) = self.vaults.get_mut(&vid) {
+            if &vault.key == key {
+                vault.garbage_collect();
             }
         }
 
-        let mut chains = HashMap::new();
-        for (cid, chain) in raw_chains.iter_mut() {
-            chains.insert(*cid, chain::Chain::prune(chain.iter().filter_map(|t| txs.get(t)))?);
-        }
+        Ok(())
+    }
+
+    pub fn clear(&mut self) -> crate::Result<()> {
+        self.vaults.clear();
+
+        Ok(())
+    }
+}
+
+impl<P: BoxProvider> Vault<P> {
+    pub fn init_vault(key: &Key<P>) -> crate::Result<Vault<P>> {
+        let entries = HashMap::new();
 
         Ok(Self {
-            key,
-            txs,
-            chains,
-            blobs,
-            cache,
+            entries,
+            key: key.clone(),
         })
     }
 
-    /// Creates an iterator over all valid record identifiers and their corresponding record hints
-    pub fn records(&self) -> impl Iterator<Item = (RecordId, RecordHint)> + '_ {
-        self.chains.values().filter_map(move |r| {
-            r.data()
-                .as_ref()
-                .and_then(|tx_id| self.txs.get(tx_id))
-                .and_then(|tx| tx.typed::<DataTransaction>())
-                .map(|tx| (RecordId(tx.chain), tx.record_hint))
-        })
-    }
-
-    /// Creates an iterator over all valid records ids.
-    pub fn all(&self) -> impl ExactSizeIterator<Item = RecordId> + '_ {
-        self.chains.keys().map(|k| RecordId(*k))
-    }
-
-    /// Check the balance of valid records compared to total records
-    pub fn absolute_balance(&self) -> (usize, usize) {
-        let mut balance = (0, 0);
-        for r in self.chains.values() {
-            balance.0 += r.balance().0;
-            balance.1 += r.balance().1;
-        }
-        balance
-    }
-
-    /// Get highest counter from the vault for known records
-    pub fn chain_ctrs(&self) -> HashMap<RecordId, u64> {
-        self.chains
-            .iter()
-            .filter_map(|(id, r)| r.highest_ctr().map(|ctr| (RecordId(*id), ctr.u64())))
-            .collect()
-    }
-
-    /// Check the age of the records. Fills the `record_ctrs` with the records' oldest counter.
-    pub fn not_older_than(&self, record_ctrs: &HashMap<RecordId, u64>) -> crate::Result<()> {
-        let this_ctrs = self.chain_ctrs();
-        record_ctrs.iter().try_for_each(|(chain, other_ctr)| {
-            let this_ctr = this_ctrs.get(chain).ok_or_else(|| {
-                crate::Error::VersionError(String::from("This database is older than the reference database"))
-            })?;
-
-            if this_ctr >= other_ctr {
-                Ok(())
-            } else {
-                Err(crate::Error::VersionError(String::from(
-                    "This database is older than the reference database",
-                )))
-            }
-        })
-    }
-
-    /// Converts the `DBView` into a `DBReader`.
-    pub fn reader(&self) -> DBReader<P> {
-        DBReader { view: self }
-    }
-
-    /// Converts the `DBView` into a `DBWriter` for a specific record.
-    pub fn writer(self, record: RecordId) -> DBWriter<P> {
-        let next_ctr = self
-            .chains
-            .get(&record.0)
-            .and_then(|r| r.highest_ctr())
-            .map(|v| v + 1)
-            .unwrap_or_else(|| 0u64.into());
-
-        DBWriter {
-            view: self,
-            chain: record.0,
-            next_ctr,
-        }
-    }
-
-    /// Garbage collect the records.
-    pub fn gc(&self) -> Vec<DeleteRequest> {
-        // TODO: iterate through the blobs and check if any can be removed
-        self.chains
-            .values()
-            .map(|r| r.garbage().iter().cloned().map(DeleteRequest::transaction))
-            .flatten()
-            .collect()
-    }
-}
-
-impl<P: BoxProvider> Debug for DBView<P> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let cs: HashMap<_, Vec<_>> = self
-            .chains
-            .iter()
-            .map(|(cid, c)| (cid, c.subchain().iter().filter_map(|tx| self.txs.get(tx)).collect()))
-            .collect();
-        let garbage: Vec<_> = self
-            .chains
-            .values()
-            .map(|c| c.garbage().iter().filter_map(|tx| self.txs.get(tx)))
-            .flatten()
-            .collect();
-        f.debug_struct("DBView")
-            .field("chains", &cs)
-            .field("garbage", &garbage)
-            .finish()
-    }
-}
-
-/// A reader for the `DBView`
-pub struct DBReader<'a, P: BoxProvider> {
-    view: &'a DBView<P>,
-}
-
-/// A preparation of the data to read from the database.
-#[derive(Eq, PartialEq)]
-pub enum PreparedRead {
-    CacheHit(Vec<u8>),
-    CacheMiss(ReadRequest),
-    RecordIsEmpty,
-    NoSuchRecord,
-}
-
-impl Debug for PreparedRead {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            PreparedRead::CacheHit(_) => f.write_str("PreparedRead::CacheHit"),
-            PreparedRead::CacheMiss(_) => f.write_str("PreparedRead::CacheMiss"),
-            PreparedRead::RecordIsEmpty => f.write_str("PreparedRead::RecordIsEmpty"),
-            PreparedRead::NoSuchRecord => f.write_str("PreparedRead::NoSuchRecord"),
-        }
-    }
-}
-
-impl<'a, P: BoxProvider> DBReader<'a, P> {
-    /// Prepare a record for reading. Create a `ReadRequest` to read the record with inputted `id`. Returns `None` if
-    /// there was no record for that ID
-    pub fn prepare_read(&self, record: &RecordId) -> crate::Result<PreparedRead> {
-        match self.view.chains.get(&record.0).map(|r| (r.init(), r.data())) {
-            None | Some((None, _)) => Ok(PreparedRead::NoSuchRecord),
-            Some((_, None)) => Ok(PreparedRead::RecordIsEmpty),
-            Some((_, Some(tx_id))) => {
-                // Should never fail.
-                let tx = self.view.txs.get(&tx_id).unwrap().typed::<DataTransaction>().unwrap();
-                match self.view.cache.get(&tx.blob) {
-                    Some(sb) => Ok(PreparedRead::CacheHit(sb.decrypt(&self.view.key, tx.blob)?)),
-                    None => Ok(PreparedRead::CacheMiss(ReadRequest::blob(tx.blob))),
-                }
-            }
-        }
-    }
-
-    /// Open a record given a `ReadResult`.  Returns a vector of bytes.
-    pub fn read(&self, res: ReadResult) -> crate::Result<Vec<u8>> {
-        let b = BlobId::try_from(res.id())?;
-
-        if self.is_active_blob(&b) {
-            SealedBlob::from(res.data()).decrypt(&self.view.key, b)
-        } else {
-            Err(crate::Error::ProtocolError("invalid blob".to_string()))
-        }
-    }
-
-    fn is_active_blob(&self, bid: &BlobId) -> bool {
-        self.view
-            .blobs
-            .get(bid)
-            .map(|txs| {
-                txs.iter().any(|t0| {
-                    self.view
-                        .txs
-                        .get(t0)
-                        .and_then(|tx| tx.typed::<DataTransaction>())
-                        .and_then(|tx| if tx.blob == *bid { Some(tx.chain) } else { None })
-                        .and_then(|cid| self.view.chains.get(&cid))
-                        .and_then(|c| c.data())
-                        .map(|t1| *t0 == t1)
-                        .unwrap_or(false)
-                })
-            })
-            .unwrap_or(false)
-    }
-
-    pub fn exists(&self, id: RecordId) -> bool {
-        match self.view.chains.get(&id.0).map(|r| r.init()) {
-            None => false,
-            Some(None) => false,
-            Some(Some(_)) => true,
-        }
-    }
-}
-
-/// A writer for the `DBView`.  Allows mutation of the underlying data.
-pub struct DBWriter<P: BoxProvider> {
-    view: DBView<P>,
-    chain: ChainId,
-    next_ctr: Val,
-}
-
-impl<P: BoxProvider> DBWriter<P> {
-    fn next_ctr(&mut self) -> Val {
-        let c = self.next_ctr;
-        self.next_ctr += 1;
-        c
-    }
-
-    /// Create a new empty record or truncate an existing one
-    pub fn truncate(&mut self) -> crate::Result<WriteRequest> {
-        let id = TransactionId::random::<P>()?;
-        let tx = InitTransaction::new(self.chain, id, self.next_ctr());
-        Ok(WriteRequest::transaction(&id, &tx.encrypt(&self.view.key, id)?))
-    }
-
-    /// Check the balance of the amount of valid records compared to amount of total records in this chain
-    pub fn relative_balance(&self) -> (usize, usize) {
-        match self.view.chains.get(&self.chain) {
-            Some(c) => c.balance(),
-            None => (0, 0),
-        }
-    }
-
-    /// Write the `data` to the record, replaces existing data and undoes uncommitted revokes.
-    pub fn write(&mut self, data: &[u8], hint: RecordHint) -> crate::Result<Vec<WriteRequest>> {
-        let tx_id = TransactionId::random::<P>()?;
+    /// Adds a new entry to the vault if the entry doesn't already exist. Otherwise, updates the data in the existing
+    /// entry as long as it hasn't been revoked.
+    pub fn add_or_update_record(
+        &mut self,
+        key: &Key<P>,
+        id: ChainId,
+        data: &[u8],
+        record_hint: RecordHint,
+    ) -> crate::Result<()> {
         let blob_id = BlobId::random::<P>()?;
-        let transaction = DataTransaction::new(self.chain, self.next_ctr(), tx_id, blob_id, hint);
 
-        let req = WriteRequest::transaction(&tx_id, &transaction.encrypt(&self.view.key, tx_id)?);
-        let blob = WriteRequest::blob(&blob_id, &data.encrypt(&self.view.key, blob_id)?);
-
-        Ok(vec![req, blob])
+        if key == &self.key {
+            self.entries
+                .entry(id)
+                .and_modify(|entry| {
+                    entry.update(key, id, data).expect("Unable to update entry");
+                })
+                .or_insert(Record::new(key, id, blob_id, data, record_hint)?);
+        }
+        Ok(())
     }
 
-    /// Revoke a record.
-    pub fn revoke(&mut self) -> crate::Result<WriteRequest> {
-        let id = TransactionId::random::<P>()?;
-        let tx = RevocationTransaction::new(self.chain, self.next_ctr(), id);
-        Ok(WriteRequest::transaction(&id, &tx.encrypt(&self.view.key, id)?))
+    /// List the hints and ids of the specified vault.
+    pub(crate) fn list_hints_and_ids(&self, key: &Key<P>) -> Vec<(RecordId, RecordHint)> {
+        let mut buf: Vec<(RecordId, RecordHint)> = Vec::new();
+
+        if key == &self.key {
+            buf = self
+                .entries
+                .values()
+                .into_iter()
+                .filter_map(|entry| entry.get_hint_and_id(&key))
+                .collect();
+        }
+
+        buf
     }
 
-    pub fn into_view(self) -> DBView<P> {
-        self.view
+    fn contains_record(&self, key: &Key<P>, rid: RecordId) -> bool {
+        if key == &self.key {
+            self.entries.values().into_iter().any(|entry| entry.check_id(rid))
+        } else {
+            false
+        }
+    }
+
+    /// Revokes an entry by its chain id.  Does nothing if the entry doesn't exist.
+    pub fn revoke(&mut self, key: &Key<P>, id: ChainId) -> crate::Result<()> {
+        if key == &self.key {
+            if let Some(entry) = self.entries.get_mut(&id) {
+                entry.revoke(key, id)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn get_guard(&self, key: &Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
+        if key == &self.key {
+            if let Some(entry) = self.entries.get(&id) {
+                entry.get_blob(key, id)
+            } else {
+                Ok(GuardedVec::random(0))
+            }
+        } else {
+            Err(crate::Error::DatabaseError("Invalid key.".into()))
+        }
+    }
+
+    /// Sorts through all of the vault entries and garbage collects any revoked entries.
+    pub fn garbage_collect(&mut self) {
+        // get the keys of the entries with the revocation transactions.
+        let garbage: Vec<ChainId> = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| entry.revoke.is_some())
+            .map(|(c, _)| *c)
+            .collect();
+
+        // remove the garbage entries from the database.
+        garbage.iter().for_each(|c| {
+            self.entries.remove(c);
+        });
+    }
+}
+
+impl Record {
+    // create a new entry in the vault.
+    pub fn new<P: BoxProvider>(
+        key: &Key<P>,
+        id: ChainId,
+        blob: BlobId,
+        data: &[u8],
+        hint: RecordHint,
+    ) -> crate::Result<Record> {
+        let len = data.len() as u64;
+        let dtx = DataTransaction::new(id, len, blob, hint);
+
+        let blob: SealedBlob = data.encrypt(key, blob)?;
+        let data = dtx.encrypt(key, id)?;
+
+        Ok(Record {
+            id,
+            data,
+            blob,
+            revoke: None,
+        })
+    }
+
+    /// Get the id and record hint for this record.
+    fn get_hint_and_id<P: BoxProvider>(&self, key: &Key<P>) -> Option<(RecordId, RecordHint)> {
+        if self.revoke.is_none() {
+            let tx = self.data.decrypt(key, self.id).expect("Unable to decrypt transaction");
+
+            let tx = tx
+                .typed::<DataTransaction>()
+                .expect("Failed to convert to data transaction");
+
+            let hint = tx.record_hint;
+            let id = RecordId(self.id);
+
+            Some((id, hint))
+        } else {
+            None
+        }
+    }
+
+    /// Check to see if a record id is in this vault.
+    fn check_id(&self, rid: RecordId) -> bool {
+        if self.revoke.is_none() {
+            rid.0 == self.id
+        } else {
+            false
+        }
+    }
+
+    /// Get the blob from this entry.
+    fn get_blob<P: BoxProvider>(&self, key: &Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
+        // check if id id and tx id match.
+        if self.id == id {
+            // check if there is a revocation transaction.
+            if self.revoke.is_none() {
+                let tx = self.data.decrypt(key, self.id).expect("Unable to decrypt tx");
+                let tx = tx
+                    .typed::<DataTransaction>()
+                    .expect("Failed to cast as data transaction");
+
+                let guarded = GuardedVec::new(tx.len.u64() as usize, |i| {
+                    let blob = SealedBlob::from(self.blob.as_ref())
+                        .decrypt(key, tx.blob)
+                        .expect("Unable to decrypt blob");
+
+                    i.copy_from_slice(blob.as_ref());
+                });
+
+                Ok(guarded)
+            } else {
+                Ok(GuardedVec::zero(0))
+            }
+        } else {
+            Err(crate::Error::DatabaseError(
+                "Invalid id for entry. Ids must match a valid entry.".to_string(),
+            ))
+        }
+    }
+
+    /// Update the data in an existing entry.
+    fn update<P: BoxProvider>(&mut self, key: &Key<P>, id: ChainId, new_data: &[u8]) -> crate::Result<()> {
+        // check if ids match
+        if self.id == id {
+            // check if a revocation transaction exists.
+            if self.revoke.is_none() {
+                // decrypt data transaction.
+                let tx = self.data.decrypt(key, self.id)?;
+                let tx = tx
+                    .typed::<DataTransaction>()
+                    .expect("Unable to cast to data transaction");
+
+                // create a new sealed blob with the new_data.
+                let blob: SealedBlob = new_data.encrypt(key, tx.blob)?;
+                // create a new sealed transaction with the new_data length.
+                let dtx = DataTransaction::new(tx.id, new_data.len() as u64, tx.blob, tx.record_hint);
+                let data = dtx.encrypt(key, tx.id)?;
+
+                self.blob = blob;
+                self.data = data;
+            }
+        }
+
+        Ok(())
+    }
+
+    // add a recovation transaction to an entry.
+    fn revoke<P: BoxProvider>(&mut self, key: &Key<P>, id: ChainId) -> crate::Result<()> {
+        // check if id and id match.
+        if self.id == id {
+            // check if revoke transaction already exists.
+            if self.revoke.is_none() {
+                let revoke = RevocationTransaction::new(self.id);
+
+                self.revoke = Some(revoke.encrypt(key, self.id)?);
+            }
+        }
+
+        Ok(())
     }
 }
