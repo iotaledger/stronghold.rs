@@ -7,12 +7,13 @@
 use crate::{
     crypto_box::{Decrypt, Encrypt},
     types::{
-        utils::{BlobId, ChainId, RecordHint, TransactionId, Val},
+        utils::{BlobId, ChainId, RecordHint, Val},
         AsView, AsViewMut,
     },
 };
+
 use std::{
-    convert::{Infallible, TryFrom, TryInto},
+    convert::{Infallible, TryFrom},
     fmt::{self, Debug, Formatter},
     hash::Hash,
 };
@@ -25,7 +26,6 @@ use serde::{Deserialize, Serialize};
 pub enum TransactionType {
     Data = 1,
     Revocation = 2,
-    Init = 10,
 }
 
 impl TryFrom<Val> for TransactionType {
@@ -35,7 +35,7 @@ impl TryFrom<Val> for TransactionType {
         match v.u64() {
             1 => Ok(TransactionType::Data),
             2 => Ok(TransactionType::Revocation),
-            10 => Ok(TransactionType::Init),
+
             _ => Err(crate::Error::ValueError(format!(
                 "{:?} is not a valid transaction type",
                 v
@@ -64,7 +64,6 @@ impl Debug for Transaction {
                 &TransactionType::try_from(t.type_id).map_err(|_| fmt::Error {})?,
             )
             .field("id", &t.id)
-            .field("ctr", &t.ctr)
             .finish()
     }
 }
@@ -76,20 +75,8 @@ pub struct UntypedTransaction {
     /// transaction type
     pub type_id: Val,
 
-    /// unique identifer for this transaction
-    pub id: TransactionId,
-
-    /// chain identifer
-    pub chain: ChainId,
-
-    /// counter value
-    pub ctr: Val,
-}
-
-impl UntypedTransaction {
-    pub fn r#type(&self) -> crate::Result<TransactionType> {
-        self.type_id.try_into()
-    }
+    /// id identifer
+    pub id: ChainId,
 }
 
 /// a data transaction
@@ -100,16 +87,12 @@ pub struct DataTransaction {
     #[allow(unused)]
     pub type_id: Val,
 
-    /// unique id for this transaction
-    pub id: TransactionId,
-    #[allow(unused)]
+    /// Length of the unencrypted blob data
+    pub len: Val,
 
-    /// chain identifer
-    pub chain: ChainId,
+    /// id identifer
+    pub id: ChainId,
     #[allow(unused)]
-
-    /// counter value
-    pub ctr: Val,
 
     /// the blob identifier for the data referred to by this transaction
     pub blob: BlobId,
@@ -131,44 +114,18 @@ pub struct RevocationTransaction {
     #[allow(unused)]
     pub type_id: Val,
 
-    /// unique identifer for this transaction
-    pub id: TransactionId,
-
-    /// chain identifer
-    pub chain: ChainId,
-
-    /// counter
-    #[allow(unused)]
-    pub ctr: Val,
-}
-
-/// transaction that initializes a new chain
-#[repr(packed)]
-#[derive(Debug)]
-pub struct InitTransaction {
-    /// transaction type
-    #[allow(unused)]
-    pub type_id: Val,
-
-    /// unique identifer for this transaction
-    pub id: TransactionId,
-
-    /// chain identifer
-    pub chain: ChainId,
-
-    /// counter value
-    pub ctr: Val,
+    /// id identifer
+    pub id: ChainId,
 }
 
 impl DataTransaction {
     /// create a new data transaction.
-    pub fn new(chain: ChainId, ctr: Val, id: TransactionId, blob: BlobId, record_hint: RecordHint) -> Transaction {
+    pub fn new(id: ChainId, len: u64, blob: BlobId, record_hint: RecordHint) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
 
         view.type_id = (TransactionType::Data as u64).into();
-        view.chain = chain;
-        view.ctr = ctr;
+        view.len = len.into();
         view.id = id;
         view.blob = blob;
         view.record_hint = record_hint;
@@ -184,13 +141,11 @@ impl TypedTransaction for DataTransaction {
 
 impl RevocationTransaction {
     /// create a new revocation transaction.
-    pub fn new(chain: ChainId, ctr: Val, id: TransactionId) -> Transaction {
+    pub fn new(id: ChainId) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
 
         view.type_id = (TransactionType::Revocation as u64).into();
-        view.chain = chain;
-        view.ctr = ctr;
         view.id = id;
         transaction
     }
@@ -214,26 +169,6 @@ impl Transaction {
             type_id if type_id == T::type_id() => Some(self.view()),
             _ => None,
         }
-    }
-}
-
-impl InitTransaction {
-    /// create a new init transaction.
-    pub fn new(chain: ChainId, id: TransactionId, ctr: Val) -> Transaction {
-        let mut transaction = Transaction::default();
-        let view: &mut Self = transaction.view_mut();
-
-        view.type_id = (TransactionType::Init as u64).into();
-        view.id = id;
-        view.chain = chain;
-        view.ctr = ctr;
-        transaction
-    }
-}
-
-impl TypedTransaction for InitTransaction {
-    fn type_id() -> Val {
-        TransactionType::Init.val()
     }
 }
 
@@ -270,10 +205,9 @@ impl AsView<DataTransaction> for Transaction {}
 impl AsViewMut<DataTransaction> for Transaction {}
 impl AsView<RevocationTransaction> for Transaction {}
 impl AsViewMut<RevocationTransaction> for Transaction {}
-impl AsView<InitTransaction> for Transaction {}
-impl AsViewMut<InitTransaction> for Transaction {}
 
 /// a sealed transaction
+#[derive(Deserialize, Serialize, Clone)]
 pub struct SealedTransaction(Vec<u8>);
 
 impl From<Vec<u8>> for SealedTransaction {
@@ -304,6 +238,7 @@ impl Encrypt<SealedTransaction> for Transaction {}
 impl Decrypt<(), Transaction> for SealedTransaction {}
 
 /// a sealed blob
+#[derive(Deserialize, Serialize, Clone)]
 pub struct SealedBlob(Vec<u8>);
 
 impl From<Vec<u8>> for SealedBlob {

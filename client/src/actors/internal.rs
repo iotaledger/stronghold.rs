@@ -11,7 +11,7 @@ use std::{
     path::PathBuf,
 };
 
-use engine::vault::{nvault::DbView, BoxProvider, ClientId, Key, RecordHint, RecordId, VaultId};
+use engine::vault::{BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultId};
 
 use stronghold_utils::GuardDebug;
 
