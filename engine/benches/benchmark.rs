@@ -9,7 +9,7 @@ use engine::{
     cache,
     snapshot::{compress, decompress},
     store::Cache,
-    vault::{vault::DbView, Key, RecordHint, RecordId, VaultId},
+    vault::{DbView, Key, RecordHint, RecordId, VaultId},
 };
 
 use crate::provider::Provider;

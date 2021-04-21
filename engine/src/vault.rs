@@ -19,11 +19,11 @@
 mod base64;
 mod crypto_box;
 mod types;
-pub mod vault;
+pub mod view;
 
 pub use crate::vault::{
     base64::{Base64Decodable, Base64Encodable},
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
     types::utils::{ChainId, ClientId, Id, RecordHint, RecordId, VaultId},
-    vault::DbView,
+    view::DbView,
 };
