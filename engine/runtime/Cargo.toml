@@ -1,5 +1,5 @@
 [package]
-name = "runtime"
+name = "stronghold-runtime"
 version = "0.3.0"
 authors = [
   "IOTA Stiftung",
@@ -13,6 +13,9 @@ keywords = [ "iota", "stronghold", "security" ]
 categories = [ "security" ]
 homepage = "https://stronghold.docs.iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
+
+[lib]
+name = "runtime"
 
 [dependencies]
 libsodium-sys = "0.2"

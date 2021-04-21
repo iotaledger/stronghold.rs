@@ -1,9 +1,6 @@
 [workspace]
 members = [
   "engine",
-  "engine/vault",
-  "engine/snapshot",
-  "engine/store",
   "engine/runtime",
   "client",
   "communication",
