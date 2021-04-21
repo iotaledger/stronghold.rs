@@ -5,7 +5,7 @@ name: status
 on: [pull_request]
 
 jobs:
-  update-changelog:
+  status:
     runs-on: ubuntu-latest
     timeout-minutes: 65
     outputs:
