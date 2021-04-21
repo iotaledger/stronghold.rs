@@ -1,6 +1,6 @@
 [package]
 name = "stronghold-communication"
-version = "0.3.0"
+version = "0.4.0"
 authors = [ "IOTA Stiftung" ]
 edition = "2018"
 license = "Apache-2.0"
@@ -32,11 +32,11 @@ thiserror = "1.0"
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 riker = "0.4"
-communication-macros = { path = "communication-macros", version = "0.1.0" }
+communication-macros = { path = "communication-macros", version = "0.1.1" }
 
-[dependencies.stronghold-utils]
-path = "../utils/utils"
-version = "0.2"
+  [dependencies.stronghold-utils]
+  path = "../utils/utils"
+  version = "0.2"
 
 [features]
 default = [ "mdns" ]

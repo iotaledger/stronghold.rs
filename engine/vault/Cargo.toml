@@ -1,6 +1,6 @@
 [package]
 name = "vault"
-version = "0.3.0"
+version = "0.3.1"
 authors = [
   "IOTA Stiftung",
   "tensor-programming <tensordeveloper@gmail.com>"
@@ -15,22 +15,22 @@ thiserror = "1.0"
 anyhow = "1.0"
 serde = { version = "1.0", features = [ "derive" ] }
 
-[dependencies.runtime]
-path = "../runtime"
-version = "0.3"
+  [dependencies.runtime]
+  path = "../runtime"
+  version = "0.3"
 
-[dependencies.iota-crypto]
-version = "0.5.0"
-features = [ "random", "chacha" ]
+  [dependencies.iota-crypto]
+  version = "0.5.0"
+  features = [ "random", "chacha" ]
 
 [dev-dependencies]
 json = "0.12"
 rand = "0.8.3"
 criterion = "0.3.3"
 
-[dev-dependencies.stronghold-utils]
-path = "../../utils/utils"
-version = "0.2"
+  [dev-dependencies.stronghold-utils]
+  path = "../../utils/utils"
+  version = "0.2"
 
 [[bench]]
 name = "benchmark"

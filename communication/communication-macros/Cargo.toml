@@ -1,7 +1,7 @@
 [package]
 name = "communication-macros"
-version = "0.1.0"
-authors = ["IOTA Stiftung"]
+version = "0.1.1"
+authors = [ "IOTA Stiftung" ]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
@@ -12,6 +12,6 @@ homepage = "https://stronghold.docs.iota.org"
 proc-macro = true
 
 [dependencies]
-syn = { version ="1.0", features = ["parsing", "full", "extra-traits", "proc-macro"] }
+syn = { version = "1.0", features = [ "parsing", "full", "extra-traits", "proc-macro" ] }
 quote = "1.0"
 proc-macro2 = "1.0"
