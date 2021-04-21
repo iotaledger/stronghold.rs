@@ -23,10 +23,10 @@
 //!     },
 //!     behaviour::BehaviourConfig,
 //! };
-//! use stronghold_utils::RequestPermissions;
 //! use libp2p::identity::Keypair;
 //! use riker::actors::*;
 //! use serde::{Deserialize, Serialize};
+//! use stronghold_utils::RequestPermissions;
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]
 //! pub enum Request {
