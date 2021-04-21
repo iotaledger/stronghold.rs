@@ -2,7 +2,7 @@ workspace = { }
 
 [package]
 name = "commandline"
-version = "0.1.1"
+version = "0.1.2"
 authors = [
   "IOTA Stiftung",
   "tensor-programming <tensordeveloper@gmail.com>"

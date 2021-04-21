@@ -1,5 +1,13 @@
 # Changelog
 
+## \[0.4.0]
+
+- Merged Store, Vault and Snapshot into a single crate called Stronghold-Engine.
+  Merged utils-derive and communication-macros into a new crate called stronghold-derive
+  Export Stronghold-derive through Stronghold-utils.
+  - [36c8983](https://www.github.com/iotaledger/stronghold.rs/commit/36c8983eefd594c702a9e8b32bad25354ad127c0) merge derive/macro crates. on 2021-04-21
+  - [b7d44f5](https://www.github.com/iotaledger/stronghold.rs/commit/b7d44f530e08be27128f25f46b4bb05cf3da99bd) update config. on 2021-04-21
+
 ## \[0.3.1]
 
 - Updated cargo.toml files with the updated crypto.rs revisions and authors.
@@ -16,6 +24,7 @@
   rebuild vault and remove versioning.
   update client to use new vault.
   - [5490f0a](https://www.github.com/iotaledger/stronghold.rs/commit/5490f0aaaf58e5322a5569c02669514ec067b02f) refactor vault ([#181](https://www.github.com/iotaledger/stronghold.rs/pull/181)) on 2021-04-15
+
 ## \[0.3.0]
 
 - Added zeroing allocator to the runtime.\
@@ -51,7 +60,6 @@
   cipher. This in order to mitigate offline attacks in the scenario that the
   cipher is compromised in such a way to reveal the key.
   - [6fca456](https://www.github.com/iotaledger/stronghold.rs/commit/6fca456a80993a99f38949f1cd3137a4a265a2e6) Use X25519 in the snapshot format ([#123](https://www.github.com/iotaledger/stronghold.rs/pull/123)) on 2021-02-08
-
 
 ## Features:
 

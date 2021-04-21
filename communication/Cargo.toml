@@ -1,6 +1,6 @@
 [package]
 name = "stronghold-communication"
-version = "0.4.0"
+version = "0.4.1"
 authors = [ "IOTA Stiftung" ]
 edition = "2018"
 license = "Apache-2.0"
@@ -33,9 +33,9 @@ serde = { version = "1.0", default-features = false, features = [ "alloc", "deri
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 riker = "0.4"
 
-[dependencies.stronghold-utils]
-path = "../utils"
-version = "0.2"
+  [dependencies.stronghold-utils]
+  path = "../utils"
+  version = "0.3"
 
 [features]
 default = [ "mdns" ]

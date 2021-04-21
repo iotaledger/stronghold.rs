@@ -1,5 +1,14 @@
 # Changelog
 
+## \[0.4.1]
+
+- Merged Store, Vault and Snapshot into a single crate called Stronghold-Engine.
+  Merged utils-derive and communication-macros into a new crate called stronghold-derive
+  Export Stronghold-derive through Stronghold-utils.
+  - Bumped due to a bump in stronghold-engine.
+  - [36c8983](https://www.github.com/iotaledger/stronghold.rs/commit/36c8983eefd594c702a9e8b32bad25354ad127c0) merge derive/macro crates. on 2021-04-21
+  - [b7d44f5](https://www.github.com/iotaledger/stronghold.rs/commit/b7d44f530e08be27128f25f46b4bb05cf3da99bd) update config. on 2021-04-21
+
 ## \[0.4.0]
 
 - Updated cargo.toml files with the updated crypto.rs revisions and authors.
