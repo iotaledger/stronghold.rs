@@ -8,7 +8,7 @@ corresponding remote peer and forwards incoming request to the client provided i
 Before forwarding any requests, the request will be validated by the firewall according to the configuration from
 [<code>CommunicationConfig</code>], additional rules or changed can be set with <a href="../../communication/actor/types/enum.CommunicationRequest.html#variant.ConfigureFirewall" title="CommunicationRequest::ConfigureFirewall"><code>CommunicationRequest::ConfigureFirewall</code></a>.
 This requires that the <a href="../../communication/actor/firewall/trait.ToPermissionVariants.html" title="ToPermissionVariants"><code>ToPermissionVariants</code></a> trait is implemented for the generic <code>Req</code> type, which can be
-derived with the macro <a href="../../communication/actor/derive.RequestPermissions.html" title="RequestPermissions"><code>RequestPermissions</code></a> from <a href="../../communication_macros/index.html" title="communication_macros"><code>communication_macros</code></a>.</p>
+derived with the macro <a href="../../communication/actor/derive.RequestPermissions.html" title="RequestPermissions"><code>RequestPermissions</code></a> from <a href="../../stronghold_utils/index.html" title="stronghold_utils"><code>stronghold_utils</code></a>.</p>
 <p>If remote peers should be able to dial the local system, a <a href="../../communication/actor/types/enum.CommunicationRequest.html#variant.StartListening" title="CommunicationRequest::StartListening"><code>CommunicationRequest::StartListening</code></a> has to be sent
 to the <a href="../../communication/actor/struct.CommunicationActor.html" title="CommunicationActor"><code>CommunicationActor</code></a>.</p>
 
@@ -20,10 +20,10 @@ to the <a href="../../communication/actor/struct.CommunicationActor.html" title=
     },
     <span class="ident">behaviour</span>::<span class="ident">BehaviourConfig</span>,
 };
-<span class="kw">use</span> <span class="ident">communication_macros</span>::<span class="ident">RequestPermissions</span>;
 <span class="kw">use</span> <span class="ident">libp2p</span>::<span class="ident">identity</span>::<span class="ident">Keypair</span>;
 <span class="kw">use</span> <span class="ident">riker</span>::<span class="ident">actors</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
+<span class="kw">use</span> <span class="ident">stronghold_utils</span>::<span class="ident">RequestPermissions</span>;
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>, <span class="ident">RequestPermissions</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Request</span> {

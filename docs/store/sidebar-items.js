@@ -1,1 +1,0 @@
-initSidebarItems({"macro":[["cache","A macro for defining functions whose return values will wrapped in a `Cache`."]],"mod":[["macros",""],["storage",""]],"struct":[["Cache","The cache struct used to store the data in an ordered format."]]});

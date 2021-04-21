@@ -250,7 +250,7 @@
 <span class="doccomment">//! Before forwarding any requests, the request will be validated by the firewall according to the configuration from</span>
 <span class="doccomment">//! [`CommunicationConfig`], additional rules or changed can be set with [`CommunicationRequest::ConfigureFirewall`].</span>
 <span class="doccomment">//! This requires that the [`ToPermissionVariants`] trait is implemented for the generic `Req` type, which can be</span>
-<span class="doccomment">//! derived with the macro [`RequestPermissions`] from [`communication_macros`].</span>
+<span class="doccomment">//! derived with the macro [`RequestPermissions`] from [`stronghold_utils`].</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//! If remote peers should be able to dial the local system, a [`CommunicationRequest::StartListening`] has to be sent</span>
 <span class="doccomment">//! to the [`CommunicationActor`].</span>
@@ -263,10 +263,10 @@
 <span class="doccomment">//!     },</span>
 <span class="doccomment">//!     behaviour::BehaviourConfig,</span>
 <span class="doccomment">//! };</span>
-<span class="doccomment">//! use communication_macros::RequestPermissions;</span>
 <span class="doccomment">//! use libp2p::identity::Keypair;</span>
 <span class="doccomment">//! use riker::actors::*;</span>
 <span class="doccomment">//! use serde::{Deserialize, Serialize};</span>
+<span class="doccomment">//! use stronghold_utils::RequestPermissions;</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//! #[derive(Debug, Clone, Serialize, Deserialize, RequestPermissions)]</span>
 <span class="doccomment">//! pub enum Request {</span>

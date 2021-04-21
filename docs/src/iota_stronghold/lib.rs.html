@@ -82,8 +82,6 @@
 <span id="79">79</span>
 <span id="80">80</span>
 <span id="81">81</span>
-<span id="82">82</span>
-<span id="83">83</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -163,10 +161,8 @@
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Error</span> {
     <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Id Error&quot;</span>)]</span>
     <span class="ident">IDError</span>,
-    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Vault Error: {0}&quot;</span>)]</span>
-    <span class="ident">VaultError</span>(<span class="attribute">#[<span class="ident">from</span>]</span> <span class="ident">engine</span>::<span class="ident">vault</span>::<span class="ident">Error</span>),
-    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Snapshot Error: {0}&quot;</span>)]</span>
-    <span class="ident">SnapshotError</span>(<span class="attribute">#[<span class="ident">from</span>]</span> <span class="ident">engine</span>::<span class="ident">snapshot</span>::<span class="ident">Error</span>),
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Engine Error: {0}&quot;</span>)]</span>
+    <span class="ident">EngineError</span>(<span class="attribute">#[<span class="ident">from</span>]</span> <span class="ident">engine</span>::<span class="ident">Error</span>),
 }
 </pre></div>
 </section><section id="search" class="content hidden"></section><section class="footer"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="iota_stronghold"></div>
