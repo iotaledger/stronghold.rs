@@ -1,6 +1,6 @@
 [package]
 name = "iota-stronghold"
-version = "0.3.0"
+version = "0.4.0"
 authors = [
   "IOTA Stiftung",
   "tensor-programming <tensordeveloper@gmail.com>"
@@ -24,31 +24,30 @@ thiserror = "1.0"
 futures = "0.3"
 riker = "0.4"
 
-[dependencies.stronghold-engine]
-path = "../engine"
-version = "0.3"
+  [dependencies.stronghold-engine]
+  path = "../engine"
+  version = "0.3"
 
-[dependencies.iota-crypto]
-version = "0.5.0"
-features = [
-"random",
-"ed25519",
-"sha",
-"hmac",
-"bip39-en",
-"slip10",
-"chacha"
+  [dependencies.iota-crypto]
+  version = "0.5.0"
+  features = [
+  "random",
+  "ed25519",
+  "sha",
+  "hmac",
+  "bip39-en",
+  "slip10",
+  "chacha"
 ]
 
+  [dependencies.stronghold-communication]
+  path = "../communication"
+  optional = true
+  version = "0.4.0"
 
-[dependencies.stronghold-communication]
-path = "../communication"
-optional = true
-version = "0.3.0"
-
-[dependencies.stronghold-utils]
-path = "../utils/utils"
-version = "0.2"
+  [dependencies.stronghold-utils]
+  path = "../utils/utils"
+  version = "0.2"
 
 [features]
 communication = [ "stronghold-communication" ]

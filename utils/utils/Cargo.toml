@@ -1,7 +1,10 @@
 [package]
 name = "stronghold-utils"
-version = "0.2.0"
-authors = [ "IOTA Stiftung", "tensor-programming <tensordeveloper@gmail.com>" ]
+version = "0.2.1"
+authors = [
+  "IOTA Stiftung",
+  "tensor-programming <tensordeveloper@gmail.com>"
+]
 edition = "2018"
 license = "Apache-2.0"
 
@@ -10,6 +13,6 @@ futures = "0.3"
 rand = "0.8.3"
 riker = "0.4"
 
-[dependencies.utils-derive]
-path = "../utils-derive"
-version = "0.1.0"
+  [dependencies.utils-derive]
+  path = "../utils-derive"
+  version = "0.1.1"

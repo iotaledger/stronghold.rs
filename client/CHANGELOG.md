@@ -1,5 +1,24 @@
 # Changelog
 
+## \[0.4.0]
+
+- Updated cargo.toml files with the updated crypto.rs revisions and authors.
+  Fixed logic in snapshot and providers to use the `try_*` encryption and decryption functions.
+  Fixed commandline and stopped it from overwriting snapshots.
+  - [64e08fe](https://www.github.com/iotaledger/stronghold.rs/commit/64e08fe39454d2191561783d009b155c91db37c1) add .changes. on 2021-03-19
+  - [0758b67](https://www.github.com/iotaledger/stronghold.rs/commit/0758b6734a1e22d491345a6b894acea12ab5b1b7) add .changes. on 2021-03-19
+- Remove old logic from client and vault.
+  Added clear cache logic and message to stop the client actor.
+  Removed Client Derive Data hashmap.
+  - [81892aa](https://www.github.com/iotaledger/stronghold.rs/commit/81892aa704b920c50de2517e8073943d8bf0c2b9) add md file. on 2021-04-20
+- Add libp2p-relay protocol to stronghold-communication.
+  Add methods for using a relay peer to the iota-stronghold interface.
+  - [a414582](https://www.github.com/iotaledger/stronghold.rs/commit/a414582024f45e854a75ab82e4196777ab4a42b8) Feat/comms relay ([#183](https://www.github.com/iotaledger/stronghold.rs/pull/183)) on 2021-04-13
+- move stronghold-utils and add utils-derive for proc macros.
+  rebuild vault and remove versioning.
+  update client to use new vault.
+  - [5490f0a](https://www.github.com/iotaledger/stronghold.rs/commit/5490f0aaaf58e5322a5569c02669514ec067b02f) refactor vault ([#181](https://www.github.com/iotaledger/stronghold.rs/pull/181)) on 2021-04-15
+
 ## \[0.3.0]
 
 - Rename the previously incorrectly named combined SLIP10+Ed25519 procedures (now
