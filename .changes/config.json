@@ -71,17 +71,47 @@
     }
   },
   "packages": {
-    "iota-stronghold": {
-      "path": "./client/",
+    "utils-derive": {
+      "path": "./utils/utils-derive/",
       "manager": "rust",
+      "publish": false
+    },
+    "runtime": {
+      "path": "./engine/runtime/",
+      "manager": "rust",
+      "publish": false
+    },
+    "store": {
+      "path": "./engine/store/",
+      "manager": "rust",
+      "publish": false
+    },
+    "communication-macros": {
+      "path": "./communication/communication-macros",
+      "manager": "rust"
+    },
+    "stronghold-utils": {
+      "path": "./utils/utils/",
+      "manager": "rust",
+      "publish": false,
       "dependencies": [
-        "stronghold-engine",
-        "vault",
-        "snapshot",
-        "store",
-        "stronghold-communication",
-        "stronghold-utils",
-        "runtime"
+        "utils-derive"
+      ]
+    },
+    "vault": {
+      "path": "./engine/vault/",
+      "manager": "rust",
+      "publish": false,
+      "dependencies": [
+        "stronghold-utils"
+      ]
+    },
+    "snapshot": {
+      "path": "./engine/snapshot/",
+      "manager": "rust",
+      "publish": false,
+      "dependencies": [
+        "stronghold-utils"
       ]
     },
     "stronghold-engine": {
@@ -102,48 +132,18 @@
         "communication-macros"
       ]
     },
-    "communication-macros": {
-      "path": "./communication/communication-macros",
-      "manager": "rust"
-    },
-    "vault": {
-      "path": "./engine/vault/",
+    "iota-stronghold": {
+      "path": "./client/",
       "manager": "rust",
-      "publish": false,
       "dependencies": [
-        "stronghold-utils"
+        "stronghold-engine",
+        "vault",
+        "snapshot",
+        "store",
+        "stronghold-communication",
+        "stronghold-utils",
+        "runtime"
       ]
-    },
-    "snapshot": {
-      "path": "./engine/snapshot/",
-      "manager": "rust",
-      "publish": false,
-      "dependencies": [
-        "stronghold-utils"
-      ]
-    },
-    "runtime": {
-      "path": "./engine/runtime/",
-      "manager": "rust",
-      "publish": false
-    },
-    "store": {
-      "path": "./engine/store/",
-      "manager": "rust",
-      "publish": false
-    },
-    "stronghold-utils": {
-      "path": "./utils/utils/",
-      "manager": "rust",
-      "publish": false,
-      "dependencies": [
-        "utils-derive"
-      ]
-    },
-    "utils-derive": {
-      "path": "./utils/utils-derive/",
-      "manager": "rust",
-      "publish": false
     },
     "commandline": {
       "path": "./products/commandline/",
