@@ -7,6 +7,9 @@ authors = [
 ]
 edition = "2018"
 license = "Apache-2.0"
+description = "Utils for the iota_stronghold library"
+homepage = "https://stronghold.docs.iota.org"
+repository = "https://github.com/iotaledger/stronghold.rs"
 
 [dependencies]
 futures = "0.3"
