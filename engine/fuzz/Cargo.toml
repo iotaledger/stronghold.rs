@@ -13,7 +13,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.3"
 rand = "0.8.3"
 
-[dependencies.stronghold-engine]
+[dependencies.stronghold_engine]
 path = "../"
 version = "0.3"
 

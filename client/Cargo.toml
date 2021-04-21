@@ -1,5 +1,5 @@
 [package]
-name = "iota-stronghold"
+name = "iota_stronghold"
 version = "0.4.1"
 authors = [
   "IOTA Stiftung",
@@ -24,7 +24,7 @@ thiserror = "1.0"
 futures = "0.3"
 riker = "0.4"
 
-  [dependencies.stronghold-engine]
+  [dependencies.stronghold_engine]
   path = "../engine"
   version = "0.4"
 
