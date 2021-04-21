@@ -80,7 +80,7 @@
       "manager": "rust"
     },
     "stronghold-utils": {
-      "path": "./utils/utils/",
+      "path": "./utils/",
       "manager": "rust",
       "dependencies": [
         "stronghold-derive"

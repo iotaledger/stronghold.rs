@@ -1,13 +1,11 @@
+# This will only run on the Pull Request and let's you know the status of covector.
+# It will also fail if there is an issue with configuration or a change file that is submitted.
 
 name: status
-on:
-  push:
-    branches:
-      - dev
+on: [pull_request]
 
 jobs:
-
-  update-changelog:
+  status:
     runs-on: ubuntu-latest
     timeout-minutes: 65
     outputs:
@@ -18,32 +16,8 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 14
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: git config
-        run: |
-          git config --global user.name "${{ github.event.pusher.name }}"
-          git config --global user.email "${{ github.event.pusher.email }}"
-      - name: covector version or publish (publish when no change files present)
+      - name: covector status
         uses: jbolda/covector/packages/action@covector-v0
         id: covector
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          CARGO_AUDIT_OPTIONS: ${{ secrets.CARGO_AUDIT_OPTIONS }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          command: 'version-or-publish'
-
-      - name: Create Pull Request With Versions Bumped
-        if: steps.covector.outputs.commandRan == 'version'
-        uses: iotaledger/create-pull-request@v3.4.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: release/version-updates
-          title: Apply Version Updates From Current Changes
-          commit-message: "apply version updates"
-          labels: "version updates"
-          body: ${{ steps.covector.outputs.change }}
+          command: "status"
