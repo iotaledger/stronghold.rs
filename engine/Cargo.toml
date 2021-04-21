@@ -48,4 +48,4 @@ json = "0.12"
 
   [dev-dependencies.stronghold-utils]
   path = "../utils"
-  version = "0.2"
+  version = "0.3"
