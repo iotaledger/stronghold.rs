@@ -46,7 +46,6 @@ pub enum Error {
     Lz4Error(String),
     #[error("TryInto Error: `{0}`")]
     TryIntoError(#[from] std::array::TryFromSliceError),
-
     #[error("Database Error: `{0}`")]
     DatabaseError(String),
     #[error("Version Error: `{0}`")]

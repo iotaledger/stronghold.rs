@@ -1,9 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-pub use communication_macros::RequestPermissions;
 use libp2p::PeerId;
 use std::collections::HashMap;
+pub use stronghold_derive::RequestPermissions;
 
 /// The permission value for request variants.
 /// It is a  bit that is set at a certain index, therefore the value is always a power of 2.

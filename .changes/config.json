@@ -73,18 +73,11 @@
   "packages": {
     "utils-derive": {
       "path": "./utils/utils-derive/",
-      "manager": "rust",
-      "publish": false
+      "manager": "rust"
     },
-    "runtime": {
+    "stronghold-runtime": {
       "path": "./engine/runtime/",
-      "manager": "rust",
-      "publish": false
-    },
-    "store": {
-      "path": "./engine/store/",
-      "manager": "rust",
-      "publish": false
+      "manager": "rust"
     },
     "communication-macros": {
       "path": "./communication/communication-macros",
@@ -93,35 +86,15 @@
     "stronghold-utils": {
       "path": "./utils/utils/",
       "manager": "rust",
-      "publish": false,
       "dependencies": [
         "utils-derive"
-      ]
-    },
-    "vault": {
-      "path": "./engine/vault/",
-      "manager": "rust",
-      "publish": false,
-      "dependencies": [
-        "stronghold-utils"
-      ]
-    },
-    "snapshot": {
-      "path": "./engine/snapshot/",
-      "manager": "rust",
-      "publish": false,
-      "dependencies": [
-        "stronghold-utils"
       ]
     },
     "stronghold-engine": {
       "path": "./engine/",
       "manager": "rust",
       "dependencies": [
-        "vault",
-        "snapshot",
-        "store",
-        "runtime"
+        "stronghold-runtime"
       ]
     },
     "stronghold-communication": {
@@ -137,9 +110,6 @@
       "manager": "rust",
       "dependencies": [
         "stronghold-engine",
-        "vault",
-        "snapshot",
-        "store",
         "stronghold-communication",
         "stronghold-utils",
         "runtime"
