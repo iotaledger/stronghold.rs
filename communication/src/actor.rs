@@ -10,7 +10,7 @@
 //! Before forwarding any requests, the request will be validated by the firewall according to the configuration from
 //! [`CommunicationConfig`], additional rules or changed can be set with [`CommunicationRequest::ConfigureFirewall`].
 //! This requires that the [`ToPermissionVariants`] trait is implemented for the generic `Req` type, which can be
-//! derived with the macro [`RequestPermissions`] from [`communication_macros`].
+//! derived with the macro [`RequestPermissions`] from [`stronghold_utils`].
 //!
 //! If remote peers should be able to dial the local system, a [`CommunicationRequest::StartListening`] has to be sent
 //! to the [`CommunicationActor`].
@@ -23,7 +23,7 @@
 //!     },
 //!     behaviour::BehaviourConfig,
 //! };
-//! use communication_macros::RequestPermissions;
+//! use stronghold_utils::RequestPermissions;
 //! use libp2p::identity::Keypair;
 //! use riker::actors::*;
 //! use serde::{Deserialize, Serialize};

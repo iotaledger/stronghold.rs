@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [engine, client, communication, products/commandline, utils/utils]
+        project: [engine, client, products/commandline, derive, utils, communication]
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:

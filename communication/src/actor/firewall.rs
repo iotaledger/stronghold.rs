@@ -3,7 +3,7 @@
 
 use libp2p::PeerId;
 use std::collections::HashMap;
-pub use stronghold_derive::RequestPermissions;
+pub use stronghold_utils::RequestPermissions;
 
 /// The permission value for request variants.
 /// It is a  bit that is set at a certain index, therefore the value is always a power of 2.

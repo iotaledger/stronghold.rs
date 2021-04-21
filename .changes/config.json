@@ -71,23 +71,19 @@
     }
   },
   "packages": {
-    "utils-derive": {
-      "path": "./utils/utils-derive/",
+    "stronghold-derive": {
+      "path": "./derive/",
       "manager": "rust"
     },
     "stronghold-runtime": {
       "path": "./engine/runtime/",
       "manager": "rust"
     },
-    "communication-macros": {
-      "path": "./communication/communication-macros",
-      "manager": "rust"
-    },
     "stronghold-utils": {
       "path": "./utils/utils/",
       "manager": "rust",
       "dependencies": [
-        "utils-derive"
+        "stronghold-derive"
       ]
     },
     "stronghold-engine": {
@@ -101,8 +97,7 @@
       "path": "./communication/",
       "manager": "rust",
       "dependencies": [
-        "stronghold-utils",
-        "communication-macros"
+        "stronghold-utils"
       ]
     },
     "iota-stronghold": {
@@ -112,7 +107,7 @@
         "stronghold-engine",
         "stronghold-communication",
         "stronghold-utils",
-        "runtime"
+        "stronghold-runtime"
       ]
     },
     "commandline": {
