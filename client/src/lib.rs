@@ -76,8 +76,6 @@ pub type Result<T> = anyhow::Result<T, Error>;
 pub enum Error {
     #[error("Id Error")]
     IDError,
-    #[error("Vault Error: {0}")]
-    VaultError(#[from] engine::vault::Error),
-    #[error("Snapshot Error: {0}")]
-    SnapshotError(#[from] engine::snapshot::Error),
+    #[error("Engine Error: {0}")]
+    EngineError(#[from] engine::Error),
 }

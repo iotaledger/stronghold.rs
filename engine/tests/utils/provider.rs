@@ -7,11 +7,7 @@ use crypto::{
 };
 
 use engine::vault::{BoxProvider, Key};
-
-use serde::{Deserialize, Serialize};
-
-/// An implementation of the Vault's `BoxProvider type.  Used to encrypt and decrypt the data in this Stronghold.
-#[derive(Ord, PartialEq, Eq, PartialOrd, Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Ord, PartialEq, Eq, PartialOrd)]
 pub struct Provider;
 impl Provider {
     const NONCE_LEN: usize = XChaCha20Poly1305::NONCE_LENGTH;

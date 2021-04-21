@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [engine, client, communication, products/commandline, utils/utils]
+        project: [engine, client, products/commandline, derive, utils, communication]
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
@@ -82,4 +82,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --manifest-path=engine/Cargo.toml --release -p snapshot -p store -p vault
+          args: --manifest-path=engine/Cargo.toml --release -p stronghold-runtime

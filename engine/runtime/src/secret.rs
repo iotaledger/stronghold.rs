@@ -185,13 +185,11 @@ mod tests {
 
     use super::*;
 
-    use std::{format, ptr};
+    use std::format;
 
-    use libsodium_sys::randombytes_buf;
-
-    pub(crate) fn memrandom(bytes: &mut [u8]) {
-        unsafe { randombytes_buf(bytes.as_mut_ptr() as *mut _, bytes.len()) }
-    }
+    // pub(crate) fn memrandom(bytes: &mut [u8]) {
+    //     unsafe { randombytes_buf(bytes.as_mut_ptr() as *mut _, bytes.len()) }
+    // }
 
     #[test]
     fn test_default() {
@@ -200,21 +198,21 @@ mod tests {
         Secret::<u32>::new(|s| assert_eq!(*s, 0xdbdbdbdb));
     }
 
-    #[test]
-    fn test_zeroed() {
-        // Bit of a hack but works.
-        unsafe {
-            let mut ptr: *const _ = ptr::null();
+    // #[test]
+    // fn test_zeroed() {
+    //     // Bit of a hack but works.
+    //     unsafe {
+    //         let mut ptr: *const _ = ptr::null();
 
-            Secret::<u128>::new(|mut s| {
-                memrandom(s.as_mut_bytes());
+    //         Secret::<u128>::new(|mut s| {
+    //             memrandom(s.as_mut_bytes());
 
-                ptr = &*s
-            });
+    //             ptr = &*s
+    //         });
 
-            assert_eq!(*ptr, 0);
-        }
-    }
+    //         assert_eq!(*ptr, 0);
+    //     }
+    // }
 
     #[test]
     fn test_from() {

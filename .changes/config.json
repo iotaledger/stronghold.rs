@@ -71,65 +71,33 @@
     }
   },
   "packages": {
-    "utils-derive": {
-      "path": "./utils/utils-derive/",
-      "manager": "rust",
-      "publish": false
+    "stronghold-derive": {
+      "path": "./derive/",
+      "manager": "rust"
     },
-    "runtime": {
+    "stronghold-runtime": {
       "path": "./engine/runtime/",
-      "manager": "rust",
-      "publish": false
-    },
-    "store": {
-      "path": "./engine/store/",
-      "manager": "rust",
-      "publish": false
-    },
-    "communication-macros": {
-      "path": "./communication/communication-macros",
       "manager": "rust"
     },
     "stronghold-utils": {
       "path": "./utils/utils/",
       "manager": "rust",
-      "publish": false,
       "dependencies": [
-        "utils-derive"
-      ]
-    },
-    "vault": {
-      "path": "./engine/vault/",
-      "manager": "rust",
-      "publish": false,
-      "dependencies": [
-        "stronghold-utils"
-      ]
-    },
-    "snapshot": {
-      "path": "./engine/snapshot/",
-      "manager": "rust",
-      "publish": false,
-      "dependencies": [
-        "stronghold-utils"
+        "stronghold-derive"
       ]
     },
     "stronghold-engine": {
       "path": "./engine/",
       "manager": "rust",
       "dependencies": [
-        "vault",
-        "snapshot",
-        "store",
-        "runtime"
+        "stronghold-runtime"
       ]
     },
     "stronghold-communication": {
       "path": "./communication/",
       "manager": "rust",
       "dependencies": [
-        "stronghold-utils",
-        "communication-macros"
+        "stronghold-utils"
       ]
     },
     "iota-stronghold": {
@@ -137,12 +105,9 @@
       "manager": "rust",
       "dependencies": [
         "stronghold-engine",
-        "vault",
-        "snapshot",
-        "store",
         "stronghold-communication",
         "stronghold-utils",
-        "runtime"
+        "stronghold-runtime"
       ]
     },
     "commandline": {
