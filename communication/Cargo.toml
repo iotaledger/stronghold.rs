@@ -7,6 +7,7 @@ license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/iotaledger/stronghold.rs"
 homepage = "https://stronghold.docs.iota.org"
+description = "libp2p-noise based communication system for IOTA Stronghold"
 
 [lib]
 name = "communication"
