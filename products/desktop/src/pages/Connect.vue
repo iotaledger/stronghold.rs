@@ -1,78 +1,112 @@
 <template>
   <q-page class="flex flex-center">
-    <q-card class="q-pa-lg bg-grey-9 full-width absolute-top" style="top:0;bottom:0;min-height:100%">
+    <q-card
+      class="q-pa-lg bg-grey-9 full-width absolute-top"
+      style="top: 0; bottom: 0; min-height: 100%"
+    >
       <h3 class="q-my-sm text-right text-weight-thin">Connect</h3>
       <q-tabs
-          v-model="tab"
-          dense
-          class="text-grey"
-          active-color="primary"
-          indicator-color="primary"
-          align="justify"
-          narrow-indicator
-        >
-          <q-tab name="outgoing" label="Outgoing" />
-          <q-tab name="incoming" label="Incoming" />
-          <q-tab name="groups" label="Groups" />
-        </q-tabs>
+        v-model="tab"
+        dense
+        class="text-grey"
+        active-color="primary"
+        indicator-color="primary"
+        align="justify"
+        narrow-indicator
+      >
+        <q-tab name="outgoing" label="Outgoing" />
+        <q-tab name="incoming" label="Incoming" />
+        <q-tab name="groups" label="Groups" />
+      </q-tabs>
 
-        <q-separator />
+      <q-separator />
 
-        <q-tab-panels v-model="tab" animated>
-          <q-tab-panel name="outgoing">
-            <div class="text-h6 float-left">Outgoing Offer</div>
-            <div class="text-p float-left">
-              On this page you can generate an outgoing offer as a QR code for easy scanning that will offer the receiver the ability to connect with your device.
-            </div>
-              <!--<q-img class="q-mb-sm float-right" src="peerid.png" height="158px" width="158px" / -->
-              <VueQrcode class="q-mb-sm float-right" :value="thisPeerID" :options="{ width: 158 }" />
-              <q-input class="q-ma-sm full-width" outlined dense :value="thisPeerID" readonly label="This PeerID + Permissions" />
-              <div class="full-width">
-                <q-select
-                  outlined
-                  v-model="modelMultiple"
-                  multiple
-                  :options="options"
-                  use-chips
-                  stack-label
-                  label="Permissions"
-                />
-              </div>
-              <q-btn color="primary" class="q-mt-sm q-mb-md float-right" :disabled="!remotePeerID" @click="send" label="Send to Coalition" />
-              <!--<p>Enum debug: {{ accessVerifier }}</p>-->
-          </q-tab-panel>
+      <q-tab-panels v-model="tab" animated>
+        <q-tab-panel name="outgoing">
+          <div class="text-h6 float-left">Outgoing Offer</div>
+          <div class="text-p float-left">
+            On this page you can generate an outgoing offer as a QR code for
+            easy scanning that will offer the receiver the ability to connect
+            with your device.
+          </div>
+          <!--<q-img class="q-mb-sm float-right" src="peerid.png" height="158px" width="158px" / -->
+          <VueQrcode
+            class="q-mb-sm float-right"
+            :value="thisPeerID"
+            :options="{ width: 158 }"
+          />
+          <q-input
+            class="q-ma-sm full-width"
+            outlined
+            dense
+            :value="thisPeerID"
+            readonly
+            label="This PeerID + Permissions"
+          />
+          <div class="full-width">
+            <q-select
+              outlined
+              v-model="modelMultiple"
+              multiple
+              :options="options"
+              use-chips
+              stack-label
+              label="Permissions"
+            />
+          </div>
+          <q-btn
+            color="primary"
+            class="q-mt-sm q-mb-md float-right"
+            :disabled="!remotePeerID"
+            @click="send"
+            label="Send to Coalition"
+          />
+          <!--<p>Enum debug: {{ accessVerifier }}</p>-->
+        </q-tab-panel>
 
-          <q-tab-panel name="incoming">
-            <div class="text-h6">Incoming Request</div>
-              <q-input class="q-mb-sm full-width" outlined dense v-model="remotePeerID" label="Remote PeerID" />
-              <div class="full-width">
-                <q-select
-                  filled
-                  v-model="modelMultiple"
-                  multiple
-                  :options="options"
-                  use-chips
-                  stack-label
-                  label="Permissions"
-                />
-              </div>
-              <q-btn color="primary" class="q-my-md float-right" :disabled="!remotePeerID" @click="send" label="Invite to Coalition" />
-          </q-tab-panel>
+        <q-tab-panel name="incoming">
+          <div class="text-h6">Incoming Request</div>
+          <q-input
+            class="q-mb-sm full-width"
+            outlined
+            dense
+            v-model="remotePeerID"
+            label="Remote PeerID"
+          />
+          <div class="full-width">
+            <q-select
+              filled
+              v-model="modelMultiple"
+              multiple
+              :options="options"
+              use-chips
+              stack-label
+              label="Permissions"
+            />
+          </div>
+          <q-btn
+            color="primary"
+            class="q-my-md float-right"
+            :disabled="!remotePeerID"
+            @click="send"
+            label="Invite to Coalition"
+          />
+        </q-tab-panel>
 
-          <q-tab-panel name="groups">
-            <div class="text-h6">Groups</div>
-            Lorem ipsum dolor sit amet consectetur adipisicing elit.
-          </q-tab-panel>
-        </q-tab-panels>
-      </q-card>
+        <q-tab-panel name="groups">
+          <div class="text-h6">Groups</div>
+          Lorem ipsum dolor sit amet consectetur adipisicing elit.
+        </q-tab-panel>
+      </q-tab-panels>
+    </q-card>
   </q-page>
 </template>
 
 <script>
-import { promisified } from 'tauri/api/tauri'
+import { invoke } from '@tauri-apps/api/tauri'
 import { mapState } from 'vuex'
 import VueQrcode from '@chenfengyuan/vue-qrcode'
-// import { emit, listen } from 'tauri/api/event'
+// import { emit, listen } from '@tauri-apps/api/event'
 
 const accessEnum = {
   RequestAlways: 1,
@@ -100,9 +134,10 @@ function decodeAccess (v) {
   }
   const accessList = []
 
-  accesses.forEach(v => {
-    accessList.push(Object.keys(accessEnum).find(key =>
-      accessEnum[key] === v))
+  accesses.forEach((v) => {
+    accessList.push(
+      Object.keys(accessEnum).find((key) => accessEnum[key] === v)
+    )
   })
 
   return accessList
@@ -112,8 +147,8 @@ function decodeAccess (v) {
 function computeAccess (arr) {
   let access = 0
   const keys = Object.keys(accessEnum)
-  arr.forEach(acc => {
-    if (keys.find(k => k === acc)) {
+  arr.forEach((acc) => {
+    if (keys.find((k) => k === acc)) {
       access = access + accessEnum[acc]
     }
   })
@@ -132,43 +167,46 @@ export default {
       options: Object.keys(accessEnum)
     }
   },
-  mounted () {
-
-  },
+  mounted () {},
   computed: {
     thisPeerID () {
-      return `${this.$store.state.lockdown.peers.me}:${computeAccess(this.modelMultiple)}`
+      return `${this.$store.state.lockdown.peers.me}:${computeAccess(
+        this.modelMultiple
+      )}`
     },
     accessVerifier () {
       return decodeAccess(computeAccess(this.modelMultiple))
     },
     ...mapState('lockdown', {
-      myPeerID (state) { return state.myPeerID }
+      myPeerID (state) {
+        return state.myPeerID
+      }
     })
   },
   methods: {
     send () {
-      promisified({
-        cmd: 'send',
+      invoke('send', {
         payload: {
           pwd: this.pwd,
           path: this.path
         }
-      }).then(response => {
-        // do something with the Ok() response
-        const { message } = response
-        this.myPeerId = message
-        // this.$q.notify(`${message}`)
-      }).catch(error => {
-        // do something with the Err() response string
-        this.$q.notify('error:', error)
       })
+        .then((response) => {
+          // do something with the Ok() response
+          const { message } = response
+          this.myPeerId = message
+          // this.$q.notify(`${message}`)
+        })
+        .catch((error) => {
+          // do something with the Err() response string
+          this.$q.notify('error:', error)
+        })
     }
   }
 }
 </script>
 <style lang="sass">
-  .q-chip__content
-    font-size: 0.8em
-    padding: 0 3px 0 2px
+.q-chip__content
+  font-size: 0.8em
+  padding: 0 3px 0 2px
 </style>

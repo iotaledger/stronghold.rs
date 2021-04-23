@@ -104,8 +104,8 @@
 import EssentialLink from 'components/EssentialLink.vue'
 import InternalLink from 'components/InternalLink.vue'
 import LockTimer from 'components/LockTimer.vue'
-// import { promisified } from 'tauri/api/tauri'
-import { save } from 'tauri/api/dialog'
+// import { invoke } from '@tauri-apps/api/tauri'
+import { save } from '@tauri-apps/api/dialog'
 import { Stronghold, Location } from 'tauri-plugin-stronghold-api'
 import { Authenticator } from 'tauri-plugin-authenticator-api'
 
@@ -292,8 +292,7 @@ export default {
       this.stronghold.save()
 
       /*
-      promisified({
-        cmd: 'unlock',
+      invoke('unlock', {
         payload: {
           pwd: this.pwd,
           path: this.path
