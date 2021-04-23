@@ -7,7 +7,7 @@ use std::fmt;
 
 #[derive(Debug)]
 pub struct Request<T, U> {
-    pub request: T,
+    pub message: T,
     pub response_channel: oneshot::Sender<U>,
 }
 

@@ -16,13 +16,10 @@
 use communication_refactored::*;
 use futures::{channel::mpsc, prelude::*};
 use libp2p::{
-    core::{
-        identity,
-        muxing::StreamMuxerBox,
-        transport::{self, Transport},
-        upgrade, Multiaddr, PeerId,
-    },
+    core::{identity, transport::Transport, upgrade, Multiaddr, PeerId},
+    mdns::{Mdns, MdnsConfig},
     noise::{Keypair, NoiseConfig, X25519Spec},
+    relay::{new_transport_and_behaviour, RelayConfig},
     swarm::{Swarm, SwarmEvent},
     tcp::TcpConfig,
     yamux::YamuxConfig,
@@ -36,16 +33,8 @@ fn ping_protocol() {
     let ping = Ping("ping".to_string().into_bytes());
     let pong = Pong("pong".to_string().into_bytes());
 
-    let protocols = vec![MessageProtocol];
-    let cfg = RequestResponseConfig::default();
-
-    let (peer1_id, trans) = mk_transport();
-    let ping_proto1 = RequestResponse::<Ping, Pong>::new(protocols.clone(), cfg.clone());
-    let mut swarm1 = Swarm::new(trans, ping_proto1, peer1_id);
-
-    let (peer2_id, trans) = mk_transport();
-    let ping_proto2 = RequestResponse::<Ping, Pong>::new(protocols, cfg);
-    let mut swarm2 = Swarm::new(trans, ping_proto2, peer2_id);
+    let (peer1_id, mut swarm1) = async_std::task::block_on(init_swarm());
+    let (peer2_id, mut swarm2) = async_std::task::block_on(init_swarm());
 
     let (mut tx, mut rx) = mpsc::channel::<Multiaddr>(1);
 
@@ -63,12 +52,12 @@ fn ping_protocol() {
                     peer_id,
                     event:
                         RequestResponseEvent::ReceiveRequest(Ok(Request {
-                            request,
+                            message,
                             response_channel,
                         })),
                     ..
                 }) => {
-                    assert_eq!(&request, &expected_ping);
+                    assert_eq!(&message, &expected_ping);
                     assert_eq!(&peer_id, &peer2_id);
                     response_channel.send(pong.clone()).unwrap();
                 }
@@ -124,16 +113,8 @@ fn ping_protocol() {
 fn emits_inbound_connection_closed_failure() {
     let ping = Ping("ping".to_string().into_bytes());
 
-    let protocols = vec![MessageProtocol];
-    let cfg = RequestResponseConfig::default();
-
-    let (peer1_id, trans) = mk_transport();
-    let ping_proto1 = RequestResponse::<Ping, Pong>::new(protocols.clone(), cfg.clone());
-    let mut swarm1 = Swarm::new(trans, ping_proto1, peer1_id);
-
-    let (peer2_id, trans) = mk_transport();
-    let ping_proto2 = RequestResponse::<Ping, Pong>::new(protocols, cfg);
-    let mut swarm2 = Swarm::new(trans, ping_proto2, peer2_id);
+    let (peer1_id, mut swarm1) = async_std::task::block_on(init_swarm());
+    let (peer2_id, mut swarm2) = async_std::task::block_on(init_swarm());
 
     let addr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
     swarm1.listen_on(addr).unwrap();
@@ -149,8 +130,8 @@ fn emits_inbound_connection_closed_failure() {
         let _channel = loop {
             futures::select!(
                 BehaviourEvent {peer_id, event, ..} = swarm1.next().fuse() => match event {
-                    RequestResponseEvent::ReceiveRequest(Ok(Request {request, response_channel})) => {
-                        assert_eq!(&request, &ping);
+                    RequestResponseEvent::ReceiveRequest(Ok(Request {message, response_channel})) => {
+                        assert_eq!(&message, &ping);
                         assert_eq!(&peer_id, &peer2_id);
                         break response_channel
                     },
@@ -181,16 +162,8 @@ fn emits_inbound_connection_closed_failure() {
 fn emits_inbound_connection_closed_if_channel_is_dropped() {
     let ping = Ping("ping".to_string().into_bytes());
 
-    let protocols = vec![MessageProtocol];
-    let cfg = RequestResponseConfig::default();
-
-    let (peer1_id, trans) = mk_transport();
-    let ping_proto1 = RequestResponse::<Ping, Pong>::new(protocols.clone(), cfg.clone());
-    let mut swarm1 = Swarm::new(trans, ping_proto1, peer1_id);
-
-    let (peer2_id, trans) = mk_transport();
-    let ping_proto2 = RequestResponse::<Ping, Pong>::new(protocols, cfg);
-    let mut swarm2 = Swarm::new(trans, ping_proto2, peer2_id);
+    let (peer1_id, mut swarm1) = async_std::task::block_on(init_swarm());
+    let (peer2_id, mut swarm2) = async_std::task::block_on(init_swarm());
 
     let addr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
     swarm1.listen_on(addr).unwrap();
@@ -206,8 +179,8 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
         let event = loop {
             futures::select!(
                 BehaviourEvent {peer_id, event, ..} = swarm1.next().fuse() =>
-                if let RequestResponseEvent::ReceiveRequest(Ok(Request {request, response_channel})) = event {
-                     assert_eq!(&request, &ping);
+                if let RequestResponseEvent::ReceiveRequest(Ok(Request {message, response_channel})) = event {
+                     assert_eq!(&message, &ping);
                      assert_eq!(&peer_id, &peer2_id);
                      drop(response_channel);
                     continue;
@@ -225,19 +198,24 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
     });
 }
 
-fn mk_transport() -> (PeerId, transport::Boxed<(PeerId, StreamMuxerBox)>) {
+async fn init_swarm() -> (PeerId, Swarm<RequestResponse<Ping, Pong>>) {
     let id_keys = identity::Keypair::generate_ed25519();
     let peer_id = id_keys.public().into_peer_id();
     let noise_keys = Keypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
-    (
-        peer_id,
-        TcpConfig::new()
-            .nodelay(true)
-            .upgrade(upgrade::Version::V1)
-            .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-            .multiplex(YamuxConfig::default())
-            .boxed(),
-    )
+    let (relay_transport, relay_behaviour) =
+        new_transport_and_behaviour(RelayConfig::default(), TcpConfig::new().nodelay(true));
+    let transport = relay_transport
+        .upgrade(upgrade::Version::V1)
+        .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
+        .multiplex(YamuxConfig::default())
+        .boxed();
+    let protocols = vec![MessageProtocol];
+    let cfg = RequestResponseConfig::default();
+    let mdns = Mdns::new(MdnsConfig::default())
+        .await
+        .expect("Failed to create mdns behaviour.");
+    let behaviour = RequestResponse::new(protocols, cfg, mdns, relay_behaviour);
+    (peer_id, Swarm::new(transport, behaviour, peer_id))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

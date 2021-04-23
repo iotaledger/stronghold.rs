@@ -15,7 +15,7 @@
 
 mod protocol;
 
-use crate::behaviour::{RequestId, EMPTY_QUEUE_SHRINK_THRESHOLD};
+use crate::behaviour::{Request, RequestId, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},
@@ -65,8 +65,7 @@ where
 {
     ReceiveRequest {
         request_id: RequestId,
-        request: Req,
-        sender: oneshot::Sender<Res>,
+        request: Request<Req, Res>,
     },
     ReceiveResponse {
         request_id: RequestId,
@@ -99,8 +98,7 @@ where
     }
 }
 
-type PendingInboundFuture<Req, Res> =
-    BoxFuture<'static, Result<((RequestId, Req), oneshot::Sender<Res>), oneshot::Canceled>>;
+type PendingInboundFuture<Req, Res> = BoxFuture<'static, Result<(RequestId, Request<Req, Res>), oneshot::Canceled>>;
 
 #[doc(hidden)]
 pub struct RequestResponseHandler<Req, Res>
@@ -179,13 +177,26 @@ where
             .then(|| self.supported_protocols.clone())
             .unwrap_or_default();
 
-        self.inbound.push(rq_recv.map_ok(move |rq| (rq, rs_send)).boxed());
         let proto = ResponseProtocol {
             protocols,
             request_sender: rq_send,
             response_receiver: rs_recv,
             request_id,
         };
+
+        self.inbound.push(
+            rq_recv
+                .map_ok(move |(id, rq)| {
+                    (
+                        id,
+                        Request {
+                            message: rq,
+                            response_channel: rs_send,
+                        },
+                    )
+                })
+                .boxed(),
+        );
         SubstreamProtocol::new(proto, request_id).with_timeout(self.substream_timeout)
     }
 }
@@ -200,20 +211,18 @@ where
     type Error = ProtocolsHandlerUpgrErr<io::Error>;
     type InboundProtocol = ResponseProtocol<Req, Res>;
     type OutboundProtocol = RequestProtocol<Req, Res>;
-    type OutboundOpenInfo = RequestId;
     type InboundOpenInfo = RequestId;
+    type OutboundOpenInfo = RequestId;
 
     fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol, Self::InboundOpenInfo> {
         self.new_inbound_protocol()
     }
 
-    fn inject_fully_negotiated_inbound(&mut self, sent: bool, request_id: RequestId) {
-        if sent {
-            self.pending_events.push_back(HandlerOutEvent::ResponseSent(request_id))
-        } else {
-            self.pending_events
-                .push_back(HandlerOutEvent::ResponseOmission(request_id))
-        }
+    fn inject_fully_negotiated_inbound(&mut self, sent_response: bool, request_id: RequestId) {
+        let event = sent_response
+            .then(|| HandlerOutEvent::ResponseSent(request_id))
+            .unwrap_or(HandlerOutEvent::ResponseOmission(request_id));
+        self.pending_events.push_back(event)
     }
 
     fn inject_fully_negotiated_outbound(&mut self, response: Res, request_id: RequestId) {
@@ -221,9 +230,9 @@ where
             .push_back(HandlerOutEvent::ReceiveResponse { request_id, response });
     }
 
-    fn inject_event(&mut self, request: Self::InEvent) {
+    fn inject_event(&mut self, event: Self::InEvent) {
         self.keep_alive = KeepAlive::Yes;
-        if let HandlerInEvent::SendRequest { request_id, request } = request {
+        if let HandlerInEvent::SendRequest { request_id, request } = event {
             self.outbound.push_back((request_id, request))
         }
     }
@@ -264,42 +273,32 @@ where
         if let Some(err) = self.pending_error.take() {
             return Poll::Ready(ProtocolsHandlerEvent::Close(err));
         }
-
         if let Some(event) = self.pending_events.pop_front() {
             return Poll::Ready(ProtocolsHandlerEvent::Custom(event));
         }
         if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
             self.pending_events.shrink_to_fit();
         }
-
         while let Poll::Ready(Some(result)) = self.inbound.poll_next_unpin(cx) {
-            match result {
-                Ok(((id, rq), rs_sender)) => {
-                    self.keep_alive = KeepAlive::Yes;
-                    return Poll::Ready(ProtocolsHandlerEvent::Custom(HandlerOutEvent::ReceiveRequest {
-                        request_id: id,
-                        request: rq,
-                        sender: rs_sender,
-                    }));
-                }
-                Err(oneshot::Canceled) => {}
+            if let Ok((request_id, request)) = result {
+                self.keep_alive = KeepAlive::Yes;
+                return Poll::Ready(ProtocolsHandlerEvent::Custom(HandlerOutEvent::ReceiveRequest {
+                    request_id,
+                    request,
+                }));
             }
         }
-
         if let Some((request_id, request)) = self.outbound.pop_front() {
             let protocol = self.new_outbound_protocol(request_id, request);
             return Poll::Ready(ProtocolsHandlerEvent::OutboundSubstreamRequest { protocol });
         }
-
         if self.outbound.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
             self.outbound.shrink_to_fit();
         }
-
         if self.inbound.is_empty() && self.keep_alive.is_yes() {
             let until = Instant::now() + self.substream_timeout + self.keep_alive_timeout;
             self.keep_alive = KeepAlive::Until(until);
         }
-
         Poll::Pending
     }
 }
