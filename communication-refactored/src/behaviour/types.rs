@@ -5,6 +5,11 @@ use futures::channel::oneshot;
 use libp2p::PeerId;
 use std::fmt;
 
+pub enum Direction {
+    Inbound,
+    Outbound,
+}
+
 #[derive(Debug)]
 pub struct Request<T, U> {
     pub message: T,
@@ -14,7 +19,7 @@ pub struct Request<T, U> {
 #[derive(Debug)]
 pub struct BehaviourEvent<Req, Res> {
     pub request_id: RequestId,
-    pub peer_id: PeerId,
+    pub peer: PeerId,
     pub event: RequestResponseEvent<Req, Res>,
 }
 

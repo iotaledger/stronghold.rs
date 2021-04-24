@@ -13,9 +13,11 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
+mod connections;
 pub mod handler;
 mod types;
 
+use connections::PeerConnectionManager;
 pub use handler::{MessageEvent, MessageProtocol, ProtocolSupport};
 pub use types::*;
 
@@ -36,7 +38,7 @@ use libp2p::{
 };
 use smallvec::SmallVec;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     error,
     sync::{atomic::AtomicU64, Arc},
     task::{Context, Poll},
@@ -96,8 +98,7 @@ where
     next_inbound_id: Arc<AtomicU64>,
     config: RequestResponseConfig,
     pending_events: VecDeque<NetworkBehaviourAction<HandlerInEvent<Req, Res>, BehaviourEvent<Req, Res>>>,
-    connected: HashMap<PeerId, SmallVec<[Connection; 2]>>,
-    addresses: HashMap<PeerId, SmallVec<[Multiaddr; 6]>>,
+    peer_connections: PeerConnectionManager,
     pending_outbound_requests: HashMap<PeerId, SmallVec<[(RequestId, Req); 10]>>,
     pending_inbound_responses: HashMap<RequestId, oneshot::Sender<Res>>,
 }
@@ -121,8 +122,7 @@ where
             next_inbound_id: Arc::new(AtomicU64::new(1)),
             config: cfg,
             pending_events: VecDeque::new(),
-            connected: HashMap::new(),
-            addresses: HashMap::new(),
+            peer_connections: PeerConnectionManager::new(),
             pending_outbound_requests: HashMap::new(),
             pending_inbound_responses: HashMap::new(),
         }
@@ -154,26 +154,15 @@ where
     }
 
     pub fn add_address(&mut self, peer: &PeerId, address: Multiaddr) {
-        self.addresses.entry(*peer).or_default().push(address);
+        self.peer_connections.add_address(peer, address)
     }
 
-    pub fn remove_address(&mut self, peer: &PeerId, address: &Multiaddr) {
-        let mut last = false;
-        if let Some(addresses) = self.addresses.get_mut(peer) {
-            addresses.retain(|a| a != address);
-            last = addresses.is_empty();
-        }
-        if last {
-            self.addresses.remove(peer);
-        }
+    pub fn remove_address(&mut self, peer: PeerId, address: &Multiaddr) {
+        self.peer_connections.remove_address(peer, address)
     }
 
     pub fn is_connected(&self, peer: &PeerId) -> bool {
-        if let Some(connections) = self.connected.get(peer) {
-            !connections.is_empty()
-        } else {
-            false
-        }
+        self.peer_connections.is_connected(peer)
     }
 
     fn next_request_id(&mut self) -> RequestId {
@@ -181,75 +170,77 @@ where
     }
 
     fn try_send_request(&mut self, peer: &PeerId, request_id: RequestId, request: Req) -> Option<Req> {
-        if let Some(connections) = self.connected.get_mut(peer) {
-            if connections.is_empty() {
-                return Some(request);
-            }
-            let index = (request_id.value() as usize) % connections.len();
-            let conn = &mut connections[index];
-
-            conn.pending_inbound_responses.insert(request_id);
-            self.pending_events.push_back(NetworkBehaviourAction::NotifyHandler {
+        if let Some(connection_id) = self.peer_connections.new_request(peer, request_id, &Direction::Inbound) {
+            let event = NetworkBehaviourAction::NotifyHandler {
                 peer_id: *peer,
-                handler: NotifyHandler::One(conn.id),
+                handler: NotifyHandler::One(connection_id),
                 event: HandlerInEvent::SendRequest { request, request_id },
-            });
+            };
+            self.pending_events.push_back(event);
             None
         } else {
             Some(request)
         }
     }
 
-    fn remove_pending_outbound_response(
-        &mut self,
-        peer: &PeerId,
-        connection: ConnectionId,
-        request: &RequestId,
-    ) -> bool {
-        self.get_connection_mut(peer, connection)
-            .map(|c| c.pending_outbound_responses.remove(request))
-            .unwrap_or(false)
+    fn handle_connection_closed(&mut self, peer: &PeerId, conn_id: &ConnectionId) {
+        if let Some(connection) = self.peer_connections.remove_connection(*peer, conn_id) {
+            let mut events = Vec::new();
+            let mut outbound_events = connection
+                .pending_requests(&Direction::Outbound)
+                .iter()
+                .map(|request_id| {
+                    let err = SendResponseError::ConnectionClosed;
+                    let ev = RequestResponseEvent::SendResponse(Err(err));
+                    (*request_id, ev)
+                })
+                .collect();
+            let mut inbound_events = connection
+                .pending_requests(&Direction::Inbound)
+                .iter()
+                .map(|request_id| {
+                    let err = ReceiveResponseError::ConnectionClosed;
+                    let ev = RequestResponseEvent::ReceiveResponse(Err(err));
+                    (*request_id, ev)
+                })
+                .collect();
+            events.append(&mut outbound_events);
+            events.append(&mut inbound_events);
+            events.into_iter().for_each(|(request_id, event)| {
+                let event = BehaviourEvent {
+                    peer: *peer,
+                    request_id,
+                    event,
+                };
+                let action = NetworkBehaviourAction::GenerateEvent(event);
+                self.pending_events.push_back(action);
+            })
+        }
     }
 
-    fn remove_pending_inbound_response(
-        &mut self,
-        peer: &PeerId,
-        connection: ConnectionId,
-        request: &RequestId,
-    ) -> bool {
-        self.get_connection_mut(peer, connection)
-            .map(|c| c.pending_inbound_responses.remove(request))
-            .unwrap_or(false)
-    }
-
-    fn get_connection_mut(&mut self, peer: &PeerId, connection: ConnectionId) -> Option<&mut Connection> {
-        self.connected
-            .get_mut(peer)
-            .and_then(|connections| connections.iter_mut().find(|c| c.id == connection))
-    }
-
-    fn handler_handler_event(&mut self, peer_id: PeerId, connection: ConnectionId, event: HandlerOutEvent<Req, Res>) {
+    fn handler_handler_event(&mut self, peer: PeerId, connection: ConnectionId, event: HandlerOutEvent<Req, Res>) {
         let request_id = *event.request_id();
         let req_res_event = match event {
             HandlerOutEvent::ReceiveResponse {
                 ref request_id,
                 response,
             } => {
-                let removed = self.remove_pending_inbound_response(&peer_id, connection, request_id);
+                let removed = self
+                    .peer_connections
+                    .remove_request(&peer, &connection, request_id, &Direction::Inbound);
                 debug_assert!(removed, "Expect request_id to be pending before receiving response.",);
                 RequestResponseEvent::ReceiveResponse(Ok(response))
             }
             HandlerOutEvent::ReceiveRequest { request_id, request } => {
                 let req_res_event = RequestResponseEvent::ReceiveRequest(Ok(request));
-                match self.get_connection_mut(&peer_id, connection) {
-                    Some(connection) => {
-                        let inserted = connection.pending_outbound_responses.insert(request_id);
-                        debug_assert!(inserted, "Expect id of new request to be unknown.");
-                        req_res_event
-                    }
+                match self
+                    .peer_connections
+                    .new_request(&peer, request_id, &Direction::Outbound)
+                {
+                    Some(_) => req_res_event,
                     None => {
                         let event = BehaviourEvent {
-                            peer_id,
+                            peer,
                             request_id,
                             event: req_res_event,
                         };
@@ -260,26 +251,35 @@ where
                 }
             }
             HandlerOutEvent::ResponseSent(ref request_id) => {
-                let removed = self.remove_pending_outbound_response(&peer_id, connection, request_id);
+                let removed =
+                    self.peer_connections
+                        .remove_request(&peer, &connection, request_id, &Direction::Outbound);
                 debug_assert!(removed, "Expect request_id to be pending before response is sent.");
                 RequestResponseEvent::SendResponse(Ok(()))
             }
             HandlerOutEvent::ResponseOmission(ref request_id) => {
-                let removed = self.remove_pending_outbound_response(&peer_id, connection, request_id);
+                let removed =
+                    self.peer_connections
+                        .remove_request(&peer, &connection, request_id, &Direction::Outbound);
                 debug_assert!(removed, "Expect request_id to be pending before response is omitted.",);
                 RequestResponseEvent::SendResponse(Err(SendResponseError::ResponseOmission))
             }
             HandlerOutEvent::OutboundTimeout(ref request_id) => {
-                let removed = self.remove_pending_inbound_response(&peer_id, connection, &request_id);
+                let removed = self
+                    .peer_connections
+                    .remove_request(&peer, &connection, request_id, &Direction::Inbound);
                 debug_assert!(removed, "Expect request_id to be pending before request times out.");
                 RequestResponseEvent::ReceiveResponse(Err(ReceiveResponseError::Timeout))
             }
             HandlerOutEvent::InboundTimeout(ref request_id) => {
-                self.remove_pending_outbound_response(&peer_id, connection, request_id);
+                self.peer_connections
+                    .remove_request(&peer, &connection, request_id, &Direction::Outbound);
                 RequestResponseEvent::SendResponse(Err(SendResponseError::Timeout))
             }
             HandlerOutEvent::OutboundUnsupportedProtocols(ref request_id) => {
-                let removed = self.remove_pending_inbound_response(&peer_id, connection, request_id);
+                let removed = self
+                    .peer_connections
+                    .remove_request(&peer, &connection, request_id, &Direction::Inbound);
                 debug_assert!(removed, "Expect request_id to be pending before failing to connect.",);
                 RequestResponseEvent::SendRequest(Err(SendRequestError::UnsupportedProtocols))
             }
@@ -288,7 +288,7 @@ where
             }
         };
         let behaviour_event = BehaviourEvent {
-            peer_id,
+            peer,
             request_id,
             event: req_res_event,
         };
@@ -324,117 +324,73 @@ where
         IntoProtocolsHandler::select(handler, IntoProtocolsHandler::select(mdns_handler, relay_handler))
     }
 
-    fn addresses_of_peer(&mut self, peer_id: &PeerId) -> Vec<Multiaddr> {
-        let mut addresses = Vec::new();
-        if let Some(connections) = self.connected.get(peer_id) {
-            addresses.extend(connections.iter().filter_map(|c| c.address.clone()))
-        }
-        if let Some(more) = self.addresses.get(peer_id) {
-            addresses.extend(more.into_iter().cloned());
-        }
-        addresses.extend(self.mdns.addresses_of_peer(peer_id));
-        addresses.extend(self.relay.addresses_of_peer(peer_id));
+    fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
+        let mut addresses = self
+            .peer_connections
+            .get_peer_addrs(peer)
+            .map(|v| v.to_vec())
+            .unwrap_or_default();
+        addresses.extend(self.mdns.addresses_of_peer(peer));
+        addresses.extend(self.relay.addresses_of_peer(peer));
         addresses
     }
 
-    fn inject_connected(&mut self, peer_id: &PeerId) {
-        self.relay.inject_connected(peer_id);
-        if let Some(pending) = self.pending_outbound_requests.remove(peer_id) {
+    fn inject_connected(&mut self, peer: &PeerId) {
+        self.relay.inject_connected(peer);
+        if let Some(pending) = self.pending_outbound_requests.remove(peer) {
             for (request_id, request) in pending {
-                let request = self.try_send_request(peer_id, request_id, request);
+                let request = self.try_send_request(peer, request_id, request);
                 assert!(request.is_none());
             }
         }
     }
 
-    fn inject_disconnected(&mut self, peer_id: &PeerId) {
-        self.relay.inject_disconnected(peer_id);
-        self.connected.remove(peer_id);
+    fn inject_disconnected(&mut self, peer: &PeerId) {
+        self.relay.inject_disconnected(peer);
+        self.mdns.inject_disconnected(peer);
+        self.peer_connections.remove_all_connections(peer);
     }
 
-    fn inject_connection_established(
-        &mut self,
-        peer_id: &PeerId,
-        connection_id: &ConnectionId,
-        endpoint: &ConnectedPoint,
-    ) {
-        let address = match endpoint {
-            ConnectedPoint::Dialer { address } => Some(address.clone()),
-            ConnectedPoint::Listener { .. } => None,
-        };
-        self.connected
-            .entry(*peer_id)
-            .or_default()
-            .push(Connection::new(*connection_id, address));
-        self.relay
-            .inject_connection_established(peer_id, connection_id, endpoint);
+    fn inject_connection_established(&mut self, peer: &PeerId, conn_id: &ConnectionId, endpoint: &ConnectedPoint) {
+        self.peer_connections
+            .add_connection(*peer, *conn_id, endpoint.get_remote_address().clone());
+        self.relay.inject_connection_established(peer, conn_id, endpoint);
     }
 
-    fn inject_connection_closed(&mut self, peer_id: &PeerId, conn: &ConnectionId, endpoint: &ConnectedPoint) {
-        let connections = self
-            .connected
-            .get_mut(peer_id)
-            .expect("Expected some established connection to peer before closing.");
-
-        let connection = connections
-            .iter()
-            .position(|c| &c.id == conn)
-            .map(|p: usize| connections.remove(p))
-            .expect("Expected connection to be established before closing.");
-
-        if connections.is_empty() {
-            self.connected.remove(peer_id);
-        }
-
-        for request_id in connection.pending_outbound_responses {
-            self.pending_events
-                .push_back(NetworkBehaviourAction::GenerateEvent(BehaviourEvent {
-                    peer_id: *peer_id,
-                    request_id,
-                    event: RequestResponseEvent::SendResponse(Err(SendResponseError::ConnectionClosed)),
-                }));
-        }
-
-        for request_id in connection.pending_inbound_responses {
-            self.pending_events
-                .push_back(NetworkBehaviourAction::GenerateEvent(BehaviourEvent {
-                    peer_id: *peer_id,
-                    request_id,
-                    event: RequestResponseEvent::ReceiveResponse(Err(ReceiveResponseError::ConnectionClosed)),
-                }));
-        }
-        self.relay.inject_connection_closed(peer_id, conn, endpoint);
+    fn inject_connection_closed(&mut self, peer: &PeerId, conn_id: &ConnectionId, endpoint: &ConnectedPoint) {
+        self.handle_connection_closed(peer, conn_id);
+        self.relay.inject_connection_closed(peer, conn_id, endpoint);
     }
 
     fn inject_address_change(&mut self, _: &PeerId, _: &ConnectionId, _old: &ConnectedPoint, _new: &ConnectedPoint) {}
 
     fn inject_event(
         &mut self,
-        peer_id: PeerId,
+        peer: PeerId,
         connection: ConnectionId,
         event: <<Self::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
     ) {
         match event {
-            EitherOutput::First(ev) => self.handler_handler_event(peer_id, connection, ev),
-            EitherOutput::Second(EitherOutput::First(ev)) => self.mdns.inject_event(peer_id, connection, ev),
-            EitherOutput::Second(EitherOutput::Second(ev)) => self.relay.inject_event(peer_id, connection, ev),
+            EitherOutput::First(ev) => self.handler_handler_event(peer, connection, ev),
+            EitherOutput::Second(EitherOutput::First(ev)) => self.mdns.inject_event(peer, connection, ev),
+            EitherOutput::Second(EitherOutput::Second(ev)) => self.relay.inject_event(peer, connection, ev),
         }
     }
 
     fn inject_addr_reach_failure(&mut self, _peer_id: Option<&PeerId>, _addr: &Multiaddr, _error: &dyn error::Error) {}
 
-    fn inject_dial_failure(&mut self, peer_id: &PeerId) {
-        if let Some(pending) = self.pending_outbound_requests.remove(peer_id) {
+    fn inject_dial_failure(&mut self, peer: &PeerId) {
+        if let Some(pending) = self.pending_outbound_requests.remove(peer) {
             for (request_id, _) in pending {
                 self.pending_events
                     .push_back(NetworkBehaviourAction::GenerateEvent(BehaviourEvent {
-                        peer_id: *peer_id,
+                        peer: *peer,
                         request_id,
                         event: RequestResponseEvent::SendRequest(Err(SendRequestError::DialFailure)),
                     }));
             }
         }
-        self.relay.inject_dial_failure(peer_id);
+        self.relay.inject_dial_failure(peer);
     }
 
     fn inject_new_listener(&mut self, _id: ListenerId) {}
@@ -506,21 +462,3 @@ where
 }
 
 const EMPTY_QUEUE_SHRINK_THRESHOLD: usize = 100;
-
-struct Connection {
-    id: ConnectionId,
-    address: Option<Multiaddr>,
-    pending_outbound_responses: HashSet<RequestId>,
-    pending_inbound_responses: HashSet<RequestId>,
-}
-
-impl Connection {
-    fn new(id: ConnectionId, address: Option<Multiaddr>) -> Self {
-        Self {
-            id,
-            address,
-            pending_outbound_responses: Default::default(),
-            pending_inbound_responses: Default::default(),
-        }
-    }
-}

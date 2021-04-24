@@ -49,7 +49,7 @@ fn ping_protocol() {
             match swarm1.next_event().await {
                 SwarmEvent::NewListenAddr(addr) => tx.send(addr).await.unwrap(),
                 SwarmEvent::Behaviour(BehaviourEvent {
-                    peer_id,
+                    peer,
                     event:
                         RequestResponseEvent::ReceiveRequest(Ok(Request {
                             message,
@@ -58,15 +58,15 @@ fn ping_protocol() {
                     ..
                 }) => {
                     assert_eq!(&message, &expected_ping);
-                    assert_eq!(&peer_id, &peer2_id);
+                    assert_eq!(&peer, &peer2_id);
                     response_channel.send(pong.clone()).unwrap();
                 }
                 SwarmEvent::Behaviour(BehaviourEvent {
-                    peer_id,
+                    peer,
                     event: RequestResponseEvent::SendResponse(Ok(..)),
                     ..
                 }) => {
-                    assert_eq!(&peer_id, &peer2_id);
+                    assert_eq!(&peer, &peer2_id);
                 }
                 SwarmEvent::Behaviour(e) => panic!("Peer1: Unexpected event: {:?}", e),
                 _ => {}
@@ -84,7 +84,7 @@ fn ping_protocol() {
 
         loop {
             let BehaviourEvent {
-                peer_id,
+                peer,
                 request_id,
                 event,
             } = swarm2.next().await;
@@ -92,7 +92,7 @@ fn ping_protocol() {
                 RequestResponseEvent::ReceiveResponse(Ok(response)) => {
                     count += 1;
                     assert_eq!(&response, &expected_pong);
-                    assert_eq!(&peer_id, &peer1_id);
+                    assert_eq!(&peer, &peer1_id);
                     assert_eq!(req_id, request_id);
                     if count >= num_pings {
                         return;
@@ -129,10 +129,10 @@ fn emits_inbound_connection_closed_failure() {
         // Wait for swarm 1 to receive request by swarm 2.
         let _channel = loop {
             futures::select!(
-                BehaviourEvent {peer_id, event, ..} = swarm1.next().fuse() => match event {
+                BehaviourEvent {peer, event, ..} = swarm1.next().fuse() => match event {
                     RequestResponseEvent::ReceiveRequest(Ok(Request {message, response_channel})) => {
                         assert_eq!(&message, &ping);
-                        assert_eq!(&peer_id, &peer2_id);
+                        assert_eq!(&peer, &peer2_id);
                         break response_channel
                     },
                     e => panic!("Peer1: Unexpected event: {:?}", e)
@@ -178,10 +178,10 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
         // Wait for swarm 1 to receive request by swarm 2.
         let event = loop {
             futures::select!(
-                BehaviourEvent {peer_id, event, ..} = swarm1.next().fuse() =>
+                BehaviourEvent {peer, event, ..} = swarm1.next().fuse() =>
                 if let RequestResponseEvent::ReceiveRequest(Ok(Request {message, response_channel})) = event {
                      assert_eq!(&message, &ping);
-                     assert_eq!(&peer_id, &peer2_id);
+                     assert_eq!(&peer, &peer2_id);
                      drop(response_channel);
                     continue;
                 },
@@ -200,7 +200,7 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
 
 async fn init_swarm() -> (PeerId, Swarm<RequestResponse<Ping, Pong>>) {
     let id_keys = identity::Keypair::generate_ed25519();
-    let peer_id = id_keys.public().into_peer_id();
+    let peer = id_keys.public().into_peer_id();
     let noise_keys = Keypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
     let (relay_transport, relay_behaviour) =
         new_transport_and_behaviour(RelayConfig::default(), TcpConfig::new().nodelay(true));
@@ -215,7 +215,7 @@ async fn init_swarm() -> (PeerId, Swarm<RequestResponse<Ping, Pong>>) {
         .await
         .expect("Failed to create mdns behaviour.");
     let behaviour = RequestResponse::new(protocols, cfg, mdns, relay_behaviour);
-    (peer_id, Swarm::new(transport, behaviour, peer_id))
+    (peer, Swarm::new(transport, behaviour, peer))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
