@@ -1,62 +1,80 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-//! ## Introduction
+//! # Stronghold Communication
 //!
-//! This library enables strongholds on different devices and in different networks to communicate with each other.
-//! The main basis for its functionality is the [rust-libp2p](https://github.com/libp2p/rust-libp2p) library, which is a system of protocols, specifications and
-//! libraries that enable the development of peer-to-peer network applications (https://libp2p.io/).
+//! This crate enables strongholds on different devices and in different networks to communicate with each other.
+//! The main basis for its functionality is the [`libp2p`] crate, which is a system of protocols, specifications
+//! and libraries that enable the development of peer-to-peer network applications
 //!
-//! Libp2p was originally the network protocol of IPFS and has evolved into a modular system with implementations in
-//! Node.js, Go and Rust. It is important to note that at the current status, the Rust implementation doesn't have all
-//! features yet and especially peer discovery in different networks, NAT Traversal and Firewalls pose a problem that we
-//! solved for stronghold by using a mailbox concept that is described further down below.
+//! The library provides two options to use communication, either directly with the [`P2PNetworkBehaviour`],
+//! or by using the [`CommunicationActor`] within a [`ActorSystem`].
 //!
-//! ## Transport and the Swarm
+//! ## P2PNetworkBehaviour
 //!
-//! Libp2p uses the `transport` as the lowest layer, that is responsible for sending and receiving data over a network.
-//! The current rust implementation supports tcp and websockets, and apart from that provides the option to upgrade a
-//! connection with protocols for multiplexing and authentication.
+//! The P2pNetworkBehaviour implements the [`NetworkBehaviour`] by combining multiple protocols of Libp2p:
+//! - Multiplexing following the [Yamux specification](https://!github.com/hashicorp/yamux/blob/master/spec.md)
+//! - Noise: Encryption of the communication using the [Noise protocol](https://!noiseprotocol.org/noise.html) with
+//!   XX-Handshake
+//! - Multicast DNS: Enable Peer Discovery in a local network
+//! - Identify Protocol: Receive identifying information like the `PeerId` and listening addresses when connecting to a
+//!   new peer.
+//! - Request-Response Protocol: Allows sending direct request/response messages between Peers; it expects a response
+//!   for each request
+//!  
+//! Upon creating a new instance, a transport is created and upgraded, and combined with the P2PNetworkBehaviour into
+//! a [`ExpandedSwarm`].
+//! This Swarm is returned to the caller and serves as entry-point for all communication to other peers.
+//! Additional to the Libp2p methods of the [`ExpandedSwarm`], it enables sending outbound messages, and manages the
+//! known peers. Incoming [`P2PEvents`] can be handled by polling from the swarm, e.g. via the [`next`] method.
 //!
-//! The second important concept of libp2p is its `Swarm` (in newer implementations and documents also called `Switch`).
-//! The swarm is responsible for negotiating protocols, managing transports and sending and receiving messages via
-//! different protocols. It is possible to combine different protocols into a so called `NetworkBehaviour`, which is
-//! what this library is doing. Stronghold-communication uses multicast DNS (mDNS) for peer discovery in a local
-//! network, the identify protocol to receive information about newly connected peers, and the RequestResponse protocol
-//! in order to send / receive custom messages and parse them.
+//! ### Example
+//! ```no_run
+//! use async_std::task;
+//! use communication::behaviour::{BehaviourConfig, P2PNetworkBehaviour};
+//! use libp2p::identity::Keypair;
+//! use serde::{Deserialize, Serialize};
 //!
-//! ## Multiplexing and Noise-encryption
+//! #[derive(Debug, Clone, Serialize, Deserialize)]
+//! pub enum Request {
+//!     Ping,
+//! }
 //!
-//! The transport of stronghold-communication is upgraded with yamux for multiplexing and the noise protocol, this noise
-//! protocol uses the XX-Handshake and ensures authentication and encryption.
+//! #[derive(Debug, Clone, Serialize, Deserialize)]
+//! pub enum Response {
+//!     Pong,
+//! }
 //!
-//! ## Stronghold-Communication
+//! let local_keys = Keypair::generate_ed25519();
+//! let config = BehaviourConfig::default();
+//! let mut swarm = task::block_on(P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config))
+//!     .expect("Init swarm failed.");
+//! ```
 //!
-//! Stronghold-communication creates the `P2PNetworkBehaviour` struct for sending messages and reacting upon the outcome
-//! of the operation. Upon creating a new instance, a transport is created and upgraded, and combined with the
-//! P2PNetworkBehaviour into a ExpandedSwarm. This Swarm is returned to the caller and serves as entry-point for all
-//! communication to other peers. Additionally to the methodes of `libp2p::swarm::ExpandedSwarm`, it enables sending
-//! outbound messages, and manually adding and dialing peers. Incoming `P2PEvent` can be handled by polling from the
-//! swarm, e.g. via the `next` method. Due to libp2ps concept of `multiaddresses`, the swarm has multiple listening
-//! addresses that encode different addressing schemes for different protocols. Apart from IPv4 and IPv6 Addresses,
-//! these multiaddresses can also be dns addresses, which is relevant if a peer is listening to such an address on a
-//! server. The listed multiaddresses are only the ones within the same local network, but if port forwarding was
-//! configured, the local `/ip4/127.0.0.1/tcp/12345` Address can be replaced by the public one or by
-//! `/dns/my.public.server.address/ tcp/12345`, where the `/tcp/12345` part describes the port.
+//! ## CommunicationActor
 //!
-//! ## Mailbox Concept
+//! The [`CommunicationActor`] is using the [`riker`] crate to implement the actor pattern.  
+//! When creating a new [`CommunicationActor`], the actor creates a [`P2PNetworkBehaviour`] and continuously polls for
+//! events, incoming requests are sent to the client actor that has to be provided in the [`CommunicationConfig`].
 //!
-//! Since not all peers can be dialed directly e.g. because they are behind a firewall, stronghold-communication
-//! includes an example and dockerfile for using a mailbox. The mailbox is a peer running on a server with public IP
-//! Address that can be reached by all other peers. If can be used to deposit records for unavailable remote peers by
-//! sending a `Request::PutRecord` message with the record to the mailbox, and that can then return the Records to
-//! remote peers upon receiving a `Request::GetRecord` request.
+//! All swarm interaction, and configuration of the [`CommunicationActor`] is accomplished by sending the appropriate
+//! [`CommunicationRequest`] to it, for each [`CommunicationRequest`] a [`CommunicationResults`] is returned to the
+//! sender, this also allows using the [ask pattern](https://!riker.rs/patterns/#ask).
+//!
+//! ### Firewall
+//! The communication actor implements a firewall that checks the permission of each outgoing and incoming requests and
+//! drops them if the necessary permission has not been set. The required [`ToPermissionVariants`] trait for messages
+//! can be derived with the [`communication-macros`], this allows in case of enum Request
+//! types to accept specific variants while rejecting others.
 
 pub mod actor;
 pub mod behaviour;
 pub mod libp2p {
+    //! Re-export [`libp2p`] types.
     pub use libp2p::{
-        core::{connection::ConnectionLimit, identity::Keypair, ConnectedPoint, Multiaddr, PeerId},
+        core::{
+            connection::ConnectionLimit, identity::Keypair, multiaddr::Protocol, ConnectedPoint, Multiaddr, PeerId,
+        },
         swarm::{Swarm, SwarmEvent},
     };
 }

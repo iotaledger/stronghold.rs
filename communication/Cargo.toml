@@ -1,22 +1,28 @@
 [package]
 name = "stronghold-communication"
-version = "0.2.0"
-authors = [ "Elena Frank <elena.frank@iota.org>" ]
+version = "0.4.1"
+authors = [ "IOTA Stiftung" ]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
+repository = "https://github.com/iotaledger/stronghold.rs"
+homepage = "https://stronghold.docs.iota.org"
+description = "libp2p-noise based communication system for IOTA Stronghold"
+
+[lib]
+name = "communication"
 
 [dependencies]
 async-std = "1.6"
 async-trait = "0.1"
 futures = "0.3"
 clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
-libp2p = { version = "0.35", default-features = false, features = [
-  "dns",
+libp2p = { version = "0.37", default-features = false, features = [
+  "dns-async-std",
   "identify",
   "mdns",
-  "mplex",
   "noise",
+  "relay",
   "request-response",
   "tcp-async-io",
   "yamux",
@@ -26,11 +32,12 @@ regex = "1.3"
 thiserror = "1.0"
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
-riker = { version = "0.4", git ="https://github.com/elenaf9/riker", branch = "master" }
+riker = "0.4"
 
-stronghold-utils = {version = "0.1", path = "../utils"}
+  [dependencies.stronghold-utils]
+  path = "../utils"
+  version = "0.3"
 
 [features]
 default = [ "mdns" ]
 mdns = [ ]
-

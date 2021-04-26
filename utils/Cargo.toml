@@ -1,11 +1,21 @@
 [package]
 name = "stronghold-utils"
-version = "0.1.0"
-authors = [ "Gustav Behm <gustav.behm@iota.org>" ]
+version = "0.3.0"
+authors = [
+  "IOTA Stiftung",
+  "tensor-programming <tensordeveloper@gmail.com>"
+]
 edition = "2018"
 license = "Apache-2.0"
+description = "Utils for the iota_stronghold library"
+homepage = "https://stronghold.docs.iota.org"
+repository = "https://github.com/iotaledger/stronghold.rs"
 
 [dependencies]
 futures = "0.3"
 rand = "0.8.3"
-riker = { version = "0.4", git ="https://github.com/elenaf9/riker", branch = "master" }
+riker = "0.4"
+
+  [dependencies.stronghold-derive]
+  path = "../derive"
+  version = "0.2.0"

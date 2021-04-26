@@ -42,14 +42,14 @@ use async_std::{
     io::{stdin, BufReader},
     task,
 };
+use communication::{
+    behaviour::{BehaviourConfig, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
+    libp2p::{Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
+};
 use core::{ops::Deref, str::FromStr};
 use futures::{prelude::*, select};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use stronghold_communication::{
-    behaviour::{BehaviourConfig, P2PEvent, P2PIdentifyEvent, P2PNetworkBehaviour, P2PReqResEvent},
-    libp2p::{Keypair, Multiaddr, PeerId, Swarm, SwarmEvent},
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
@@ -65,14 +65,18 @@ pub enum Response {
 
 // Parse the user input line and handle the commands
 fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, line: &str) {
-    let target_regex = "(?:\\s+\"(?P<target>[^\"]+)\")?";
+    let target_regex = "(?:\\s+\"(?P<target>[[:alnum:]]{32,64}?)\")?";
     let msg_regex = "(?:\\s+\"(?P<msg>[^\"]+)\")?";
     let regex = "(?P<type>LIST|DIAL|PING|MSG)".to_string() + target_regex + msg_regex;
-    if let Some(captures) = Regex::new(&regex).unwrap().captures(&line) {
-        match captures.name("type").unwrap().as_str() {
+    if let Some(captures) = Regex::new(&regex).expect("Invalid Reqex string.").captures(&line) {
+        match captures
+            .name("type")
+            .expect("No capture for match name 'type'.")
+            .as_str()
+        {
             "LIST" => {
                 println!("Known peers:");
-                for peer in swarm.get_all_peers() {
+                for peer in swarm.behaviour().get_all_peers() {
                     println!("{:?}", peer);
                 }
             }
@@ -83,7 +87,7 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                     .name("target")
                     .and_then(|peer_match| Multiaddr::from_str(peer_match.as_str()).ok())
                 {
-                    if Swarm::dial_addr(swarm, peer_addr.clone()).is_ok() {
+                    if swarm.dial_addr(peer_addr.clone()).is_ok() {
                         println!("Dialed {:?}", peer_addr);
                     }
                 } else {
@@ -97,7 +101,7 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                     .name("target")
                     .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
                 {
-                    swarm.send_request(&peer_id, Request::Ping);
+                    swarm.behaviour_mut().send_request(&peer_id, Request::Ping);
                     println!("Pinged {:?}", peer_id);
                 } else {
                     eprintln!("Missing or invalid peer id");
@@ -111,7 +115,7 @@ fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, 
                     .and_then(|peer_match| PeerId::from_str(peer_match.as_str()).ok())
                 {
                     if let Some(msg) = captures.name("msg").map(|msg_match| msg_match.as_str().to_string()) {
-                        swarm.send_request(&peer_id, Request::Msg(msg.clone()));
+                        swarm.behaviour_mut().send_request(&peer_id, Request::Msg(msg.clone()));
                         println!("Send msg {:?} to peer {:?}", msg, peer_id);
                         return;
                     }
@@ -140,7 +144,7 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                 println!("Received message from peer {:?}\n{:?}", peer_id, request);
                 match request {
                     Request::Ping => {
-                        let response = swarm.send_response(request_id, Response::Pong);
+                        let response = swarm.behaviour_mut().send_response(&request_id, Response::Pong);
                         if response.is_ok() {
                             println!("Send Pong back");
                         } else {
@@ -148,7 +152,9 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                         }
                     }
                     Request::Msg(msg) => {
-                        let response = swarm.send_response(request_id, Response::Msg(format!("echo: {}", msg)));
+                        let response = swarm
+                            .behaviour_mut()
+                            .send_response(&request_id, Response::Msg(format!("echo: {}", msg)));
                         if response.is_ok() {
                             println!("Echoed message");
                         } else {
@@ -166,10 +172,7 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
                 "Response from peer {:?} for Request {:?}:\n{:?}\n",
                 peer_id, request_id, response
             ),
-            P2PReqResEvent::ResSent {
-                peer_id: _,
-                request_id: _,
-            } => {}
+            P2PReqResEvent::ResSent { .. } => {}
             error => {
                 println!("Error {:?}", error)
             }
@@ -177,15 +180,10 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
         // Identify event that is send by the identify-protocol once two peer establish a
         // connection
         P2PEvent::Identify(event) => {
-            if let P2PIdentifyEvent::Received {
-                peer_id,
-                info: _,
-                observed_addr,
-            } = event.deref().clone()
-            {
+            if let P2PIdentifyEvent::Received { peer_id, info } = event.deref().clone() {
                 println!(
-                    "Received identify event: {:?} observes us at {:?}",
-                    peer_id, observed_addr
+                    "Received identify event: {:?} observes us at {:?}\n",
+                    peer_id, info.observed_addr
                 );
             }
         }
@@ -194,19 +192,21 @@ fn handle_event(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, e: P2
 }
 
 // Create a swarm and poll for events from that swarm
-fn listen() {
+async fn listen() {
     let local_keys = Keypair::generate_ed25519();
     let config = BehaviourConfig::default();
 
     // Create a Swarm that implementes the Request-Reponse-, Identify-, and mDNS-Protocol
-    let mut swarm =
-        P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config).expect("Could not create swarm.");
-    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
+    let mut swarm = P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config)
+        .await
+        .expect("Could not create swarm.");
+    swarm
+        .listen_on("/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."))
         .expect("Listening Error.");
 
     println!(
         "Local PeerId: {:?}\ncommands:\nPING <peer_id>\nMSG <peer_id>\nDIAL <peer_addr>\nLIST",
-        Swarm::local_peer_id(&swarm)
+        swarm.local_peer_id()
     );
     if cfg!(not(feature = "mdns")) {
         println!("Since mdns is not enabled, peers have to be DIALed first to connect before PING / MSG them");
@@ -214,35 +214,33 @@ fn listen() {
 
     let mut stdin = BufReader::new(stdin()).lines();
     // Start polling for user input and events in the network
-    task::block_on(async {
-        loop {
-            select! {
-                // User input from stdin
-                stdin_input = stdin.next().fuse()=> {
-                    if let Some(Ok(command)) = stdin_input {
-                        handle_input_line(&mut swarm, &command);
-                    } else {
-                        // stdin closed
-                        break;
-                    }
-                },
-                // Events from the swarm
-                swarm_event = swarm.next_event().fuse() => {
-                    match swarm_event {
-                        SwarmEvent::Behaviour(event) => handle_event(&mut swarm, event),
-                        SwarmEvent::NewListenAddr(addr) => println!("Listen on {:?}", addr),
-                        SwarmEvent::ListenerError{error} => {
-                            eprintln!("ListenerError: {:?}", error);
-                            return;
-                        },
-                        _ => {},
-                    }
-                },
-            };
-        }
-    });
+    loop {
+        select! {
+            // User input from stdin
+            stdin_input = stdin.next().fuse()=> {
+                if let Some(Ok(command)) = stdin_input {
+                    handle_input_line(&mut swarm, &command);
+                } else {
+                    // stdin closed
+                    break;
+                }
+            },
+            // Events from the swarm
+            swarm_event = swarm.next_event().fuse() => {
+                match swarm_event {
+                    SwarmEvent::Behaviour(event) => handle_event(&mut swarm, event),
+                    SwarmEvent::NewListenAddr(addr) => println!("Listen on {:?}", addr),
+                    SwarmEvent::ListenerError{error} => {
+                        eprintln!("ListenerError: {:?}", error);
+                        return;
+                    },
+                    _ => {},
+                }
+            },
+        };
+    }
 }
 
 fn main() {
-    listen()
+    task::block_on(listen())
 }

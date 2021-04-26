@@ -3,7 +3,10 @@
 
 use riker::actors::*;
 
-use crate::{line_error, Location, RecordHint, ResultMessage, Stronghold};
+use crate::{line_error, utils::LoadFromPath, Location, RecordHint, Stronghold};
+use crypto::macs::hmac::HMAC_SHA512;
+
+use engine::vault::{ClientId, VaultId};
 
 fn setup_stronghold() -> Stronghold {
     let sys = ActorSystem::new().unwrap();
@@ -18,7 +21,7 @@ fn setup_stronghold() -> Stronghold {
 fn test_read_write() {
     let stronghold = setup_stronghold();
 
-    let loc0 = Location::counter::<_, usize>("path", Some(0));
+    let loc0 = Location::counter::<_, usize>("path", 0);
 
     futures::executor::block_on(stronghold.write_to_vault(
         loc0.clone(),
@@ -37,7 +40,7 @@ fn test_read_write() {
 fn test_head_read_write() {
     let stronghold = setup_stronghold();
 
-    let lochead = Location::counter::<_, usize>("path", None);
+    let lochead = Location::counter::<_, usize>("path", 0);
 
     futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
@@ -45,6 +48,8 @@ fn test_head_read_write() {
         RecordHint::new(b"first hint").expect(line_error!()),
         vec![],
     ));
+
+    let lochead = lochead.increment_counter();
 
     futures::executor::block_on(stronghold.write_to_vault(
         lochead.clone(),
@@ -62,12 +67,13 @@ fn test_head_read_write() {
 fn test_multi_write_read_counter_head() {
     let stronghold = setup_stronghold();
 
-    let lochead = Location::counter::<_, usize>("path", None);
-    let loc5 = Location::counter::<_, usize>("path", Some(5));
-    let loc15 = Location::counter::<_, usize>("path", Some(15));
+    let loc5 = Location::counter::<_, usize>("path", 5);
+    let loc15 = Location::counter::<_, usize>("path", 15);
+    let loc19 = Location::counter::<_, usize>("path", 19);
 
     for i in 0..20 {
         futures::executor::block_on(async {
+            let lochead = Location::counter::<_, usize>("path", i);
             let data = format!("test {:?}", i);
             stronghold
                 .write_to_vault(
@@ -80,28 +86,39 @@ fn test_multi_write_read_counter_head() {
         });
     }
 
-    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead));
+    let (list, _) = futures::executor::block_on(stronghold.list_hints_and_ids("path"));
 
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test 19"));
+    assert_eq!(20, list.len());
+
+    let b = futures::executor::block_on(stronghold.record_exists(loc5.clone()));
+    assert!(b);
+    let b = futures::executor::block_on(stronghold.record_exists(loc19.clone()));
+    assert!(b);
+    let b = futures::executor::block_on(stronghold.record_exists(loc15.clone()));
+    assert!(b);
+
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc19));
+    assert_eq!(Some(b"test 19".to_vec()), p);
 
     let (p, _) = futures::executor::block_on(stronghold.read_secret(loc5));
 
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test 5"));
+    assert_eq!(Some(b"test 5".to_vec()), p);
 
     let (p, _) = futures::executor::block_on(stronghold.read_secret(loc15));
 
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test 15"));
+    assert_eq!(Some(b"test 15".to_vec()), p);
 }
 
 // test delete_data.
 #[test]
 fn test_revoke_with_gc() {
     let stronghold = setup_stronghold();
-
-    let lochead = Location::counter::<_, usize>("path", None);
+    let lochead = Location::counter::<_, usize>("path", 0);
 
     for i in 0..10 {
+        let lochead = Location::counter::<_, usize>("path", i);
         futures::executor::block_on(async {
+            let lochead = lochead.clone().increment_counter();
             let data = format!("test {:?}", i);
             stronghold
                 .write_to_vault(
@@ -116,7 +133,7 @@ fn test_revoke_with_gc() {
 
     for i in 0..10 {
         futures::executor::block_on(async {
-            let loc = Location::counter::<_, usize>("path", Some(i));
+            let loc = Location::counter::<_, usize>("path", i);
 
             stronghold.delete_data(loc.clone(), false).await;
 
@@ -126,11 +143,11 @@ fn test_revoke_with_gc() {
         })
     }
 
+    let (ids, _res) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path().to_vec()));
+
     futures::executor::block_on(stronghold.garbage_collect(lochead.vault_path().to_vec()));
 
-    let ids = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path().to_vec()));
-
-    assert_eq!(ids, (vec![], ResultMessage::Ok(())));
+    assert_eq!(ids, vec![]);
 }
 
 /// Test writing to a snapshot and reading back.
@@ -139,16 +156,17 @@ fn test_write_read_snapshot() {
     let mut stronghold = setup_stronghold();
 
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
-    let lochead = Location::counter::<_, usize>("path", None);
 
     let client_path = b"test".to_vec();
 
     for i in 0..20 {
+        let loc = Location::counter::<_, usize>("path", i);
+
         futures::executor::block_on(async {
             let data = format!("test {:?}", i);
             stronghold
                 .write_to_vault(
-                    lochead.clone(),
+                    loc,
                     data.as_bytes().to_vec(),
                     RecordHint::new(data).expect(line_error!()),
                     vec![],
@@ -165,7 +183,8 @@ fn test_write_read_snapshot() {
 
     for i in 0..20 {
         futures::executor::block_on(async {
-            let loc = Location::counter::<_, usize>("path", Some(i));
+            let loc = Location::counter::<_, usize>("path", i);
+
             let (p, _) = stronghold.read_secret(loc).await;
 
             let res = format!("test {:?}", i);
@@ -183,7 +202,6 @@ fn test_write_read_multi_snapshot() {
     let mut stronghold = setup_stronghold();
 
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
-    let lochead = Location::counter::<_, usize>("path", None);
 
     for i in 0..20 {
         futures::executor::block_on(
@@ -195,13 +213,15 @@ fn test_write_read_multi_snapshot() {
         futures::executor::block_on(async {
             let data = format!("test {:?}", i);
 
+            let loc = Location::counter::<_, usize>("path", i);
+
             stronghold
                 .switch_actor_target(format!("test {:?}", i).as_bytes().to_vec())
                 .await;
 
             stronghold
                 .write_to_vault(
-                    lochead.clone(),
+                    loc,
                     data.as_bytes().to_vec(),
                     RecordHint::new(data).expect(line_error!()),
                     vec![],
@@ -227,12 +247,13 @@ fn test_write_read_multi_snapshot() {
     }
 
     for i in 0..10 {
+        let loc = Location::counter::<_, usize>("path", i);
         futures::executor::block_on(async {
             stronghold
                 .switch_actor_target(format!("test {:?}", i % 10).as_bytes().to_vec())
                 .await;
 
-            let (p, _) = stronghold.read_secret(lochead.clone()).await;
+            let (p, _) = stronghold.read_secret(loc.clone()).await;
 
             let res = format!("test {:?}", i);
 
@@ -257,4 +278,35 @@ fn test_store() {
     let (res, _) = futures::executor::block_on(stronghold.read_from_store(location));
 
     assert_eq!(std::str::from_utf8(&res), Ok("test data"));
+}
+
+/// ID Tests.
+#[test]
+fn test_client_id() {
+    let path = b"some_path";
+    let data = b"a bunch of random data";
+    let mut buf = [0; 64];
+
+    let id = ClientId::load_from_path(data, path).unwrap();
+
+    HMAC_SHA512(data, path, &mut buf);
+
+    let (test, _) = buf.split_at(24);
+
+    assert_eq!(ClientId::load(test).unwrap(), id);
+}
+
+#[test]
+fn test_vault_id() {
+    let path = b"another_path_of_data";
+    let data = b"a long sentance for seeding the id with some data and bytes.  Testing to see how long this can be without breaking the hmac";
+    let mut buf = [0; 64];
+
+    let id = VaultId::load_from_path(data, path).unwrap();
+
+    HMAC_SHA512(data, path, &mut buf);
+
+    let (test, _) = buf.split_at(24);
+
+    assert_eq!(VaultId::load(test).unwrap(), id);
 }

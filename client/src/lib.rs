@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![allow(dead_code)]
+#![allow(clippy::from_over_into)]
+#![allow(clippy::upper_case_acronyms)]
 
 /// An interface for implementing the stronghold engine. Using the Riker Actor model, this library provides a
 /// mechanism to manage secret data between multiple users. Stronghold may be accessed via the `Stronghold`
@@ -14,9 +16,8 @@
 // TODO: Synchronization via 4th actor and status type.
 // TODO: Add supervisors
 // TODO: Add documentation
-// TODO: Encrypted Return Channel
 // TODO: Handshake
-// TODO: O(1) comparison for IDS.
+// TODO: ~~O(1) comparison for IDS.~~
 // TODO: ~~Add ability to name snapshots~~
 // TODO: ~~Add ability to read and revoke records not on the head of the chain.~~
 // TODO: Add Reference types for the RecordIds and VaultIds to expose to the External programs.
@@ -26,34 +27,39 @@
 use thiserror::Error as DeriveError;
 
 mod actors;
-mod bucket;
-mod client;
 mod interface;
 mod internals;
-mod key_store;
-mod snapshot;
+mod state;
 mod utils;
 
+// Tests exist as a sub-module because they need to be able to test internal concepts without exposing them publicly.
 #[cfg(test)]
 mod tests;
-
-use crate::utils::{ClientId, VaultId};
 
 pub use crate::{
     actors::{ProcResult, Procedure, SLIP10DeriveInput},
     interface::Stronghold,
     internals::Provider,
-    utils::{hd, Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+};
+
+#[cfg(feature = "communication")]
+pub use crate::actors::SHRequestPermission;
+#[cfg(feature = "communication")]
+pub use communication::{
+    actor::RelayDirection,
+    libp2p::{Multiaddr, PeerId},
 };
 
 pub use engine::snapshot::{
     files::{home_dir, snapshot_dir},
-    kdf::{naive_kdf, recommended_kdf},
+    kdf::naive_kdf,
     Key,
 };
 
 pub use engine::vault::RecordHint;
 
+/// TODO: Should be replaced with proper errors.
 #[macro_export]
 macro_rules! line_error {
     () => {
@@ -70,8 +76,6 @@ pub type Result<T> = anyhow::Result<T, Error>;
 pub enum Error {
     #[error("Id Error")]
     IDError,
-    #[error("Vault Error: {0}")]
-    VaultError(#[from] engine::vault::Error),
-    #[error("Snapshot Error: {0}")]
-    SnapshotError(#[from] engine::snapshot::Error),
+    #[error("Engine Error: {0}")]
+    EngineError(#[from] engine::Error),
 }

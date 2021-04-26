@@ -1,0 +1,25 @@
+[package]
+name = "stronghold-runtime"
+version = "0.3.0"
+authors = [
+  "IOTA Stiftung",
+  "tensor-programming <tensordeveloper@gmail.com>"
+]
+edition = "2018"
+license = "Apache-2.0"
+description = "Runtime and allocation primitives for stronghold"
+readme = "README.md"
+keywords = [ "iota", "stronghold", "security" ]
+categories = [ "security" ]
+homepage = "https://stronghold.docs.iota.org"
+repository = "https://github.com/iotaledger/stronghold.rs"
+
+[lib]
+name = "runtime"
+
+[dependencies]
+libsodium-sys = "0.2"
+serde = "1.0"
+
+[dev-dependencies]
+quickcheck = "1.0"

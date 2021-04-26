@@ -1,8 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use serde::{de, ser, Deserialize, Serialize};
-use zeroize::Zeroize;
+use serde::{Deserialize, Serialize};
 
 /// A type alias for the empty `ResultMessage<()>` type.
 pub type StatusMessage = ResultMessage<()>;
@@ -34,14 +33,8 @@ impl<T> From<Result<T, String>> for ResultMessage<T> {
 /// chain while on Write, the `None` location is the next record in the version chain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Location {
-    Generic {
-        vault_path: Vec<u8>,
-        record_path: Vec<u8>,
-    },
-    Counter {
-        vault_path: Vec<u8>,
-        counter: Option<usize>,
-    },
+    Generic { vault_path: Vec<u8>, record_path: Vec<u8> },
+    Counter { vault_path: Vec<u8>, counter: usize },
 }
 
 impl Location {
@@ -63,10 +56,24 @@ impl Location {
 
     /// Creates a counter location from a type that implements `Into<Vec<u8>>` and a counter type that implements
     /// `Into<usize>`
-    pub fn counter<V: Into<Vec<u8>>, C: Into<usize>>(vault_path: V, counter: Option<C>) -> Self {
+    pub fn counter<V: Into<Vec<u8>>, C: Into<usize>>(vault_path: V, counter: C) -> Self {
         Self::Counter {
             vault_path: vault_path.into(),
-            counter: counter.map(|c| c.into()),
+            counter: counter.into(),
+        }
+    }
+
+    /// Helper method used to increment counter locations.
+    pub fn increment_counter(self) -> Self {
+        match self {
+            Location::Generic {
+                vault_path,
+                record_path,
+            } => Location::Generic {
+                vault_path,
+                record_path,
+            },
+            Location::Counter { vault_path, counter } => Location::Counter { vault_path, counter },
         }
     }
 
@@ -79,7 +86,7 @@ impl Location {
     }
 
     /// used to generate a constant counter location.
-    pub const fn const_counter(vault_path: Vec<u8>, counter: Option<usize>) -> Self {
+    pub const fn const_counter(vault_path: Vec<u8>, counter: usize) -> Self {
         Self::Counter { vault_path, counter }
     }
 }
@@ -91,98 +98,11 @@ impl AsRef<Location> for Location {
 }
 
 /// Policy options for modifying an entire Stronghold.  Must be specified on creation.
+#[derive(Clone, Debug)]
 pub enum StrongholdFlags {
     IsReadable(bool),
 }
 
 /// Policy options for for a specific vault.  Must be specified on creation.
+#[derive(Clone, Debug)]
 pub enum VaultFlags {}
-
-pub trait ReadSecret<S>
-where
-    S: Zeroize,
-{
-    fn read_secret(&self) -> &S;
-}
-
-pub trait CloneSecret: Clone + Zeroize {}
-
-pub trait SerializeSecret: Serialize {}
-
-pub struct Secret<S>
-where
-    S: Zeroize,
-{
-    value: S,
-}
-
-impl<S> Secret<S>
-where
-    S: Zeroize,
-{
-    pub fn new(value: S) -> Self {
-        Self { value }
-    }
-}
-
-impl<S> ReadSecret<S> for Secret<S>
-where
-    S: Zeroize,
-{
-    fn read_secret(&self) -> &S {
-        &self.value
-    }
-}
-
-impl<S> From<S> for Secret<S>
-where
-    S: Zeroize,
-{
-    fn from(value: S) -> Self {
-        Self::new(value)
-    }
-}
-
-impl<S> Clone for Secret<S>
-where
-    S: CloneSecret,
-{
-    fn clone(&self) -> Self {
-        Self {
-            value: self.value.clone(),
-        }
-    }
-}
-
-impl<S> Drop for Secret<S>
-where
-    S: Zeroize,
-{
-    fn drop(&mut self) {
-        self.value.zeroize()
-    }
-}
-
-impl<'de, T> Deserialize<'de> for Secret<T>
-where
-    T: Zeroize + Clone + de::DeserializeOwned + Sized,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
-        T::deserialize(deserializer).map(Secret::new)
-    }
-}
-
-impl<T> Serialize for Secret<T>
-where
-    T: Zeroize + SerializeSecret + Serialize + Sized,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: ser::Serializer,
-    {
-        self.read_secret().serialize(serializer)
-    }
-}

@@ -1,16 +1,11 @@
 [workspace]
 members = [
   "engine",
-  "engine/vault",
-  "engine/primitives",
-  "engine/random",
-  "engine/crypto",
-  "engine/snapshot",
-  "engine/store",
-  "runtime",
+  "engine/runtime",
   "client",
   "communication",
   "utils",
+  "derive"
 ]
 exclude = [
   "products/commandline",

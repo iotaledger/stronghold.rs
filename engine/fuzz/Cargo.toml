@@ -1,0 +1,40 @@
+[package]
+name = "fuzz"
+version = "0.1.0"
+authors = ["tensor-programming <tensordeveloper@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.3"
+rand = "0.8.3"
+
+[dependencies.stronghold_engine]
+path = "../"
+version = "0.3"
+
+[dependencies.iota-crypto]
+version = "0.5.0"
+features = [ "random", "chacha" ]
+
+[profile.release]
+overflow-checks = true
+panic = "abort"
+
+[profile.dev]
+overflow-checks = true
+panic = "abort"
+
+[workspace]
+
+[[bin]]
+name = "snapshot"
+path = "src/snapshot_fuzz.rs"
+
+[[bin]]
+name = "vault_fuzz"
+path = "src/vault_fuzz.rs"

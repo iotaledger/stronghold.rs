@@ -4,23 +4,14 @@
 use core::fmt::Debug;
 use libp2p::{
     core::{Multiaddr, PeerId},
-    identify::IdentifyEvent,
+    identify::{IdentifyEvent, IdentifyInfo},
     identity::PublicKey,
     request_response::{InboundFailure, OutboundFailure, RequestId, RequestResponseEvent, RequestResponseMessage},
     swarm::ProtocolsHandlerUpgrErr,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 #[cfg(feature = "mdns")]
 use libp2p::mdns::MdnsEvent;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RequestEnvelope<Req: Debug + Clone + Serialize + DeserializeOwned> {
-    pub source: String,
-    #[serde(bound = "Req: Debug + Clone + Serialize + DeserializeOwned")]
-    pub message: Req,
-    pub target: String,
-}
 
 /// Event that can be produced by the `Mdns` behaviour.
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +37,8 @@ pub struct P2PIdentifyInfo {
     pub listen_addrs: Vec<Multiaddr>,
     /// The list of protocols supported by the peer, e.g. `/p2p/ping/1.0.0`.
     pub protocols: Vec<String>,
+    /// The address observed by the peer for the local node.
+    pub observed_addr: Multiaddr,
 }
 
 /// Error that can happen on an outbound substream opening attempt.
@@ -63,14 +56,15 @@ pub enum P2PProtocolsHandlerUpgrErr {
 #[derive(Debug, Clone, PartialEq)]
 pub enum P2PIdentifyEvent {
     /// Identifying information has been received from a peer.
-    Received {
-        peer_id: PeerId,
-        info: P2PIdentifyInfo,
-        /// The address observed by the peer for the local node.
-        observed_addr: Multiaddr,
-    },
+    Received { peer_id: PeerId, info: P2PIdentifyInfo },
     /// Identifying information of the local node has been sent to a peer.
     Sent { peer_id: PeerId },
+    /// Identification information of the local node has been actively pushed to
+    /// a peer.
+    Pushed {
+        /// The peer that the information has been sent to.
+        peer_id: PeerId,
+    },
     /// Error while attempting to identify the remote.
     Error {
         peer_id: PeerId,
@@ -116,7 +110,7 @@ pub enum P2PInboundFailure {
 
 /// Event emitted  by the `RequestResponse` behaviour.
 #[derive(Debug, Clone, PartialEq)]
-pub enum P2PReqResEvent<T, U> {
+pub enum P2PReqResEvent<Req, Res> {
     /// Request Message
     ///
     /// Requests require a response to acknowledge them, if [`P2PNetworkBehaviour::send_response`]
@@ -125,7 +119,7 @@ pub enum P2PReqResEvent<T, U> {
     Req {
         peer_id: PeerId,
         request_id: RequestId,
-        request: T,
+        request: Req,
     },
     /// Response Message to a received `Req`.
     ///
@@ -137,7 +131,7 @@ pub enum P2PReqResEvent<T, U> {
     Res {
         peer_id: PeerId,
         request_id: RequestId,
-        response: U,
+        response: Res,
     },
     InboundFailure {
         peer_id: PeerId,
@@ -157,18 +151,18 @@ pub enum P2PReqResEvent<T, U> {
 
 /// Event that was emitted by one of the protocols of the `P2PNetworkBehaviour`
 #[derive(Debug, Clone, PartialEq)]
-pub enum P2PEvent<T, U> {
+pub enum P2PEvent<Req, Res> {
     /// Events from the libp2p mDNS protocol
     Mdns(P2PMdnsEvent),
     /// Events from the libp2p identify protocol
     Identify(Box<P2PIdentifyEvent>),
     /// Events from the custom request-response protocol
-    RequestResponse(Box<P2PReqResEvent<T, U>>),
+    RequestResponse(Box<P2PReqResEvent<Req, Res>>),
 }
 
 #[cfg(feature = "mdns")]
-impl<T, U> From<MdnsEvent> for P2PEvent<T, U> {
-    fn from(event: MdnsEvent) -> P2PEvent<T, U> {
+impl<Req, Res> From<MdnsEvent> for P2PEvent<Req, Res> {
+    fn from(event: MdnsEvent) -> P2PEvent<Req, Res> {
         match event {
             MdnsEvent::Discovered(list) => P2PEvent::Mdns(P2PMdnsEvent::Discovered(list.collect())),
             MdnsEvent::Expired(list) => P2PEvent::Mdns(P2PMdnsEvent::Expired(list.collect())),
@@ -176,25 +170,33 @@ impl<T, U> From<MdnsEvent> for P2PEvent<T, U> {
     }
 }
 
-impl<T, U> From<IdentifyEvent> for P2PEvent<T, U> {
-    fn from(event: IdentifyEvent) -> P2PEvent<T, U> {
+impl<Req, Res> From<IdentifyEvent> for P2PEvent<Req, Res> {
+    fn from(event: IdentifyEvent) -> P2PEvent<Req, Res> {
         match event {
             IdentifyEvent::Received {
                 peer_id,
-                info,
-                observed_addr,
+                info:
+                    IdentifyInfo {
+                        public_key,
+                        protocol_version,
+                        agent_version,
+                        listen_addrs,
+                        protocols,
+                        observed_addr,
+                    },
             } => P2PEvent::Identify(Box::new(P2PIdentifyEvent::Received {
                 peer_id,
                 info: P2PIdentifyInfo {
-                    public_key: info.public_key,
-                    protocol_version: info.protocol_version,
-                    agent_version: info.agent_version,
-                    listen_addrs: info.listen_addrs,
-                    protocols: info.protocols,
+                    public_key,
+                    protocol_version,
+                    agent_version,
+                    listen_addrs,
+                    protocols,
+                    observed_addr,
                 },
-                observed_addr,
             })),
             IdentifyEvent::Sent { peer_id } => P2PEvent::Identify(Box::new(P2PIdentifyEvent::Sent { peer_id })),
+            IdentifyEvent::Pushed { peer_id } => P2PEvent::Identify(Box::new(P2PIdentifyEvent::Pushed { peer_id })),
             IdentifyEvent::Error { peer_id, error } => {
                 let error = match error {
                     ProtocolsHandlerUpgrErr::Timeout => P2PProtocolsHandlerUpgrErr::Timeout,
@@ -207,14 +209,12 @@ impl<T, U> From<IdentifyEvent> for P2PEvent<T, U> {
     }
 }
 
-impl<T, U> From<RequestResponseEvent<T, U>> for P2PEvent<T, U> {
-    fn from(event: RequestResponseEvent<T, U>) -> P2PEvent<T, U> {
+impl<Req, Res> From<RequestResponseEvent<Req, Res>> for P2PEvent<Req, Res> {
+    fn from(event: RequestResponseEvent<Req, Res>) -> P2PEvent<Req, Res> {
         match event {
             RequestResponseEvent::Message { peer, message } => match message {
                 RequestResponseMessage::Request {
-                    request_id,
-                    request,
-                    channel: _,
+                    request_id, request, ..
                 } => P2PEvent::RequestResponse(Box::new(P2PReqResEvent::Req {
                     peer_id: peer,
                     request_id,

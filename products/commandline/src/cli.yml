@@ -1,6 +1,6 @@
 name: Stronghold CLI
 version: '2.0'
-author: Tensor Programming <tensordeveloper@gmail.com>
+author: IOTA Stiftung, Tensor Programming <tensordeveloper@gmail.com>
 about: Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
 subcommands:
   - encrypt:
@@ -65,13 +65,19 @@ subcommands:
             required: true
             takes_value: true
   - list:
-      about: Lists the ids of the records inside of your stronghold's vault; lists the record path and the hint hash. 
+      about: Lists the ids of the records inside of your stronghold's vault by inputted record id. 
       args:
         - password:
             short: w
             long: pass
             value_name: password
             about: the password for the snapshot.
+            required: true
+            takes_value: true
+        - rpath:
+            short: r
+            long: record_path
+            value_name: Record Path value
             required: true
             takes_value: true
    
@@ -109,7 +115,7 @@ subcommands:
             required: true
             takes_value: true
   - garbage_collect:
-      about: Garbage collect the vault and remove revoked records.
+      about: Garbage collect the vault and remove revoked records by record id.
       args:
         - password:
             short: w
@@ -118,8 +124,15 @@ subcommands:
             about: the password for the snapshot.
             required: true
             takes_value: true
+        - rpath:
+            short: rid
+            long: record_path
+            value_name: id
+            about: the id of the entry
+            required: true
+            takes_value: true
   - purge:
-      about: Revoke a record by id and perform a gargbage collect
+      about: Revoke a record by id and perform a gargbage collect on the record id
       args:
         - password:
             short: w
@@ -133,15 +146,5 @@ subcommands:
             long: id
             value_name: id
             about: the id of the entry
-            required: true
-            takes_value: true
-  - take_ownership:
-      about: Take ownership of an existing chain to give it to a new user.
-      args:
-        - password:
-            short: w
-            long: pass
-            value_name: password
-            about: the password for the snapshot.
             required: true
             takes_value: true

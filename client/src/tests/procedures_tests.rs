@@ -81,10 +81,10 @@ fn usecase_ed25519() {
     };
 
     {
-        use crypto::ed25519::{verify, PublicKey, Signature};
+        use crypto::signatures::ed25519::{PublicKey, Signature};
         let pk = PublicKey::from_compressed_bytes(pk).unwrap();
         let sig = Signature::from_bytes(sig);
-        assert!(verify(&pk, &sig, &msg));
+        assert!(pk.verify(&sig, &msg));
     }
 }
 

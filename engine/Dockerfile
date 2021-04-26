@@ -18,11 +18,7 @@ RUN rustup target add x86_64-unknown-linux-musl
 
 COPY Cargo.toml Cargo.toml
 COPY crypto/ crypto/
-COPY primitives/ primitives/
-COPY random/ random/
-COPY vault/ vault/
-COPY snapshot/ snapshot/
-COPY commandline/ commandline/
+COPY store/ store/
 
 RUN RUSTFLAGS=-Clinker=musl-gcc cargo build --release --target=x86_64-unknown-linux-musl
 

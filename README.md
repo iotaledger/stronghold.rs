@@ -1,8 +1,12 @@
-![banner](./.meta/stronghold_alpha.png)
+![banner](./.meta/stronghold_beta.png)
 
-[![status](https://img.shields.io/badge/Status-Alpha-yellow.svg)](https://github.com/iotaledger/stronghold.rs)
+[![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/stronghold.rs)
 ![Audit](https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev)
 ![Test](https://github.com/iotaledger/stronghold.rs/workflows/Test/badge.svg)
+[![docs](https://img.shields.io/badge/Docs-Official-red.svg)](https://stronghold.docs.iota.org)
+[![coverage](https://coveralls.io/repos/github/iotaledger/stronghold.rs/badge.svg?branch=dev)](https://coveralls.io/github/iotaledger/stronghold.rs?branch=dev)
+[![dependency status](https://deps.rs/repo/github/iotaledger/stronghold.rs/status.svg)](https://deps.rs/repo/github/iotaledger/stronghold.rs)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fiotaledger%2Fstronghold.rs.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fiotaledger%2Fstronghold.rs?ref=badge_shield)
 
 ## Introduction
 [summary]: #summary
@@ -11,16 +15,11 @@
 
 There are four main components of Stronghold:
 1. **Client**: The high-level interface to Stronghold (prefers Riker, functional integration also available)
-2. **Engine**: Combines a persistence store (Snapshot) with an in-memory state interface (Vault).
-3. **Runtime**: Is a process fork with limited permissions within which cryptographic operations take place
-4. **Communication**: Enables Strongholds in different processes or on different devices to communicate with each other securely.
-
-Read more about the [Alpha Release](https://blog.iota.org/stronghold-alpha-release/).
+2. **Engine**: Combines a persistence store (Snapshot) with an in-memory state interface (Vault), a read/write key:value system (Store) and memory protection services (Runtime).
+3. **Communication**: Enables Strongholds in different processes or on different devices to communicate with each other securely.
 
 ## WARNING
-These libraries are being prepared for a number of external security audits in early 2021, so they are not yet verifiably safe. Until this warning is removed, the IOTA Foundation makes no guarantees to the fitness of these libraries for any purposes.
-
-As such, they are to be seen as **experimental** and not ready for real-world applications.
+These libraries have been reviewed internally and are being prepared for a full external security audit in mid 2021, so they are not yet verifiably safe. Until this warning is removed, the IOTA Foundation makes no guarantees to the fitness of these libraries for use by third parties.
 
 Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out with any concerns or suggestions you may have.
 
@@ -62,16 +61,24 @@ Here are some of the features and tasks that we are working on.
 - [ ] Move entirely to FPGA
 
 ## API Reference
+### RUSTDOCS
+- [client](https://stronghold.docs.iota.org/docs/iota_stronghold/index.html)
+- [engine](https://stronghold.docs.iota.org/docs/stronghold_engine/index.html)
+- [communication](https://stronghold.docs.iota.org/docs/stronghold_communication/index.html)
+
+### Do it yourself
 ```
 cargo doc --workspace --no-deps --open
 ```
-
 ## Running Tests
 ```
-cargo test --all
+cargo test --all --all-features
 ```
 
 ## Joining the discussion
 If you want to get involved in discussions about this technology, or you're looking for support, go to the #stronghold-discussion channel on [Discord](https://discord.iota.org/).
 
 If you wish to join the Stronghold X-Team, please fill out [this form](https://forms.gle/AUdjcp4kCRLgG3Qd9).
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fiotaledger%2Fstronghold.rs.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fiotaledger%2Fstronghold.rs?ref=badge_large)

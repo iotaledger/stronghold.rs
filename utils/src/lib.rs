@@ -4,3 +4,4 @@
 mod ask;
 pub mod test_utils;
 pub use ask::ask;
+pub use stronghold_derive::{GuardDebug, RequestPermissions};
