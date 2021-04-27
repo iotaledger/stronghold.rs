@@ -19,11 +19,11 @@ Nevertheless, we are very interested in feedback about the design and implementa
 If you want to get involved in discussions about this library, or you're looking for support, go to the #stronghold-discussion channel on [Discord](https://discord.iota.org).
 
 ## What you will find here
-This documentation has five paths. 
+This documentation has six sections. 
 
 1. The Overview: detailed overview of the project
 2. Structure: explains the layout of the individual crates and systems
 3. The Specification: detailed explanation of  requirements and functionality
 4. Retrospective: a look at the evolution of this project
-4. Contribute: how you can participate in the Stronghold software development
-5. Get in touch: join the community and become part of the X-Team
+5. Contribute: how you can participate in the Stronghold software development
+6. Get in touch: join the community and become part of the X-Team

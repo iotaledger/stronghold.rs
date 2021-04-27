@@ -13,7 +13,7 @@
 - [Specification](./specs/README.md)
     - [Scope](./specs/scope.md)
     - [Engineering](./specs/engineering.md)
-    - [Requirements](./specs/requirements.md)
+    <!-- - [Requirements](./specs/requirements.md) -->
 - [Retrospective](./retrospective/README.md)
 - [Contribute](./contribute.md)
 - [Github](https://github.com/iotaledger/stronghold.rs)
