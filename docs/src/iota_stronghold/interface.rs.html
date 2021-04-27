@@ -866,8 +866,6 @@
 <span id="863">863</span>
 <span id="864">864</span>
 <span id="865">865</span>
-<span id="866">866</span>
-<span id="867">867</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -1180,9 +1178,7 @@
         }
     }
 
-    <span class="doccomment">/// Returns a list of the available records and their `RecordHint` values in a vault by the given vault_path.</span>
-    <span class="doccomment">/// Records are returned as `usize` based on their index if they are written with counter `Locations`.  Generic</span>
-    <span class="doccomment">/// `Locations` will not return a readable index.</span>
+    <span class="doccomment">/// Returns a list of the available `RecordId` and `RecordHint` values in a vault by the given `vault_path`.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">list_hints_and_ids</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">vault_path</span>: <span class="ident">V</span>,
@@ -1209,7 +1205,7 @@
         }
     }
 
-    <span class="doccomment">/// Checks whether a record exists in the client.</span>
+    <span class="doccomment">/// Checks whether a record exists in the client based off of the given `Location`.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">record_exists</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnExistsRecord</span>(<span class="ident">b</span>) <span class="op">=</span> <span class="ident">ask</span>(
             <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,

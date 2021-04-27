@@ -97,7 +97,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="welcome.html"><strong aria-hidden="true">1.</strong> Welcome</a></li><li class="chapter-item expanded "><a href="overview/index.html"><strong aria-hidden="true">2.</strong> Overview</a></li><li class="chapter-item expanded "><a href="libraries/index.html"><strong aria-hidden="true">3.</strong> Libraries</a></li><li class="chapter-item expanded "><a href="specs/demo-spec.html"><strong aria-hidden="true">4.</strong> Specification</a></li><li class="chapter-item expanded "><a href="contribute.html"><strong aria-hidden="true">5.</strong> Contribute</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="welcome.html"><strong aria-hidden="true">1.</strong> Welcome</a></li><li class="chapter-item expanded "><a href="overview/index.html"><strong aria-hidden="true">2.</strong> Overview</a></li><li class="chapter-item expanded "><a href="structure/index.html"><strong aria-hidden="true">3.</strong> Structure</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="structure/client.html"><strong aria-hidden="true">3.1.</strong> Client</a></li><li class="chapter-item expanded "><a href="structure/engine.html"><strong aria-hidden="true">3.2.</strong> Engine</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="structure/snapshot.html"><strong aria-hidden="true">3.2.1.</strong> Snapshot</a></li><li class="chapter-item expanded "><a href="structure/vault.html"><strong aria-hidden="true">3.2.2.</strong> Vault</a></li><li class="chapter-item expanded "><a href="structure/store.html"><strong aria-hidden="true">3.2.3.</strong> Store</a></li><li class="chapter-item expanded "><a href="structure/runtime.html"><strong aria-hidden="true">3.2.4.</strong> Runtime</a></li></ol></li><li class="chapter-item expanded "><a href="structure/communication.html"><strong aria-hidden="true">3.3.</strong> Communication</a></li><li class="chapter-item expanded "><a href="structure/derive.html"><strong aria-hidden="true">3.4.</strong> Derive</a></li><li class="chapter-item expanded "><a href="structure/utils.html"><strong aria-hidden="true">3.5.</strong> Utils</a></li></ol></li><li class="chapter-item expanded "><a href="products/index.html"><strong aria-hidden="true">4.</strong> Products</a></li><li class="chapter-item expanded "><a href="specs/index.html"><strong aria-hidden="true">5.</strong> Specification</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="specs/scope.html"><strong aria-hidden="true">5.1.</strong> Scope</a></li><li class="chapter-item expanded "><a href="specs/engineering.html"><strong aria-hidden="true">5.2.</strong> Engineering</a></li></ol></li><li class="chapter-item expanded "><a href="retrospective/index.html"><strong aria-hidden="true">6.</strong> Retrospective</a></li><li class="chapter-item expanded "><a href="contribute.html"><strong aria-hidden="true">7.</strong> Contribute</a></li><li class="chapter-item expanded "><a href="https://github.com/iotaledger/stronghold.html"><strong aria-hidden="true">8.</strong> Github</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -185,43 +185,622 @@
 <h2 id="joining-the-discussion"><a class="header" href="#joining-the-discussion">Joining the discussion</a></h2>
 <p>If you want to get involved in discussions about this library, or you're looking for support, go to the #stronghold-discussion channel on <a href="https://discord.iota.org">Discord</a>.</p>
 <h2 id="what-you-will-find-here"><a class="header" href="#what-you-will-find-here">What you will find here</a></h2>
-<p>This documentation has five paths. </p>
+<p>This documentation has six sections. </p>
 <ol>
-<li>The Overview, an detailed overview of the project. </li>
-<li>Libraries bindings, all avaiable programming languages and their resources.</li>
-<li>The Specification, detailed explaination requirements and functionality.</li>
-<li>Contribute, how you can work on the Stronghold software.</li>
-<li>Get in touch, join the community and become part of the X-Team!</li>
+<li>The Overview: detailed overview of the project</li>
+<li>Structure: explains the layout of the individual crates and systems</li>
+<li>The Specification: detailed explanation of  requirements and functionality</li>
+<li>Retrospective: a look at the evolution of this project</li>
+<li>Contribute: how you can participate in the Stronghold software development</li>
+<li>Get in touch: join the community and become part of the X-Team</li>
 </ol>
+<h2 id="software-bill-of-materials"><a class="header" href="#software-bill-of-materials">Software Bill of Materials</a></h2>
+<p>We maintain a bill of materials for the upstream libraries that Stronghold consumes. You can download the latest version of that here:</p>
+<p>https://github.com/iotaledger/stronghold.rs/raw/dev/S-BOM.pdf</p>
+<h2 id="tutorials-coming-soon"><a class="header" href="#tutorials-coming-soon">Tutorials (Coming Soon)</a></h2>
+<p>We will be adding video and textual tutorials for introducing the concepts behind Stronghold.</p>
+<h2 id="how-tos-coming-soon"><a class="header" href="#how-tos-coming-soon">How To's (Coming Soon)</a></h2>
+<p>We will be adding a number of specific How To examples that will cover common use cases, like integrations, backups etc.</p>
 <h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
 <p>IOTA Stronghold is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidental leaks. It uses encrypted snapshots that can be easily backed up and securely shared between devices. Written in stable rust, it has strong guarantees of memory safety and process integrity.</p>
 <p>There are four main components of Stronghold:</p>
-<p>There are four main components of Stronghold:</p>
 <ol>
-<li><strong>Client</strong>: The high-level interface to Stronghold (prefers Riker, functional integration also available)</li>
-<li><strong>Engine</strong>: Combines a persistence store (Snapshot) with an in-memory state interface (Vault).</li>
-<li><strong>Runtime</strong>: Is a process fork with limited permissions within which cryptographic operations take place</li>
-<li><strong>Communication</strong>: Enables Strongholds in different processes or on different devices to communicate with each other securely.</li>
+<li><a href="overview/./structure/client.html"><strong>Client</strong></a>: The high-level interface to Stronghold (prefers Riker, functional integration also available)</li>
+<li><a href="overview/./structure/engine.html"><strong>Engine</strong></a>: Combines a persistence store (Snapshot) with an in-memory state interface (Vault) and a key:value read/write (Store).</li>
+<li><a href="overview/./structure/runtime.html"><strong>Runtime</strong></a>: Is a process fork with limited permissions within which cryptographic operations take place.</li>
+<li><a href="overview/./structure/communication.html"><strong>Communication</strong></a>: Enables Strongholds in different processes or on different devices to communicate with each other securely.</li>
 </ol>
 <p>Read more about the <a href="https://blog.iota.org/stronghold-alpha-release/">Alpha Release</a>.</p>
-<h1 id="iota-stronghold-libraries"><a class="header" href="#iota-stronghold-libraries">IOTA stronghold libraries</a></h1>
-<p>This is the location where bindings to other languages will be made available. The general strategy is that a binding will only expose the top level client interface.</p>
-<p>This allows the binding to be simple and easy to audit. </p>
-<h2 id="available-binding-languages"><a class="header" href="#available-binding-languages">Available binding languages</a></h2>
+<p>Read more about the <a href="https://blog.iota.org/iota-stronghold-beta-release/">Beta Release</a>.</p>
+<h1 id="iota-stronghold-structure"><a class="header" href="#iota-stronghold-structure">IOTA Stronghold Structure</a></h1>
+<p>In this section we describe the individual crates and components of Stronghold:</p>
+<ul>
+<li><a href="structure/./structure/client.html">Client</a></li>
+<li><a href="structure/./structure/engine.html">Engine</a>
+<ul>
+<li><a href="structure/./structure/snapshot.html">Snapshot</a></li>
+<li><a href="structure/./structure/vault.html">Vault</a></li>
+<li><a href="structure/./structure/store.html">Store</a></li>
+<li><a href="structure/./structure/runtime.html">Runtime</a></li>
+</ul>
+</li>
+<li><a href="structure/./structure/communication.html">Communication</a></li>
+<li><a href="structure/./structure/derive.html">Derive</a></li>
+<li><a href="structure/./structure/utils.html">Utils</a></li>
+</ul>
+<h1 id="structure-client"><a class="header" href="#structure-client">Structure: Client</a></h1>
+<table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
+<tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/client"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/iota_stronghold"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/iota_stronghold"><img src="https://img.shields.io/crates/v/iota_stronghold.svg" alt="" /></a></td></tr>
+</tbody></table>
+<h2 id="stronghold-client"><a class="header" href="#stronghold-client">Stronghold Client</a></h2>
+<p>This is the official client layer of Stronghold. It provides a Riker actor model system for easy Interface as well as functional passthrough to Stronghold's internal actor system for integrators not using Riker. </p>
+<p><strong>Stronghold Interface</strong>: </p>
+<ul>
+<li><code>init_stronghold_system</code>: Initializes a new instance of the Stronghold system.  Sets up the first client actor. Accepts a <code>ActorSystem</code>, the first <code>client_path</code>: <code>Vec&lt;u8&gt;</code> and any <code>StrongholdFlags</code> which pertain to the first actor.</li>
+<li><code>spawn_stronghold_actor</code>:  Spawns a new set of actors for the Stronghold system. Accepts the <code>client_path</code>: <code>Vec&lt;u8&gt;</code> and the options: <code>StrongholdFlags</code></li>
+<li><code>switch_actor_target</code>: Switches the actor target to another actor in the system specified by the <code>client_path</code>: <code>Vec&lt;u8&gt;</code>.</li>
+<li><code>write_to_vault</code>:  Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified location of <code>Location</code> type. The payload must be specified as a <code>Vec&lt;u8&gt;</code> and a <code>RecordHint</code> can be provided. Also accepts <code>VaultFlags</code> for when a new Vault is created.</li>
+<li><code>write_to_store</code>: Writes data into an insecure cache. This method, accepts a <code>Location</code>, a <code>Vec&lt;u8&gt;</code> and an optional <code>Duration</code>. The lifetime allows the data to be deleted after the specified duration has passed. If not lifetime is specified, the data will persist until it is manually deleted or over-written. Each store is mapped to a client. </li>
+<li><code>read_from_store</code>: Reads from an insecure cache. This method, accepts a <code>Location</code> and returns the payload in the
+form of a <code>Vec&lt;u8&gt;</code>.  If the location does not exist, an empty vector will be returned along with an error <code>StatusMessage</code>.</li>
+<li><code>delete_from_store</code> - delete data from an insecure cache. This method, accepts a <code>Location</code> and returns a <code>StatusMessage</code>.</li>
+<li><code>delete_data</code>: Revokes the data from the specified location of type <code>Location</code>. Revoked data is not readable and can be removed from a vault with a call to <code>garbage_collect</code>.  if the <code>should_gc</code> flag is set to <code>true</code>, this call with automatically cleanup the revoke. Otherwise, the data is just marked as revoked. </li>
+<li><code>garbage_collect</code>: Garbage collects any revokes in a Vault based on the given vault_path and the current target actor.</li>
+<li><code>list_hints_and_ids</code>: Returns a list of the available <code>RecordId</code> and <code>RecordHint</code> values in a vault by the given <code>vault_path</code>. </li>
+<li><code>runtime_exec</code>: Executes a runtime command given a <code>Procedure</code>.  Returns a <code>ProcResult</code> based off of the <code>control_request</code> specified.</li>
+<li><code>record_exists</code>: Checks whether a record exists in the client based off of the given <code>Location</code>.</li>
+<li><code>vault_exists</code>: Checks whether a vault exists in the client by <code>Location</code>.</li>
+<li><code>read_snapshot</code>: Reads data from a given snapshot file. Can only read the data for a single <code>client_path</code> at a time. If the actor uses a new <code>client_path</code> the former client path may be passed into the function call to read the data into the new actor. A filename and filepath can be specified, if they aren't provided, the path defaults to <code>$HOME/.stronghold/snapshots/</code> and the filename defaults to <code>backup.stronghold</code>.
+Also requires keydata to unlock the snapshot and the keydata must implement and use <code>Zeroize</code>.</li>
+<li><code>write_all_to_snapshot</code>:  Writes the entire state of the <code>Stronghold</code> into a snapshot. All Actors and their associated data is written into the specified snapshot. Requires keydata to encrypt the snapshot. The Keydata should implement and use Zeroize.  If a path and filename are not provided, uses the default path <code>$HOME/.stronghold/snapshots/</code> and the default filename <code>backup.stronghold</code>.</li>
+<li><code>kill_stronghold</code>: Used to kill a stronghold actor or clear the cache of that actor. Accepts the <code>client_path</code>, and a boolean for whether or not to kill the actor.  If <code>kill_actor</code> is <code>true</code> both the internal actor and the client actor are killed. Otherwise, the cache is cleared from the client and internal actor. </li>
+</ul>
+<p><strong>Stronghold Procedures</strong>:</p>
+<h5 id="requests"><a class="header" href="#requests"><strong>Requests</strong>:</a></h5>
+<ul>
+<li><code>SLIP10Generate</code>: Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in the <code>Location</code>. </li>
+<li><code>SLIP10Derive</code>: Derive a Slip10 child key from a seed or parent key. Store the output in a specified <code>Location</code> and return the corresponding <code>ChainCode</code>. </li>
+<li><code>BIP39Recover</code>: Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover a BIP39 seed and store it in the output <code>Location</code>.</li>
+<li><code>BIP39Generate</code>: Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a passphrase) and store them in the output <code>Location</code>.</li>
+<li><code>BIP39MnemonicSentence</code>: Read a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a passphrase) and store them in the output <code>Location</code>.</li>
+<li><code>Ed25519PublicKey</code>: Derive an Ed25519 public key from the corresponding private key stored at the specified <code>Location</code>.</li>
+<li><code>Ed25519Sign</code>: Use the specified Ed25519 compatible key to sign the given message. Compatible keys are any record that contain the desired key material in the first 32 bytes, in particular SLIP10 keys are compatible.</li>
+</ul>
+<h5 id="responses"><a class="header" href="#responses"><strong>Responses</strong>:</a></h5>
+<ul>
+<li><code>SLIP10Generate</code>: Returns a <code>StatusMessage</code> indicating the result of the request. </li>
+<li><code>SLIP10Derive</code>: Returns a <code>ResultMessage</code> with the <code>ChainCode</code> inside of it. </li>
+<li><code>BIP39Recover</code>: Returns a <code>StatusMessage</code> indicating the result of the request. .</li>
+<li><code>BIP39Generate</code>: Returns a <code>StatusMessage</code> indicating the result of the request.</li>
+<li><code>BIP39MnemonicSentence</code>: Returns the mnemonic sentence for the corresponding seed.</li>
+<li><code>Ed25519PublicKey</code>: Returns an Ed25519 public key inside of a <code>ResultMessage</code>.</li>
+<li><code>Ed25519Sign</code>: Returns an Ed25519 signature inside of a <code>ResultMessage</code>.</li>
+</ul>
+<h1 id="structure-engine"><a class="header" href="#structure-engine">Structure: Engine</a></h1>
+<table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
+<tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-engine"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-engine"><img src="https://img.shields.io/crates/v/stronghold-engine.svg" alt="" /></a></td></tr>
+</tbody></table>
+<h2 id="engine"><a class="header" href="#engine">engine</a></h2>
+<p>Engine is the collection of low-level crates with which application architects can build higher-level implementations of Strongholds for a variety of purposes. It is platform agnostic, in that it should run anywhere a Rust Compiler will work.</p>
+<p>It is composed of 4 primary crates:</p>
+<ul>
+<li>snapshot</li>
+<li>vault</li>
+<li>store</li>
+<li>runtime</li>
+</ul>
+<h1 id="structure-enginesnapshot"><a class="header" href="#structure-enginesnapshot">Structure: Engine::Snapshot</a></h1>
+<table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
+<tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine/src/snapshot"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold_engine/engine/latest/snapshot/index.html"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-engine"><img src="https://img.shields.io/crates/v/stronghold-engine.svg" alt="" /></a></td></tr>
+</tbody></table>
+<h2 id="stronghold-snapshot"><a class="header" href="#stronghold-snapshot">Stronghold Snapshot</a></h2>
+<p>This crate defines and implements the encrypted offline storage format used by the Stronghold ecosystem.</p>
+<p>The format has a header with version and magic bytes to appease applications wishing to provide file-type detection.</p>
+<p>The data stored within a snapshot is considered opaque and uses 256 bit keys. It provides recommended ways to derive the snapshot encryption key from a user provided password. The format also allows using an authenticated data bytestring to further protect the offline snapshot files (one might consider using a secondary user password strengthened by an HSM).</p>
+<p>The current version of the format is using X25519 together with an ephemeral key to derive a shared key for the symmetric XChaCha20 cipher and uses the Poly1305 message authentication algorithm. Future versions, when the demands for larger snapshot sizes and/or random access is desired, might consider encrypting smaller chunks (B-trees?) or similar using per chunk derived ephemeral keys.</p>
+<h1 id="structure-enginevault"><a class="header" href="#structure-enginevault">Structure: Engine::Vault</a></h1>
+<table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
+<tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine/src/vault"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold_engine/engine/latest/vault/index.html"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-engine"><img src="https://img.shields.io/crates/v/stronghold-engine.svg" alt="" /></a></td></tr>
+</tbody></table>
+<h2 id="stronghold-vault"><a class="header" href="#stronghold-vault">Stronghold Vault</a></h2>
+<p>Vault is an in-memory database specification which is designed to work without a central server. Only the user which holds the associated id and key may modify the data in a vault. Another owner can take control over the data if they know the id and the key.</p>
+<p>Data can be added to the chain via a [DataTransaction]. The [DataTransaction] is associated to the chain through the owner’s ID and it contains its own randomly generated ID.</p>
+<p>Records may also be revoked from the Vault through a [RevocationTransaction]. A [RevocationTransaction] is created and it references the id of a existing [DataTransaction]. The RevocationTransaction stages the associated record for deletion. The record is deleted when the DbView preforms a garbage collection and the [RevocationTransaction] is deleted along with it.</p>
+<h1 id="structure-enginestore"><a class="header" href="#structure-enginestore">Structure: Engine::Store</a></h1>
+<table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
+<tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine/src/store"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold_engine/engine/latest/store/index.html"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-engine"><img src="https://img.shields.io/crates/v/stronghold-engine.svg" alt="" /></a></td></tr>
+</tbody></table>
+<h2 id="stronghold-store"><a class="header" href="#stronghold-store">Stronghold Store</a></h2>
+<p>This crate contains a key/value cache for the Stronghold Engine. Data is stored in key-value pairs and an expiration timestamp can be set. The data is stored in a structured format and can be quickly retrieved at will. Along with the Vault, this crate is used to store general unencrypted data.</p>
+<h1 id="structure-runtime"><a class="header" href="#structure-runtime">Structure: Runtime</a></h1>
+<table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
+<tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine/runtime"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-runtime"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-runtime"><img src="https://img.shields.io/crates/v/stronghold-runtime.svg" alt="" /></a></td></tr>
+</tbody></table>
+<h1 id="stronghold-runtime-system-utilities"><a class="header" href="#stronghold-runtime-system-utilities">Stronghold runtime system utilities</a></h1>
+<p>This crate aims to provide utilities for performing computations as securely as
+possible with respect to the underlying operating system.</p>
+<p>Among the considered concepts:</p>
+<ul>
+<li>guarded memory allocations
+<ul>
+<li>assists with read/write protecting sensitive data</li>
+<li>zeroes the allocated memory when handing it back to the operating system</li>
+<li>uses canary and garbage values to protect the memory pages.</li>
+<li>leverages NACL <code>libsodium</code> for use on all supported platforms.</li>
+</ul>
+</li>
+</ul>
+<h2 id="faq"><a class="header" href="#faq">FAQ:</a></h2>
+<h3 id="why-does-my-program-get-killed-with-sigbussigill-signals"><a class="header" href="#why-does-my-program-get-killed-with-sigbussigill-signals">Why does my program get killed with SIGBUS/SIGILL signals?</a></h3>
+<p>It's common to restrict the amount of memory that can a non-privileged user can
+lock into main memory (i.e. forbidden to be swapped out to disk).</p>
+<p>The following limit is sufficient to make the tests pass:</p>
+<pre><code>ulimit -l $((1024*1024))
+</code></pre>
+<p>But it's quite likely that that command will fail because the system defaults
+are sometimes very strict. On Arch the file that manages those limits is
+<a href="https://wiki.archlinux.org/index.php/Limits.conf">limit.conf</a> and the
+following addition raises the limit to sufficiently run the tests:</p>
+<pre><code>username  hard  memlock 1048576
+</code></pre>
+<p>Note also that the tests in the crate allocates <em>a lot</em> more memory than an
+application using these runtime utilities are expected to allocate: by the
+principle of least privilege only the necessary sensitive/cryptographic
+operations should be performed in the most restricted sandbox.</p>
+<h2 id="low-hanging-fruit"><a class="header" href="#low-hanging-fruit">Low-hanging fruit</a></h2>
 <ul>
 <li><input disabled="" type="checkbox"/>
-C</li>
-<li><input disabled="" type="checkbox"/>
-golang</li>
-<li><input disabled="" type="checkbox"/>
-node.js (via NEON)</li>
+encrypt/authenticate locked memory with a fast algorithm such as AES.</li>
 </ul>
-<h2 id="why-no-wasm"><a class="header" href="#why-no-wasm">Why no WASM?</a></h2>
-<p>While absolutely possible, we will not be providing full WASM bindings to stronghold, because of a number of very serious concerns regarding memory safety which basically destroys the security model that Stronghold seeks to offer.</p>
-<h1 id="specification"><a class="header" href="#specification">Specification</a></h1>
+<p>The primary components are:</p>
+<ul>
+<li><strong>Guarded</strong> - A guarded type for protecting fixed-length secrets allocated on the heap.</li>
+<li><strong>GuardedVec</strong> - A guarded type for protecting variable-length secrets allocated on the heap.</li>
+<li><strong>Secret</strong> - A Type for guarding secrets allocated to the stack.</li>
+<li><strong>ZeroingAlloc</strong> - A Zeroing Allocator which wraps the standard memory allocator. This allocator zeroes out memory when it is dropped.</li>
+</ul>
+<h1 id="structure-communication"><a class="header" href="#structure-communication">Structure: Communication</a></h1>
+<table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
+<tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/communication"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-communication"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-communication"><img src="https://img.shields.io/crates/v/stronghold-communication.svg" alt="" /></a></td></tr>
+</tbody></table>
+<h2 id="stronghold-communication"><a class="header" href="#stronghold-communication">Stronghold Communication</a></h2>
+<p>This library enables Strongholds on different devices and in different networks to communicate with each other.
+The main basis for its functionality is the <a href="https://github.com/libp2p/rust-libp2p">rust-libp2p</a> library, which is a system of protocols, specifications and libraries that enable the development of peer-to-peer network applications (https://libp2p.io/).</p>
+<h3 id="network-behaviour-and-swarm"><a class="header" href="#network-behaviour-and-swarm">Network Behaviour and Swarm</a></h3>
+<p><strong>module behaviour.rs:</strong></p>
+<p>Stronghold-communication implements the <code>P2PNetworkBehaviour</code> for sending messages and reacting upon the outcome of the operation. 
+It combines multiple protocols of Libp2p:</p>
+<ul>
+<li>Multiplexing following the <a href="https://github.com/hashicorp/yamux/blob/master/spec.md">Yamux specification</a></li>
+<li>Noise: Encryption of the communication using the <a href="https://noiseprotocol.org/noise.html">Noise protocol</a> with XX-Handshake</li>
+<li>Multicast DNS: Enable Peer Discovery in a local network</li>
+<li>Identify Protocol: Receive identifying information like the <code>PeerId</code> and listening addresses when connecting to a new peer.</li>
+<li>Request-Response Protocol: Allows sending direct request/response messages between Peers; it expects a response for each request</li>
+</ul>
+<p>Upon creating a new instance, a transport is created and upgraded, and combined with the P2PNetworkBehaviour into a <a href="https://docs.rs/libp2p/0.35.1/libp2p/swarm/struct.ExpandedSwarm.html">ExpandedSwarm</a>. This Swarm is returned to the caller and serves as entry-point for all communication to other peers. Additional to the Libp2p methods of the <code>ExpandedSwarm</code>, it enables sending outbound messages, and manages the known peers. Incoming <code>P2PEvents</code> can be handled by polling from the swarm, e.g. via the <code>next</code> method.</p>
+<h3 id="communication-actor"><a class="header" href="#communication-actor">Communication Actor</a></h3>
+<p><strong>module actor.rs:</strong></p>
+<p>The <code>Communication Actor</code> is using the <a href="https://riker.rs/">Riker Framwork</a> to implement the actor pattern.<br />
+When creating a new <code>Communication Actor</code>, the actor creates a <code>P2PNetworkBehaviour</code> and continuously polls for events,
+incoming requests are sent to the client actor that has to be provided in the <code>CommunicationConfig</code>.</p>
+<p>All swarm interaction, and configuration of the <code>Communication Actor</code> is accomplished by sending the appropriate <code>CommunicationRequest</code> to it, for each <code>CommunicationRequest</code> a <code>CommunicationResults</code> is returned to the sender, this also allows using the <a href="https://riker.rs/patterns/#ask">ask pattern</a>.</p>
+<h4 id="firewall"><a class="header" href="#firewall">Firewall</a></h4>
+<p>The communication actor implements a firewall that checks the permission of each outgoing and incoming requests and drops them if the necessary permission has not been set. The required <code>ToPermissionVariants</code> trait for messages can be derived with the <a href="structure/communication-macros/README.html">communication-macros</a>, this allows in case of enum Request types to accept specific variants while rejecting others.</p>
+<h1 id="structure-derive"><a class="header" href="#structure-derive">Structure: Derive</a></h1>
+<table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
+<tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/derive"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-communication"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-derive"><img src="https://img.shields.io/crates/v/stronghold-derive.svg" alt="" /></a></td></tr>
+</tbody></table>
+<h2 id="derive"><a class="header" href="#derive">Derive</a></h2>
+<p>Proc macros for Stronghold.</p>
+<h1 id="structure-utils"><a class="header" href="#structure-utils">Structure: Utils</a></h1>
+<table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
+<tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/utils"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-utils"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-utils"><img src="https://img.shields.io/crates/v/stronghold-utils.svg" alt="" /></a></td></tr>
+</tbody></table>
+<h2 id="stronghold-utils"><a class="header" href="#stronghold-utils">Stronghold Utils</a></h2>
+<p>Common utils for stronghold libraries.</p>
+<h1 id="products"><a class="header" href="#products">Products</a></h1>
+<p>The Stronghold team endeavors to ship several production ready applications, which are more than classical &quot;examples&quot;:</p>
+<ul>
+<li><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/products/commandline">commandline</a>: Interact with a stronghold snapshot from the commandline. Mostly for debugging and utility, not recommended for daily use</li>
+<li><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/products/desktop">Desktop App - WIP</a>: A Tauri based application used for validation of </li>
+</ul>
+<p>These products are documented in their respective code repositories.</p>
+<h1 id="specifications"><a class="header" href="#specifications">Specifications</a></h1>
+<p>This section contains a description of the scope of the project, as well as the working documents that detail the engineering and requirements specifications.</p>
+<ul>
+<li><a href="specs/./scope.html">Scope</a></li>
+<li><a href="specs/./engineering.html">Engineering</a></li>
+</ul>
+<!-- - [Requirements](./requirements.md) -->
+<h1 id="specification-scope"><a class="header" href="#specification-scope">Specification: SCOPE</a></h1>
+<h1 id="project-scope-scope"><a class="header" href="#project-scope-scope">Project Scope (Scope)</a></h1>
+<h2 id="frontmatter"><a class="header" href="#frontmatter">Frontmatter</a></h2>
+<pre><code class="language-yaml">title: Stronghold
+stub: stronghold
+document: SCOPE
+version: 0000
+maintainer: Daniel Thompson-Yvetot &lt;daniel.yvetot@iota.org&gt;
+contributors: [tensorprogramming &lt;tensordeveloper@gmail.com&gt;, Daniel Thompson-Yvetot &lt;daniel.yvetot@iota.org&gt;]
+sponsors: [Navin Ramachandran &lt;navin@iota.org&gt;]
+licenses: [&quot;Apache-2&quot;, &quot;CC-BY-INTL-3.0&quot;]
+updated: 2021-Apr-27
+</code></pre>
+<h2 id="license"><a class="header" href="#license">License</a></h2>
+<!--
+Please specify licenses here and in the frontmatter.
+-->
+<p>All code is licensed under the Apache-2 license, all text and images are licensed under the CC-BY-INTL-3.0 license.</p>
+<h2 id="language"><a class="header" href="#language">Language</a></h2>
+<!--
+Do not change this section.
+-->
+<p>The key words &quot;MUST&quot;, &quot;MUST NOT&quot;, &quot;REQUIRED&quot;, &quot;SHALL&quot;, &quot;SHALL NOT&quot;, &quot;SHOULD&quot;, &quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;, &quot;MAY&quot;, and &quot;OPTIONAL&quot; in this document are to be interpreted as described in RFC 2119.</p>
+<h2 id="versioning"><a class="header" href="#versioning">Versioning</a></h2>
+<!--
+Do not change this section.
+-->
+<p>These documents MUST use incremental numbering. New documents always start at 0000. Subsequent revisions to each RFI, RFP and RFC will have their number increased by one.</p>
+<p>Software releases will follow <a href="https://semver.org/">strict semantic versioning</a>.</p>
+<h2 id="hierarchy"><a class="header" href="#hierarchy">Hierarchy</a></h2>
+<!--
+Do not change this section.
+-->
+<p>All documents in this specification are understood to flow from this document and be bound to its licenses and language as described above.</p>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Stronghold is a secure software implementation (often used in conjunction with - or existing purely on - specialist hardware) with the
+sole purpose of isolating the seed, private keys, personally identifiable information (PII) and policy records from exposure
+to the genuinely hostile environment of user devices. It uses snapshotting and internal mechanisms for threshold signature
+schemes that MAY be distributed across devices.</p>
+<p>It is based on a suite of low-level libraries collectively called &quot;engine&quot; that provide tooling and algorithms to build secure systems
+in Rust in a way that can be embedded and deployed to cross platform devices. Engine is a collection of libraries which deal with the
+obfuscation and sharing of secret values both mutable and immutable between devices.</p>
+<p>The primary task is to isolate the activity of “privileged” functions from other parts of the software stack. For example, a primary
+goal is to create a software enclave where private keys are used to sign messages without revealing those keys to other functions.</p>
+<p>Additionally, a system for enabling Stronghold-based systems to securely communicate with each other shall be created such
+that devices on different networks can collaborate cryptographically.</p>
+<h2 id="motivation"><a class="header" href="#motivation">Motivation</a></h2>
+<h3 id="research"><a class="header" href="#research">Research</a></h3>
+<p>Coming on the heels of the Trinity attack, it became clear that a new method for securing secrets needed to be manufactured and made
+available to the pantheon of IOTA Products.</p>
+<h3 id="market-opportunities"><a class="header" href="#market-opportunities">Market opportunities</a></h3>
+<ul>
+<li>Integration with the Wallet, Nodes, Identity, Access and developer toolchains strengthens IOTA’s internal position.</li>
+<li>Publishing the low-level libraries will enable third-parties interested in secure rust-based systems will expand the visibility
+of IOTA in the security community.</li>
+</ul>
+<h3 id="alignment-with-mission"><a class="header" href="#alignment-with-mission">Alignment with mission</a></h3>
+<ul>
+<li>Creating and maintaining open source software, and providing educational opportunities is the core mission of the IOTA Stiftung.</li>
+</ul>
+<h3 id="current-resourcestechnology"><a class="header" href="#current-resourcestechnology">Current resources/technology</a></h3>
+<ul>
+<li>Using off-the-shelf libraries has always been a trade-off. Writing the library in Rust using as few external dependencies as
+possible is a good baseline. Designing the library such that cryptographic primitives can be replaced will make the library viable
+in the long-term.</li>
+</ul>
+<h2 id="product-introduction"><a class="header" href="#product-introduction">Product Introduction</a></h2>
+<h3 id="business-application-benefits"><a class="header" href="#business-application-benefits">Business Application Benefits</a></h3>
+<ul>
+<li>Enhance the security posture of critical IOTA Products</li>
+<li>Enhance the perception of the IF as a “security-focussed” organisation.</li>
+<li>Create new avenues for partnership and 3rd party implementation.</li>
+</ul>
+<h3 id="technical-benefits"><a class="header" href="#technical-benefits">Technical Benefits</a></h3>
+<ul>
+<li>Writing in rust gives a number of memory-safety benefits</li>
+<li>Fuzzing from the beginning improves confidence of software fitness</li>
+<li>Providing reference implementation gives assurance to integrators</li>
+</ul>
+<h3 id="educational-benefits"><a class="header" href="#educational-benefits">Educational Benefits</a></h3>
+<ul>
+<li>Rust is a single source of code truth is a practice that the IF is interested in.</li>
+<li>Helping developers new to IOTA use a secure system from the beginning is a good way to train.</li>
+<li>Learning about Fuzzing is useful for all developers.</li>
+</ul>
+<h2 id="stakeholders"><a class="header" href="#stakeholders">Stakeholders</a></h2>
+<p>A number of IOTA foundation stakeholders have been involved in the design process, ranging
+from Engineering to Product and developer outreach.</p>
+<h2 id="guide-level-explanation"><a class="header" href="#guide-level-explanation">Guide-level explanation</a></h2>
+<p>Stronghold itself has several core components:</p>
+<h3 id="1-low-level-libraries-enginers"><a class="header" href="#1-low-level-libraries-enginers">1. Low level libraries (engine.rs)</a></h3>
+<p>There are 5 low level libraries:</p>
+<ul>
+<li>crypto (swappable crypto implementation, chacha20poly1305 &amp; salsa20)</li>
+<li>primitives (shared structs and traits)</li>
+<li>random (secure implementation of random)</li>
+<li>snapshot (stateful storage management)</li>
+<li>vault (interaction with storage)</li>
+</ul>
+<p>This work has been undertaken by an external developer in the context of an EDF grant using
+prior work from Daniel Thompson-Yvetot and Tensor at their security boutique &quot;IONARY&quot;.</p>
+<h3 id="2-high-level-library-strongholdrs"><a class="header" href="#2-high-level-library-strongholdrs">2. High level library (stronghold.rs)</a></h3>
+<p>The high level library integrates engine.rs and iota.rs to a fully fledged secret storage and
+enclave based system for operations in the context of the IOTA Protocol.</p>
+<p>Its primary purpose is to serve as the operational enclave for several IOTA Products:</p>
+<ul>
+<li>Wallet</li>
+<li>Identity</li>
+</ul>
+<p>This work will be undertaken in house by IOTA developers.</p>
+<h3 id="3-actor-model-layer"><a class="header" href="#3-actor-model-layer">3. Actor Model layer</a></h3>
+<p>The Actor Model layer is a thin wrapper for message parsing and message sending that is
+built for interaction with the wallet and any other projects that deem the actor model
+suitable to their needs.</p>
+<p>This work will be undertaken in house by IOTA developers.</p>
+<h2 id="prior-art"><a class="header" href="#prior-art">Prior art</a></h2>
+<p>There is a massive amount of prior art.</p>
+<h3 id="trinity"><a class="header" href="#trinity">Trinity</a></h3>
+<p>The official IF wallet, available on Android, iOS, MacOs, Windows, Linux. It uses React as a front-end language,
+Electron as a backend for Desktop platforms and React native as the backend for Mobile devices.</p>
+<h3 id="nano-ledger"><a class="header" href="#nano-ledger">Nano Ledger</a></h3>
+<p>A hardware token storage system that uses two STM chips (ST31 for secure storage [presumably]) and the STM32
+for actual processing.</p>
+<h3 id="cryptocore"><a class="header" href="#cryptocore">Cryptocore</a></h3>
+<p>“The CryptoCore is IOTA hardware designed for applications that need fast, dedicated proof of work and a secure
+memory. The device consists of an IOTA CryptoCore FPGA (ICCFPGA) module and a development board that doubles as a
+Raspberry Pi HAT, making it perfect for standalone applications and/or quick prototyping.“</p>
+<h3 id="wechat-miniprograms"><a class="header" href="#wechat-miniprograms">WeChat MiniPrograms</a></h3>
+<p>WeChat is a chat and payment application very popular in the Chinese market. MiniPrograms run inside of the scope
+of the main application.</p>
+<h3 id="jsbox"><a class="header" href="#jsbox">JSbox</a></h3>
+<p>JSBox is an iOS centric system for running JS in an iOS application developed primarily for the Chinese market.
+It is an application on the iOS Store geared toward developers:</p>
+<p>“JSBox is not only a full-fledged environment for standard JavaScript, but also provides many utilities:</p>
+<ul>
+<li>A safe environment to run JavaScript natively with incredible performance</li>
+<li>A beautiful editor to write JavaScript, multiple themes, auto-completion, and snippets...</li>
+<li>Many advanced development tools: lint, prettier, diff viewer and database viewer...</li>
+<li>A desktop extension to write code extremely fast and comfortable</li>
+<li>Almost all the cool tech in iOS: Siri/Shortcuts, Today Widget, Action Extension, 3D Touch, Home Screen Shortcut...</li>
+<li>A lot of awesome examples for beginner”</li>
+</ul>
+<h3 id="tauri-kamikaze-pattern"><a class="header" href="#tauri-kamikaze-pattern">Tauri (Kamikaze Pattern)</a></h3>
+<p>The Kamikaze pattern uses a system of event listeners and emitters in Rust and in Webview that communicate with
+each other using throwaway handles. Considered by the Tauri team to be the most secure pattern possible.</p>
+<h3 id="titan--opentitan"><a class="header" href="#titan--opentitan">Titan / OpenTitan</a></h3>
+<p>Open source security chip from Google available in the Pixel 3 (and other security dongles), which enables secure
+booting of mobile devices and provides a “secure” keystore for Third Party apps. Please review CVE-2019-9465 for a
+somewhat troubling “non-disclosure”. OpenTitan is the “community” project for an open hardware “Root of Trust”.</p>
+<h3 id="opensk"><a class="header" href="#opensk">OpenSK</a></h3>
+<p>Rust based security firmware for Nordic from Google.
+“Under the hood, OpenSK is written in Rust and runs on TockOS to provide better isolation and cleaner OS
+abstractions in support of security. Rust’s strong memory safety and zero-cost abstractions makes the code less
+vulnerable to logical attacks.”</p>
+<h3 id="ios-secure-enclave"><a class="header" href="#ios-secure-enclave">iOS Secure Enclave</a></h3>
+<p>“When you store a private key in the Secure Enclave, you never actually handle the key, making it difficult for
+the key to become compromised. Instead, you instruct the Secure Enclave to create the key, securely store it, and
+perform operations with it. You receive only the output of these operations, such as encrypted data or a
+cryptographic signature verification outcome.”</p>
+<h3 id="gatekeeper"><a class="header" href="#gatekeeper">Gatekeeper</a></h3>
+<p>The official MacOS Application verifier and Anti-Malware service verifies integrity and developer signatures,
+and manages the “quarantine” flag on downloaded files.</p>
+<h3 id="riddlecode-secure-element"><a class="header" href="#riddlecode-secure-element">Riddle&amp;Code Secure Element</a></h3>
+<p>“The Secure Element 2.0 generates a unique private key that cannot be rewritten over the lifetime of the chip.
+The stored private key can only be used within computations of the microchip itself.
+It employs a highly-secure hardware-based cryptographic key storage and cryptographic countermeasures which
+eliminate potential backdoors linked to software weaknesses. Thus, ensuring that the key cannot be exfiltrated.
+The decryption of data is only run on the chip itself and happens “off-the-bus”. Thereby, leaving an absolutely
+minimised attack surface for attackers trying to compromise the private key.”</p>
 <blockquote>
-<p>TODO</p>
+<p>this does not address concerns with the onboard RNG, the Secure Element in use is EOL.</p>
 </blockquote>
+<h3 id="cryptosteel"><a class="header" href="#cryptosteel">Cryptosteel</a></h3>
+<p>“The Cryptosteel Capsule is the premier backup tool for autonomous offline storage of valuable data without any
+third-party involvement. The solid metal device, designed to survive extreme conditions, works under nearly all
+circumstances.”</p>
+<h3 id="vst--ladspa--lv2-plugins"><a class="header" href="#vst--ladspa--lv2-plugins">VST / LADSPA / LV2 Plugins</a></h3>
+<p>These audio plug-in systems use digital signal processing, come with a back-end, a front-end, presets and
+interface with a larger system. They generally require a host. Of special interest is the architectural design
+pattern of LV2:</p>
+<p>“The host program loads the plugin, and calls some initialization functions. The host can provide a list of
+LV2_Extension that it supports when it initializes the plugin, so the capabilities of the host are known to
+the plugin when it is started. Similarly, the plugin uses Turtle metadata to provide a list of capabilities
+to the host, so the host can accommodate those. This capability concept is very powerful, but also difficult
+to understand at first. ‘Atom’ messages are sent between plugin event ports, and this mechanism is used to
+transfer MIDI, OSC and Patch information between plugin instances.”</p>
+<p>Here is an example of a VST Builder written in rust.
+Here is a solution for building a dylib for MacOS, and the accompanying “base plugin”.</p>
+<h3 id="tee--trustzone"><a class="header" href="#tee--trustzone">TEE / TrustZone</a></h3>
+<p>Trusted Execution Environments can be considered to be a “secure zone” of a processing unit. Generally more
+powerful than a Secure Element, their architecture isolates processes such as boot and analyzing application
+integrity. Obviously there are standards and any number of vendor implementations.</p>
+<h3 id="binary-obfuscation"><a class="header" href="#binary-obfuscation">Binary Obfuscation</a></h3>
+<p>Here is a collection of research about Binary Obfuscation approaches:
+Sean Taylor presentation at DefCon
+Seminal Paper on Functional Obfuscation (see Multilinear Jigsaw)
+Runtime Encryption (hyperion)
+https://nullsecurity.net/tools/cryptography.html
+http://phrack.org/issues/63/13.html &lt;- Excellent Writeup
+This idea of finger printing the system is especially appealing. When adding more than one device with
+&quot;entangled&quot; setups; deriving multiple fingerprints or a fingerprint that runs on multiple devices might be
+possible.</p>
+<p>https://github.com/packz/binary-encryption/tree/master</p>
+<p>Links from Tensor:</p>
+<ul>
+<li>https://github.com/obfuscator-llvm/obfuscator/wiki</li>
+<li>https://repo.zenk-security.com/Reversing%20.%20cracking/HARES:%20Hardened%20Anti-Reverse%20Engineering%20System.pdf</li>
+<li>http://www.freepatentsonline.com/8145900.html</li>
+<li>https://github.com/andrivet/ADVobfuscator</li>
+<li>https://github.com/rootm0s/Protectors</li>
+</ul>
+<h3 id="dashpay-bls-threshold-and-dkg"><a class="header" href="#dashpay-bls-threshold-and-dkg">Dashpay BLS threshold and DKG</a></h3>
+<ul>
+<li>https://github.com/dashpay/dips/blob/master/dip-0006/bls_m-of-n_threshold_scheme_and_dkg.md</li>
+<li>https://crypto.stanford.edu/~dabo/pubs/papers/BLSmultisig.html</li>
+<li>https://blog.dash.org/secret-sharing-and-threshold-signatures-with-bls-954d1587b5f?gi=1111957aa919</li>
+</ul>
+<h3 id="pillar"><a class="header" href="#pillar">Pillar</a></h3>
+<p>Smart contract wallet</p>
+<ul>
+<li>https://medium.com/pillarproject/understanding-plr-utility-part-i-pillar-smart-wallet-personal-data-locker-6138bb3058b5</li>
+</ul>
+<h3 id="hashd"><a class="header" href="#hashd">HashD</a></h3>
+<p>See Section 6 on Identity Recovery
+https://blog.hashd.in/hashd-in-draft0/</p>
+<h3 id="fireblocks"><a class="header" href="#fireblocks">Fireblocks</a></h3>
+<p>Fireblocks is a multisig system. Dom has more information about them.
+https://www.fireblocks.com/</p>
+<h3 id="vault12"><a class="header" href="#vault12">Vault12</a></h3>
+<p>“Using a secure decentralized network made up of trusted people, Vault12 gives cryptocurrency owners the peace
+of mind that their crypto assets remain backed up, cryptographically secure but accessible regardless of
+threats such as attacks on centralized servers and digital impersonation.”
+https://vault12.com/</p>
+<h3 id="emq-rule-engine"><a class="header" href="#emq-rule-engine">EMQ Rule Engine</a></h3>
+<p>https://github.com/emqx/emqx-rule-engine/blob/master/docs/design.md</p>
+<h3 id="mesalink"><a class="header" href="#mesalink">MESALINK</a></h3>
+<p>MesaLink implements OpenSSL C APIs with Rust FFI. If you call an exported C FFI function from Rust, it’s no
+different to calling that same exported C function from a different C or C++ library. Unlike Java/Go, there
+is zero overhead.
+https://mesalink.io/faq/</p>
+<h3 id="non-bypassable-security-paradigm"><a class="header" href="#non-bypassable-security-paradigm">Non-bypassable Security Paradigm</a></h3>
+<p>https://github.com/apache/incubator-teaclave-sgx-sdk/blob/master/documents/nbsp.pdf</p>
+<h3 id="rsign2"><a class="header" href="#rsign2">RSIGN2</a></h3>
+<p>minisign in wasm from Rust
+https://wapm.io/package/jedisct1/rsign2</p>
+<h3 id="single-use-seals"><a class="header" href="#single-use-seals">Single Use Seals</a></h3>
+<p>https://petertodd.org/2017/scalable-single-use-seal-asset-transfer</p>
+<h3 id="others"><a class="header" href="#others">Others</a></h3>
+<p>https://guardtime.com/mida/
+https://www.riddleandcode.com/secure-element
+https://github.com/RiddleAndCode/secure-element-sdk/wiki/Raspberrypi-HSM
+https://safenetwork.tech/faq/#what-is-self-authentication
+https://keycard.tech/</p>
+<h2 id="unresolved-questions"><a class="header" href="#unresolved-questions">Unresolved questions</a></h2>
+<!--
+- What parts of the design do you expect to resolve through the spec process
+before this gets merged?
+- What parts of the design do you expect to resolve through the implementation
+of this product?
+- What related issues do you consider out of scope for this prodect that could
+be addressed in the future independently of the solution that comes out it?
+-->
+<h2 id="future-possibilities"><a class="header" href="#future-possibilities">Future possibilities</a></h2>
+<ul>
+<li>Having a CLI</li>
+<li>Having a service that can run as a daemon</li>
+<li>Using a remote stronghold</li>
+</ul>
+<h1 id="specification-engineering"><a class="header" href="#specification-engineering">Specification: ENGINEERING</a></h1>
+<h1 id="stronghold-engineering-specification"><a class="header" href="#stronghold-engineering-specification">Stronghold Engineering Specification</a></h1>
+<h2 id="frontmatter-1"><a class="header" href="#frontmatter-1">Frontmatter</a></h2>
+<pre><code class="language-yaml">title: Stronghold
+stub: stronghold
+document: Engineering Specification
+version: 0000
+maintainer: Daniel Thompson-Yvetot &lt;daniel.yvetot@iota.org&gt;
+contributors: [Dave de Fijter &lt;dave.defijter@iota.org&gt;, tensorprogramming &lt;tensordeveloper@gmail.com&gt;, Daniel Thompson-Yvetot &lt;daniel.yvetot@iota.org&gt;, Marcelo Bianchi &lt;marcelo.bianchi@iota.org&gt;]
+sponsors: [Navin Ramachandran &lt;navin@iota.org&gt;]
+licenses: [&quot;CC-BY-INTL-3.0&quot;]
+updated: 2021-Apr-27
+</code></pre>
+<h2 id="summary-1"><a class="header" href="#summary-1">Summary</a></h2>
+<p>This document introduces the High-Level Specification of the Stronghold.</p>
+<h2 id="logical-system-design"><a class="header" href="#logical-system-design">Logical System Design</a></h2>
+<h3 id="low-level"><a class="header" href="#low-level">Low Level</a></h3>
+<p>A Stronghold is composed of several interacting systems at a low level:</p>
+<ol>
+<li>Snapshot - box-encrypted file-based persistence layer</li>
+<li>Vault - a write and use protected, path-based system for storing and using secrets like private keys</li>
+<li>Store - a read/write key:value storage system for dynamic data </li>
+<li>Cache - an in-memory abstraction for vault and store</li>
+<li>Runtime - memory protection system for secrets</li>
+<li>Communication - libp2p based system for communication between strongholds</li>
+</ol>
+<h3 id="high-level"><a class="header" href="#high-level">High Level</a></h3>
+<p>At the high level, Stronghold provides an official client for interfacing with a Stronghold snapshot and its records.</p>
+<h4 id="authors-tensor-programming---tensortauristudio"><a class="header" href="#authors-tensor-programming---tensortauristudio">Authors: Tensor Programming - &lt;tensor@tauri.studio&gt;</a></h4>
+<h1 id="stronghold-engine-retrospective-document"><a class="header" href="#stronghold-engine-retrospective-document"><strong>Stronghold Engine Retrospective Document</strong></a></h1>
+<p><em><strong>Abstract:</strong></em></p>
+<p>This document will detail the development of the Stronghold Engine library for IOTA's Stronghold project. It will briefly touch upon the different revisions of this project and the lessons that were learned from each revision. It will also discuss some of the rationale with regards to the implementation decisions that were made along the way. This document is meant to be a high level overview but it will contain some lower level explanations where appropriate.</p>
+<p><em><strong>Development History and Breakdown:</strong></em></p>
+<p>Stronghold Engine originally started its life as a full featured security platform. The original impetus for building the software involved the idea of a Virtual Machine/Runtime which would allow a user to store data securely.  The entire state of the VM could be offloaded into a Snapshot/Image file <em>a le smalltalk</em>. This implementation was meant to contain a few other features:</p>
+<ul>
+<li>P2P networking layer</li>
+<li>Secret sharing protocols</li>
+<li>ASN1/X509 libraries</li>
+<li>hybrid logical clocks</li>
+<li>homomorphic cryptography</li>
+<li>A Cryptographic Primitives DSL (Domain Specific Language)</li>
+<li>CRDTs (conflict replicated data types)</li>
+</ul>
+<p>The Elixir programming language was initially picked because it was a natural choice for these concepts. Elixir's macro system would allow the DSL to be as flexible and simple as needed to be. Also, OTP contains native libraries for dealing with keys and other cryptographic systems. Elixir’s actor model and the existing Erlang Virtual Machine (BEAM) could be leveraged in such a way that it could stand in for the virtual machine. Elixir also has an intuitive means of communicating with lower level languages such as Rust, C, and C++ allowing modules to be written in other languages.</p>
+<p>Unfortunately, this revision had to be scrapped because it would have been difficult to run the daemon on mobile devices.  Mobile applications are less available compared to desktop or web apps due to restrictions from their OSes.  Also, Elixir has little support for Android and almost no support for iOS.  Solutions such as Lumen and JInterface were considered but a choice was made to scrap the project due to its development costs.</p>
+<p>The project went back to the drawing board and Rust was chosen as the primary language for the new revision. A prototype was quickly built out as a simple secret storage system. The system contained few of the original ideas and it offloaded the data into JSON format before encrypting it with OpenSSL. The main purpose of this build was to audit the potential of Rust in this domain. Rust was found to be well suited to the use case of this system. While pieces of the language would have made a couple of the original ideas more difficult to implement, Rust did open the door to other features which would have been harder to build with Elixir.</p>
+<p>This second build transformed into a memory database system. This storage layer was made to be secure, transactional, and ACID based with a deduplicated and verifiable data storage memory caching system. Features included:</p>
+<ul>
+<li>DEFLATE, LZ4 and LXMA compression</li>
+<li>XChaCha20-Poly1305 encryption via sodiumoxide</li>
+<li>ZPAQ chunking for Data Deduplication</li>
+<li>AEAD checksum metadata system</li>
+</ul>
+<p>Data could be stored in multiple formats:</p>
+<ul>
+<li>binary blobs</li>
+<li>persistent maps</li>
+<li>addressable hashing buckets</li>
+<li>content versioned objects</li>
+<li>virtual file system</li>
+</ul>
+<p>Ultimately there were some problems with this revision; it was very opinionated, dependency heavy, and it ran like a full blown database solution rather than a security platform.</p>
+<p><em><strong>Background on the Final Revision:</strong></em></p>
+<p>A couple important lessons were learned from building the three different revisions:</p>
+<ul>
+<li>The storage system didn’t need to be complicated, it just needed to be secure.</li>
+<li>It would be better if the abstractions were not opinionated and were open to extension.</li>
+<li>The system should include a small dependency footprint for IoT and Embedded support.</li>
+<li>There was no reason to reinvent the wheel as many of the features could be implemented via existing libraries and tools.</li>
+</ul>
+<p>Stronghold Engine needed to be small, extensible, and secure if it was going to fit the use case that IOTA wanted and doing things this way meant that many of the features could be generalized into interfaces. Rather than a full scale platform, Stronghold Engine would be better suited as a set of modular libraries. A final revision was mapped out as a library that was split into multiple crates:</p>
+<ul>
+<li>Primitives Crate</li>
+<li>Random Crate</li>
+<li>Crypto Crate</li>
+<li>Vault Crate</li>
+<li>Snapshot Crate</li>
+</ul>
+<p><em><strong>Primitives Crate:</strong></em></p>
+<p>The core principle behind the primitives crate hinged on implementing a bunch of traits (interfaces) which could be used to define cryptographic primitives. Each primitive contains an info data structure for describing the constraints of the algorithm and at least one trait. These primitives range from Random Number Generators to Cipher Algorithms, Hashing Algorithms and Key Derivation Functions. In this way, a developer should be able to slot in a bit of logic and have it work with the rest of the library.</p>
+<p><em><strong>Random Crate:</strong></em></p>
+<p>The random crate is exactly as it sounds; it uses the RNG (random number generator) traits defined in the primitives crate to implement logic for a secure random number generator. A little bit of C code was used when creating this crate because all of the major platforms already have battle tested RNG libraries. This C code is bridged with Rust using CC, a <code>build.rs</code> file and Rust’s FFI (foreign function interface).  Thus far, random contains logic for Windows, MacOS, iOS, Linux, and a cavalcade of BSD flavors.</p>
+<p><em><strong>Crypto Crate:</strong></em></p>
+<p>The Crypto crate contains five encryption algorithms:</p>
+<ul>
+<li>Poly1305</li>
+<li>ChaCha20</li>
+<li>XChaCha20</li>
+<li>ChaCha20-Poly1305</li>
+<li>XChaCha20-Poly1305</li>
+</ul>
+<p>Poly1305 and ChaCha20 were defined first which gave way to the other three variations. The internal rules were defined using Rust macros so that they would be composable. Each of these algorithms also implements some of the traits from the primitives crate which makes them extremely easy to swap out and change should the need arise.</p>
+<p>A fuzz client was created to match the results of the library’s XChaCha20-Poly1305 and ChaCha20-Poly1305 algorithms to libsodium’s counterparts. The fuzzer has been run with up to ten billion inputs and there hasn’t been any reported variance between the implementations. XChaCha20-Poly1305 and ChaCha20-Poly1305 were used because they also verify the other algorithms indirectly.</p>
+<p><em><strong>Vault Crate:</strong></em></p>
+<p>The Vault crate contains logic and abstractions for the storage layer of this system. Importantly, the storage layer doesn’t actually define a standard shape for storing the data, instead it defines a method of reading, writing and viewing the data and the system may use any in-memory data collection type. For instance, the Proof of Concept Command Line Tool uses a hashmap wrapped in a RwLock and an Arc as its memory based data storage and the data itself is cached as bytes in that hashmap. The secure data should not be saved in any kind of persistent database; instead persistence is achieved through snapshots as detailed below.</p>
+<p>Vault defines a format of ordered chains where in each Record contains an ID, a Transaction, some metadata, a counter and the sealed data. Each of these chains starts out with a single Initial Transaction type that contains no data aside from the owner's ID. Every proceeding transaction must be a direct descendant of this transaction for it to be valid. Also, the counter is incremented every time an event occurs on the data. In this way, the system can determine which piece of data is the latest version while still maintaining a history of the data’s state over time.</p>
+<p>Because the data is versioned, a chain should ideally maintain data that is related. For example, if a key is placed into the first Data Transaction of a chain, the proceeding transactions should be metadata or changes to the key. Revocation Transactions can also be created to revoke a transaction.  In this way, the vault can stage a proposed deletion for some transaction before the data is deleted. When a garbage collection is preformed, the Revocation transaction and the corresponding Data Transaction are removed from the vault.</p>
+<p>The data in the Vault can be encrypted using either symmetric encryption or asymmetric encryption. With symmetric encryption, a key is assigned to each chain and that key is needed to unlock the data.  With asymmetric encryption, the key can be defined as a private key and each of the transaction’s IDs could be a public key. A secure random nonce is generated and the data is sealed using the key and the nonce. The nonce is then concatenated to the sealed bytes where it is stored in the data structure. Also, the data in each transaction is a non-descript vector of bytes. As a result of this, it is entirely possible to a complex data structure into the Transaction so long as it can be converted to a binary format.</p>
+<p>A Base64 encoder/decoder was also created. This base64 encoder uses a url/file safe character set. Information regarding this character set can be found in RFC 4648 from the internet society. As a small side note, if an ID contains a <code>-</code> character it can cause issues for the CLI. Wrapping the ID in quotes should resolve this issue though.</p>
+<p>The Vault crate includes a fuzz client. The main purpose of this fuzzer is to test the crate and see how it holds up to random inputs and random transactions. The Fuzzer generates a key and then creates a specified amount of clients. Each client is given a unique random ID along with its own data chain. The clients perform random transactions upon their chains based on a value generated by the random number generator. Also a machine object has the ability to randomly take ownership of a foreign chain at any time. Two global storage hashmaps are created and after a specified amount of cycles, the fuzz client checks to see if they are still consistent. This fuzz client was tested for a stretch of 2 days without issue.</p>
+<p><em><strong>Snapshot Crate:</strong></em></p>
+<p>The final major crate of this library suite is the snapshot crate.  This crate defines a method for storing the state of the system into a file format. This file can be transferred between different Stronghold Engine devices. This file format can be extended and changed as needed to make it more secure and more appropriate for the system being used. The snapshot layer currently also uses sodiumoxide’s secretstream algorithm which uses XChaCha20-Poly1305 to encrypt and decrypt the data.  A user’s password is required to encrypt and decrypt the snapshot.</p>
+<p>Data is read into the snapshot crate by way of a byte buffer.  A single hexadecimal signature is written to the file’s head along with the file’s version number. A salt is generated and it is used along with the user’s inputted password to derive a unique key. The Key is used to create a header and a push stream; the header is written to the file and the push stream is used to encrypt the incoming data. The databuffer’s data is read in as 256 byte chunks and it is encrypted in the stream before it is written to the file. Decryption of the snapshot follows the opposite steps: a user supplies a password, the salt is read from the file and the password and salt are used to derive a key.  The header is then read from the file and used with the key to generate a pull stream.  As the data is fed through this stream and it is decrypted back into a plaintext format.</p>
+<p><em><strong>Command Line Proof of Concept:</strong></em></p>
+<p>To show off the features of this set of libraries, an MVP command line tool was created. This CLI is bare bones and based heavily off of the vault fuzz client. Its main purpose is to show off the libraries in a minimal yet meaningful manner. The structure of this application follows a kind of server/client pattern.  The state of the database is maintained in a hashmap wrapped in a RwLock and an Arc which is globally available via a lazy static macro. On the frontend, there is a client which contains the client ID and a Vault structure.  The Vault structure contains the client’s key and a data view so that it can interact with the data. The key implements a provider which inherits from the box provider trait and this is where the encryption algorithm is defined. The client and the backend are connected through a simple connection structure with some basic logic to access the state hashmap.</p>
+<p>Unlike the original vault fuzz client, this application needs to upload and offload its data to and from a snapshot. To achieve this, a snapshot structure was made; it consists of the client’s id and key as well as the database’s hashmap. Each time a user runs this CLI they must submit a password to unlock the snapshot so that the state can be loaded into the application. The id and key are used to create a new client and a garbage collection operation is executed to recreate the data chain from the incoming data. This operation creates a new Initial Transaction and it iterates through each of the transactions to verify that they are owned by the owner.  Any foreign data is discarded in this process.</p>
+<p><em><strong>Future Development Options:</strong></em></p>
+<p>A few of the original ideas never made it into the final revision of the Engine but this is for the best. There are still a couple ways forward for this library:</p>
+<ul>
+<li>Secondary Keys/Passwords - Currently the snapshot can only be decrypted with a single password. More passwords could be added to create a blob of permissioned data.</li>
+<li>Homomorphic Encryption - If the data in the snapshot and the system used a Homomorphic encryption standard; operations could be performed without decrypting the data first.</li>
+<li>Key and Snapshot separation - Right now in the CLI example, the secret key is encrypted with the snapshot. In the future it might be better to keep that key separate from the snapshot. An encrypted archive could be used to combine a key file with the snapshot for instance.</li>
+<li>Asymmetric encryption - This was mentioned above; the IDs on the data could be public keys derived from the secret key on the vault.</li>
+<li>Multi-bucket storage.  Since each vault is a set of versioned data, the data in a vault should be related. As such it makes sense to add an extension to allow for a single user to maintain multiple vaults.</li>
+<li>Accommodations for more complex data structures inside of the transactions. The ability to store an entire hashmap in a single transaction is possible right now but other complex data structures could see support as well.</li>
+<li>Hashed Owner IDs. Currently, all transactions that are owned by a single owner contain the same owner ID. It may be beneficial to instead derive the owner ID of a transaction based off of the owner's secret key, their original ID and the counter.</li>
+</ul>
+<p>Most of these concepts could be implemented as independent libraries or by extending the existing crates. An audit should also be performed to make sure that the model is completely safe from attackers.</p>
+<p><strong>Personal Concluding Thoughts</strong></p>
+<p>I found working on this project was a learning experience; it was interesting and a nice change of pace. Developing the Engine forced me to examine aspects of cryptography that I had only barely been exposed to in the past. While I have worked on Cryptocurrency platforms such as Steem, I've never worked with secure data this closely. Some of my initial assumptions were either wrong or incomplete and by the end of this development process I had a much more thorough understanding of cryptography as a whole.</p>
+<p>I do believe that  Engine is a very strong starting line for the Stronghold platform. The future developers will be able to use it effectively in their projects and I look forward to seeing how they extend it. I thank IOTA for giving me the opportunity to work on this project and I wish them luck going forward.</p>
 <h1 id="contribute-to-the-project"><a class="header" href="#contribute-to-the-project">Contribute to the project</a></h1>
 <p><strong>Thanks for thinking about contributing to the project! We have the following ways that you can contribute.</strong></p>
 <h2 id="join-the-iota-stronghold-initiative"><a class="header" href="#join-the-iota-stronghold-initiative">Join the IOTA Stronghold Initiative</a></h2>
@@ -247,6 +826,7 @@ node.js (via NEON)</li>
 <p>By sharing your knowledge with others, you can provide a lot of value to the community and maybe inspire someone else to learn and contribute.</p>
 <p>Take a look at what discussions are going on in the #stronghold-discussion channel on <a href="https://discord.iota.org">Discord</a>.</p>
 <p>Thanks :heart:</p>
+<h1 id="github"><a class="header" href="#github">Github</a></h1>
 
                     </main>
 

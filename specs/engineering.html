@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Libraries - IOTA Stronghold</title>
+        <title>Engineering - IOTA Stronghold</title>
         
         
 
@@ -95,7 +95,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="../welcome.html"><strong aria-hidden="true">1.</strong> Welcome</a></li><li class="chapter-item expanded "><a href="../overview/index.html"><strong aria-hidden="true">2.</strong> Overview</a></li><li class="chapter-item expanded "><a href="../libraries/index.html" class="active"><strong aria-hidden="true">3.</strong> Libraries</a></li><li class="chapter-item expanded "><a href="../specs/demo-spec.html"><strong aria-hidden="true">4.</strong> Specification</a></li><li class="chapter-item expanded "><a href="../contribute.html"><strong aria-hidden="true">5.</strong> Contribute</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../welcome.html"><strong aria-hidden="true">1.</strong> Welcome</a></li><li class="chapter-item expanded "><a href="../overview/index.html"><strong aria-hidden="true">2.</strong> Overview</a></li><li class="chapter-item expanded "><a href="../structure/index.html"><strong aria-hidden="true">3.</strong> Structure</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../structure/client.html"><strong aria-hidden="true">3.1.</strong> Client</a></li><li class="chapter-item expanded "><a href="../structure/engine.html"><strong aria-hidden="true">3.2.</strong> Engine</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../structure/snapshot.html"><strong aria-hidden="true">3.2.1.</strong> Snapshot</a></li><li class="chapter-item expanded "><a href="../structure/vault.html"><strong aria-hidden="true">3.2.2.</strong> Vault</a></li><li class="chapter-item expanded "><a href="../structure/store.html"><strong aria-hidden="true">3.2.3.</strong> Store</a></li><li class="chapter-item expanded "><a href="../structure/runtime.html"><strong aria-hidden="true">3.2.4.</strong> Runtime</a></li></ol></li><li class="chapter-item expanded "><a href="../structure/communication.html"><strong aria-hidden="true">3.3.</strong> Communication</a></li><li class="chapter-item expanded "><a href="../structure/derive.html"><strong aria-hidden="true">3.4.</strong> Derive</a></li><li class="chapter-item expanded "><a href="../structure/utils.html"><strong aria-hidden="true">3.5.</strong> Utils</a></li></ol></li><li class="chapter-item expanded "><a href="../products/index.html"><strong aria-hidden="true">4.</strong> Products</a></li><li class="chapter-item expanded "><a href="../specs/index.html"><strong aria-hidden="true">5.</strong> Specification</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../specs/scope.html"><strong aria-hidden="true">5.1.</strong> Scope</a></li><li class="chapter-item expanded "><a href="../specs/engineering.html" class="active"><strong aria-hidden="true">5.2.</strong> Engineering</a></li></ol></li><li class="chapter-item expanded "><a href="../retrospective/index.html"><strong aria-hidden="true">6.</strong> Retrospective</a></li><li class="chapter-item expanded "><a href="../contribute.html"><strong aria-hidden="true">7.</strong> Contribute</a></li><li class="chapter-item expanded "><a href="../https://github.com/iotaledger/stronghold.html"><strong aria-hidden="true">8.</strong> Github</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -167,33 +167,47 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="iota-stronghold-libraries"><a class="header" href="#iota-stronghold-libraries">IOTA stronghold libraries</a></h1>
-<p>This is the location where bindings to other languages will be made available. The general strategy is that a binding will only expose the top level client interface.</p>
-<p>This allows the binding to be simple and easy to audit. </p>
-<h2 id="available-binding-languages"><a class="header" href="#available-binding-languages">Available binding languages</a></h2>
-<ul>
-<li><input disabled="" type="checkbox"/>
-C</li>
-<li><input disabled="" type="checkbox"/>
-golang</li>
-<li><input disabled="" type="checkbox"/>
-node.js (via NEON)</li>
-</ul>
-<h2 id="why-no-wasm"><a class="header" href="#why-no-wasm">Why no WASM?</a></h2>
-<p>While absolutely possible, we will not be providing full WASM bindings to stronghold, because of a number of very serious concerns regarding memory safety which basically destroys the security model that Stronghold seeks to offer.</p>
+                        <h1 id="specification-engineering"><a class="header" href="#specification-engineering">Specification: ENGINEERING</a></h1>
+<h1 id="stronghold-engineering-specification"><a class="header" href="#stronghold-engineering-specification">Stronghold Engineering Specification</a></h1>
+<h2 id="frontmatter"><a class="header" href="#frontmatter">Frontmatter</a></h2>
+<pre><code class="language-yaml">title: Stronghold
+stub: stronghold
+document: Engineering Specification
+version: 0000
+maintainer: Daniel Thompson-Yvetot &lt;daniel.yvetot@iota.org&gt;
+contributors: [Dave de Fijter &lt;dave.defijter@iota.org&gt;, tensorprogramming &lt;tensordeveloper@gmail.com&gt;, Daniel Thompson-Yvetot &lt;daniel.yvetot@iota.org&gt;, Marcelo Bianchi &lt;marcelo.bianchi@iota.org&gt;]
+sponsors: [Navin Ramachandran &lt;navin@iota.org&gt;]
+licenses: [&quot;CC-BY-INTL-3.0&quot;]
+updated: 2021-Apr-27
+</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>This document introduces the High-Level Specification of the Stronghold.</p>
+<h2 id="logical-system-design"><a class="header" href="#logical-system-design">Logical System Design</a></h2>
+<h3 id="low-level"><a class="header" href="#low-level">Low Level</a></h3>
+<p>A Stronghold is composed of several interacting systems at a low level:</p>
+<ol>
+<li>Snapshot - box-encrypted file-based persistence layer</li>
+<li>Vault - a write and use protected, path-based system for storing and using secrets like private keys</li>
+<li>Store - a read/write key:value storage system for dynamic data </li>
+<li>Cache - an in-memory abstraction for vault and store</li>
+<li>Runtime - memory protection system for secrets</li>
+<li>Communication - libp2p based system for communication between strongholds</li>
+</ol>
+<h3 id="high-level"><a class="header" href="#high-level">High Level</a></h3>
+<p>At the high level, Stronghold provides an official client for interfacing with a Stronghold snapshot and its records.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
                         
-                            <a rel="prev" href="../overview/index.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../specs/scope.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
                         
 
                         
-                            <a rel="next" href="../specs/demo-spec.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="../retrospective/index.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         
@@ -205,13 +219,13 @@ node.js (via NEON)</li>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
                 
-                    <a rel="prev" href="../overview/index.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../specs/scope.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
                 
 
                 
-                    <a rel="next" href="../specs/demo-spec.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="../retrospective/index.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
                 

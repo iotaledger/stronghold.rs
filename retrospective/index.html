@@ -1,0 +1,331 @@
+<!DOCTYPE HTML>
+<html lang="en" class="sidebar-visible no-js iota">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Retrospective - IOTA Stronghold</title>
+        
+        
+
+
+        <!-- Custom HTML head -->
+        
+
+
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff" />
+
+        
+        <link rel="icon" href="../favicon.svg">
+        
+        
+        <link rel="shortcut icon" href="../favicon.png">
+        
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        
+        <link rel="stylesheet" href="../css/print.css" media="print">
+        
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        
+        <link rel="stylesheet" href="../fonts/fonts.css">
+        
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        
+
+        
+    </head>
+    <body>
+        <!-- Provide site root to javascript -->
+        <script type="text/javascript">
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "iota";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script type="text/javascript">
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script type="text/javascript">
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('no-js')
+            html.classList.remove('iota')
+            html.classList.add(theme);
+            html.classList.add('js');
+        </script>
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script type="text/javascript">
+            var html = document.querySelector('html');
+            var sidebar = 'hidden';
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            }
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../welcome.html"><strong aria-hidden="true">1.</strong> Welcome</a></li><li class="chapter-item expanded "><a href="../overview/index.html"><strong aria-hidden="true">2.</strong> Overview</a></li><li class="chapter-item expanded "><a href="../structure/index.html"><strong aria-hidden="true">3.</strong> Structure</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../structure/client.html"><strong aria-hidden="true">3.1.</strong> Client</a></li><li class="chapter-item expanded "><a href="../structure/engine.html"><strong aria-hidden="true">3.2.</strong> Engine</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../structure/snapshot.html"><strong aria-hidden="true">3.2.1.</strong> Snapshot</a></li><li class="chapter-item expanded "><a href="../structure/vault.html"><strong aria-hidden="true">3.2.2.</strong> Vault</a></li><li class="chapter-item expanded "><a href="../structure/store.html"><strong aria-hidden="true">3.2.3.</strong> Store</a></li><li class="chapter-item expanded "><a href="../structure/runtime.html"><strong aria-hidden="true">3.2.4.</strong> Runtime</a></li></ol></li><li class="chapter-item expanded "><a href="../structure/communication.html"><strong aria-hidden="true">3.3.</strong> Communication</a></li><li class="chapter-item expanded "><a href="../structure/derive.html"><strong aria-hidden="true">3.4.</strong> Derive</a></li><li class="chapter-item expanded "><a href="../structure/utils.html"><strong aria-hidden="true">3.5.</strong> Utils</a></li></ol></li><li class="chapter-item expanded "><a href="../products/index.html"><strong aria-hidden="true">4.</strong> Products</a></li><li class="chapter-item expanded "><a href="../specs/index.html"><strong aria-hidden="true">5.</strong> Specification</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../specs/scope.html"><strong aria-hidden="true">5.1.</strong> Scope</a></li><li class="chapter-item expanded "><a href="../specs/engineering.html"><strong aria-hidden="true">5.2.</strong> Engineering</a></li></ol></li><li class="chapter-item expanded "><a href="../retrospective/index.html" class="active"><strong aria-hidden="true">6.</strong> Retrospective</a></li><li class="chapter-item expanded "><a href="../contribute.html"><strong aria-hidden="true">7.</strong> Contribute</a></li><li class="chapter-item expanded "><a href="../https://github.com/iotaledger/stronghold.html"><strong aria-hidden="true">8.</strong> Github</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky bordered">
+                    <div class="left-buttons">
+                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                        
+                    </div>
+
+                    <h1 class="menu-title">IOTA Stronghold</h1>
+
+                    <div class="right-buttons">
+                        
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        
+                        
+                        <a href="https://github.com/iotaledger/stronghold.rs" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        
+                    </div>
+                </div>
+
+                
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" name="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+                
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script type="text/javascript">
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h4 id="authors-tensor-programming---tensortauristudio"><a class="header" href="#authors-tensor-programming---tensortauristudio">Authors: Tensor Programming - &lt;tensor@tauri.studio&gt;</a></h4>
+<h1 id="stronghold-engine-retrospective-document"><a class="header" href="#stronghold-engine-retrospective-document"><strong>Stronghold Engine Retrospective Document</strong></a></h1>
+<p><em><strong>Abstract:</strong></em></p>
+<p>This document will detail the development of the Stronghold Engine library for IOTA's Stronghold project. It will briefly touch upon the different revisions of this project and the lessons that were learned from each revision. It will also discuss some of the rationale with regards to the implementation decisions that were made along the way. This document is meant to be a high level overview but it will contain some lower level explanations where appropriate.</p>
+<p><em><strong>Development History and Breakdown:</strong></em></p>
+<p>Stronghold Engine originally started its life as a full featured security platform. The original impetus for building the software involved the idea of a Virtual Machine/Runtime which would allow a user to store data securely.  The entire state of the VM could be offloaded into a Snapshot/Image file <em>a le smalltalk</em>. This implementation was meant to contain a few other features:</p>
+<ul>
+<li>P2P networking layer</li>
+<li>Secret sharing protocols</li>
+<li>ASN1/X509 libraries</li>
+<li>hybrid logical clocks</li>
+<li>homomorphic cryptography</li>
+<li>A Cryptographic Primitives DSL (Domain Specific Language)</li>
+<li>CRDTs (conflict replicated data types)</li>
+</ul>
+<p>The Elixir programming language was initially picked because it was a natural choice for these concepts. Elixir's macro system would allow the DSL to be as flexible and simple as needed to be. Also, OTP contains native libraries for dealing with keys and other cryptographic systems. Elixir’s actor model and the existing Erlang Virtual Machine (BEAM) could be leveraged in such a way that it could stand in for the virtual machine. Elixir also has an intuitive means of communicating with lower level languages such as Rust, C, and C++ allowing modules to be written in other languages.</p>
+<p>Unfortunately, this revision had to be scrapped because it would have been difficult to run the daemon on mobile devices.  Mobile applications are less available compared to desktop or web apps due to restrictions from their OSes.  Also, Elixir has little support for Android and almost no support for iOS.  Solutions such as Lumen and JInterface were considered but a choice was made to scrap the project due to its development costs.</p>
+<p>The project went back to the drawing board and Rust was chosen as the primary language for the new revision. A prototype was quickly built out as a simple secret storage system. The system contained few of the original ideas and it offloaded the data into JSON format before encrypting it with OpenSSL. The main purpose of this build was to audit the potential of Rust in this domain. Rust was found to be well suited to the use case of this system. While pieces of the language would have made a couple of the original ideas more difficult to implement, Rust did open the door to other features which would have been harder to build with Elixir.</p>
+<p>This second build transformed into a memory database system. This storage layer was made to be secure, transactional, and ACID based with a deduplicated and verifiable data storage memory caching system. Features included:</p>
+<ul>
+<li>DEFLATE, LZ4 and LXMA compression</li>
+<li>XChaCha20-Poly1305 encryption via sodiumoxide</li>
+<li>ZPAQ chunking for Data Deduplication</li>
+<li>AEAD checksum metadata system</li>
+</ul>
+<p>Data could be stored in multiple formats:</p>
+<ul>
+<li>binary blobs</li>
+<li>persistent maps</li>
+<li>addressable hashing buckets</li>
+<li>content versioned objects</li>
+<li>virtual file system</li>
+</ul>
+<p>Ultimately there were some problems with this revision; it was very opinionated, dependency heavy, and it ran like a full blown database solution rather than a security platform.</p>
+<p><em><strong>Background on the Final Revision:</strong></em></p>
+<p>A couple important lessons were learned from building the three different revisions:</p>
+<ul>
+<li>The storage system didn’t need to be complicated, it just needed to be secure.</li>
+<li>It would be better if the abstractions were not opinionated and were open to extension.</li>
+<li>The system should include a small dependency footprint for IoT and Embedded support.</li>
+<li>There was no reason to reinvent the wheel as many of the features could be implemented via existing libraries and tools.</li>
+</ul>
+<p>Stronghold Engine needed to be small, extensible, and secure if it was going to fit the use case that IOTA wanted and doing things this way meant that many of the features could be generalized into interfaces. Rather than a full scale platform, Stronghold Engine would be better suited as a set of modular libraries. A final revision was mapped out as a library that was split into multiple crates:</p>
+<ul>
+<li>Primitives Crate</li>
+<li>Random Crate</li>
+<li>Crypto Crate</li>
+<li>Vault Crate</li>
+<li>Snapshot Crate</li>
+</ul>
+<p><em><strong>Primitives Crate:</strong></em></p>
+<p>The core principle behind the primitives crate hinged on implementing a bunch of traits (interfaces) which could be used to define cryptographic primitives. Each primitive contains an info data structure for describing the constraints of the algorithm and at least one trait. These primitives range from Random Number Generators to Cipher Algorithms, Hashing Algorithms and Key Derivation Functions. In this way, a developer should be able to slot in a bit of logic and have it work with the rest of the library.</p>
+<p><em><strong>Random Crate:</strong></em></p>
+<p>The random crate is exactly as it sounds; it uses the RNG (random number generator) traits defined in the primitives crate to implement logic for a secure random number generator. A little bit of C code was used when creating this crate because all of the major platforms already have battle tested RNG libraries. This C code is bridged with Rust using CC, a <code>build.rs</code> file and Rust’s FFI (foreign function interface).  Thus far, random contains logic for Windows, MacOS, iOS, Linux, and a cavalcade of BSD flavors.</p>
+<p><em><strong>Crypto Crate:</strong></em></p>
+<p>The Crypto crate contains five encryption algorithms:</p>
+<ul>
+<li>Poly1305</li>
+<li>ChaCha20</li>
+<li>XChaCha20</li>
+<li>ChaCha20-Poly1305</li>
+<li>XChaCha20-Poly1305</li>
+</ul>
+<p>Poly1305 and ChaCha20 were defined first which gave way to the other three variations. The internal rules were defined using Rust macros so that they would be composable. Each of these algorithms also implements some of the traits from the primitives crate which makes them extremely easy to swap out and change should the need arise.</p>
+<p>A fuzz client was created to match the results of the library’s XChaCha20-Poly1305 and ChaCha20-Poly1305 algorithms to libsodium’s counterparts. The fuzzer has been run with up to ten billion inputs and there hasn’t been any reported variance between the implementations. XChaCha20-Poly1305 and ChaCha20-Poly1305 were used because they also verify the other algorithms indirectly.</p>
+<p><em><strong>Vault Crate:</strong></em></p>
+<p>The Vault crate contains logic and abstractions for the storage layer of this system. Importantly, the storage layer doesn’t actually define a standard shape for storing the data, instead it defines a method of reading, writing and viewing the data and the system may use any in-memory data collection type. For instance, the Proof of Concept Command Line Tool uses a hashmap wrapped in a RwLock and an Arc as its memory based data storage and the data itself is cached as bytes in that hashmap. The secure data should not be saved in any kind of persistent database; instead persistence is achieved through snapshots as detailed below.</p>
+<p>Vault defines a format of ordered chains where in each Record contains an ID, a Transaction, some metadata, a counter and the sealed data. Each of these chains starts out with a single Initial Transaction type that contains no data aside from the owner's ID. Every proceeding transaction must be a direct descendant of this transaction for it to be valid. Also, the counter is incremented every time an event occurs on the data. In this way, the system can determine which piece of data is the latest version while still maintaining a history of the data’s state over time.</p>
+<p>Because the data is versioned, a chain should ideally maintain data that is related. For example, if a key is placed into the first Data Transaction of a chain, the proceeding transactions should be metadata or changes to the key. Revocation Transactions can also be created to revoke a transaction.  In this way, the vault can stage a proposed deletion for some transaction before the data is deleted. When a garbage collection is preformed, the Revocation transaction and the corresponding Data Transaction are removed from the vault.</p>
+<p>The data in the Vault can be encrypted using either symmetric encryption or asymmetric encryption. With symmetric encryption, a key is assigned to each chain and that key is needed to unlock the data.  With asymmetric encryption, the key can be defined as a private key and each of the transaction’s IDs could be a public key. A secure random nonce is generated and the data is sealed using the key and the nonce. The nonce is then concatenated to the sealed bytes where it is stored in the data structure. Also, the data in each transaction is a non-descript vector of bytes. As a result of this, it is entirely possible to a complex data structure into the Transaction so long as it can be converted to a binary format.</p>
+<p>A Base64 encoder/decoder was also created. This base64 encoder uses a url/file safe character set. Information regarding this character set can be found in RFC 4648 from the internet society. As a small side note, if an ID contains a <code>-</code> character it can cause issues for the CLI. Wrapping the ID in quotes should resolve this issue though.</p>
+<p>The Vault crate includes a fuzz client. The main purpose of this fuzzer is to test the crate and see how it holds up to random inputs and random transactions. The Fuzzer generates a key and then creates a specified amount of clients. Each client is given a unique random ID along with its own data chain. The clients perform random transactions upon their chains based on a value generated by the random number generator. Also a machine object has the ability to randomly take ownership of a foreign chain at any time. Two global storage hashmaps are created and after a specified amount of cycles, the fuzz client checks to see if they are still consistent. This fuzz client was tested for a stretch of 2 days without issue.</p>
+<p><em><strong>Snapshot Crate:</strong></em></p>
+<p>The final major crate of this library suite is the snapshot crate.  This crate defines a method for storing the state of the system into a file format. This file can be transferred between different Stronghold Engine devices. This file format can be extended and changed as needed to make it more secure and more appropriate for the system being used. The snapshot layer currently also uses sodiumoxide’s secretstream algorithm which uses XChaCha20-Poly1305 to encrypt and decrypt the data.  A user’s password is required to encrypt and decrypt the snapshot.</p>
+<p>Data is read into the snapshot crate by way of a byte buffer.  A single hexadecimal signature is written to the file’s head along with the file’s version number. A salt is generated and it is used along with the user’s inputted password to derive a unique key. The Key is used to create a header and a push stream; the header is written to the file and the push stream is used to encrypt the incoming data. The databuffer’s data is read in as 256 byte chunks and it is encrypted in the stream before it is written to the file. Decryption of the snapshot follows the opposite steps: a user supplies a password, the salt is read from the file and the password and salt are used to derive a key.  The header is then read from the file and used with the key to generate a pull stream.  As the data is fed through this stream and it is decrypted back into a plaintext format.</p>
+<p><em><strong>Command Line Proof of Concept:</strong></em></p>
+<p>To show off the features of this set of libraries, an MVP command line tool was created. This CLI is bare bones and based heavily off of the vault fuzz client. Its main purpose is to show off the libraries in a minimal yet meaningful manner. The structure of this application follows a kind of server/client pattern.  The state of the database is maintained in a hashmap wrapped in a RwLock and an Arc which is globally available via a lazy static macro. On the frontend, there is a client which contains the client ID and a Vault structure.  The Vault structure contains the client’s key and a data view so that it can interact with the data. The key implements a provider which inherits from the box provider trait and this is where the encryption algorithm is defined. The client and the backend are connected through a simple connection structure with some basic logic to access the state hashmap.</p>
+<p>Unlike the original vault fuzz client, this application needs to upload and offload its data to and from a snapshot. To achieve this, a snapshot structure was made; it consists of the client’s id and key as well as the database’s hashmap. Each time a user runs this CLI they must submit a password to unlock the snapshot so that the state can be loaded into the application. The id and key are used to create a new client and a garbage collection operation is executed to recreate the data chain from the incoming data. This operation creates a new Initial Transaction and it iterates through each of the transactions to verify that they are owned by the owner.  Any foreign data is discarded in this process.</p>
+<p><em><strong>Future Development Options:</strong></em></p>
+<p>A few of the original ideas never made it into the final revision of the Engine but this is for the best. There are still a couple ways forward for this library:</p>
+<ul>
+<li>Secondary Keys/Passwords - Currently the snapshot can only be decrypted with a single password. More passwords could be added to create a blob of permissioned data.</li>
+<li>Homomorphic Encryption - If the data in the snapshot and the system used a Homomorphic encryption standard; operations could be performed without decrypting the data first.</li>
+<li>Key and Snapshot separation - Right now in the CLI example, the secret key is encrypted with the snapshot. In the future it might be better to keep that key separate from the snapshot. An encrypted archive could be used to combine a key file with the snapshot for instance.</li>
+<li>Asymmetric encryption - This was mentioned above; the IDs on the data could be public keys derived from the secret key on the vault.</li>
+<li>Multi-bucket storage.  Since each vault is a set of versioned data, the data in a vault should be related. As such it makes sense to add an extension to allow for a single user to maintain multiple vaults.</li>
+<li>Accommodations for more complex data structures inside of the transactions. The ability to store an entire hashmap in a single transaction is possible right now but other complex data structures could see support as well.</li>
+<li>Hashed Owner IDs. Currently, all transactions that are owned by a single owner contain the same owner ID. It may be beneficial to instead derive the owner ID of a transaction based off of the owner's secret key, their original ID and the counter.</li>
+</ul>
+<p>Most of these concepts could be implemented as independent libraries or by extending the existing crates. An audit should also be performed to make sure that the model is completely safe from attackers.</p>
+<p><strong>Personal Concluding Thoughts</strong></p>
+<p>I found working on this project was a learning experience; it was interesting and a nice change of pace. Developing the Engine forced me to examine aspects of cryptography that I had only barely been exposed to in the past. While I have worked on Cryptocurrency platforms such as Steem, I've never worked with secure data this closely. Some of my initial assumptions were either wrong or incomplete and by the end of this development process I had a much more thorough understanding of cryptography as a whole.</p>
+<p>I do believe that  Engine is a very strong starting line for the Stronghold platform. The future developers will be able to use it effectively in their projects and I look forward to seeing how they extend it. I thank IOTA for giving me the opportunity to work on this project and I wish them luck going forward.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                        
+                            <a rel="prev" href="../specs/engineering.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+                        
+
+                        
+                            <a rel="next" href="../contribute.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+                        
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                
+                    <a rel="prev" href="../specs/engineering.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+                
+
+                
+                    <a rel="next" href="../contribute.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+                
+            </nav>
+
+        </div>
+
+        
+
+        
+
+        
+
+        
+        <script type="text/javascript">
+            window.playground_copyable = true;
+        </script>
+        
+
+        
+
+        
+        <script src="../elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../mark.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../searcher.js" type="text/javascript" charset="utf-8"></script>
+        
+
+        <script src="../clipboard.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../highlight.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../book.js" type="text/javascript" charset="utf-8"></script>
+
+        <!-- Custom JS scripts -->
+        
+
+        
+
+    </body>
+</html>

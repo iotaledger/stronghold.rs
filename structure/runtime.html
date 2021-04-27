@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Overview - IOTA Stronghold</title>
+        <title>Runtime - IOTA Stronghold</title>
         
         
 
@@ -95,7 +95,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="../welcome.html"><strong aria-hidden="true">1.</strong> Welcome</a></li><li class="chapter-item expanded "><a href="../overview/index.html" class="active"><strong aria-hidden="true">2.</strong> Overview</a></li><li class="chapter-item expanded "><a href="../structure/index.html"><strong aria-hidden="true">3.</strong> Structure</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../structure/client.html"><strong aria-hidden="true">3.1.</strong> Client</a></li><li class="chapter-item expanded "><a href="../structure/engine.html"><strong aria-hidden="true">3.2.</strong> Engine</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../structure/snapshot.html"><strong aria-hidden="true">3.2.1.</strong> Snapshot</a></li><li class="chapter-item expanded "><a href="../structure/vault.html"><strong aria-hidden="true">3.2.2.</strong> Vault</a></li><li class="chapter-item expanded "><a href="../structure/store.html"><strong aria-hidden="true">3.2.3.</strong> Store</a></li><li class="chapter-item expanded "><a href="../structure/runtime.html"><strong aria-hidden="true">3.2.4.</strong> Runtime</a></li></ol></li><li class="chapter-item expanded "><a href="../structure/communication.html"><strong aria-hidden="true">3.3.</strong> Communication</a></li><li class="chapter-item expanded "><a href="../structure/derive.html"><strong aria-hidden="true">3.4.</strong> Derive</a></li><li class="chapter-item expanded "><a href="../structure/utils.html"><strong aria-hidden="true">3.5.</strong> Utils</a></li></ol></li><li class="chapter-item expanded "><a href="../products/index.html"><strong aria-hidden="true">4.</strong> Products</a></li><li class="chapter-item expanded "><a href="../specs/index.html"><strong aria-hidden="true">5.</strong> Specification</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../specs/scope.html"><strong aria-hidden="true">5.1.</strong> Scope</a></li><li class="chapter-item expanded "><a href="../specs/engineering.html"><strong aria-hidden="true">5.2.</strong> Engineering</a></li></ol></li><li class="chapter-item expanded "><a href="../retrospective/index.html"><strong aria-hidden="true">6.</strong> Retrospective</a></li><li class="chapter-item expanded "><a href="../contribute.html"><strong aria-hidden="true">7.</strong> Contribute</a></li><li class="chapter-item expanded "><a href="../https://github.com/iotaledger/stronghold.html"><strong aria-hidden="true">8.</strong> Github</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../welcome.html"><strong aria-hidden="true">1.</strong> Welcome</a></li><li class="chapter-item expanded "><a href="../overview/index.html"><strong aria-hidden="true">2.</strong> Overview</a></li><li class="chapter-item expanded "><a href="../structure/index.html"><strong aria-hidden="true">3.</strong> Structure</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../structure/client.html"><strong aria-hidden="true">3.1.</strong> Client</a></li><li class="chapter-item expanded "><a href="../structure/engine.html"><strong aria-hidden="true">3.2.</strong> Engine</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../structure/snapshot.html"><strong aria-hidden="true">3.2.1.</strong> Snapshot</a></li><li class="chapter-item expanded "><a href="../structure/vault.html"><strong aria-hidden="true">3.2.2.</strong> Vault</a></li><li class="chapter-item expanded "><a href="../structure/store.html"><strong aria-hidden="true">3.2.3.</strong> Store</a></li><li class="chapter-item expanded "><a href="../structure/runtime.html" class="active"><strong aria-hidden="true">3.2.4.</strong> Runtime</a></li></ol></li><li class="chapter-item expanded "><a href="../structure/communication.html"><strong aria-hidden="true">3.3.</strong> Communication</a></li><li class="chapter-item expanded "><a href="../structure/derive.html"><strong aria-hidden="true">3.4.</strong> Derive</a></li><li class="chapter-item expanded "><a href="../structure/utils.html"><strong aria-hidden="true">3.5.</strong> Utils</a></li></ol></li><li class="chapter-item expanded "><a href="../products/index.html"><strong aria-hidden="true">4.</strong> Products</a></li><li class="chapter-item expanded "><a href="../specs/index.html"><strong aria-hidden="true">5.</strong> Specification</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../specs/scope.html"><strong aria-hidden="true">5.1.</strong> Scope</a></li><li class="chapter-item expanded "><a href="../specs/engineering.html"><strong aria-hidden="true">5.2.</strong> Engineering</a></li></ol></li><li class="chapter-item expanded "><a href="../retrospective/index.html"><strong aria-hidden="true">6.</strong> Retrospective</a></li><li class="chapter-item expanded "><a href="../contribute.html"><strong aria-hidden="true">7.</strong> Contribute</a></li><li class="chapter-item expanded "><a href="../https://github.com/iotaledger/stronghold.html"><strong aria-hidden="true">8.</strong> Github</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -167,30 +167,66 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
-<p>IOTA Stronghold is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidental leaks. It uses encrypted snapshots that can be easily backed up and securely shared between devices. Written in stable rust, it has strong guarantees of memory safety and process integrity.</p>
-<p>There are four main components of Stronghold:</p>
-<ol>
-<li><a href="./structure/client.html"><strong>Client</strong></a>: The high-level interface to Stronghold (prefers Riker, functional integration also available)</li>
-<li><a href="./structure/engine.html"><strong>Engine</strong></a>: Combines a persistence store (Snapshot) with an in-memory state interface (Vault) and a key:value read/write (Store).</li>
-<li><a href="./structure/runtime.html"><strong>Runtime</strong></a>: Is a process fork with limited permissions within which cryptographic operations take place.</li>
-<li><a href="./structure/communication.html"><strong>Communication</strong></a>: Enables Strongholds in different processes or on different devices to communicate with each other securely.</li>
-</ol>
-<p>Read more about the <a href="https://blog.iota.org/stronghold-alpha-release/">Alpha Release</a>.</p>
-<p>Read more about the <a href="https://blog.iota.org/iota-stronghold-beta-release/">Beta Release</a>.</p>
+                        <h1 id="structure-runtime"><a class="header" href="#structure-runtime">Structure: Runtime</a></h1>
+<table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
+<tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine/runtime"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-runtime"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-runtime"><img src="https://img.shields.io/crates/v/stronghold-runtime.svg" alt="" /></a></td></tr>
+</tbody></table>
+<h1 id="stronghold-runtime-system-utilities"><a class="header" href="#stronghold-runtime-system-utilities">Stronghold runtime system utilities</a></h1>
+<p>This crate aims to provide utilities for performing computations as securely as
+possible with respect to the underlying operating system.</p>
+<p>Among the considered concepts:</p>
+<ul>
+<li>guarded memory allocations
+<ul>
+<li>assists with read/write protecting sensitive data</li>
+<li>zeroes the allocated memory when handing it back to the operating system</li>
+<li>uses canary and garbage values to protect the memory pages.</li>
+<li>leverages NACL <code>libsodium</code> for use on all supported platforms.</li>
+</ul>
+</li>
+</ul>
+<h2 id="faq"><a class="header" href="#faq">FAQ:</a></h2>
+<h3 id="why-does-my-program-get-killed-with-sigbussigill-signals"><a class="header" href="#why-does-my-program-get-killed-with-sigbussigill-signals">Why does my program get killed with SIGBUS/SIGILL signals?</a></h3>
+<p>It's common to restrict the amount of memory that can a non-privileged user can
+lock into main memory (i.e. forbidden to be swapped out to disk).</p>
+<p>The following limit is sufficient to make the tests pass:</p>
+<pre><code>ulimit -l $((1024*1024))
+</code></pre>
+<p>But it's quite likely that that command will fail because the system defaults
+are sometimes very strict. On Arch the file that manages those limits is
+<a href="https://wiki.archlinux.org/index.php/Limits.conf">limit.conf</a> and the
+following addition raises the limit to sufficiently run the tests:</p>
+<pre><code>username  hard  memlock 1048576
+</code></pre>
+<p>Note also that the tests in the crate allocates <em>a lot</em> more memory than an
+application using these runtime utilities are expected to allocate: by the
+principle of least privilege only the necessary sensitive/cryptographic
+operations should be performed in the most restricted sandbox.</p>
+<h2 id="low-hanging-fruit"><a class="header" href="#low-hanging-fruit">Low-hanging fruit</a></h2>
+<ul>
+<li><input disabled="" type="checkbox"/>
+encrypt/authenticate locked memory with a fast algorithm such as AES.</li>
+</ul>
+<p>The primary components are:</p>
+<ul>
+<li><strong>Guarded</strong> - A guarded type for protecting fixed-length secrets allocated on the heap.</li>
+<li><strong>GuardedVec</strong> - A guarded type for protecting variable-length secrets allocated on the heap.</li>
+<li><strong>Secret</strong> - A Type for guarding secrets allocated to the stack.</li>
+<li><strong>ZeroingAlloc</strong> - A Zeroing Allocator which wraps the standard memory allocator. This allocator zeroes out memory when it is dropped.</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
                         
-                            <a rel="prev" href="../welcome.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../structure/store.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
                         
 
                         
-                            <a rel="next" href="../structure/index.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="../structure/communication.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         
@@ -202,13 +238,13 @@
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
                 
-                    <a rel="prev" href="../welcome.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../structure/store.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
                 
 
                 
-                    <a rel="next" href="../structure/index.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="../structure/communication.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
                 
