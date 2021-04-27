@@ -27,3 +27,8 @@ This documentation has six sections.
 4. Retrospective: a look at the evolution of this project
 5. Contribute: how you can participate in the Stronghold software development
 6. Get in touch: join the community and become part of the X-Team
+
+## Software Bill of Materials
+We maintain a bill of materials for the upstream libraries that Stronghold consumes. You can download the latest version of that here:
+
+https://github.com/iotaledger/stronghold.rs/raw/dev/S-BOM.pdf
