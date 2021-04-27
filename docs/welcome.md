@@ -11,7 +11,6 @@ IOTA Stronghold is a secure software implementation with the sole purpose of iso
 - [engine](https://stronghold.docs.iota.org/docs/stronghold_engine/index.html)
 - [communication](https://stronghold.docs.iota.org/docs/stronghold_communication/index.html)
 
-
 These libraries have been reviewed internally and are being prepared for a full external security audit in mid 2021, so they are not yet verifiably safe. Until this warning is removed, the IOTA Foundation makes no guarantees to the fitness of these libraries for any purposes.
 
 Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out with any concerns or suggestions you may have.
@@ -20,10 +19,24 @@ Nevertheless, we are very interested in feedback about the design and implementa
 If you want to get involved in discussions about this library, or you're looking for support, go to the #stronghold-discussion channel on [Discord](https://discord.iota.org).
 
 ## What you will find here
-This documentation has five paths. 
+This documentation has six sections. 
 
-1. The Overview, an detailed overview of the project. 
-2. Libraries bindings, all avaiable programming languages and their resources.
-3. The Specification, detailed explaination requirements and functionality.
-4. Contribute, how you can work on the Stronghold software.
-5. Get in touch, join the community and become part of the X-Team!
+1. The Overview: detailed overview of the project
+2. Structure: explains the layout of the individual crates and systems
+3. The Specification: detailed explanation of  requirements and functionality
+4. Retrospective: a look at the evolution of this project
+5. Contribute: how you can participate in the Stronghold software development
+6. Get in touch: join the community and become part of the X-Team
+
+## Software Bill of Materials
+We maintain a bill of materials for the upstream libraries that Stronghold consumes. You can download the latest version of that here:
+
+https://github.com/iotaledger/stronghold.rs/raw/dev/S-BOM.pdf
+
+## Tutorials (Coming Soon)
+
+We will be adding video and textual tutorials for introducing the concepts behind Stronghold.
+
+## How To's (Coming Soon)
+
+We will be adding a number of specific How To examples that will cover common use cases, like integrations, backups etc.
