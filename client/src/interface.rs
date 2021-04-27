@@ -309,9 +309,7 @@ impl Stronghold {
         }
     }
 
-    /// Returns a list of the available records and their `RecordHint` values in a vault by the given vault_path.
-    /// Records are returned as `usize` based on their index if they are written with counter `Locations`.  Generic
-    /// `Locations` will not return a readable index.
+    /// Returns a list of the available `RecordId` and `RecordHint` values in a vault by the given `vault_path`.
     pub async fn list_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
         vault_path: V,
@@ -338,7 +336,7 @@ impl Stronghold {
         }
     }
 
-    /// Checks whether a record exists in the client.
+    /// Checks whether a record exists in the client based off of the given `Location`.
     pub async fn record_exists(&self, location: Location) -> bool {
         if let SHResults::ReturnExistsRecord(b) = ask(
             &self.system,
