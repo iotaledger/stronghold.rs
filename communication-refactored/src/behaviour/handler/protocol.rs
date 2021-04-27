@@ -13,7 +13,7 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
-use crate::behaviour::RequestId;
+use crate::behaviour::MessageEvent;
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use libp2p::{
     core::{
@@ -22,12 +22,8 @@ use libp2p::{
     },
     swarm::NegotiatedSubstream,
 };
-use serde::{de::DeserializeOwned, Serialize};
 use smallvec::SmallVec;
 use std::{fmt::Debug, io, marker::PhantomData};
-
-pub trait MessageEvent: Serialize + DeserializeOwned + Send + 'static {}
-impl<T: Serialize + DeserializeOwned + Send + 'static> MessageEvent for T {}
 
 #[derive(Debug, Clone)]
 pub struct MessageProtocol;
@@ -68,9 +64,8 @@ where
     Res: MessageEvent,
 {
     pub(crate) protocols: SmallVec<[MessageProtocol; 2]>,
-    pub(crate) request_sender: oneshot::Sender<(RequestId, Req)>,
+    pub(crate) request_sender: oneshot::Sender<Req>,
     pub(crate) response_receiver: oneshot::Receiver<Res>,
-    pub(crate) request_id: RequestId,
 }
 
 impl<Req, Res> UpgradeInfo for ResponseProtocol<Req, Res>
@@ -105,7 +100,7 @@ where
                 })
                 .await?;
 
-            match self.request_sender.send((self.request_id, request)) {
+            match self.request_sender.send(request) {
                 Ok(()) => {}
                 Err(_) => panic!("Expect request receiver to be alive i.e. protocol handler to be alive.",),
             }
@@ -132,8 +127,8 @@ where
     Res: MessageEvent,
 {
     pub(crate) protocols: SmallVec<[MessageProtocol; 2]>,
-    pub(crate) request_id: RequestId,
     pub(crate) request: Req,
+    pub(crate) response_sender: oneshot::Sender<Res>,
     pub(crate) marker: PhantomData<Res>,
 }
 
@@ -155,7 +150,7 @@ where
     Req: MessageEvent,
     Res: MessageEvent,
 {
-    type Output = Res;
+    type Output = bool;
     type Error = io::Error;
     type Future = BoxFuture<'static, Result<Self::Output, Self::Error>>;
 
@@ -171,7 +166,8 @@ where
                     Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e)),
                 })
                 .await?;
-            Ok(response)
+            let sent_response = self.response_sender.send(response);
+            Ok(sent_response.is_ok())
         }
         .boxed()
     }

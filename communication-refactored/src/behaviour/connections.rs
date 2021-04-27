@@ -1,12 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::Direction;
+use crate::behaviour::types::{Direction, RequestId};
 use libp2p::core::{connection::ConnectionId, Multiaddr, PeerId};
-use std::collections::{hash_map::HashMap, HashSet};
-
-use super::RequestId;
 use smallvec::SmallVec;
+use std::collections::{hash_map::HashMap, HashSet};
 
 #[derive(Clone, Debug)]
 pub(super) struct Connection {

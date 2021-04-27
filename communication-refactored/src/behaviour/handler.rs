@@ -14,8 +14,7 @@
 // all copies or substantial portions of the Software.
 
 mod protocol;
-
-use crate::behaviour::{Request, RequestId, EMPTY_QUEUE_SHRINK_THRESHOLD};
+use crate::behaviour::{types::*, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},
@@ -24,7 +23,7 @@ use libp2p::{
         SubstreamProtocol,
     },
 };
-pub use protocol::{MessageEvent, MessageProtocol, ProtocolSupport, RequestProtocol, ResponseProtocol};
+pub use protocol::{MessageProtocol, ProtocolSupport, RequestProtocol, ResponseProtocol};
 use smallvec::SmallVec;
 use std::{
     collections::VecDeque,
@@ -38,67 +37,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-type ProtocolsHandlerEventType<Req, Res> = ProtocolsHandlerEvent<
+pub type ProtocolsHandlerEventType<Req, Res> = ProtocolsHandlerEvent<
     RequestProtocol<Req, Res>,
     RequestId,
     <RequestResponseHandler<Req, Res> as ProtocolsHandler>::OutEvent,
     <RequestResponseHandler<Req, Res> as ProtocolsHandler>::Error,
 >;
-
-#[doc(hidden)]
-#[derive(Debug)]
-pub enum HandlerInEvent<Req, Res>
-where
-    Req: MessageEvent,
-    Res: MessageEvent,
-{
-    SendRequest { request_id: RequestId, request: Req },
-    SendResponse { request_id: RequestId, response: Res },
-}
-
-#[doc(hidden)]
-#[derive(Debug)]
-pub enum HandlerOutEvent<Req, Res>
-where
-    Req: MessageEvent,
-    Res: MessageEvent,
-{
-    ReceiveRequest {
-        request_id: RequestId,
-        request: Request<Req, Res>,
-    },
-    ReceiveResponse {
-        request_id: RequestId,
-        response: Res,
-    },
-    ResponseSent(RequestId),
-    ResponseOmission(RequestId),
-    OutboundTimeout(RequestId),
-    OutboundUnsupportedProtocols(RequestId),
-    InboundTimeout(RequestId),
-    InboundUnsupportedProtocols(RequestId),
-}
-
-impl<Req, Res> HandlerOutEvent<Req, Res>
-where
-    Req: MessageEvent,
-    Res: MessageEvent,
-{
-    pub fn request_id(&self) -> &RequestId {
-        match self {
-            HandlerOutEvent::ReceiveRequest { request_id, .. }
-            | HandlerOutEvent::ReceiveResponse { request_id, .. }
-            | HandlerOutEvent::ResponseSent(request_id)
-            | HandlerOutEvent::ResponseOmission(request_id)
-            | HandlerOutEvent::OutboundTimeout(request_id)
-            | HandlerOutEvent::OutboundUnsupportedProtocols(request_id)
-            | HandlerOutEvent::InboundTimeout(request_id)
-            | HandlerOutEvent::InboundUnsupportedProtocols(request_id) => request_id,
-        }
-    }
-}
-
-type PendingInboundFuture<Req, Res> = BoxFuture<'static, Result<(RequestId, Request<Req, Res>), oneshot::Canceled>>;
+pub type PendingInboundFuture<Req, Res> = BoxFuture<'static, Result<Request<Req, Res>, oneshot::Canceled>>;
 
 #[doc(hidden)]
 pub struct RequestResponseHandler<Req, Res>
@@ -113,7 +58,7 @@ where
     keep_alive: KeepAlive,
     pending_error: Option<ProtocolsHandlerUpgrErr<io::Error>>,
     pending_events: VecDeque<HandlerOutEvent<Req, Res>>,
-    outbound: VecDeque<(RequestId, Req)>,
+    outbound: VecDeque<Request<Req, Res>>,
     inbound: FuturesUnordered<PendingInboundFuture<Req, Res>>,
     inbound_request_id: Arc<AtomicU64>,
 }
@@ -143,22 +88,17 @@ where
             inbound_request_id,
         }
     }
-}
 
-impl<Req, Res> RequestResponseHandler<Req, Res>
-where
-    Req: MessageEvent,
-    Res: MessageEvent,
-{
     fn new_outbound_protocol(
         &mut self,
         request_id: RequestId,
         request: Req,
+        response_sender: oneshot::Sender<Res>,
     ) -> SubstreamProtocol<RequestProtocol<Req, Res>, RequestId> {
         let proto = RequestProtocol {
-            request_id,
             protocols: self.supported_protocols.clone(),
             request,
+            response_sender,
             marker: PhantomData,
         };
         SubstreamProtocol::new(proto, request_id).with_timeout(self.substream_timeout)
@@ -181,19 +121,14 @@ where
             protocols,
             request_sender: rq_send,
             response_receiver: rs_recv,
-            request_id,
         };
 
         self.inbound.push(
             rq_recv
-                .map_ok(move |(id, rq)| {
-                    (
-                        id,
-                        Request {
-                            message: rq,
-                            response_channel: rs_send,
-                        },
-                    )
+                .map_ok(move |rq| Request {
+                    request_id,
+                    message: rq,
+                    response_sender: rs_send,
                 })
                 .boxed(),
         );
@@ -206,7 +141,7 @@ where
     Req: MessageEvent,
     Res: MessageEvent,
 {
-    type InEvent = HandlerInEvent<Req, Res>;
+    type InEvent = Request<Req, Res>;
     type OutEvent = HandlerOutEvent<Req, Res>;
     type Error = ProtocolsHandlerUpgrErr<io::Error>;
     type InboundProtocol = ResponseProtocol<Req, Res>;
@@ -220,21 +155,21 @@ where
 
     fn inject_fully_negotiated_inbound(&mut self, sent_response: bool, request_id: RequestId) {
         let event = sent_response
-            .then(|| HandlerOutEvent::ResponseSent(request_id))
-            .unwrap_or(HandlerOutEvent::ResponseOmission(request_id));
+            .then(|| HandlerOutEvent::SentResponse(request_id))
+            .unwrap_or(HandlerOutEvent::SendResponseOmission(request_id));
         self.pending_events.push_back(event)
     }
 
-    fn inject_fully_negotiated_outbound(&mut self, response: Res, request_id: RequestId) {
-        self.pending_events
-            .push_back(HandlerOutEvent::ReceiveResponse { request_id, response });
+    fn inject_fully_negotiated_outbound(&mut self, received_response: bool, request_id: RequestId) {
+        let event = received_response
+            .then(|| HandlerOutEvent::ReceivedResponse(request_id))
+            .unwrap_or(HandlerOutEvent::ReceiveResponseOmission(request_id));
+        self.pending_events.push_back(event);
     }
 
     fn inject_event(&mut self, event: Self::InEvent) {
         self.keep_alive = KeepAlive::Yes;
-        if let HandlerInEvent::SendRequest { request_id, request } = event {
-            self.outbound.push_back((request_id, request))
-        }
+        self.outbound.push_back(event)
     }
 
     fn inject_dial_upgrade_error(&mut self, info: RequestId, error: ProtocolsHandlerUpgrErr<io::Error>) {
@@ -280,16 +215,13 @@ where
             self.pending_events.shrink_to_fit();
         }
         while let Poll::Ready(Some(result)) = self.inbound.poll_next_unpin(cx) {
-            if let Ok((request_id, request)) = result {
+            if let Ok(request) = result {
                 self.keep_alive = KeepAlive::Yes;
-                return Poll::Ready(ProtocolsHandlerEvent::Custom(HandlerOutEvent::ReceiveRequest {
-                    request_id,
-                    request,
-                }));
+                return Poll::Ready(ProtocolsHandlerEvent::Custom(HandlerOutEvent::ReceivedRequest(request)));
             }
         }
-        if let Some((request_id, request)) = self.outbound.pop_front() {
-            let protocol = self.new_outbound_protocol(request_id, request);
+        if let Some(request) = self.outbound.pop_front() {
+            let protocol = self.new_outbound_protocol(request.request_id, request.message, request.response_sender);
             return Poll::Ready(ProtocolsHandlerEvent::OutboundSubstreamRequest { protocol });
         }
         if self.outbound.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
