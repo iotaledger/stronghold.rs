@@ -1,4 +1,4 @@
-# Structure: Client
+# Structure: Stronghold Client
 
 | | | |
 |-|-|-|
