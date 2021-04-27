@@ -12,6 +12,7 @@
     - [Communication](./structure/communication.md)
     - [Derive](./structure/derive.md)
     - [Utils](./structure/utils.md)
+- [Products](./products/README.md)    
 - [Specification](./specs/README.md)
     - [Scope](./specs/scope.md)
     - [Engineering](./specs/engineering.md)
