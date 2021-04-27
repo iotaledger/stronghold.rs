@@ -32,3 +32,11 @@ This documentation has six sections.
 We maintain a bill of materials for the upstream libraries that Stronghold consumes. You can download the latest version of that here:
 
 https://github.com/iotaledger/stronghold.rs/raw/dev/S-BOM.pdf
+
+## Tutorials (Coming Soon)
+
+We will be adding video and textual tutorials for introducing the concepts behind Stronghold.
+
+## How To's (Coming Soon)
+
+We will be adding a number of specific How To examples that will cover common use cases, like integrations, backups etc.
