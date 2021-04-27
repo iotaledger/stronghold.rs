@@ -1,14 +1,10 @@
 # Structure: Runtime
 
-- [github](https://github.com/iotaledger/stronghold.rs/tree/dev/engine/runtime)
-- [crates.io](https://crates.io/crates/stronghold-runtime)
-- [docs.rs](https://docs.rs/stronghold-runtime)
+| | | |
+|-|-|-|
+[![github](https://img.shields.io/badge/github-source-blue.svg)](https://github.com/iotaledger/stronghold.rs/tree/dev/engine/runtime) | [![github](https://img.shields.io/badge/rust-docs-green.svg)](https://docs.rs/stronghold-runtime)| [![](https://img.shields.io/crates/v/stronghold-runtime.svg)](https://crates.io/crates/stronghold-runtime)
 
-## Stronghold Protected-access Memory Runtime.
-
-These modules contain an interface for allocating and protecting the memory of secrets in Stronghold. Data is protected from being accessed outside of a limited scope. Instead it must be accessed via the provided interfaces.
-
-Memory allocations are protected by guard pages before and after the allocation, an underflow canary, and are zeroed out when freed.
+{{ #include ../../engine/runtime/README.md }}
 
 The primary components are:
 
