@@ -1,14 +1,13 @@
-# IOTA Stronghold Libraries
+# IOTA Stronghold Structure
 
-This is the location where bindings to other languages will be made available. The general strategy is that a binding will only expose the top level client interface.
+In this section we describe the individual crates and components of Stronghold:
 
-This allows the binding to be simple and easy to audit. 
-
-## Available binding languages
-
-- [ ] C
-- [ ] golang
-- [ ] node.js (via NEON)
-
-## Why no WASM?
-While theoretically possible, we will not be providing full WASM bindings to stronghold, because of a number of very serious concerns regarding memory safety which basically destroys the security model that Stronghold seeks to offer.
+- [Client](./structure/client.md)
+- [Engine](./structure/engine.md)
+    - [Snapshot](./structure/snapshot.md)
+    - [Vault](./structure/vault.md)
+    - [Store](./structure/store.md)
+    - [Runtime](./structure/runtime.md)
+- [Communication](./structure/communication.md)
+- [Derive](./structure/derive.md)
+- [Utils](./structure/utils.md)

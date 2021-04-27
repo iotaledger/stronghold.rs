@@ -1,9 +1,8 @@
 # Structure: Runtime
 
-- [github]()
-- [crates.io](https://crates.io/stronghold-runtime)
+- [github](https://github.com/iotaledger/stronghold.rs/tree/dev/engine/runtime)
+- [crates.io](https://crates.io/crates/stronghold-runtime)
 - [docs.rs](https://docs.rs/stronghold-runtime)
-
 
 ## Stronghold Protected-access Memory Runtime.
 
