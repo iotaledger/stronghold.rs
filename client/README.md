@@ -24,6 +24,7 @@ Also requires keydata to unlock the snapshot and the keydata must implement and 
 
 
 **Stronghold Procedures**:
+
 **Requests**: 
 - `SLIP10Generate`: Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in the `Location`. 
 - `SLIP10Derive`: Derive a Slip10 child key from a seed or parent key. Store the output in a specified `Location` and return the corresponding `ChainCode`. 
