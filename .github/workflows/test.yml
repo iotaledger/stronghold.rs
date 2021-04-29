@@ -8,10 +8,10 @@ on:
     branches:
       - main
       - dev
-    paths-ignore:
-      - 'docs/**'
-      - 'spec/**'
-      - '.meta/**'
+    paths:
+      - '.github/workflows/test.yml'
+      - '**.rs'
+      - '**.toml'
 
 jobs:
   build-and-test:

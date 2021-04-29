@@ -8,6 +8,10 @@ on:
     branches:
       - main
       - dev
+    paths:
+      - '.github/workflows/clippy.yml'
+      - '**.rs'
+      - '**.toml'
 
 jobs:
   clippy:
