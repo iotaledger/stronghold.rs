@@ -18,10 +18,8 @@ There are four main components of Stronghold:
 2. **Engine**: Combines a persistence store (Snapshot) with an in-memory state interface (Vault), a read/write key:value system (Store) and memory protection services (Runtime).
 3. **Communication**: Enables Strongholds in different processes or on different devices to communicate with each other securely.
 
-## WARNING
-These libraries have been reviewed internally and are being prepared for a full external security audit in mid 2021, so they are not yet verifiably safe. Until this warning is removed, the IOTA Foundation makes no guarantees to the fitness of these libraries for use by third parties.
-
-Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out with any concerns or suggestions you may have.
+## 3rd Party Independent Security Audit
+In April of 2021, F-Secure performed a security assessment of the core crates of IOTA Stronghold and found nothing of concern. This is not an explicit declaration of fitness or freedom of error, but it is an indicator of the high quality of the code. You may review [the audit here](https://github.com/iotaledger/stronghold.rs/blob/dev/docs/meta/Audit.pdf).
 
 ## Roadmap
 Here are some of the features and tasks that we are working on.
@@ -48,9 +46,9 @@ Here are some of the features and tasks that we are working on.
 
 #### Applications
 - [x] CLI binary
+- [x] Dynamic high-performance store 
 - [ ] Standalone Desktop Application
 - [ ] Portable Daemon (for nodes, etc)
-- [ ] Dynamic high-performance store 
 - [ ] C FFI bindings
 
 ### Hardware Integrations
@@ -61,11 +59,6 @@ Here are some of the features and tasks that we are working on.
 - [ ] Move entirely to FPGA
 
 ## API Reference
-### RUSTDOCS
-- [client](https://stronghold.docs.iota.org/docs/iota_stronghold/index.html)
-- [engine](https://stronghold.docs.iota.org/docs/stronghold_engine/index.html)
-- [communication](https://stronghold.docs.iota.org/docs/stronghold_communication/index.html)
-
 ### Do it yourself
 ```
 cargo doc --workspace --no-deps --open
