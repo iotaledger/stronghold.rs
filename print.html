@@ -170,29 +170,29 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="welcome"><a class="header" href="#welcome">Welcome</a></h1>
-<p>This is the documentation for the official IOTA Stronghold Software.</p>
-<p>IOTA Stronghold is a secure software implementation with the sole purpose of isolating digital secrets like IOTA seeds and private keys.</p>
-<h2 id="-beta-version-"><a class="header" href="#-beta-version-">🚧 Beta Version 🚧</a></h2>
-<p><a href="https://github.com/iotaledger/stronghold.rs"><img src="https://img.shields.io/badge/Status-Beta-green.svg" alt="status" /></a></p>
-<h2 id="rustdocs"><a class="header" href="#rustdocs">RUSTDOCS</a></h2>
-<ul>
-<li><a href="https://stronghold.docs.iota.org/docs/iota_stronghold/index.html">client</a></li>
-<li><a href="https://stronghold.docs.iota.org/docs/stronghold_engine/index.html">engine</a></li>
-<li><a href="https://stronghold.docs.iota.org/docs/stronghold_communication/index.html">communication</a></li>
-</ul>
-<p>These libraries have been reviewed internally and are being prepared for a full external security audit in mid 2021, so they are not yet verifiably safe. Until this warning is removed, the IOTA Foundation makes no guarantees to the fitness of these libraries for any purposes.</p>
-<p>Nevertheless, we are very interested in feedback about the design and implementation, and encourage you to reach out with any concerns or suggestions you may have.</p>
+<p>Stronghold is an open-source software library that was originally built to protect IOTA Seeds, but can be used to protect any digital secret. </p>
+<p>It is a secure database for working with cryptography, which ensures that secrets (like private keys) are never revealed - but can be used according to best practices.</p>
+<p>It provides its own peer-to-peer communication layer, so that different apps can securely communicate using the state-of-the-art Noise Protocol over libp2p. </p>
+<p><a href="https://github.com/iotaledger/stronghold.rs"><img src="https://img.shields.io/badge/Status-Beta-green.svg" alt="status" /></a>
+<img src="https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev" alt="Audit" />
+<img src="https://github.com/iotaledger/stronghold.rs/workflows/Test/badge.svg" alt="Test" />
+<a href="https://stronghold.docs.iota.org"><img src="https://img.shields.io/badge/Docs-Official-green.svg" alt="docs" /></a>
+<a href="https://coveralls.io/github/iotaledger/stronghold.rs?branch=dev"><img src="https://coveralls.io/repos/github/iotaledger/stronghold.rs/badge.svg?branch=dev" alt="coverage" /></a>
+<a href="https://deps.rs/repo/github/iotaledger/stronghold.rs"><img src="https://deps.rs/repo/github/iotaledger/stronghold.rs/status.svg" alt="dependency status" /></a>
+<a href="https://app.fossa.com/projects/git%2Bgithub.com%2Fiotaledger%2Fstronghold.rs?ref=badge_shield"><img src="https://app.fossa.com/api/projects/git%2Bgithub.com%2Fiotaledger%2Fstronghold.rs.svg?type=shield" alt="FOSSA Status" /></a></p>
+<h2 id="3rd-party-independent-security-audit"><a class="header" href="#3rd-party-independent-security-audit">3rd Party Independent Security Audit</a></h2>
+<p>In April of 2021, F-Secure performed a security assessment of the core crates of IOTA Stronghold and found nothing of concern. This is not an explicit declaration of fitness or freedom of error, but it is an indicator of the high quality of the code. You may review <a href="https://github.com/iotaledger/stronghold.rs/blob/dev/docs/meta/Audit.pdf">the audit here</a>.</p>
 <h2 id="joining-the-discussion"><a class="header" href="#joining-the-discussion">Joining the discussion</a></h2>
 <p>If you want to get involved in discussions about this library, or you're looking for support, go to the #stronghold-discussion channel on <a href="https://discord.iota.org">Discord</a>.</p>
 <h2 id="what-you-will-find-here"><a class="header" href="#what-you-will-find-here">What you will find here</a></h2>
 <p>This documentation has six sections. </p>
 <ol>
-<li>The Overview: detailed overview of the project</li>
-<li>Structure: explains the layout of the individual crates and systems</li>
-<li>The Specification: detailed explanation of  requirements and functionality</li>
-<li>Retrospective: a look at the evolution of this project</li>
-<li>Contribute: how you can participate in the Stronghold software development</li>
-<li>Get in touch: join the community and become part of the X-Team</li>
+<li><strong>The Overview</strong>: detailed overview of the project</li>
+<li><strong>Structure</strong>: explains the layout of the individual crates and systems</li>
+<li><strong>The Specification</strong>: detailed explanation of requirements and functionality</li>
+<li><strong>Retrospective</strong>: a look at the evolution of this project</li>
+<li><strong>Contribute</strong>: how you can participate in the Stronghold software development</li>
+<li><strong>Get in touch</strong>: join the community and become part of the X-Team</li>
 </ol>
 <h2 id="software-bill-of-materials"><a class="header" href="#software-bill-of-materials">Software Bill of Materials</a></h2>
 <p>We maintain a bill of materials for the upstream libraries that Stronghold consumes. You can download the latest version of that here:</p>
