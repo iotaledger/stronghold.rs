@@ -13,15 +13,16 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
-use crate::behaviour::MessageEvent;
+use crate::{behaviour::MessageEvent, Request};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use libp2p::{
     core::{
-        upgrade::{read_one, write_one, InboundUpgrade, OutboundUpgrade, UpgradeInfo},
+        upgrade::{read_one, write_one, InboundUpgrade, OutboundUpgrade, ReadOneError, UpgradeInfo},
         ProtocolName,
     },
     swarm::NegotiatedSubstream,
 };
+use serde::{de::DeserializeOwned, Serialize};
 use smallvec::SmallVec;
 use std::{fmt::Debug, io, marker::PhantomData};
 
@@ -90,31 +91,16 @@ where
     type Error = io::Error;
     type Future = BoxFuture<'static, Result<Self::Output, Self::Error>>;
 
-    fn upgrade_inbound(self, mut io: NegotiatedSubstream, _protocol: Self::Info) -> Self::Future {
+    fn upgrade_inbound(self, mut io: NegotiatedSubstream, _: Self::Info) -> Self::Future {
         async move {
-            let request = read_one(&mut io, usize::MAX)
-                .map(|req| match req {
-                    Ok(bytes) => serde_json::from_slice(bytes.as_slice())
-                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
-                    Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e)),
-                })
-                .await?;
+            let request = read_and_parse(&mut io).await?;
+            let _ = self.request_sender.send(request);
 
-            match self.request_sender.send(request) {
-                Ok(()) => {}
-                Err(_) => panic!("Expect request receiver to be alive i.e. protocol handler to be alive.",),
-            }
-
-            if let Ok(response) = self.response_receiver.await {
-                let buf = serde_json::to_vec(&response).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-                write_one(&mut io, buf).await?;
-
-                io.close().await?;
-                Ok(true)
-            } else {
-                io.close().await?;
-                Ok(false)
-            }
+            let res = match self.response_receiver.await {
+                Ok(response) => parse_and_write(&mut io, response).await.map(|_| true)?,
+                Err(_) => io.close().await.map(|_| false)?,
+            };
+            Ok(res)
         }
         .boxed()
     }
@@ -127,8 +113,7 @@ where
     Res: MessageEvent,
 {
     pub(crate) protocols: SmallVec<[MessageProtocol; 2]>,
-    pub(crate) request: Req,
-    pub(crate) response_sender: oneshot::Sender<Res>,
+    pub(crate) request: Request<Req, Res>,
     pub(crate) marker: PhantomData<Res>,
 }
 
@@ -156,19 +141,29 @@ where
 
     fn upgrade_outbound(self, mut io: NegotiatedSubstream, _: Self::Info) -> Self::Future {
         async move {
-            let buf = serde_json::to_vec(&self.request).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-            write_one(&mut io, buf).await?;
-            io.close().await?;
-            let response = read_one(&mut io, usize::MAX)
-                .map(|res| match res {
-                    Ok(bytes) => serde_json::from_slice(bytes.as_slice())
-                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
-                    Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e)),
-                })
-                .await?;
-            let sent_response = self.response_sender.send(response);
+            parse_and_write(&mut io, self.request.message).await?;
+            let response = read_and_parse(&mut io).await?;
+            let sent_response = self.request.response_sender.send(response);
             Ok(sent_response.is_ok())
         }
         .boxed()
     }
+}
+
+async fn read_and_parse<T: DeserializeOwned>(io: &mut NegotiatedSubstream) -> Result<T, io::Error> {
+    read_one(io, usize::MAX)
+        .map(|res| match res {
+            Ok(bytes) => {
+                serde_json::from_slice(bytes.as_slice()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+            }
+            Err(ReadOneError::Io(io_err)) => Err(io_err),
+            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
+        })
+        .await
+}
+
+async fn parse_and_write<T: Serialize>(io: &mut NegotiatedSubstream, data: T) -> Result<(), io::Error> {
+    let buf = serde_json::to_vec(&data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    write_one(io, buf).await?;
+    io.close().await
 }

@@ -16,7 +16,7 @@
 mod connections;
 pub mod handler;
 mod types;
-use connections::PeerConnectionManager;
+use connections::{Direction, PeerConnectionManager};
 use futures::channel::oneshot;
 use handler::RequestResponseHandler;
 pub use handler::{MessageProtocol, ProtocolSupport};
@@ -82,6 +82,8 @@ type NetworkAction<Proto> = NetworkBehaviourAction<
     <Proto as NetworkBehaviour>::OutEvent,
 >;
 
+type PedingOutboundRequests<Req, Res> = SmallVec<[(RequestId, Request<Req, Res>); 10]>;
+
 pub struct RequestResponse<Req, Res>
 where
     Req: MessageEvent,
@@ -95,10 +97,9 @@ where
     next_request_id: RequestId,
     next_inbound_id: Arc<AtomicU64>,
     config: RequestResponseConfig,
-    pending_events: VecDeque<NetworkBehaviourAction<Request<Req, Res>, BehaviourEvent<Req, Res>>>,
+    pending_events: VecDeque<NetworkBehaviourAction<HandlerInEvent<Req, Res>, BehaviourEvent<Req, Res>>>,
     peer_connections: PeerConnectionManager,
-    pending_outbound_requests: HashMap<PeerId, SmallVec<[Request<Req, Res>; 10]>>,
-    pending_inbound_responses: HashMap<RequestId, oneshot::Sender<Res>>,
+    pending_outbound_requests: HashMap<PeerId, PedingOutboundRequests<Req, Res>>,
 }
 
 impl<Req, Res> RequestResponse<Req, Res>
@@ -122,7 +123,6 @@ where
             pending_events: VecDeque::new(),
             peer_connections: PeerConnectionManager::new(),
             pending_outbound_requests: HashMap::new(),
-            pending_inbound_responses: HashMap::new(),
         }
     }
 
@@ -132,34 +132,28 @@ where
             let (response_sender, response_receiver) = oneshot::channel();
             let receiver = ResponseReceiver::new(peer, request_id, response_receiver);
             let request = Request {
-                request_id,
                 message: request,
                 response_sender,
             };
-            if let Some(request) = self.try_send_request(peer, request) {
+            if let Some(request) = self.try_send_request(peer, request_id, request) {
                 self.pending_events.push_back(NetworkBehaviourAction::DialPeer {
                     peer_id: peer,
                     condition: DialPeerCondition::Disconnected,
                 });
-                self.pending_outbound_requests.entry(peer).or_default().push(request);
+                self.pending_outbound_requests
+                    .entry(peer)
+                    .or_default()
+                    .push((request_id, request));
             }
             receiver
         })
-    }
-
-    pub fn send_response(&mut self, request_id: RequestId, response: Res) -> Result<(), Res> {
-        if let Some(channel) = self.pending_inbound_responses.remove(&request_id) {
-            channel.send(response)
-        } else {
-            Err(response)
-        }
     }
 
     pub fn add_address(&mut self, peer: &PeerId, address: Multiaddr) {
         self.peer_connections.add_address(peer, address)
     }
 
-    pub fn remove_address(&mut self, peer: PeerId, address: &Multiaddr) {
+    pub fn remove_address(&mut self, peer: &PeerId, address: &Multiaddr) {
         self.peer_connections.remove_address(peer, address)
     }
 
@@ -171,15 +165,20 @@ where
         *self.next_request_id.inc()
     }
 
-    fn try_send_request(&mut self, peer: PeerId, request: Request<Req, Res>) -> Option<Request<Req, Res>> {
+    fn try_send_request(
+        &mut self,
+        peer: PeerId,
+        request_id: RequestId,
+        request: Request<Req, Res>,
+    ) -> Option<Request<Req, Res>> {
         if let Some(connection_id) = self
             .peer_connections
-            .new_request(&peer, request.request_id, &Direction::Inbound)
+            .new_request(&peer, request_id, Direction::Outbound)
         {
             let event = NetworkBehaviourAction::NotifyHandler {
                 peer_id: peer,
                 handler: NotifyHandler::One(connection_id),
-                event: request,
+                event: HandlerInEvent { request_id, request },
             };
             self.pending_events.push_back(event);
             None
@@ -190,126 +189,83 @@ where
 
     fn handle_connection_closed(&mut self, peer: &PeerId, conn_id: &ConnectionId) {
         if let Some(connection) = self.peer_connections.remove_connection(*peer, conn_id) {
-            let mut events = Vec::new();
-            let mut outbound_events = connection
-                .pending_requests(&Direction::Outbound)
-                .iter()
-                .map(|request_id| {
-                    let err = SendResponseError::ConnectionClosed;
-                    let ev = RequestResponseEvent::SendResponse(Err(err));
-                    (*request_id, ev)
-                })
-                .collect();
-            let mut inbound_events = connection
-                .pending_requests(&Direction::Inbound)
-                .iter()
-                .map(|request_id| {
-                    let err = ReceiveResponseError::ConnectionClosed;
-                    let ev = RequestResponseEvent::ReceiveResponse(Err(err));
-                    (*request_id, ev)
-                })
-                .collect();
-            events.append(&mut outbound_events);
-            events.append(&mut inbound_events);
-            events.into_iter().for_each(|(request_id, event)| {
-                let event = BehaviourEvent {
+            connection.pending_outbound_requests.into_iter().for_each(|request_id| {
+                let event = BehaviourEvent::ReceiveResponse {
                     peer: *peer,
                     request_id,
-                    event,
+                    result: Err(ReceiveResponseError::ConnectionClosed),
                 };
                 let action = NetworkBehaviourAction::GenerateEvent(event);
                 self.pending_events.push_back(action);
-            })
+            });
         }
     }
 
     fn handler_handler_event(&mut self, peer: PeerId, connection: ConnectionId, event: HandlerOutEvent<Req, Res>) {
-        let request_id = *event.request_id();
-        let req_res_event = match event {
-            HandlerOutEvent::SentRequest(_) => {
-                debug_assert!(
-                    self.peer_connections.is_connected(&peer),
-                    "Expect to be connected to a peer after sending a request.",
-                );
-                RequestResponseEvent::SendRequest(Ok(()))
-            }
-            HandlerOutEvent::ReceivedResponse(_) => {
+        let event = match event {
+            HandlerOutEvent::ReceivedResponse(request_id) => {
                 let removed =
                     self.peer_connections
-                        .remove_request(&peer, &connection, &request_id, &Direction::Inbound);
+                        .remove_request(&peer, &connection, &request_id, Direction::Outbound);
                 debug_assert!(removed, "Expect request_id to be pending before receiving response.",);
-                RequestResponseEvent::ReceiveResponse(Ok(()))
-            }
-            HandlerOutEvent::ReceiveResponseOmission(_) => {
-                let removed =
-                    self.peer_connections
-                        .remove_request(&peer, &connection, &request_id, &Direction::Inbound);
-                debug_assert!(removed, "Expect request_id to be pending before response is omitted.",);
-                RequestResponseEvent::ReceiveResponse(Err(ReceiveResponseError::ReceiveResponseOmission))
-            }
-            HandlerOutEvent::ReceivedRequest(request) => {
-                let req_res_event = RequestResponseEvent::ReceiveRequest(Ok(request));
-                match self
-                    .peer_connections
-                    .new_request(&peer, request_id, &Direction::Outbound)
-                {
-                    Some(_) => req_res_event,
-                    None => {
-                        let event = BehaviourEvent {
-                            peer,
-                            request_id,
-                            event: req_res_event,
-                        };
-                        self.pending_events
-                            .push_back(NetworkBehaviourAction::GenerateEvent(event));
-                        RequestResponseEvent::SendResponse(Err(SendResponseError::ConnectionClosed))
-                    }
+                BehaviourEvent::ReceiveResponse {
+                    peer,
+                    request_id,
+                    result: Ok(()),
                 }
             }
-            HandlerOutEvent::SentResponse(_) => {
+            HandlerOutEvent::ReceiveResponseOmission(request_id) => {
                 let removed =
                     self.peer_connections
-                        .remove_request(&peer, &connection, &request_id, &Direction::Outbound);
-                debug_assert!(removed, "Expect request_id to be pending before response is sent.");
-                RequestResponseEvent::SendResponse(Ok(()))
-            }
-            HandlerOutEvent::SendResponseOmission(_) => {
-                let removed =
-                    self.peer_connections
-                        .remove_request(&peer, &connection, &request_id, &Direction::Outbound);
+                        .remove_request(&peer, &connection, &request_id, Direction::Outbound);
                 debug_assert!(removed, "Expect request_id to be pending before response is omitted.",);
-                RequestResponseEvent::SendResponse(Err(SendResponseError::SendResponseOmission))
+                BehaviourEvent::ReceiveResponse {
+                    peer,
+                    request_id,
+                    result: Err(ReceiveResponseError::ReceiveResponseOmission),
+                }
             }
-            HandlerOutEvent::OutboundTimeout(_) => {
+            HandlerOutEvent::ReceivedRequest { request_id, request } => {
+                self.peer_connections.new_request(&peer, request_id, Direction::Inbound);
+                BehaviourEvent::ReceiveRequest {
+                    peer,
+                    request_id,
+                    request,
+                }
+            }
+            HandlerOutEvent::OutboundTimeout(request_id) => {
                 let removed =
                     self.peer_connections
-                        .remove_request(&peer, &connection, &request_id, &Direction::Inbound);
+                        .remove_request(&peer, &connection, &request_id, Direction::Outbound);
                 debug_assert!(removed, "Expect request_id to be pending before request times out.");
-                RequestResponseEvent::ReceiveResponse(Err(ReceiveResponseError::Timeout))
+                BehaviourEvent::ReceiveResponse {
+                    peer,
+                    request_id,
+                    result: Err(ReceiveResponseError::Timeout),
+                }
             }
-            HandlerOutEvent::InboundTimeout(_) => {
-                self.peer_connections
-                    .remove_request(&peer, &connection, &request_id, &Direction::Outbound);
-                RequestResponseEvent::SendResponse(Err(SendResponseError::Timeout))
-            }
-            HandlerOutEvent::OutboundUnsupportedProtocols(_) => {
+            HandlerOutEvent::OutboundUnsupportedProtocols(request_id) => {
                 let removed =
                     self.peer_connections
-                        .remove_request(&peer, &connection, &request_id, &Direction::Inbound);
+                        .remove_request(&peer, &connection, &request_id, Direction::Outbound);
                 debug_assert!(removed, "Expect request_id to be pending before failing to connect.",);
-                RequestResponseEvent::SendRequest(Err(SendRequestError::UnsupportedProtocols))
+                BehaviourEvent::ReceiveResponse {
+                    peer,
+                    request_id,
+                    result: Err(ReceiveResponseError::UnsupportedProtocols),
+                }
             }
-            HandlerOutEvent::InboundUnsupportedProtocols(_) => {
-                RequestResponseEvent::ReceiveRequest(Err(ReceiveRequestError::UnsupportedProtocols))
+            HandlerOutEvent::InboundTimeout(request_id)
+            | HandlerOutEvent::InboundUnsupportedProtocols(request_id)
+            | HandlerOutEvent::SentResponse(request_id)
+            | HandlerOutEvent::SendResponseOmission(request_id) => {
+                self.peer_connections
+                    .remove_request(&peer, &connection, &request_id, Direction::Inbound);
+                return;
             }
-        };
-        let behaviour_event = BehaviourEvent {
-            peer,
-            request_id,
-            event: req_res_event,
         };
         self.pending_events
-            .push_back(NetworkBehaviourAction::GenerateEvent(behaviour_event));
+            .push_back(NetworkBehaviourAction::GenerateEvent(event));
     }
 }
 
@@ -354,8 +310,8 @@ where
     fn inject_connected(&mut self, peer: &PeerId) {
         self.relay.inject_connected(peer);
         if let Some(pending) = self.pending_outbound_requests.remove(peer) {
-            for request in pending {
-                let request = self.try_send_request(*peer, request);
+            for (request_id, request) in pending {
+                let request = self.try_send_request(*peer, request_id, request);
                 assert!(request.is_none());
             }
         }
@@ -397,12 +353,12 @@ where
 
     fn inject_dial_failure(&mut self, peer: &PeerId) {
         if let Some(pending) = self.pending_outbound_requests.remove(peer) {
-            for request in pending {
+            for (request_id, _) in pending {
                 self.pending_events
-                    .push_back(NetworkBehaviourAction::GenerateEvent(BehaviourEvent {
+                    .push_back(NetworkBehaviourAction::GenerateEvent(BehaviourEvent::ReceiveResponse {
                         peer: *peer,
-                        request_id: request.request_id,
-                        event: RequestResponseEvent::SendRequest(Err(SendRequestError::DialFailure)),
+                        request_id,
+                        result: Err(ReceiveResponseError::DialFailure),
                     }));
             }
         }

@@ -48,26 +48,19 @@ fn ping_protocol() {
         loop {
             match swarm1.next_event().await {
                 SwarmEvent::NewListenAddr(addr) => tx.send(addr).await.unwrap(),
-                SwarmEvent::Behaviour(BehaviourEvent {
+                SwarmEvent::Behaviour(BehaviourEvent::ReceiveRequest {
                     peer,
-                    event:
-                        RequestResponseEvent::ReceiveRequest(Ok(Request {
+                    request:
+                        Request {
                             message,
                             response_sender,
                             ..
-                        })),
+                        },
                     ..
                 }) => {
                     assert_eq!(&message, &expected_ping);
                     assert_eq!(&peer, &peer2_id);
                     response_sender.send(pong.clone()).unwrap();
-                }
-                SwarmEvent::Behaviour(BehaviourEvent {
-                    peer,
-                    event: RequestResponseEvent::SendResponse(Ok(..)),
-                    ..
-                }) => {
-                    assert_eq!(&peer, &peer2_id);
                 }
                 SwarmEvent::Behaviour(e) => panic!("Peer1: Unexpected event: {:?}", e),
                 _ => {}
@@ -84,13 +77,12 @@ fn ping_protocol() {
         let mut response_channel = swarm2.behaviour_mut().send_request(peer1_id, ping.clone()).unwrap();
 
         loop {
-            let BehaviourEvent {
-                peer,
-                request_id,
-                event,
-            } = swarm2.next().await;
-            match event {
-                RequestResponseEvent::ReceiveResponse(Ok(())) => {
+            match swarm2.next().await {
+                BehaviourEvent::ReceiveResponse {
+                    peer,
+                    request_id,
+                    result: Ok(()),
+                } => {
                     let req_id = *response_channel.request_id();
                     let response = response_channel.try_receive().unwrap().unwrap();
                     count += 1;
@@ -115,6 +107,7 @@ fn ping_protocol() {
 #[test]
 fn emits_inbound_connection_closed_failure() {
     let ping = Ping("ping".to_string().into_bytes());
+    let pong = Pong("pong".to_string().into_bytes());
 
     let (peer1_id, mut swarm1) = async_std::task::block_on(init_swarm());
     let (peer2_id, mut swarm2) = async_std::task::block_on(init_swarm());
@@ -130,10 +123,10 @@ fn emits_inbound_connection_closed_failure() {
         swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
 
         // Wait for swarm 1 to receive request by swarm 2.
-        let _channel = loop {
+        let response_sender = loop {
             futures::select!(
-                BehaviourEvent {peer, event, ..} = swarm1.next().fuse() => match event {
-                    RequestResponseEvent::ReceiveRequest(Ok(Request{message, response_sender, ..})) => {
+                event = swarm1.next().fuse() => match event {
+                    BehaviourEvent::ReceiveRequest { peer, request: Request{message, response_sender, .. }, ..} => {
                         assert_eq!(&message, &ping);
                         assert_eq!(&peer, &peer2_id);
                         break response_sender
@@ -147,10 +140,10 @@ fn emits_inbound_connection_closed_failure() {
         // Drop swarm 2 in order for the connection between swarm 1 and 2 to close.
         drop(swarm2);
 
-        let BehaviourEvent { event, .. } = swarm1.next().await;
-
-        match event {
-            RequestResponseEvent::SendResponse(Err(SendResponseError::ConnectionClosed)) => {}
+        match swarm1.next_event().await {
+            SwarmEvent::ConnectionClosed { peer_id, .. } if peer_id == peer2_id => {
+                assert!(response_sender.send(pong).is_err());
+            }
             e => panic!("Peer1: Unexpected event: {:?}", e),
         }
     });
@@ -176,26 +169,32 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
         let addr1 = Swarm::listeners(&swarm1).next().unwrap();
 
         swarm2.behaviour_mut().add_address(&peer1_id, addr1.clone());
-        swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
+        let mut response_receiver = swarm2.behaviour_mut().send_request(peer1_id, ping.clone()).unwrap();
 
         // Wait for swarm 1 to receive request by swarm 2.
         let event = loop {
             futures::select!(
-                            BehaviourEvent {peer, event, ..} = swarm1.next().fuse() =>
-                            if let RequestResponseEvent::ReceiveRequest(Ok(Request {message, response_sender, ..})) =
+                            event = swarm1.next().fuse() =>
+                            if let BehaviourEvent::ReceiveRequest{ peer, request: Request {message, response_sender, ..}, ..} =
             event {                      assert_eq!(&message, &ping);
                                     assert_eq!(&peer, &peer2_id);
                                     drop(response_sender);
                                 continue;
                             },
-                            BehaviourEvent { event, ..} = swarm2.next().fuse() => {
-                                break event;
-                            },
+                            event = swarm2.next().fuse() => break event,
                         )
         };
 
         match event {
-            RequestResponseEvent::ReceiveResponse(Err(ReceiveResponseError::ConnectionClosed)) => {}
+            BehaviourEvent::ReceiveResponse {
+                peer,
+                request_id,
+                result: Err(ReceiveResponseError::ConnectionClosed),
+            } => {
+                assert_eq!(peer, peer1_id);
+                assert_eq!(&request_id, response_receiver.request_id());
+                assert!(response_receiver.try_receive().is_err())
+            }
             e => panic!("unexpected event from peer 2: {:?}", e),
         };
     });

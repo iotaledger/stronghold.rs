@@ -43,7 +43,7 @@ pub type ProtocolsHandlerEventType<Req, Res> = ProtocolsHandlerEvent<
     <RequestResponseHandler<Req, Res> as ProtocolsHandler>::OutEvent,
     <RequestResponseHandler<Req, Res> as ProtocolsHandler>::Error,
 >;
-pub type PendingInboundFuture<Req, Res> = BoxFuture<'static, Result<Request<Req, Res>, oneshot::Canceled>>;
+pub type PendingInboundFuture<Req, Res> = BoxFuture<'static, Result<(RequestId, Request<Req, Res>), oneshot::Canceled>>;
 
 #[doc(hidden)]
 pub struct RequestResponseHandler<Req, Res>
@@ -58,7 +58,7 @@ where
     keep_alive: KeepAlive,
     pending_error: Option<ProtocolsHandlerUpgrErr<io::Error>>,
     pending_events: VecDeque<HandlerOutEvent<Req, Res>>,
-    outbound: VecDeque<Request<Req, Res>>,
+    outbound: VecDeque<HandlerInEvent<Req, Res>>,
     inbound: FuturesUnordered<PendingInboundFuture<Req, Res>>,
     inbound_request_id: Arc<AtomicU64>,
 }
@@ -92,13 +92,11 @@ where
     fn new_outbound_protocol(
         &mut self,
         request_id: RequestId,
-        request: Req,
-        response_sender: oneshot::Sender<Res>,
+        request: Request<Req, Res>,
     ) -> SubstreamProtocol<RequestProtocol<Req, Res>, RequestId> {
         let proto = RequestProtocol {
             protocols: self.supported_protocols.clone(),
             request,
-            response_sender,
             marker: PhantomData,
         };
         SubstreamProtocol::new(proto, request_id).with_timeout(self.substream_timeout)
@@ -125,10 +123,14 @@ where
 
         self.inbound.push(
             rq_recv
-                .map_ok(move |rq| Request {
-                    request_id,
-                    message: rq,
-                    response_sender: rs_send,
+                .map_ok(move |rq| {
+                    (
+                        request_id,
+                        Request {
+                            message: rq,
+                            response_sender: rs_send,
+                        },
+                    )
                 })
                 .boxed(),
         );
@@ -141,7 +143,7 @@ where
     Req: MessageEvent,
     Res: MessageEvent,
 {
-    type InEvent = Request<Req, Res>;
+    type InEvent = HandlerInEvent<Req, Res>;
     type OutEvent = HandlerOutEvent<Req, Res>;
     type Error = ProtocolsHandlerUpgrErr<io::Error>;
     type InboundProtocol = ResponseProtocol<Req, Res>;
@@ -153,11 +155,11 @@ where
         self.new_inbound_protocol()
     }
 
-    fn inject_fully_negotiated_inbound(&mut self, sent_response: bool, request_id: RequestId) {
-        let event = sent_response
+    fn inject_fully_negotiated_inbound(&mut self, send_response: bool, request_id: RequestId) {
+        let event = send_response
             .then(|| HandlerOutEvent::SentResponse(request_id))
             .unwrap_or(HandlerOutEvent::SendResponseOmission(request_id));
-        self.pending_events.push_back(event)
+        self.pending_events.push_back(event);
     }
 
     fn inject_fully_negotiated_outbound(&mut self, received_response: bool, request_id: RequestId) {
@@ -187,13 +189,11 @@ where
         }
     }
 
-    fn inject_listen_upgrade_error(&mut self, info: RequestId, error: ProtocolsHandlerUpgrErr<io::Error>) {
+    fn inject_listen_upgrade_error(&mut self, _: RequestId, error: ProtocolsHandlerUpgrErr<io::Error>) {
         match error {
-            ProtocolsHandlerUpgrErr::Timeout => self.pending_events.push_back(HandlerOutEvent::InboundTimeout(info)),
-            ProtocolsHandlerUpgrErr::Upgrade(UpgradeError::Select(NegotiationError::Failed)) => {
-                self.pending_events
-                    .push_back(HandlerOutEvent::InboundUnsupportedProtocols(info));
-            }
+            ProtocolsHandlerUpgrErr::Timeout
+            | ProtocolsHandlerUpgrErr::Timer
+            | ProtocolsHandlerUpgrErr::Upgrade(UpgradeError::Select(NegotiationError::Failed)) => {}
             _ => {
                 self.pending_error = Some(error);
             }
@@ -215,13 +215,16 @@ where
             self.pending_events.shrink_to_fit();
         }
         while let Poll::Ready(Some(result)) = self.inbound.poll_next_unpin(cx) {
-            if let Ok(request) = result {
+            if let Ok((request_id, request)) = result {
                 self.keep_alive = KeepAlive::Yes;
-                return Poll::Ready(ProtocolsHandlerEvent::Custom(HandlerOutEvent::ReceivedRequest(request)));
+                return Poll::Ready(ProtocolsHandlerEvent::Custom(HandlerOutEvent::ReceivedRequest {
+                    request_id,
+                    request,
+                }));
             }
         }
-        if let Some(request) = self.outbound.pop_front() {
-            let protocol = self.new_outbound_protocol(request.request_id, request.message, request.response_sender);
+        if let Some(HandlerInEvent { request, request_id }) = self.outbound.pop_front() {
+            let protocol = self.new_outbound_protocol(request_id, request);
             return Poll::Ready(ProtocolsHandlerEvent::OutboundSubstreamRequest { protocol });
         }
         if self.outbound.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
