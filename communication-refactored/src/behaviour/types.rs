@@ -6,8 +6,8 @@ use libp2p::PeerId;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt;
 
-pub trait MessageEvent: Serialize + DeserializeOwned + Send + 'static {}
-impl<T: Serialize + DeserializeOwned + Send + 'static> MessageEvent for T {}
+pub trait RqRsMessage: Serialize + DeserializeOwned + Send + 'static {}
+impl<T: Serialize + DeserializeOwned + Send + 'static> RqRsMessage for T {}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct RequestId(u64);
@@ -39,73 +39,73 @@ pub struct Request<T, U> {
     pub response_sender: oneshot::Sender<U>,
 }
 #[derive(Debug)]
-pub enum BehaviourEvent<Req, Res> {
+pub enum BehaviourEvent<Rq, Rs> {
     ReceiveRequest {
         peer: PeerId,
         request_id: RequestId,
-        request: Request<Req, Res>,
+        request: Request<Rq, Rs>,
     },
     ReceiveResponse {
         request_id: RequestId,
         peer: PeerId,
-        result: Result<(), ReceiveResponseError>,
+        result: Result<(), RecvResponseErr>,
     },
 }
 
 #[derive(Debug, Clone)]
-pub enum ReceiveResponseError {
+pub enum RecvResponseErr {
     Timeout,
     DialFailure,
     ConnectionClosed,
-    ReceiveResponseOmission,
+    RecvResponseOmission,
     UnsupportedProtocols,
     NotPermitted,
 }
 
-impl fmt::Display for ReceiveResponseError {
+impl fmt::Display for RecvResponseErr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ReceiveResponseError::Timeout => write!(f, "Timeout while waiting for a response"),
-            ReceiveResponseError::ConnectionClosed => write!(f, "Connection was closed before a response was received"),
-            ReceiveResponseError::UnsupportedProtocols => {
+            RecvResponseErr::Timeout => write!(f, "Timeout while waiting for a response"),
+            RecvResponseErr::ConnectionClosed => write!(f, "Connection was closed before a response was received"),
+            RecvResponseErr::UnsupportedProtocols => {
                 write!(f, "The remote supports none of the requested protocols")
             }
-            ReceiveResponseError::ReceiveResponseOmission => write!(
+            RecvResponseErr::RecvResponseOmission => write!(
                 f,
                 "The response channel was dropped before receiving a response from the remote"
             ),
-            ReceiveResponseError::NotPermitted => write!(f, "The firewall blocked the outbound request"),
-            ReceiveResponseError::DialFailure => write!(f, "Failed to dial the requested peer"),
+            RecvResponseErr::NotPermitted => write!(f, "The firewall blocked the outbound request"),
+            RecvResponseErr::DialFailure => write!(f, "Failed to dial the requested peer"),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum ReceiveRequestError {
+pub enum RecvRequestErr {
     Timeout,
     UnsupportedProtocols,
     NotPermitted,
     ConnectionClosed,
 }
 
-impl fmt::Display for ReceiveRequestError {
+impl fmt::Display for RecvRequestErr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ReceiveRequestError::Timeout => write!(f, "Timeout while receiving request"),
-            ReceiveRequestError::UnsupportedProtocols => write!(
+            RecvRequestErr::Timeout => write!(f, "Timeout while receiving request"),
+            RecvRequestErr::UnsupportedProtocols => write!(
                 f,
                 "The local peer supports none of the protocols requested by the remote"
             ),
-            ReceiveRequestError::NotPermitted => write!(f, "The firewall blocked the inbound request"),
-            ReceiveRequestError::ConnectionClosed => {
+            RecvRequestErr::NotPermitted => write!(f, "The firewall blocked the inbound request"),
+            RecvRequestErr::ConnectionClosed => {
                 write!(f, "The connection closed directly after the request was received")
             }
         }
     }
 }
 
-impl std::error::Error for ReceiveResponseError {}
-impl std::error::Error for ReceiveRequestError {}
+impl std::error::Error for RecvResponseErr {}
+impl std::error::Error for RecvRequestErr {}
 
 #[derive(Debug)]
 pub struct ResponseReceiver<U> {
@@ -137,25 +137,25 @@ impl<U> ResponseReceiver<U> {
 }
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct HandlerInEvent<Req, Res>
+pub struct HandlerInEvent<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
     pub(super) request_id: RequestId,
-    pub(super) request: Request<Req, Res>,
+    pub(super) request: Request<Rq, Rs>,
 }
 
 #[doc(hidden)]
 #[derive(Debug)]
-pub enum HandlerOutEvent<Req, Res>
+pub enum HandlerOutEvent<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
     ReceivedRequest {
         request_id: RequestId,
-        request: Request<Req, Res>,
+        request: Request<Rq, Rs>,
     },
     SentResponse(RequestId),
     SendResponseOmission(RequestId),
@@ -163,15 +163,15 @@ where
     InboundUnsupportedProtocols(RequestId),
 
     ReceivedResponse(RequestId),
-    ReceiveResponseOmission(RequestId),
+    RecvResponseOmission(RequestId),
     OutboundTimeout(RequestId),
     OutboundUnsupportedProtocols(RequestId),
 }
 
-impl<Req, Res> HandlerOutEvent<Req, Res>
+impl<Rq, Rs> HandlerOutEvent<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
     pub fn request_id(&self) -> &RequestId {
         match self {
@@ -181,7 +181,7 @@ where
             | HandlerOutEvent::InboundTimeout(request_id)
             | HandlerOutEvent::InboundUnsupportedProtocols(request_id)
             | HandlerOutEvent::ReceivedResponse(request_id)
-            | HandlerOutEvent::ReceiveResponseOmission(request_id)
+            | HandlerOutEvent::RecvResponseOmission(request_id)
             | HandlerOutEvent::OutboundTimeout(request_id)
             | HandlerOutEvent::OutboundUnsupportedProtocols(request_id) => request_id,
         }

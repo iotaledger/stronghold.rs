@@ -189,7 +189,7 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
             BehaviourEvent::ReceiveResponse {
                 peer,
                 request_id,
-                result: Err(ReceiveResponseError::ConnectionClosed),
+                result: Err(RecvResponseErr::ConnectionClosed),
             } => {
                 assert_eq!(peer, peer1_id);
                 assert_eq!(&request_id, response_receiver.request_id());
@@ -200,7 +200,7 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
     });
 }
 
-async fn init_swarm() -> (PeerId, Swarm<RequestResponse<Ping, Pong>>) {
+async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong>>) {
     let id_keys = identity::Keypair::generate_ed25519();
     let peer = id_keys.public().into_peer_id();
     let noise_keys = Keypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
@@ -211,12 +211,12 @@ async fn init_swarm() -> (PeerId, Swarm<RequestResponse<Ping, Pong>>) {
         .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(YamuxConfig::default())
         .boxed();
-    let protocols = vec![MessageProtocol];
-    let cfg = RequestResponseConfig::default();
+    let protocols = vec![CommunicationProtocol];
+    let cfg = NetBehaviourConfig::default();
     let mdns = Mdns::new(MdnsConfig::default())
         .await
         .expect("Failed to create mdns behaviour.");
-    let behaviour = RequestResponse::new(protocols, cfg, mdns, relay_behaviour);
+    let behaviour = NetBehaviour::new(protocols, cfg, mdns, relay_behaviour);
     (peer, Swarm::new(transport, behaviour, peer))
 }
 

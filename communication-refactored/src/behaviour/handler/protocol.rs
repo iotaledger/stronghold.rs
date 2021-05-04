@@ -13,7 +13,7 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
-use crate::{behaviour::MessageEvent, Request};
+use crate::{behaviour::RqRsMessage, Request};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use libp2p::{
     core::{
@@ -27,9 +27,9 @@ use smallvec::SmallVec;
 use std::{fmt::Debug, io, marker::PhantomData};
 
 #[derive(Debug, Clone)]
-pub struct MessageProtocol;
+pub struct CommunicationProtocol;
 
-impl ProtocolName for MessageProtocol {
+impl ProtocolName for CommunicationProtocol {
     fn protocol_name(&self) -> &[u8] {
         b"/stronghold-communication/1.0.0"
     }
@@ -59,22 +59,22 @@ impl ProtocolSupport {
 }
 
 #[derive(Debug)]
-pub struct ResponseProtocol<Req, Res>
+pub struct ResponseProtocol<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
-    pub(crate) protocols: SmallVec<[MessageProtocol; 2]>,
-    pub(crate) request_sender: oneshot::Sender<Req>,
-    pub(crate) response_receiver: oneshot::Receiver<Res>,
+    pub(crate) protocols: SmallVec<[CommunicationProtocol; 2]>,
+    pub(crate) request_sender: oneshot::Sender<Rq>,
+    pub(crate) response_receiver: oneshot::Receiver<Rs>,
 }
 
-impl<Req, Res> UpgradeInfo for ResponseProtocol<Req, Res>
+impl<Rq, Rs> UpgradeInfo for ResponseProtocol<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
-    type Info = MessageProtocol;
+    type Info = CommunicationProtocol;
     type InfoIter = smallvec::IntoIter<[Self::Info; 2]>;
 
     fn protocol_info(&self) -> Self::InfoIter {
@@ -82,10 +82,10 @@ where
     }
 }
 
-impl<Req, Res> InboundUpgrade<NegotiatedSubstream> for ResponseProtocol<Req, Res>
+impl<Rq, Rs> InboundUpgrade<NegotiatedSubstream> for ResponseProtocol<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
     type Output = bool;
     type Error = io::Error;
@@ -107,22 +107,22 @@ where
 }
 
 #[derive(Debug)]
-pub struct RequestProtocol<Req, Res>
+pub struct RequestProtocol<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
-    pub(crate) protocols: SmallVec<[MessageProtocol; 2]>,
-    pub(crate) request: Request<Req, Res>,
-    pub(crate) marker: PhantomData<Res>,
+    pub(crate) protocols: SmallVec<[CommunicationProtocol; 2]>,
+    pub(crate) request: Request<Rq, Rs>,
+    pub(crate) marker: PhantomData<Rs>,
 }
 
-impl<Req, Res> UpgradeInfo for RequestProtocol<Req, Res>
+impl<Rq, Rs> UpgradeInfo for RequestProtocol<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
-    type Info = MessageProtocol;
+    type Info = CommunicationProtocol;
     type InfoIter = smallvec::IntoIter<[Self::Info; 2]>;
 
     fn protocol_info(&self) -> Self::InfoIter {
@@ -130,10 +130,10 @@ where
     }
 }
 
-impl<Req, Res> OutboundUpgrade<NegotiatedSubstream> for RequestProtocol<Req, Res>
+impl<Rq, Rs> OutboundUpgrade<NegotiatedSubstream> for RequestProtocol<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
     type Output = bool;
     type Error = io::Error;

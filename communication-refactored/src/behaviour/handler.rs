@@ -23,7 +23,7 @@ use libp2p::{
         SubstreamProtocol,
     },
 };
-pub use protocol::{MessageProtocol, ProtocolSupport, RequestProtocol, ResponseProtocol};
+pub use protocol::{CommunicationProtocol, ProtocolSupport, RequestProtocol, ResponseProtocol};
 use smallvec::SmallVec;
 use std::{
     collections::VecDeque,
@@ -37,39 +37,39 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub type ProtocolsHandlerEventType<Req, Res> = ProtocolsHandlerEvent<
-    RequestProtocol<Req, Res>,
+pub type ProtocolsHandlerEventType<Rq, Rs> = ProtocolsHandlerEvent<
+    RequestProtocol<Rq, Rs>,
     RequestId,
-    <RequestResponseHandler<Req, Res> as ProtocolsHandler>::OutEvent,
-    <RequestResponseHandler<Req, Res> as ProtocolsHandler>::Error,
+    <ConnectionHandler<Rq, Rs> as ProtocolsHandler>::OutEvent,
+    <ConnectionHandler<Rq, Rs> as ProtocolsHandler>::Error,
 >;
-pub type PendingInboundFuture<Req, Res> = BoxFuture<'static, Result<(RequestId, Request<Req, Res>), oneshot::Canceled>>;
+pub type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, Request<Rq, Rs>), oneshot::Canceled>>;
 
 #[doc(hidden)]
-pub struct RequestResponseHandler<Req, Res>
+pub struct ConnectionHandler<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
-    supported_protocols: SmallVec<[MessageProtocol; 2]>,
+    supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
     protocol_support: ProtocolSupport,
     keep_alive_timeout: Duration,
     substream_timeout: Duration,
     keep_alive: KeepAlive,
     pending_error: Option<ProtocolsHandlerUpgrErr<io::Error>>,
-    pending_events: VecDeque<HandlerOutEvent<Req, Res>>,
-    outbound: VecDeque<HandlerInEvent<Req, Res>>,
-    inbound: FuturesUnordered<PendingInboundFuture<Req, Res>>,
+    pending_events: VecDeque<HandlerOutEvent<Rq, Rs>>,
+    outbound: VecDeque<HandlerInEvent<Rq, Rs>>,
+    inbound: FuturesUnordered<PendingInboundFuture<Rq, Rs>>,
     inbound_request_id: Arc<AtomicU64>,
 }
 
-impl<Req, Res> RequestResponseHandler<Req, Res>
+impl<Rq, Rs> ConnectionHandler<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
     pub(super) fn new(
-        supported_protocols: SmallVec<[MessageProtocol; 2]>,
+        supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
         protocol_support: ProtocolSupport,
         keep_alive_timeout: Duration,
         substream_timeout: Duration,
@@ -92,8 +92,8 @@ where
     fn new_outbound_protocol(
         &mut self,
         request_id: RequestId,
-        request: Request<Req, Res>,
-    ) -> SubstreamProtocol<RequestProtocol<Req, Res>, RequestId> {
+        request: Request<Rq, Rs>,
+    ) -> SubstreamProtocol<RequestProtocol<Rq, Rs>, RequestId> {
         let proto = RequestProtocol {
             protocols: self.supported_protocols.clone(),
             request,
@@ -102,7 +102,7 @@ where
         SubstreamProtocol::new(proto, request_id).with_timeout(self.substream_timeout)
     }
 
-    fn new_inbound_protocol(&self) -> SubstreamProtocol<ResponseProtocol<Req, Res>, RequestId> {
+    fn new_inbound_protocol(&self) -> SubstreamProtocol<ResponseProtocol<Rq, Rs>, RequestId> {
         let request_id = RequestId::new(self.inbound_request_id.fetch_add(1, Ordering::Relaxed));
 
         let (rq_send, rq_recv) = oneshot::channel();
@@ -138,16 +138,16 @@ where
     }
 }
 
-impl<Req, Res> ProtocolsHandler for RequestResponseHandler<Req, Res>
+impl<Rq, Rs> ProtocolsHandler for ConnectionHandler<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
-    type InEvent = HandlerInEvent<Req, Res>;
-    type OutEvent = HandlerOutEvent<Req, Res>;
+    type InEvent = HandlerInEvent<Rq, Rs>;
+    type OutEvent = HandlerOutEvent<Rq, Rs>;
     type Error = ProtocolsHandlerUpgrErr<io::Error>;
-    type InboundProtocol = ResponseProtocol<Req, Res>;
-    type OutboundProtocol = RequestProtocol<Req, Res>;
+    type InboundProtocol = ResponseProtocol<Rq, Rs>;
+    type OutboundProtocol = RequestProtocol<Rq, Rs>;
     type InboundOpenInfo = RequestId;
     type OutboundOpenInfo = RequestId;
 
@@ -165,7 +165,7 @@ where
     fn inject_fully_negotiated_outbound(&mut self, received_response: bool, request_id: RequestId) {
         let event = received_response
             .then(|| HandlerOutEvent::ReceivedResponse(request_id))
-            .unwrap_or(HandlerOutEvent::ReceiveResponseOmission(request_id));
+            .unwrap_or(HandlerOutEvent::RecvResponseOmission(request_id));
         self.pending_events.push_back(event);
     }
 
@@ -204,7 +204,7 @@ where
         self.keep_alive
     }
 
-    fn poll(&mut self, cx: &mut Context<'_>) -> Poll<ProtocolsHandlerEventType<Req, Res>> {
+    fn poll(&mut self, cx: &mut Context<'_>) -> Poll<ProtocolsHandlerEventType<Rq, Rs>> {
         if let Some(err) = self.pending_error.take() {
             return Poll::Ready(ProtocolsHandlerEvent::Close(err));
         }

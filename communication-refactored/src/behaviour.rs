@@ -18,8 +18,8 @@ pub mod handler;
 mod types;
 use connections::{Direction, PeerConnectionManager};
 use futures::channel::oneshot;
-use handler::RequestResponseHandler;
-pub use handler::{MessageProtocol, ProtocolSupport};
+use handler::ConnectionHandler;
+pub use handler::{CommunicationProtocol, ProtocolSupport};
 use libp2p::{
     core::{
         connection::{ConnectionId, ListenerId},
@@ -43,14 +43,21 @@ use std::{
 };
 pub use types::*;
 
+type NetworkAction<Proto> = NetworkBehaviourAction<
+    <<<Proto as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
+    <Proto as NetworkBehaviour>::OutEvent,
+>;
+
+type PedingOutboundRequests<Rq, Rs> = SmallVec<[(RequestId, Request<Rq, Rs>); 10]>;
+
 #[derive(Debug, Clone)]
-pub struct RequestResponseConfig {
+pub struct NetBehaviourConfig {
     request_timeout: Duration,
     connection_timeout: Duration,
     protocol_support: ProtocolSupport,
 }
 
-impl Default for RequestResponseConfig {
+impl Default for NetBehaviourConfig {
     fn default() -> Self {
         Self {
             connection_timeout: Duration::from_secs(10),
@@ -60,7 +67,7 @@ impl Default for RequestResponseConfig {
     }
 }
 
-impl RequestResponseConfig {
+impl NetBehaviourConfig {
     pub fn set_connection_keep_alive(&mut self, timeout: Duration) -> &mut Self {
         self.connection_timeout = timeout;
         self
@@ -77,43 +84,36 @@ impl RequestResponseConfig {
     }
 }
 
-type NetworkAction<Proto> = NetworkBehaviourAction<
-    <<<Proto as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
-    <Proto as NetworkBehaviour>::OutEvent,
->;
-
-type PedingOutboundRequests<Req, Res> = SmallVec<[(RequestId, Request<Req, Res>); 10]>;
-
-pub struct RequestResponse<Req, Res>
+pub struct NetBehaviour<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
     #[cfg(feature = "mdns")]
     mdns: Mdns,
     relay: Relay,
 
-    supported_protocols: SmallVec<[MessageProtocol; 2]>,
+    supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
     next_request_id: RequestId,
     next_inbound_id: Arc<AtomicU64>,
-    config: RequestResponseConfig,
-    pending_events: VecDeque<NetworkBehaviourAction<HandlerInEvent<Req, Res>, BehaviourEvent<Req, Res>>>,
+    config: NetBehaviourConfig,
+    pending_events: VecDeque<NetworkBehaviourAction<HandlerInEvent<Rq, Rs>, BehaviourEvent<Rq, Rs>>>,
     peer_connections: PeerConnectionManager,
-    pending_outbound_requests: HashMap<PeerId, PedingOutboundRequests<Req, Res>>,
+    pending_outbound_requests: HashMap<PeerId, PedingOutboundRequests<Rq, Rs>>,
 }
 
-impl<Req, Res> RequestResponse<Req, Res>
+impl<Rq, Rs> NetBehaviour<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
     pub fn new(
-        supported_protocols: Vec<MessageProtocol>,
-        cfg: RequestResponseConfig,
+        supported_protocols: Vec<CommunicationProtocol>,
+        cfg: NetBehaviourConfig,
         mdns: Mdns,
         relay: Relay,
     ) -> Self {
-        RequestResponse {
+        NetBehaviour {
             mdns,
             relay,
             supported_protocols: SmallVec::from_vec(supported_protocols),
@@ -126,7 +126,7 @@ where
         }
     }
 
-    pub fn send_request(&mut self, peer: PeerId, request: Req) -> Option<ResponseReceiver<Res>> {
+    pub fn send_request(&mut self, peer: PeerId, request: Rq) -> Option<ResponseReceiver<Rs>> {
         self.config.protocol_support.outbound().then(|| {
             let request_id = self.next_request_id();
             let (response_sender, response_receiver) = oneshot::channel();
@@ -169,8 +169,8 @@ where
         &mut self,
         peer: PeerId,
         request_id: RequestId,
-        request: Request<Req, Res>,
-    ) -> Option<Request<Req, Res>> {
+        request: Request<Rq, Rs>,
+    ) -> Option<Request<Rq, Rs>> {
         if let Some(connection_id) = self
             .peer_connections
             .new_request(&peer, request_id, Direction::Outbound)
@@ -193,7 +193,7 @@ where
                 let event = BehaviourEvent::ReceiveResponse {
                     peer: *peer,
                     request_id,
-                    result: Err(ReceiveResponseError::ConnectionClosed),
+                    result: Err(RecvResponseErr::ConnectionClosed),
                 };
                 let action = NetworkBehaviourAction::GenerateEvent(event);
                 self.pending_events.push_back(action);
@@ -201,7 +201,7 @@ where
         }
     }
 
-    fn handler_handler_event(&mut self, peer: PeerId, connection: ConnectionId, event: HandlerOutEvent<Req, Res>) {
+    fn handler_handler_event(&mut self, peer: PeerId, connection: ConnectionId, event: HandlerOutEvent<Rq, Rs>) {
         let event = match event {
             HandlerOutEvent::ReceivedResponse(request_id) => {
                 let removed =
@@ -214,7 +214,7 @@ where
                     result: Ok(()),
                 }
             }
-            HandlerOutEvent::ReceiveResponseOmission(request_id) => {
+            HandlerOutEvent::RecvResponseOmission(request_id) => {
                 let removed =
                     self.peer_connections
                         .remove_request(&peer, &connection, &request_id, Direction::Outbound);
@@ -222,7 +222,7 @@ where
                 BehaviourEvent::ReceiveResponse {
                     peer,
                     request_id,
-                    result: Err(ReceiveResponseError::ReceiveResponseOmission),
+                    result: Err(RecvResponseErr::RecvResponseOmission),
                 }
             }
             HandlerOutEvent::ReceivedRequest { request_id, request } => {
@@ -241,7 +241,7 @@ where
                 BehaviourEvent::ReceiveResponse {
                     peer,
                     request_id,
-                    result: Err(ReceiveResponseError::Timeout),
+                    result: Err(RecvResponseErr::Timeout),
                 }
             }
             HandlerOutEvent::OutboundUnsupportedProtocols(request_id) => {
@@ -252,7 +252,7 @@ where
                 BehaviourEvent::ReceiveResponse {
                     peer,
                     request_id,
-                    result: Err(ReceiveResponseError::UnsupportedProtocols),
+                    result: Err(RecvResponseErr::UnsupportedProtocols),
                 }
             }
             HandlerOutEvent::InboundTimeout(request_id)
@@ -269,22 +269,22 @@ where
     }
 }
 
-impl<Req, Res> NetworkBehaviour for RequestResponse<Req, Res>
+impl<Rq, Rs> NetworkBehaviour for NetBehaviour<Rq, Rs>
 where
-    Req: MessageEvent,
-    Res: MessageEvent,
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
 {
     type ProtocolsHandler = IntoProtocolsHandlerSelect<
-        RequestResponseHandler<Req, Res>,
+        ConnectionHandler<Rq, Rs>,
         IntoProtocolsHandlerSelect<
             <Mdns as NetworkBehaviour>::ProtocolsHandler,
             <Relay as NetworkBehaviour>::ProtocolsHandler,
         >,
     >;
-    type OutEvent = BehaviourEvent<Req, Res>;
+    type OutEvent = BehaviourEvent<Rq, Rs>;
 
     fn new_handler(&mut self) -> Self::ProtocolsHandler {
-        let handler = RequestResponseHandler::new(
+        let handler = ConnectionHandler::new(
             self.supported_protocols.clone(),
             self.config.protocol_support.clone(),
             self.config.connection_timeout,
@@ -358,7 +358,7 @@ where
                     .push_back(NetworkBehaviourAction::GenerateEvent(BehaviourEvent::ReceiveResponse {
                         peer: *peer,
                         request_id,
-                        result: Err(ReceiveResponseError::DialFailure),
+                        result: Err(RecvResponseErr::DialFailure),
                     }));
             }
         }
