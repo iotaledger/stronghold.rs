@@ -11,8 +11,8 @@ version: 0000
 maintainer: Daniel Thompson-Yvetot <daniel.yvetot@iota.org>
 contributors: [tensorprogramming <tensordeveloper@gmail.com>, Daniel Thompson-Yvetot <daniel.yvetot@iota.org>]
 sponsors: [Navin Ramachandran <navin@iota.org>]
-licenses: ["MIT/Apache-2", "CC-BY-INTL-3.0"]
-updated: 2020-July-24
+licenses: ["Apache-2", "CC-BY-INTL-3.0"]
+updated: 2021-Apr-27
 ```
 
 ## License
@@ -20,7 +20,7 @@ updated: 2020-July-24
 <!--
 Please specify licenses here and in the frontmatter.
 -->
-All code is licensed under the MIT/Apache-2 license, all text and images are licensed under the CC-BY-INTL-3.0 license.
+All code is licensed under the Apache-2 license, all text and images are licensed under the CC-BY-INTL-3.0 license.
 
 ## Language
 [language]: #language
@@ -58,6 +58,9 @@ obfuscation and sharing of secret values both mutable and immutable between devi
 
 The primary task is to isolate the activity of “privileged” functions from other parts of the software stack. For example, a primary
 goal is to create a software enclave where private keys are used to sign messages without revealing those keys to other functions.
+
+Additionally, a system for enabling Stronghold-based systems to securely communicate with each other shall be created such
+that devices on different networks can collaborate cryptographically.
 
 ## Motivation
 [motivation]: #motivation
