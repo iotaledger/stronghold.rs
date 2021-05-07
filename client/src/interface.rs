@@ -383,11 +383,7 @@ impl Stronghold {
     ) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
 
-        let former_cid = if let Some(cp) = former_client_path {
-            Some(ClientId::load_from_path(&cp, &cp).expect(line_error!()))
-        } else {
-            None
-        };
+        let former_cid = former_client_path.map(|cp| ClientId::load_from_path(&cp, &cp).expect(line_error!()));
 
         let mut key: [u8; 32] = [0u8; 32];
 

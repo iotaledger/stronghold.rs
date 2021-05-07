@@ -13,7 +13,10 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
-use communication_refactored::*;
+use communication_refactored::{
+    firewall::{FirewallPermission, PermissionValue, Rule, RuleDirection, VariantPermission},
+    BehaviourEvent, NetBehaviour, NetBehaviourConfig, Query, RecvResponseErr,
+};
 use futures::{channel::mpsc, prelude::*};
 use libp2p::{
     core::{identity, transport::Transport, upgrade, Multiaddr, PeerId},
@@ -26,6 +29,7 @@ use libp2p::{
 };
 use rand::{self, Rng};
 use serde::{Deserialize, Serialize};
+use stronghold_derive::RequestPermissions;
 
 /// Exercises a simple ping protocol.
 #[test]
@@ -51,14 +55,14 @@ fn ping_protocol() {
                 SwarmEvent::Behaviour(BehaviourEvent::ReceiveRequest {
                     peer,
                     request:
-                        Request {
-                            message,
+                        Query {
+                            request,
                             response_sender,
                             ..
                         },
                     ..
                 }) => {
-                    assert_eq!(&message, &expected_ping);
+                    assert_eq!(&request, &expected_ping);
                     assert_eq!(&peer, &peer2_id);
                     response_sender.send(pong.clone()).unwrap();
                 }
@@ -74,7 +78,7 @@ fn ping_protocol() {
         let mut count = 0;
         let addr = rx.next().await.unwrap();
         swarm2.behaviour_mut().add_address(&peer1_id, addr.clone());
-        let mut response_channel = swarm2.behaviour_mut().send_request(peer1_id, ping.clone()).unwrap();
+        let mut response_channel = swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
 
         loop {
             match swarm2.next().await {
@@ -92,7 +96,7 @@ fn ping_protocol() {
                     if count >= num_pings {
                         return;
                     } else {
-                        response_channel = swarm2.behaviour_mut().send_request(peer1_id, ping.clone()).unwrap();
+                        response_channel = swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
                     }
                 }
                 e => panic!("Peer2: Unexpected event: {:?}", e),
@@ -126,8 +130,8 @@ fn emits_inbound_connection_closed_failure() {
         let response_sender = loop {
             futures::select!(
                 event = swarm1.next().fuse() => match event {
-                    BehaviourEvent::ReceiveRequest { peer, request: Request{message, response_sender, .. }, ..} => {
-                        assert_eq!(&message, &ping);
+                    BehaviourEvent::ReceiveRequest { peer, request: Query{request, response_sender, .. }, ..} => {
+                        assert_eq!(&request, &ping);
                         assert_eq!(&peer, &peer2_id);
                         break response_sender
                     },
@@ -169,20 +173,20 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
         let addr1 = Swarm::listeners(&swarm1).next().unwrap();
 
         swarm2.behaviour_mut().add_address(&peer1_id, addr1.clone());
-        let mut response_receiver = swarm2.behaviour_mut().send_request(peer1_id, ping.clone()).unwrap();
+        let mut response_receiver = swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
 
         // Wait for swarm 1 to receive request by swarm 2.
         let event = loop {
             futures::select!(
-                            event = swarm1.next().fuse() =>
-                            if let BehaviourEvent::ReceiveRequest{ peer, request: Request {message, response_sender, ..}, ..} =
-            event {                      assert_eq!(&message, &ping);
-                                    assert_eq!(&peer, &peer2_id);
-                                    drop(response_sender);
-                                continue;
-                            },
-                            event = swarm2.next().fuse() => break event,
-                        )
+                                        event = swarm1.next().fuse() =>
+                                        if let BehaviourEvent::ReceiveRequest{ peer, request: Query {request, response_sender,
+            ..}, ..} =             event {                      assert_eq!(&request, &ping);
+                                                assert_eq!(&peer, &peer2_id);
+                                                drop(response_sender);
+                                            continue;
+                                        },
+                                        event = swarm2.next().fuse() => break event,
+                                    )
         };
 
         match event {
@@ -200,7 +204,7 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
     });
 }
 
-async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong>>) {
+async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong, Ping>>) {
     let id_keys = identity::Keypair::generate_ed25519();
     let peer = id_keys.public().into_peer_id();
     let noise_keys = Keypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
@@ -211,16 +215,19 @@ async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong>>) {
         .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(YamuxConfig::default())
         .boxed();
-    let protocols = vec![CommunicationProtocol];
-    let cfg = NetBehaviourConfig::default();
+
+    let mut cfg = NetBehaviourConfig::default();
+    cfg.firewall
+        .set_default(Rule::Permission(FirewallPermission::all()), RuleDirection::Both);
     let mdns = Mdns::new(MdnsConfig::default())
         .await
         .expect("Failed to create mdns behaviour.");
-    let behaviour = NetBehaviour::new(protocols, cfg, mdns, relay_behaviour);
+    let (dummy_sender, _) = mpsc::channel(1);
+    let behaviour = NetBehaviour::new(cfg, mdns, relay_behaviour, dummy_sender);
     (peer, Swarm::new(transport, behaviour, peer))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
 struct Ping(Vec<u8>);
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
 struct Pong(Vec<u8>);

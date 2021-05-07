@@ -14,7 +14,10 @@
 // all copies or substantial portions of the Software.
 
 mod protocol;
-use crate::behaviour::{types::*, EMPTY_QUEUE_SHRINK_THRESHOLD};
+use crate::{
+    behaviour::{types::*, EMPTY_QUEUE_SHRINK_THRESHOLD},
+    firewall::FirewallRules,
+};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},
@@ -23,7 +26,7 @@ use libp2p::{
         SubstreamProtocol,
     },
 };
-pub use protocol::{CommunicationProtocol, ProtocolSupport, RequestProtocol, ResponseProtocol};
+pub use protocol::{CommunicationProtocol, RequestProtocol, ResponseProtocol};
 use smallvec::SmallVec;
 use std::{
     collections::VecDeque,
@@ -37,13 +40,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[doc(hidden)]
 pub type ProtocolsHandlerEventType<Rq, Rs> = ProtocolsHandlerEvent<
     RequestProtocol<Rq, Rs>,
     RequestId,
     <ConnectionHandler<Rq, Rs> as ProtocolsHandler>::OutEvent,
     <ConnectionHandler<Rq, Rs> as ProtocolsHandler>::Error,
 >;
-pub type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, Request<Rq, Rs>), oneshot::Canceled>>;
+pub type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, Query<Rq, Rs>), oneshot::Canceled>>;
 
 #[doc(hidden)]
 pub struct ConnectionHandler<Rq, Rs>
@@ -52,15 +56,18 @@ where
     Rs: RqRsMessage,
 {
     supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
-    protocol_support: ProtocolSupport,
-    keep_alive_timeout: Duration,
+    rules: FirewallRules,
     substream_timeout: Duration,
+    keep_alive_timeout: Duration,
+
     keep_alive: KeepAlive,
-    pending_error: Option<ProtocolsHandlerUpgrErr<io::Error>>,
-    pending_events: VecDeque<HandlerOutEvent<Rq, Rs>>,
-    outbound: VecDeque<HandlerInEvent<Rq, Rs>>,
-    inbound: FuturesUnordered<PendingInboundFuture<Rq, Rs>>,
     inbound_request_id: Arc<AtomicU64>,
+
+    pending_error: Option<ProtocolsHandlerUpgrErr<io::Error>>,
+
+    pending_events: VecDeque<HandlerOutEvent<Rq, Rs>>,
+    outbound: VecDeque<(RequestId, Query<Rq, Rs>)>,
+    inbound: FuturesUnordered<PendingInboundFuture<Rq, Rs>>,
 }
 
 impl<Rq, Rs> ConnectionHandler<Rq, Rs>
@@ -70,32 +77,35 @@ where
 {
     pub(super) fn new(
         supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
-        protocol_support: ProtocolSupport,
         keep_alive_timeout: Duration,
         substream_timeout: Duration,
         inbound_request_id: Arc<AtomicU64>,
     ) -> Self {
         Self {
             supported_protocols,
-            protocol_support,
-            keep_alive: KeepAlive::Yes,
-            keep_alive_timeout,
+            rules: FirewallRules::empty(),
             substream_timeout,
+            keep_alive_timeout,
+            keep_alive: KeepAlive::Yes,
+            inbound_request_id,
+            pending_error: None,
+            pending_events: VecDeque::new(),
             outbound: VecDeque::new(),
             inbound: FuturesUnordered::new(),
-            pending_events: VecDeque::new(),
-            pending_error: None,
-            inbound_request_id,
         }
     }
 
     fn new_outbound_protocol(
         &mut self,
         request_id: RequestId,
-        request: Request<Rq, Rs>,
+        request: Query<Rq, Rs>,
     ) -> SubstreamProtocol<RequestProtocol<Rq, Rs>, RequestId> {
+        let supports_outbound = !self.rules.is_reject_all_outbound();
+        let protocols = supports_outbound
+            .then(|| self.supported_protocols.clone())
+            .unwrap_or_default();
         let proto = RequestProtocol {
-            protocols: self.supported_protocols.clone(),
+            protocols,
             request,
             marker: PhantomData,
         };
@@ -107,33 +117,32 @@ where
 
         let (rq_send, rq_recv) = oneshot::channel();
 
-        let (rs_send, rs_recv) = oneshot::channel();
+        let (response_sender, response_receiver) = oneshot::channel();
 
-        let protocols = self
-            .protocol_support
-            .inbound()
+        let supports_inbound = !self.rules.is_reject_all_inbound();
+        let protocols = supports_inbound
             .then(|| self.supported_protocols.clone())
             .unwrap_or_default();
 
         let proto = ResponseProtocol {
             protocols,
             request_sender: rq_send,
-            response_receiver: rs_recv,
+            response_receiver,
         };
-
         self.inbound.push(
             rq_recv
-                .map_ok(move |rq| {
+                .map_ok(move |request| {
                     (
                         request_id,
-                        Request {
-                            message: rq,
-                            response_sender: rs_send,
+                        Query {
+                            request,
+                            response_sender,
                         },
                     )
                 })
                 .boxed(),
         );
+
         SubstreamProtocol::new(proto, request_id).with_timeout(self.substream_timeout)
     }
 }
@@ -170,8 +179,13 @@ where
     }
 
     fn inject_event(&mut self, event: Self::InEvent) {
-        self.keep_alive = KeepAlive::Yes;
-        self.outbound.push_back(event)
+        match event {
+            HandlerInEvent::SendRequest { request_id, request } => {
+                self.outbound.push_back((request_id, request));
+                self.keep_alive = KeepAlive::Yes;
+            }
+            HandlerInEvent::SetFirewallRules(rules) => self.rules = rules,
+        }
     }
 
     fn inject_dial_upgrade_error(&mut self, info: RequestId, error: ProtocolsHandlerUpgrErr<io::Error>) {
@@ -223,7 +237,7 @@ where
                 }));
             }
         }
-        if let Some(HandlerInEvent { request, request_id }) = self.outbound.pop_front() {
+        if let Some((request_id, request)) = self.outbound.pop_front() {
             let protocol = self.new_outbound_protocol(request_id, request);
             return Poll::Ready(ProtocolsHandlerEvent::OutboundSubstreamRequest { protocol });
         }

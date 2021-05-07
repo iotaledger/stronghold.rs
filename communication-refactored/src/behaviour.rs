@@ -13,13 +13,28 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
-mod connections;
-pub mod handler;
+pub mod firewall;
+#[doc(hidden)]
+mod handler;
+#[doc(hidden)]
+mod request_manager;
+#[doc(hidden)]
 mod types;
-use connections::{Direction, PeerConnectionManager};
-use futures::channel::oneshot;
+use self::firewall::{FirewallRules, RuleDirection};
+use super::unwrap_or_return;
+use firewall::{FirewallConfiguration, FirewallRequest, Rule, ToPermissionVariants, VariantPermission};
+use futures::{
+    channel::{
+        mpsc::{self, SendError},
+        oneshot,
+    },
+    future::{poll_fn, BoxFuture},
+    stream::FuturesUnordered,
+    task::{Context, Poll},
+    FutureExt, StreamExt, TryFutureExt,
+};
+pub use handler::CommunicationProtocol;
 use handler::ConnectionHandler;
-pub use handler::{CommunicationProtocol, ProtocolSupport};
 use libp2p::{
     core::{
         connection::{ConnectionId, ListenerId},
@@ -33,12 +48,12 @@ use libp2p::{
         NotifyHandler, PollParameters, ProtocolsHandler,
     },
 };
-use smallvec::SmallVec;
+use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
+use smallvec::{smallvec, SmallVec};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     error,
     sync::{atomic::AtomicU64, Arc},
-    task::{Context, Poll},
     time::Duration,
 };
 pub use types::*;
@@ -48,247 +63,353 @@ type NetworkAction<Proto> = NetworkBehaviourAction<
     <Proto as NetworkBehaviour>::OutEvent,
 >;
 
-type PedingOutboundRequests<Rq, Rs> = SmallVec<[(RequestId, Request<Rq, Rs>); 10]>;
+type MdnsRelayProtocolsHandler = IntoProtocolsHandlerSelect<
+    <Mdns as NetworkBehaviour>::ProtocolsHandler,
+    <Relay as NetworkBehaviour>::ProtocolsHandler,
+>;
 
-#[derive(Debug, Clone)]
+pub type PendingPeerRuleRequest = BoxFuture<'static, (PeerId, RuleDirection, Option<FirewallRules>)>;
+pub type PendingApprovalRequest = BoxFuture<'static, (RequestId, bool)>;
+
+const EMPTY_QUEUE_SHRINK_THRESHOLD: usize = 100;
+
+#[derive(Debug)]
 pub struct NetBehaviourConfig {
-    request_timeout: Duration,
-    connection_timeout: Duration,
-    protocol_support: ProtocolSupport,
+    pub supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
+    pub request_timeout: Duration,
+    pub connection_timeout: Duration,
+    pub firewall: FirewallConfiguration,
 }
 
 impl Default for NetBehaviourConfig {
     fn default() -> Self {
         Self {
+            supported_protocols: smallvec![CommunicationProtocol],
             connection_timeout: Duration::from_secs(10),
             request_timeout: Duration::from_secs(10),
-            protocol_support: ProtocolSupport::Full,
+            firewall: FirewallConfiguration::default(),
         }
     }
 }
 
-impl NetBehaviourConfig {
-    pub fn set_connection_keep_alive(&mut self, timeout: Duration) -> &mut Self {
-        self.connection_timeout = timeout;
-        self
-    }
-
-    pub fn set_request_timeout(&mut self, timeout: Duration) -> &mut Self {
-        self.request_timeout = timeout;
-        self
-    }
-
-    pub fn set_protocol_support(&mut self, protocol_support: ProtocolSupport) -> &mut Self {
-        self.protocol_support = protocol_support;
-        self
-    }
-}
-
-pub struct NetBehaviour<Rq, Rs>
+pub struct NetBehaviour<Rq, Rs, P>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + ToPermissionVariants<P>,
     Rs: RqRsMessage,
+    P: VariantPermission,
 {
     #[cfg(feature = "mdns")]
     mdns: Mdns,
     relay: Relay,
 
     supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
+    request_timeout: Duration,
+    connection_timeout: Duration,
+
     next_request_id: RequestId,
     next_inbound_id: Arc<AtomicU64>,
-    config: NetBehaviourConfig,
-    pending_events: VecDeque<NetworkBehaviourAction<HandlerInEvent<Rq, Rs>, BehaviourEvent<Rq, Rs>>>,
-    peer_connections: PeerConnectionManager,
-    pending_outbound_requests: HashMap<PeerId, PedingOutboundRequests<Rq, Rs>>,
+
+    request_manager: RequestManager<Rq, Rs, P>,
+
+    firewall: FirewallConfiguration,
+    permission_req_channel: mpsc::Sender<FirewallRequest<P>>,
+    pending_rule_rqs: FuturesUnordered<PendingPeerRuleRequest>,
+    pending_approval_rqs: FuturesUnordered<PendingApprovalRequest>,
+
+    addresses: HashMap<PeerId, SmallVec<[Multiaddr; 6]>>,
+    // TODO: Maintain a list of relays to use as backup
 }
 
-impl<Rq, Rs> NetBehaviour<Rq, Rs>
+impl<Rq, Rs, P> NetBehaviour<Rq, Rs, P>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + ToPermissionVariants<P>,
     Rs: RqRsMessage,
+    P: VariantPermission,
 {
     pub fn new(
-        supported_protocols: Vec<CommunicationProtocol>,
-        cfg: NetBehaviourConfig,
+        config: NetBehaviourConfig,
         mdns: Mdns,
         relay: Relay,
+        permission_req_channel: mpsc::Sender<FirewallRequest<P>>,
     ) -> Self {
         NetBehaviour {
             mdns,
             relay,
-            supported_protocols: SmallVec::from_vec(supported_protocols),
+            supported_protocols: config.supported_protocols,
+            request_timeout: config.request_timeout,
+            connection_timeout: config.connection_timeout,
             next_request_id: RequestId::new(1),
             next_inbound_id: Arc::new(AtomicU64::new(1)),
-            config: cfg,
-            pending_events: VecDeque::new(),
-            peer_connections: PeerConnectionManager::new(),
-            pending_outbound_requests: HashMap::new(),
+            request_manager: RequestManager::new(),
+            firewall: config.firewall,
+            permission_req_channel,
+            pending_rule_rqs: FuturesUnordered::default(),
+            pending_approval_rqs: FuturesUnordered::default(),
+            addresses: HashMap::new(),
         }
     }
 
-    pub fn send_request(&mut self, peer: PeerId, request: Rq) -> Option<ResponseReceiver<Rs>> {
-        self.config.protocol_support.outbound().then(|| {
-            let request_id = self.next_request_id();
-            let (response_sender, response_receiver) = oneshot::channel();
-            let receiver = ResponseReceiver::new(peer, request_id, response_receiver);
-            let request = Request {
-                message: request,
-                response_sender,
-            };
-            if let Some(request) = self.try_send_request(peer, request_id, request) {
-                self.pending_events.push_back(NetworkBehaviourAction::DialPeer {
-                    peer_id: peer,
-                    condition: DialPeerCondition::Disconnected,
-                });
-                self.pending_outbound_requests
-                    .entry(peer)
-                    .or_default()
-                    .push((request_id, request));
+    pub fn send_request(&mut self, peer: PeerId, request: Rq) -> ResponseReceiver<Rs> {
+        let request_id = self.next_request_id();
+        let (response_sender, response_receiver) = oneshot::channel();
+        let receiver = ResponseReceiver {
+            peer,
+            request_id,
+            receiver: response_receiver,
+        };
+        let request = Query {
+            request,
+            response_sender,
+        };
+        let approval_status = match self.firewall.get_out_rule_or_default(&peer) {
+            None => {
+                self.query_peer_rule(peer, RuleDirection::Outbound);
+                ApprovalStatus::MissingRule
             }
-            receiver
+            Some(Rule::Ask) => {
+                self.query_rq_approval(
+                    peer,
+                    request_id,
+                    request.request.to_permissioned(),
+                    RequestDirection::Outbound,
+                );
+                ApprovalStatus::MissingApproval
+            }
+            Some(Rule::Permission(permission)) => {
+                if permission.permits(&request.request.to_permissioned().permission()) {
+                    ApprovalStatus::Approved
+                } else {
+                    ApprovalStatus::Rejected
+                }
+            }
+        };
+        self.request_manager
+            .on_new_request(peer, request_id, request, approval_status, RequestDirection::Outbound);
+        receiver
+    }
+
+    pub fn set_firewall_default(&mut self, direction: RuleDirection, default: Rule) {
+        self.firewall.set_default(default, direction);
+        let default_rules = self.firewall.get_default_rules().clone();
+        self.request_manager.connected_peers().into_iter().for_each(|peer| {
+            if let Some(rules) = self.firewall.get_rules(&peer) {
+                if (!direction.is_inbound() || rules.inbound().is_some())
+                    && (!direction.is_outbound() || rules.outbound().is_some())
+                {
+                    return;
+                }
+                let mut new_rules = default_rules.clone();
+                if let Some(rule) = rules.inbound().cloned() {
+                    new_rules.set_rule(Some(rule), RuleDirection::Inbound);
+                }
+                if let Some(rule) = rules.inbound().cloned() {
+                    new_rules.set_rule(Some(rule), RuleDirection::Inbound);
+                }
+                self.handle_peer_rule(peer, new_rules, direction);
+            } else {
+                self.request_manager
+                    .on_peer_rule(peer, default_rules.clone(), direction);
+            }
         })
     }
 
+    pub fn get_firewall_default(&self) -> &FirewallRules {
+        self.firewall.get_default_rules()
+    }
+
+    pub fn remove_firewall_default(&mut self, direction: RuleDirection) {
+        self.firewall.remove_default(direction);
+        let default_rules = self.firewall.get_default_rules().clone();
+        self.request_manager.connected_peers().into_iter().for_each(|peer| {
+            let rules = self
+                .firewall
+                .get_rules(&peer)
+                .cloned()
+                .unwrap_or_else(|| default_rules.clone());
+            self.handle_peer_rule(peer, rules, direction);
+        })
+    }
+
+    pub fn get_peer_rules(&self, peer: &PeerId) -> Option<&FirewallRules> {
+        self.firewall.get_rules(peer)
+    }
+
+    pub fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule) {
+        self.firewall.set_rule(peer, rule, direction);
+        self.update_peer_rule(peer, direction)
+    }
+
+    pub fn remove_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
+        if self.firewall.remove_rule(&peer, direction) {
+            self.update_peer_rule(peer, direction);
+        }
+    }
+
+    fn update_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
+        let mut new_rules = self.firewall.get_default_rules().clone();
+        if let Some(peer_rules) = self.firewall.get_rules(&peer) {
+            if let Some(inbound) = peer_rules.inbound() {
+                new_rules.set_rule(Some(inbound.clone()), RuleDirection::Inbound);
+            }
+            if let Some(outbound) = peer_rules.outbound() {
+                new_rules.set_rule(Some(outbound.clone()), RuleDirection::Outbound);
+            }
+        }
+        self.handle_peer_rule(peer, new_rules, direction);
+    }
+
     pub fn add_address(&mut self, peer: &PeerId, address: Multiaddr) {
-        self.peer_connections.add_address(peer, address)
+        let addrs = self.addresses.entry(*peer).or_default();
+        if addrs.iter().find(|a| a == &&address).is_none() {
+            addrs.push(address);
+        }
     }
 
     pub fn remove_address(&mut self, peer: &PeerId, address: &Multiaddr) {
-        self.peer_connections.remove_address(peer, address)
-    }
-
-    pub fn is_connected(&self, peer: &PeerId) -> bool {
-        self.peer_connections.is_connected(peer)
+        if let Some((peer, other)) = self.addresses.remove_entry(&peer).and_then(|(peer, mut addrs)| {
+            addrs.retain(|a| !a.eq(&address));
+            let is_not_emtpy = !addrs.is_empty();
+            is_not_emtpy.then(|| (peer, addrs))
+        }) {
+            self.addresses.insert(peer, other);
+        }
     }
 
     fn next_request_id(&mut self) -> RequestId {
         *self.next_request_id.inc()
     }
 
-    fn try_send_request(
-        &mut self,
-        peer: PeerId,
-        request_id: RequestId,
-        request: Request<Rq, Rs>,
-    ) -> Option<Request<Rq, Rs>> {
-        if let Some(connection_id) = self
-            .peer_connections
-            .new_request(&peer, request_id, Direction::Outbound)
-        {
-            let event = NetworkBehaviourAction::NotifyHandler {
-                peer_id: peer,
-                handler: NotifyHandler::One(connection_id),
-                event: HandlerInEvent { request_id, request },
-            };
-            self.pending_events.push_back(event);
-            None
-        } else {
-            Some(request)
-        }
-    }
-
-    fn handle_connection_closed(&mut self, peer: &PeerId, conn_id: &ConnectionId) {
-        if let Some(connection) = self.peer_connections.remove_connection(*peer, conn_id) {
-            connection.pending_outbound_requests.into_iter().for_each(|request_id| {
-                let event = BehaviourEvent::ReceiveResponse {
-                    peer: *peer,
-                    request_id,
-                    result: Err(RecvResponseErr::ConnectionClosed),
-                };
-                let action = NetworkBehaviourAction::GenerateEvent(event);
-                self.pending_events.push_back(action);
-            });
-        }
-    }
-
-    fn handler_handler_event(&mut self, peer: PeerId, connection: ConnectionId, event: HandlerOutEvent<Rq, Rs>) {
-        let event = match event {
+    fn handle_handler_event(&mut self, peer: PeerId, connection: ConnectionId, event: HandlerOutEvent<Rq, Rs>) {
+        match event {
             HandlerOutEvent::ReceivedResponse(request_id) => {
-                let removed =
-                    self.peer_connections
-                        .remove_request(&peer, &connection, &request_id, Direction::Outbound);
-                debug_assert!(removed, "Expect request_id to be pending before receiving response.",);
-                BehaviourEvent::ReceiveResponse {
-                    peer,
-                    request_id,
-                    result: Ok(()),
-                }
+                self.request_manager
+                    .on_recv_res_for_outbound(peer, &connection, request_id, Ok(()));
             }
             HandlerOutEvent::RecvResponseOmission(request_id) => {
-                let removed =
-                    self.peer_connections
-                        .remove_request(&peer, &connection, &request_id, Direction::Outbound);
-                debug_assert!(removed, "Expect request_id to be pending before response is omitted.",);
-                BehaviourEvent::ReceiveResponse {
-                    peer,
-                    request_id,
-                    result: Err(RecvResponseErr::RecvResponseOmission),
-                }
+                let err = Err(RecvResponseErr::RecvResponseOmission);
+                self.request_manager
+                    .on_recv_res_for_outbound(peer, &connection, request_id, err);
             }
             HandlerOutEvent::ReceivedRequest { request_id, request } => {
-                self.peer_connections.new_request(&peer, request_id, Direction::Inbound);
-                BehaviourEvent::ReceiveRequest {
+                let approval_status = match self.firewall.get_in_rule_or_default(&peer) {
+                    None => {
+                        self.query_peer_rule(peer, RuleDirection::Inbound);
+                        ApprovalStatus::MissingRule
+                    }
+                    Some(Rule::Ask) => {
+                        self.query_rq_approval(
+                            peer,
+                            request_id,
+                            request.request.to_permissioned(),
+                            RequestDirection::Inbound,
+                        );
+                        ApprovalStatus::MissingApproval
+                    }
+                    Some(Rule::Permission(permission)) => {
+                        if permission.permits(&request.request.to_permissioned().permission()) {
+                            ApprovalStatus::Approved
+                        } else {
+                            ApprovalStatus::Rejected
+                        }
+                    }
+                };
+                self.request_manager.on_new_request(
                     peer,
                     request_id,
                     request,
-                }
+                    approval_status,
+                    RequestDirection::Inbound,
+                )
             }
             HandlerOutEvent::OutboundTimeout(request_id) => {
-                let removed =
-                    self.peer_connections
-                        .remove_request(&peer, &connection, &request_id, Direction::Outbound);
-                debug_assert!(removed, "Expect request_id to be pending before request times out.");
-                BehaviourEvent::ReceiveResponse {
-                    peer,
-                    request_id,
-                    result: Err(RecvResponseErr::Timeout),
-                }
+                let err = Err(RecvResponseErr::Timeout);
+                self.request_manager
+                    .on_recv_res_for_outbound(peer, &connection, request_id, err);
             }
             HandlerOutEvent::OutboundUnsupportedProtocols(request_id) => {
-                let removed =
-                    self.peer_connections
-                        .remove_request(&peer, &connection, &request_id, Direction::Outbound);
-                debug_assert!(removed, "Expect request_id to be pending before failing to connect.",);
-                BehaviourEvent::ReceiveResponse {
-                    peer,
-                    request_id,
-                    result: Err(RecvResponseErr::UnsupportedProtocols),
-                }
+                let err = Err(RecvResponseErr::UnsupportedProtocols);
+                self.request_manager
+                    .on_recv_res_for_outbound(peer, &connection, request_id, err);
             }
             HandlerOutEvent::InboundTimeout(request_id)
             | HandlerOutEvent::InboundUnsupportedProtocols(request_id)
             | HandlerOutEvent::SentResponse(request_id)
             | HandlerOutEvent::SendResponseOmission(request_id) => {
-                self.peer_connections
-                    .remove_request(&peer, &connection, &request_id, Direction::Inbound);
-                return;
+                self.request_manager.on_recv_res_for_inbound(&connection, &request_id);
             }
-        };
-        self.pending_events
-            .push_back(NetworkBehaviourAction::GenerateEvent(event));
+        }
+    }
+
+    fn query_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
+        let reduced_direction = self
+            .request_manager
+            .pending_rule_requests(&peer)
+            .map(|pending| direction.reduce(pending))
+            .unwrap_or(Some(direction));
+        let direction = unwrap_or_return!(reduced_direction);
+        let (rule_sender, rule_receiver) = oneshot::channel();
+        let firewall_req = FirewallRequest::<P>::PeerSpecificRule(Query {
+            request: (peer, direction),
+            response_sender: rule_sender,
+        });
+        let send_firewall = Self::send_firewall(self.permission_req_channel.clone(), firewall_req).map_err(|_| ());
+        let future = send_firewall
+            .and_then(move |()| rule_receiver.map_err(|_| ()))
+            .map_ok_or_else(
+                move |()| (peer, direction, None),
+                move |rules| (peer, direction, Some(rules)),
+            )
+            .boxed();
+        self.pending_rule_rqs.push(future);
+        self.request_manager.add_pending_rule_requests(peer, direction);
+    }
+
+    fn query_rq_approval(&mut self, peer: PeerId, request_id: RequestId, request: P, direction: RequestDirection) {
+        let (approval_sender, approval_receiver) = oneshot::channel();
+        let firewall_req = FirewallRequest::RequestApproval(Query {
+            request: (peer, direction, request),
+            response_sender: approval_sender,
+        });
+        let send_firewall = Self::send_firewall(self.permission_req_channel.clone(), firewall_req).map_err(|_| ());
+        let future = send_firewall
+            .and_then(move |()| approval_receiver.map_err(|_| ()))
+            .map_ok_or_else(move |()| (request_id, false), move |b| (request_id, b))
+            .boxed();
+
+        self.pending_approval_rqs.push(future);
+    }
+
+    async fn send_firewall(
+        mut channel: mpsc::Sender<FirewallRequest<P>>,
+        request: FirewallRequest<P>,
+    ) -> Result<(), SendError> {
+        poll_fn(|cx: &mut Context<'_>| channel.poll_ready(cx)).await?;
+        channel.start_send(request)
+    }
+
+    fn handle_peer_rule(&mut self, peer: PeerId, rules: FirewallRules, direction: RuleDirection) {
+        if let Some(ask_reqs) = self.request_manager.on_peer_rule(peer, rules, direction) {
+            ask_reqs.into_iter().for_each(|(id, rq, dir)| {
+                self.query_rq_approval(peer, id, rq, dir);
+            })
+        }
     }
 }
 
-impl<Rq, Rs> NetworkBehaviour for NetBehaviour<Rq, Rs>
+impl<Rq, Rs, P> NetworkBehaviour for NetBehaviour<Rq, Rs, P>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + ToPermissionVariants<P>,
     Rs: RqRsMessage,
+    P: VariantPermission,
 {
-    type ProtocolsHandler = IntoProtocolsHandlerSelect<
-        ConnectionHandler<Rq, Rs>,
-        IntoProtocolsHandlerSelect<
-            <Mdns as NetworkBehaviour>::ProtocolsHandler,
-            <Relay as NetworkBehaviour>::ProtocolsHandler,
-        >,
-    >;
+    type ProtocolsHandler = IntoProtocolsHandlerSelect<ConnectionHandler<Rq, Rs>, MdnsRelayProtocolsHandler>;
     type OutEvent = BehaviourEvent<Rq, Rs>;
 
     fn new_handler(&mut self) -> Self::ProtocolsHandler {
         let handler = ConnectionHandler::new(
             self.supported_protocols.clone(),
-            self.config.protocol_support.clone(),
-            self.config.connection_timeout,
-            self.config.request_timeout,
+            self.connection_timeout,
+            self.request_timeout,
             self.next_inbound_id.clone(),
         );
         let mdns_handler = self.mdns.new_handler();
@@ -297,11 +418,7 @@ where
     }
 
     fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
-        let mut addresses = self
-            .peer_connections
-            .get_peer_addrs(peer)
-            .map(|v| v.to_vec())
-            .unwrap_or_default();
+        let mut addresses = self.addresses.get(peer).map(|v| v.to_vec()).unwrap_or_default();
         addresses.extend(self.mdns.addresses_of_peer(peer));
         addresses.extend(self.relay.addresses_of_peer(peer));
         addresses
@@ -309,29 +426,41 @@ where
 
     fn inject_connected(&mut self, peer: &PeerId) {
         self.relay.inject_connected(peer);
-        if let Some(pending) = self.pending_outbound_requests.remove(peer) {
-            for (request_id, request) in pending {
-                let request = self.try_send_request(*peer, request_id, request);
-                assert!(request.is_none());
-            }
-        }
+        self.request_manager.on_peer_connected(*peer);
     }
 
     fn inject_disconnected(&mut self, peer: &PeerId) {
         self.relay.inject_disconnected(peer);
         self.mdns.inject_disconnected(peer);
-        self.peer_connections.remove_all_connections(peer);
+        self.request_manager.on_peer_disconnected(*peer);
     }
 
-    fn inject_connection_established(&mut self, peer: &PeerId, conn_id: &ConnectionId, endpoint: &ConnectedPoint) {
-        self.peer_connections
-            .add_connection(*peer, *conn_id, endpoint.get_remote_address().clone());
-        self.relay.inject_connection_established(peer, conn_id, endpoint);
+    fn inject_connection_established(&mut self, peer: &PeerId, connection: &ConnectionId, endpoint: &ConnectedPoint) {
+        let inbound_rule = self.firewall.get_in_rule_or_default(peer);
+        let outbound_rule = self.firewall.get_out_rule_or_default(peer);
+        let peer = *peer;
+        let rules = FirewallRules::new(inbound_rule.cloned(), outbound_rule.cloned());
+        self.request_manager.push_action(BehaviourAction::ReceivedPeerRules {
+            peer,
+            connection: Some(*connection),
+            rules,
+        });
+        let has_no_rules = inbound_rule.is_none() && (outbound_rule.is_none());
+        if let Some(dir) = has_no_rules
+            .then(|| RuleDirection::Both)
+            .or_else(|| inbound_rule.is_none().then(|| RuleDirection::Inbound))
+            .or_else(|| outbound_rule.is_none().then(|| RuleDirection::Outbound))
+        {
+            self.query_peer_rule(peer, dir);
+        }
+        self.request_manager.on_connection_established(peer, *connection);
+        self.relay.inject_connection_established(&peer, connection, endpoint);
     }
 
-    fn inject_connection_closed(&mut self, peer: &PeerId, conn_id: &ConnectionId, endpoint: &ConnectedPoint) {
-        self.handle_connection_closed(peer, conn_id);
-        self.relay.inject_connection_closed(peer, conn_id, endpoint);
+    fn inject_connection_closed(&mut self, peer: &PeerId, connection: &ConnectionId, endpoint: &ConnectedPoint) {
+        // panic!();
+        self.request_manager.on_connection_closed(*peer, connection);
+        self.relay.inject_connection_closed(peer, connection, endpoint);
     }
 
     fn inject_address_change(&mut self, _: &PeerId, _: &ConnectionId, _old: &ConnectedPoint, _new: &ConnectedPoint) {}
@@ -343,73 +472,41 @@ where
         event: <<Self::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
     ) {
         match event {
-            EitherOutput::First(ev) => self.handler_handler_event(peer, connection, ev),
+            EitherOutput::First(ev) => self.handle_handler_event(peer, connection, ev),
             EitherOutput::Second(EitherOutput::First(ev)) => self.mdns.inject_event(peer, connection, ev),
             EitherOutput::Second(EitherOutput::Second(ev)) => self.relay.inject_event(peer, connection, ev),
         }
     }
 
-    fn inject_addr_reach_failure(&mut self, _peer_id: Option<&PeerId>, _addr: &Multiaddr, _error: &dyn error::Error) {}
-
-    fn inject_dial_failure(&mut self, peer: &PeerId) {
-        if let Some(pending) = self.pending_outbound_requests.remove(peer) {
-            for (request_id, _) in pending {
-                self.pending_events
-                    .push_back(NetworkBehaviourAction::GenerateEvent(BehaviourEvent::ReceiveResponse {
-                        peer: *peer,
-                        request_id,
-                        result: Err(RecvResponseErr::DialFailure),
-                    }));
-            }
-        }
-        self.relay.inject_dial_failure(peer);
+    fn inject_addr_reach_failure(&mut self, _peer: Option<&PeerId>, _addr: &Multiaddr, _error: &dyn error::Error) {
+        // TODO: attempt to reach via Relay.
     }
 
-    fn inject_new_listener(&mut self, _id: ListenerId) {}
+    fn inject_dial_failure(&mut self, peer: &PeerId) {
+        self.request_manager.on_dial_failure(*peer);
+        self.relay.inject_dial_failure(peer);
+    }
 
     fn inject_new_listen_addr(&mut self, id: ListenerId, addr: &Multiaddr) {
         self.mdns.inject_new_listen_addr(id, addr);
     }
 
-    fn inject_expired_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {}
-
-    fn inject_listener_error(&mut self, _id: ListenerId, _err: &(dyn std::error::Error + 'static)) {}
-
-    fn inject_listener_closed(&mut self, _id: ListenerId, _reason: Result<(), &std::io::Error>) {}
-
-    fn inject_new_external_addr(&mut self, _addr: &Multiaddr) {}
-
-    fn inject_expired_external_addr(&mut self, _addr: &Multiaddr) {}
-
     fn poll(&mut self, cx: &mut Context<'_>, params: &mut impl PollParameters) -> Poll<NetworkAction<Self>> {
         let _ = self.mdns.poll(cx, params);
-        if let Some(action) = self.pending_events.pop_front() {
-            match action {
-                NetworkBehaviourAction::GenerateEvent(event) => {
-                    return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event))
-                }
-                NetworkBehaviourAction::DialAddress { address } => {
-                    return Poll::Ready(NetworkBehaviourAction::DialAddress { address })
-                }
-                NetworkBehaviourAction::DialPeer { peer_id, condition } => {
-                    return Poll::Ready(NetworkBehaviourAction::DialPeer { peer_id, condition })
-                }
-                NetworkBehaviourAction::NotifyHandler {
-                    peer_id,
-                    handler,
-                    event,
-                } => {
-                    return Poll::Ready(NetworkBehaviourAction::NotifyHandler {
-                        peer_id,
-                        handler,
-                        event: EitherOutput::First(event),
-                    })
-                }
-                _ => {}
-            };
-        } else if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
-            self.pending_events.shrink_to_fit();
+
+        while let Poll::Ready(Some((peer, direction, rules))) = self.pending_rule_rqs.poll_next_unpin(cx) {
+            if let Some(rules) = rules {
+                self.firewall.set_rules(peer, rules.clone(), direction);
+                self.update_peer_rule(peer, direction);
+            } else {
+                self.request_manager.on_no_peer_rule(peer, direction);
+            }
         }
+
+        while let Poll::Ready(Some((request_id, is_allowed))) = self.pending_approval_rqs.poll_next_unpin(cx) {
+            self.request_manager.on_request_approval(request_id, is_allowed);
+        }
+
         if let Poll::Ready(action) = self.relay.poll(cx, params) {
             match action {
                 NetworkBehaviourAction::DialPeer { peer_id, condition } => {
@@ -429,8 +526,67 @@ where
                 _ => {}
             }
         }
+        if let Some(event) = self.request_manager.take_next_action() {
+            let action = match event {
+                BehaviourAction::InboundReady {
+                    request_id,
+                    peer,
+                    request,
+                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::ReceiveRequest {
+                    peer,
+                    request_id,
+                    request,
+                }),
+                BehaviourAction::OutboundReady {
+                    request_id,
+                    peer,
+                    connection,
+                    request,
+                } => {
+                    let event = HandlerInEvent::SendRequest { request_id, request };
+                    NetworkBehaviourAction::NotifyHandler {
+                        peer_id: peer,
+                        handler: NotifyHandler::One(connection),
+                        event: EitherOutput::First(event),
+                    }
+                }
+                BehaviourAction::OutboundRejected { peer, request_id } => {
+                    NetworkBehaviourAction::GenerateEvent(BehaviourEvent::ReceiveResponse {
+                        peer,
+                        request_id,
+                        result: Err(RecvResponseErr::NotPermitted),
+                    })
+                }
+
+                BehaviourAction::RequireDialAttempt(peer) => NetworkBehaviourAction::DialPeer {
+                    peer_id: peer,
+                    condition: DialPeerCondition::Disconnected,
+                },
+                BehaviourAction::ReceivedResponse {
+                    peer,
+                    request_id,
+                    result,
+                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::ReceiveResponse {
+                    peer,
+                    request_id,
+                    result,
+                }),
+                BehaviourAction::ReceivedPeerRules {
+                    peer,
+                    connection,
+                    rules,
+                } => {
+                    let handler = connection.map(NotifyHandler::One).unwrap_or(NotifyHandler::Any);
+                    let event = HandlerInEvent::SetFirewallRules(rules);
+                    NetworkBehaviourAction::NotifyHandler {
+                        peer_id: peer,
+                        handler,
+                        event: EitherOutput::First(event),
+                    }
+                }
+            };
+            return Poll::Ready(action);
+        }
         Poll::Pending
     }
 }
-
-const EMPTY_QUEUE_SHRINK_THRESHOLD: usize = 100;

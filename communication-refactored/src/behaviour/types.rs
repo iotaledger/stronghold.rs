@@ -1,15 +1,16 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::firewall::FirewallRules;
 use futures::channel::oneshot;
 use libp2p::PeerId;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt;
 
-pub trait RqRsMessage: Serialize + DeserializeOwned + Send + 'static {}
-impl<T: Serialize + DeserializeOwned + Send + 'static> RqRsMessage for T {}
+pub trait RqRsMessage: Serialize + DeserializeOwned + Send + Sync + 'static {}
+impl<T: Serialize + DeserializeOwned + Send + Sync + 'static> RqRsMessage for T {}
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequestId(u64);
 
 impl RequestId {
@@ -34,16 +35,17 @@ impl fmt::Display for RequestId {
 }
 
 #[derive(Debug)]
-pub struct Request<T, U> {
-    pub message: T,
+pub struct Query<T, U> {
+    pub request: T,
     pub response_sender: oneshot::Sender<U>,
 }
+
 #[derive(Debug)]
 pub enum BehaviourEvent<Rq, Rs> {
     ReceiveRequest {
         peer: PeerId,
         request_id: RequestId,
-        request: Request<Rq, Rs>,
+        request: Query<Rq, Rs>,
     },
     ReceiveResponse {
         request_id: RequestId,
@@ -52,7 +54,7 @@ pub enum BehaviourEvent<Rq, Rs> {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecvResponseErr {
     Timeout,
     DialFailure,
@@ -60,6 +62,7 @@ pub enum RecvResponseErr {
     RecvResponseOmission,
     UnsupportedProtocols,
     NotPermitted,
+    FirewallPermissionChannelClosed,
 }
 
 impl fmt::Display for RecvResponseErr {
@@ -76,16 +79,20 @@ impl fmt::Display for RecvResponseErr {
             ),
             RecvResponseErr::NotPermitted => write!(f, "The firewall blocked the outbound request"),
             RecvResponseErr::DialFailure => write!(f, "Failed to dial the requested peer"),
+            RecvResponseErr::FirewallPermissionChannelClosed => {
+                write!(f, "The channel to ask for permission for requests has closed.")
+            }
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecvRequestErr {
     Timeout,
     UnsupportedProtocols,
     NotPermitted,
     ConnectionClosed,
+    FirewallPermissionChannelClosed,
 }
 
 impl fmt::Display for RecvRequestErr {
@@ -100,6 +107,9 @@ impl fmt::Display for RecvRequestErr {
             RecvRequestErr::ConnectionClosed => {
                 write!(f, "The connection closed directly after the request was received")
             }
+            RecvRequestErr::FirewallPermissionChannelClosed => {
+                write!(f, "The channel to ask for permission for requests has closed.")
+            }
         }
     }
 }
@@ -109,41 +119,38 @@ impl std::error::Error for RecvRequestErr {}
 
 #[derive(Debug)]
 pub struct ResponseReceiver<U> {
-    peer: PeerId,
-    request_id: RequestId,
-    receiver: oneshot::Receiver<U>,
+    pub peer: PeerId,
+    pub request_id: RequestId,
+    pub receiver: oneshot::Receiver<U>,
 }
 
-impl<U> ResponseReceiver<U> {
-    pub fn new(peer: PeerId, request_id: RequestId, receiver: oneshot::Receiver<U>) -> Self {
-        ResponseReceiver {
-            request_id,
-            peer,
-            receiver,
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RequestDirection {
+    Inbound,
+    Outbound,
+}
 
-    pub fn try_receive(&mut self) -> Result<Option<U>, oneshot::Canceled> {
-        self.receiver.try_recv()
+impl RequestDirection {
+    pub fn is_inbound(&self) -> bool {
+        matches!(self, RequestDirection::Inbound)
     }
-
-    pub fn peer_id(&self) -> &PeerId {
-        &self.peer
-    }
-
-    pub fn request_id(&self) -> &RequestId {
-        &self.request_id
+    pub fn is_outbound(&self) -> bool {
+        matches!(self, RequestDirection::Outbound)
     }
 }
+
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct HandlerInEvent<Rq, Rs>
+pub enum HandlerInEvent<Rq, Rs>
 where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    pub(super) request_id: RequestId,
-    pub(super) request: Request<Rq, Rs>,
+    SendRequest {
+        request_id: RequestId,
+        request: Query<Rq, Rs>,
+    },
+    SetFirewallRules(FirewallRules),
 }
 
 #[doc(hidden)]
@@ -155,7 +162,7 @@ where
 {
     ReceivedRequest {
         request_id: RequestId,
-        request: Request<Rq, Rs>,
+        request: Query<Rq, Rs>,
     },
     SentResponse(RequestId),
     SendResponseOmission(RequestId),

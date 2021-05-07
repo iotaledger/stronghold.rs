@@ -1,7 +1,10 @@
 [package]
 name = "stronghold-communication-refactored"
 version = "0.3.0"
-authors = [ "IOTA Stiftung" ]
+authors = [
+  "IOTA Stiftung",
+  "Elena Frank <elena.frank@iota.org"
+]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
@@ -13,7 +16,6 @@ name = "communication_refactored"
 
 [dependencies]
 futures = "0.3"
-clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
 libp2p = { version = "0.37", default-features = false, features = [
   "dns-async-std",
   "mdns",
@@ -25,17 +27,13 @@ libp2p = { version = "0.37", default-features = false, features = [
 ] }
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
-riker = "0.4"
 smallvec = "1.6.1"
-
-[dependencies.stronghold-utils]
-path = "../utils"
-version = "0.3"
+stronghold-derive = {path = "../derive", version = "0.2.0"}
 
 [features]
 default = [ "mdns" ]
 mdns = [ ]
 
 [dev-dependencies]
-async-std = "1.6.2"
-rand = "0.7"
+rand = "0.8.3"
+  

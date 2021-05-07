@@ -56,11 +56,7 @@ impl Client {
     pub fn read_from_store(&mut self, key: Vec<u8>) -> Option<Vec<u8>> {
         let res = self.store.get(&key);
 
-        if let Some(vec) = res {
-            Some(vec.to_vec())
-        } else {
-            None
-        }
+        res.map(|vec| vec.to_vec())
     }
 
     /// Deletes an item from the store by the given key.

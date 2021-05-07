@@ -3,3 +3,13 @@
 
 mod behaviour;
 pub use behaviour::*;
+
+#[macro_export]
+macro_rules! unwrap_or_return (
+    ($expression:expr) => {
+        match $expression {
+            Some(e) => e,
+            None => return
+        }
+    };
+);

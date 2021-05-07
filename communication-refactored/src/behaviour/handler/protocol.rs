@@ -13,7 +13,7 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
-use crate::{behaviour::RqRsMessage, Request};
+use crate::{behaviour::RqRsMessage, Query};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use libp2p::{
     core::{
@@ -32,29 +32,6 @@ pub struct CommunicationProtocol;
 impl ProtocolName for CommunicationProtocol {
     fn protocol_name(&self) -> &[u8] {
         b"/stronghold-communication/1.0.0"
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ProtocolSupport {
-    Inbound,
-    Outbound,
-    Full,
-}
-
-impl ProtocolSupport {
-    pub fn inbound(&self) -> bool {
-        match self {
-            ProtocolSupport::Inbound | ProtocolSupport::Full => true,
-            ProtocolSupport::Outbound => false,
-        }
-    }
-
-    pub fn outbound(&self) -> bool {
-        match self {
-            ProtocolSupport::Outbound | ProtocolSupport::Full => true,
-            ProtocolSupport::Inbound => false,
-        }
     }
 }
 
@@ -113,7 +90,7 @@ where
     Rs: RqRsMessage,
 {
     pub(crate) protocols: SmallVec<[CommunicationProtocol; 2]>,
-    pub(crate) request: Request<Rq, Rs>,
+    pub(crate) request: Query<Rq, Rs>,
     pub(crate) marker: PhantomData<Rs>,
 }
 
@@ -141,7 +118,7 @@ where
 
     fn upgrade_outbound(self, mut io: NegotiatedSubstream, _: Self::Info) -> Self::Future {
         async move {
-            parse_and_write(&mut io, self.request.message).await?;
+            parse_and_write(&mut io, self.request.request).await?;
             let response = read_and_parse(&mut io).await?;
             let sent_response = self.request.response_sender.send(response);
             Ok(sent_response.is_ok())
