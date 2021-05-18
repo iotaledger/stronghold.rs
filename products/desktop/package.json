@@ -14,15 +14,15 @@
   "dependencies": {
     "@chenfengyuan/vue-qrcode": "^1.0.2",
     "@quasar/extras": "^1.0.0",
-    "@tauri-apps/api": "^1.0.0-beta-rc.2",
+    "@tauri-apps/api": "^1.0.0-beta.1",
     "core-js": "^3.6.5",
     "quasar": "^1.0.0",
-    "tauri-plugin-authenticator-api": "tauri-apps/tauri-plugin-authenticator#0cce7e6af6f5f5af61a3d0338e1e1513a5587954",
-    "tauri-plugin-stronghold-api": "tauri-apps/tauri-plugin-stronghold#6749525a47a95439c9703d3a49b94ac65660998f"
+    "tauri-plugin-authenticator-api": "tauri-apps/tauri-plugin-authenticator#ff83a66afa2fe3a70eeb630083f11bbfbb388d19",
+    "tauri-plugin-stronghold-api": "tauri-apps/tauri-plugin-stronghold#3e284f3f73cbaf03cc0db4c6d411b6f46d99b770"
   },
   "devDependencies": {
     "@quasar/app": "^2.0.0",
-    "@tauri-apps/cli": "^1.0.0-beta-rc.2",
+    "@tauri-apps/cli": "^1.0.0-beta.2",
     "babel-eslint": "^10.0.1",
     "eslint": "^6.8.0",
     "eslint-config-standard": "^14.1.0",

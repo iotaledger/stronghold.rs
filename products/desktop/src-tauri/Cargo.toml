@@ -10,21 +10,26 @@ edition = "2018"
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = [ "derive" ] }
-tauri = { git = "https://github.com/tauri-apps/tauri", branch = "dev", features =["api-all"]}
+tauri = { version="1.0.0-beta.1", features = ["api-all", "menu"] }
+# tauri = { git = "https://github.com/tauri-apps/tauri", branch = "dev", features = ["api-all", "menu"] }
 futures = "0.3"
 riker = "0.4"
 bincode = "1.3.1"
-
   [dependencies.tauri-plugin-authenticator]
+  branch = "dev"
   git = "https://github.com/tauri-apps/tauri-plugin-authenticator"
-  rev = "0cce7e6af6f5f5af61a3d0338e1e1513a5587954"
+#  path = "../../../../tauri-plugin-authenticator"
+
+#   git = "https://github.com/tauri-apps/tauri-plugin-authenticator"
+#  rev = "0cce7e6af6f5f5af61a3d0338e1e1513a5587954"
 
   [dependencies.tauri-plugin-stronghold]
   git = "https://github.com/tauri-apps/tauri-plugin-stronghold"
-  rev = "6f14140031df6b1361426df2a981d9d46a9e9cc0"
+  branch = "main"
+# rev = "6f14140031df6b1361426df2a981d9d46a9e9cc0"
 
 [build-dependencies]
-tauri-build = "1.0.0-beta-rc.0"
+tauri-build = "1.0.0-beta.0"
 
 [features]
 default = [ "custom-protocol" ]

@@ -17,7 +17,7 @@ pids
 debug.log
 package-lock.json
 .vscode/settings.json
-*/.vscode/
+/.vscode
 proptest-regressions/
 TODO.md
 book
