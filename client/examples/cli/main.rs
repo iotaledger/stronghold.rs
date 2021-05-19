@@ -8,10 +8,11 @@ use clap::{ArgMatches, Clap};
 use futures::executor::block_on;
 use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, StatusMessage, Stronghold};
 use riker::actors::*;
+use std::error::Error;
 
 use std::path::{Path, PathBuf};
 
-// create a line error with the file and the line number
+/// create a line error with the file and the line number
 #[macro_export]
 macro_rules! line_error {
     () => {
@@ -22,21 +23,20 @@ macro_rules! line_error {
     };
 }
 
-// Writes data to the unencrypted store. Requires a password, the plaintext and the record path.  Record path must be a
-// number.
+/// Writes data to the unencrypted store. Requires a password, the plaintext and the record path.  Record path must be a
+/// number.
 fn write_to_store_command(
     pass: &str,
     plain: &str,
     rid: &str,
     stronghold: &mut iota_stronghold::Stronghold,
     client_path: Vec<u8>,
-) {
+) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
     naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-    let home_dir = home_dir().expect(line_error!());
-    let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+    let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
@@ -47,6 +47,7 @@ fn write_to_store_command(
     println!("{:?}", status);
 
     block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
+    Ok(())
 }
 
 /// Writes data to the encrypted vault.  Requires a password, the plaintext and the record path.  Record path must be a
@@ -57,13 +58,12 @@ fn encrypt_command(
     rid: &str,
     stronghold: &mut iota_stronghold::Stronghold,
     client_path: Vec<u8>,
-) {
+) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
     naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-    let home_dir = home_dir().expect(line_error!());
-    let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+    let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
@@ -79,10 +79,17 @@ fn encrypt_command(
     println!("{:?}", status);
 
     block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
+
+    Ok(())
 }
 
-/// Loads a snapshot from another stronghold instance, and loads it into the current one
-fn snapshot_command(pass: &str, path: &str, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
+//// Loads a snapshot from another stronghold instance, and loads it into the current one
+fn snapshot_command(
+    pass: &str,
+    path: &str,
+    stronghold: &mut iota_stronghold::Stronghold,
+    client_path: Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
     naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
@@ -100,24 +107,29 @@ fn snapshot_command(pass: &str, path: &str, stronghold: &mut iota_stronghold::St
         let status = block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), None, Some(input)));
 
         if let StatusMessage::Error(error) = status {
-            println!("{:?}", error);
-            return;
+            return Err(Box::from(format!("{:?}", error)));
         } else {
             block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
         }
     } else {
-        println!("The path you entered does not contain a valid snapshot");
+        return Err(Box::from("The path you entered does not contain a valid snapshot"));
     }
+
+    Ok(())
 }
 
-// Lists the records in the stronghold. Requires a password to unlock the snapshot.
-fn list_command(pass: &str, path: &str, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
+/// Lists the records in the stronghold. Requires a password to unlock the snapshot.
+fn list_command(
+    pass: &str,
+    path: &str,
+    stronghold: &mut iota_stronghold::Stronghold,
+    client_path: Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
     naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-    let home_dir = home_dir().expect(line_error!());
-    let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+    let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
@@ -130,25 +142,26 @@ fn list_command(pass: &str, path: &str, stronghold: &mut iota_stronghold::Strong
         println!("{:?}", status);
         println!("{:?}", list);
     } else {
-        println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-        return;
+        return Err(Box::from(
+            "Could not find a snapshot at the home path.  Try writing first. ",
+        ));
     }
+
+    Ok(())
 }
 
-// Reads a record from the unencrypted store.  Requires a snapshot password.
+/// Reads a record from the unencrypted store.  Requires a snapshot password.
 fn read_from_store_command(
     pass: &str,
     rpath: &str,
     stronghold: &mut iota_stronghold::Stronghold,
     client_path: Vec<u8>,
-) {
+) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
     naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-    let home_dir = home_dir().expect(line_error!());
-    let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+    let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
@@ -158,21 +171,44 @@ fn read_from_store_command(
         println!("{:?}", status);
         println!("Data: {:?}", std::str::from_utf8(&data).unwrap());
     } else {
-        println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-        return;
+        return Err(Box::from(
+            "Could not find a snapshot at the home path.  Try writing first. ",
+        ));
     }
+
+    Ok(())
 }
 
-// Revoke a record.  Data isn't actually deleted until it is garbage collected.  Accepts a password and the record id
-// that you want to revoke.
-fn revoke_command(pass: &str, id: &str, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
+/// Deletes from insecure store
+fn delete_from_store_command(rpath: &str, stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
+    let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
+
+    if snapshot.exists() {
+        let status = block_on(stronghold.delete_from_store(Location::generic(rpath, rpath)));
+
+        println!("{:?}", status);
+    } else {
+        return Err(Box::from(
+            "Could not find a snapshot at the home path.  Try writing first. ",
+        ));
+    }
+
+    Ok(())
+}
+
+/// Revoke a record.  Data isn't actually deleted until it is garbage collected.  Accepts a password and the record id
+/// that you want to revoke.
+fn revoke_command(
+    pass: &str,
+    id: &str,
+    stronghold: &mut iota_stronghold::Stronghold,
+    client_path: Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
     naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-    let home_dir = home_dir().expect(line_error!());
-    let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+    let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
@@ -183,25 +219,26 @@ fn revoke_command(pass: &str, id: &str, stronghold: &mut iota_stronghold::Strong
 
         block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
     } else {
-        println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-        return;
+        return Err(Box::from(
+            "Could not find a snapshot at the home path.  Try writing first. ",
+        ));
     }
+
+    Ok(())
 }
 
-// garbage collect the chain.  Remove any revoked data from the chain.  Requires the password.
+/// garbage collect the chain.  Remove any revoked data from the chain.  Requires the password.
 fn garbage_collect_vault_command(
     pass: &str,
     id: &str,
     stronghold: &mut iota_stronghold::Stronghold,
     client_path: Vec<u8>,
-) {
+) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
     naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-    let home_dir = home_dir().expect(line_error!());
-    let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+    let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
@@ -217,21 +254,27 @@ fn garbage_collect_vault_command(
 
         block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
     } else {
-        println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-        return;
+        return Err(Box::from(
+            "Could not find a snapshot at the home path.  Try writing first.",
+        ));
     }
+
+    Ok(())
 }
 
-// Purge a record from the chain.  Calls revoke and garbage collect in one command.  Requires a password and the record
-// id.
-fn purge_command(pass: &str, id: &str, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
+/// Purge a record from the chain.  Calls revoke and garbage collect in one command.  Requires a password and the record
+/// id.
+fn purge_command(
+    pass: &str,
+    id: &str,
+    stronghold: &mut iota_stronghold::Stronghold,
+    client_path: Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
     naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
 
-    let home_dir = home_dir().expect(line_error!());
-    let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
+    let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
@@ -247,20 +290,28 @@ fn purge_command(pass: &str, id: &str, stronghold: &mut iota_stronghold::Strongh
 
         block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
     } else {
-        println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-        return;
+        return Err(Box::from(
+            "Could not find a snapshot at the home path.  Try writing first.",
+        ));
     }
+    Ok(())
 }
 
-fn take_ownership_command(password: &str, stronghold: &mut Stronghold, client_path: Vec<u8>) {
+fn take_ownership_command(
+    _password: &str,
+    _stronghold: &mut Stronghold,
+    _client_path: Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
     todo!()
 }
 
 /// Relays a request to a remote stronghold instance.
-///
 #[cfg(feature = "communication")]
-fn relay_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
+fn relay_command(
+    _matches: &ArgMatches,
+    _stronghold: &mut iota_stronghold::Stronghold,
+    _client_path: Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
     // needs:
     // peer_id: usize,
     // key: Vec<u8>,
@@ -269,50 +320,51 @@ fn relay_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
 
 /// Returns a list of all available peers
 #[cfg(feature = "communication")]
-fn peers_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
+fn peers_command(
+    _matches: &ArgMatches,
+    _stronghold: &mut iota_stronghold::Stronghold,
+    _client_path: Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
     // stronghold.
 
     todo!()
 }
 
-///
-
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     // a complete sequence of writing an encrypted secret into the vault is:
     // - write the secret at path 0
     // - encrypt the secret at storage position 0 and write snapshot
     // - list the existing records
     // - read entry at path 0
 
+    let app = Commands::parse();
     let system = ActorSystem::new().expect(line_error!());
-    let client_path = b"actor_path".to_vec();
+    let client_path = app.actor_path.as_bytes().to_vec(); // b"actor_path".to_vec();
     let mut stronghold = Stronghold::init_stronghold_system(system, client_path.clone(), vec![]);
 
-    match Commands::parse().cmds {
+    match app.cmds {
         SubCommands::Encrypt {
             plain,
             pass,
             record_path,
-        } => {
-            encrypt_command(
-                plain.as_str(),
-                pass.as_str(),
-                record_path.as_str(),
-                &mut stronghold,
-                client_path,
-            );
-        }
+        } => encrypt_command(
+            plain.as_str(),
+            pass.as_str(),
+            record_path.as_str(),
+            &mut stronghold,
+            client_path,
+        ),
         SubCommands::GarbageCollect { pass, id } => {
-            garbage_collect_vault_command(pass.as_str(), id.as_str(), &mut stronghold, client_path);
+            garbage_collect_vault_command(pass.as_str(), id.as_str(), &mut stronghold, client_path)
         }
         SubCommands::List { pass, record_path } => {
-            list_command(pass.as_str(), record_path.as_str(), &mut stronghold, client_path);
+            list_command(pass.as_str(), record_path.as_str(), &mut stronghold, client_path)
         }
         SubCommands::Purge { password, id } => {
             purge_command(password.as_str(), id.as_str(), &mut stronghold, client_path)
         }
         SubCommands::Read { pass, record_path } => {
-            read_from_store_command(pass.as_str(), record_path.as_str(), &mut stronghold, client_path);
+            read_from_store_command(pass.as_str(), record_path.as_str(), &mut stronghold, client_path)
         }
         SubCommands::Revoke { id, password } => {
             revoke_command(password.as_str(), id.as_str(), &mut stronghold, client_path)
@@ -321,7 +373,7 @@ fn main() {
             snapshot_command(pass.as_str(), path.as_str(), &mut stronghold, client_path)
         }
         SubCommands::TakeOwnership { password } => {
-            take_ownership_command(password.as_str(), &mut stronghold, client_path);
+            take_ownership_command(password.as_str(), &mut stronghold, client_path)
         }
         SubCommands::Write {
             pass,
@@ -334,14 +386,17 @@ fn main() {
             &mut stronghold,
             client_path,
         ),
+        SubCommands::Delete { record_path } => delete_from_store_command(record_path.as_str(), &mut stronghold),
 
         #[cfg(feature = "communication")]
         SubCommands::Relay { id, path } => {
             todo!()
         }
         #[cfg(feature = "communication")]
-        SubCommands::Peers => {
+        SubCommands::Peers {} => {
             todo!()
         }
-    }
+    }?;
+
+    Ok(())
 }
