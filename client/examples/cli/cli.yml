@@ -3,6 +3,22 @@ version: '2.0'
 author: Tensor Programming <tensordeveloper@gmail.com>
 about: Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots.
 subcommands:
+  - relay:
+      about: Relays traffic to a peer
+      args:
+        - path:
+            short: p
+            long: path
+            value_name: path
+            about: the path to the local snapshot
+            required: true
+            takes_value: true
+        - id:
+            short: i
+            long: id
+            value_name: id
+            required: true
+            takes_value: true
   - encrypt:
       about: Encrypt data to the vault. Writes to the snapshot. 
       args:
@@ -108,7 +124,7 @@ subcommands:
             required: true
             takes_value: true
         - rpath:
-            short: rid
+            short: i
             long: record_path
             value_name: id
             about: the id of the entry
