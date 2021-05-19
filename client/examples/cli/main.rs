@@ -344,19 +344,4 @@ fn main() {
             todo!()
         }
     }
-
-    // let matches = App::from(yaml).get_matches();
-
-    // write_to_store_command(&matches, &mut stronghold, client_path.clone());
-    // encrypt_command(&matches, &mut stronghold, client_path.clone());
-    // snapshot_command(&matches, &mut stronghold, client_path.clone());
-    // read_from_store_command(&matches, &mut stronghold, client_path.clone());
-    // list_command(&matches, &mut stronghold, client_path.clone());
-    // revoke_command(&matches, &mut stronghold, client_path.clone());
-    // garbage_collect_vault_command(&matches, &mut stronghold, client_path.clone());
-    // purge_command(&matches, &mut stronghold, client_path.clone());
-
-    // // added commands
-    // relay_command(&matches, &mut stronghold, client_path.clone());
-    // peers_command(&matches, &mut stronghold, client_path);
 }
