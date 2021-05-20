@@ -323,7 +323,22 @@ fn relay_command(
 /// Returns a list of all available peers
 #[cfg(feature = "communication")]
 fn list_peers_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
-    todo!()
+    match block_on(stronghold.get_swarm_info()) {
+        ResultMessage::Ok((_, _, peers)) => {
+            let info = format!(
+                r#"
+            Peers
+            ===
+            {:?}
+            "#,
+                peers
+            );
+            println!("{}", info)
+        }
+        ResultMessage::Error(e) => return Err(Box::from(format!("{}", e))),
+    }
+
+    Ok(())
 }
 
 /// Displays the swarm info of this stronghold instance
@@ -404,7 +419,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             todo!()
         }
         #[cfg(feature = "communication")]
-        Commands::Peers {} => list_peers_command(&mut stronghold, client_path),
+        Commands::Peers {} => list_peers_command(&mut stronghold),
 
         #[cfg(feature = "communication")]
         Commands::SwarmInfo {} => show_swarm_info_command(&mut stronghold),
