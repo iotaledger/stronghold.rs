@@ -1,6 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(unused_variables, dead_code)]
+
 mod arguments;
 
 use arguments::*;
@@ -180,13 +182,28 @@ fn read_from_store_command(
 }
 
 /// Deletes from insecure store
-fn delete_from_store_command(rpath: &str, stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
+fn delete_from_store_command(
+    pass: &str,
+    rpath: &str,
+    stronghold: &mut iota_stronghold::Stronghold,
+    client_path: Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
+    let mut key = [0u8; 32];
+    let salt = [0u8; 32];
+    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+
     let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
+        block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
+
         let status = block_on(stronghold.delete_from_store(Location::generic(rpath, rpath)));
 
-        println!("{:?}", status);
+        println!("Delete: {:?}", status);
+
+        block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
+
+        println!("Sync: {:?}", status);
     } else {
         return Err(Box::from(
             "Could not find a snapshot at the home path.  Try writing first. ",
@@ -312,9 +329,6 @@ fn relay_command(
     _stronghold: &mut iota_stronghold::Stronghold,
     _client_path: Vec<u8>,
 ) -> Result<(), Box<dyn Error>> {
-    // needs:
-    // peer_id: usize,
-    // key: Vec<u8>,
     todo!()
 }
 
@@ -325,8 +339,6 @@ fn peers_command(
     _stronghold: &mut iota_stronghold::Stronghold,
     _client_path: Vec<u8>,
 ) -> Result<(), Box<dyn Error>> {
-    // stronghold.
-
     todo!()
 }
 
@@ -339,7 +351,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let app = Commands::parse();
     let system = ActorSystem::new().expect(line_error!());
-    let client_path = app.actor_path.as_bytes().to_vec(); // b"actor_path".to_vec();
+    let client_path = app.actor_path.as_bytes().to_vec();
     let mut stronghold = Stronghold::init_stronghold_system(system, client_path.clone(), vec![]);
 
     match app.cmds {
@@ -386,7 +398,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             &mut stronghold,
             client_path,
         ),
-        SubCommands::Delete { record_path } => delete_from_store_command(record_path.as_str(), &mut stronghold),
+        SubCommands::Delete { record_path, pass } => {
+            delete_from_store_command(pass.as_str(), record_path.as_str(), &mut stronghold, client_path)
+        }
 
         #[cfg(feature = "communication")]
         SubCommands::Relay { id, path } => {

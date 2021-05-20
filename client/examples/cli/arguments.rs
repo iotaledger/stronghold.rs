@@ -80,6 +80,9 @@ pub enum SubCommands {
     },
     #[clap(about = "Deletes from insecure store.")]
     Delete {
+        #[clap(long, short = 'w', required = true)]
+        pass: String,
+
         #[clap(long, short = 'p', required = true)]
         record_path: String,
     },
