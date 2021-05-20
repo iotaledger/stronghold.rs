@@ -5,16 +5,16 @@ use clap::{Clap, Subcommand};
     name = "Stronghold Example CLI",
     about = "Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots."
 )]
-pub struct Commands {
+pub struct ExampleApp {
     #[clap(subcommand)]
-    pub cmds: SubCommands,
+    pub cmds: Commands,
 
     #[clap(default_value = "actor_path")]
     pub actor_path: String,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum SubCommands {
+pub enum Commands {
     #[clap(about = "Write data to the unencrypted cache store")]
     Write {
         #[clap(long, short = 'p', required = true, about = "the value you want to store.")]
@@ -141,4 +141,8 @@ pub enum SubCommands {
     #[cfg(feature = "communication")]
     #[clap(alias = "peers", about = "Lists all peers.")]
     Peers {},
+
+    #[cfg(feature = "communication")]
+    #[clap(alias = "swarm-info", about = "Displays information on this node")]
+    SwarmInfo {},
 }

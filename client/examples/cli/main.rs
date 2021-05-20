@@ -1,14 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(unused_variables, dead_code)]
-
 mod arguments;
 
 use arguments::*;
 use clap::{ArgMatches, Clap};
 use futures::executor::block_on;
-use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, StatusMessage, Stronghold};
+use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, ResultMessage, StatusMessage, Stronghold};
 use riker::actors::*;
 use std::error::Error;
 
@@ -197,16 +195,12 @@ fn delete_from_store_command(
     if snapshot.exists() {
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
 
-        let status = block_on(stronghold.delete_from_store(Location::generic(rpath, rpath)));
-
-        println!("Delete: {:?}", status);
-
+        let status_delete = block_on(stronghold.delete_from_store(Location::generic(rpath, rpath)));
         block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
-
-        println!("Sync: {:?}", status);
+        println!("Delete: {:?}", status_delete);
     } else {
         return Err(Box::from(
-            "Could not find a snapshot at the home path.  Try writing first. ",
+            "Could not find a snapshot at the home path. Try writing first.",
         ));
     }
 
@@ -229,7 +223,6 @@ fn revoke_command(
 
     if snapshot.exists() {
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
-
         let status = block_on(stronghold.delete_data(Location::generic(id, id), false));
 
         println!("{:?}", status);
@@ -261,9 +254,7 @@ fn garbage_collect_vault_command(
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
 
         let location = Location::generic(id, id);
-
         let status = block_on(stronghold.garbage_collect(location.vault_path().to_vec()));
-
         let (list, _) = block_on(stronghold.list_hints_and_ids(location.vault_path().to_vec()));
 
         println!("{:?}", status);
@@ -295,11 +286,8 @@ fn purge_command(
 
     if snapshot.exists() {
         block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None));
-
         let location = Location::generic(id, id);
-
         let status = block_on(stronghold.delete_data(location.clone(), true));
-
         let (list, _) = block_on(stronghold.list_hints_and_ids(location.vault_path().to_vec()));
 
         println!("{:?}", status);
@@ -334,28 +322,41 @@ fn relay_command(
 
 /// Returns a list of all available peers
 #[cfg(feature = "communication")]
-fn peers_command(
-    _matches: &ArgMatches,
-    _stronghold: &mut iota_stronghold::Stronghold,
-    _client_path: Vec<u8>,
-) -> Result<(), Box<dyn Error>> {
+fn list_peers_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
     todo!()
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    // a complete sequence of writing an encrypted secret into the vault is:
-    // - write the secret at path 0
-    // - encrypt the secret at storage position 0 and write snapshot
-    // - list the existing records
-    // - read entry at path 0
+/// Displays the swarm info of this stronghold instance
+#[cfg(feature = "communication")]
+fn show_swarm_info_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
+    match block_on(stronghold.get_swarm_info()) {
+        ResultMessage::Ok((peer_id, addresses, peers)) => {
+            let info = format!(
+                r#"
+                Swarm Info:
+                ===
+                Peer Id : {},
+                Addresses: {:?},
+                Peers: {:?}
+            "#,
+                peer_id, addresses, peers
+            );
 
-    let app = Commands::parse();
+            println!("{}", info)
+        }
+        ResultMessage::Error(e) => return Err(Box::from(format!("{}", e))),
+    }
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let app = ExampleApp::parse();
     let system = ActorSystem::new().expect(line_error!());
     let client_path = app.actor_path.as_bytes().to_vec();
     let mut stronghold = Stronghold::init_stronghold_system(system, client_path.clone(), vec![]);
 
     match app.cmds {
-        SubCommands::Encrypt {
+        Commands::Encrypt {
             plain,
             pass,
             record_path,
@@ -366,28 +367,24 @@ fn main() -> Result<(), Box<dyn Error>> {
             &mut stronghold,
             client_path,
         ),
-        SubCommands::GarbageCollect { pass, id } => {
+        Commands::GarbageCollect { pass, id } => {
             garbage_collect_vault_command(pass.as_str(), id.as_str(), &mut stronghold, client_path)
         }
-        SubCommands::List { pass, record_path } => {
+        Commands::List { pass, record_path } => {
             list_command(pass.as_str(), record_path.as_str(), &mut stronghold, client_path)
         }
-        SubCommands::Purge { password, id } => {
-            purge_command(password.as_str(), id.as_str(), &mut stronghold, client_path)
-        }
-        SubCommands::Read { pass, record_path } => {
+        Commands::Purge { password, id } => purge_command(password.as_str(), id.as_str(), &mut stronghold, client_path),
+        Commands::Read { pass, record_path } => {
             read_from_store_command(pass.as_str(), record_path.as_str(), &mut stronghold, client_path)
         }
-        SubCommands::Revoke { id, password } => {
+        Commands::Revoke { id, password } => {
             revoke_command(password.as_str(), id.as_str(), &mut stronghold, client_path)
         }
-        SubCommands::Snapshot { path, pass } => {
+        Commands::Snapshot { path, pass } => {
             snapshot_command(pass.as_str(), path.as_str(), &mut stronghold, client_path)
         }
-        SubCommands::TakeOwnership { password } => {
-            take_ownership_command(password.as_str(), &mut stronghold, client_path)
-        }
-        SubCommands::Write {
+        Commands::TakeOwnership { password } => take_ownership_command(password.as_str(), &mut stronghold, client_path),
+        Commands::Write {
             pass,
             record_path,
             plain,
@@ -398,18 +395,19 @@ fn main() -> Result<(), Box<dyn Error>> {
             &mut stronghold,
             client_path,
         ),
-        SubCommands::Delete { record_path, pass } => {
+        Commands::Delete { record_path, pass } => {
             delete_from_store_command(pass.as_str(), record_path.as_str(), &mut stronghold, client_path)
         }
 
         #[cfg(feature = "communication")]
-        SubCommands::Relay { id, path } => {
+        Commands::Relay { id, path } => {
             todo!()
         }
         #[cfg(feature = "communication")]
-        SubCommands::Peers {} => {
-            todo!()
-        }
+        Commands::Peers {} => list_peers_command(&mut stronghold, client_path),
+
+        #[cfg(feature = "communication")]
+        Commands::SwarmInfo {} => show_swarm_info_command(&mut stronghold),
     }?;
 
     Ok(())
