@@ -4,9 +4,13 @@
 mod arguments;
 
 use arguments::*;
-use clap::{ArgMatches, Clap};
-use futures::executor::block_on;
+use clap::Clap;
+use futures::{executor::block_on, StreamExt};
 use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, ResultMessage, StatusMessage, Stronghold};
+
+#[cfg(feature = "communication")]
+use iota_stronghold::Multiaddr;
+
 use riker::actors::*;
 use std::error::Error;
 
@@ -310,15 +314,12 @@ fn take_ownership_command(
     todo!()
 }
 
-/// Relays a request to a remote stronghold instance.
-#[cfg(feature = "communication")]
-fn relay_command(
-    _matches: &ArgMatches,
-    _stronghold: &mut iota_stronghold::Stronghold,
-    _client_path: Vec<u8>,
-) -> Result<(), Box<dyn Error>> {
-    todo!()
-}
+// /// Relays a request to a remote stronghold instance.
+// #[cfg(feature = "communication")]
+// fn relay_command(stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) -> Result<(), Box<dyn Error>> {
+
+//     todo!()
+// }
 
 /// Returns a list of all available peers
 #[cfg(feature = "communication")]
@@ -361,6 +362,37 @@ fn show_swarm_info_command(stronghold: &mut iota_stronghold::Stronghold) -> Resu
         }
         ResultMessage::Error(e) => return Err(Box::from(format!("{}", e))),
     }
+    Ok(())
+}
+
+fn start_listening_command(
+    multiaddr: &str,
+    stronghold: &mut iota_stronghold::Stronghold,
+    client_path: Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
+    let multiaddress: Multiaddr = multiaddr.parse()?;
+
+    // spawn communication actor
+    let comm = stronghold.spawn_communication();
+
+    let result = block_on(stronghold.start_listening(Some(multiaddress)));
+
+    println!("Listening on addr: {:?}", result);
+
+    let (tx, rx): (
+        futures::channel::mpsc::Sender<usize>,
+        futures::channel::mpsc::Receiver<usize>,
+    ) = futures::channel::mpsc::channel(1);
+
+    let waiter = async {
+        let fut = rx.map(|f| f).collect::<Vec<usize>>();
+
+        fut.await
+    };
+
+    block_on(waiter);
+
+    // todo!()
     Ok(())
 }
 
@@ -423,6 +455,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         #[cfg(feature = "communication")]
         Commands::SwarmInfo {} => show_swarm_info_command(&mut stronghold),
+
+        #[cfg(feature = "communication")]
+        Commands::Listen { multiaddr } => start_listening_command(multiaddr.as_str(), &mut stronghold, client_path),
     }?;
 
     Ok(())

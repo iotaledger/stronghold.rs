@@ -145,4 +145,15 @@ pub enum Commands {
     #[cfg(feature = "communication")]
     #[clap(alias = "swarm-info", about = "Displays information on this node")]
     SwarmInfo {},
+
+    #[cfg(feature = "communication")]
+    #[clap(about = "Start listening on multiaddress.")]
+    Listen {
+        #[clap(
+            long = "multiaddr",
+            short = 'm',
+            about = r#"The multiaddress to listen on. Format "(/<protoName string>/<value string>)+" "#
+        )]
+        multiaddr: String,
+    },
 }
