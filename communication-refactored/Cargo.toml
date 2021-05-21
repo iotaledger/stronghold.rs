@@ -16,7 +16,7 @@ name = "communication_refactored"
 
 [dependencies]
 futures = "0.3"
-libp2p = { version = "0.37", default-features = false, features = [
+libp2p = { version = "0.38", default-features = false, features = [
   "dns-async-std",
   "mdns",
   "noise",
