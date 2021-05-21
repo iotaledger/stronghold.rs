@@ -14,10 +14,10 @@
 // all copies or substantial portions of the Software.
 
 use communication_refactored::{
-    firewall::{FirewallPermission, PermissionValue, Rule, RuleDirection, VariantPermission},
+    firewall::{PermissionValue, RequestPermissions, Rule, RuleDirection, VariantPermission},
     BehaviourEvent, NetBehaviour, NetBehaviourConfig, Query, RecvResponseErr,
 };
-use futures::{channel::mpsc, prelude::*};
+use futures::{channel::mpsc, executor::LocalPool, future::FutureObj, prelude::*, task::Spawn};
 use libp2p::{
     core::{identity, transport::Transport, upgrade, Multiaddr, PeerId},
     mdns::{Mdns, MdnsConfig},
@@ -27,18 +27,19 @@ use libp2p::{
     tcp::TcpConfig,
     yamux::YamuxConfig,
 };
-use rand::{self, Rng};
 use serde::{Deserialize, Serialize};
-use stronghold_derive::RequestPermissions;
 
 /// Exercises a simple ping protocol.
 #[test]
 fn ping_protocol() {
+    let mut pool = LocalPool::new();
+    let spawner = pool.spawner();
+
     let ping = Ping("ping".to_string().into_bytes());
     let pong = Pong("pong".to_string().into_bytes());
 
-    let (peer1_id, mut swarm1) = async_std::task::block_on(init_swarm());
-    let (peer2_id, mut swarm2) = async_std::task::block_on(init_swarm());
+    let (peer1_id, mut swarm1) = init_swarm(&mut pool);
+    let (peer2_id, mut swarm2) = init_swarm(&mut pool);
 
     let (mut tx, mut rx) = mpsc::channel::<Multiaddr>(1);
 
@@ -48,7 +49,7 @@ fn ping_protocol() {
     let expected_ping = ping.clone();
     let expected_pong = pong.clone();
 
-    let peer1 = async move {
+    let peer1_future = async move {
         loop {
             match swarm1.next_event().await {
                 SwarmEvent::NewListenAddr(addr) => tx.send(addr).await.unwrap(),
@@ -72,10 +73,10 @@ fn ping_protocol() {
         }
     };
 
-    let num_pings: u8 = rand::thread_rng().gen_range(1, 100);
+    let num_pings = 100;
 
-    let peer2 = async move {
-        let mut count = 0;
+    let peer2_future = async move {
+        let mut count = 0u8;
         let addr = rx.next().await.unwrap();
         swarm2.behaviour_mut().add_address(&peer1_id, addr.clone());
         let mut response_channel = swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
@@ -87,8 +88,8 @@ fn ping_protocol() {
                     request_id,
                     result: Ok(()),
                 } => {
-                    let req_id = *response_channel.request_id();
-                    let response = response_channel.try_receive().unwrap().unwrap();
+                    let req_id = response_channel.request_id;
+                    let response = response_channel.receiver.await.unwrap();
                     count += 1;
                     assert_eq!(&response, &expected_pong);
                     assert_eq!(&peer, &peer1_id);
@@ -104,22 +105,24 @@ fn ping_protocol() {
         }
     };
 
-    async_std::task::spawn(Box::pin(peer1));
-    let () = async_std::task::block_on(peer2);
+    spawner.spawn_obj(FutureObj::new(Box::pin(peer1_future))).unwrap();
+    pool.run_until(peer2_future);
 }
 
 #[test]
 fn emits_inbound_connection_closed_failure() {
+    let mut pool = LocalPool::new();
+
     let ping = Ping("ping".to_string().into_bytes());
     let pong = Pong("pong".to_string().into_bytes());
 
-    let (peer1_id, mut swarm1) = async_std::task::block_on(init_swarm());
-    let (peer2_id, mut swarm2) = async_std::task::block_on(init_swarm());
+    let (peer1_id, mut swarm1) = init_swarm(&mut pool);
+    let (peer2_id, mut swarm2) = init_swarm(&mut pool);
 
     let addr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
     swarm1.listen_on(addr).unwrap();
 
-    futures::executor::block_on(async move {
+    pool.run_until(async move {
         while swarm1.next().now_or_never().is_some() {}
         let addr1 = Swarm::listeners(&swarm1).next().unwrap();
 
@@ -160,15 +163,16 @@ fn emits_inbound_connection_closed_failure() {
 /// run into a timeout waiting for the response.
 #[test]
 fn emits_inbound_connection_closed_if_channel_is_dropped() {
+    let mut pool = LocalPool::new();
     let ping = Ping("ping".to_string().into_bytes());
 
-    let (peer1_id, mut swarm1) = async_std::task::block_on(init_swarm());
-    let (peer2_id, mut swarm2) = async_std::task::block_on(init_swarm());
+    let (peer1_id, mut swarm1) = init_swarm(&mut pool);
+    let (peer2_id, mut swarm2) = init_swarm(&mut pool);
 
     let addr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
     swarm1.listen_on(addr).unwrap();
 
-    futures::executor::block_on(async move {
+    pool.run_until(async move {
         while swarm1.next().now_or_never().is_some() {}
         let addr1 = Swarm::listeners(&swarm1).next().unwrap();
 
@@ -196,15 +200,15 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
                 result: Err(RecvResponseErr::ConnectionClosed),
             } => {
                 assert_eq!(peer, peer1_id);
-                assert_eq!(&request_id, response_receiver.request_id());
-                assert!(response_receiver.try_receive().is_err())
+                assert_eq!(request_id, response_receiver.request_id);
+                assert!(response_receiver.receiver.try_recv().is_err())
             }
             e => panic!("unexpected event from peer 2: {:?}", e),
         };
     });
 }
 
-async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong, Ping>>) {
+fn init_swarm(pool: &mut LocalPool) -> (PeerId, Swarm<NetBehaviour<Ping, Pong, Ping>>) {
     let id_keys = identity::Keypair::generate_ed25519();
     let peer = id_keys.public().into_peer_id();
     let noise_keys = Keypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
@@ -217,10 +221,9 @@ async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong, Ping>>) {
         .boxed();
 
     let mut cfg = NetBehaviourConfig::default();
-    cfg.firewall
-        .set_default(Rule::Permission(FirewallPermission::all()), RuleDirection::Both);
-    let mdns = Mdns::new(MdnsConfig::default())
-        .await
+    cfg.firewall.set_default(Rule::allow_all(), RuleDirection::Both);
+    let mdns = pool
+        .run_until(Mdns::new(MdnsConfig::default()))
         .expect("Failed to create mdns behaviour.");
     let (dummy_sender, _) = mpsc::channel(1);
     let behaviour = NetBehaviour::new(cfg, mdns, relay_behaviour, dummy_sender);
