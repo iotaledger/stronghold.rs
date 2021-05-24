@@ -5,11 +5,8 @@ mod arguments;
 
 use arguments::*;
 use clap::Clap;
-use futures::{executor::block_on, StreamExt};
-use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, ResultMessage, StatusMessage, Stronghold};
-
-#[cfg(feature = "communication")]
-use iota_stronghold::Multiaddr;
+use futures::executor::block_on;
+use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, StatusMessage, Stronghold};
 
 use riker::actors::*;
 use std::error::Error;
