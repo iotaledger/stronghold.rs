@@ -128,32 +128,4 @@ pub enum Commands {
         #[clap(long = "pass", short = 'w', required = true, about = "The password for the snapshot")]
         password: String,
     },
-
-    #[cfg(feature = "communication")]
-    #[clap(alias = "relay", about = "Relay traffic to a peer.")]
-    Relay {
-        #[clap(long, short = 'p', required = true)]
-        path: String,
-
-        #[clap(long, short = 'i', required = true)]
-        id: String,
-    },
-    #[cfg(feature = "communication")]
-    #[clap(alias = "peers", about = "Lists all peers.")]
-    Peers {},
-
-    #[cfg(feature = "communication")]
-    #[clap(alias = "swarm-info", about = "Displays information on this node")]
-    SwarmInfo {},
-
-    #[cfg(feature = "communication")]
-    #[clap(about = "Start listening on multiaddress.")]
-    Listen {
-        #[clap(
-            long = "multiaddr",
-            short = 'm',
-            about = r#"The multiaddress to listen on. Format "(/<protoName string>/<value string>)+" "#
-        )]
-        multiaddr: String,
-    },
 }
