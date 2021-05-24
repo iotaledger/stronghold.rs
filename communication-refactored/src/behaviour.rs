@@ -13,6 +13,8 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
+#[doc(hidden)]
+mod addresses;
 pub mod firewall;
 #[doc(hidden)]
 mod handler;
@@ -20,7 +22,10 @@ mod handler;
 mod request_manager;
 #[doc(hidden)]
 mod types;
-use self::firewall::{FirewallRules, RuleDirection};
+use self::{
+    addresses::AddressInfo,
+    firewall::{FirewallRules, RuleDirection},
+};
 use super::unwrap_or_return;
 use firewall::{FirewallConfiguration, FirewallRequest, Rule, ToPermissionVariants, VariantPermission};
 use futures::{
@@ -51,7 +56,6 @@ use libp2p::{
 use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
 use smallvec::{smallvec, SmallVec};
 use std::{
-    collections::HashMap,
     error,
     sync::{atomic::AtomicU64, Arc},
     time::Duration,
@@ -110,14 +114,12 @@ where
     next_inbound_id: Arc<AtomicU64>,
 
     request_manager: RequestManager<Rq, Rs, P>,
-
+    addresses: AddressInfo,
     firewall: FirewallConfiguration,
+
     permission_req_channel: mpsc::Sender<FirewallRequest<P>>,
     pending_rule_rqs: FuturesUnordered<PendingPeerRuleRequest>,
     pending_approval_rqs: FuturesUnordered<PendingApprovalRequest>,
-
-    addresses: HashMap<PeerId, SmallVec<[Multiaddr; 6]>>,
-    // TODO: Maintain a list of relays to use as backup
 }
 
 impl<Rq, Rs, P> NetBehaviour<Rq, Rs, P>
@@ -141,11 +143,11 @@ where
             next_request_id: RequestId::new(1),
             next_inbound_id: Arc::new(AtomicU64::new(1)),
             request_manager: RequestManager::new(),
+            addresses: AddressInfo::new(),
             firewall: config.firewall,
             permission_req_channel,
             pending_rule_rqs: FuturesUnordered::default(),
             pending_approval_rqs: FuturesUnordered::default(),
-            addresses: HashMap::new(),
         }
     }
 
@@ -258,21 +260,28 @@ where
         self.handle_peer_rule(peer, new_rules, direction);
     }
 
-    pub fn add_address(&mut self, peer: &PeerId, address: Multiaddr) {
-        let addrs = self.addresses.entry(*peer).or_default();
-        if addrs.iter().find(|a| a == &&address).is_none() {
-            addrs.push(address);
-        }
+    pub fn add_address(&mut self, peer: PeerId, address: Multiaddr) {
+        self.addresses.add_addrs(peer, address);
     }
 
     pub fn remove_address(&mut self, peer: &PeerId, address: &Multiaddr) {
-        if let Some((peer, other)) = self.addresses.remove_entry(&peer).and_then(|(peer, mut addrs)| {
-            addrs.retain(|a| !a.eq(&address));
-            let is_not_emtpy = !addrs.is_empty();
-            is_not_emtpy.then(|| (peer, addrs))
-        }) {
-            self.addresses.insert(peer, other);
-        }
+        self.addresses.remove_address(peer, address);
+    }
+
+    pub fn add_dialing_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
+        self.addresses.add_relay(peer, address)
+    }
+
+    pub fn remove_dialing_relay(&mut self, peer: &PeerId) {
+        self.addresses.remove_relay(peer);
+    }
+
+    pub fn set_not_use_relay(&mut self, peer: PeerId) {
+        self.addresses.set_no_relay(peer);
+    }
+
+    pub fn set_use_relay(&mut self, peer: PeerId, relay: PeerId) {
+        self.addresses.set_relay(peer, relay);
     }
 
     fn next_request_id(&mut self) -> RequestId {
@@ -418,14 +427,15 @@ where
     }
 
     fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
-        let mut addresses = self.addresses.get(peer).map(|v| v.to_vec()).unwrap_or_default();
-        addresses.extend(self.mdns.addresses_of_peer(peer));
+        let mut addresses = self.mdns.addresses_of_peer(peer);
         addresses.extend(self.relay.addresses_of_peer(peer));
+        addresses.extend(self.addresses.get_addrs(peer));
         addresses
     }
 
     fn inject_connected(&mut self, peer: &PeerId) {
         self.relay.inject_connected(peer);
+        self.mdns.inject_connected(peer);
         self.request_manager.on_peer_connected(*peer);
     }
 
@@ -454,16 +464,31 @@ where
             self.query_peer_rule(peer, dir);
         }
         self.request_manager.on_connection_established(peer, *connection);
+        self.addresses
+            .on_connection_established(peer, endpoint.get_remote_address().clone());
         self.relay.inject_connection_established(&peer, connection, endpoint);
+        self.mdns.inject_connection_established(&peer, connection, endpoint);
     }
 
     fn inject_connection_closed(&mut self, peer: &PeerId, connection: &ConnectionId, endpoint: &ConnectedPoint) {
         // panic!();
         self.request_manager.on_connection_closed(*peer, connection);
+        self.addresses
+            .on_connection_closed(*peer, endpoint.get_remote_address());
         self.relay.inject_connection_closed(peer, connection, endpoint);
+        self.mdns.inject_connection_closed(peer, connection, endpoint);
     }
 
-    fn inject_address_change(&mut self, _: &PeerId, _: &ConnectionId, _old: &ConnectedPoint, _new: &ConnectedPoint) {}
+    fn inject_address_change(
+        &mut self,
+        peer: &PeerId,
+        connection: &ConnectionId,
+        old: &ConnectedPoint,
+        new: &ConnectedPoint,
+    ) {
+        self.relay.inject_address_change(peer, connection, old, new);
+        self.mdns.inject_address_change(peer, connection, old, new);
+    }
 
     fn inject_event(
         &mut self,
@@ -478,17 +503,23 @@ where
         }
     }
 
-    fn inject_addr_reach_failure(&mut self, _peer: Option<&PeerId>, _addr: &Multiaddr, _error: &dyn error::Error) {
-        // TODO: attempt to reach via Relay.
+    fn inject_addr_reach_failure(&mut self, peer: Option<&PeerId>, addr: &Multiaddr, error: &dyn error::Error) {
+        self.relay.inject_addr_reach_failure(peer, addr, error);
+        self.mdns.inject_addr_reach_failure(peer, addr, error);
+        if let Some(peer) = peer {
+            self.addresses.remove_address(peer, addr);
+        }
     }
 
     fn inject_dial_failure(&mut self, peer: &PeerId) {
         self.request_manager.on_dial_failure(*peer);
         self.relay.inject_dial_failure(peer);
+        self.mdns.inject_dial_failure(peer);
     }
 
     fn inject_new_listen_addr(&mut self, id: ListenerId, addr: &Multiaddr) {
         self.mdns.inject_new_listen_addr(id, addr);
+        self.relay.inject_new_listen_addr(id, addr);
     }
 
     fn poll(&mut self, cx: &mut Context<'_>, params: &mut impl PollParameters) -> Poll<NetworkAction<Self>> {

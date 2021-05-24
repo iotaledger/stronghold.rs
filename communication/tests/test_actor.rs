@@ -319,6 +319,7 @@ fn get_swarm_info(
 }
 
 #[test]
+#[ignore]
 fn ask_swarm_info() {
     let sys = ActorSystem::new().expect("Failed to create actor system.");
     let client = sys.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
@@ -347,6 +348,7 @@ fn ask_swarm_info() {
 }
 
 #[test]
+#[ignore]
 fn ask_request() {
     // start actor B system
     let sys_b = ActorSystem::new().expect("Failed to create actor system.");
@@ -382,6 +384,7 @@ fn ask_request() {
 }
 
 #[test]
+#[ignore]
 fn no_soliloquize() {
     let sys = ActorSystem::new().expect("Failed to create actor system.");
     let client = sys.actor_of::<BlankActor>("blank").expect("Failed to init actor.");
@@ -400,6 +403,7 @@ fn no_soliloquize() {
 }
 
 #[test]
+#[ignore]
 #[should_panic(expected = "Could not establish connection")]
 fn connect_invalid() {
     let sys = ActorSystem::new().expect("Failed to create actor system.");
@@ -411,6 +415,7 @@ fn connect_invalid() {
 }
 
 #[test]
+#[ignore]
 fn manage_connection() {
     // init actor A
     let sys_a = ActorSystem::new().expect("Failed to create actor system.");
@@ -461,6 +466,7 @@ fn manage_connection() {
 }
 
 #[test]
+#[ignore]
 fn firewall_forbid_in() {
     // Actor A with firewall that allows all connections.
     let sys_a = ActorSystem::new().expect("Failed to create actor system.");
@@ -513,6 +519,7 @@ fn firewall_forbid_in() {
 }
 
 #[test]
+#[ignore]
 fn firewall_forbid_out() {
     // Actor A that rejects all traffic
     let sys_a = ActorSystem::new().expect("Failed to create actor system.");
@@ -565,6 +572,7 @@ fn firewall_forbid_out() {
 }
 
 #[test]
+#[ignore]
 fn firewall_rules_selective() {
     // Actor A that allows all traffic
     let sys_a = ActorSystem::new().expect("Failed to create actor system.");
@@ -620,6 +628,7 @@ fn firewall_rules_selective() {
 }
 
 #[test]
+#[ignore]
 fn relay() {
     // init relay system and start listening
     let relay_sys = ActorSystem::new().expect("Failed to create actor system.");

@@ -72,6 +72,7 @@ fn establish_connection<Req: MessageEvent, Res: MessageEvent>(
 }
 
 #[test]
+#[ignore]
 fn new_behaviour() {
     let local_keys = Keypair::generate_ed25519();
     let config = BehaviourConfig::default();
@@ -85,6 +86,7 @@ fn new_behaviour() {
 }
 
 #[test]
+#[ignore]
 fn add_peer() {
     let mut swarm = mock_swarm::<Empty, Empty>();
     let peer_id = PeerId::random();
@@ -99,6 +101,7 @@ fn add_peer() {
 }
 
 #[test]
+#[ignore]
 fn listen_addr() {
     let mut swarm = mock_swarm::<Empty, Empty>();
     let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8085".parse().expect("Invalid Multiaddress.");
@@ -112,6 +115,7 @@ fn listen_addr() {
 }
 
 #[test]
+#[ignore]
 fn zeroed_addr() {
     let mut swarm = mock_swarm::<Empty, Empty>();
     // empty ip and port
@@ -175,6 +179,7 @@ fn zeroed_addr() {
 }
 
 #[test]
+#[ignore]
 fn request_response() {
     let mut swarm_a = mock_swarm::<Request, Response>();
     let peer_a_id = *swarm_a.local_peer_id();
@@ -247,6 +252,7 @@ fn request_response() {
 }
 
 #[test]
+#[ignore]
 fn identify_event() {
     let mut swarm_a = mock_swarm::<Empty, Empty>();
     let peer_a_id = *swarm_a.local_peer_id();
@@ -340,6 +346,7 @@ fn identify_event() {
 }
 
 #[test]
+#[ignore]
 fn relay() {
     let mut swarm = mock_swarm::<Request, Response>();
     let relay_peer_id = *swarm.local_peer_id();

@@ -268,7 +268,7 @@ fn firewall_permissions() {
     let (peer_b_id, mut swarm_b, _) = init_swarm(&mut pool, Some(Rule::reject_all()), None);
 
     let peer_b_addr = start_listening(&mut pool, &mut swarm_b);
-    swarm_a.behaviour_mut().add_address(&peer_b_id, peer_b_addr);
+    swarm_a.behaviour_mut().add_address(peer_b_id, peer_b_addr);
 
     for _ in 0..100 {
         let mut test = RulesTestConfig::new_test_case(&mut swarm_a, peer_a_id, &mut swarm_b, peer_b_id);
@@ -487,7 +487,7 @@ fn firewall_ask() {
     let (peer_b_id, mut swarm_b, mut firewall_b) = init_swarm(&mut pool, None, None);
 
     let peer_b_addr = start_listening(&mut pool, &mut swarm_b);
-    swarm_a.behaviour_mut().add_address(&peer_b_id, peer_b_addr);
+    swarm_a.behaviour_mut().add_address(peer_b_id, peer_b_addr);
 
     for _ in 0..100 {
         let mut test = AskTestConfig::new_test_case(

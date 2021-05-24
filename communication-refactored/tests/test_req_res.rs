@@ -78,7 +78,7 @@ fn ping_protocol() {
     let peer2_future = async move {
         let mut count = 0u8;
         let addr = rx.next().await.unwrap();
-        swarm2.behaviour_mut().add_address(&peer1_id, addr.clone());
+        swarm2.behaviour_mut().add_address(peer1_id, addr.clone());
         let mut response_channel = swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
 
         loop {
@@ -126,7 +126,7 @@ fn emits_inbound_connection_closed_failure() {
         while swarm1.next().now_or_never().is_some() {}
         let addr1 = Swarm::listeners(&swarm1).next().unwrap();
 
-        swarm2.behaviour_mut().add_address(&peer1_id, addr1.clone());
+        swarm2.behaviour_mut().add_address(peer1_id, addr1.clone());
         swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
 
         // Wait for swarm 1 to receive request by swarm 2.
@@ -176,7 +176,7 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
         while swarm1.next().now_or_never().is_some() {}
         let addr1 = Swarm::listeners(&swarm1).next().unwrap();
 
-        swarm2.behaviour_mut().add_address(&peer1_id, addr1.clone());
+        swarm2.behaviour_mut().add_address(peer1_id, addr1.clone());
         let mut response_receiver = swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
 
         // Wait for swarm 1 to receive request by swarm 2.
