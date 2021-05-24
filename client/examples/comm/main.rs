@@ -3,34 +3,34 @@
 
 /// # Strong Communications Examples
 ///
-/// todo
+/// The communication examples show the networking capabilities of stronghold.
+/// Some are just "one-shot" examples to show what is possible with stronghold in an easy way
 ///
 /// ## Listen for connections
-/// todo
+/// To start stronghold to listen for remote peer connections, you can run
+/// ```no_run
+/// cargo run --features communication --example comm listen --multiaddr "/ip4/127.0.0.1/tcp/7001"
+/// ```
 ///
 /// ## Show swarm info
-/// todo
+///
+/// To show info on neighbouring peers you can run
+/// ```no_run
+/// cargo run --features communication --example comm swarm-info
+/// ```
 ///
 /// ## Add Peer(s)
-/// todo
-///
-/// ## Connect to peer to exchange secrets
-/// todo
-///
-/// ## Setup relay node
-/// todo
-///
+/// Peers can also be added by running
+/// ```no_run
+/// cargo run --features communication --example comm
+/// ```
 mod arguments;
 
 use arguments::*;
 use clap::Clap;
-use crypto::keys::x25519::PublicKey;
-use futures::{
-    channel::mpsc::{channel, Receiver, Sender},
-    executor::block_on,
-    StreamExt,
-};
-use iota_stronghold::{home_dir, naive_kdf, Location, PeerId, RecordHint, ResultMessage, StatusMessage, Stronghold};
+
+use futures::executor::block_on;
+use iota_stronghold::{ResultMessage, Stronghold};
 
 #[cfg(feature = "communication")]
 use iota_stronghold::Multiaddr;
@@ -38,7 +38,8 @@ use iota_stronghold::Multiaddr;
 use riker::actors::*;
 use std::error::Error;
 
-use std::path::{Path, PathBuf};
+/// Callback type for blocking stronghold instance
+type Callback = fn() -> Result<(), Box<dyn Error>>;
 
 /// create a line error with the file and the line number
 #[macro_export]
@@ -50,13 +51,6 @@ macro_rules! line_error {
         concat!($str, " @", file!(), ":", line!())
     };
 }
-
-// /// Relays a request to a remote stronghold instance.
-// #[cfg(feature = "communication")]
-// fn relay_command(stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) -> Result<(), Box<dyn Error>> {
-
-//     todo!()
-// }
 
 /// Returns a list of all available peers
 #[cfg(feature = "communication")]
@@ -87,13 +81,7 @@ fn show_swarm_info_command(stronghold: &mut iota_stronghold::Stronghold) -> Resu
     match block_on(stronghold.get_swarm_info()) {
         ResultMessage::Ok((peer_id, addresses, peers)) => {
             let info = format!(
-                "
-Swarm Info:
-===
-Peer Id : {},
-Addresses: {:?},
-Peers: {:?}
-            ",
+                "-----------\nSwarm Info:\n-----------\nPeer Id : {},\nAddresses: {:?},\nPeers: {:?}\n",
                 peer_id, addresses, peers
             );
 
@@ -101,6 +89,7 @@ Peers: {:?}
         }
         ResultMessage::Error(e) => return Err(Box::from(format!("{}", e))),
     }
+
     Ok(())
 }
 
@@ -108,7 +97,6 @@ Peers: {:?}
 fn start_listening_command(
     multiaddr: &str,
     stronghold: &mut iota_stronghold::Stronghold,
-    client_path: Vec<u8>,
 ) -> Result<(), Box<dyn Error>> {
     let multiaddress: Multiaddr = multiaddr.parse()?;
 
@@ -116,21 +104,13 @@ fn start_listening_command(
     let comm = stronghold.spawn_communication();
     println!("Communication actor spawned: {:?}", comm);
 
+    // start listening
     let result = block_on(stronghold.start_listening(Some(multiaddress)));
     println!("Listening on addr: {:?}", result);
 
-    // some blocking code
-    // we need to keep `_tx`, otherwise it will be dropped and the channel will
-    // be closed, making the blocking operation obsolete
-    let (_tx, rx): (Sender<usize>, Receiver<usize>) = channel(1);
+    // blocks
+    stronghold.keep_alive(None::<Callback>);
 
-    let waiter = async {
-        rx.map(|f| f).collect::<Vec<usize>>().await;
-    };
-
-    block_on(waiter);
-
-    // todo!()
     Ok(())
 }
 
@@ -142,7 +122,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match app.cmds {
         #[cfg(feature = "communication")]
-        Commands::Relay { id, path } => {
+        Commands::Relay { .. } => {
             todo!()
         }
         #[cfg(feature = "communication")]
@@ -152,6 +132,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         Commands::SwarmInfo {} => show_swarm_info_command(&mut stronghold),
 
         #[cfg(feature = "communication")]
-        Commands::Listen { multiaddr } => start_listening_command(multiaddr.as_str(), &mut stronghold, client_path),
+        Commands::Listen { multiaddr } => start_listening_command(multiaddr.as_str(), &mut stronghold),
     }
 }

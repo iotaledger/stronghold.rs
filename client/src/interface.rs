@@ -3,7 +3,12 @@
 
 use riker::actors::*;
 
-use futures::future::RemoteHandle;
+use futures::{
+    channel::mpsc::{channel, Receiver, Sender},
+    executor::block_on,
+    future::RemoteHandle,
+    StreamExt,
+};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use zeroize::Zeroize;
 
@@ -860,6 +865,33 @@ impl Stronghold {
             Ok(res)
         } else {
             Err(String::from("No communication spawned"))
+        }
+    }
+
+    /// Keeps stronghold in a running state. This call is blocking.
+    ///
+    /// This function accepts an optional function for more control over how long
+    /// stronghold shall block.
+    pub fn keep_alive<F>(&self, callback: Option<F>)
+    where
+        F: FnOnce() -> Result<(), Box<dyn std::error::Error>>,
+    {
+        match callback {
+            Some(cb) => {
+                block_on(async {
+                    cb().expect("Calling blocker function failed");
+                });
+            }
+            None => {
+                // create a channel, read from it, but never write.
+                // this might be a trivial method to keep an instance running.
+                let (_tx, rx): (Sender<usize>, Receiver<usize>) = channel(1);
+
+                let waiter = async {
+                    rx.map(|f| f).collect::<Vec<usize>>().await;
+                };
+                block_on(waiter);
+            }
         }
     }
 }
