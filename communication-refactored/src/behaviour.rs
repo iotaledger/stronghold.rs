@@ -22,12 +22,12 @@ mod handler;
 mod request_manager;
 #[doc(hidden)]
 mod types;
-use self::{
-    addresses::AddressInfo,
-    firewall::{FirewallRules, RuleDirection},
-};
 use super::unwrap_or_return;
-use firewall::{FirewallConfiguration, FirewallRequest, Rule, ToPermissionVariants, VariantPermission};
+pub use addresses::assemble_relayed_addr;
+use addresses::AddressInfo;
+use firewall::{
+    FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection, ToPermissionVariants, VariantPermission,
+};
 use futures::{
     channel::{
         mpsc::{self, SendError},
@@ -280,8 +280,8 @@ where
         self.addresses.set_no_relay(peer);
     }
 
-    pub fn set_use_relay(&mut self, peer: PeerId, relay: PeerId) {
-        self.addresses.set_relay(peer, relay);
+    pub fn set_use_relay(&mut self, peer: PeerId, relay: PeerId) -> Option<Multiaddr> {
+        self.addresses.set_relay(peer, relay)
     }
 
     fn next_request_id(&mut self) -> RequestId {

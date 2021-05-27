@@ -5,6 +5,7 @@ use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
 
+#[derive(Debug, Clone)]
 struct PeerAddress {
     direct: VecDeque<Multiaddr>,
     use_relay: Option<bool>,
@@ -23,6 +24,7 @@ impl Default for PeerAddress {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct AddressInfo {
     peers: HashMap<PeerId, PeerAddress>,
     relays: SmallVec<[PeerId; 10]>,
@@ -37,29 +39,21 @@ impl AddressInfo {
     }
 
     pub fn get_addrs(&self, target: &PeerId) -> Vec<Multiaddr> {
-        self.peers
-            .get(target)
-            .map(|addrs| {
-                let mut peer_addrs = Vec::new();
-                if matches!(addrs.use_relay, Some(false)) || matches!(addrs.use_relay, None) {
-                    peer_addrs.extend(addrs.direct.clone());
-                }
-                if matches!(addrs.use_relay, Some(true)) || matches!(addrs.use_relay, None) {
-                    let relayed = addrs
-                        .relay
-                        .and_then(|r| self.get_relay_addr(&r).map(|a| vec![a]))
-                        .unwrap_or_else(|| {
-                            self.relays
-                                .clone()
-                                .into_iter()
-                                .filter_map(|r| self.get_relay_addr(&r).map(|a| to_relayed(*target, r, a)))
-                                .collect()
-                        });
-                    peer_addrs.extend(relayed);
-                }
-                peer_addrs
-            })
-            .unwrap_or_default()
+        let addrs = self.peers.get(target).cloned().unwrap_or_default();
+        let mut peer_addrs = Vec::new();
+        if matches!(addrs.use_relay, Some(false)) || matches!(addrs.use_relay, None) {
+            peer_addrs.extend(addrs.direct.clone());
+        }
+        if matches!(addrs.use_relay, Some(true)) || matches!(addrs.use_relay, None) {
+            let relayed = addrs
+                .relay
+                .map(|r| vec![r])
+                .unwrap_or_else(|| self.relays.clone().to_vec())
+                .into_iter()
+                .filter_map(|r| self.get_relay_addr(&r).map(|a| assemble_relayed_addr(*target, r, a)));
+            peer_addrs.extend(relayed);
+        }
+        peer_addrs
     }
 
     pub fn add_addrs(&mut self, peer: PeerId, addr: Multiaddr) {
@@ -85,7 +79,8 @@ impl AddressInfo {
         let addrs = self.peers.entry(target).or_default();
         addrs.use_relay = Some(true);
         addrs.relay = Some(relay);
-        self.get_relay_addr(&relay).map(|a| to_relayed(target, relay, a))
+        self.get_relay_addr(&relay)
+            .map(|a| assemble_relayed_addr(target, relay, a))
     }
 
     pub fn on_connection_established(&mut self, peer: PeerId, addr: Multiaddr) {
@@ -138,7 +133,7 @@ impl AddressInfo {
     }
 }
 
-fn to_relayed(target: PeerId, relay: PeerId, mut relay_addr: Multiaddr) -> Multiaddr {
+pub fn assemble_relayed_addr(target: PeerId, relay: PeerId, mut relay_addr: Multiaddr) -> Multiaddr {
     let relay_proto = Multiaddr::empty()
         .with(Protocol::P2p(relay.into()))
         .with(Protocol::P2pCircuit);
