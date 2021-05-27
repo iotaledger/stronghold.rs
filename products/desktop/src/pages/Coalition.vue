@@ -5,6 +5,7 @@
       style="top: 0; bottom: 0; min-height: 100%"
     >
       <h3 class="q-my-sm text-right text-weight-thin">Coalition</h3>
+      <p> SWARM: {{ swarm }} </p>
     </q-card>
   </q-page>
 </template>
@@ -12,6 +13,7 @@
 <script>
 import { invoke } from '@tauri-apps/api/tauri'
 // import { emit, listen } from '@tauri-apps/api/event'
+// import { Stronghold, Communication } from 'tauri-plugin-stronghold-api'
 
 export default {
   name: 'Connect',
@@ -19,10 +21,13 @@ export default {
     return {
       pwd: '',
       isPwd: true,
-      path: ''
+      path: '',
+      swarm: {}
     }
   },
-  mounted () {},
+  async mounted () {
+
+  },
   methods: {
     unlock () {
       invoke('unlock', {

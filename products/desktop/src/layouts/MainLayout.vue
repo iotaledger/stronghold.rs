@@ -92,6 +92,7 @@
           :style="`height: ${$q.screen.height}px;`"
         >
           <q-page-container>
+            <p> PeerId: {{ status.peerId }} </p>
             <router-view />
           </q-page-container>
         </q-scroll-area>
@@ -106,7 +107,7 @@ import InternalLink from 'components/InternalLink.vue'
 import LockTimer from 'components/LockTimer.vue'
 // import { invoke } from '@tauri-apps/api/tauri'
 import { save } from '@tauri-apps/api/dialog'
-import { Stronghold, Location } from 'tauri-plugin-stronghold-api'
+import { Stronghold, Location, Communication } from 'tauri-plugin-stronghold-api'
 import { Authenticator } from 'tauri-plugin-authenticator-api'
 
 import { mapState, mapActions, mapMutations } from 'vuex'
@@ -189,6 +190,7 @@ export default {
       version: _package.version,
       loggedIn: false,
       pwd: '',
+      status: {},
       isPwd: true,
       path: '',
       yubikey: {
@@ -269,6 +271,12 @@ export default {
     },
     async unlock () {
       this.stronghold = new Stronghold(this.path, this.pwd)
+      this.comms = await new Communication(this.path)
+      // this.comms = this.stronghold.spawnCommunication(this.path)
+      this.comms.getSwarmInfo().then(async res => {
+        this.status = await res
+      })
+
       this.vault = this.stronghold.getVault('exampleVault', [])
       this.loggedIn = true
       this.ykhstore = this.stronghold.getStore('yubikeyHandle', [])
