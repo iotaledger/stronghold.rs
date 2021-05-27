@@ -107,6 +107,8 @@ import InternalLink from 'components/InternalLink.vue'
 import LockTimer from 'components/LockTimer.vue'
 // import { invoke } from '@tauri-apps/api/tauri'
 import { save } from '@tauri-apps/api/dialog'
+
+// import { Stronghold, Location } from 'tauri-plugin-stronghold-api'
 import { Stronghold, Location, Communication } from 'tauri-plugin-stronghold-api'
 import { Authenticator } from 'tauri-plugin-authenticator-api'
 
@@ -269,13 +271,15 @@ export default {
         this.path = res
       })
     },
+    async getComms () {
+      this.comms = new Communication(this.path)
+      this.status = await this.comms.getSwarmInfo(this.path)
+    },
     async unlock () {
       this.stronghold = new Stronghold(this.path, this.pwd)
-      this.comms = await new Communication(this.path)
-      // this.comms = this.stronghold.spawnCommunication(this.path)
-      this.comms.getSwarmInfo().then(async res => {
-        this.status = await res
-      })
+      this.comms = await this.stronghold.spawnCommunication(this.path)
+
+      this.status = await this.comms.getSwarmInfo()
 
       this.vault = this.stronghold.getVault('exampleVault', [])
       this.loggedIn = true
