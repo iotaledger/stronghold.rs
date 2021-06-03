@@ -1,12 +1,11 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
+use super::{
     firewall::{FirewallRules, Rule, RuleDirection, ToPermissionVariants, VariantPermission},
-    unwrap_or_return, RecvResponseErr,
+    unwrap_or_return, RecvResponseErr, RequestDirection, RequestId, RequestMessage, EMPTY_QUEUE_SHRINK_THRESHOLD,
 };
 mod connections;
-use super::{Query, RequestDirection, RequestId, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use connections::{PeerConnectionManager, PendingResponses};
 use libp2p::{core::connection::ConnectionId, PeerId};
 use smallvec::SmallVec;
@@ -26,7 +25,7 @@ pub(super) enum BehaviourAction<Rq, Rs> {
     InboundReady {
         request_id: RequestId,
         peer: PeerId,
-        request: Query<Rq, Rs>,
+        request: RequestMessage<Rq, Rs>,
     },
     // Outbound request to a connected peer that was approved and that should be send to the handler of the connection
     // that this request was assigend to.
@@ -34,7 +33,7 @@ pub(super) enum BehaviourAction<Rq, Rs> {
         request_id: RequestId,
         peer: PeerId,
         connection: ConnectionId,
-        request: Query<Rq, Rs>,
+        request: RequestMessage<Rq, Rs>,
     },
     // Required dial attempt to connect a peer where at least one approved outbound request is pending.
     RequireDialAttempt(PeerId),
@@ -74,9 +73,9 @@ where
     P: VariantPermission,
 {
     // Cache of inbound requests that have not been approved yet.
-    inbound_request_store: HashMap<RequestId, (PeerId, Query<Rq, Rs>)>,
+    inbound_request_store: HashMap<RequestId, (PeerId, RequestMessage<Rq, Rs>)>,
     // Cache of outbound requests that have not been approved, or where the target peer is not connected yet.
-    outbound_request_store: HashMap<RequestId, (PeerId, Query<Rq, Rs>)>,
+    outbound_request_store: HashMap<RequestId, (PeerId, RequestMessage<Rq, Rs>)>,
     // Currently established connections and the requests that have been send/received on the connection, but with no
     // response yet.
     connections: PeerConnectionManager,
@@ -122,7 +121,7 @@ where
         &mut self,
         peer: PeerId,
         request_id: RequestId,
-        request: Query<Rq, Rs>,
+        request: RequestMessage<Rq, Rs>,
         approval_state: ApprovalStatus,
         direction: RequestDirection,
     ) {
@@ -146,7 +145,7 @@ where
             }
             ApprovalStatus::Rejected => {
                 if let RequestDirection::Outbound = direction {
-                    drop(request.response_sender);
+                    drop(request.response_tx);
                     self.actions
                         .push_back(BehaviourAction::OutboundRejected { peer, request_id });
                 }
@@ -195,7 +194,7 @@ where
         if let Some(requests) = self.awaiting_connection.remove(&peer) {
             requests.into_iter().for_each(|request_id| {
                 if let Some((_, req)) = self.take_stored_request(&request_id, &RequestDirection::Outbound) {
-                    drop(req.response_sender);
+                    drop(req.response_tx);
                 }
                 let action = BehaviourAction::ReceivedResponse {
                     request_id,
@@ -356,7 +355,7 @@ where
         &mut self,
         peer: PeerId,
         request_id: RequestId,
-        request: Query<Rq, Rs>,
+        request: RequestMessage<Rq, Rs>,
         direction: &RequestDirection,
     ) {
         match direction {
@@ -369,7 +368,7 @@ where
         &mut self,
         request_id: &RequestId,
         direction: &RequestDirection,
-    ) -> Option<(PeerId, Query<Rq, Rs>)> {
+    ) -> Option<(PeerId, RequestMessage<Rq, Rs>)> {
         match direction {
             RequestDirection::Inbound => self.inbound_request_store.remove(request_id),
             RequestDirection::Outbound => self.outbound_request_store.remove(request_id),
@@ -387,7 +386,7 @@ where
         peer: PeerId,
         request_id: RequestId,
         connection: ConnectionId,
-        request: Query<Rq, Rs>,
+        request: RequestMessage<Rq, Rs>,
         direction: &RequestDirection,
     ) {
         let event = match direction {
@@ -414,7 +413,7 @@ where
     ) -> Option<()> {
         if !is_allowed {
             let (peer, req) = self.take_stored_request(&request_id, direction)?;
-            drop(req.response_sender);
+            drop(req.response_tx);
             if let RequestDirection::Outbound = direction {
                 self.actions
                     .push_back(BehaviourAction::OutboundRejected { request_id, peer })
@@ -430,7 +429,7 @@ where
             match direction {
                 RequestDirection::Inbound => {
                     let (_, req) = self.take_stored_request(&request_id, direction)?;
-                    drop(req.response_sender);
+                    drop(req.response_tx);
                 }
                 RequestDirection::Outbound => self.add_dial_attempt(peer, request_id),
             }
@@ -463,6 +462,6 @@ where
         self.inbound_request_store
             .get(request_id)
             .or_else(|| self.outbound_request_store.get(request_id))
-            .map(|(_, query)| &query.request)
+            .map(|(_, query)| &query.data)
     }
 }

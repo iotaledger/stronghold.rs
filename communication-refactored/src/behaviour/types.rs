@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::firewall::FirewallRules;
+use super::firewall::FirewallRules;
 use futures::channel::oneshot;
 use libp2p::PeerId;
 use serde::{de::DeserializeOwned, Serialize};
@@ -36,16 +36,18 @@ impl fmt::Display for RequestId {
 
 #[derive(Debug)]
 pub struct Query<T, U> {
-    pub request: T,
-    pub response_sender: oneshot::Sender<U>,
+    pub data: T,
+    pub response_tx: oneshot::Sender<U>,
 }
+
+pub type RequestMessage<Rq, Rs> = Query<Rq, Rs>;
 
 #[derive(Debug)]
 pub enum BehaviourEvent<Rq, Rs> {
     ReceiveRequest {
         peer: PeerId,
         request_id: RequestId,
-        request: Query<Rq, Rs>,
+        request: RequestMessage<Rq, Rs>,
     },
     ReceiveResponse {
         request_id: RequestId,
@@ -121,7 +123,7 @@ impl std::error::Error for RecvRequestErr {}
 pub struct ResponseReceiver<U> {
     pub peer: PeerId,
     pub request_id: RequestId,
-    pub receiver: oneshot::Receiver<U>,
+    pub response_rx: oneshot::Receiver<U>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -148,7 +150,7 @@ where
 {
     SendRequest {
         request_id: RequestId,
-        request: Query<Rq, Rs>,
+        request: RequestMessage<Rq, Rs>,
     },
     SetFirewallRules(FirewallRules),
 }
@@ -162,7 +164,7 @@ where
 {
     ReceivedRequest {
         request_id: RequestId,
-        request: Query<Rq, Rs>,
+        request: RequestMessage<Rq, Rs>,
     },
     SentResponse(RequestId),
     SendResponseOmission(RequestId),

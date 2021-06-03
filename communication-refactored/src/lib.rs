@@ -1,8 +1,11 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-mod behaviour;
-pub use behaviour::*;
+pub mod behaviour;
+pub use behaviour::{firewall, types::*, NetBehaviourConfig};
+pub mod libp2p {
+    pub use libp2p::{identity::Keypair, Multiaddr, PeerId};
+}
 
 #[macro_export]
 macro_rules! unwrap_or_return (

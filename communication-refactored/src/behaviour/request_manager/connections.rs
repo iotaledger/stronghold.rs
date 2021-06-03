@@ -1,8 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use super::RequestDirection;
-use crate::behaviour::RequestId;
+use super::{super::RequestId, RequestDirection};
 use libp2p::core::{connection::ConnectionId, PeerId};
 use smallvec::SmallVec;
 use std::collections::{hash_map::HashMap, HashSet};

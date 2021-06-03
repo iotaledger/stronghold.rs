@@ -4,11 +4,12 @@
 use std::fmt;
 
 use communication_refactored::{
+    behaviour::{NetBehaviour, NetBehaviourConfig},
     firewall::{
-        FirewallPermission, FirewallRequest, FirewallRules, PermissionValue, RequestPermissions, Rule, RuleDirection,
-        ToPermissionVariants, VariantPermission,
+        FirewallPermission, FirewallRequest, FirewallRules, PeerRuleQuery, PermissionValue, RequestApprovalQuery,
+        RequestPermissions, Rule, RuleDirection, ToPermissionVariants, VariantPermission,
     },
-    BehaviourEvent, NetBehaviour, NetBehaviourConfig, Query, RecvResponseErr, RequestDirection,
+    BehaviourEvent, RecvResponseErr, RequestDirection,
 };
 use futures::{
     channel::mpsc::{self, Receiver},
@@ -68,10 +69,10 @@ fn init_swarm(
     let mdns = pool
         .run_until(Mdns::new(MdnsConfig::default()))
         .expect("Failed to create mdns behaviour.");
-    let (firewall_sender, firewall_receiver) = mpsc::channel(1);
-    let behaviour = NetBehaviour::new(cfg, mdns, relay_behaviour, firewall_sender);
+    let (firewall_tx, firewall_rx) = mpsc::channel(1);
+    let behaviour = NetBehaviour::new(cfg, mdns, relay_behaviour, firewall_tx);
     let swarm = Swarm::new(transport, behaviour, peer);
-    (peer, swarm, firewall_receiver)
+    (peer, swarm, firewall_rx)
 }
 
 fn start_listening(pool: &mut LocalPool, swarm: &mut TestSwarm) -> Multiaddr {
@@ -217,7 +218,7 @@ impl<'a> RulesTestConfig<'a> {
                     event = self.swarm_b.next().fuse() => match event {
                         BehaviourEvent::ReceiveRequest {peer, request, ..} => {
                             assert_eq!(peer, self.peer_a_id);
-                            request.response_sender.send(Response::Pong).unwrap();
+                            request.response_tx.send(Response::Pong).unwrap();
                         },
                         other => panic!("Unexepected event: {:?}", other)
                     },
@@ -225,7 +226,7 @@ impl<'a> RulesTestConfig<'a> {
                         BehaviourEvent::ReceiveResponse { result, peer, request_id} => {
                             assert_eq!(peer, self.peer_b_id);
                             assert_eq!(request_id, response_recv.request_id);
-                            assert_eq!(result.is_ok(), response_recv.receiver.await.is_ok());
+                            assert_eq!(result.is_ok(), response_recv.response_rx.await.is_ok());
                             return self.assert_expected_res(result);
                         },
                         other => panic!("Unexepected event: {:?}", other)
@@ -374,14 +375,14 @@ impl<'a> AskTestConfig<'a> {
                 futures::select!(
                     event = self.swarm_a.next().fuse() => match event {
                         BehaviourEvent::ReceiveResponse { result, ..} => {
-                            assert_eq!(result.is_ok(), response_recv.receiver.await.is_ok());
+                            assert_eq!(result.is_ok(), response_recv.response_rx.await.is_ok());
                             self.assert_expected_res(result);
                             break;
                         },
                         other => panic!("Unexepected event: {:?}", other)
                     },
                     event = self.swarm_b.next().fuse() => match event {
-                        BehaviourEvent::ReceiveRequest {request, ..} => request.response_sender.send(Response::Pong).unwrap(),
+                        BehaviourEvent::ReceiveRequest {request, ..} => request.response_tx.send(Response::Pong).unwrap(),
                         other => panic!("Unexepected event: {:?}", other)
                     },
                     req = self.firewall_a.next() => self.firewall_handle_ask(req.unwrap(), TestPeer::A),
@@ -397,7 +398,7 @@ impl<'a> AskTestConfig<'a> {
             TestPeer::B => (&self.b_rule, &self.b_approval),
         };
         match req {
-            FirewallRequest::PeerSpecificRule(Query { response_sender, .. }) => {
+            FirewallRequest::PeerSpecificRule(PeerRuleQuery { response_tx, .. }) => {
                 let (rule, other) = match peer_rule {
                     FwRuleRes::AllowAll => (Rule::allow_all(), Rule::reject_all()),
                     FwRuleRes::RejectAll => (Rule::reject_all(), Rule::allow_all()),
@@ -406,7 +407,7 @@ impl<'a> AskTestConfig<'a> {
                         _ => (Rule::Ask, Rule::allow_all()),
                     },
                     FwRuleRes::Drop => {
-                        drop(response_sender);
+                        drop(response_tx);
                         return;
                     }
                 };
@@ -415,13 +416,13 @@ impl<'a> AskTestConfig<'a> {
                     TestPeer::A => (other, rule),
                     TestPeer::B => (rule, other),
                 };
-                response_sender
+                response_tx
                     .send(FirewallRules::new(Some(inbound), Some(outbound)))
                     .unwrap();
             }
-            FirewallRequest::RequestApproval(Query {
-                response_sender,
-                request: (_, dir, _),
+            FirewallRequest::RequestApproval(RequestApprovalQuery {
+                response_tx,
+                data: (_, dir, _),
                 ..
             }) => {
                 match test_peer {
@@ -438,11 +439,11 @@ impl<'a> AskTestConfig<'a> {
                     FwApprovalRes::Allow => true,
                     FwApprovalRes::Reject => false,
                     FwApprovalRes::Drop => {
-                        drop(response_sender);
+                        drop(response_tx);
                         return;
                     }
                 };
-                response_sender.send(res).unwrap();
+                response_tx.send(res).unwrap();
             }
         }
     }

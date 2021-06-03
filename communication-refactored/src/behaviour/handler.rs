@@ -14,10 +14,7 @@
 // all copies or substantial portions of the Software.
 
 mod protocol;
-use crate::{
-    behaviour::{types::*, EMPTY_QUEUE_SHRINK_THRESHOLD},
-    firewall::FirewallRules,
-};
+use super::{firewall::FirewallRules, types::*, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},
@@ -47,7 +44,8 @@ pub type ProtocolsHandlerEventType<Rq, Rs> = ProtocolsHandlerEvent<
     <ConnectionHandler<Rq, Rs> as ProtocolsHandler>::OutEvent,
     <ConnectionHandler<Rq, Rs> as ProtocolsHandler>::Error,
 >;
-pub type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, Query<Rq, Rs>), oneshot::Canceled>>;
+pub type PendingInboundFuture<Rq, Rs> =
+    BoxFuture<'static, Result<(RequestId, RequestMessage<Rq, Rs>), oneshot::Canceled>>;
 
 #[doc(hidden)]
 pub struct ConnectionHandler<Rq, Rs>
@@ -66,7 +64,7 @@ where
     pending_error: Option<ProtocolsHandlerUpgrErr<io::Error>>,
 
     pending_events: VecDeque<HandlerOutEvent<Rq, Rs>>,
-    outbound: VecDeque<(RequestId, Query<Rq, Rs>)>,
+    outbound: VecDeque<(RequestId, RequestMessage<Rq, Rs>)>,
     inbound: FuturesUnordered<PendingInboundFuture<Rq, Rs>>,
 }
 
@@ -98,7 +96,7 @@ where
     fn new_outbound_protocol(
         &mut self,
         request_id: RequestId,
-        request: Query<Rq, Rs>,
+        request: RequestMessage<Rq, Rs>,
     ) -> SubstreamProtocol<RequestProtocol<Rq, Rs>, RequestId> {
         let supports_outbound = !self.rules.is_reject_all_outbound();
         let protocols = supports_outbound
@@ -115,9 +113,9 @@ where
     fn new_inbound_protocol(&self) -> SubstreamProtocol<ResponseProtocol<Rq, Rs>, RequestId> {
         let request_id = RequestId::new(self.inbound_request_id.fetch_add(1, Ordering::Relaxed));
 
-        let (rq_send, rq_recv) = oneshot::channel();
+        let (request_tx, request_rx) = oneshot::channel();
 
-        let (response_sender, response_receiver) = oneshot::channel();
+        let (response_tx, response_rx) = oneshot::channel();
 
         let supports_inbound = !self.rules.is_reject_all_inbound();
         let protocols = supports_inbound
@@ -126,17 +124,17 @@ where
 
         let proto = ResponseProtocol {
             protocols,
-            request_sender: rq_send,
-            response_receiver,
+            request_tx,
+            response_rx,
         };
         self.inbound.push(
-            rq_recv
+            request_rx
                 .map_ok(move |request| {
                     (
                         request_id,
-                        Query {
-                            request,
-                            response_sender,
+                        RequestMessage {
+                            data: request,
+                            response_tx,
                         },
                     )
                 })

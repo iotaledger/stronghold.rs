@@ -13,7 +13,7 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
-use crate::{behaviour::RqRsMessage, Query};
+use super::{RequestMessage, RqRsMessage};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use libp2p::{
     core::{
@@ -42,8 +42,8 @@ where
     Rs: RqRsMessage,
 {
     pub(crate) protocols: SmallVec<[CommunicationProtocol; 2]>,
-    pub(crate) request_sender: oneshot::Sender<Rq>,
-    pub(crate) response_receiver: oneshot::Receiver<Rs>,
+    pub(crate) request_tx: oneshot::Sender<Rq>,
+    pub(crate) response_rx: oneshot::Receiver<Rs>,
 }
 
 impl<Rq, Rs> UpgradeInfo for ResponseProtocol<Rq, Rs>
@@ -71,9 +71,9 @@ where
     fn upgrade_inbound(self, mut io: NegotiatedSubstream, _: Self::Info) -> Self::Future {
         async move {
             let request = read_and_parse(&mut io).await?;
-            let _ = self.request_sender.send(request);
+            let _ = self.request_tx.send(request);
 
-            let res = match self.response_receiver.await {
+            let res = match self.response_rx.await {
                 Ok(response) => parse_and_write(&mut io, response).await.map(|_| true)?,
                 Err(_) => io.close().await.map(|_| false)?,
             };
@@ -90,7 +90,7 @@ where
     Rs: RqRsMessage,
 {
     pub(crate) protocols: SmallVec<[CommunicationProtocol; 2]>,
-    pub(crate) request: Query<Rq, Rs>,
+    pub(crate) request: RequestMessage<Rq, Rs>,
     pub(crate) marker: PhantomData<Rs>,
 }
 
@@ -118,9 +118,9 @@ where
 
     fn upgrade_outbound(self, mut io: NegotiatedSubstream, _: Self::Info) -> Self::Future {
         async move {
-            parse_and_write(&mut io, self.request.request).await?;
+            parse_and_write(&mut io, self.request.data).await?;
             let response = read_and_parse(&mut io).await?;
-            let sent_response = self.request.response_sender.send(response);
+            let sent_response = self.request.response_tx.send(response);
             Ok(sent_response.is_ok())
         }
         .boxed()

@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use communication_refactored::{
+use communication_refactored::behaviour::{
     assemble_relayed_addr,
     firewall::{PermissionValue, RequestPermissions, Rule, RuleDirection, ToPermissionVariants, VariantPermission},
     NetBehaviour, NetBehaviourConfig,
@@ -54,8 +54,8 @@ fn init_swarm(pool: &mut LocalPool) -> (PeerId, TestSwarm) {
     let mdns = pool
         .run_until(Mdns::new(MdnsConfig::default()))
         .expect("Failed to create mdns behaviour.");
-    let (firewall_dummy_sender, _) = mpsc::channel(1);
-    let behaviour = NetBehaviour::new(cfg, mdns, relay_behaviour, firewall_dummy_sender);
+    let (firewall_dummy_tx, _) = mpsc::channel(1);
+    let behaviour = NetBehaviour::new(cfg, mdns, relay_behaviour, firewall_dummy_tx);
     let swarm = Swarm::new(transport, behaviour, peer);
     (peer, swarm)
 }
@@ -286,10 +286,6 @@ impl TestConfig {
             let allows_relay = matches!(source_config.set_relay, UseRelay::Default | UseRelay::UseActualRelay);
 
             if allows_direct && source_config.knows_direct_target_addr {
-                // match source_swarm.next_event().await {
-                //     SwarmEvent::Dialing(peer) if peer == target_id => {}
-                //     other => panic!("Unexepected event: {:?}", other)
-                // }
                 if target_config.listening_plain {
                     match source_swarm.next_event().await {
                         SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == target_id => return,

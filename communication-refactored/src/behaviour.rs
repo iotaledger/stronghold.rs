@@ -21,12 +21,13 @@ mod handler;
 #[doc(hidden)]
 mod request_manager;
 #[doc(hidden)]
-mod types;
+pub mod types;
 use super::unwrap_or_return;
 pub use addresses::assemble_relayed_addr;
 use addresses::AddressInfo;
 use firewall::{
-    FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection, ToPermissionVariants, VariantPermission,
+    FirewallConfiguration, FirewallRequest, FirewallRules, PeerRuleQuery, RequestApprovalQuery, Rule, RuleDirection,
+    ToPermissionVariants, VariantPermission,
 };
 use futures::{
     channel::{
@@ -60,7 +61,7 @@ use std::{
     sync::{atomic::AtomicU64, Arc},
     time::Duration,
 };
-pub use types::*;
+use types::*;
 
 type NetworkAction<Proto> = NetworkBehaviourAction<
     <<<Proto as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
@@ -153,15 +154,15 @@ where
 
     pub fn send_request(&mut self, peer: PeerId, request: Rq) -> ResponseReceiver<Rs> {
         let request_id = self.next_request_id();
-        let (response_sender, response_receiver) = oneshot::channel();
+        let (response_tx, response_rx) = oneshot::channel();
         let receiver = ResponseReceiver {
             peer,
             request_id,
-            receiver: response_receiver,
+            response_rx,
         };
-        let request = Query {
-            request,
-            response_sender,
+        let query = RequestMessage {
+            data: request,
+            response_tx,
         };
         let approval_status = match self.firewall.get_out_rule_or_default(&peer) {
             None => {
@@ -172,13 +173,13 @@ where
                 self.query_rq_approval(
                     peer,
                     request_id,
-                    request.request.to_permissioned(),
+                    query.data.to_permissioned(),
                     RequestDirection::Outbound,
                 );
                 ApprovalStatus::MissingApproval
             }
             Some(Rule::Permission(permission)) => {
-                if permission.permits(&request.request.to_permissioned().permission()) {
+                if permission.permits(&query.data.to_permissioned().permission()) {
                     ApprovalStatus::Approved
                 } else {
                     ApprovalStatus::Rejected
@@ -186,7 +187,7 @@ where
             }
         };
         self.request_manager
-            .on_new_request(peer, request_id, request, approval_status, RequestDirection::Outbound);
+            .on_new_request(peer, request_id, query, approval_status, RequestDirection::Outbound);
         receiver
     }
 
@@ -268,6 +269,10 @@ where
         self.addresses.remove_address(peer, address);
     }
 
+    pub fn get_relay_addr(&self, relay: &PeerId) -> Option<Multiaddr> {
+        self.addresses.get_relay_addr(relay)
+    }
+
     pub fn add_dialing_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
         self.addresses.add_relay(peer, address)
     }
@@ -309,13 +314,13 @@ where
                         self.query_rq_approval(
                             peer,
                             request_id,
-                            request.request.to_permissioned(),
+                            request.data.to_permissioned(),
                             RequestDirection::Inbound,
                         );
                         ApprovalStatus::MissingApproval
                     }
                     Some(Rule::Permission(permission)) => {
-                        if permission.permits(&request.request.to_permissioned().permission()) {
+                        if permission.permits(&request.data.to_permissioned().permission()) {
                             ApprovalStatus::Approved
                         } else {
                             ApprovalStatus::Rejected
@@ -356,14 +361,14 @@ where
             .map(|pending| direction.reduce(pending))
             .unwrap_or(Some(direction));
         let direction = unwrap_or_return!(reduced_direction);
-        let (rule_sender, rule_receiver) = oneshot::channel();
-        let firewall_req = FirewallRequest::<P>::PeerSpecificRule(Query {
-            request: (peer, direction),
-            response_sender: rule_sender,
+        let (rule_tx, rule_rx) = oneshot::channel();
+        let firewall_req = FirewallRequest::<P>::PeerSpecificRule(PeerRuleQuery {
+            data: (peer, direction),
+            response_tx: rule_tx,
         });
         let send_firewall = Self::send_firewall(self.permission_req_channel.clone(), firewall_req).map_err(|_| ());
         let future = send_firewall
-            .and_then(move |()| rule_receiver.map_err(|_| ()))
+            .and_then(move |()| rule_rx.map_err(|_| ()))
             .map_ok_or_else(
                 move |()| (peer, direction, None),
                 move |rules| (peer, direction, Some(rules)),
@@ -373,15 +378,15 @@ where
         self.request_manager.add_pending_rule_requests(peer, direction);
     }
 
-    fn query_rq_approval(&mut self, peer: PeerId, request_id: RequestId, request: P, direction: RequestDirection) {
-        let (approval_sender, approval_receiver) = oneshot::channel();
-        let firewall_req = FirewallRequest::RequestApproval(Query {
-            request: (peer, direction, request),
-            response_sender: approval_sender,
+    fn query_rq_approval(&mut self, peer: PeerId, request_id: RequestId, rq_type: P, direction: RequestDirection) {
+        let (approval_tx, approval_rx) = oneshot::channel();
+        let firewall_req = FirewallRequest::RequestApproval(RequestApprovalQuery {
+            data: (peer, direction, rq_type),
+            response_tx: approval_tx,
         });
         let send_firewall = Self::send_firewall(self.permission_req_channel.clone(), firewall_req).map_err(|_| ());
         let future = send_firewall
-            .and_then(move |()| approval_receiver.map_err(|_| ()))
+            .and_then(move |()| approval_rx.map_err(|_| ()))
             .map_ok_or_else(move |()| (request_id, false), move |b| (request_id, b))
             .boxed();
 
