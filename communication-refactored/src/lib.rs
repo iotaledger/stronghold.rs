@@ -6,6 +6,8 @@ pub use behaviour::{firewall, types::*, NetBehaviourConfig};
 pub mod libp2p {
     pub use libp2p::{identity::Keypair, Multiaddr, PeerId};
 }
+mod interface;
+pub use interface::*;
 
 #[macro_export]
 macro_rules! unwrap_or_return (
