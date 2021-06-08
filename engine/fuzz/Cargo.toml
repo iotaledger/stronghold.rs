@@ -21,6 +21,9 @@ version = "0.4"
 version = "0.5.0"
 features = [ "random", "chacha" ]
 
+[dependencies.generic-array]
+version = "0.14.4"
+
 [profile.release]
 overflow-checks = true
 panic = "abort"
