@@ -5,7 +5,7 @@ use crypto::{ciphers::chacha::xchacha20poly1305, rand::fill};
 
 use std::convert::TryInto;
 
-use engine::vault::{BoxProvider, Key};
+use engine::vault::{BoxProvider, Error, Key};
 #[derive(Ord, PartialEq, Eq, PartialOrd)]
 pub struct Provider;
 impl Provider {

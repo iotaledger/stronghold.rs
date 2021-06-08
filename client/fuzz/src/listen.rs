@@ -28,7 +28,10 @@ fn main() {
         stronghold
             .start_listening(Some(Multiaddr::from_str("/ip4/0.0.0.0/tcp/7001").unwrap()))
             .await;
-        stronghold.get_swarm_info().await;
+
+        if let iota::ResultMessage::Ok((id, _, _)) = stronghold.get_swarm_info().await {
+            println!("peer_id: {:#?}", id.to_base58());
+        }
     });
 
     // block execution
