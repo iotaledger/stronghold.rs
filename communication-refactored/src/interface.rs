@@ -3,18 +3,24 @@
 
 // mod swarm;
 use crate::{
-    behaviour::{assemble_relayed_addr, BehaviourEvent, NetBehaviour, NetBehaviourConfig},
+    behaviour::{BehaviourEvent, NetBehaviour, NetBehaviourConfig},
     firewall::{FirewallRequest, FirewallRules, Rule, RuleDirection, ToPermissionVariants, VariantPermission},
     Keypair, NetworkEvents, ReceiveRequest, ResponseReceiver, RqRsMessage,
 };
 use async_std::task::{self, Context};
-use futures::{channel::mpsc::Sender, future::poll_fn, FutureExt};
+use futures::{
+    channel::{mpsc::Sender, oneshot},
+    future::poll_fn,
+    FutureExt,
+};
+#[cfg(feature = "mdns")]
+use libp2p::mdns::{Mdns, MdnsConfig};
 use libp2p::{
     core::{connection::ListenerId, transport::Transport, upgrade, Multiaddr, PeerId},
-    mdns::{Mdns, MdnsConfig},
+    multiaddr::Protocol,
     noise::{Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
     relay::{new_transport_and_behaviour, RelayConfig},
-    swarm::{DialError, Swarm, SwarmEvent},
+    swarm::{DialError, NetworkBehaviour, Swarm, SwarmEvent},
     tcp::TcpConfig,
     yamux::YamuxConfig,
 };
@@ -24,7 +30,7 @@ use std::{
     convert::TryFrom,
     fmt::Debug,
     sync::{Arc, Mutex},
-    thread,
+    thread::{self, JoinHandle},
 };
 
 pub struct Listener {
@@ -38,6 +44,8 @@ where
     Rs: Debug + RqRsMessage,
     P: VariantPermission,
 {
+    task_handle: JoinHandle<()>,
+    shutdown_chan: oneshot::Sender<()>,
     swarm: Arc<Mutex<Swarm<NetBehaviour<Rq, Rs, P>>>>,
     listeners: HashMap<ListenerId, Listener>,
     request_chan: Sender<ReceiveRequest<Rq, Rs>>,
@@ -66,10 +74,17 @@ where
             .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
             .multiplex(YamuxConfig::default())
             .boxed();
+        #[cfg(feature = "mdns")]
         let mdns = Mdns::new(MdnsConfig::default())
             .await
             .expect("Failed to create mdns behaviour.");
-        let behaviour = NetBehaviour::new(config, mdns, relay_behaviour, ask_firewall_chan);
+        let behaviour = NetBehaviour::new(
+            config,
+            #[cfg(feature = "mdns")]
+            mdns,
+            relay_behaviour,
+            ask_firewall_chan,
+        );
         let swarm = Swarm::new(transport, behaviour, peer);
 
         let swarm_rw_lock = Arc::new(Mutex::new(swarm));
@@ -77,20 +92,32 @@ where
         let inbound_req_chan_clone = inbound_req_chan.clone();
         let net_events_chan_clone = net_events_chan.clone();
 
-        thread::spawn(move || Self::run(rw_lock_clone, inbound_req_chan_clone, net_events_chan_clone));
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+        let task_handle = thread::spawn(move || {
+            Self::run(
+                rw_lock_clone,
+                inbound_req_chan_clone,
+                net_events_chan_clone,
+                shutdown_rx,
+            )
+        });
 
         ShCommunication {
+            task_handle,
             swarm: swarm_rw_lock,
             listeners: HashMap::new(),
             request_chan: inbound_req_chan,
             net_events_chan,
+            shutdown_chan: shutdown_tx,
         }
     }
 
-    // pub async fn shutdown(mut self) {
-    // self.task_handle.cancel().await;
-    // self.request_chan.close_channel();
-    // }
+    pub fn shutdown(mut self) {
+        drop(self.shutdown_chan);
+        self.request_chan.close_channel();
+        let _ = self.task_handle.join();
+    }
 
     pub fn get_peer_id(&self) -> PeerId {
         let swarm = self.swarm.lock().unwrap();
@@ -107,38 +134,45 @@ where
         let a = address.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."));
         let listener_id = swarm.listen_on(a).map_err(|_| ())?;
         loop {
-            match swarm.next_event().await {
-                SwarmEvent::NewListenAddr(addr) => {
+            let event = swarm.next_event().await;
+            match event {
+                SwarmEvent::NewListenAddr(ref addr) => {
+                    let addr = addr.clone();
                     let listener = Listener {
                         addrs: smallvec![addr.clone()],
                         uses_relay: None,
                     };
                     self.listeners.insert(listener_id, listener);
+                    Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), event);
                     return Ok(addr);
                 }
-                other => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), other),
+                _ => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), event),
             }
         }
     }
 
-    pub async fn start_relayed_listening(&mut self, relay: PeerId) -> Result<Multiaddr, ()> {
+    pub async fn start_relayed_listening(
+        &mut self,
+        relay: PeerId,
+        relay_addr: Option<Multiaddr>,
+    ) -> Result<Multiaddr, ()> {
+        if let Some(addr) = relay_addr {
+            self.add_address(relay, addr);
+        }
+        let relay_addr = self.dial_peer(&relay).await.map_err(|_| ())?;
+
         let mut swarm = self.swarm.lock().unwrap();
         let local_id = *swarm.local_peer_id();
-        let relay_addr = swarm.behaviour_mut().get_relay_addr(&relay).ok_or(())?;
-        let relayed_addr = assemble_relayed_addr(local_id, relay, relay_addr);
+        let relayed_addr = relay_addr
+            .with(Protocol::P2pCircuit)
+            .with(Protocol::P2p(local_id.into()));
         let listener_id = swarm.listen_on(relayed_addr.clone()).map_err(|_| ())?;
-        if !swarm.is_connected(&relay) {
-            loop {
-                match swarm.next_event().await {
-                    SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == relay => break,
-                    SwarmEvent::UnreachableAddr { peer_id, .. } if peer_id == relay => return Err(()),
-                    other => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), other),
-                }
-            }
-        }
         loop {
-            match swarm.next_event().await {
-                SwarmEvent::NewListenAddr(addr) if addr == relayed_addr => {
+            let event = swarm.next_event().await;
+            match event {
+                SwarmEvent::NewListenAddr(ref addr) if addr == &relayed_addr => {
+                    let addr = addr.clone();
+                    Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), event);
                     let listener = Listener {
                         addrs: smallvec![addr.clone()],
                         uses_relay: None,
@@ -146,7 +180,7 @@ where
                     self.listeners.insert(listener_id, listener);
                     return Ok(addr);
                 }
-                other => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), other),
+                _ => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), event),
             }
         }
     }
@@ -186,19 +220,26 @@ where
         }
     }
 
-    pub async fn dial_peer(&self, peer: &PeerId) -> Result<(), DialError> {
+    pub async fn dial_peer(&self, peer: &PeerId) -> Result<Multiaddr, DialError> {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.dial(peer)?;
         loop {
-            match swarm.next_event().await {
-                SwarmEvent::ConnectionEstablished { peer_id, .. } if &peer_id == peer => return Ok(()),
+            let event = swarm.next_event().await;
+            match event {
+                SwarmEvent::ConnectionEstablished {
+                    peer_id, ref endpoint, ..
+                } if &peer_id == peer => {
+                    let remote_addr = endpoint.get_remote_address().clone();
+                    Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), event);
+                    return Ok(remote_addr);
+                }
                 SwarmEvent::UnreachableAddr {
                     peer_id,
                     attempts_remaining: 0,
                     address,
                     ..
                 } if &peer_id == peer => return Err(DialError::InvalidAddress(address)),
-                other => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), other),
+                _ => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), event),
             }
         }
     }
@@ -231,6 +272,11 @@ where
     pub fn remove_peer_rule(&self, peer: PeerId, direction: RuleDirection) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().remove_peer_rule(peer, direction)
+    }
+
+    pub fn get_addrs(&self, peer: &PeerId) -> Vec<Multiaddr> {
+        let mut swarm = self.swarm.lock().unwrap();
+        swarm.behaviour_mut().addresses_of_peer(peer)
     }
 
     pub fn add_address(&self, peer: PeerId, address: Multiaddr) {
@@ -314,8 +360,9 @@ where
         swarm_mutex: Arc<Mutex<Swarm<NetBehaviour<Rq, Rs, P>>>>,
         request_channel: Sender<ReceiveRequest<Rq, Rs>>,
         net_events_chan: Option<Sender<NetworkEvents>>,
+        mut shutdown_chan: oneshot::Receiver<()>,
     ) {
-        loop {
+        while shutdown_chan.try_recv().is_ok() {
             if let Ok(mut swarm) = swarm_mutex.lock() {
                 if let Some(event) = swarm.next_event().now_or_never() {
                     Self::handle_swarm_event(request_channel.clone(), net_events_chan.clone(), event);

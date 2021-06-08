@@ -137,11 +137,21 @@ impl Default for FirewallConfiguration {
 }
 
 impl FirewallConfiguration {
-    pub fn new(default_in: Option<Rule>, default_out: Option<Rule>) -> FirewallConfiguration {
+    pub fn new(default_in: Option<Rule>, default_out: Option<Rule>) -> Self {
         FirewallConfiguration {
             default: FirewallRules {
                 inbound: default_in,
                 outbound: default_out,
+            },
+            peer_rules: HashMap::new(),
+        }
+    }
+
+    pub fn allow_all() -> Self {
+        FirewallConfiguration {
+            default: FirewallRules {
+                inbound: Some(Rule::allow_all()),
+                outbound: Some(Rule::allow_all()),
             },
             peer_rules: HashMap::new(),
         }

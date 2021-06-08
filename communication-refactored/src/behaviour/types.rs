@@ -102,6 +102,7 @@ pub enum NetworkEvents {
         send_back_addr: Multiaddr,
         error: ConnectionErr,
     },
+    NewListenAddr(Multiaddr),
     ExpiredListenAddr(Multiaddr),
     ListenerClosed {
         addresses: Vec<Multiaddr>,
@@ -183,6 +184,7 @@ impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THand
                 Ok(NetworkEvents::ListenerClosed { addresses, cause })
             }
             SwarmEvent::ListenerError { error } => Ok(NetworkEvents::ListenerError { error }),
+            SwarmEvent::NewListenAddr(addr) => Ok(NetworkEvents::NewListenAddr(addr)),
             _ => Err(()),
         }
     }

@@ -80,26 +80,6 @@ where
     OutboundUnsupportedProtocols(RequestId),
 }
 
-impl<Rq, Rs> HandlerOutEvent<Rq, Rs>
-where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
-{
-    pub fn request_id(&self) -> &RequestId {
-        match self {
-            HandlerOutEvent::ReceivedRequest { request_id, .. } => request_id,
-            HandlerOutEvent::SentResponse(request_id)
-            | HandlerOutEvent::SendResponseOmission(request_id)
-            | HandlerOutEvent::InboundTimeout(request_id)
-            | HandlerOutEvent::InboundUnsupportedProtocols(request_id)
-            | HandlerOutEvent::ReceivedResponse(request_id)
-            | HandlerOutEvent::RecvResponseOmission(request_id)
-            | HandlerOutEvent::OutboundTimeout(request_id)
-            | HandlerOutEvent::OutboundUnsupportedProtocols(request_id) => request_id,
-        }
-    }
-}
-
 pub struct ConnectionHandler<Rq, Rs>
 where
     Rq: RqRsMessage,
@@ -238,14 +218,15 @@ where
         }
     }
 
-    fn inject_dial_upgrade_error(&mut self, info: RequestId, error: ProtocolsHandlerUpgrErr<io::Error>) {
+    fn inject_dial_upgrade_error(&mut self, request_id: RequestId, error: ProtocolsHandlerUpgrErr<io::Error>) {
         match error {
             ProtocolsHandlerUpgrErr::Timeout => {
-                self.pending_events.push_back(HandlerOutEvent::OutboundTimeout(info));
+                self.pending_events
+                    .push_back(HandlerOutEvent::OutboundTimeout(request_id));
             }
             ProtocolsHandlerUpgrErr::Upgrade(UpgradeError::Select(NegotiationError::Failed)) => {
                 self.pending_events
-                    .push_back(HandlerOutEvent::OutboundUnsupportedProtocols(info));
+                    .push_back(HandlerOutEvent::OutboundUnsupportedProtocols(request_id));
             }
             _ => {
                 self.pending_error = Some(error);
@@ -253,11 +234,16 @@ where
         }
     }
 
-    fn inject_listen_upgrade_error(&mut self, _: RequestId, error: ProtocolsHandlerUpgrErr<io::Error>) {
+    fn inject_listen_upgrade_error(&mut self, request_id: RequestId, error: ProtocolsHandlerUpgrErr<io::Error>) {
         match error {
-            ProtocolsHandlerUpgrErr::Timeout
-            | ProtocolsHandlerUpgrErr::Timer
-            | ProtocolsHandlerUpgrErr::Upgrade(UpgradeError::Select(NegotiationError::Failed)) => {}
+            ProtocolsHandlerUpgrErr::Timeout => {
+                self.pending_events
+                    .push_back(HandlerOutEvent::InboundTimeout(request_id));
+            }
+            ProtocolsHandlerUpgrErr::Upgrade(UpgradeError::Select(NegotiationError::Failed)) => {
+                self.pending_events
+                    .push_back(HandlerOutEvent::InboundUnsupportedProtocols(request_id));
+            }
             _ => {
                 self.pending_error = Some(error);
             }
