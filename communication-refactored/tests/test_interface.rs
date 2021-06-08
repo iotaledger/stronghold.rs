@@ -3,9 +3,7 @@
 
 use async_std::task;
 use communication_refactored::{
-    firewall::{
-        FirewallConfiguration, PermissionValue, RequestPermissions, Rule, ToPermissionVariants, VariantPermission,
-    },
+    firewall::{FirewallConfiguration, PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission},
     CommunicationProtocol, Keypair, NetBehaviourConfig, ReceiveRequest, RequestMessage, ResponseReceiver,
     ShCommunication,
 };
@@ -34,7 +32,7 @@ fn init_comms() -> (
     let cfg = NetBehaviourConfig {
         connection_timeout: Duration::from_secs(1),
         request_timeout: Duration::from_secs(1),
-        firewall: FirewallConfiguration::new(Some(Rule::allow_all()), Some(Rule::allow_all())),
+        firewall: FirewallConfiguration::allow_all(),
         supported_protocols: smallvec![CommunicationProtocol],
     };
     let (dummy_tx, _) = mpsc::channel(1);
@@ -68,7 +66,7 @@ fn test_send_req() {
 
     task::block_on(async {
         join(handle_a, handle_b).await;
-        // alice.shutdown().await;
-        // bob.shutdown().await;
+        alice.shutdown();
+        bob.shutdown();
     })
 }

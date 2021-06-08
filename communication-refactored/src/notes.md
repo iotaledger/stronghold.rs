@@ -32,7 +32,7 @@ Protocol  |  write substream (request)       |          | send_res.ok()
 ```
 
 **Decisions:**
-- inbound requests: drop request on connection closed / firewall rejected / ... without creating a behaviour event to inform the user
+- channel for network events: SwarmEvents & Inbound- / Outbound-Failures
 - firewall:
   - bounded mpsc channel to send firewall requests
     - to demand rules for a specific peer if there are no default rules
@@ -41,3 +41,8 @@ Protocol  |  write substream (request)       |          | send_res.ok()
   - default rules:
     - use default rules if no peer specific rule
     - if default rule is none, send `FirewallRequest::PeerSpecificRule` through firewall channel to demand a rule
+
+**TODOs:**
+- add errors
+- commenting / docs
+- examples

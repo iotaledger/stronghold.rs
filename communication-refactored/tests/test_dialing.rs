@@ -1,72 +1,46 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use communication_refactored::behaviour::{
+use async_std::task;
+use communication_refactored::{
     assemble_relayed_addr,
-    firewall::{PermissionValue, RequestPermissions, Rule, RuleDirection, ToPermissionVariants, VariantPermission},
-    NetBehaviour, NetBehaviourConfig,
+    firewall::{FirewallConfiguration, PermissionValue, RequestPermissions, VariantPermission},
+    Keypair, Multiaddr, NetBehaviourConfig, NetworkEvents, PeerId, ShCommunication,
 };
 use core::fmt;
-use futures::{channel::mpsc, executor::LocalPool, task::SpawnExt, FutureExt};
-use libp2p::{
-    core::{connection::ListenerId, identity, transport::Transport, upgrade, ConnectedPoint, PeerId},
-    mdns::{Mdns, MdnsConfig},
-    multiaddr::Protocol,
-    noise::{Keypair, NoiseConfig, X25519Spec},
-    relay::{new_transport_and_behaviour, RelayConfig},
-    swarm::{NetworkBehaviour, Swarm, SwarmEvent},
-    tcp::TcpConfig,
-    yamux::YamuxConfig,
-    Multiaddr,
+use futures::{
+    channel::mpsc::{self, Receiver},
+    future, StreamExt,
 };
 use serde::{Deserialize, Serialize};
-use std::{num::NonZeroU32, time::Duration};
+use std::time::Duration;
 
-type TestSwarm = Swarm<NetBehaviour<Request, Response, RequestPermission>>;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
-enum Request {
-    Ping,
-    Other,
-}
+type TestComms = ShCommunication<Request, Response, Request>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
-enum Response {
-    Pong,
-    Other,
-}
+struct Request;
 
-fn init_swarm(pool: &mut LocalPool) -> (PeerId, TestSwarm) {
-    let id_keys = identity::Keypair::generate_ed25519();
-    let peer = id_keys.public().into_peer_id();
-    let noise_keys = Keypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
-    let (relay_transport, relay_behaviour) =
-        new_transport_and_behaviour(RelayConfig::default(), TcpConfig::new().nodelay(true));
-    let transport = relay_transport
-        .upgrade(upgrade::Version::V1)
-        .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(YamuxConfig::default())
-        .boxed();
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
+struct Response;
 
-    let mut cfg = NetBehaviourConfig::default();
-    cfg.firewall.set_default(Rule::allow_all(), RuleDirection::Both);
-    cfg.connection_timeout = Duration::from_millis(500);
-    let mdns = pool
-        .run_until(Mdns::new(MdnsConfig::default()))
-        .expect("Failed to create mdns behaviour.");
-    let (firewall_dummy_tx, _) = mpsc::channel(1);
-    let behaviour = NetBehaviour::new(cfg, mdns, relay_behaviour, firewall_dummy_tx);
-    let swarm = Swarm::new(transport, behaviour, peer);
-    (peer, swarm)
-}
-
-fn start_listening(pool: &mut LocalPool, swarm: &mut TestSwarm) -> (ListenerId, Multiaddr) {
-    let addr = "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress.");
-    let listener = swarm.listen_on(addr).unwrap();
-    match pool.run_until(swarm.next_event()) {
-        SwarmEvent::NewListenAddr(addr) => (listener, addr),
-        other => panic!("Unexepected event: {:?}", other),
-    }
+fn init_comms() -> (mpsc::Receiver<NetworkEvents>, TestComms) {
+    let id_keys = Keypair::generate_ed25519();
+    let cfg = NetBehaviourConfig {
+        firewall: FirewallConfiguration::allow_all(),
+        connection_timeout: Duration::from_millis(1),
+        ..Default::default()
+    };
+    let (dummy_fw_tx, _) = mpsc::channel(1);
+    let (dummy_rq_tx, _) = mpsc::channel(1);
+    let (event_tx, event_rx) = mpsc::channel(1);
+    let comms = task::block_on(ShCommunication::new(
+        id_keys,
+        cfg,
+        dummy_fw_tx,
+        dummy_rq_tx,
+        Some(event_tx),
+    ));
+    (event_rx, comms)
 }
 
 fn rand_bool(n: u8) -> bool {
@@ -112,11 +86,14 @@ impl TestSourceConfig {
             7 | 8 | 9 => UseRelay::NoRelay,
             _ => unreachable!(),
         };
+        let knows_direct_target_addr = cfg!(feature = "mdns").then(|| true).unwrap_or_else(|| rand_bool(5));
+        let knows_relayed_target_addr = cfg!(feature = "mdns").then(|| true).unwrap_or_else(|| rand_bool(5));
+        let knows_relay_addr = cfg!(feature = "mdns").then(|| true).unwrap_or_else(|| rand_bool(5));
         TestSourceConfig {
-            knows_direct_target_addr: rand_bool(5),
-            knows_relayed_target_addr: rand_bool(5),
+            knows_direct_target_addr,
+            knows_relayed_target_addr,
             knows_relay: true,
-            knows_relay_addr: rand_bool(5),
+            knows_relay_addr,
             set_relay,
         }
     }
@@ -124,19 +101,19 @@ impl TestSourceConfig {
 
 struct TestConfig {
     source_config: TestSourceConfig,
-    source_swarm: TestSwarm,
+    source_comms: TestComms,
+    source_event_rx: mpsc::Receiver<NetworkEvents>,
     source_id: PeerId,
 
     relay_id: PeerId,
     relay_addr: Multiaddr,
 
     target_config: TestTargetConfig,
-    target_swarm: TestSwarm,
+    target_comms: TestComms,
+    target_event_rx: mpsc::Receiver<NetworkEvents>,
     target_id: PeerId,
     target_addr: Option<Multiaddr>,
-
-    target_direct_listener: Option<ListenerId>,
-    target_relayed_listener: Option<ListenerId>,
+    target_relayed_addr: Option<Multiaddr>,
 }
 
 impl fmt::Display for TestConfig {
@@ -151,89 +128,65 @@ impl fmt::Display for TestConfig {
     }
 }
 impl TestConfig {
-    fn new(pool: &mut LocalPool, relay_id: PeerId, relay_addr: Multiaddr) -> Self {
-        let (source_id, source_swarm) = init_swarm(pool);
-        let (target_id, target_swarm) = init_swarm(pool);
+    fn new(relay_id: PeerId, relay_addr: Multiaddr) -> Self {
+        let (source_event_rx, source_comms) = init_comms();
+        let source_id = source_comms.get_peer_id();
+        let (target_event_rx, target_comms) = init_comms();
+        let target_id = target_comms.get_peer_id();
         TestConfig {
             source_config: TestSourceConfig::random(),
-            source_swarm,
+            source_comms,
+            source_event_rx,
             source_id,
             relay_id,
             relay_addr,
             target_config: TestTargetConfig::random(),
-            target_swarm,
+            target_comms,
+            target_event_rx,
             target_id,
             target_addr: None,
-            target_direct_listener: None,
-            target_relayed_listener: None,
+            target_relayed_addr: None,
         }
     }
 
-    fn start_relay_listening(&mut self, pool: &mut LocalPool) -> (ListenerId, Multiaddr) {
-        let relayed_addr = assemble_relayed_addr(self.target_id, self.relay_id, self.relay_addr.clone());
-        let listener = self.target_swarm.listen_on(relayed_addr.clone()).unwrap();
-        pool.run_until(async {
-            loop {
-                match self.target_swarm.next_event().await {
-                    SwarmEvent::NewListenAddr(addr) => {
-                        if addr == relayed_addr {
-                            return (listener, addr);
-                        } else if !self.target_config.listening_plain {
-                            panic!("addr: {:?}", addr);
-                        }
-                    }
-                    SwarmEvent::ConnectionEstablished { peer_id, .. } | SwarmEvent::Dialing(peer_id) => {
-                        assert_eq!(peer_id, self.relay_id)
-                    }
-                    other => panic!("Unexepected event: {:?},{}", other, self),
-                }
-            }
-        })
-    }
-
-    fn configure_swarms(&mut self, pool: &mut LocalPool) {
+    fn configure_comms(&mut self) {
         if self.target_config.listening_plain {
-            let (listener, target_addr) = start_listening(pool, &mut self.target_swarm);
+            let target_addr = task::block_on(self.target_comms.start_listening(None)).unwrap();
             self.target_addr = Some(target_addr);
-            self.target_direct_listener = Some(listener);
         }
         if self.target_config.listening_relay {
-            let (listener, _) = self.start_relay_listening(pool);
-            self.target_relayed_listener = Some(listener)
+            let relayed_addr = task::block_on(
+                self.target_comms
+                    .start_relayed_listening(self.relay_id, Some(self.relay_addr.clone())),
+            )
+            .unwrap();
+            self.target_relayed_addr = Some(relayed_addr)
         }
         if self.source_config.knows_direct_target_addr {
-            self.source_swarm.behaviour_mut().add_address(
-                self.target_id,
-                self.target_addr
-                    .clone()
-                    .unwrap_or_else(|| "/ip4/127.0.0.1/tcp/12345".parse().expect("Invalid Multiaddress.")),
-            )
+            let addr = self
+                .target_addr
+                .clone()
+                .unwrap_or_else(|| "/ip4/127.0.0.1/tcp/12345".parse().expect("Invalid Multiaddress."));
+            self.source_comms.add_address(self.target_id, addr);
         }
         if self.source_config.knows_relayed_target_addr {
             let relayed_addr = assemble_relayed_addr(self.target_id, self.relay_id, self.relay_addr.clone());
-            self.source_swarm
-                .behaviour_mut()
-                .add_address(self.target_id, relayed_addr);
+            self.source_comms.add_address(self.target_id, relayed_addr);
         }
 
         if self.source_config.knows_relay_addr {
-            self.source_swarm
-                .behaviour_mut()
-                .add_address(self.relay_id, self.relay_addr.clone());
+            self.source_comms.add_address(self.relay_id, self.relay_addr.clone());
         }
         if self.source_config.knows_relay {
-            let addr = self.source_swarm.behaviour_mut().add_dialing_relay(self.relay_id, None);
+            let addr = self.source_comms.add_dialing_relay(self.relay_id, None);
             assert_eq!(addr.is_some(), self.source_config.knows_relay_addr);
         }
 
         match self.source_config.set_relay {
             UseRelay::Default => {}
-            UseRelay::NoRelay => self.source_swarm.behaviour_mut().set_not_use_relay(self.target_id),
+            UseRelay::NoRelay => self.source_comms.set_dialing_not_use_relay(self.target_id),
             UseRelay::UseActualRelay => {
-                let addr = self
-                    .source_swarm
-                    .behaviour_mut()
-                    .set_use_relay(self.target_id, self.relay_id);
+                let addr = self.source_comms.set_dialing_use_relay(self.target_id, self.relay_id);
                 if self.source_config.knows_relay_addr && self.source_config.knows_relay {
                     assert_eq!(
                         addr.unwrap(),
@@ -246,229 +199,80 @@ impl TestConfig {
         }
     }
 
-    fn test_dial(self, pool: &mut LocalPool) {
+    fn test_dial(&mut self) {
         let config_str = format!("{}", self);
-        let TestConfig {
-            mut source_swarm,
-            source_config,
-            target_id,
-            target_config,
-            mut target_swarm,
-            relay_id,
-            ..
-        } = self;
 
-        pool.spawner()
-            .spawn(async move {
-                loop {
-                    target_swarm.next().await;
-                }
-            })
-            .unwrap();
+        let res = task::block_on(self.source_comms.dial_peer(&self.target_id));
 
-        let knows_direct = source_config.knows_direct_target_addr || source_config.knows_relayed_target_addr;
-        let expect_knows_addrs = {
-            match source_config.set_relay {
-                UseRelay::NoRelay => knows_direct,
-                UseRelay::UseActualRelay => source_config.knows_relay && source_config.knows_relay_addr,
-                UseRelay::Default => knows_direct || source_config.knows_relay && source_config.knows_relay_addr,
-            }
-        };
-        let knows_addr = source_swarm.dial(&target_id).is_ok();
+        let allows_direct = matches!(self.source_config.set_relay, UseRelay::Default | UseRelay::NoRelay);
+        let allows_relay = matches!(
+            self.source_config.set_relay,
+            UseRelay::Default | UseRelay::UseActualRelay
+        );
 
-        assert_eq!(knows_addr, expect_knows_addrs);
-        if !knows_addr {
-            return;
+        if self.target_config.listening_relay {
+            Self::expect_connection(&mut self.target_event_rx, self.relay_id, &config_str);
         }
 
-        pool.run_until(async {
-            let allows_direct = matches!(source_config.set_relay, UseRelay::Default | UseRelay::NoRelay);
-            let allows_relay = matches!(source_config.set_relay, UseRelay::Default | UseRelay::UseActualRelay);
+        if allows_direct && self.source_config.knows_direct_target_addr && self.target_config.listening_plain {
+            Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str);
+            Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str);
+            assert!(res.is_ok());
+            return;
+        }
+        if allows_direct && self.source_config.knows_relayed_target_addr
+            || allows_relay && self.source_config.knows_relay && self.source_config.knows_relay_addr
+        {
+            Self::expect_connection(&mut self.source_event_rx, self.relay_id, &config_str);
 
-            if allows_direct && source_config.knows_direct_target_addr {
-                if target_config.listening_plain {
-                    match source_swarm.next_event().await {
-                        SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == target_id => return,
-                        other => panic!("Unexepected event: {:?},{}", other, config_str),
-                    }
-                } else {
-                    match source_swarm.next_event().await {
-                        SwarmEvent::UnreachableAddr { peer_id, .. } if peer_id == target_id => {}
-                        other => panic!("Unexepected event: {:?},{}", other, config_str),
-                    }
-                }
+            if self.target_config.listening_relay {
+                Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str);
+                Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str);
+                assert!(res.is_ok());
+                return;
             }
-            if allows_direct && source_config.knows_relayed_target_addr
-                || allows_relay && source_config.knows_relay && source_config.knows_relay_addr
-            {
-                match source_swarm.next_event().await {
-                    SwarmEvent::Dialing(peer) if peer == relay_id => {}
-                    other => panic!("Unexepected event: {:?},{}", other, config_str),
-                }
-                match source_swarm.next_event().await {
-                    SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == relay_id => {}
-                    other => panic!("Unexepected event: {:?},{}", other, config_str),
-                }
-                if target_config.listening_relay {
-                    match source_swarm.next_event().await {
-                        SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == target_id => {}
-                        other => panic!("Unexepected event: {:?},{}", other, config_str),
-                    }
-                } else {
-                    match source_swarm.next_event().await {
-                        SwarmEvent::UnreachableAddr { peer_id, .. } if peer_id == target_id => {}
-                        other => panic!("Unexepected event: {:?},{}", other, config_str),
-                    }
-                }
-            }
+        }
+
+        // if mdns is enabled, there is a chance that the source received the target address via the mdns service
+        if !cfg!(feature = "mdns") {
+            assert!(res.is_err(), "Unexpected Event {:?} on config {}", res, config_str);
+        }
+    }
+
+    fn expect_connection(event_rx: &mut Receiver<NetworkEvents>, target: PeerId, config_str: &str) {
+        let mut filtered = event_rx.filter(|ev| {
+            future::ready(!matches!(
+                ev,
+                NetworkEvents::NewListenAddr(..) | NetworkEvents::ConnectionClosed { .. }
+            ))
         });
+        let event = task::block_on(filtered.next()).unwrap();
+        assert!(
+            matches!(event,  NetworkEvents::ConnectionEstablished { peer, .. } if peer == target),
+            "Unexpected Event {:?} on config {}",
+            event,
+            config_str
+        );
+    }
+
+    fn shutdown(self) {
+        task::block_on(async {
+            self.source_comms.shutdown();
+            self.target_comms.shutdown();
+        })
     }
 }
 
 #[test]
 fn test_dialing() {
-    let mut pool = LocalPool::new();
-    let spawner = pool.spawner();
-    let (relay_id, mut relay_swarm) = init_swarm(&mut pool);
-    let (_, relay_addr) = start_listening(&mut pool, &mut relay_swarm);
-
-    spawner
-        .spawn(async move {
-            loop {
-                relay_swarm.next().await;
-            }
-        })
-        .unwrap();
+    let (_, mut relay_comms) = init_comms();
+    let relay_id = relay_comms.get_peer_id();
+    let relay_addr = task::block_on(relay_comms.start_listening(None)).unwrap();
 
     for _ in 0..50 {
-        let mut config = TestConfig::new(&mut pool, relay_id, relay_addr.clone());
-        config.configure_swarms(&mut pool);
-        config.test_dial(&mut pool);
+        let mut test = TestConfig::new(relay_id, relay_addr.clone());
+        test.configure_comms();
+        test.test_dial();
+        test.shutdown()
     }
-}
-
-#[test]
-fn test_invalid_relay() {
-    let mut pool = LocalPool::new();
-    let spawner = pool.spawner();
-    let (relay_id, mut relay_swarm) = init_swarm(&mut pool);
-    let (_, relay_addr) = start_listening(&mut pool, &mut relay_swarm);
-
-    spawner
-        .spawn(async move {
-            loop {
-                relay_swarm.next().await;
-            }
-        })
-        .unwrap();
-    let (_, mut source_swarm) = init_swarm(&mut pool);
-    let dummy_peer = PeerId::random();
-    let dummy_relayed_addr = assemble_relayed_addr(dummy_peer, relay_id, relay_addr);
-    source_swarm.behaviour_mut().add_address(dummy_peer, dummy_relayed_addr);
-    source_swarm.dial(&dummy_peer).unwrap();
-    pool.run_until(async {
-        assert!(matches!(source_swarm.next_event().await, SwarmEvent::Dialing(peer_id) if peer_id == relay_id));
-        assert!(matches!(source_swarm.next_event().await, SwarmEvent::ConnectionEstablished{peer_id, ..} if peer_id == relay_id));
-        assert!(matches!(source_swarm.next_event().await, SwarmEvent::UnreachableAddr{peer_id, ..} if peer_id == dummy_peer));
-    });
-}
-
-fn dial_peer(
-    pool: &mut LocalPool,
-    swarm_a: &mut TestSwarm,
-    peer_a_id: PeerId,
-    swarm_b: &mut TestSwarm,
-    peer_b_id: PeerId,
-    peer_b_addr: Option<Multiaddr>,
-) -> bool {
-    if swarm_a.dial(&peer_b_id).is_err() {
-        return false;
-    }
-    pool.run_until(async {
-        loop {
-            futures::select! {
-                event = swarm_a.next_event().fuse() => match event {
-                    SwarmEvent::Dialing(peer) => assert_eq!(peer, peer_b_id),
-                    SwarmEvent::ConnectionEstablished {peer_id, endpoint: ConnectedPoint::Dialer {address}, num_established} => {
-                        assert_eq!(peer_id, peer_b_id);
-                        if let Some(peer_b_addr) = peer_b_addr.as_ref() {
-                            assert_eq!(address, peer_b_addr.clone().with(Protocol::P2p(peer_b_id.into())));
-                        }
-                        assert_eq!(num_established, NonZeroU32::new(1).unwrap());
-                        return true;
-                    },
-                    other => panic!("Unexpected SwarmEvent: {:?}", other)
-                },
-                event = swarm_b.next_event().fuse() => match event {
-                    SwarmEvent::IncomingConnection {local_addr, ..}  => {
-                        if let Some(peer_b_addr) = peer_b_addr.as_ref() {
-                        assert_eq!(&local_addr, peer_b_addr);}
-                    }
-                    SwarmEvent::ConnectionEstablished {peer_id, endpoint: ConnectedPoint::Listener {local_addr, send_back_addr}, num_established} => {
-                        assert_eq!(peer_id, peer_a_id);
-                        if let Some(peer_b_addr) = peer_b_addr.as_ref() {
-                        assert_eq!(&local_addr, peer_b_addr);}
-                        assert_eq!(num_established, NonZeroU32::new(1).unwrap());
-                        assert!(swarm_b
-                            .behaviour_mut()
-                            .addresses_of_peer(&peer_a_id)
-                            .contains(&send_back_addr));
-                    }
-                    SwarmEvent::NewListenAddr(..) => {}
-                    other => panic!("Unexpected SwarmEvent: {:?}", other)
-                }
-            }
-        }
-    })
-}
-
-#[test]
-fn test_addresses() {
-    let mut pool = LocalPool::new();
-
-    let (peer_a_id, mut swarm_a) = init_swarm(&mut pool);
-    let (peer_b_id, mut swarm_b) = init_swarm(&mut pool);
-    let (_, peer_b_addr) = start_listening(&mut pool, &mut swarm_b);
-
-    assert!(!swarm_a
-        .behaviour_mut()
-        .addresses_of_peer(&peer_b_id)
-        .contains(&peer_b_addr));
-    assert!(!dial_peer(
-        &mut pool,
-        &mut swarm_a,
-        peer_a_id,
-        &mut swarm_b,
-        peer_b_id,
-        Some(peer_b_addr.clone())
-    ));
-
-    swarm_a.behaviour_mut().add_address(peer_b_id, peer_b_addr.clone());
-    swarm_a.behaviour_mut().remove_address(&peer_b_id, &peer_b_addr);
-    assert!(!swarm_a
-        .behaviour_mut()
-        .addresses_of_peer(&peer_b_id)
-        .contains(&peer_b_addr));
-    assert!(!dial_peer(
-        &mut pool,
-        &mut swarm_a,
-        peer_a_id,
-        &mut swarm_b,
-        peer_b_id,
-        Some(peer_b_addr.clone())
-    ));
-
-    swarm_a.behaviour_mut().add_address(peer_b_id, peer_b_addr.clone());
-    assert!(swarm_a
-        .behaviour_mut()
-        .addresses_of_peer(&peer_b_id)
-        .contains(&peer_b_addr));
-    assert!(dial_peer(
-        &mut pool,
-        &mut swarm_a,
-        peer_a_id,
-        &mut swarm_b,
-        peer_b_id,
-        Some(peer_b_addr)
-    ));
 }

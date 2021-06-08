@@ -3,13 +3,12 @@
 
 use async_std::task;
 use communication_refactored::{
-    behaviour::NetBehaviourConfig,
     firewall::{
         FirewallPermission, FirewallRequest, FirewallRules, PeerRuleQuery, PermissionValue, RequestApprovalQuery,
         RequestPermissions, Rule, RuleDirection, ToPermissionVariants, VariantPermission,
     },
-    InboundFailure, Keypair, NetworkEvents, OutboundFailure, PeerId, ReceiveRequest, RequestDirection, RequestMessage,
-    ResponseReceiver, ShCommunication,
+    InboundFailure, Keypair, NetBehaviourConfig, NetworkEvents, OutboundFailure, PeerId, ReceiveRequest,
+    RequestDirection, RequestMessage, ResponseReceiver, ShCommunication,
 };
 use futures::{
     channel::mpsc::{self, Receiver},
@@ -64,9 +63,9 @@ fn init_comms(default_in: Option<Rule>, default_out: Option<Rule>) -> NewComms {
     }
     let (firewall_tx, firewall_rx) = mpsc::channel(1);
     let (rq_tx, rq_rx) = mpsc::channel(1);
-    let (net_ev_tx, net_ev_rx) = mpsc::channel(1);
-    let comms = task::block_on(ShCommunication::new(id_keys, cfg, firewall_tx, rq_tx, Some(net_ev_tx)));
-    (firewall_rx, rq_rx, net_ev_rx, comms)
+    let (event_tx, event_rx) = mpsc::channel(1);
+    let comms = task::block_on(ShCommunication::new(id_keys, cfg, firewall_tx, rq_tx, Some(event_tx)));
+    (firewall_rx, rq_rx, event_rx, comms)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -254,7 +253,9 @@ impl<'a> RulesTestConfig<'a> {
         let mut filtered = self.b_events_rx.filter(|ev| {
             future::ready(!matches!(
                 ev,
-                NetworkEvents::ConnectionEstablished { .. } | NetworkEvents::ConnectionClosed { .. }
+                NetworkEvents::ConnectionEstablished { .. }
+                    | NetworkEvents::ConnectionClosed { .. }
+                    | NetworkEvents::NewListenAddr(..)
             ))
         });
         match expect_ok!(filtered.next(), self) {
@@ -273,9 +274,9 @@ impl<'a> RulesTestConfig<'a> {
 #[test]
 fn firewall_permissions() {
     // reject outbound requests for A
-    let (_, _, mut a_net_ev_rx, mut comms_a) = init_comms(None, Some(Rule::reject_all()));
+    let (_, _, mut a_event_rx, mut comms_a) = init_comms(None, Some(Rule::reject_all()));
     // reject inbound request for B
-    let (_, mut b_rq_rx, mut b_net_ev_rx, mut comms_b) = init_comms(Some(Rule::reject_all()), None);
+    let (_, mut b_rq_rx, mut b_event_rx, mut comms_b) = init_comms(Some(Rule::reject_all()), None);
     let peer_b_id = comms_b.get_peer_id();
 
     let peer_b_addr = task::block_on(comms_b.start_listening(None)).unwrap();
@@ -284,9 +285,9 @@ fn firewall_permissions() {
     for _ in 0..50 {
         let mut test = RulesTestConfig::new_test_case(
             &mut comms_a,
-            &mut a_net_ev_rx,
+            &mut a_event_rx,
             &mut comms_b,
-            &mut b_net_ev_rx,
+            &mut b_event_rx,
             &mut b_rq_rx,
         );
         test.configure_firewall();
@@ -456,7 +457,9 @@ impl<'a> AskTestConfig<'a> {
         let mut filtered = self.b_events_rx.filter(|ev| {
             future::ready(!matches!(
                 ev,
-                NetworkEvents::ConnectionEstablished { .. } | NetworkEvents::ConnectionClosed { .. }
+                NetworkEvents::ConnectionEstablished { .. }
+                    | NetworkEvents::ConnectionClosed { .. }
+                    | NetworkEvents::NewListenAddr(..)
             ))
         });
         match expect_ok!(filtered.next(), self) {
@@ -542,10 +545,9 @@ impl<'a> AskTestConfig<'a> {
 }
 
 #[test]
-#[ignore]
 fn firewall_ask() {
-    let (mut firewall_a, _, mut a_net_ev_rx, mut comms_a) = init_comms(None, None);
-    let (mut firewall_b, mut b_rq_rx, mut b_net_ev_rx, mut comms_b) = init_comms(None, None);
+    let (mut firewall_a, _, mut a_event_rx, mut comms_a) = init_comms(None, None);
+    let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut comms_b) = init_comms(None, None);
     let peer_b_id = comms_b.get_peer_id();
 
     let peer_b_addr = task::block_on(comms_b.start_listening(None)).unwrap();
@@ -555,10 +557,10 @@ fn firewall_ask() {
         let mut test = AskTestConfig::new_test_case(
             &mut comms_a,
             &mut firewall_a,
-            &mut a_net_ev_rx,
+            &mut a_event_rx,
             &mut comms_b,
             &mut firewall_b,
-            &mut b_net_ev_rx,
+            &mut b_event_rx,
             &mut b_rq_rx,
         );
         test.test_request_with_ask();
