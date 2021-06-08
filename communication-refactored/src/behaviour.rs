@@ -40,7 +40,7 @@ use futures::{
     FutureExt, StreamExt, TryFutureExt,
 };
 pub use handler::CommunicationProtocol;
-use handler::ConnectionHandler;
+pub(crate) use handler::{ConnectionHandler, HandlerInEvent, HandlerOutEvent};
 use libp2p::{
     core::{
         connection::{ConnectionId, ListenerId},
@@ -62,6 +62,7 @@ use std::{
     time::Duration,
 };
 use types::*;
+pub use types::{BehaviourEvent, InboundFailure, OutboundFailure};
 
 type NetworkAction<Proto> = NetworkBehaviourAction<
     <<<Proto as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
@@ -205,8 +206,8 @@ where
                 if let Some(rule) = rules.inbound().cloned() {
                     new_rules.set_rule(Some(rule), RuleDirection::Inbound);
                 }
-                if let Some(rule) = rules.inbound().cloned() {
-                    new_rules.set_rule(Some(rule), RuleDirection::Inbound);
+                if let Some(rule) = rules.outbound().cloned() {
+                    new_rules.set_rule(Some(rule), RuleDirection::Outbound);
                 }
                 self.handle_peer_rule(peer, new_rules, direction);
             } else {
@@ -297,12 +298,12 @@ where
         match event {
             HandlerOutEvent::ReceivedResponse(request_id) => {
                 self.request_manager
-                    .on_recv_res_for_outbound(peer, &connection, request_id, Ok(()));
+                    .on_res_for_outbound(peer, &connection, request_id, Ok(()));
             }
             HandlerOutEvent::RecvResponseOmission(request_id) => {
-                let err = Err(RecvResponseErr::RecvResponseOmission);
+                let err = Err(OutboundFailure::RecvResponseOmission);
                 self.request_manager
-                    .on_recv_res_for_outbound(peer, &connection, request_id, err);
+                    .on_res_for_outbound(peer, &connection, request_id, err);
             }
             HandlerOutEvent::ReceivedRequest { request_id, request } => {
                 let approval_status = match self.firewall.get_in_rule_or_default(&peer) {
@@ -336,20 +337,25 @@ where
                 )
             }
             HandlerOutEvent::OutboundTimeout(request_id) => {
-                let err = Err(RecvResponseErr::Timeout);
+                let err = Err(OutboundFailure::Timeout);
                 self.request_manager
-                    .on_recv_res_for_outbound(peer, &connection, request_id, err);
+                    .on_res_for_outbound(peer, &connection, request_id, err);
             }
             HandlerOutEvent::OutboundUnsupportedProtocols(request_id) => {
-                let err = Err(RecvResponseErr::UnsupportedProtocols);
+                let err = Err(OutboundFailure::UnsupportedProtocols);
                 self.request_manager
-                    .on_recv_res_for_outbound(peer, &connection, request_id, err);
+                    .on_res_for_outbound(peer, &connection, request_id, err);
             }
-            HandlerOutEvent::InboundTimeout(request_id)
-            | HandlerOutEvent::InboundUnsupportedProtocols(request_id)
-            | HandlerOutEvent::SentResponse(request_id)
-            | HandlerOutEvent::SendResponseOmission(request_id) => {
-                self.request_manager.on_recv_res_for_inbound(&connection, &request_id);
+            HandlerOutEvent::InboundTimeout(request_id) => {
+                let err = InboundFailure::Timeout;
+                self.request_manager
+                    .on_res_for_inbound(peer, &connection, request_id, Err(err));
+            }
+            HandlerOutEvent::InboundUnsupportedProtocols(request_id)
+            | HandlerOutEvent::SendResponseOmission(request_id)
+            | HandlerOutEvent::SentResponse(request_id) => {
+                self.request_manager
+                    .on_res_for_inbound(peer, &connection, request_id, Ok(()));
             }
         }
     }
@@ -460,14 +466,6 @@ where
             connection: Some(*connection),
             rules,
         });
-        let has_no_rules = inbound_rule.is_none() && (outbound_rule.is_none());
-        if let Some(dir) = has_no_rules
-            .then(|| RuleDirection::Both)
-            .or_else(|| inbound_rule.is_none().then(|| RuleDirection::Inbound))
-            .or_else(|| outbound_rule.is_none().then(|| RuleDirection::Outbound))
-        {
-            self.query_peer_rule(peer, dir);
-        }
         self.request_manager.on_connection_established(peer, *connection);
         self.addresses
             .on_connection_established(peer, endpoint.get_remote_address().clone());
@@ -568,11 +566,11 @@ where
                     request_id,
                     peer,
                     request,
-                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::ReceiveRequest {
+                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::Request(ReceiveRequest {
                     peer,
                     request_id,
                     request,
-                }),
+                })),
                 BehaviourAction::OutboundReady {
                     request_id,
                     peer,
@@ -586,27 +584,28 @@ where
                         event: EitherOutput::First(event),
                     }
                 }
-                BehaviourAction::OutboundRejected { peer, request_id } => {
-                    NetworkBehaviourAction::GenerateEvent(BehaviourEvent::ReceiveResponse {
-                        peer,
-                        request_id,
-                        result: Err(RecvResponseErr::NotPermitted),
-                    })
-                }
-
+                BehaviourAction::OutboundFailure {
+                    peer,
+                    request_id,
+                    reason,
+                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::OutboundFailure {
+                    peer,
+                    request_id,
+                    failure: reason,
+                }),
+                BehaviourAction::InboundFailure {
+                    peer,
+                    request_id,
+                    reason,
+                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::InboundFailure {
+                    peer,
+                    request_id,
+                    failure: reason,
+                }),
                 BehaviourAction::RequireDialAttempt(peer) => NetworkBehaviourAction::DialPeer {
                     peer_id: peer,
                     condition: DialPeerCondition::Disconnected,
                 },
-                BehaviourAction::ReceivedResponse {
-                    peer,
-                    request_id,
-                    result,
-                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::ReceiveResponse {
-                    peer,
-                    request_id,
-                    result,
-                }),
                 BehaviourAction::ReceivedPeerRules {
                     peer,
                     connection,

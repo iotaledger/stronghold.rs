@@ -14,11 +14,11 @@
 // all copies or substantial portions of the Software.
 
 use communication_refactored::{
-    behaviour::{NetBehaviour, NetBehaviourConfig},
+    behaviour::{BehaviourEvent, NetBehaviour, NetBehaviourConfig, OutboundFailure},
     firewall::{PermissionValue, RequestPermissions, Rule, RuleDirection, VariantPermission},
-    BehaviourEvent, RecvResponseErr, RequestMessage,
+    ReceiveRequest, RequestMessage,
 };
-use futures::{channel::mpsc, executor::LocalPool, future::FutureObj, prelude::*, task::Spawn};
+use futures::{channel::mpsc, executor::LocalPool, future::FutureObj, prelude::*, select, task::Spawn};
 use libp2p::{
     core::{identity, transport::Transport, upgrade, Multiaddr, PeerId},
     mdns::{Mdns, MdnsConfig},
@@ -48,17 +48,16 @@ fn ping_protocol() {
     swarm1.listen_on(addr).unwrap();
 
     let expected_ping = ping.clone();
-    let expected_pong = pong.clone();
 
     let peer1_future = async move {
         loop {
             match swarm1.next_event().await {
                 SwarmEvent::NewListenAddr(addr) => tx.send(addr).await.unwrap(),
-                SwarmEvent::Behaviour(BehaviourEvent::ReceiveRequest {
+                SwarmEvent::Behaviour(BehaviourEvent::Request(ReceiveRequest {
                     peer,
                     request: RequestMessage { data, response_tx, .. },
                     ..
-                }) => {
+                })) => {
                     assert_eq!(&data, &expected_ping);
                     assert_eq!(&peer, &peer2_id);
                     response_tx.send(pong.clone()).unwrap();
@@ -78,25 +77,16 @@ fn ping_protocol() {
         let mut response_recv = swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
 
         loop {
-            match swarm2.next().await {
-                BehaviourEvent::ReceiveResponse {
-                    peer,
-                    request_id,
-                    result: Ok(()),
-                } => {
-                    let req_id = response_recv.request_id;
-                    let response = response_recv.response_rx.await.unwrap();
+            select! {
+                _ = swarm2.next().fuse() => panic!(),
+                _ = response_recv.response_rx.fuse() => {
                     count += 1;
-                    assert_eq!(&response, &expected_pong);
-                    assert_eq!(&peer, &peer1_id);
-                    assert_eq!(req_id, request_id);
                     if count >= num_pings {
                         return;
                     } else {
                         response_recv = swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
                     }
                 }
-                e => panic!("Peer2: Unexpected event: {:?}", e),
             }
         }
     };
@@ -129,7 +119,11 @@ fn emits_inbound_connection_closed_failure() {
         let response_tx = loop {
             futures::select!(
                 event = swarm1.next().fuse() => match event {
-                    BehaviourEvent::ReceiveRequest { peer, request: RequestMessage{data, response_tx, .. }, ..} => {
+                    BehaviourEvent::Request(ReceiveRequest {
+                        peer,
+                        request: RequestMessage { data, response_tx, .. },
+                        ..
+                    }) => {
                         assert_eq!(&data, &ping);
                         assert_eq!(&peer, &peer2_id);
                         break response_tx
@@ -178,23 +172,28 @@ fn emits_inbound_connection_closed_if_channel_is_dropped() {
         // Wait for swarm 1 to receive request by swarm 2.
         let event = loop {
             futures::select!(
-                event = swarm1.next().fuse() => {
-                    if let BehaviourEvent::ReceiveRequest{ peer, request: RequestMessage {data, response_tx,..}, ..} = event {
+                event = swarm1.next().fuse() => match event {
+                    BehaviourEvent::Request(ReceiveRequest {
+                        peer,
+                        request: RequestMessage { data, response_tx, .. },
+                        ..
+                    }) => {
                         assert_eq!(&data, &ping);
                         assert_eq!(&peer, &peer2_id);
                         drop(response_tx);
                         continue;
-                    }
+                    },
+                    e => panic!("Peer1: Unexpected event: {:?}", e)
                 },
                 event = swarm2.next().fuse() => break event,
             )
         };
 
         match event {
-            BehaviourEvent::ReceiveResponse {
+            BehaviourEvent::OutboundFailure {
                 peer,
                 request_id,
-                result: Err(RecvResponseErr::ConnectionClosed),
+                failure: OutboundFailure::ConnectionClosed,
             } => {
                 assert_eq!(peer, peer1_id);
                 assert_eq!(request_id, response_rx.request_id);

@@ -1,11 +1,14 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use super::firewall::FirewallRules;
 use futures::channel::oneshot;
-use libp2p::PeerId;
+use libp2p::{
+    core::connection::{ConnectedPoint, ConnectionError, ConnectionLimit, PendingConnectionError},
+    swarm::SwarmEvent,
+    Multiaddr, PeerId, TransportError,
+};
 use serde::{de::DeserializeOwned, Serialize};
-use std::fmt;
+use std::{convert::TryFrom, fmt, io, num::NonZeroU32};
 
 pub trait RqRsMessage: Serialize + DeserializeOwned + Send + Sync + 'static {}
 impl<T: Serialize + DeserializeOwned + Send + Sync + 'static> RqRsMessage for T {}
@@ -43,81 +46,11 @@ pub struct Query<T, U> {
 pub type RequestMessage<Rq, Rs> = Query<Rq, Rs>;
 
 #[derive(Debug)]
-pub enum BehaviourEvent<Rq, Rs> {
-    ReceiveRequest {
-        peer: PeerId,
-        request_id: RequestId,
-        request: RequestMessage<Rq, Rs>,
-    },
-    ReceiveResponse {
-        request_id: RequestId,
-        peer: PeerId,
-        result: Result<(), RecvResponseErr>,
-    },
+pub struct ReceiveRequest<Rq, Rs> {
+    pub peer: PeerId,
+    pub request_id: RequestId,
+    pub request: RequestMessage<Rq, Rs>,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RecvResponseErr {
-    Timeout,
-    DialFailure,
-    ConnectionClosed,
-    RecvResponseOmission,
-    UnsupportedProtocols,
-    NotPermitted,
-    FirewallPermissionChannelClosed,
-}
-
-impl fmt::Display for RecvResponseErr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RecvResponseErr::Timeout => write!(f, "Timeout while waiting for a response"),
-            RecvResponseErr::ConnectionClosed => write!(f, "Connection was closed before a response was received"),
-            RecvResponseErr::UnsupportedProtocols => {
-                write!(f, "The remote supports none of the requested protocols")
-            }
-            RecvResponseErr::RecvResponseOmission => write!(
-                f,
-                "The response channel was dropped before receiving a response from the remote"
-            ),
-            RecvResponseErr::NotPermitted => write!(f, "The firewall blocked the outbound request"),
-            RecvResponseErr::DialFailure => write!(f, "Failed to dial the requested peer"),
-            RecvResponseErr::FirewallPermissionChannelClosed => {
-                write!(f, "The channel to ask for permission for requests has closed.")
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RecvRequestErr {
-    Timeout,
-    UnsupportedProtocols,
-    NotPermitted,
-    ConnectionClosed,
-    FirewallPermissionChannelClosed,
-}
-
-impl fmt::Display for RecvRequestErr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RecvRequestErr::Timeout => write!(f, "Timeout while receiving request"),
-            RecvRequestErr::UnsupportedProtocols => write!(
-                f,
-                "The local peer supports none of the protocols requested by the remote"
-            ),
-            RecvRequestErr::NotPermitted => write!(f, "The firewall blocked the inbound request"),
-            RecvRequestErr::ConnectionClosed => {
-                write!(f, "The connection closed directly after the request was received")
-            }
-            RecvRequestErr::FirewallPermissionChannelClosed => {
-                write!(f, "The channel to ask for permission for requests has closed.")
-            }
-        }
-    }
-}
-
-impl std::error::Error for RecvResponseErr {}
-impl std::error::Error for RecvRequestErr {}
 
 #[derive(Debug)]
 pub struct ResponseReceiver<U> {
@@ -141,58 +74,226 @@ impl RequestDirection {
     }
 }
 
-#[doc(hidden)]
 #[derive(Debug)]
-pub enum HandlerInEvent<Rq, Rs>
-where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
-{
-    SendRequest {
+pub enum NetworkEvents {
+    InboundFailure {
         request_id: RequestId,
-        request: RequestMessage<Rq, Rs>,
+        peer: PeerId,
+        failure: InboundFailure,
     },
-    SetFirewallRules(FirewallRules),
+    OutboundFailure {
+        request_id: RequestId,
+        peer: PeerId,
+        failure: OutboundFailure,
+    },
+    ConnectionEstablished {
+        peer: PeerId,
+        endpoint: ConnectedPoint,
+        num_established: NonZeroU32,
+    },
+    ConnectionClosed {
+        peer: PeerId,
+        endpoint: ConnectedPoint,
+        num_established: u32,
+        cause: Option<io::Error>,
+    },
+    IncomingConnectionError {
+        local_addr: Multiaddr,
+        send_back_addr: Multiaddr,
+        error: ConnectionErr,
+    },
+    ExpiredListenAddr(Multiaddr),
+    ListenerClosed {
+        addresses: Vec<Multiaddr>,
+        cause: Option<io::Error>,
+    },
+    ListenerError {
+        error: io::Error,
+    },
 }
 
-#[doc(hidden)]
-#[derive(Debug)]
-pub enum HandlerOutEvent<Rq, Rs>
-where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
-{
-    ReceivedRequest {
-        request_id: RequestId,
-        request: RequestMessage<Rq, Rs>,
-    },
-    SentResponse(RequestId),
-    SendResponseOmission(RequestId),
-    InboundTimeout(RequestId),
-    InboundUnsupportedProtocols(RequestId),
+pub(crate) type SwarmEv<Rq, Rs, THandleErr> = SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>;
 
-    ReceivedResponse(RequestId),
-    RecvResponseOmission(RequestId),
-    OutboundTimeout(RequestId),
-    OutboundUnsupportedProtocols(RequestId),
-}
-
-impl<Rq, Rs> HandlerOutEvent<Rq, Rs>
-where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
-{
-    pub fn request_id(&self) -> &RequestId {
-        match self {
-            HandlerOutEvent::ReceivedRequest { request_id, .. } => request_id,
-            HandlerOutEvent::SentResponse(request_id)
-            | HandlerOutEvent::SendResponseOmission(request_id)
-            | HandlerOutEvent::InboundTimeout(request_id)
-            | HandlerOutEvent::InboundUnsupportedProtocols(request_id)
-            | HandlerOutEvent::ReceivedResponse(request_id)
-            | HandlerOutEvent::RecvResponseOmission(request_id)
-            | HandlerOutEvent::OutboundTimeout(request_id)
-            | HandlerOutEvent::OutboundUnsupportedProtocols(request_id) => request_id,
+impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THandleErr>> for NetworkEvents {
+    type Error = ();
+    fn try_from(value: SwarmEv<Rq, Rs, THandleErr>) -> Result<Self, Self::Error> {
+        match value {
+            SwarmEvent::Behaviour(ev) => match ev {
+                BehaviourEvent::Request(_) => Err(()),
+                BehaviourEvent::OutboundFailure {
+                    request_id,
+                    peer,
+                    failure,
+                } => Ok(NetworkEvents::OutboundFailure {
+                    request_id,
+                    peer,
+                    failure,
+                }),
+                BehaviourEvent::InboundFailure {
+                    request_id,
+                    peer,
+                    failure,
+                } => Ok(NetworkEvents::InboundFailure {
+                    request_id,
+                    peer,
+                    failure,
+                }),
+            },
+            SwarmEvent::ConnectionEstablished {
+                peer_id,
+                endpoint,
+                num_established,
+            } => Ok(NetworkEvents::ConnectionEstablished {
+                peer: peer_id,
+                num_established,
+                endpoint,
+            }),
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                endpoint,
+                num_established,
+                cause,
+            } => {
+                let cause = match cause {
+                    Some(ConnectionError::IO(e)) => Some(e),
+                    _ => None,
+                };
+                Ok(NetworkEvents::ConnectionClosed {
+                    peer: peer_id,
+                    num_established,
+                    endpoint,
+                    cause,
+                })
+            }
+            SwarmEvent::IncomingConnectionError {
+                local_addr,
+                send_back_addr,
+                error,
+            } => Ok(NetworkEvents::IncomingConnectionError {
+                local_addr,
+                send_back_addr,
+                error: error.into(),
+            }),
+            SwarmEvent::ExpiredListenAddr(addr) => Ok(NetworkEvents::ExpiredListenAddr(addr)),
+            SwarmEvent::ListenerClosed { addresses, reason } => {
+                let cause = match reason {
+                    Ok(()) => None,
+                    Err(e) => Some(e),
+                };
+                Ok(NetworkEvents::ListenerClosed { addresses, cause })
+            }
+            SwarmEvent::ListenerError { error } => Ok(NetworkEvents::ListenerError { error }),
+            _ => Err(()),
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OutboundFailure {
+    Timeout,
+    DialFailure,
+    ConnectionClosed,
+    RecvResponseOmission,
+    UnsupportedProtocols,
+    NotPermitted,
+}
+
+impl fmt::Display for OutboundFailure {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OutboundFailure::Timeout => write!(f, "Timeout while waiting for a response"),
+            OutboundFailure::ConnectionClosed => write!(f, "Connection was closed before a response was received"),
+            OutboundFailure::UnsupportedProtocols => {
+                write!(f, "The remote supports none of the requested protocols")
+            }
+            OutboundFailure::RecvResponseOmission => write!(
+                f,
+                "The response channel was dropped before receiving a response from the remote"
+            ),
+            OutboundFailure::NotPermitted => write!(f, "The firewall blocked the outbound request"),
+            OutboundFailure::DialFailure => write!(f, "Failed to dial the requested peer"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InboundFailure {
+    Timeout,
+    NotPermitted,
+    ConnectionClosed,
+}
+
+impl fmt::Display for InboundFailure {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InboundFailure::Timeout => write!(f, "Timeout while receiving request"),
+            InboundFailure::NotPermitted => write!(f, "The firewall blocked the inbound request"),
+            InboundFailure::ConnectionClosed => {
+                write!(f, "The connection closed directly after the request was received")
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ConnectionErr {
+    Io(io::Error),
+    InvalidPeerId,
+    MultiaddrNotSupported(Multiaddr),
+    ConnectionLimit { limit: u32, current: u32 },
+}
+
+impl fmt::Display for ConnectionErr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ConnectionErr::Io(err) => write!(f, "Pending connection: I/O error: {}", err),
+            ConnectionErr::InvalidPeerId => write!(f, "Pending connection: Invalid peer ID."),
+            ConnectionErr::ConnectionLimit { current, limit } => {
+                write!(f, "Connection error: Connection limit: {}/{}.", current, limit)
+            }
+            ConnectionErr::MultiaddrNotSupported(a) => write!(
+                f,
+                "Pending connection: Transport error: Multiaddr is not supported: {}",
+                a
+            ),
+        }
+    }
+}
+
+impl From<PendingConnectionError<io::Error>> for ConnectionErr {
+    fn from(value: PendingConnectionError<io::Error>) -> Self {
+        match value {
+            PendingConnectionError::Transport(TransportError::Other(e)) | PendingConnectionError::IO(e) => {
+                ConnectionErr::Io(e)
+            }
+            PendingConnectionError::InvalidPeerId => ConnectionErr::InvalidPeerId,
+            PendingConnectionError::ConnectionLimit(ConnectionLimit { limit, current }) => {
+                ConnectionErr::ConnectionLimit { limit, current }
+            }
+            PendingConnectionError::Transport(TransportError::MultiaddrNotSupported(a)) => {
+                ConnectionErr::MultiaddrNotSupported(a)
+            }
+        }
+    }
+}
+
+impl std::error::Error for OutboundFailure {}
+impl std::error::Error for InboundFailure {}
+impl std::error::Error for ConnectionErr {}
+
+#[derive(Debug)]
+pub enum BehaviourEvent<Rq, Rs> {
+    Request(ReceiveRequest<Rq, Rs>),
+    InboundFailure {
+        request_id: RequestId,
+        peer: PeerId,
+        failure: InboundFailure,
+    },
+    OutboundFailure {
+        request_id: RequestId,
+        peer: PeerId,
+        failure: OutboundFailure,
+    },
+}
+
+impl<Rq, Rs> Unpin for BehaviourEvent<Rq, Rs> {}

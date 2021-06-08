@@ -3,16 +3,12 @@
 
 // mod swarm;
 use crate::{
-    behaviour::{assemble_relayed_addr, NetBehaviour, NetBehaviourConfig},
+    behaviour::{assemble_relayed_addr, BehaviourEvent, NetBehaviour, NetBehaviourConfig},
     firewall::{FirewallRequest, FirewallRules, Rule, RuleDirection, ToPermissionVariants, VariantPermission},
-    libp2p::Keypair,
-    BehaviourEvent, RequestMessage, ResponseReceiver, RqRsMessage,
+    Keypair, NetworkEvents, ReceiveRequest, ResponseReceiver, RqRsMessage,
 };
-use async_std::{
-    future::poll_fn,
-    task::{self, Context, JoinHandle, Poll},
-};
-use futures::{channel::mpsc::Sender, StreamExt};
+use async_std::task::{self, Context};
+use futures::{channel::mpsc::Sender, future::poll_fn, FutureExt};
 use libp2p::{
     core::{connection::ListenerId, transport::Transport, upgrade, Multiaddr, PeerId},
     mdns::{Mdns, MdnsConfig},
@@ -25,7 +21,10 @@ use libp2p::{
 use smallvec::{smallvec, SmallVec};
 use std::{
     collections::HashMap,
+    convert::TryFrom,
+    fmt::Debug,
     sync::{Arc, Mutex},
+    thread,
 };
 
 pub struct Listener {
@@ -35,27 +34,28 @@ pub struct Listener {
 
 pub struct ShCommunication<Rq, Rs, P>
 where
-    Rq: RqRsMessage + ToPermissionVariants<P>,
-    Rs: RqRsMessage,
+    Rq: Debug + RqRsMessage + ToPermissionVariants<P>,
+    Rs: Debug + RqRsMessage,
     P: VariantPermission,
 {
-    task_handle: JoinHandle<()>,
     swarm: Arc<Mutex<Swarm<NetBehaviour<Rq, Rs, P>>>>,
     listeners: HashMap<ListenerId, Listener>,
-    request_chan: Sender<RequestMessage<Rq, Rs>>,
+    request_chan: Sender<ReceiveRequest<Rq, Rs>>,
+    net_events_chan: Option<Sender<NetworkEvents>>,
 }
 
 impl<Rq, Rs, P> ShCommunication<Rq, Rs, P>
 where
-    Rq: RqRsMessage + ToPermissionVariants<P>,
-    Rs: RqRsMessage,
+    Rq: Debug + RqRsMessage + ToPermissionVariants<P>,
+    Rs: Debug + RqRsMessage,
     P: VariantPermission,
 {
     pub async fn new(
         keypair: Keypair,
         config: NetBehaviourConfig,
         ask_firewall_chan: Sender<FirewallRequest<P>>,
-        inbound_req_chan: Sender<RequestMessage<Rq, Rs>>,
+        inbound_req_chan: Sender<ReceiveRequest<Rq, Rs>>,
+        net_events_chan: Option<Sender<NetworkEvents>>,
     ) -> Self {
         let peer = keypair.public().into_peer_id();
         let noise_keys = NoiseKeypair::<X25519Spec>::new().into_authentic(&keypair).unwrap();
@@ -72,28 +72,32 @@ where
         let behaviour = NetBehaviour::new(config, mdns, relay_behaviour, ask_firewall_chan);
         let swarm = Swarm::new(transport, behaviour, peer);
 
-        let swarm_mutex = Arc::new(Mutex::new(swarm));
-        let task_handle = task::spawn(Self::run(Arc::clone(&swarm_mutex), inbound_req_chan.clone()));
+        let swarm_rw_lock = Arc::new(Mutex::new(swarm));
+        let rw_lock_clone = Arc::clone(&swarm_rw_lock);
+        let inbound_req_chan_clone = inbound_req_chan.clone();
+        let net_events_chan_clone = net_events_chan.clone();
+
+        thread::spawn(move || Self::run(rw_lock_clone, inbound_req_chan_clone, net_events_chan_clone));
 
         ShCommunication {
-            task_handle,
-            swarm: swarm_mutex,
+            swarm: swarm_rw_lock,
             listeners: HashMap::new(),
             request_chan: inbound_req_chan,
+            net_events_chan,
         }
     }
 
-    pub async fn shutdown(mut self) {
-        self.task_handle.cancel().await;
-        self.request_chan.close_channel();
-    }
+    // pub async fn shutdown(mut self) {
+    // self.task_handle.cancel().await;
+    // self.request_chan.close_channel();
+    // }
 
-    pub fn get_peer_id(&mut self) -> PeerId {
+    pub fn get_peer_id(&self) -> PeerId {
         let swarm = self.swarm.lock().unwrap();
         *swarm.local_peer_id()
     }
 
-    pub fn send_request(&mut self, peer: PeerId, request: Rq) -> ResponseReceiver<Rs> {
+    pub fn send_request(&self, peer: PeerId, request: Rq) -> ResponseReceiver<Rs> {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().send_request(peer, request)
     }
@@ -104,10 +108,6 @@ where
         let listener_id = swarm.listen_on(a).map_err(|_| ())?;
         loop {
             match swarm.next_event().await {
-                SwarmEvent::Behaviour(event) => {
-                    let req_chanel = self.request_chan.clone();
-                    Self::handle_behavior_event(req_chanel, event);
-                }
                 SwarmEvent::NewListenAddr(addr) => {
                     let listener = Listener {
                         addrs: smallvec![addr.clone()],
@@ -116,7 +116,7 @@ where
                     self.listeners.insert(listener_id, listener);
                     return Ok(addr);
                 }
-                _ => {}
+                other => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), other),
             }
         }
     }
@@ -130,22 +130,14 @@ where
         if !swarm.is_connected(&relay) {
             loop {
                 match swarm.next_event().await {
-                    SwarmEvent::Behaviour(event) => {
-                        let req_chanel = self.request_chan.clone();
-                        Self::handle_behavior_event(req_chanel, event);
-                    }
                     SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == relay => break,
                     SwarmEvent::UnreachableAddr { peer_id, .. } if peer_id == relay => return Err(()),
-                    _ => {}
+                    other => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), other),
                 }
             }
         }
         loop {
             match swarm.next_event().await {
-                SwarmEvent::Behaviour(event) => {
-                    let req_chanel = self.request_chan.clone();
-                    Self::handle_behavior_event(req_chanel, event);
-                }
                 SwarmEvent::NewListenAddr(addr) if addr == relayed_addr => {
                     let listener = Listener {
                         addrs: smallvec![addr.clone()],
@@ -154,7 +146,7 @@ where
                     self.listeners.insert(listener_id, listener);
                     return Ok(addr);
                 }
-                _ => {}
+                other => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), other),
             }
         }
     }
@@ -194,15 +186,11 @@ where
         }
     }
 
-    pub async fn dial_peer(&mut self, peer: &PeerId) -> Result<(), DialError> {
+    pub async fn dial_peer(&self, peer: &PeerId) -> Result<(), DialError> {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.dial(peer)?;
         loop {
             match swarm.next_event().await {
-                SwarmEvent::Behaviour(event) => {
-                    let req_chanel = self.request_chan.clone();
-                    Self::handle_behavior_event(req_chanel, event);
-                }
                 SwarmEvent::ConnectionEstablished { peer_id, .. } if &peer_id == peer => return Ok(()),
                 SwarmEvent::UnreachableAddr {
                     peer_id,
@@ -210,111 +198,129 @@ where
                     address,
                     ..
                 } if &peer_id == peer => return Err(DialError::InvalidAddress(address)),
-                _ => {}
+                other => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), other),
             }
         }
     }
 
-    pub fn set_firewall_default(&mut self, direction: RuleDirection, default: Rule) {
+    pub fn set_firewall_default(&self, direction: RuleDirection, default: Rule) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().set_firewall_default(direction, default)
     }
 
-    pub fn get_firewall_default(&mut self) -> FirewallRules {
-        let mut swarm = self.swarm.lock().unwrap();
-        swarm.behaviour_mut().get_firewall_default().clone()
+    pub fn get_firewall_default(&self) -> FirewallRules {
+        let swarm = self.swarm.lock().unwrap();
+        swarm.behaviour().get_firewall_default().clone()
     }
 
-    pub fn remove_firewall_default(&mut self, direction: RuleDirection) {
+    pub fn remove_firewall_default(&self, direction: RuleDirection) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().remove_firewall_default(direction)
     }
 
-    pub fn get_peer_rules(&mut self, peer: &PeerId) -> Option<FirewallRules> {
-        let mut swarm = self.swarm.lock().unwrap();
-        swarm.behaviour_mut().get_peer_rules(peer).cloned()
+    pub fn get_peer_rules(&self, peer: &PeerId) -> Option<FirewallRules> {
+        let swarm = self.swarm.lock().unwrap();
+        swarm.behaviour().get_peer_rules(peer).cloned()
     }
 
-    pub fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule) {
+    pub fn set_peer_rule(&self, peer: PeerId, direction: RuleDirection, rule: Rule) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().set_peer_rule(peer, direction, rule)
     }
 
-    pub fn remove_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
+    pub fn remove_peer_rule(&self, peer: PeerId, direction: RuleDirection) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().remove_peer_rule(peer, direction)
     }
 
-    pub fn add_address(&mut self, peer: PeerId, address: Multiaddr) {
+    pub fn add_address(&self, peer: PeerId, address: Multiaddr) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().add_address(peer, address)
     }
 
-    pub fn remove_address(&mut self, peer: &PeerId, address: &Multiaddr) {
+    pub fn remove_address(&self, peer: &PeerId, address: &Multiaddr) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().remove_address(peer, address)
     }
 
     pub fn get_relay_addr(&self, relay: &PeerId) -> Option<Multiaddr> {
-        let mut swarm = self.swarm.lock().unwrap();
-        swarm.behaviour_mut().get_relay_addr(relay)
+        let swarm = self.swarm.lock().unwrap();
+        swarm.behaviour().get_relay_addr(relay)
     }
 
-    pub fn add_dialing_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
+    pub fn add_dialing_relay(&self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().add_dialing_relay(peer, address)
     }
 
-    pub fn remove_dialing_relay(&mut self, peer: &PeerId) {
+    pub fn remove_dialing_relay(&self, peer: &PeerId) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().remove_dialing_relay(peer)
     }
 
-    pub fn set_dialing_not_use_relay(&mut self, peer: PeerId) {
+    pub fn set_dialing_not_use_relay(&self, peer: PeerId) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().set_not_use_relay(peer)
     }
 
-    pub fn set_dialing_use_relay(&mut self, peer: PeerId, relay: PeerId) -> Option<Multiaddr> {
+    pub fn set_dialing_use_relay(&self, peer: PeerId, relay: PeerId) -> Option<Multiaddr> {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().set_use_relay(peer, relay)
     }
 
-    pub fn ban_peer(&mut self, peer: PeerId) {
+    pub fn ban_peer(&self, peer: PeerId) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.ban_peer_id(peer);
     }
 
-    pub fn unban_peer(&mut self, peer: PeerId) {
+    pub fn unban_peer(&self, peer: PeerId) {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.unban_peer_id(peer);
     }
 
-    fn handle_behavior_event(mut request_channel: Sender<RequestMessage<Rq, Rs>>, event: BehaviourEvent<Rq, Rs>) {
-        if let BehaviourEvent::ReceiveRequest { request, .. } = event {
-            task::spawn(async move {
-                let _ = poll_fn(|cx: &mut Context| request_channel.poll_ready(cx)).await;
-                let _ = request_channel.start_send(request);
-            });
+    pub fn is_connected(&self, peer: &PeerId) -> bool {
+        let swarm = self.swarm.lock().unwrap();
+        swarm.is_connected(peer)
+    }
+
+    fn handle_swarm_event<THandleErr>(
+        mut request_channel: Sender<ReceiveRequest<Rq, Rs>>,
+        net_events_chan: Option<Sender<NetworkEvents>>,
+        event: SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>,
+    ) {
+        match event {
+            SwarmEvent::Behaviour(BehaviourEvent::Request(r)) => {
+                task::spawn(async move {
+                    let _ = poll_fn(|cx: &mut Context| request_channel.poll_ready(cx))
+                        .await
+                        .unwrap();
+                    let _ = request_channel.start_send(r);
+                });
+            }
+            other => {
+                if let Ok(ev) = NetworkEvents::try_from(other) {
+                    if let Some(mut channel) = net_events_chan {
+                        task::spawn(async move {
+                            let _ = poll_fn(|cx: &mut Context| channel.poll_ready(cx)).await;
+                            let _ = channel.start_send(ev);
+                        });
+                    }
+                }
+            }
         }
     }
 
-    async fn run(
+    fn run(
         swarm_mutex: Arc<Mutex<Swarm<NetBehaviour<Rq, Rs, P>>>>,
-        request_channel: Sender<RequestMessage<Rq, Rs>>,
+        request_channel: Sender<ReceiveRequest<Rq, Rs>>,
+        net_events_chan: Option<Sender<NetworkEvents>>,
     ) {
-        poll_fn(move |cx: &mut Context| {
-            let mut swarm = swarm_mutex.lock().unwrap();
-            match swarm.poll_next_unpin(cx) {
-                Poll::Ready(Some(event)) => {
-                    let req_chanel = request_channel.clone();
-                    Self::handle_behavior_event(req_chanel, event);
+        loop {
+            if let Ok(mut swarm) = swarm_mutex.lock() {
+                if let Some(event) = swarm.next_event().now_or_never() {
+                    Self::handle_swarm_event(request_channel.clone(), net_events_chan.clone(), event);
                 }
-                Poll::Ready(None) => return Poll::Ready(()),
-                _ => {}
             }
-            Poll::Pending
-        })
-        .await
+        }
     }
 }

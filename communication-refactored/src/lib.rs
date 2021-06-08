@@ -2,12 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod behaviour;
-pub use behaviour::{firewall, types::*, NetBehaviourConfig};
-pub mod libp2p {
+mod libp2p_reexport {
     pub use libp2p::{identity::Keypair, Multiaddr, PeerId};
 }
+pub use libp2p_reexport::*;
 mod interface;
-pub use interface::*;
+pub use behaviour::{
+    firewall,
+    types::{
+        ConnectionErr, InboundFailure, NetworkEvents, OutboundFailure, ReceiveRequest, RequestDirection, RequestId,
+        RequestMessage, ResponseReceiver, RqRsMessage,
+    },
+    CommunicationProtocol, NetBehaviourConfig,
+};
+pub use interface::{Listener, ShCommunication};
 
 #[macro_export]
 macro_rules! unwrap_or_return (

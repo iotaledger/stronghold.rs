@@ -37,17 +37,69 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[doc(hidden)]
-pub type ProtocolsHandlerEventType<Rq, Rs> = ProtocolsHandlerEvent<
+type ProtocolsHandlerEventType<Rq, Rs> = ProtocolsHandlerEvent<
     RequestProtocol<Rq, Rs>,
     RequestId,
     <ConnectionHandler<Rq, Rs> as ProtocolsHandler>::OutEvent,
     <ConnectionHandler<Rq, Rs> as ProtocolsHandler>::Error,
 >;
-pub type PendingInboundFuture<Rq, Rs> =
-    BoxFuture<'static, Result<(RequestId, RequestMessage<Rq, Rs>), oneshot::Canceled>>;
 
-#[doc(hidden)]
+type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, RequestMessage<Rq, Rs>), oneshot::Canceled>>;
+
+#[derive(Debug)]
+pub enum HandlerInEvent<Rq, Rs>
+where
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
+{
+    SendRequest {
+        request_id: RequestId,
+        request: RequestMessage<Rq, Rs>,
+    },
+    SetFirewallRules(FirewallRules),
+}
+
+#[derive(Debug)]
+pub enum HandlerOutEvent<Rq, Rs>
+where
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
+{
+    ReceivedRequest {
+        request_id: RequestId,
+        request: RequestMessage<Rq, Rs>,
+    },
+    SentResponse(RequestId),
+    SendResponseOmission(RequestId),
+    InboundTimeout(RequestId),
+    InboundUnsupportedProtocols(RequestId),
+
+    ReceivedResponse(RequestId),
+    RecvResponseOmission(RequestId),
+    OutboundTimeout(RequestId),
+    OutboundUnsupportedProtocols(RequestId),
+}
+
+impl<Rq, Rs> HandlerOutEvent<Rq, Rs>
+where
+    Rq: RqRsMessage,
+    Rs: RqRsMessage,
+{
+    pub fn request_id(&self) -> &RequestId {
+        match self {
+            HandlerOutEvent::ReceivedRequest { request_id, .. } => request_id,
+            HandlerOutEvent::SentResponse(request_id)
+            | HandlerOutEvent::SendResponseOmission(request_id)
+            | HandlerOutEvent::InboundTimeout(request_id)
+            | HandlerOutEvent::InboundUnsupportedProtocols(request_id)
+            | HandlerOutEvent::ReceivedResponse(request_id)
+            | HandlerOutEvent::RecvResponseOmission(request_id)
+            | HandlerOutEvent::OutboundTimeout(request_id)
+            | HandlerOutEvent::OutboundUnsupportedProtocols(request_id) => request_id,
+        }
+    }
+}
+
 pub struct ConnectionHandler<Rq, Rs>
 where
     Rq: RqRsMessage,
