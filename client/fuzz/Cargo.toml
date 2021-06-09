@@ -18,6 +18,9 @@ path = "../"
 version = "0.4"
 features = ["communication"]
 
+[dependencies.redis]
+version = "0.20.1"
+
 [dependencies.tokio]
 version = "1.6"
 features = ["full"]
@@ -25,6 +28,12 @@ features = ["full"]
 [dependencies.iota-crypto]
 version = "0.5.0"
 features = [ "random", "chacha" ]
+
+[dependencies.log]
+version = "0.4.0"
+
+[dev-dependencies.uuid]
+version = "0.8"
 
 [profile.release]
 overflow-checks = true
@@ -36,6 +45,15 @@ panic = "abort"
 
 [workspace]
 
+[build-dependencies.iota_stronghold]
+path = "../"
+version = "0.4"
+features = ["communication"]
+
 [[bin]]
 name = "listen"
 path = "src/listen.rs"
+
+[[bin]]
+name = "comms"
+path = "src/comms.rs"

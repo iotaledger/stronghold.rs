@@ -52,7 +52,7 @@ pub use crate::actors::SHRequestPermission;
 #[cfg(feature = "communication")]
 pub use communication::{
     actor::RelayDirection,
-    libp2p::{Multiaddr, PeerId},
+    libp2p::{Keypair, Multiaddr, PeerId},
 };
 
 pub use engine::snapshot::{

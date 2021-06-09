@@ -503,14 +503,13 @@ impl Stronghold {
 
 #[cfg(feature = "communication")]
 impl Stronghold {
-    /// Spawn the communication actor and swarm.
+    /// Spawn the communication actor and swarm with a pre-existing keypair
     /// Per default, the firewall allows all outgoing, and reject all incoming requests.
-    pub fn spawn_communication(&mut self) -> StatusMessage {
+    pub fn spawn_communication_with_keypair(&mut self, keypair: Keypair) -> StatusMessage {
         if self.communication_actor.is_some() {
             return StatusMessage::Error(String::from("Communication was already spawned"));
         }
 
-        let local_keys = Keypair::generate_ed25519();
         let behaviour_config = BehaviourConfig::default();
         let actor_config = CommunicationActorConfig {
             client: self.target.clone(),
@@ -522,11 +521,17 @@ impl Stronghold {
             .system
             .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>(
                 "communication",
-                (local_keys, actor_config, behaviour_config),
+                (keypair, actor_config, behaviour_config),
             )
             .expect(line_error!());
         self.communication_actor = Some(communication_actor);
         StatusMessage::OK
+    }
+
+    /// Spawn the communication actor and swarm.
+    /// Per default, the firewall allows all outgoing, and reject all incoming requests.
+    pub fn spawn_communication(&mut self) -> StatusMessage {
+        return self.spawn_communication_with_keypair(Keypair::generate_ed25519());
     }
 
     /// Gracefully stop the communication actor and swarm
