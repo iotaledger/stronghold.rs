@@ -54,10 +54,7 @@ impl Client {
 
     /// Attempts to read the data from the store.  Returns `Some(Vec<u8>)` if the key exists and `None` if it doesn't.
     pub fn read_from_store(&mut self, key: Vec<u8>) -> Option<Vec<u8>> {
-        match self.store.get(&key) {
-            Some(v) => Some(v.to_vec()),
-            _ => None,
-        }
+        self.store.get(&key).map(|v| v.to_vec())
     }
 
     /// Deletes an item from the store by the given key.

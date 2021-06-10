@@ -20,15 +20,12 @@ impl ResultMessage<()> {
 impl<T> ResultMessage<T> {
     /// Returns true, if the [`ResultMessage`] contains an `Ok` value
     pub fn is_ok(&self) -> bool {
-        return match self {
-            ResultMessage::Ok(_) => true,
-            _ => false,
-        };
+        matches!(self, ResultMessage::Ok(_))
     }
 
     /// Returns true, if the [`ResultMessage`] contains an `Error`
     pub fn is_err(&self) -> bool {
-        return !self.is_ok();
+        !self.is_ok()
     }
 }
 

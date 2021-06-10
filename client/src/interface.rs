@@ -386,11 +386,7 @@ impl Stronghold {
     ) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
 
-        let former_cid = if let Some(cp) = former_client_path {
-            Some(ClientId::load_from_path(&cp, &cp).expect(line_error!()))
-        } else {
-            None
-        };
+        let former_cid = former_client_path.map(|cp| ClientId::load_from_path(&cp, &cp).expect(line_error!()));
 
         let mut key: [u8; 32] = [0u8; 32];
 
@@ -531,7 +527,7 @@ impl Stronghold {
     /// Spawn the communication actor and swarm.
     /// Per default, the firewall allows all outgoing, and reject all incoming requests.
     pub fn spawn_communication(&mut self) -> StatusMessage {
-        return self.spawn_communication_with_keypair(Keypair::generate_ed25519());
+        self.spawn_communication_with_keypair(Keypair::generate_ed25519())
     }
 
     /// Gracefully stop the communication actor and swarm
