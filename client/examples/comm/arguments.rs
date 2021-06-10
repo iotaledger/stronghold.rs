@@ -20,15 +20,6 @@ pub struct ExampleApp {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     #[cfg(feature = "communication")]
-    #[clap(alias = "relay", about = "Relay traffic to a peer.")]
-    Relay {
-        #[clap(long, short = 'p', required = true)]
-        path: String,
-
-        #[clap(long, short = 'i', required = true)]
-        id: String,
-    },
-    #[cfg(feature = "communication")]
     #[clap(alias = "peers", about = "Lists all peers.")]
     Peers {},
 

@@ -122,10 +122,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match app.cmds {
         #[cfg(feature = "communication")]
-        Commands::Relay { .. } => {
-            todo!()
-        }
-        #[cfg(feature = "communication")]
         Commands::Peers {} => list_peers_command(&mut stronghold),
 
         #[cfg(feature = "communication")]
