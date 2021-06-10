@@ -5,7 +5,7 @@
 
 #![no_main]
 
-use iota::{Location, Multiaddr, PeerId, ResultMessage};
+use iota::{Location, Multiaddr, PeerId, ProcResult, RecordHint, ResultMessage};
 use iota_stronghold as iota;
 use libfuzzer_sys::fuzz_target;
 use log::*;
@@ -52,8 +52,6 @@ fuzz_target!(|data: &[u8]| {
     runtime.block_on(async {
         match read_infos(200).await {
             Ok((peer_id, addr)) => {
-                // println("Got Peer: {}, multiaddr: {}", peer_id, addr);
-
                 // 1. Fuzz Write To Store
                 let vid = b"storepath_0";
                 let rid = b"recordpath_0";
@@ -95,10 +93,94 @@ fuzz_target!(|data: &[u8]| {
                 assert_eq!(result, data.to_vec());
 
                 // 2. Fuzz Storage Location
+                info!("Write fuzzed storage location");
+                let payload = b"unfuzzed".to_vec();
 
-                // 3. Fuzz Records Id
+                stronghold
+                    .write_to_remote_store(
+                        peer_id,
+                        Generic {
+                            vault_path: data.to_vec(),
+                            record_path: data.to_vec(),
+                        },
+                        payload.clone(),
+                        None,
+                    )
+                    .await;
 
-                // 4. Fuzz Storage Location, Records Id, Payload
+                info!("Read fuzzed storage location");
+
+                let (result, _) = stronghold
+                    .read_from_remote_store(
+                        peer_id,
+                        Generic {
+                            vault_path: data.to_vec(),
+                            record_path: data.to_vec(),
+                        },
+                    )
+                    .await;
+
+                assert_eq!(result, payload);
+
+                // 3. Fuzz Remote Procedure Calls
+                info!("Fuzz Remote Procedure Calls: BIP39");
+                let result = stronghold
+                    .remote_runtime_exec(
+                        peer_id,
+                        iota::Procedure::BIP39Generate {
+                            hint: RecordHint::new(b"hint").unwrap(),
+                            output: Generic {
+                                vault_path: data.to_vec(),
+                                record_path: data.to_vec(),
+                            },
+                            passphrase: Some("test_pwd".to_string()),
+                        },
+                    )
+                    .await;
+
+                match result {
+                    ProcResult::BIP39Generate(msg) => {
+                        assert!(msg.is_ok());
+                    }
+                    _ => {}
+                };
+
+                info!("Fuzz Remote Procedure Calls: SLIP10Generator");
+                let result = stronghold
+                    .remote_runtime_exec(
+                        peer_id,
+                        iota::Procedure::SLIP10Generate {
+                            hint: RecordHint::new(b"hint").unwrap(),
+                            output: Generic {
+                                vault_path: data.to_vec(),
+                                record_path: data.to_vec(),
+                            },
+                            size_bytes: Some(64),
+                        },
+                    )
+                    .await;
+
+                match result {
+                    ProcResult::SLIP10Generate(msg) => {
+                        assert!(msg.is_ok());
+                    }
+                    _ => {}
+                };
+
+                // 4. Fuzz write into vault
+                info!("Fuzzed Write Into Remote Vault");
+                stronghold
+                    .write_remote_vault(
+                        peer_id,
+                        Generic {
+                            record_path: b"record_path".to_vec(),
+                            vault_path: b"vault_path".to_vec(),
+                        },
+                        payload,
+                        RecordHint::new(b"record_hint").unwrap(),
+                        vec![],
+                    )
+                    .await;
             }
             Err(e) => {
                 error!("{}", e);

@@ -6,6 +6,7 @@ WORKDIR /fuzz
 
 ARG build_target
 ARG artifact_name
+ENV artifact_name=${artifact_name}
 ADD ./target/${build_target}/${artifact_name} /fuzz/${artifact_name}
 
-CMD ["/fuzz/${artifact_name}"]
+CMD /fuzz/${artifact_name}
