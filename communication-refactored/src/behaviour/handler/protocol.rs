@@ -13,7 +13,7 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
-use super::{RequestMessage, RqRsMessage};
+use crate::{RequestMessage, RqRsMessage};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use libp2p::{
     core::{

@@ -14,7 +14,8 @@
 // all copies or substantial portions of the Software.
 
 mod protocol;
-use super::{firewall::FirewallRules, types::*, EMPTY_QUEUE_SHRINK_THRESHOLD};
+use super::EMPTY_QUEUE_SHRINK_THRESHOLD;
+use crate::{firewall::FirewallRules, RequestId, RequestMessage, RqRsMessage};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},

@@ -1,13 +1,15 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-// mod swarm;
+mod errors;
+mod types;
 use crate::{
     behaviour::{BehaviourEvent, NetBehaviour, NetBehaviourConfig},
     firewall::{FirewallRequest, FirewallRules, Rule, RuleDirection, ToPermissionVariants, VariantPermission},
-    Keypair, NetworkEvents, ReceiveRequest, ResponseReceiver, RqRsMessage,
+    Keypair,
 };
 use async_std::task::{self, Context};
+pub use errors::*;
 use futures::{
     channel::{mpsc::Sender, oneshot},
     future::poll_fn,
@@ -20,7 +22,7 @@ use libp2p::{
     multiaddr::Protocol,
     noise::{Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
     relay::{new_transport_and_behaviour, RelayConfig},
-    swarm::{DialError, NetworkBehaviour, Swarm, SwarmEvent},
+    swarm::{NetworkBehaviour, Swarm, SwarmEvent},
     tcp::TcpConfig,
     yamux::YamuxConfig,
 };
@@ -32,6 +34,7 @@ use std::{
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
 };
+pub use types::*;
 
 pub struct Listener {
     addrs: SmallVec<[Multiaddr; 6]>,
@@ -129,10 +132,10 @@ where
         swarm.behaviour_mut().send_request(peer, request)
     }
 
-    pub async fn start_listening(&mut self, address: Option<Multiaddr>) -> Result<Multiaddr, ()> {
+    pub async fn start_listening(&mut self, address: Option<Multiaddr>) -> Result<Multiaddr, TransportErr> {
         let mut swarm = self.swarm.lock().unwrap();
         let a = address.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."));
-        let listener_id = swarm.listen_on(a).map_err(|_| ())?;
+        let listener_id = swarm.listen_on(a).map_err(TransportErr::from)?;
         loop {
             let event = swarm.next_event().await;
             match event {
@@ -155,18 +158,18 @@ where
         &mut self,
         relay: PeerId,
         relay_addr: Option<Multiaddr>,
-    ) -> Result<Multiaddr, ()> {
+    ) -> Result<Multiaddr, ListenRelayErr> {
         if let Some(addr) = relay_addr {
             self.add_address(relay, addr);
         }
-        let relay_addr = self.dial_peer(&relay).await.map_err(|_| ())?;
+        let relay_addr = self.dial_peer(&relay).await.map_err(ListenRelayErr::from)?;
 
         let mut swarm = self.swarm.lock().unwrap();
         let local_id = *swarm.local_peer_id();
         let relayed_addr = relay_addr
             .with(Protocol::P2pCircuit)
             .with(Protocol::P2p(local_id.into()));
-        let listener_id = swarm.listen_on(relayed_addr.clone()).map_err(|_| ())?;
+        let listener_id = swarm.listen_on(relayed_addr.clone()).map_err(ListenRelayErr::from)?;
         loop {
             let event = swarm.next_event().await;
             match event {
@@ -220,9 +223,9 @@ where
         }
     }
 
-    pub async fn dial_peer(&self, peer: &PeerId) -> Result<Multiaddr, DialError> {
+    pub async fn dial_peer(&self, peer: &PeerId) -> Result<Multiaddr, DialErr> {
         let mut swarm = self.swarm.lock().unwrap();
-        swarm.dial(peer)?;
+        swarm.dial(peer).map_err(DialErr::from)?;
         loop {
             let event = swarm.next_event().await;
             match event {
@@ -238,7 +241,7 @@ where
                     attempts_remaining: 0,
                     address,
                     ..
-                } if &peer_id == peer => return Err(DialError::InvalidAddress(address)),
+                } if &peer_id == peer => return Err(DialErr::UnreachableAddr(address)),
                 _ => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), event),
             }
         }

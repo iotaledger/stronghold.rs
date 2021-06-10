@@ -20,9 +20,10 @@ pub mod firewall;
 mod handler;
 #[doc(hidden)]
 mod request_manager;
-#[doc(hidden)]
-pub mod types;
-use super::unwrap_or_return;
+use crate::{
+    unwrap_or_return, InboundFailure, OutboundFailure, ReceiveRequest, RequestDirection, RequestId, RequestMessage,
+    ResponseReceiver, RqRsMessage,
+};
 pub use addresses::assemble_relayed_addr;
 use addresses::AddressInfo;
 use firewall::{
@@ -40,7 +41,7 @@ use futures::{
     FutureExt, StreamExt, TryFutureExt,
 };
 pub use handler::CommunicationProtocol;
-pub(crate) use handler::{ConnectionHandler, HandlerInEvent, HandlerOutEvent};
+use handler::{ConnectionHandler, HandlerInEvent, HandlerOutEvent};
 use libp2p::{
     core::{
         connection::{ConnectionId, ListenerId},
@@ -63,8 +64,6 @@ use std::{
     sync::{atomic::AtomicU64, Arc},
     time::Duration,
 };
-use types::*;
-pub use types::{BehaviourEvent, InboundFailure, OutboundFailure};
 
 type NetworkAction<Proto> = NetworkBehaviourAction<
     <<<Proto as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
@@ -83,6 +82,23 @@ pub type PendingPeerRuleRequest = BoxFuture<'static, (PeerId, RuleDirection, Opt
 pub type PendingApprovalRequest = BoxFuture<'static, (RequestId, bool)>;
 
 const EMPTY_QUEUE_SHRINK_THRESHOLD: usize = 100;
+
+#[derive(Debug)]
+pub enum BehaviourEvent<Rq, Rs> {
+    Request(ReceiveRequest<Rq, Rs>),
+    InboundFailure {
+        request_id: RequestId,
+        peer: PeerId,
+        failure: InboundFailure,
+    },
+    OutboundFailure {
+        request_id: RequestId,
+        peer: PeerId,
+        failure: OutboundFailure,
+    },
+}
+
+impl<Rq, Rs> Unpin for BehaviourEvent<Rq, Rs> {}
 
 #[derive(Debug)]
 pub struct NetBehaviourConfig {

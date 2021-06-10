@@ -1,10 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{
+use super::EMPTY_QUEUE_SHRINK_THRESHOLD;
+use crate::{
     firewall::{FirewallRules, Rule, RuleDirection, ToPermissionVariants, VariantPermission},
     unwrap_or_return, InboundFailure, OutboundFailure, RequestDirection, RequestId, RequestMessage,
-    EMPTY_QUEUE_SHRINK_THRESHOLD,
 };
 mod connections;
 use connections::{PeerConnectionManager, PendingResponses};

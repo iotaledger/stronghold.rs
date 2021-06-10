@@ -12,10 +12,10 @@ use communication_refactored::{
 };
 use futures::{
     channel::mpsc::{self, Receiver},
-    stream::StreamExt,
+    prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use std::{fmt, future, time::Duration};
+use std::{fmt, future, thread, time::Duration};
 
 type TestComms = ShCommunication<Request, Response, RequestPermission>;
 
@@ -181,7 +181,7 @@ impl<'a> RulesTestConfig<'a> {
         }
     }
 
-    fn test_request(mut self) {
+    async fn test_request(mut self) {
         let peer_a_id = self.comms_a.get_peer_id();
         let peer_b_id = self.comms_b.get_peer_id();
         let ResponseReceiver { peer, response_rx, .. } = self.comms_a.send_request(peer_b_id, self.req.clone());
@@ -196,37 +196,38 @@ impl<'a> RulesTestConfig<'a> {
             TestPermission::PingOnly => matches!(req, Request::Ping),
             TestPermission::OtherOnly => matches!(req, Request::Other),
         };
-        task::block_on(async {
-            if !is_alowed(a_rule) {
-                expect_err!(response_rx, self);
-                self.expect_outbound_failure(peer_b_id, vec![OutboundFailure::NotPermitted])
-                    .await;
-            } else if !is_alowed(b_rule) {
-                expect_err!(response_rx, self);
-                match b_rule {
-                    TestPermission::RejectAll => {
-                        self.expect_outbound_failure(
-                            peer_b_id,
-                            vec![OutboundFailure::UnsupportedProtocols, OutboundFailure::ConnectionClosed],
-                        )
-                        .await
-                    }
-                    TestPermission::OtherOnly | TestPermission::PingOnly => {
-                        self.expect_outbound_failure(peer_b_id, vec![OutboundFailure::ConnectionClosed])
-                            .await;
-                        self.expect_inbound_reject(peer_a_id).await;
-                    }
-                    _ => unreachable!(),
+        if !is_alowed(a_rule) {
+            expect_err!(response_rx, self);
+            self.expect_outbound_failure(peer_b_id, vec![OutboundFailure::NotPermitted])
+                .await;
+        } else if !is_alowed(b_rule) {
+            expect_err!(response_rx, self);
+            match b_rule {
+                TestPermission::RejectAll => {
+                    self.expect_outbound_failure(
+                        peer_b_id,
+                        vec![OutboundFailure::UnsupportedProtocols, OutboundFailure::ConnectionClosed],
+                    )
+                    .await
                 }
-            } else {
-                let recv_req = expect_ok!(self.b_request_rx.next(), self);
-                assert_eq!(recv_req.peer, peer_a_id);
-                let RequestMessage { response_tx, data } = recv_req.request;
-                assert_eq!(data, self.req);
-                response_tx.send(Response::Pong).unwrap();
-                expect_ok!(response_rx, self);
+                TestPermission::OtherOnly | TestPermission::PingOnly => {
+                    self.expect_outbound_failure(
+                        peer_b_id,
+                        vec![OutboundFailure::Timeout, OutboundFailure::ConnectionClosed],
+                    )
+                    .await;
+                    self.expect_inbound_reject(peer_a_id).await;
+                }
+                _ => unreachable!(),
             }
-        })
+        } else {
+            let recv_req = expect_ok!(self.b_request_rx.next(), self);
+            assert_eq!(recv_req.peer, peer_a_id);
+            let RequestMessage { response_tx, data } = recv_req.request;
+            assert_eq!(data, self.req);
+            response_tx.send(Response::Pong).unwrap();
+            expect_ok!(response_rx, self);
+        }
     }
 
     async fn expect_outbound_failure(&mut self, target: PeerId, expect_any: Vec<OutboundFailure>) {
@@ -241,8 +242,9 @@ impl<'a> RulesTestConfig<'a> {
                 assert_eq!(peer, target);
                 assert!(
                     expect_any.into_iter().any(|f| f == failure),
-                    "Unexpected Failure {:?}",
-                    failure
+                    "Unexpected Failure {:?}; config {}",
+                    failure,
+                    self
                 )
             }
             other => panic!("Unexpected Result: {:?}; config: {}", other, self),
@@ -282,7 +284,7 @@ fn firewall_permissions() {
     let peer_b_addr = task::block_on(comms_b.start_listening(None)).unwrap();
     comms_a.add_address(peer_b_id, peer_b_addr);
 
-    for _ in 0..50 {
+    for _ in 0..100 {
         let mut test = RulesTestConfig::new_test_case(
             &mut comms_a,
             &mut a_event_rx,
@@ -291,7 +293,8 @@ fn firewall_permissions() {
             &mut b_rq_rx,
         );
         test.configure_firewall();
-        test.test_request();
+        thread::sleep(Duration::from_millis(10));
+        task::block_on(test.test_request());
     }
 }
 

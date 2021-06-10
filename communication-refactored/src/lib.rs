@@ -7,15 +7,8 @@ mod libp2p_reexport {
 }
 pub use libp2p_reexport::*;
 mod interface;
-pub use behaviour::{
-    assemble_relayed_addr, firewall,
-    types::{
-        ConnectionErr, InboundFailure, NetworkEvents, OutboundFailure, ReceiveRequest, RequestDirection, RequestId,
-        RequestMessage, ResponseReceiver, RqRsMessage,
-    },
-    CommunicationProtocol, NetBehaviourConfig,
-};
-pub use interface::{Listener, ShCommunication};
+pub use behaviour::{assemble_relayed_addr, firewall, CommunicationProtocol, NetBehaviourConfig};
+pub use interface::*;
 
 #[macro_export]
 macro_rules! unwrap_or_return (

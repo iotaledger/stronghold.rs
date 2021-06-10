@@ -1,11 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::{behaviour::BehaviourEvent, ConnectionErr};
 use futures::channel::oneshot;
 use libp2p::{
-    core::connection::{ConnectedPoint, ConnectionError, ConnectionLimit, PendingConnectionError},
+    core::connection::{ConnectedPoint, ConnectionError},
     swarm::SwarmEvent,
-    Multiaddr, PeerId, TransportError,
+    Multiaddr, PeerId,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::{convert::TryFrom, fmt, io, num::NonZeroU32};
@@ -190,6 +191,8 @@ impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THand
     }
 }
 
+impl std::error::Error for InboundFailure {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutboundFailure {
     Timeout,
@@ -237,65 +240,4 @@ impl fmt::Display for InboundFailure {
     }
 }
 
-#[derive(Debug)]
-pub enum ConnectionErr {
-    Io(io::Error),
-    InvalidPeerId,
-    MultiaddrNotSupported(Multiaddr),
-    ConnectionLimit { limit: u32, current: u32 },
-}
-
-impl fmt::Display for ConnectionErr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ConnectionErr::Io(err) => write!(f, "Pending connection: I/O error: {}", err),
-            ConnectionErr::InvalidPeerId => write!(f, "Pending connection: Invalid peer ID."),
-            ConnectionErr::ConnectionLimit { current, limit } => {
-                write!(f, "Connection error: Connection limit: {}/{}.", current, limit)
-            }
-            ConnectionErr::MultiaddrNotSupported(a) => write!(
-                f,
-                "Pending connection: Transport error: Multiaddr is not supported: {}",
-                a
-            ),
-        }
-    }
-}
-
-impl From<PendingConnectionError<io::Error>> for ConnectionErr {
-    fn from(value: PendingConnectionError<io::Error>) -> Self {
-        match value {
-            PendingConnectionError::Transport(TransportError::Other(e)) | PendingConnectionError::IO(e) => {
-                ConnectionErr::Io(e)
-            }
-            PendingConnectionError::InvalidPeerId => ConnectionErr::InvalidPeerId,
-            PendingConnectionError::ConnectionLimit(ConnectionLimit { limit, current }) => {
-                ConnectionErr::ConnectionLimit { limit, current }
-            }
-            PendingConnectionError::Transport(TransportError::MultiaddrNotSupported(a)) => {
-                ConnectionErr::MultiaddrNotSupported(a)
-            }
-        }
-    }
-}
-
 impl std::error::Error for OutboundFailure {}
-impl std::error::Error for InboundFailure {}
-impl std::error::Error for ConnectionErr {}
-
-#[derive(Debug)]
-pub enum BehaviourEvent<Rq, Rs> {
-    Request(ReceiveRequest<Rq, Rs>),
-    InboundFailure {
-        request_id: RequestId,
-        peer: PeerId,
-        failure: InboundFailure,
-    },
-    OutboundFailure {
-        request_id: RequestId,
-        peer: PeerId,
-        failure: OutboundFailure,
-    },
-}
-
-impl<Rq, Rs> Unpin for BehaviourEvent<Rq, Rs> {}

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod permissions;
-use super::types::{Query, RequestDirection};
+use crate::{Query, RequestDirection};
 use libp2p::PeerId;
 pub use permissions::*;
 use std::collections::HashMap;
