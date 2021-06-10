@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # ---
 # simple make file to launch three containers: redis(config), listener(listener), communications(communications)
-# cold be moved to a docker-compose file
 # --
 
 
