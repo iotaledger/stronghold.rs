@@ -18,19 +18,26 @@ const REDIS_KEY_PEER_ID: &str = "peer_id";
 const REDIS_KEY_MULTI_ADDR: &str = "multiaddr";
 const REDIS_INSTANCE_ADDR: &str = "redis://config";
 
+/// Parses a comma separated [`Multiaddr`]
+async fn parse_multiaddr(input: String) -> Result<Vec<Multiaddr>, Box<dyn Error>> {
+    let mut result = Vec::new();
+    for token in input.split(",") {
+        let addr = Multiaddr::from_str(token)?;
+        result.push(addr);
+    }
+    Ok(result)
+}
+
+/// Connects to a `config` named redis instance, tries to read the [`PeerId`] and [`Multiaddr`]
+/// and returns them.
 async fn read_infos(timeout: u64) -> Result<(PeerId, Vec<Multiaddr>), Box<dyn Error>> {
     let client = Client::open(REDIS_INSTANCE_ADDR)?;
     let mut connection = client.get_connection_with_timeout(std::time::Duration::from_millis(timeout))?;
     let p: String = connection.get(REDIS_KEY_PEER_ID)?;
     let m: String = connection.get(REDIS_KEY_MULTI_ADDR)?;
-
     let peer_id = PeerId::from_str(p.as_str())?;
 
-    let multiaddr: Vec<Multiaddr> = m
-        .split(",")
-        .map(Multiaddr::from_str)
-        .map(|m| m.expect("Could not parse address"))
-        .collect();
+    let multiaddr: Vec<Multiaddr> = parse_multiaddr(m).await?;
 
     Ok((peer_id, multiaddr))
 }
@@ -94,7 +101,7 @@ fuzz_target!(|data: &[u8]| {
                 // 4. Fuzz Storage Location, Records Id, Payload
             }
             Err(e) => {
-                println!("{}", e);
+                error!("{}", e);
             }
         };
     });

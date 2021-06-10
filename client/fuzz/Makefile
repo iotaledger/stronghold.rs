@@ -8,14 +8,19 @@
 build: build.fuzz.communications build.fuzz.listener
 
 build.fuzz.communications:
-	cargo fuzz build comms
-	docker build -t stronghold-communications -f ./container/communications.dockerfile .
+	@cargo fuzz build comms
+	@docker build -t stronghold-communications \
+	--build-arg artifact_name=comms \
+	--build-arg build_target=x86_64-unknown-linux-gnu/release .
 
 build.fuzz.listener:
-	cargo build --bin listen
-	docker build -t stronghold-listener -f ./container/listener.dockerfile .
+	@cargo build --bin listen
+	@docker build -t stronghold-listener \
+	--build-arg artifact_name=listen \
+	--build-arg build_target=debug .
 
 launch:
+	@docker stop listener config communications || printf "No containers running\n"
 	docker run --rm -d --name config --network stronghold redis
 	docker run --rm -d --name listener --network stronghold  stronghold-listener
 	docker run --rm -d --name communications --network stronghold  stronghold-communications
