@@ -67,7 +67,7 @@ fn list_peers_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<()
             );
             println!("{}", info)
         }
-        ResultMessage::Error(e) => return Err(Box::from(format!("{}", e))),
+        ResultMessage::Error(e) => return Err(Box::from(format!("{:?}", e))),
     }
 
     Ok(())
@@ -87,7 +87,7 @@ fn show_swarm_info_command(stronghold: &mut iota_stronghold::Stronghold) -> Resu
 
             println!("{}", info)
         }
-        ResultMessage::Error(e) => return Err(Box::from(format!("{}", e))),
+        ResultMessage::Error(e) => return Err(Box::from(format!("{:?}", e))),
     }
 
     Ok(())
@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let app = ExampleApp::parse();
     let system = ActorSystem::new().expect(line_error!());
     let client_path = app.actor_path.as_bytes().to_vec();
-    let mut stronghold = Stronghold::init_stronghold_system(system, client_path.clone(), vec![]);
+    let mut stronghold = Stronghold::init_stronghold_system(system, client_path, vec![]);
 
     match app.cmds {
         #[cfg(feature = "communication")]
