@@ -13,10 +13,11 @@ description = "libp2p-noise based communication system for IOTA Stronghold"
 name = "communication"
 
 [dependencies]
+log = "0.4"
 async-std = "1.6"
 async-trait = "0.1"
 futures = "0.3"
-clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
+clap = { version = "3.0.0-beta.2", features = [ "yaml" ] }
 libp2p = { version = "0.37", default-features = false, features = [
   "dns-async-std",
   "identify",
