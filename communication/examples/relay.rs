@@ -46,8 +46,15 @@ fn start_relay(r: RelayApp) -> Result<(), Box<dyn Error>> {
     let addr = r.multiaddr;
     info!("Starting relay server. Listening on: {}", addr);
 
-    let mut swarm = block_on(P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config))?;
+    let mut swarm = block_on(P2PNetworkBehaviour::<Request, Response>::init_swarm(
+        local_keys.clone(),
+        config,
+    ))?;
     swarm.listen_on(addr)?;
+
+    // print local peer_id
+    let local_peer_id = local_keys.public().into_peer_id();
+    info!(r#"PeerId: "{}""#, local_peer_id.to_base58());
 
     block_on(async {
         loop {
