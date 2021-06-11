@@ -3,7 +3,13 @@
 //!
 //! Stronghold Relay Server Example
 //!
+//! This example simply spawns a relay server to relay traffic between
+//! multiple clients.
 //!
+//! run with
+//! ```no_run
+//! cargo run --example relay -- --multiaddr "/ip4/0.0.0.0/tcp/7001"
+//! ```
 
 use clap::Clap;
 use communication::{
@@ -42,33 +48,42 @@ fn start_relay(r: RelayApp) -> Result<(), Box<dyn Error>> {
 
     block_on(async {
         loop {
-            match swarm.next().await {
-                P2PEvent::RequestResponse(v) => match *v {
-                    P2PReqResEvent::Req {
-                        request,
-                        peer_id,
-                        request_id,
-                    } => {}
-                    P2PReqResEvent::Res {
-                        response,
-                        peer_id,
-                        request_id,
-                    } => {}
-                    P2PReqResEvent::ResSent { peer_id, request_id } => {}
+            if let P2PEvent::RequestResponse(event) = swarm.next().await {
+                match *event {
+                    P2PReqResEvent::Req { request, peer_id, .. } => {
+                        info!("Incoming Request: Request={:?}, PeerId={}", request, peer_id)
+                    }
+                    P2PReqResEvent::Res { response, peer_id, .. } => {
+                        info!("Outgoing Response: Response={:?}, PeerId={}", response, peer_id)
+                    }
+                    P2PReqResEvent::ResSent { peer_id, request_id } => {
+                        info!(
+                            "Response To Inbound Request has been send: PeerId={}, RequestId={}",
+                            peer_id, request_id
+                        )
+                    }
                     P2PReqResEvent::InboundFailure {
                         error,
                         peer_id,
                         request_id,
-                    } => {}
+                    } => {
+                        error!(
+                            "Inbound Failure: Error={:?}, PeerId={}, RequestId={}",
+                            error, peer_id, request_id
+                        )
+                    }
                     P2PReqResEvent::OutboundFailure {
                         error,
                         peer_id,
                         request_id,
-                    } => {}
-                    _ => {}
-                },
-                _ => {}
-            }
+                    } => {
+                        error!(
+                            "Outbound Failure: Error={:?}, PeerId={}, RequestId={}",
+                            error, peer_id, request_id
+                        )
+                    }
+                }
+            } // end if
         }
     });
 
@@ -79,6 +94,6 @@ fn main() {
     let relay_app = RelayApp::parse();
 
     if let Err(e) = start_relay(relay_app) {
-        error!("Failed to start relay server")
+        error!("Failed to start relay server. Cause: {}", e)
     }
 }
