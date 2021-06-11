@@ -1,25 +1,36 @@
 # Copyright 2020 IOTA Stiftung
 # SPDX-License-Identifier: Apache-2.0
 
+# Docker manifest for communications multi build
+# expects build-args: 
+# --build-arg build_target=x86_64-unknown-linux-musl (or another other supported targets)
+# --build-arg build_artifact=<artifact> (the artifact to build. eg. "relay" )
+# --build-arg build_flags=<flags> (set additional build flags for cargo eg. `--example`, `--release`)
+
+# -- build step
 FROM rust:latest as build
-RUN USER=root cargo new --bin stronghold-communication
-WORKDIR /stronghold-communication
 
-COPY ./Cargo.toml ./Cargo.toml
+WORKDIR /code
+ARG build_target==x86_64-unknown-linux-musl
+ARG build_artifact
+ARG build_flags=--example
 
-# cache dependencies
-RUN cargo build --release
-RUN rm src/*.rs
-COPY ./src ./src
-COPY ./examples ./examples
-RUN cargo clean
+ENV build_artifact=${build_artifact}
+ENV build_target=${build_target}
 
-# build mailbox
-RUN cargo build --example relay
-FROM rust:latest
-WORKDIR /app
+ADD . .
+RUN cargo clean \
+    && cargo build ${build_flags} ${build_artifact}
+
+# -- image creation step
+FROM debian:buster-slim
+
+WORKDIR /code
+ARG build_target==x86_64-unknown-linux-musl
+ARG build_artifact
+ENV build_artifact=${build_artifact}
+ENV build_target=${build_target}
 
 # copy the build artifact from the build stage
-COPY --from=build /stronghold-communication/target/debug/examples/relay .
-ENTRYPOINT ["/app/relay"]
-CMD ["start-relay"]
+COPY --from=build /code/target/${build_target}/examples/${build_artifact} .
+CMD /code/${build_artifact} --multiaddr $MULTIADDR

@@ -43,8 +43,11 @@ fn start_relay(r: RelayApp) -> Result<(), Box<dyn Error>> {
         Some(Duration::from_millis(500)),
     );
 
+    let addr = r.multiaddr;
+    info!("Starting relay server. Listening on: {}", addr);
+
     let mut swarm = block_on(P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config))?;
-    swarm.listen_on(r.multiaddr)?;
+    swarm.listen_on(addr)?;
 
     block_on(async {
         loop {
@@ -91,6 +94,9 @@ fn start_relay(r: RelayApp) -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
+    // enable logging
+    env_logger::init();
+
     let relay_app = RelayApp::parse();
 
     if let Err(e) = start_relay(relay_app) {
