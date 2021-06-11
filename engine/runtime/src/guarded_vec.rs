@@ -3,6 +3,7 @@
 
 use crate::{boxed::Boxed, types::*};
 
+#[cfg(feature = "std")]
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
     ser::{Serialize, SerializeSeq, Serializer},
@@ -10,9 +11,10 @@ use serde::{
 
 use core::{
     fmt::{self, Debug, Formatter},
-    marker::PhantomData,
     ops::{Deref, DerefMut},
 };
+#[cfg(feature = "std")]
+use core::marker::PhantomData;
 
 /// A guarded type for protecting variable-length secrets allocated on the heap.
 ///
@@ -219,6 +221,7 @@ impl<T: Bytes> Eq for RefMut<'_, T> {}
 unsafe impl<T: Bytes + Send> Send for GuardedVec<T> {}
 unsafe impl<T: Bytes + Sync> Sync for GuardedVec<T> {}
 
+#[cfg(feature = "std")]
 impl<T: Bytes> Serialize for GuardedVec<T>
 where
     T: Serialize,
@@ -235,16 +238,19 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 struct GuardedVecVisitor<T: Bytes> {
     marker: PhantomData<fn() -> GuardedVec<T>>,
 }
 
+#[cfg(feature = "std")]
 impl<T: Bytes> GuardedVecVisitor<T> {
     fn new() -> Self {
         GuardedVecVisitor { marker: PhantomData }
     }
 }
 
+#[cfg(feature = "std")]
 impl<'de, T: Bytes> Visitor<'de> for GuardedVecVisitor<T>
 where
     T: Deserialize<'de>,
@@ -274,6 +280,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'de, T: Bytes> Deserialize<'de> for GuardedVec<T>
 where
     T: Deserialize<'de>,

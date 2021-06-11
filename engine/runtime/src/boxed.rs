@@ -218,14 +218,14 @@ impl<T: Bytes + Zeroed> Boxed<T> {
 
 impl<T: Bytes> Drop for Boxed<T> {
     fn drop(&mut self) {
-        extern crate std;
+        #[cfg(feature = "std")]
+        {
+            extern crate std;
+            if !std::thread::panicking() {
+                assert!(self.refs.get() == 0, "Retains exceeded releases");
 
-        use std::thread;
-
-        if !thread::panicking() {
-            assert!(self.refs.get() == 0, "Retains exceeded releases");
-
-            assert!(self.prot.get() == Prot::NoAccess, "Dropped secret was still accessible");
+                assert!(self.prot.get() == Prot::NoAccess, "Dropped secret was still accessible");
+            }
         }
 
         unsafe { free(self.ptr.as_mut()) }

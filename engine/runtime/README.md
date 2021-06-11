@@ -11,6 +11,16 @@ Among the considered concepts:
   - uses canary and garbage values to protect the memory pages.
   - leverages NACL `libsodium` for use on all supported platforms.
 
+To build on `no_std` targets, please pass following environment variables for `libsodium-sys` to cross-compile:
+
+```
+SODIUM_DISABLE_PIE=1 \
+LDFLAGS='--specs=nosys.specs' \
+CFLAGS='-DLIBSODIUM_NO_PLATFORM_RANDOM=1' \
+SODIUM_HOST=arm-none-eabi \
+cargo b --target armv7a-none-eabi
+```
+
 ## FAQ:
 
 ### Why does my program get killed with SIGBUS/SIGILL signals?
