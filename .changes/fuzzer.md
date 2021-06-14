@@ -1,5 +1,5 @@
 ---
-"stronghold-communication": feat
+"stronghold-communication": minor
 "stronghold-engine": patch
 ---
 
