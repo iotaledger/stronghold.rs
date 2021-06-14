@@ -65,7 +65,7 @@ pub enum Response {
 
 // Parse the user input line and handle the commands
 fn handle_input_line(swarm: &mut Swarm<P2PNetworkBehaviour<Request, Response>>, line: &str) {
-    let target_regex = "(?:\\s+\"(?P<target>[[:alnum:]]{32,64}?)\")?";
+    let target_regex = "(?:\\s+\"(?P<target>.{1,64}?)\")?";
     let msg_regex = "(?:\\s+\"(?P<msg>[^\"]+)\")?";
     let regex = "(?P<type>LIST|DIAL|PING|MSG)".to_string() + target_regex + msg_regex;
     if let Some(captures) = Regex::new(&regex).expect("Invalid Reqex string.").captures(&line) {
