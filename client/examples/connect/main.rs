@@ -49,6 +49,7 @@ fn parse(input: String) -> Result<HashMap<PeerId, Multiaddr>, Box<dyn Error>> {
     Ok(result)
 }
 
+///
 fn parse_entry(input: String) -> Result<(PeerId, Multiaddr), Box<dyn Error>> {
     let tokens: Vec<&str> = input.split("=").collect();
 
@@ -58,11 +59,12 @@ fn parse_entry(input: String) -> Result<(PeerId, Multiaddr), Box<dyn Error>> {
     Ok((parsed_peer_id, parsed_multiaddr))
 }
 
+/// Tries to connect to (optional) peers and adds a relay
+/// server in between.
 fn connect_to(
     stronghold: &mut Stronghold,
     relay_id: PeerId,
     relay_address: Multiaddr,
-
     peers: Option<HashMap<PeerId, Multiaddr>>,
 ) -> Result<(), Box<dyn Error>> {
     stronghold.spawn_communication();
@@ -70,7 +72,6 @@ fn connect_to(
     block_on(async {
         stronghold.get_swarm_info().await;
 
-        // add relay
         if let ResultMessage::Error(err) = stronghold
             .add_peer(relay_id, Some(relay_address), Some(RelayDirection::Both))
             .await
@@ -119,12 +120,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
 
-    // use std::str::FromStr;
-
-    // use iota::Keypair;
-    // use rand::rngs::adapter::ReseedingRng;
-
     use super::*;
+
+    fn test_bogus() -> usize {}
 
     #[test]
     fn test_parse() {
