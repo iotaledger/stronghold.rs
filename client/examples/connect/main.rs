@@ -49,7 +49,8 @@ fn parse(input: String) -> Result<HashMap<PeerId, Multiaddr>, Box<dyn Error>> {
     Ok(result)
 }
 
-///
+/// Tries to parse an entry consisting of a pair of "peer_id=multiaddr" as string
+/// Returns a tuple of [`PeerId`] and [`Multiaddr`]
 fn parse_entry(input: String) -> Result<(PeerId, Multiaddr), Box<dyn Error>> {
     let tokens: Vec<&str> = input.split('=').collect();
 
