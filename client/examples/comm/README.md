@@ -1,6 +1,5 @@
 # Stronghold Communication Example
 
-
 The communication examples show the networking capabilities of stronghold.
 Some are just "one-shot" examples to show what is possible with stronghold in an easy way
 
