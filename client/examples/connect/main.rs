@@ -122,8 +122,6 @@ mod tests {
 
     use super::*;
 
-    fn test_bogus() -> usize {}
-
     #[test]
     fn test_parse() {
         let test_string =
