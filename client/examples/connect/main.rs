@@ -41,7 +41,7 @@ struct ConnectApp {
 fn parse(input: String) -> Result<HashMap<PeerId, Multiaddr>, Box<dyn Error>> {
     let mut result: HashMap<PeerId, Multiaddr> = HashMap::new();
 
-    for token in input.split(",") {
+    for token in input.split(',') {
         let entry = parse_entry(token.to_string())?;
         result.insert(entry.0, entry.1);
     }
@@ -51,7 +51,7 @@ fn parse(input: String) -> Result<HashMap<PeerId, Multiaddr>, Box<dyn Error>> {
 
 ///
 fn parse_entry(input: String) -> Result<(PeerId, Multiaddr), Box<dyn Error>> {
-    let tokens: Vec<&str> = input.split("=").collect();
+    let tokens: Vec<&str> = input.split('=').collect();
 
     let parsed_peer_id = PeerId::from_str(tokens[0])?;
     let parsed_multiaddr = Multiaddr::from_str(tokens[1])?;
@@ -76,7 +76,7 @@ fn connect_to(
             .add_peer(relay_id, Some(relay_address), Some(RelayDirection::Both))
             .await
         {
-            error!("Could not connect to relay. Cause ={}", err);
+            error!("Could not connect to relay. Cause :{}", err);
         }
     });
 
@@ -110,7 +110,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             None => None,
         };
 
-        return connect_to(&mut stronghold, relay_id, relay_address, peers);
+        connect_to(&mut stronghold, relay_id, relay_address, peers)
     }
 
     #[cfg(not(feature = "communication"))]
