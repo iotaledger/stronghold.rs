@@ -1,6 +1,6 @@
-//! Copyright 2020-2021 IOTA Stiftung
-//! SPDX-License-Identifier: Apache-2.0
-//!
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 //! Stronghold Communication Feature Connection Example
 //!
 //! This example tries to connect to a remote stronghold instance

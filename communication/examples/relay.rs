@@ -1,6 +1,6 @@
-//! Copyright 2020-2021 IOTA Stiftung
-//! SPDX-License-Identifier: Apache-2.0
-//!
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 //! Stronghold Relay Server Example
 //!
 //! This example simply spawns a relay server to relay traffic between

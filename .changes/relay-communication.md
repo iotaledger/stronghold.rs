@@ -1,5 +1,5 @@
 ---
-"stronghold-communication": feat"
+"stronghold-communication": minor
 ---
 
 Add example to connect to relay server.
