@@ -1,0 +1,1 @@
+window.ALL_CRATES = ["communication","engine","iota_stronghold","runtime","stronghold_derive","stronghold_utils"];

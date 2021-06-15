@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["RefMut","A mutable [`Deref`] wrapper around the [`Secret`]'s internal data. Intercepts calls to [`Clone`] and [`Debug`] the data in the secret."],["Secret","A Type for guarding secrets allocated to the stack."]]});
+initSidebarItems({"struct":[["RefMut","A mutable [`Deref`] wrapper around the [`Secret`]’s internal data. Intercepts calls to [`Clone`] and [`Debug`] the data in the secret."],["Secret","A Type for guarding secrets allocated to the stack."]]});
