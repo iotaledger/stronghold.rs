@@ -86,6 +86,9 @@
 <span id="83">83</span>
 <span id="84">84</span>
 <span id="85">85</span>
+<span id="86">86</span>
+<span id="87">87</span>
+<span id="88">88</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -144,10 +147,13 @@
     <span class="ident">libp2p</span>::{<span class="ident">Keypair</span>, <span class="ident">Multiaddr</span>, <span class="ident">PeerId</span>},
 };
 
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">snapshot</span>::{
-    <span class="ident">files</span>::{<span class="ident">home_dir</span>, <span class="ident">snapshot_dir</span>},
-    <span class="ident">kdf</span>::<span class="ident">naive_kdf</span>,
-    <span class="ident">Key</span>,
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">engine</span>::{
+    <span class="ident">snapshot</span>::{
+        <span class="ident">files</span>::{<span class="ident">home_dir</span>, <span class="ident">snapshot_dir</span>},
+        <span class="ident">kdf</span>::<span class="ident">naive_kdf</span>,
+        <span class="ident">Key</span>,
+    },
+    <span class="ident">vault</span>::<span class="ident">RecordId</span>,
 };
 
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::<span class="ident">RecordHint</span>;
