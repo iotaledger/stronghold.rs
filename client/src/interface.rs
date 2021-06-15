@@ -5,10 +5,12 @@ use riker::actors::*;
 
 use futures::{
     channel::mpsc::{channel, Receiver, Sender},
-    executor::block_on,
     future::RemoteHandle,
-    StreamExt,
 };
+
+#[cfg(feature = "communication")]
+use futures::{executor::block_on, StreamExt};
+
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use zeroize::Zeroize;
 
