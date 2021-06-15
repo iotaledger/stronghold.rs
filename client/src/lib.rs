@@ -55,10 +55,13 @@ pub use communication::{
     libp2p::{Keypair, Multiaddr, PeerId},
 };
 
-pub use engine::snapshot::{
-    files::{home_dir, snapshot_dir},
-    kdf::naive_kdf,
-    Key,
+pub use engine::{
+    snapshot::{
+        files::{home_dir, snapshot_dir},
+        kdf::naive_kdf,
+        Key,
+    },
+    vault::RecordId,
 };
 
 pub use engine::vault::RecordHint;
