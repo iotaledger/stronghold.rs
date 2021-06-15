@@ -49,10 +49,3 @@ To show info on neighbouring peers you can run
 ```no_run
 cargo run --features communication --example comm swarm-info
 ```
-
-## Add Peer(s)
-Peers can also be added by running
-
-```no_run
-cargo run --features communication --example comm
-```
