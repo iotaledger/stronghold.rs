@@ -43,12 +43,16 @@ pub use crate::{
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
+// pull up dependency on riker actor system, or change api to hide this dependency
+// on lower levels to avoid calling this explicit dependency
+pub use riker::system::ActorSystem;
+
 #[cfg(feature = "communication")]
 pub use crate::actors::SHRequestPermission;
 #[cfg(feature = "communication")]
 pub use communication::{
     actor::RelayDirection,
-    libp2p::{Multiaddr, PeerId},
+    libp2p::{Keypair, Multiaddr, PeerId},
 };
 
 pub use engine::snapshot::{

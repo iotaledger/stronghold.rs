@@ -3,7 +3,12 @@
 
 use riker::actors::*;
 
-use futures::future::RemoteHandle;
+use futures::{
+    channel::mpsc::{channel, Receiver, Sender},
+    executor::block_on,
+    future::RemoteHandle,
+    StreamExt,
+};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use zeroize::Zeroize;
 
@@ -381,11 +386,7 @@ impl Stronghold {
     ) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
 
-        let former_cid = if let Some(cp) = former_client_path {
-            Some(ClientId::load_from_path(&cp, &cp).expect(line_error!()))
-        } else {
-            None
-        };
+        let former_cid = former_client_path.map(|cp| ClientId::load_from_path(&cp, &cp).expect(line_error!()));
 
         let mut key: [u8; 32] = [0u8; 32];
 
@@ -498,14 +499,13 @@ impl Stronghold {
 
 #[cfg(feature = "communication")]
 impl Stronghold {
-    /// Spawn the communication actor and swarm.
+    /// Spawn the communication actor and swarm with a pre-existing keypair
     /// Per default, the firewall allows all outgoing, and reject all incoming requests.
-    pub fn spawn_communication(&mut self) -> StatusMessage {
+    pub fn spawn_communication_with_keypair(&mut self, keypair: Keypair) -> StatusMessage {
         if self.communication_actor.is_some() {
             return StatusMessage::Error(String::from("Communication was already spawned"));
         }
 
-        let local_keys = Keypair::generate_ed25519();
         let behaviour_config = BehaviourConfig::default();
         let actor_config = CommunicationActorConfig {
             client: self.target.clone(),
@@ -517,11 +517,17 @@ impl Stronghold {
             .system
             .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>(
                 "communication",
-                (local_keys, actor_config, behaviour_config),
+                (keypair, actor_config, behaviour_config),
             )
             .expect(line_error!());
         self.communication_actor = Some(communication_actor);
         StatusMessage::OK
+    }
+
+    /// Spawn the communication actor and swarm.
+    /// Per default, the firewall allows all outgoing, and reject all incoming requests.
+    pub fn spawn_communication(&mut self) -> StatusMessage {
+        self.spawn_communication_with_keypair(Keypair::generate_ed25519())
     }
 
     /// Gracefully stop the communication actor and swarm
@@ -860,6 +866,33 @@ impl Stronghold {
             Ok(res)
         } else {
             Err(String::from("No communication spawned"))
+        }
+    }
+
+    /// Keeps stronghold in a running state. This call is blocking.
+    ///
+    /// This function accepts an optional function for more control over how long
+    /// stronghold shall block.
+    pub fn keep_alive<F>(&self, callback: Option<F>)
+    where
+        F: FnOnce() -> Result<(), Box<dyn std::error::Error>>,
+    {
+        match callback {
+            Some(cb) => {
+                block_on(async {
+                    cb().expect("Calling blocker function failed");
+                });
+            }
+            None => {
+                // create a channel, read from it, but never write.
+                // this might be a trivial method to keep an instance running.
+                let (_tx, rx): (Sender<usize>, Receiver<usize>) = channel(1);
+
+                let waiter = async {
+                    rx.map(|f| f).collect::<Vec<usize>>().await;
+                };
+                block_on(waiter);
+            }
         }
     }
 }
