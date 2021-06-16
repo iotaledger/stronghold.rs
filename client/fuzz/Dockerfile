@@ -4,9 +4,10 @@ FROM debian:buster-slim
 
 WORKDIR /fuzz
 
-ARG build_target
-ARG artifact_name
-ENV artifact_name=${artifact_name}
-ADD ./target/${build_target}/${artifact_name} /fuzz/${artifact_name}
+ARG BUILD_TARGET
+ARG ARTIFACT_NAME
+ENV ARTIFACT_NAME=${ARTIFACT_NAME}
+ADD ./target/${BUILD_TARGET}/${ARTIFACT_NAME} /fuzz/${ARTIFACT_NAME}
+RUN sh -c env
 
-CMD /fuzz/${artifact_name}
+CMD ["sh", "-c","/fuzz/${ARTIFACT_NAME}","-rss_limit_mb=1024Mb"]

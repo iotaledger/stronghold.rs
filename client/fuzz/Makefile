@@ -23,13 +23,13 @@ launch: build stop
 	docker run --rm -d --name communications --network stronghold  stronghold-communications
 
 build.fuzz.communications:
-	@cargo fuzz build comms
+	@cargo +nightly fuzz build comms
 	@docker build -t stronghold-communications \
-	--build-arg artifact_name=comms \
-	--build-arg build_target=x86_64-unknown-linux-gnu/release .
+	--build-arg ARTIFACT_NAME=comms \
+	--build-arg BUILD_TARGET=x86_64-unknown-linux-gnu/release .
 
 build.fuzz.listener:
 	@cargo build --bin listen
 	@docker build -t stronghold-listener \
-	--build-arg artifact_name=listen \
-	--build-arg build_target=debug .
+	--build-arg ARTIFACT_NAME=listen \
+	--build-arg BUILD_TARGET=debug .
