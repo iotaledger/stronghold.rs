@@ -108,7 +108,7 @@ pub enum BehaviourError {
 pub struct BehaviourConfig {
     /// Timeout for outgoing requests until a [`P2POutboundFailure::Timeout`] is emitted.
     /// If none is specified, it defaults to 10s.
-    timeout: Option<Duration>,
+    request_timeout: Option<Duration>,
     /// Duration to keep an idle connection alive when no Request or Response is send.
     /// If none is specified, it defaults to 10s.
     keep_alive: Option<Duration>,
@@ -116,20 +116,25 @@ pub struct BehaviourConfig {
     mdns_ttl: Option<Duration>,
     /// Frequency for new peers via mDNS
     mdns_query_interval: Option<Duration>,
+    /// connection timeout on a relayed connection
+    relay_conn_idle_timeout: Option<Duration>
+
 }
 
 impl BehaviourConfig {
     pub fn new(
-        timeout: Option<Duration>,
+        request_timeout: Option<Duration>,
         keep_alive: Option<Duration>,
         mdns_ttl: Option<Duration>,
         mdns_query_interval: Option<Duration>,
+        relay_conn_idle_timeout: Option<Duration>
     ) -> Self {
         BehaviourConfig {
-            timeout,
+            request_timeout,
             keep_alive,
             mdns_ttl,
             mdns_query_interval,
+            relay_conn_idle_timeout
         }
     }
 }
@@ -137,10 +142,11 @@ impl BehaviourConfig {
 impl Default for BehaviourConfig {
     fn default() -> Self {
         BehaviourConfig {
-            timeout: None,
+            request_timeout: None,
             keep_alive: None,
             mdns_ttl: None,
             mdns_query_interval: None,
+            relay_conn_idle_timeout: None
         }
     }
 }
@@ -220,7 +226,11 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
         // The configured transport establishes connections via tcp with websockets as fallback
         let transport = dns_transport.clone().or_transport(WsConfig::new(dns_transport));
 
-        let (relay_transport, relay_behaviour) = new_transport_and_behaviour(RelayConfig::default(), transport);
+        let mut relay_config = RelayConfig::default();
+        if let Some(timeout) = config.relay_conn_idle_timeout {
+            relay_config.connection_idle_timeout = timeout;
+        }
+        let (relay_transport, relay_behaviour) = new_transport_and_behaviour(relay_config, transport);
         // Negotiate authentication and multiplexing on all connections
         let upgraded_transport = relay_transport
             .upgrade(upgrade::Version::V1)
@@ -248,7 +258,7 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
         // Enable Request- and Response-Messages with the generic MessageProtocol
         let msg_proto = {
             let mut cfg = RequestResponseConfig::default();
-            if let Some(timeout) = config.timeout {
+            if let Some(timeout) = config.request_timeout {
                 cfg.set_request_timeout(timeout);
             }
             if let Some(keep_alive) = config.keep_alive {

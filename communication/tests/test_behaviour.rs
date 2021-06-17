@@ -25,7 +25,7 @@ pub struct Empty;
 
 fn mock_swarm<Req: MessageEvent, Res: MessageEvent>() -> Swarm<P2PNetworkBehaviour<Req, Res>> {
     let local_keys = Keypair::generate_ed25519();
-    let config = BehaviourConfig::new(None, Some(std::time::Duration::from_secs(30)), None, None);
+    let config = BehaviourConfig::new(None, Some(std::time::Duration::from_secs(30)), None, None, None);
     task::block_on(P2PNetworkBehaviour::init_swarm(local_keys, config)).expect("Failed to init swarm.")
 }
 
