@@ -117,8 +117,7 @@ pub struct BehaviourConfig {
     /// Frequency for new peers via mDNS
     mdns_query_interval: Option<Duration>,
     /// connection timeout on a relayed connection
-    relay_conn_idle_timeout: Option<Duration>
-
+    relay_conn_idle_timeout: Option<Duration>,
 }
 
 impl BehaviourConfig {
@@ -127,14 +126,14 @@ impl BehaviourConfig {
         keep_alive: Option<Duration>,
         mdns_ttl: Option<Duration>,
         mdns_query_interval: Option<Duration>,
-        relay_conn_idle_timeout: Option<Duration>
+        relay_conn_idle_timeout: Option<Duration>,
     ) -> Self {
         BehaviourConfig {
             request_timeout,
             keep_alive,
             mdns_ttl,
             mdns_query_interval,
-            relay_conn_idle_timeout
+            relay_conn_idle_timeout,
         }
     }
 }
@@ -146,7 +145,7 @@ impl Default for BehaviourConfig {
             keep_alive: None,
             mdns_ttl: None,
             mdns_query_interval: None,
-            relay_conn_idle_timeout: None
+            relay_conn_idle_timeout: None,
         }
     }
 }

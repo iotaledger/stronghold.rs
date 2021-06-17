@@ -41,9 +41,9 @@ fn start_relay(r: RelayApp) -> Result<(), Box<dyn Error>> {
         None,
         Some(Duration::from_millis(500)),
         Some(Duration::from_millis(500)),
-        // Set idle connection timeout high so that the relay doesn't actively closes a connection. 
+        // Set idle connection timeout high so that the relay doesn't actively closes a connection.
         // Instead source / destination peer should disconnect when not using the relay anymore.
-        Some(Duration::from_secs(3600))
+        Some(Duration::from_secs(3600)),
     );
 
     let addr = r.multiaddr;
