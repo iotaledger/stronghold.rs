@@ -6,6 +6,9 @@
     "beforeBuildCommand": "quasar build"
   },
   "tauri": {
+    "systemTray": {
+      "iconPath": "./icons/32x32.png"
+    },
     "bundle": {
       "active": true,
       "targets": "all",

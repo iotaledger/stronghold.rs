@@ -10,24 +10,30 @@ edition = "2018"
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = [ "derive" ] }
-tauri = { version="1.0.0-beta.1", features = ["api-all", "menu"] }
-# tauri = { git = "https://github.com/tauri-apps/tauri", branch = "dev", features = ["api-all", "menu"] }
+# tauri = { version="1.0.0-beta.1", features = ["api-all", "menu"] }
+tauri = { git = "https://github.com/tauri-apps/tauri", rev = "49fb3b72255993ea6f92e8d475021adac0c914a7", features = ["api-all", "system-tray", "menu"] }
+thiserror = "1.0.25"
 futures = "0.3"
 riker = "0.4"
 bincode = "1.3.1"
 
 [dependencies.tauri-plugin-authenticator]
-branch = "dev"
-git = "https://github.com/tauri-apps/tauri-plugin-authenticator"
-#  path = "../../../../tauri-plugin-authenticator"
+# branch = "bleeding-edge"
+# git = "https://github.com/tauri-apps/tauri-plugin-authenticator"
+path = "../../../../tauri-plugin-authenticator"
 
 #   git = "https://github.com/tauri-apps/tauri-plugin-authenticator"
 #  rev = "0cce7e6af6f5f5af61a3d0338e1e1513a5587954"
 
 [dependencies.tauri-plugin-stronghold]
-git = "https://github.com/tauri-apps/tauri-plugin-stronghold"
-branch = "main"
+# git = "https://github.com/tauri-apps/tauri-plugin-stronghold"
+# branch = "bleeding-edge"
+path = "../../../../tauri-plugin-stronghold"
+
 # rev = "6f14140031df6b1361426df2a981d9d46a9e9cc0"
+
+[patch.crates-io]
+tao = { git = "https://github.com/tauri-apps/tao", rev = "5be88eb9488e3ad27194b5eff2ea31a473128f9c" }
 
 [build-dependencies]
 tauri-build = "1.0.0-beta.0"
@@ -35,3 +41,11 @@ tauri-build = "1.0.0-beta.0"
 [features]
 default = [ "custom-protocol" ]
 custom-protocol = [ "tauri/custom-protocol" ]
+
+# for final bundle minification
+# [profile.release]
+# panic = "abort"
+# codegen-units = 1
+# lto = true
+# incremental = false
+# opt-level = "z"

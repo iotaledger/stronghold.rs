@@ -4,6 +4,9 @@ Desktop App for Stronghold Systems Verification.
 
 In order to develop this system, you will have to have at least rustc 1.52.1 installed, nodejs 14+, and fulfilled all requirements for Tauri Development as you can see at https://tauri.studio/en/docs/getting-started/intro
 
+### NOTE:
+At the current time, you need to have the two plugins cloned and built (`yarn build`) in the same root folder as this repository.
+
 ## Install the dependencies
 ```bash
 yarn

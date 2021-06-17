@@ -550,8 +550,17 @@ where
                 num_established: 0,
                 ..
             } => {
-                if !self.listening_relays.contains_key(&peer_id) || self.connect_peer(&peer_id).is_err() {
-                    self.remove_relay(&peer_id);
+                if self.listening_relays.contains_key(&peer_id) {
+                    let relay_addr = self.relay_addr.get(&peer_id).cloned();
+                    let res  = match relay_addr {
+                        Some(addr) => self.connect_peer_via_addr(&peer_id, addr),
+                        None => self.connect_peer(&peer_id)
+                    };
+                    if res.is_err() {
+                        self.remove_relay(&peer_id);
+                        self.connection_manager.remove_connection(&peer_id);
+                    }
+                } else {
                     self.connection_manager.remove_connection(&peer_id);
                 }
             }

@@ -3,6 +3,12 @@
   windows_subsystem = "windows"
 )]
 
+mod menu;
+use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem};
+
+use tauri_plugin_authenticator::TauriAuthenticator;
+use tauri_plugin_stronghold::TauriStronghold;
+
 use serde::{ser::Serializer, Deserialize, Serialize};
 
 type Result<T> = std::result::Result<T, CommandError<'static>>;
@@ -54,13 +60,70 @@ impl Serialize for CommandError<'_> {
   }
 }
 
-use tauri_plugin_authenticator::TauriAuthenticator;
-use tauri_plugin_stronghold::TauriStronghold;
-
 fn main() {
+  let context = tauri::generate_context!();
+  let bundle_identifier = context.config().tauri.bundle.identifier.clone();
   tauri::Builder::default()
     .plugin(TauriStronghold::default())
     .plugin(TauriAuthenticator::default())
+    .system_tray(
+      SystemTray::new()
+        .with_menu(SystemTrayMenu::new()
+        .add_item(CustomMenuItem::new("show".into(), "Show"))
+        .add_item(CustomMenuItem::new("hide".into(), "Hide"))
+        .add_item(CustomMenuItem::new("quit".into(), "Quit")))
+    )
+    .on_system_tray_event(|app, event| match event {
+      SystemTrayEvent::LeftClick {
+        position: _,
+        size: _,
+        ..
+      } => {
+        let window = app.get_window("main").unwrap();
+        window.unminimize().unwrap();
+        window.set_focus().unwrap();
+      }
+      SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
+        "quit" => {
+          std::process::exit(0);
+        }
+        "show" => {
+          let window = app.get_window("main").unwrap();
+          window.show().unwrap();
+          window.unminimize().unwrap();
+          window.set_focus().unwrap();
+        }
+        "hide" => {
+            let window = app.get_window("main").unwrap();
+            window.minimize().unwrap();
+            window.hide().unwrap();
+        }
+        _ => {}
+      },
+      _ => {}
+    })
+    .menu(menu::get())
+    .on_menu_event(move |event| match event.menu_item_id().as_str() {
+      "create" | "swap" | "portfolio" => {
+        let _ = event.window().eval(&format!(
+          r#"
+          window.location.href = (window.location.origin + '/' + "{}")
+        "#,
+          event.menu_item_id()
+        ));
+      }
+      "notification" => {
+        let bundle_identifier = bundle_identifier.clone();
+        tauri::async_runtime::spawn(async move {
+          tauri::api::notification::Notification::new(&bundle_identifier)
+            .title("Stronghold")
+            .body("This is a demo notification")
+            .show()
+            .unwrap();
+        });
+      }
+      _ => {}
+    })
     .invoke_handler(tauri::generate_handler![unlock])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
