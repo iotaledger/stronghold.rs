@@ -8,12 +8,19 @@ use libp2p::{
 };
 use std::{fmt, io};
 
+/// Error on dialing a peer and establishing a connection.
 #[derive(Debug)]
 pub enum DialErr {
+    /// The peer is currently banned.
     Banned,
+    /// The configured limit for simultaneous outgoing connections
+    /// has been reached.
     ConnectionLimit { limit: u32, current: u32 },
+    /// The address given for dialing is invalid.
     InvalidAddress(Multiaddr),
-    UnreachableAddr(Multiaddr),
+    /// No known address for the peer could be reached.
+    UnreachableAddrs,
+    /// No direct or relayed addresses for the peer are known.
     NoAddresses,
 }
 
@@ -38,7 +45,7 @@ impl fmt::Display for DialErr {
             }
             DialErr::NoAddresses => write!(f, "Dial error: no addresses for peer."),
             DialErr::InvalidAddress(a) => write!(f, "Dial error: invalid address: {}", a),
-            DialErr::UnreachableAddr(a) => write!(f, "Dial error: unreachable address: {}", a),
+            DialErr::UnreachableAddrs => write!(f, "Dial error: no known address could be reached"),
             DialErr::Banned => write!(f, "Dial error: peer is banned."),
         }
     }
@@ -46,11 +53,18 @@ impl fmt::Display for DialErr {
 
 impl std::error::Error for DialErr {}
 
+/// Error on establishing a connection.
 #[derive(Debug)]
 pub enum ConnectionErr {
+    /// An I/O error occurred on the connection.
     Io(io::Error),
+    /// The peer identity obtained on the connection did not
+    /// match the one that was expected or is otherwise invalid.
     InvalidPeerId,
-    MultiaddrNotSupported(Multiaddr),
+    /// An error occurred while negotiating the transport protocol(s).
+    Transport(TransportErr),
+    /// The connection was dropped because the connection limit
+    /// for a peer has been reached.
     ConnectionLimit { limit: u32, current: u32 },
 }
 
@@ -62,11 +76,7 @@ impl fmt::Display for ConnectionErr {
             ConnectionErr::ConnectionLimit { current, limit } => {
                 write!(f, "Connection error: Connection limit: {}/{}.", current, limit)
             }
-            ConnectionErr::MultiaddrNotSupported(a) => write!(
-                f,
-                "Connection error: Transport error: Multiaddr is not supported: {}",
-                a
-            ),
+            ConnectionErr::Transport(e) => write!(f, "Connection error: Transport error: {}", e),
         }
     }
 }
@@ -81,18 +91,19 @@ impl From<PendingConnectionError<io::Error>> for ConnectionErr {
             PendingConnectionError::ConnectionLimit(ConnectionLimit { limit, current }) => {
                 ConnectionErr::ConnectionLimit { limit, current }
             }
-            PendingConnectionError::Transport(TransportError::MultiaddrNotSupported(a)) => {
-                ConnectionErr::MultiaddrNotSupported(a)
-            }
+            PendingConnectionError::Transport(err) => ConnectionErr::Transport(err.into()),
         }
     }
 }
 
 impl std::error::Error for ConnectionErr {}
 
+/// Error on the [Transport][libp2p::Transport].
 #[derive(Debug)]
 pub enum TransportErr {
+    /// The address is not supported.
     MultiaddrNotSupported(Multiaddr),
+    /// An I/O Error occurred.
     Io(io::Error),
 }
 
@@ -116,9 +127,12 @@ impl From<TransportError<io::Error>> for TransportErr {
 
 impl std::error::Error for TransportErr {}
 
+/// Error on listening on a relayed address.
 #[derive(Debug)]
 pub enum ListenRelayErr {
+    /// Establishing a connection to the relay failed.
     DialRelay(DialErr),
+    /// Listening on the address failed on the transport layer.
     Transport(TransportErr),
 }
 
@@ -144,7 +158,7 @@ impl fmt::Display for ListenRelayErr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ListenRelayErr::DialRelay(e) => write!(f, "Listen on Relay error: Dial Relay Error: {}", e),
-            ListenRelayErr::Transport(e) => write!(f, "Listen on Relay error: Transport Error: {}", e),
+            ListenRelayErr::Transport(e) => write!(f, "Listen on Relay error: Listening Error: {}", e),
         }
     }
 }

@@ -238,11 +238,11 @@ where
 
         if is_eligible_to_try_relayed {
             let dialing_relays = self.dialing_relays.clone();
-            let try_relayed = dialing_relays.iter().find_map(|relay| {
+            let try_relayed = dialing_relays.iter().find_map(|&relay| {
                 let addr = self.relay_addr.get(&relay)?;
                 let relayed_addr = addr
                     .clone()
-                    .with(Protocol::P2p(relay.clone().into()))
+                    .with(Protocol::P2p(relay.into()))
                     .with(Protocol::P2pCircuit)
                     .with(Protocol::P2p(target_peer.into()));
                 self.connect_peer_via_addr(&target_peer, relayed_addr).map(Ok).ok()

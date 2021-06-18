@@ -5,28 +5,30 @@ use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
 
+// Addresses of a remote peer
 #[derive(Debug, Clone)]
 struct PeerAddress {
-    direct: VecDeque<Multiaddr>,
-    use_relay: Option<bool>,
-    relay: Option<PeerId>,
-    currently_used: HashMap<Multiaddr, u8>,
+    // Known addresses e.g. that have been explicitly added or already connected
+    known: VecDeque<Multiaddr>,
+    // Try relay peer if a target can not be reached directly.
+    use_relay_fallback: bool,
 }
 
 impl Default for PeerAddress {
     fn default() -> Self {
         PeerAddress {
-            direct: VecDeque::new(),
-            use_relay: None,
-            relay: None,
-            currently_used: HashMap::new(),
+            known: VecDeque::new(),
+            use_relay_fallback: true,
         }
     }
 }
 
+// Known relays and peer addresses.
 #[derive(Debug, Clone)]
 pub struct AddressInfo {
+    // Addresses and relay config for each peer.
     peers: HashMap<PeerId, PeerAddress>,
+    // Known relays to use as fallback for dialing.
     relays: SmallVec<[PeerId; 10]>,
 }
 
@@ -38,19 +40,17 @@ impl AddressInfo {
         }
     }
 
+    // Known addresses of a peer ordered based on likeliness to be reachable.
+    // Optionally includes a relayed target address for each known dialing relay.
     pub fn get_addrs(&self, target: &PeerId) -> Vec<Multiaddr> {
         let addrs = self.peers.get(target).cloned().unwrap_or_default();
-        let mut peer_addrs = Vec::new();
-        if matches!(addrs.use_relay, Some(false)) || matches!(addrs.use_relay, None) {
-            peer_addrs.extend(addrs.direct.clone());
-        }
-        if matches!(addrs.use_relay, Some(true)) || matches!(addrs.use_relay, None) {
-            let relayed = addrs
-                .relay
-                .map(|r| vec![r])
-                .unwrap_or_else(|| self.relays.clone().to_vec())
-                .into_iter()
-                .filter_map(|r| self.get_relay_addr(&r).map(|a| assemble_relayed_addr(*target, r, a)));
+        let mut peer_addrs: Vec<Multiaddr> = addrs.known.clone().into();
+
+        if addrs.use_relay_fallback {
+            let relayed = self
+                .relays
+                .iter()
+                .filter_map(|r| self.get_relay_addr(r).map(|a| assemble_relayed_addr(*target, *r, a)));
             peer_addrs.extend(relayed);
         }
         peer_addrs
@@ -58,65 +58,65 @@ impl AddressInfo {
 
     pub fn add_addrs(&mut self, peer: PeerId, addr: Multiaddr) {
         let addrs = self.peers.entry(peer).or_default();
-        if !addrs.direct.contains(&addr) {
-            addrs.direct.push_back(addr);
+        if !addrs.known.contains(&addr) {
+            addrs.known.push_back(addr);
         }
     }
 
     pub fn remove_address(&mut self, peer: &PeerId, addrs: &Multiaddr) {
-        if let Some(PeerAddress { direct, .. }) = self.peers.get_mut(peer) {
-            direct.retain(|a| a != addrs);
+        if let Some(PeerAddress { known, .. }) = self.peers.get_mut(peer) {
+            known.retain(|a| a != addrs);
         }
     }
-
-    pub fn set_no_relay(&mut self, peer: PeerId) {
+    pub fn set_relay_fallback(&mut self, peer: PeerId, use_relay_fallback: bool) {
         let addrs = self.peers.entry(peer).or_default();
-        addrs.use_relay = Some(false);
-        addrs.relay = None;
+        addrs.use_relay_fallback = use_relay_fallback;
     }
 
-    pub fn set_relay(&mut self, target: PeerId, relay: PeerId) -> Option<Multiaddr> {
+    // Add a address for target via the given relay.
+    // Optionally stop using other relays as fallback.
+    pub fn use_relay(&mut self, target: PeerId, relay: PeerId, is_exclusive: bool) -> Option<Multiaddr> {
+        let relayed_addr = self
+            .get_relay_addr(&relay)
+            .map(|a| assemble_relayed_addr(target, relay, a))?;
         let addrs = self.peers.entry(target).or_default();
-        addrs.use_relay = Some(true);
-        addrs.relay = Some(relay);
-        self.get_relay_addr(&relay)
-            .map(|a| assemble_relayed_addr(target, relay, a))
-    }
-
-    pub fn on_connection_established(&mut self, peer: PeerId, addr: Multiaddr) {
-        let peer_addr = self.peers.entry(peer).or_default();
-        let relay = addr.iter().find(|p| p == &Protocol::P2pCircuit).and_then(|_| {
-            addr.iter().find_map(|p| match p {
-                Protocol::P2p(relay) if relay != peer.into() => PeerId::from_multihash(relay).ok(),
-                _ => None,
-            })
-        });
-        peer_addr.use_relay = Some(relay.is_some());
-        peer_addr.relay = relay;
-        if relay.is_none() && !peer_addr.direct.contains(&addr) {
-            peer_addr.direct.push_front(addr.clone())
+        addrs.known.push_front(relayed_addr.clone());
+        if is_exclusive {
+            addrs.use_relay_fallback = false;
         }
-        let connections = peer_addr.currently_used.entry(addr).or_insert(0);
-        *connections += 1;
+        Some(relayed_addr)
     }
 
-    pub fn on_connection_closed(&mut self, peer: PeerId, addr: &Multiaddr) {
-        self.peers.entry(peer).and_modify(|peer_addrs| {
-            if let Some(connections) = peer_addrs.currently_used.remove(addr) {
-                if connections > 1 {
-                    peer_addrs.currently_used.insert(addr.clone(), connections - 1);
-                }
-            }
-        });
+    // Move address in the list to the front i.g. the first address that will be tried when dialing the target.
+    pub fn prioritize_addr(&mut self, peer: PeerId, addr: Multiaddr) {
+        let peer_addr = self.peers.entry(peer).or_default();
+        if peer_addr.known.front() != Some(&addr) {
+            peer_addr.known.retain(|a| a != &addr);
+            peer_addr.known.push_front(addr);
+        }
     }
 
+    // Move address in the list to the back i.g. the last known address that will be tried when dialing the target.
+    pub fn deprioritize_addr(&mut self, peer: PeerId, addr: Multiaddr) {
+        let peer_addr = self.peers.entry(peer).or_default();
+        if peer_addr.known.back() != Some(&addr) {
+            peer_addr.known.retain(|a| a != &addr);
+            peer_addr.known.push_back(addr);
+        }
+    }
+
+    // Get the first address of a relay peer.
+    // Return `None` if the peer is not a relay, or no address is known.
     pub fn get_relay_addr(&self, peer: &PeerId) -> Option<Multiaddr> {
         if !self.relays.contains(peer) {
             return None;
         }
-        self.peers.get(peer).and_then(|a| a.direct.front().cloned())
+        self.peers.get(peer).and_then(|a| a.known.front().cloned())
     }
 
+    // Add a peer as relay peer, optionally add a known address for the peer.
+    // Return `None` if no address for the relay is known yet.
+    // Note: even if no address is known, the peer will be added to the dialing relays.
     pub fn add_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
         if self.relays.contains(&peer) {
             return self.get_relay_addr(&peer);
@@ -125,7 +125,7 @@ impl AddressInfo {
             self.add_addrs(peer, addr.clone());
         }
         self.relays.push(peer);
-        address.or_else(|| self.peers.get(&peer).and_then(|addrs| addrs.direct.front().cloned()))
+        address.or_else(|| self.peers.get(&peer).and_then(|addrs| addrs.known.front().cloned()))
     }
 
     pub fn remove_relay(&mut self, peer: &PeerId) {
@@ -133,6 +133,9 @@ impl AddressInfo {
     }
 }
 
+/// Assemble a relayed address for the target following the syntax
+/// `<relay-addr>/p2p/<relay-id>/p2p-circuit/p2p/<target-id>` that can be used to reach the target peer if they are
+/// listening on that relay.
 pub fn assemble_relayed_addr(target: PeerId, relay: PeerId, mut relay_addr: Multiaddr) -> Multiaddr {
     let relay_proto = Multiaddr::empty()
         .with(Protocol::P2p(relay.into()))

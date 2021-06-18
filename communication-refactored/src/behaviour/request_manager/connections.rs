@@ -6,9 +6,12 @@ use libp2p::core::{connection::ConnectionId, PeerId};
 use smallvec::SmallVec;
 use std::collections::{hash_map::HashMap, HashSet};
 
+// Sent requests that have not yet received a response.
 #[derive(Debug)]
 pub(super) struct PendingResponses {
+    // Outbound request sent to remote, waiting for an inbound response.
     pub outbound_requests: HashSet<RequestId>,
+    // Inbound requests received from remote, waiting for an outbound response.
     pub inbound_requests: HashSet<RequestId>,
 }
 
@@ -21,6 +24,7 @@ impl Default for PendingResponses {
     }
 }
 
+/// Active connections to a remote peer and pending responses on each connection.
 #[derive(Debug)]
 pub(super) struct PeerConnectionManager {
     connections: HashMap<PeerId, SmallVec<[ConnectionId; 2]>>,
@@ -42,26 +46,25 @@ impl PeerConnectionManager {
             .unwrap_or(false)
     }
 
-    pub fn connected_peers(&self) -> Vec<PeerId> {
+    pub fn get_connections(&self, peer: &PeerId) -> SmallVec<[ConnectionId; 2]> {
+        self.connections.get(peer).cloned().unwrap_or_default()
+    }
+
+    // List of peers to which at least one connection is currently established.
+    pub fn get_connected_peers(&self) -> Vec<PeerId> {
         self.connections.keys().copied().collect()
     }
 
-    pub fn remove_all_connections(&mut self, peer: &PeerId) -> Option<PendingResponses> {
-        let conns = self.connections.remove(peer)?;
-        let collected_pending_res = conns.iter().fold(PendingResponses::default(), |mut acc, connection| {
-            if let Some(pending_res) = self.pending_responses.remove(connection) {
-                acc.outbound_requests.extend(pending_res.outbound_requests);
-                acc.inbound_requests.extend(pending_res.inbound_requests);
-            }
-            acc
-        });
-        Some(collected_pending_res)
+    // Remove all connections of a peer, return the concatenated list of pending responses from the connections.
+    pub fn remove_all_connections(&mut self, peer: &PeerId) -> Option<SmallVec<[ConnectionId; 2]>> {
+        self.connections.remove(peer)
     }
 
     pub fn add_connection(&mut self, peer: PeerId, connection: ConnectionId) {
         self.connections.entry(peer).or_default().push(connection);
     }
 
+    // Remove a connection from the list, return the pending responses on that connection.
     pub fn remove_connection(&mut self, peer: PeerId, connection: &ConnectionId) -> Option<PendingResponses> {
         self.connections
             .entry(peer)
@@ -72,7 +75,9 @@ impl PeerConnectionManager {
         self.pending_responses.remove(connection)
     }
 
-    pub fn on_new_request(
+    // New request that has been sent/ received, but with no response yet.
+    // Assigns the request to one of the established connections to the peer, return `None` if there are no connections.
+    pub fn add_request(
         &mut self,
         peer: &PeerId,
         request_id: RequestId,
@@ -92,18 +97,12 @@ impl PeerConnectionManager {
         Some(connection)
     }
 
-    pub fn remove_request(
-        &mut self,
-        connection: &ConnectionId,
-        request_id: &RequestId,
-        direction: &RequestDirection,
-    ) -> bool {
+    pub fn remove_request(&mut self, connection: &ConnectionId, request_id: &RequestId, direction: &RequestDirection) {
         self.pending_responses
             .get_mut(connection)
             .map(|requests| match direction {
                 RequestDirection::Inbound => requests.inbound_requests.remove(request_id),
                 RequestDirection::Outbound => requests.outbound_requests.remove(request_id),
-            })
-            .unwrap_or(false)
+            });
     }
 }

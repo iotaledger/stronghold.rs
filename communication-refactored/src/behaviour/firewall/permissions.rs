@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub use stronghold_derive::RequestPermissions;
+
 /// The permission value for request variants.
 /// It is a  bit that is set at a certain index, therefore the value is always a power of 2.
 #[derive(Debug, Clone, Copy, PartialEq)]

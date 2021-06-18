@@ -66,7 +66,7 @@ impl TestTargetConfig {
 enum UseRelay {
     Default,
     NoRelay,
-    UseActualRelay,
+    UseSpecificRelay,
 }
 
 #[derive(Debug)]
@@ -82,7 +82,7 @@ impl TestSourceConfig {
     fn random() -> Self {
         let set_relay = match rand::random::<u8>() % 10 {
             0 | 1 | 2 | 3 => UseRelay::Default,
-            4 | 5 | 6 => UseRelay::UseActualRelay,
+            4 | 5 | 6 => UseRelay::UseSpecificRelay,
             7 | 8 | 9 => UseRelay::NoRelay,
             _ => unreachable!(),
         };
@@ -184,9 +184,11 @@ impl TestConfig {
 
         match self.source_config.set_relay {
             UseRelay::Default => {}
-            UseRelay::NoRelay => self.source_comms.set_dialing_not_use_relay(self.target_id),
-            UseRelay::UseActualRelay => {
-                let addr = self.source_comms.set_dialing_use_relay(self.target_id, self.relay_id);
+            UseRelay::NoRelay => self.source_comms.set_relay_fallback(self.target_id, false),
+            UseRelay::UseSpecificRelay => {
+                let addr = self
+                    .source_comms
+                    .use_specific_relay(self.target_id, self.relay_id, true);
                 if self.source_config.knows_relay_addr && self.source_config.knows_relay {
                     assert_eq!(
                         addr.unwrap(),
@@ -207,7 +209,7 @@ impl TestConfig {
         let allows_direct = matches!(self.source_config.set_relay, UseRelay::Default | UseRelay::NoRelay);
         let allows_relay = matches!(
             self.source_config.set_relay,
-            UseRelay::Default | UseRelay::UseActualRelay
+            UseRelay::Default | UseRelay::UseSpecificRelay
         );
 
         if self.target_config.listening_relay {

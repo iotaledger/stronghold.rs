@@ -41,7 +41,7 @@ use futures::{
     FutureExt, StreamExt, TryFutureExt,
 };
 pub use handler::CommunicationProtocol;
-use handler::{ConnectionHandler, HandlerInEvent, HandlerOutEvent};
+use handler::{ConnectionHandler, HandlerInEvent, HandlerOutEvent, ProtocolSupport};
 use libp2p::{
     core::{
         connection::{ConnectionId, ListenerId},
@@ -175,6 +175,7 @@ where
         }
     }
 
+    /// Send a new request to a remote peer.
     pub fn send_request(&mut self, peer: PeerId, request: Rq) -> ResponseReceiver<Rs> {
         let request_id = self.next_request_id();
         let (response_tx, response_rx) = oneshot::channel();
@@ -183,26 +184,148 @@ where
             request_id,
             response_rx,
         };
-        let query = RequestMessage {
+        let request = RequestMessage {
             data: request,
             response_tx,
         };
-        let approval_status = match self.firewall.get_out_rule_or_default(&peer) {
+        self.handle_new_request(peer, request_id, request, RequestDirection::Outbound);
+        receiver
+    }
+
+    /// Get the current default rules for the firewall.
+    /// The default rules are used for peers that do not have any explicit rules.
+    pub fn get_firewall_default(&self) -> &FirewallRules {
+        self.firewall.get_default_rules()
+    }
+
+    /// Set the default configuration for the firewall.
+    /// The default rules are used for peers that do not have any explicit rules.
+    pub fn set_firewall_default(&mut self, direction: RuleDirection, default: Rule) {
+        self.firewall.set_default(Some(default), direction);
+        self.request_manager.connected_peers().into_iter().for_each(|peer| {
+            if let Some(rules) = self.firewall.get_rules(&peer) {
+                if (rules.inbound().is_some() || !direction.is_inbound())
+                    && (rules.outbound().is_some() || !direction.is_outbound())
+                {
+                    return;
+                }
+            }
+            self.handle_updated_peer_rule(peer, direction);
+        })
+    }
+
+    /// Remove a default firewall rule.
+    /// If there is no default rule and no peer-specific rule, a [`FirewallRequest::PeerSpecificRule`]
+    /// request will be sent through the firewall channel
+    pub fn remove_firewall_default(&mut self, direction: RuleDirection) {
+        let old_rules = self.firewall.get_default_rules();
+        let is_change = (old_rules.inbound().is_some() && direction.is_inbound())
+            || (old_rules.inbound().is_some() && direction.is_inbound());
+        self.firewall.set_default(None, direction);
+        if is_change {
+            self.request_manager.connected_peers().iter().for_each(|peer| {
+                // Check if peer is affected
+                if let Some(rules) = self.firewall.get_rules(&peer) {
+                    if (rules.inbound().is_some() || !direction.is_inbound())
+                        && (rules.outbound().is_some() || !direction.is_outbound())
+                    {
+                        // Skip peer if they have explicit rules for the direction and hence are not affected
+                        return;
+                    }
+                }
+                self.handle_updated_peer_rule(*peer, direction);
+            })
+        }
+    }
+
+    /// Get the explicit rules for a peer, if there are any.
+    pub fn get_peer_rules(&self, peer: &PeerId) -> Option<&FirewallRules> {
+        self.firewall.get_rules(peer)
+    }
+
+    /// Set a peer specific rule to overwrite the default behaviour for that peer.
+    pub fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule) {
+        self.firewall.set_rule(peer, Some(rule), direction);
+        self.handle_updated_peer_rule(peer, direction);
+    }
+
+    /// Remove a peer specific rule, which will result in using the firewall default rules.
+    pub fn remove_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
+        self.firewall.set_rule(peer, None, direction);
+        self.handle_updated_peer_rule(peer, direction);
+    }
+
+    /// Add an address for the remote peer.
+    pub fn add_address(&mut self, peer: PeerId, address: Multiaddr) {
+        self.addresses.add_addrs(peer, address);
+    }
+
+    /// Remove an address from the known addresses of a remote peer.
+    pub fn remove_address(&mut self, peer: &PeerId, address: &Multiaddr) {
+        self.addresses.remove_address(peer, address);
+    }
+
+    /// Add a relay to the list of relays that may be tried to use if a remote peer can not be reached directly.
+    pub fn add_dialing_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
+        self.addresses.add_relay(peer, address)
+    }
+
+    /// Remove a relay from the list of dialing relays.
+    pub fn remove_dialing_relay(&mut self, peer: &PeerId) {
+        self.addresses.remove_relay(peer);
+    }
+
+    /// Configure whether it should be attempted to reach the remote via known relays, if it can not be reached via
+    /// known addresses.
+    pub fn set_relay_fallback(&mut self, peer: PeerId, use_relay_fallback: bool) {
+        self.addresses.set_relay_fallback(peer, use_relay_fallback);
+    }
+
+    /// Dial the target via the specified relay.
+    /// The `is_exclusive` specifies whether other known relays should be used if using the set relay is not successful.
+    ///
+    /// Returns the relayed address of the local peer (`<relay-addr>/<relay-id>/p2p-circuit/<local-id>),
+    /// if an address for the relay is known.
+    pub fn use_specific_relay(&mut self, target: PeerId, relay: PeerId, is_exclusive: bool) -> Option<Multiaddr> {
+        self.addresses.use_relay(target, relay, is_exclusive)
+    }
+
+    /// [`RequestId`] for the next outbound request.
+    fn next_request_id(&mut self) -> RequestId {
+        *self.next_request_id.inc()
+    }
+
+    // Handle a new inbound/ outbound request
+    fn handle_new_request(
+        &mut self,
+        peer: PeerId,
+        request_id: RequestId,
+        request: RequestMessage<Rq, Rs>,
+        direction: RequestDirection,
+    ) {
+        // Check the firewall rules for the target peer and direction.
+        let rules = self.firewall.get_effective_rules(&peer);
+        let rule = match direction {
+            RequestDirection::Inbound => rules.inbound(),
+            RequestDirection::Outbound => rules.outbound(),
+        };
+        let approval_status = match rule {
             None => {
-                self.query_peer_rule(peer, RuleDirection::Outbound);
+                let rule_direction = match direction {
+                    RequestDirection::Inbound => RuleDirection::Inbound,
+                    RequestDirection::Outbound => RuleDirection::Outbound,
+                };
+                // Query for a new peer specific rule.
+                self.query_peer_rule(peer, rule_direction);
                 ApprovalStatus::MissingRule
             }
             Some(Rule::Ask) => {
-                self.query_rq_approval(
-                    peer,
-                    request_id,
-                    query.data.to_permissioned(),
-                    RequestDirection::Outbound,
-                );
+                // Query for individual approval for the requests.
+                self.query_rq_approval(peer, request_id, request.data.to_permissioned(), direction.clone());
                 ApprovalStatus::MissingApproval
             }
             Some(Rule::Permission(permission)) => {
-                if permission.permits(&query.data.to_permissioned().permission()) {
+                if permission.permits(&request.data.to_permissioned().permission()) {
                     ApprovalStatus::Approved
                 } else {
                     ApprovalStatus::Rejected
@@ -210,112 +333,10 @@ where
             }
         };
         self.request_manager
-            .on_new_request(peer, request_id, query, approval_status, RequestDirection::Outbound);
-        receiver
+            .on_new_request(peer, request_id, request, approval_status, direction);
     }
 
-    pub fn set_firewall_default(&mut self, direction: RuleDirection, default: Rule) {
-        self.firewall.set_default(default, direction);
-        let default_rules = self.firewall.get_default_rules().clone();
-        self.request_manager.connected_peers().into_iter().for_each(|peer| {
-            if let Some(rules) = self.firewall.get_rules(&peer) {
-                if (!direction.is_inbound() || rules.inbound().is_some())
-                    && (!direction.is_outbound() || rules.outbound().is_some())
-                {
-                    return;
-                }
-                let mut new_rules = default_rules.clone();
-                if let Some(rule) = rules.inbound().cloned() {
-                    new_rules.set_rule(Some(rule), RuleDirection::Inbound);
-                }
-                if let Some(rule) = rules.outbound().cloned() {
-                    new_rules.set_rule(Some(rule), RuleDirection::Outbound);
-                }
-                self.handle_peer_rule(peer, new_rules, direction);
-            } else {
-                self.request_manager
-                    .on_peer_rule(peer, default_rules.clone(), direction);
-            }
-        })
-    }
-
-    pub fn get_firewall_default(&self) -> &FirewallRules {
-        self.firewall.get_default_rules()
-    }
-
-    pub fn remove_firewall_default(&mut self, direction: RuleDirection) {
-        self.firewall.remove_default(direction);
-        let default_rules = self.firewall.get_default_rules().clone();
-        self.request_manager.connected_peers().into_iter().for_each(|peer| {
-            let rules = self
-                .firewall
-                .get_rules(&peer)
-                .cloned()
-                .unwrap_or_else(|| default_rules.clone());
-            self.handle_peer_rule(peer, rules, direction);
-        })
-    }
-
-    pub fn get_peer_rules(&self, peer: &PeerId) -> Option<&FirewallRules> {
-        self.firewall.get_rules(peer)
-    }
-
-    pub fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule) {
-        self.firewall.set_rule(peer, rule, direction);
-        self.update_peer_rule(peer, direction)
-    }
-
-    pub fn remove_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
-        if self.firewall.remove_rule(&peer, direction) {
-            self.update_peer_rule(peer, direction);
-        }
-    }
-
-    fn update_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
-        let mut new_rules = self.firewall.get_default_rules().clone();
-        if let Some(peer_rules) = self.firewall.get_rules(&peer) {
-            if let Some(inbound) = peer_rules.inbound() {
-                new_rules.set_rule(Some(inbound.clone()), RuleDirection::Inbound);
-            }
-            if let Some(outbound) = peer_rules.outbound() {
-                new_rules.set_rule(Some(outbound.clone()), RuleDirection::Outbound);
-            }
-        }
-        self.handle_peer_rule(peer, new_rules, direction);
-    }
-
-    pub fn add_address(&mut self, peer: PeerId, address: Multiaddr) {
-        self.addresses.add_addrs(peer, address);
-    }
-
-    pub fn remove_address(&mut self, peer: &PeerId, address: &Multiaddr) {
-        self.addresses.remove_address(peer, address);
-    }
-
-    pub fn get_relay_addr(&self, relay: &PeerId) -> Option<Multiaddr> {
-        self.addresses.get_relay_addr(relay)
-    }
-
-    pub fn add_dialing_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
-        self.addresses.add_relay(peer, address)
-    }
-
-    pub fn remove_dialing_relay(&mut self, peer: &PeerId) {
-        self.addresses.remove_relay(peer);
-    }
-
-    pub fn set_not_use_relay(&mut self, peer: PeerId) {
-        self.addresses.set_no_relay(peer);
-    }
-
-    pub fn set_use_relay(&mut self, peer: PeerId, relay: PeerId) -> Option<Multiaddr> {
-        self.addresses.set_relay(peer, relay)
-    }
-
-    fn next_request_id(&mut self) -> RequestId {
-        *self.next_request_id.inc()
-    }
-
+    // Handle new [`HandlerOutEvent`] emitted by the [`ConnectionHandler`].
     fn handle_handler_event(&mut self, peer: PeerId, connection: ConnectionId, event: HandlerOutEvent<Rq, Rs>) {
         match event {
             HandlerOutEvent::ReceivedResponse(request_id) => {
@@ -328,35 +349,7 @@ where
                     .on_res_for_outbound(peer, &connection, request_id, err);
             }
             HandlerOutEvent::ReceivedRequest { request_id, request } => {
-                let approval_status = match self.firewall.get_in_rule_or_default(&peer) {
-                    None => {
-                        self.query_peer_rule(peer, RuleDirection::Inbound);
-                        ApprovalStatus::MissingRule
-                    }
-                    Some(Rule::Ask) => {
-                        self.query_rq_approval(
-                            peer,
-                            request_id,
-                            request.data.to_permissioned(),
-                            RequestDirection::Inbound,
-                        );
-                        ApprovalStatus::MissingApproval
-                    }
-                    Some(Rule::Permission(permission)) => {
-                        if permission.permits(&request.data.to_permissioned().permission()) {
-                            ApprovalStatus::Approved
-                        } else {
-                            ApprovalStatus::Rejected
-                        }
-                    }
-                };
-                self.request_manager.on_new_request(
-                    peer,
-                    request_id,
-                    request,
-                    approval_status,
-                    RequestDirection::Inbound,
-                )
+                self.handle_new_request(peer, request_id, request, RequestDirection::Inbound);
             }
             HandlerOutEvent::OutboundTimeout(request_id) => {
                 let err = Err(OutboundFailure::Timeout);
@@ -382,7 +375,10 @@ where
         }
     }
 
+    // Query for a new peer-specific firewall rule.
+    // Since is necessary if there is neither an existing default, nor a peer specific rule.
     fn query_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
+        // Only query for the direction for which there is no pending request already.
         let reduced_direction = self
             .request_manager
             .pending_rule_requests(&peer)
@@ -394,6 +390,7 @@ where
             data: (peer, direction),
             response_tx: rule_tx,
         });
+        // Send request through the firewall channel, add to pending rule requests.
         let send_firewall = Self::send_firewall(self.permission_req_channel.clone(), firewall_req).map_err(|_| ());
         let future = send_firewall
             .and_then(move |()| rule_rx.map_err(|_| ()))
@@ -406,6 +403,8 @@ where
         self.request_manager.add_pending_rule_requests(peer, direction);
     }
 
+    // Query for individual approval of a requests.
+    // This is necessary if the firewall is configured with [`Rule::Ask`].
     fn query_rq_approval(&mut self, peer: PeerId, request_id: RequestId, rq_type: P, direction: RequestDirection) {
         let (approval_tx, approval_rx) = oneshot::channel();
         let firewall_req = FirewallRequest::RequestApproval(RequestApprovalQuery {
@@ -421,6 +420,7 @@ where
         self.pending_approval_rqs.push(future);
     }
 
+    // Send a request through the firewall channel.
     async fn send_firewall(
         mut channel: mpsc::Sender<FirewallRequest<P>>,
         request: FirewallRequest<P>,
@@ -429,7 +429,13 @@ where
         channel.start_send(request)
     }
 
-    fn handle_peer_rule(&mut self, peer: PeerId, rules: FirewallRules, direction: RuleDirection) {
+    // Handle a changed firewall rule for a peer.
+    fn handle_updated_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
+        // Set protocol support for the active handlers according to the new rules.
+        let rules = self.firewall.get_effective_rules(&peer);
+        let set_support = ProtocolSupport::from_rules(rules.inbound(), rules.outbound());
+        self.request_manager.set_protocol_support(peer, None, set_support);
+        // Query for individual request approval due to [`Rule::Ask`].
         if let Some(ask_reqs) = self.request_manager.on_peer_rule(peer, rules, direction) {
             ask_reqs.into_iter().for_each(|(id, rq, dir)| {
                 self.query_rq_approval(peer, id, rq, dir);
@@ -448,8 +454,13 @@ where
     type OutEvent = BehaviourEvent<Rq, Rs>;
 
     fn new_handler(&mut self) -> Self::ProtocolsHandler {
+        // Use the default firewall rules as protocol support.
+        // As soon as the connection is established, this will potentially be updated with the peer-specific rules.
+        let default_rules = self.firewall.get_default_rules();
+        let default_support = ProtocolSupport::from_rules(default_rules.inbound(), default_rules.outbound());
         let handler = ConnectionHandler::new(
             self.supported_protocols.clone(),
+            default_support,
             self.connection_timeout,
             self.request_timeout,
             self.next_inbound_id.clone(),
@@ -491,27 +502,28 @@ where
     }
 
     fn inject_connection_established(&mut self, peer: &PeerId, connection: &ConnectionId, endpoint: &ConnectedPoint) {
-        let inbound_rule = self.firewall.get_in_rule_or_default(peer);
-        let outbound_rule = self.firewall.get_out_rule_or_default(peer);
-        let peer = *peer;
-        let rules = FirewallRules::new(inbound_rule.cloned(), outbound_rule.cloned());
-        self.request_manager.push_action(BehaviourAction::ReceivedPeerRules {
-            peer,
-            connection: Some(*connection),
-            rules,
-        });
-        self.request_manager.on_connection_established(peer, *connection);
+        // Overwrite the default protocol support if the peer has explicit rules.
+        if self.firewall.get_rules(peer).is_some() {
+            let default_rules = self.firewall.get_default_rules();
+            let default_support = ProtocolSupport::from_rules(default_rules.inbound(), default_rules.outbound());
+            let peer_rules = self.firewall.get_effective_rules(peer);
+            let support = ProtocolSupport::from_rules(peer_rules.inbound(), peer_rules.outbound());
+            if default_support != support {
+                // Overwrite default protocol support with the protocol support derived from the peer-specific rules.
+                self.request_manager
+                    .set_protocol_support(*peer, Some(*connection), support);
+            }
+        }
+        self.request_manager.on_connection_established(*peer, *connection);
         self.addresses
-            .on_connection_established(peer, endpoint.get_remote_address().clone());
-        self.relay.inject_connection_established(&peer, connection, endpoint);
+            .prioritize_addr(*peer, endpoint.get_remote_address().clone());
+        self.relay.inject_connection_established(peer, connection, endpoint);
         #[cfg(feature = "mdns")]
-        self.mdns.inject_connection_established(&peer, connection, endpoint);
+        self.mdns.inject_connection_established(peer, connection, endpoint);
     }
 
     fn inject_connection_closed(&mut self, peer: &PeerId, connection: &ConnectionId, endpoint: &ConnectedPoint) {
         self.request_manager.on_connection_closed(*peer, connection);
-        self.addresses
-            .on_connection_closed(*peer, endpoint.get_remote_address());
         self.relay.inject_connection_closed(peer, connection, endpoint);
         #[cfg(feature = "mdns")]
         self.mdns.inject_connection_closed(peer, connection, endpoint);
@@ -553,7 +565,7 @@ where
         #[cfg(feature = "mdns")]
         self.mdns.inject_addr_reach_failure(peer, addr, error);
         if let Some(peer) = peer {
-            self.addresses.remove_address(peer, addr);
+            self.addresses.deprioritize_addr(*peer, addr.clone());
         }
     }
 
@@ -571,22 +583,33 @@ where
     }
 
     fn poll(&mut self, cx: &mut Context<'_>, params: &mut impl PollParameters) -> Poll<NetworkAction<Self>> {
+        // Drive mdns.
         #[cfg(feature = "mdns")]
         let _ = self.mdns.poll(cx, params);
 
+        // Update firewall rules if a peer specific rule was return after a `FirewallRequest::PeerSpecificRule` query.
         while let Poll::Ready(Some((peer, direction, rules))) = self.pending_rule_rqs.poll_next_unpin(cx) {
             if let Some(rules) = rules {
-                self.firewall.set_rules(peer, rules.clone(), direction);
-                self.update_peer_rule(peer, direction);
+                if direction.is_inbound() {
+                    self.firewall
+                        .set_rule(peer, rules.inbound().cloned(), RuleDirection::Inbound)
+                }
+                if direction.is_outbound() {
+                    self.firewall
+                        .set_rule(peer, rules.outbound().cloned(), RuleDirection::Outbound)
+                }
+                self.handle_updated_peer_rule(peer, direction);
             } else {
                 self.request_manager.on_no_peer_rule(peer, direction);
             }
         }
 
+        // Handle individual approvals fro requests that were returned after a `FirewallRequest::RequestApproval` query.
         while let Poll::Ready(Some((request_id, is_allowed))) = self.pending_approval_rqs.poll_next_unpin(cx) {
             self.request_manager.on_request_approval(request_id, is_allowed);
         }
 
+        // Handle events from the relay protocol.
         if let Poll::Ready(action) = self.relay.poll(cx, params) {
             match action {
                 NetworkBehaviourAction::DialPeer { peer_id, condition } => {
@@ -610,6 +633,8 @@ where
                 _ => {}
             }
         }
+
+        // Emit events for pending requests and required dial attempts.
         if let Some(event) = self.request_manager.take_next_action() {
             let action = match event {
                 BehaviourAction::InboundReady {
@@ -656,16 +681,15 @@ where
                     peer_id: peer,
                     condition: DialPeerCondition::Disconnected,
                 },
-                BehaviourAction::ReceivedPeerRules {
+                BehaviourAction::SetProtocolSupport {
                     peer,
                     connection,
-                    rules,
+                    support,
                 } => {
-                    let handler = connection.map(NotifyHandler::One).unwrap_or(NotifyHandler::Any);
-                    let event = HandlerInEvent::SetFirewallRules(rules);
+                    let event = HandlerInEvent::SetProtocolSupport(support);
                     NetworkBehaviourAction::NotifyHandler {
                         peer_id: peer,
-                        handler,
+                        handler: NotifyHandler::One(connection),
                         event: EitherOutput::First(event),
                     }
                 }
@@ -780,7 +804,8 @@ mod test {
 
             // Wait for swarm 1 to receive request by swarm 2.
             let response_tx = loop {
-                futures::select!(
+                futures::select_biased!(
+                    event = swarm2.next().fuse() => panic!("Peer2: Unexpected event: {:?}", event),
                     event = swarm1.next().fuse() => match event {
                         BehaviourEvent::Request(ReceiveRequest {
                             peer,
@@ -793,7 +818,6 @@ mod test {
                         },
                         e => panic!("Peer1: Unexpected event: {:?}", e)
                     },
-                    event = swarm2.next().fuse() => panic!("Peer2: Unexpected event: {:?}", event),
                 )
             };
 
@@ -834,7 +858,8 @@ mod test {
 
             // Wait for swarm 1 to receive request by swarm 2.
             let event = loop {
-                futures::select!(
+                futures::select_biased!(
+                    event = swarm2.next().fuse() => break event,
                     event = swarm1.next().fuse() => match event {
                         BehaviourEvent::Request(ReceiveRequest {
                             peer,
@@ -848,7 +873,6 @@ mod test {
                         },
                         e => panic!("Peer1: Unexpected event: {:?}", e)
                     },
-                    event = swarm2.next().fuse() => break event,
                 )
             };
 
@@ -880,7 +904,7 @@ mod test {
             .boxed();
 
         let mut cfg = NetBehaviourConfig::default();
-        cfg.firewall.set_default(Rule::allow_all(), RuleDirection::Both);
+        cfg.firewall.set_default(Some(Rule::allow_all()), RuleDirection::Both);
         #[cfg(feature = "mdns")]
         let mdns = _pool
             .run_until(Mdns::new(MdnsConfig::default()))

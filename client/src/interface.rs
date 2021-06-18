@@ -283,8 +283,6 @@ impl Stronghold {
             } else {
                 return StatusMessage::Error("Failed to garbage collect the vault".into());
             };
-
-            status
         } else {
             status = if let SHResults::ReturnRevoke(status) =
                 ask(&self.system, &self.target, SHRequest::RevokeData { location }).await
@@ -293,9 +291,8 @@ impl Stronghold {
             } else {
                 return StatusMessage::Error("Could not revoke data".into());
             };
-
-            status
         }
+        status
     }
 
     /// Garbage collects any revokes in a Vault based on the given vault_path and the current target actor.
