@@ -29,14 +29,14 @@ pub enum DiffError {
 }
 
 /// Diff trait
-pub trait Diff: Sized {
+pub trait Diff<T: PartialEq + Clone>: Sized {
     type Error;
 
     /// Returns the applyable difference from source to destination
-    fn sync(src: &[u8], dst: &[u8]) -> Self;
+    fn sync(src: Vec<T>, dst: Vec<T>) -> Self;
 
     /// Applies the calculated edit difference, and returns the result
-    fn apply(&mut self, source: &[u8], destination: &[u8]) -> Result<Vec<u8>, Self::Error>;
+    fn apply(&mut self, source: Vec<T>, destination: Vec<T>) -> Result<Vec<T>, Self::Error>;
 }
 
 pub enum DiffOperation {
@@ -59,18 +59,21 @@ mod lcs {
         edit: Vec<DiffOperation>,
     }
 
-    impl Diff for Lcs {
+    impl<T> Diff<T> for Lcs
+    where
+        T: PartialEq + Clone,
+    {
         type Error = DiffError;
 
-        fn sync(src: &[u8], dst: &[u8]) -> Self {
-            let as_string = |u: u8| -> String { String::from_utf8(vec![u]).unwrap() };
+        fn sync(src: Vec<T>, dst: Vec<T>) -> Self {
+            // let as_string = |u: u8| -> String { String::from_utf8(vec![u]).unwrap() };
 
             let mut edit = vec![];
             let src_length = src.len();
             let dst_length = dst.len();
 
             // build a matrix of prefix.len - (n.len - suffix.len)
-            let build_matrix = |src: &[u8], dst: &[u8]| -> Vec<Vec<u8>> {
+            let build_matrix = |src: Vec<T>, dst: Vec<T>| -> Vec<Vec<usize>> {
                 let dst_len = dst.len();
                 let src_len = src.len();
 
@@ -98,26 +101,26 @@ mod lcs {
                 let mut s = 0;
                 let mut d = 0;
 
-                let prefix: Vec<(u8, u8)> = src
+                let prefix: Vec<(T, T)> = src
                     .iter()
-                    .zip(dst)
-                    .take_while(|(s, d)| s == d)
-                    .map(|(s, d)| (*s, *d))
+                    .zip(dst.clone())
+                    .take_while(|(s, d)| *s == d)
+                    .map(|(s, d)| (s.clone(), d))
                     .collect();
 
-                let suffix: Vec<(u8, u8)> = src
+                let suffix: Vec<(T, T)> = src
                     .iter()
                     .rev()
                     .zip(dst.iter().rev())
                     .take(src_length.min(dst_length) - prefix.len())
                     .take_while(|(s, d)| s == d)
-                    .map(|(a, b)| (*a, *b))
+                    .map(|(a, b)| (a.clone(), b.clone()))
                     .collect();
 
                 // build lookup table for matches
                 let lut = build_matrix(
-                    &src[prefix.len()..(src.len() - suffix.len())],
-                    &dst[prefix.len()..(dst.len() - suffix.len())],
+                    (&src[prefix.len()..(src.len() - suffix.len())]).to_vec(),
+                    (&dst[prefix.len()..(dst.len() - suffix.len())]).to_vec(),
                 );
 
                 // get actual indices for unequal items
@@ -204,13 +207,13 @@ mod lcs {
             Lcs { edit }
         }
 
-        fn apply(&mut self, source: &[u8], destination: &[u8]) -> Result<Vec<u8>, Self::Error> {
+        fn apply(&mut self, source: Vec<T>, destination: Vec<T>) -> Result<Vec<T>, Self::Error> {
             Ok(self
                 .edit
                 .iter()
                 .filter_map(|op| match op {
-                    DiffOperation::Insert { src, dst } => Some(destination[dst.unwrap()]),
-                    DiffOperation::Equal { src, dst } => Some(source[src.unwrap()]),
+                    DiffOperation::Insert { src, dst } => Some(destination[dst.unwrap()].clone()),
+                    DiffOperation::Equal { src, dst } => Some(source[src.unwrap()].clone()),
                     _ => None,
                 })
                 .collect())
@@ -255,8 +258,8 @@ mod tests {
         let matrix = create_test_table();
 
         for entry in matrix {
-            let mut edit = Lcs::sync(&entry.0, &entry.1);
-            let result = edit.apply(&entry.0, &entry.1)?;
+            let mut edit = Lcs::sync(entry.0.clone(), entry.1.clone());
+            let result = edit.apply(entry.0, entry.1)?;
             let actual = String::from_utf8(result)?;
             let expected = String::from_utf8(entry.2.to_vec())?;
 
