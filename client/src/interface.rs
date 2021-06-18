@@ -300,7 +300,6 @@ impl Stronghold {
                 return StatusMessage::Error("Could not revoke data".into());
             };
         }
-
         status
     }
 

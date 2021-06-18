@@ -231,7 +231,7 @@ where
                 let addr = self.relay_addr.get(&relay)?;
                 let relayed_addr = addr
                     .clone()
-                    .with(Protocol::P2p(relay.to_owned().into()))
+                    .with(Protocol::P2p((*relay).into()))
                     .with(Protocol::P2pCircuit)
                     .with(Protocol::P2p(target_peer.into()));
                 self.connect_peer_via_addr(&target_peer, relayed_addr).map(Ok).ok()
