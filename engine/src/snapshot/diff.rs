@@ -19,7 +19,7 @@ use thiserror::Error as DeriveError;
 // re-export diff
 pub use lcs::*;
 
-#[derive(DeriveError, Debug)] // is [`Debug`] safe here?
+#[derive(DeriveError, Debug)]
 #[non_exhaustive]
 pub enum DiffError {
     #[error("IO Error: {0}")]
