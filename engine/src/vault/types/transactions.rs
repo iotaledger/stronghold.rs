@@ -12,11 +12,13 @@ use crate::vault::{
     },
 };
 
-use std::{
+use core::{
     convert::{Infallible, TryFrom},
     fmt::{self, Debug, Formatter},
     hash::Hash,
 };
+
+use alloc::{vec::Vec, vec, format};
 
 use serde::{Deserialize, Serialize};
 

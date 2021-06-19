@@ -1,6 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use alloc::{format, vec::Vec, string::String};
+
 // a base64 encoder and decoder
 pub struct Base64;
 impl Base64 {
@@ -36,7 +38,7 @@ impl Base64 {
                 let error = e.utf8_error();
                 let valid_up_to = error.valid_up_to();
                 let error_msg = format!("Fail encoding to base64: valid_up_to({})", valid_up_to);
-                panic!("{}", crate::Error::Base64ErrorDetailed(error_msg))
+                panic!("{:?}", crate::Error::Base64ErrorDetailed(error_msg))
             }
         }
     }
@@ -73,7 +75,7 @@ impl Base64 {
             b @ 52..=61 => (b as u8 - 52) + b'0',
             62 => b'-',
             63 => b'_',
-            _ => panic!("{} ({})", crate::Error::Base64Error, b),
+            _ => panic!("{:?} ({})", crate::Error::Base64Error, b),
         }
     }
 

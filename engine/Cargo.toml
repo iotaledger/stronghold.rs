@@ -17,8 +17,11 @@ repository = "https://github.com/iotaledger/stronghold.rs"
 [lib]
 name = "engine"
 
+[features]
+default = []
+std = ["stronghold-runtime/std"]
+
 [dependencies]
-thiserror = "1.0"
 anyhow = "1.0"
 dirs-next = "2.0"
 hex = "0.4.2"

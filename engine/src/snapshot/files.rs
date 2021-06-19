@@ -6,6 +6,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use alloc::format;
+
 /// Get the preferred Stronghold home directory
 ///
 /// Defaults to a sub-directory named `.stronghold` under the user's home directory (see

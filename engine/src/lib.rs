@@ -1,6 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#![no_std]
+
 //! A system for securely managing secrets.
 //!
 //! This top-level crate contains references to the others that make up
@@ -20,56 +22,81 @@
 //! Until a formal third-party security audit has taken place, the IOTA Foundation
 //! makes no guarantees to the fitness of this library for any purposes.
 
-use thiserror::Error as DeriveError;
+#[cfg(feature = "std")]
+extern crate std;
+extern crate alloc;
 
+use core::fmt::{self, Debug, Formatter};
+
+use alloc::{format, string::String};
+
+#[cfg(feature = "std")]
 use runtime::ZeroingAlloc;
 
 pub mod snapshot;
+#[cfg(feature = "std")]
 pub mod store;
 pub mod vault;
 pub use runtime;
 
 /// A Zeroing Allocator which wraps the standard memory allocator. This allocator zeroes out memory when it is dropped.
 /// Works on any application that imports stronghold.
+#[cfg(feature = "std")]
 #[global_allocator]
 static ALLOC: ZeroingAlloc<std::alloc::System> = ZeroingAlloc(std::alloc::System);
 
-#[derive(Debug, DeriveError)]
 pub enum Error {
-    #[error("IOError: `{0}`")]
-    IoError(#[from] std::io::Error),
-    #[error("Snapshot Error: `{0}`")]
+    #[cfg(feature = "std")]
+    IoError(std::io::Error),
     SnapshotError(String),
-    #[error("Crypto Error: `{0}`")]
     CryptoError(crypto::Error),
-    #[error("LZ4 Error: `{0}`")]
     Lz4Error(String),
-    #[error("TryInto Error: `{0}`")]
-    TryIntoError(#[from] std::array::TryFromSliceError),
-    #[error("Database Error: `{0}`")]
+    TryIntoError(core::array::TryFromSliceError),
     DatabaseError(String),
-    #[error("Version Error: `{0}`")]
-    VersionError(String),
-    #[error("Chain error: `{0}`")]
-    ChainError(String),
-    #[error("Base64Error")]
     Base64Error,
-    #[error("Base64Error: `{0}`")]
     Base64ErrorDetailed(String),
-    #[error("Interface Error")]
     InterfaceError,
-    #[error("Other Error")]
     OtherError(String),
-    #[error("Provider Error: `{0}`")]
     ProviderError(String),
-    #[error("Value Error: `{0}`")]
     ValueError(String),
-    #[error("Protocol Error: `{0}`")]
-    ProtocolError(String),
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, Error>;
 
+impl Debug for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Base64Error => f.write_str("Base64Error"),
+            Error::Base64ErrorDetailed(e) => f.write_str(&format!("Base64Error: {}", e)),
+            Error::CryptoError(e) => f.write_str(&format!("CryptoError: {}", e)),
+            Error::DatabaseError(e) => f.write_str(&format!("DatabaseError: {}", e)),
+            Error::InterfaceError => f.write_str("InterfaceError"),
+            #[cfg(feature = "std")]
+            Error::IoError(e) => f.write_str(&format!("IoError: {}", e)),
+            Error::Lz4Error(e) => f.write_str(&format!("Lz4Error: {}", e)),
+            Error::OtherError(e) => f.write_str(&format!("OtherError: {}", e)),
+            Error::ProviderError(e) => f.write_str(&format!("ProviderError: {}", e)),
+            Error::SnapshotError(e) => f.write_str(&format!("SnapshotError: {}", e)),
+            Error::TryIntoError(e) => f.write_str(&format!("TryIntoError: {}", e)),
+            Error::ValueError(e) => f.write_str(&format!("ValueError: {}", e)),
+        }
+    }
+}
+
+impl From<core::array::TryFromSliceError> for Error {
+    fn from(e: core::array::TryFromSliceError) -> Self {
+        Self::TryIntoError(e)
+    }
+}
+
+#[cfg(feature = "std")]
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Self::IoError(e)
+    }
+}
+
+#[cfg(feature = "std")]
 impl From<crypto::Error> for Error {
     fn from(e: crypto::Error) -> Self {
         Self::CryptoError(e)

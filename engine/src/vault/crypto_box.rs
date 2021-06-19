@@ -1,11 +1,13 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-use std::{
+use core::{
     convert::TryFrom,
     fmt::Debug,
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
+
+use alloc::{vec, vec::Vec, string::String};
 
 use runtime::GuardedVec;
 
@@ -97,13 +99,13 @@ impl<T: BoxProvider> PartialEq for Key<T> {
 }
 
 impl<T: BoxProvider> PartialOrd for Key<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(&other))
     }
 }
 
 impl<T: BoxProvider> Ord for Key<T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.key.borrow().cmp(&other.key.borrow())
     }
 }
@@ -116,7 +118,7 @@ impl<T: BoxProvider> Hash for Key<T> {
 }
 
 impl<T: BoxProvider> Debug for Key<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "KeyData")
     }
 }

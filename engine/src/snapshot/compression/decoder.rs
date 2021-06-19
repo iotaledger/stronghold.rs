@@ -1,7 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::convert::TryInto;
+use core::convert::TryInto;
+
+use alloc::vec::Vec;
 
 pub fn decompress_into(input: &[u8], output: &mut Vec<u8>) -> crate::Result<()> {
     Lz4Decoder {

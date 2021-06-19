@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::vault::{base64::Base64Encodable, crypto_box::BoxProvider};
-use std::{
+use core::{
     cmp::Ordering,
     convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
     hash::Hash,
     ops::{Add, AddAssign},
 };
+
+use alloc::{vec::Vec, string::String};
 
 use serde::{Deserialize, Serialize};
 

@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::mem;
+use core::mem;
 
 pub use transactions::{DataTransaction, SealedBlob, SealedTransaction};
 

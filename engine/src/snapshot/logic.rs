@@ -8,6 +8,8 @@ use std::{
     path::Path,
 };
 
+use alloc::{vec::Vec, vec};
+
 use crypto::{
     ciphers::{chacha::XChaCha20Poly1305, traits::Aead},
     hashes::{blake2b, Digest},

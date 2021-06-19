@@ -1,7 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::convert::TryInto;
+use core::convert::TryInto;
+
+use alloc::vec::Vec;
 
 use super::{Block, Duplicate};
 

@@ -24,9 +24,12 @@
 //! similar using per chunk derived ephemeral keys.
 
 mod compression;
+#[cfg(feature = "std")]
 pub mod files;
 pub mod kdf;
 
+#[cfg(feature = "std")]
 mod logic;
 pub use compression::{compress, decompress};
+#[cfg(feature = "std")]
 pub use logic::*;

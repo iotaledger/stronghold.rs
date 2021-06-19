@@ -11,7 +11,7 @@ use crate::vault::{
 
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashMap;
+use alloc::{vec, collections::BTreeMap as HashMap, vec::Vec, string::ToString};
 
 use runtime::GuardedVec;
 
