@@ -26,7 +26,9 @@ use runtime::ZeroingAlloc;
 
 pub mod snapshot;
 pub mod store;
+
 pub mod vault;
+
 pub use runtime;
 
 /// A Zeroing Allocator which wraps the standard memory allocator. This allocator zeroes out memory when it is dropped.

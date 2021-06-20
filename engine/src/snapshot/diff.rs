@@ -12,7 +12,8 @@
 //! Synchronizing two snapshots can be done easily
 //! ``` no_run
 //! ```
-#![allow(dead_code, unused_variables)]
+
+// #![allow(dead_code, unused_variables)]
 
 use thiserror::Error as DeriveError;
 
@@ -33,10 +34,16 @@ pub trait Diff<T: PartialEq + Clone>: Sized {
     type Error;
 
     /// Returns the applyable difference from source to destination
-    fn sync(src: Vec<T>, dst: Vec<T>) -> Self;
+    fn diff(src: Vec<T>, dst: Vec<T>) -> Self;
 
     /// Applies the calculated edit difference, and returns the result
     fn apply(&mut self, source: Vec<T>, destination: Vec<T>) -> Result<Vec<T>, Self::Error>;
+
+    /// Applies the calculated edit difference with a custom function and returns the result
+    fn apply_fn<F, V>(&mut self, source: V, destination: V, func: F) -> Result<Vec<T>, Self::Error>
+    where
+        F: Fn(&DiffOperation, &Vec<T>, &Vec<T>) -> T,
+        V: AsRef<Vec<T>>;
 }
 
 pub enum DiffOperation {
@@ -65,9 +72,7 @@ mod lcs {
     {
         type Error = DiffError;
 
-        fn sync(src: Vec<T>, dst: Vec<T>) -> Self {
-            // let as_string = |u: u8| -> String { String::from_utf8(vec![u]).unwrap() };
-
+        fn diff(src: Vec<T>, dst: Vec<T>) -> Self {
             let mut edit = vec![];
             let src_length = src.len();
             let dst_length = dst.len();
@@ -212,10 +217,22 @@ mod lcs {
                 .edit
                 .iter()
                 .filter_map(|op| match op {
-                    DiffOperation::Insert { src, dst } => Some(destination[dst.unwrap()].clone()),
-                    DiffOperation::Equal { src, dst } => Some(source[src.unwrap()].clone()),
+                    DiffOperation::Insert { dst, .. } => Some(destination[dst.unwrap()].clone()),
+                    DiffOperation::Equal { src, .. } => Some(source[src.unwrap()].clone()),
                     _ => None,
                 })
+                .collect())
+        }
+
+        fn apply_fn<F, V>(&mut self, source: V, destination: V, func: F) -> Result<Vec<T>, Self::Error>
+        where
+            F: Fn(&DiffOperation, &Vec<T>, &Vec<T>) -> T,
+            V: AsRef<Vec<T>>,
+        {
+            Ok(self
+                .edit
+                .iter()
+                .map(|op| func(op, source.as_ref(), destination.as_ref()))
                 .collect())
         }
     }
@@ -250,6 +267,7 @@ mod tests {
                 "ääs76%4..-MNbchsdcsuh..cldc::..975§$5456576c".as_bytes().to_vec(),
                 "ääs76%4..-MNbchsdcsuh..cldc::..975§$5456576c".as_bytes().to_vec(),
             ),
+            ("".as_bytes().to_vec(), "".as_bytes().to_vec(), "".as_bytes().to_vec()),
         ]
     }
 
@@ -258,7 +276,7 @@ mod tests {
         let matrix = create_test_table();
 
         for entry in matrix {
-            let mut edit = Lcs::sync(entry.0.clone(), entry.1.clone());
+            let mut edit = Lcs::diff(entry.0.clone(), entry.1.clone());
             let result = edit.apply(entry.0, entry.1)?;
             let actual = String::from_utf8(result)?;
             let expected = String::from_utf8(entry.2.to_vec())?;
