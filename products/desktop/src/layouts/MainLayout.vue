@@ -97,7 +97,7 @@
               class="q-pa-lg bg-grey-9 full-width absolute-top"
               style="top: 0; bottom: 0; min-height: 100%"
             >
-              <h3 class="q-my-sm text-right text-weight-thin">Connect</h3>
+              <h3 class="text-right text-weight-thin q-pb-xs" style="margin: -24px -5px 0 0">Connect</h3>
               <q-tabs
                 v-model="tab"
                 dense
@@ -110,6 +110,7 @@
                 <q-tab name="outgoing" label="Outgoing" />
                 <q-tab name="incoming" label="Incoming" />
                 <q-tab name="swarm" label="Swarm" />
+                <q-tab name="remoteSign" label="Remote Sign" />
               </q-tabs>
 
               <q-separator />
@@ -190,9 +191,21 @@
                   <div class="text-h6">Swarm</div>
                   <q-input v-model="RELAY_PEER_ID" label="Relay Peer ID"/>
                   <q-input v-model="RELAY_ADDR" label="Relay Address"/>
-                  <q-btn @click="updateSwarm()" label= "Update" />
+                  <q-btn @click="updateSwarm()" label="Update" />
                   <p>
                     {{ swarmInfo }}
+                  </p>
+
+                </q-tab-panel>
+                <q-tab-panel name="remoteSign">
+                  <div class="text-h6">Remote Sign</div>
+                  <q-input v-model="remotePeer.id" label="Remote Peer ID"/>
+                  <q-input v-model="remotePeer.message" label="Message to Sign" value="test" />
+                  <q-input v-model="remotePeer.vault" label="Remote Vault"/>
+                  <q-input v-model="remotePeer.location" label="Remote Key Path"/>
+                  <q-btn @click="requestSig()" label="Update" />
+                  <p>
+                    Response: {{ remotePeer.response }}
                   </p>
 
                 </q-tab-panel>
@@ -341,6 +354,14 @@ export default {
     return {
       RELAY_PEER_ID: process.env.RELAY_PEER_ID,
       RELAY_ADDR: process.env.RELAY_ADDR,
+      remotePeer: {
+        id: '',
+        message: 'test message',
+        location: '',
+        vault: '',
+        path: '',
+        response: {}
+      },
       newRelayPeerId: null,
       tab: 'outgoing',
       swarmInfo: {},
@@ -407,9 +428,21 @@ export default {
   methods: {
     ...mapActions('lockdown', ['lock', 'myPeerID']),
     ...mapMutations('lockdown', ['setLocalPeerID']),
+    async requestSig () {
+      // this.comms.startListening
+      this.seedLocation = Location.generic('vault', 'seed')
+      const privateKeyLocation = Location.generic('vault', 'derived')
+      // const remoteVault = this.comms.getRemoteVault()
+      await this.vault.deriveSLIP10([0, 0, 0], 'Seed', this.seedLocation, privateKeyLocation)
+      const publicKey = await this.vault.getPublicKey(privateKeyLocation)
+      this.$q.notify('got public key ' + publicKey)
+      const message = 'Tauri + Stronghold!'
+      const signature = await this.vault.sign(privateKeyLocation, message)
+      this.$q.notify(`Signed "${message}" and got sig "${signature}"`)
+    },
     async updateSwarm () {
-      this.comms.addPeer(this.RELAY_PEER_ID, this.RELAY_ADDR, 2)
-
+      await this.comms.removeRelay(this.RELAY_PEER_ID)
+      await this.comms.addPeer(this.RELAY_PEER_ID, this.RELAY_ADDR, 2)
       this.swarmInfo = await this.comms.getSwarmInfo()
     },
     send () {
