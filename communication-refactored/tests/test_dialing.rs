@@ -5,7 +5,7 @@ use async_std::task;
 use communication_refactored::{
     assemble_relayed_addr,
     firewall::{FirewallConfiguration, PermissionValue, RequestPermissions, VariantPermission},
-    Keypair, Multiaddr, NetBehaviourConfig, NetworkEvents, PeerId, ShCommunication,
+    Multiaddr, NetworkEvent, PeerId, ShCommunication, ShCommunicationBuilder,
 };
 use core::fmt;
 use futures::{
@@ -23,23 +23,14 @@ struct Request;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
 struct Response;
 
-fn init_comms() -> (mpsc::Receiver<NetworkEvents>, TestComms) {
-    let id_keys = Keypair::generate_ed25519();
-    let cfg = NetBehaviourConfig {
-        firewall: FirewallConfiguration::allow_all(),
-        connection_timeout: Duration::from_millis(1),
-        ..Default::default()
-    };
+fn init_comms() -> (mpsc::Receiver<NetworkEvent>, TestComms) {
     let (dummy_fw_tx, _) = mpsc::channel(1);
     let (dummy_rq_tx, _) = mpsc::channel(1);
     let (event_tx, event_rx) = mpsc::channel(1);
-    let comms = task::block_on(ShCommunication::new(
-        id_keys,
-        cfg,
-        dummy_fw_tx,
-        dummy_rq_tx,
-        Some(event_tx),
-    ));
+    let builder = ShCommunicationBuilder::new(dummy_fw_tx, dummy_rq_tx, Some(event_tx))
+        .with_firewall_config(FirewallConfiguration::allow_all())
+        .with_connection_timeout(Duration::from_millis(1));
+    let comms = task::block_on(builder.build());
     (event_rx, comms)
 }
 
@@ -102,7 +93,7 @@ impl TestSourceConfig {
 struct TestConfig {
     source_config: TestSourceConfig,
     source_comms: TestComms,
-    source_event_rx: mpsc::Receiver<NetworkEvents>,
+    source_event_rx: mpsc::Receiver<NetworkEvent>,
     source_id: PeerId,
 
     relay_id: PeerId,
@@ -110,7 +101,7 @@ struct TestConfig {
 
     target_config: TestTargetConfig,
     target_comms: TestComms,
-    target_event_rx: mpsc::Receiver<NetworkEvents>,
+    target_event_rx: mpsc::Receiver<NetworkEvent>,
     target_id: PeerId,
     target_addr: Option<Multiaddr>,
     target_relayed_addr: Option<Multiaddr>,
@@ -241,16 +232,16 @@ impl TestConfig {
         }
     }
 
-    fn expect_connection(event_rx: &mut Receiver<NetworkEvents>, target: PeerId, config_str: &str) {
+    fn expect_connection(event_rx: &mut Receiver<NetworkEvent>, target: PeerId, config_str: &str) {
         let mut filtered = event_rx.filter(|ev| {
             future::ready(!matches!(
                 ev,
-                NetworkEvents::NewListenAddr(..) | NetworkEvents::ConnectionClosed { .. }
+                NetworkEvent::NewListenAddr(..) | NetworkEvent::ConnectionClosed { .. }
             ))
         });
         let event = task::block_on(filtered.next()).unwrap();
         assert!(
-            matches!(event,  NetworkEvents::ConnectionEstablished { peer, .. } if peer == target),
+            matches!(event,  NetworkEvent::ConnectionEstablished { peer, .. } if peer == target),
             "Unexpected Event {:?} on config {}",
             event,
             config_str

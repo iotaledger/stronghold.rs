@@ -7,8 +7,8 @@ use communication_refactored::{
         FirewallPermission, FirewallRequest, FirewallRules, PeerRuleQuery, PermissionValue, RequestApprovalQuery,
         RequestPermissions, Rule, RuleDirection, ToPermissionVariants, VariantPermission,
     },
-    InboundFailure, Keypair, NetBehaviourConfig, NetworkEvents, OutboundFailure, PeerId, ReceiveRequest,
-    RequestDirection, RequestId, RequestMessage, ResponseReceiver, ShCommunication,
+    InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest, RequestDirection, RequestId, RequestMessage,
+    ResponseReceiver, ShCommunication, ShCommunicationBuilder,
 };
 use futures::{
     channel::mpsc::{self, Receiver},
@@ -45,20 +45,15 @@ enum Response {
 type NewComms = (
     mpsc::Receiver<FirewallRequest<RequestPermission>>,
     mpsc::Receiver<ReceiveRequest<Request, Response>>,
-    mpsc::Receiver<NetworkEvents>,
+    mpsc::Receiver<NetworkEvent>,
     ShCommunication<Request, Response, RequestPermission>,
 );
 
 fn init_comms() -> NewComms {
-    let id_keys = Keypair::generate_ed25519();
-    let cfg = NetBehaviourConfig {
-        request_timeout: Duration::from_secs(1),
-        ..Default::default()
-    };
     let (firewall_tx, firewall_rx) = mpsc::channel(1);
     let (rq_tx, rq_rx) = mpsc::channel(1);
     let (event_tx, event_rx) = mpsc::channel(1);
-    let comms = task::block_on(ShCommunication::new(id_keys, cfg, firewall_tx, rq_tx, Some(event_tx)));
+    let comms = task::block_on(ShCommunicationBuilder::new(firewall_tx, rq_tx, Some(event_tx)).build());
     (firewall_rx, rq_rx, event_rx, comms)
 }
 
@@ -99,9 +94,9 @@ impl TestPermission {
 
 struct RulesTestConfig<'a> {
     comms_a: &'a mut TestComms,
-    a_events_rx: &'a mut mpsc::Receiver<NetworkEvents>,
+    a_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     comms_b: &'a mut TestComms,
-    b_events_rx: &'a mut mpsc::Receiver<NetworkEvents>,
+    b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
 
     a_default: TestPermission,
@@ -130,9 +125,9 @@ impl<'a> fmt::Display for RulesTestConfig<'a> {
 impl<'a> RulesTestConfig<'a> {
     fn new_test_case(
         comms_a: &'a mut TestComms,
-        a_events_rx: &'a mut mpsc::Receiver<NetworkEvents>,
+        a_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         comms_b: &'a mut TestComms,
-        b_events_rx: &'a mut mpsc::Receiver<NetworkEvents>,
+        b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ) -> Self {
         let a_rule = (rand::random::<u8>() % 2 > 0).then(TestPermission::random);
@@ -236,20 +231,20 @@ impl<'a> RulesTestConfig<'a> {
                 futures::select! {
                     ev = self.a_events_rx.select_next_some() => {
                         match ev {
-                            NetworkEvents::OutboundFailure{
+                            NetworkEvent::OutboundFailure{
                                 request_id: rq_id,
                                 failure: OutboundFailure::UnsupportedProtocols, ..
                             } if request_id == rq_id => {
                                 panic!("Unexpected Outbound Failure at A: {:?}; config: {}", ev, self);
                             },
-                            NetworkEvents::OutboundFailure{request_id: rq_id,..} if request_id == rq_id => {
+                            NetworkEvent::OutboundFailure{request_id: rq_id,..} if request_id == rq_id => {
                                 panic!("Unexpected Outbound Failure at A: {:?}; config: {}", ev, self);
                             }
                             _ => {}
                         }
                     }
                     ev = self.b_events_rx.select_next_some() => {
-                        if matches!(ev, NetworkEvents::InboundFailure{ request_id: rq_id, ..} if request_id == rq_id) {
+                        if matches!(ev, NetworkEvent::InboundFailure{ request_id: rq_id, ..} if request_id == rq_id) {
                             panic!("Unexpected Inbound Failure at A: {:?}; config: {}", ev, self);
                         }
                     }
@@ -268,11 +263,11 @@ impl<'a> RulesTestConfig<'a> {
         let mut filtered = self.a_events_rx.filter(|ev| {
             future::ready(!matches!(
                 ev,
-                NetworkEvents::ConnectionEstablished { .. } | NetworkEvents::ConnectionClosed { .. }
+                NetworkEvent::ConnectionEstablished { .. } | NetworkEvent::ConnectionClosed { .. }
             ))
         });
         match expect_ok!(filtered.next(), self) {
-            NetworkEvents::OutboundFailure {
+            NetworkEvent::OutboundFailure {
                 peer,
                 failure,
                 request_id,
@@ -293,13 +288,13 @@ impl<'a> RulesTestConfig<'a> {
         let mut filtered = self.b_events_rx.filter(|ev| {
             future::ready(!matches!(
                 ev,
-                NetworkEvents::ConnectionEstablished { .. }
-                    | NetworkEvents::ConnectionClosed { .. }
-                    | NetworkEvents::NewListenAddr(..)
+                NetworkEvent::ConnectionEstablished { .. }
+                    | NetworkEvent::ConnectionClosed { .. }
+                    | NetworkEvent::NewListenAddr(..)
             ))
         });
         match expect_ok!(filtered.next(), self) {
-            NetworkEvents::InboundFailure {
+            NetworkEvent::InboundFailure {
                 peer,
                 failure: InboundFailure::NotPermitted,
                 ..
@@ -329,7 +324,7 @@ fn firewall_permissions() {
             &mut b_rq_rx,
         );
         test.configure_firewall();
-        thread::sleep(Duration::from_millis(50));
+        thread::sleep(Duration::from_millis(100));
         task::block_on(test.test_request());
     }
 }
@@ -381,11 +376,11 @@ enum TestPeer {
 struct AskTestConfig<'a> {
     comms_a: &'a mut TestComms,
     firewall_a: &'a mut Receiver<FirewallRequest<RequestPermission>>,
-    a_events_rx: &'a mut mpsc::Receiver<NetworkEvents>,
+    a_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
 
     comms_b: &'a mut TestComms,
     firewall_b: &'a mut Receiver<FirewallRequest<RequestPermission>>,
-    b_events_rx: &'a mut mpsc::Receiver<NetworkEvents>,
+    b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
 
     a_rule: FwRuleRes,
@@ -408,10 +403,10 @@ impl<'a> AskTestConfig<'a> {
     fn new_test_case(
         comms_a: &'a mut TestComms,
         firewall_a: &'a mut Receiver<FirewallRequest<RequestPermission>>,
-        a_events_rx: &'a mut mpsc::Receiver<NetworkEvents>,
+        a_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         comms_b: &'a mut TestComms,
         firewall_b: &'a mut Receiver<FirewallRequest<RequestPermission>>,
-        b_events_rx: &'a mut mpsc::Receiver<NetworkEvents>,
+        b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ) -> Self {
         AskTestConfig {
@@ -482,12 +477,12 @@ impl<'a> AskTestConfig<'a> {
         let recv_req = loop {
             futures::select! {
                 ev = self.a_events_rx.select_next_some() => {
-                    if matches!(ev, NetworkEvents::OutboundFailure{ request_id: rq_id, ..} if request_id == rq_id) {
+                    if matches!(ev, NetworkEvent::OutboundFailure{ request_id: rq_id, ..} if request_id == rq_id) {
                         panic!("Unexpected Outbound Failure at A: {:?}; config: {}", ev, self);
                     }
                 }
                 ev = self.b_events_rx.select_next_some() => {
-                    if matches!(ev, NetworkEvents::InboundFailure{ request_id: rq_id, ..} if request_id == rq_id) {
+                    if matches!(ev, NetworkEvent::InboundFailure{ request_id: rq_id, ..} if request_id == rq_id) {
                         panic!("Unexpected Inbound Failure at B: {:?}; config: {}", ev, self);
                     }
                 }
@@ -504,11 +499,11 @@ impl<'a> AskTestConfig<'a> {
         let mut filtered = self.a_events_rx.filter(|ev| {
             future::ready(!matches!(
                 ev,
-                NetworkEvents::ConnectionEstablished { .. } | NetworkEvents::ConnectionClosed { .. }
+                NetworkEvent::ConnectionEstablished { .. } | NetworkEvent::ConnectionClosed { .. }
             ))
         });
         match expect_ok!(filtered.next(), self) {
-            NetworkEvents::OutboundFailure { peer, failure, .. } => {
+            NetworkEvent::OutboundFailure { peer, failure, .. } => {
                 assert_eq!(peer, target);
                 assert!(
                     expect_any.into_iter().any(|f| f == failure),
@@ -524,13 +519,13 @@ impl<'a> AskTestConfig<'a> {
         let mut filtered = self.b_events_rx.filter(|ev| {
             future::ready(!matches!(
                 ev,
-                NetworkEvents::ConnectionEstablished { .. }
-                    | NetworkEvents::ConnectionClosed { .. }
-                    | NetworkEvents::NewListenAddr(..)
+                NetworkEvent::ConnectionEstablished { .. }
+                    | NetworkEvent::ConnectionClosed { .. }
+                    | NetworkEvent::NewListenAddr(..)
             ))
         });
         match expect_ok!(filtered.next(), self) {
-            NetworkEvents::InboundFailure {
+            NetworkEvent::InboundFailure {
                 peer,
                 failure: InboundFailure::NotPermitted,
                 ..

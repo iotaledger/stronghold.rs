@@ -5,7 +5,10 @@ mod errors;
 mod types;
 use crate::{
     behaviour::{BehaviourEvent, NetBehaviour, NetBehaviourConfig},
-    firewall::{FirewallRequest, FirewallRules, Rule, RuleDirection, ToPermissionVariants, VariantPermission},
+    firewall::{
+        FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection, ToPermissionVariants,
+        VariantPermission,
+    },
     Keypair,
 };
 use async_std::task::{self, Context};
@@ -13,35 +16,186 @@ pub use errors::*;
 use futures::{
     channel::{mpsc::Sender, oneshot},
     future::poll_fn,
-    FutureExt,
+    AsyncRead, AsyncWrite, FutureExt,
 };
 #[cfg(feature = "mdns")]
 use libp2p::mdns::{Mdns, MdnsConfig};
 use libp2p::{
-    core::{connection::ListenerId, transport::Transport, upgrade, Multiaddr, PeerId},
+    core::{
+        connection::{ConnectionLimits, ListenerId},
+        transport::Transport,
+        upgrade, Executor, Multiaddr, PeerId,
+    },
     multiaddr::Protocol,
-    noise::{Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
+    noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
     relay::{new_transport_and_behaviour, RelayConfig},
-    swarm::{NetworkBehaviour, Swarm, SwarmEvent},
+    swarm::{NetworkBehaviour, Swarm, SwarmBuilder, SwarmEvent},
     tcp::TcpConfig,
     yamux::YamuxConfig,
 };
-use smallvec::{smallvec, SmallVec};
+use smallvec::smallvec;
 use std::{
     collections::HashMap,
     convert::TryFrom,
     fmt::Debug,
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
+    time::Duration,
 };
 pub use types::*;
 
-/// Active Listener of the local peer.
-pub struct Listener {
-    /// The addresses associated with this listener.
-    pub addrs: SmallVec<[Multiaddr; 6]>,
-    /// Whether the listener uses a relay.
-    pub uses_relay: Option<PeerId>,
+pub enum InitKeypair {
+    IdKeys(Keypair),
+    Authenticated {
+        peer_id: PeerId,
+        noise_keypair: AuthenticKeypair<X25519Spec>,
+    },
+}
+
+pub struct ShCommunicationBuilder<Rq, Rs, P>
+where
+    Rq: Debug + RqRsMessage + ToPermissionVariants<P>,
+    Rs: Debug + RqRsMessage,
+    P: VariantPermission,
+{
+    ask_firewall_chan: Sender<FirewallRequest<P>>,
+    inbound_req_chan: Sender<ReceiveRequest<Rq, Rs>>,
+    net_events_chan: Option<Sender<NetworkEvent>>,
+    ident: Option<(AuthenticKeypair<X25519Spec>, PeerId)>,
+    behaviour_config: NetBehaviourConfig,
+    executor: Option<Box<dyn Executor + Send>>,
+    connections_limit: Option<ConnectionLimits>,
+}
+
+impl<Rq, Rs, P> ShCommunicationBuilder<Rq, Rs, P>
+where
+    Rq: Debug + RqRsMessage + ToPermissionVariants<P>,
+    Rs: Debug + RqRsMessage,
+    P: VariantPermission,
+{
+    pub fn new(
+        ask_firewall_chan: Sender<FirewallRequest<P>>,
+        inbound_req_chan: Sender<ReceiveRequest<Rq, Rs>>,
+        net_events_chan: Option<Sender<NetworkEvent>>,
+    ) -> Self {
+        ShCommunicationBuilder {
+            ask_firewall_chan,
+            inbound_req_chan,
+            net_events_chan,
+            ident: None,
+            behaviour_config: Default::default(),
+            executor: None,
+            connections_limit: None,
+        }
+    }
+
+    pub fn with_keys(mut self, keys: InitKeypair) -> Self {
+        let (keypair, id) = match keys {
+            InitKeypair::IdKeys(keypair) => {
+                let noise_keypair = NoiseKeypair::<X25519Spec>::new().into_authentic(&keypair).unwrap();
+                let id = keypair.public().into_peer_id();
+                (noise_keypair, id)
+            }
+            InitKeypair::Authenticated { peer_id, noise_keypair } => (noise_keypair, peer_id),
+        };
+        self.ident = Some((keypair, id));
+        self
+    }
+
+    pub fn with_executor(mut self, e: Box<dyn Executor + Send>) -> Self {
+        self.executor = Some(e);
+        self
+    }
+
+    pub fn with_connections_limit(mut self, limit: ConnectionLimits) -> Self {
+        self.connections_limit = Some(limit);
+        self
+    }
+
+    pub fn with_request_timeout(mut self, t: Duration) -> Self {
+        self.behaviour_config.request_timeout = t;
+        self
+    }
+
+    pub fn with_connection_timeout(mut self, t: Duration) -> Self {
+        self.behaviour_config.connection_timeout = t;
+        self
+    }
+
+    pub fn with_firewall_config(mut self, config: FirewallConfiguration) -> Self {
+        self.behaviour_config.firewall = config;
+        self
+    }
+
+    pub async fn build(self) -> ShCommunication<Rq, Rs, P> {
+        self.build_with_transport(TcpConfig::new().nodelay(true)).await
+    }
+
+    pub async fn build_with_transport<T>(self, transport: T) -> ShCommunication<Rq, Rs, P>
+    where
+        T: Transport + Sized + Clone + Send + Sync + 'static,
+        T::Output: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+        T::Dial: Send + 'static,
+        T::Listener: Send + 'static,
+        T::ListenerUpgrade: Send + 'static,
+        T::Error: Send + Sync,
+    {
+        let (noise_keypair, peer_id) = self.ident.unwrap_or_else(|| {
+            let keypair = Keypair::generate_ed25519();
+            let noise_keypair = NoiseKeypair::<X25519Spec>::new().into_authentic(&keypair).unwrap();
+            let peer_id = keypair.public().into_peer_id();
+            (noise_keypair, peer_id)
+        });
+        let (relay_transport, relay_behaviour) = new_transport_and_behaviour(RelayConfig::default(), transport);
+        let transport = relay_transport
+            .upgrade(upgrade::Version::V1)
+            .authenticate(NoiseConfig::xx(noise_keypair).into_authenticated())
+            .multiplex(YamuxConfig::default())
+            .boxed();
+        #[cfg(feature = "mdns")]
+        let mdns = Mdns::new(MdnsConfig::default())
+            .await
+            .expect("Failed to create mdns behaviour.");
+        let behaviour = NetBehaviour::new(
+            self.behaviour_config,
+            #[cfg(feature = "mdns")]
+            mdns,
+            relay_behaviour,
+            self.ask_firewall_chan,
+        );
+        let mut swarm_builder = SwarmBuilder::new(transport, behaviour, peer_id);
+        if let Some(limit) = self.connections_limit {
+            swarm_builder = swarm_builder.connection_limits(limit);
+        }
+        if let Some(exec) = self.executor {
+            swarm_builder = swarm_builder.executor(exec);
+        }
+
+        let swarm_rw_lock = Arc::new(Mutex::new(swarm_builder.build()));
+        let rw_lock_clone = Arc::clone(&swarm_rw_lock);
+        let inbound_req_chan_clone = self.inbound_req_chan.clone();
+        let net_events_chan_clone = self.net_events_chan.clone();
+
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+        let task_handle = thread::spawn(move || {
+            ShCommunication::run(
+                rw_lock_clone,
+                inbound_req_chan_clone,
+                net_events_chan_clone,
+                shutdown_rx,
+            )
+        });
+
+        ShCommunication {
+            task_handle,
+            swarm: swarm_rw_lock,
+            listeners: HashMap::new(),
+            request_chan: self.inbound_req_chan,
+            net_events_chan: self.net_events_chan,
+            shutdown_chan: shutdown_tx,
+        }
+    }
 }
 
 /// Interface for the stronghold-communication library to create a swarm, handle events and perform operations.
@@ -56,7 +210,7 @@ where
     swarm: Arc<Mutex<Swarm<NetBehaviour<Rq, Rs, P>>>>,
     listeners: HashMap<ListenerId, Listener>,
     request_chan: Sender<ReceiveRequest<Rq, Rs>>,
-    net_events_chan: Option<Sender<NetworkEvents>>,
+    net_events_chan: Option<Sender<NetworkEvent>>,
 }
 
 impl<Rq, Rs, P> ShCommunication<Rq, Rs, P>
@@ -68,64 +222,17 @@ where
     /// Create a new ShCommunication instance and spawn the [`Swarm`].
     ///
     /// Parameters:
-    /// - `keypair`: The keypair used for noise authentication and to derive the [`PeerId`]
-    /// - `config`: Configuration for the underlying network behaviour protocol
     /// - `ask_firewall_chan`: Channel for firewall requests if there are no fixed rule or [`Rule::Ask`] was set
     /// - `inbound_req_chan`: Channel for receiving inbound requests from remote peers
     /// - `net_events_chan`: Optional channel for receiving all events in the network.
     pub async fn new(
-        keypair: Keypair,
-        config: NetBehaviourConfig,
         ask_firewall_chan: Sender<FirewallRequest<P>>,
         inbound_req_chan: Sender<ReceiveRequest<Rq, Rs>>,
-        net_events_chan: Option<Sender<NetworkEvents>>,
+        net_events_chan: Option<Sender<NetworkEvent>>,
     ) -> Self {
-        let peer = keypair.public().into_peer_id();
-        let noise_keys = NoiseKeypair::<X25519Spec>::new().into_authentic(&keypair).unwrap();
-        let (relay_transport, relay_behaviour) =
-            new_transport_and_behaviour(RelayConfig::default(), TcpConfig::new().nodelay(true));
-        let transport = relay_transport
-            .upgrade(upgrade::Version::V1)
-            .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-            .multiplex(YamuxConfig::default())
-            .boxed();
-        #[cfg(feature = "mdns")]
-        let mdns = Mdns::new(MdnsConfig::default())
+        ShCommunicationBuilder::new(ask_firewall_chan, inbound_req_chan, net_events_chan)
+            .build()
             .await
-            .expect("Failed to create mdns behaviour.");
-        let behaviour = NetBehaviour::new(
-            config,
-            #[cfg(feature = "mdns")]
-            mdns,
-            relay_behaviour,
-            ask_firewall_chan,
-        );
-        let swarm = Swarm::new(transport, behaviour, peer);
-
-        let swarm_rw_lock = Arc::new(Mutex::new(swarm));
-        let rw_lock_clone = Arc::clone(&swarm_rw_lock);
-        let inbound_req_chan_clone = inbound_req_chan.clone();
-        let net_events_chan_clone = net_events_chan.clone();
-
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
-
-        let task_handle = thread::spawn(move || {
-            Self::run(
-                rw_lock_clone,
-                inbound_req_chan_clone,
-                net_events_chan_clone,
-                shutdown_rx,
-            )
-        });
-
-        ShCommunication {
-            task_handle,
-            swarm: swarm_rw_lock,
-            listeners: HashMap::new(),
-            request_chan: inbound_req_chan,
-            net_events_chan,
-            shutdown_chan: shutdown_tx,
-        }
     }
 
     /// Shutdown the swarm and all network interaction.
@@ -385,7 +492,7 @@ where
 
     fn handle_swarm_event<THandleErr>(
         mut request_channel: Sender<ReceiveRequest<Rq, Rs>>,
-        net_events_chan: Option<Sender<NetworkEvents>>,
+        net_events_chan: Option<Sender<NetworkEvent>>,
         event: SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>,
     ) {
         match event {
@@ -398,7 +505,7 @@ where
                 });
             }
             other => {
-                if let Ok(ev) = NetworkEvents::try_from(other) {
+                if let Ok(ev) = NetworkEvent::try_from(other) {
                     if let Some(mut channel) = net_events_chan {
                         task::spawn(async move {
                             let _ = poll_fn(|cx: &mut Context| channel.poll_ready(cx)).await;
@@ -414,7 +521,7 @@ where
     fn run(
         swarm_mutex: Arc<Mutex<Swarm<NetBehaviour<Rq, Rs, P>>>>,
         request_channel: Sender<ReceiveRequest<Rq, Rs>>,
-        net_events_chan: Option<Sender<NetworkEvents>>,
+        net_events_chan: Option<Sender<NetworkEvent>>,
         mut shutdown_chan: oneshot::Receiver<()>,
     ) {
         while shutdown_chan.try_recv().is_ok() {

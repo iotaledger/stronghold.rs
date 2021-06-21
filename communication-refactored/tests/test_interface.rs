@@ -4,12 +4,10 @@
 use async_std::task;
 use communication_refactored::{
     firewall::{FirewallConfiguration, PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission},
-    CommunicationProtocol, Keypair, NetBehaviourConfig, ReceiveRequest, RequestMessage, ResponseReceiver,
-    ShCommunication,
+    ReceiveRequest, RequestMessage, ResponseReceiver, ShCommunication, ShCommunicationBuilder,
 };
 use futures::{channel::mpsc, future::join, StreamExt};
 use serde::{Deserialize, Serialize};
-use smallvec::smallvec;
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
@@ -28,16 +26,14 @@ fn init_comms() -> (
     mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ShCommunication<Request, Response, RequestPermission>,
 ) {
-    let id_keys = Keypair::generate_ed25519();
-    let cfg = NetBehaviourConfig {
-        connection_timeout: Duration::from_secs(1),
-        request_timeout: Duration::from_secs(1),
-        firewall: FirewallConfiguration::allow_all(),
-        supported_protocols: smallvec![CommunicationProtocol],
-    };
     let (dummy_tx, _) = mpsc::channel(1);
     let (rq_tx, rq_rx) = mpsc::channel(1);
-    let comms = task::block_on(ShCommunication::new(id_keys, cfg, dummy_tx, rq_tx, None));
+
+    let builder = ShCommunicationBuilder::new(dummy_tx, rq_tx, None)
+        .with_connection_timeout(Duration::from_secs(1))
+        .with_request_timeout(Duration::from_secs(1))
+        .with_firewall_config(FirewallConfiguration::allow_all());
+    let comms = task::block_on(builder.build());
     (rq_rx, comms)
 }
 
