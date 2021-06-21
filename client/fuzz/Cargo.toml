@@ -1,7 +1,7 @@
 [package]
 name = "fuzz"
 version = "0.1.0"
-authors = ["tensor-programming <tensordeveloper@gmail.com>"]
+authors = ["Matthias Kandora <matthias.kandora@iota.org>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -13,16 +13,27 @@ cargo-fuzz = true
 libfuzzer-sys = "0.3"
 rand = "0.8.3"
 
-[dependencies.stronghold_engine]
+[dependencies.iota_stronghold]
 path = "../"
 version = "0.4"
+features = ["communication"]
+
+[dependencies.redis]
+version = "0.20.1"
+
+[dependencies.tokio]
+version = "1.6"
+features = ["full"]
 
 [dependencies.iota-crypto]
 version = "0.5.0"
 features = [ "random", "chacha" ]
 
-[dependencies.generic-array]
-version = "0.14.4"
+[dependencies.log]
+version = "0.4.0"
+
+[dev-dependencies.uuid]
+version = "0.8"
 
 [profile.release]
 overflow-checks = true
@@ -34,10 +45,15 @@ panic = "abort"
 
 [workspace]
 
-[[bin]]
-name = "snapshot"
-path = "src/snapshot_fuzz.rs"
+[build-dependencies.iota_stronghold]
+path = "../"
+version = "0.4"
+features = ["communication"]
 
 [[bin]]
-name = "vault_fuzz"
-path = "src/vault_fuzz.rs"
+name = "listen"
+path = "src/listen.rs"
+
+[[bin]]
+name = "comms"
+path = "src/comms.rs"

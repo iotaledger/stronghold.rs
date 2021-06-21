@@ -17,6 +17,18 @@ impl ResultMessage<()> {
     pub const OK: Self = ResultMessage::Ok(());
 }
 
+impl<T> ResultMessage<T> {
+    /// Returns true, if the [`ResultMessage`] contains an `Ok` value
+    pub fn is_ok(&self) -> bool {
+        matches!(self, ResultMessage::Ok(_))
+    }
+
+    /// Returns true, if the [`ResultMessage`] contains an `Error`
+    pub fn is_err(&self) -> bool {
+        !self.is_ok()
+    }
+}
+
 impl<T> From<Result<T, String>> for ResultMessage<T> {
     fn from(result: Result<T, String>) -> Self {
         match result {
