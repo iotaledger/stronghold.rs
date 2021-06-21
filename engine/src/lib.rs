@@ -26,7 +26,7 @@
 extern crate std;
 extern crate alloc;
 
-use core::fmt::{self, Debug, Formatter};
+use core::fmt::{self, Debug, Formatter, Display};
 
 use alloc::{format, string::String};
 
@@ -45,6 +45,7 @@ pub use runtime;
 #[global_allocator]
 static ALLOC: ZeroingAlloc<std::alloc::System> = ZeroingAlloc(std::alloc::System);
 
+#[derive(Debug)]
 pub enum Error {
     #[cfg(feature = "std")]
     IoError(std::io::Error),
@@ -63,7 +64,7 @@ pub enum Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-impl Debug for Error {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Error::Base64Error => f.write_str("Base64Error"),
@@ -82,6 +83,9 @@ impl Debug for Error {
         }
     }
 }
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
 
 impl From<core::array::TryFromSliceError> for Error {
     fn from(e: core::array::TryFromSliceError) -> Self {
