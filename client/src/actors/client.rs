@@ -476,7 +476,6 @@ impl Receive<SHRequest> for Client {
                 let (vid, _) = self.resolve_location(loc);
 
                 self.store_delete_item(vid.into());
-
                 sender
                     .as_ref()
                     .expect(line_error!())

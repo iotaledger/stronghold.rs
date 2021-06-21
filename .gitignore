@@ -21,3 +21,7 @@ package-lock.json
 proptest-regressions/
 TODO.md
 book
+
+# exclude cargo fuzz artifacts
+**/fuzz/corpus/*
+**/fuzz/artifacts/

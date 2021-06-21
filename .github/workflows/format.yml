@@ -8,6 +8,10 @@ on:
     branches:
       - main
       - dev
+    paths:
+      - '.github/workflows/format.yml'
+      - '**.rs'
+      - '**.toml'
 
 jobs:
   format:
