@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use alloc::{format, vec::Vec, string::String};
+use alloc::{format, string::String, vec::Vec};
 
 // a base64 encoder and decoder
 pub struct Base64;

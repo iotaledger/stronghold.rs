@@ -22,11 +22,11 @@
 //! Until a formal third-party security audit has taken place, the IOTA Foundation
 //! makes no guarantees to the fitness of this library for any purposes.
 
+extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
-extern crate alloc;
 
-use core::fmt::{self, Debug, Formatter, Display};
+use core::fmt::{self, Debug, Display, Formatter};
 
 use alloc::{format, string::String};
 

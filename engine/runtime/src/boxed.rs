@@ -229,11 +229,11 @@ impl<T: Bytes> Drop for Boxed<T> {
         }
 
         #[cfg(not(feature = "std"))]
-            {
-                assert!(self.refs.get() == 0, "Retains exceeded releases");
+        {
+            assert!(self.refs.get() == 0, "Retains exceeded releases");
 
-                assert!(self.prot.get() == Prot::NoAccess, "Dropped secret was still accessible");
-            }
+            assert!(self.prot.get() == Prot::NoAccess, "Dropped secret was still accessible");
+        }
 
         unsafe { free(self.ptr.as_mut()) }
     }

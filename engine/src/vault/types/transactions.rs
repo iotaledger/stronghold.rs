@@ -18,7 +18,7 @@ use core::{
     hash::Hash,
 };
 
-use alloc::{vec::Vec, vec, format};
+use alloc::{format, vec, vec::Vec};
 
 use serde::{Deserialize, Serialize};
 
