@@ -58,6 +58,9 @@ criterion = "0.3.3"
 clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
 rand = "0.8.3"
 
+# dependency to tokio subject to change, will be actix in future
+tokio = {version = "1.7", features = ["rt", "rt-multi-thread"]}
+
 [[bench]]
 name = "benchmark"
 harness = false

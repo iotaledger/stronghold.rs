@@ -7,14 +7,14 @@ use futures::{
     channel::mpsc::{channel, Receiver, Sender},
     future::RemoteHandle,
 };
-
-#[cfg(feature = "communication")]
-use futures::{executor::block_on, StreamExt};
-
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use zeroize::Zeroize;
 
-use engine::vault::RecordHint;
+use engine::{snapshot::Key, vault::RecordHint};
 
 #[cfg(feature = "communication")]
 use crate::actors::SHRequestPermission;
@@ -22,13 +22,13 @@ use crate::actors::SHRequestPermission;
 use crate::utils::ResultMessage;
 use crate::{
     actors::{InternalActor, ProcResult, Procedure, SHRequest, SHResults},
+    internals::Provider,
     line_error,
     state::{
         client::{Client, ClientMsg},
         snapshot::Snapshot,
     },
-    utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
-    Location, Provider,
+    utils::{LoadFromPath, Location, StatusMessage, StrongholdFlags, VaultFlags},
 };
 #[cfg(feature = "communication")]
 use communication::{
@@ -456,6 +456,18 @@ impl Stronghold {
         } else {
             StatusMessage::Error("Unable to write snapshot".into())
         }
+    }
+
+    /// Tries to fully synchronize this snapshot with a second local snapshot.
+    /// All serialized data from both snapshots will be taken into consideration, when
+    /// synchronizing.
+    /// The two snapshots need their own keys respectively, and a path to store the
+    /// new synchronized snapshot.
+    pub async fn synchronize_snapshot<P>(&self, _other: P, _key: &Key, _output: P) -> StatusMessage
+    where
+        P: AsRef<Path>,
+    {
+        todo!()
     }
 
     /// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If

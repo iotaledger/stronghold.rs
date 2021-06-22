@@ -44,6 +44,46 @@ impl Snapshot {
         self.state.0.contains_key(&cid)
     }
 
+    /// Added functionality
+    /// Synchronizes two snapshots
+    /// this operation needs to be protected! If you see this comment,
+    // and executing the method won't work, the protection is not yet in place
+    pub fn synchronize<P>(&self, path: P, key: Key) -> crate::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        println!("synchronize::WARNING! Potententially unintended security related side effects!");
+        // load b
+        let b = Self::read_from_snapshot(None, Some(path.as_ref()), key)?;
+
+        // get states
+        let state_a = &self.state.0;
+        let state_b = &b.state.0;
+
+        let mut result = HashMap::new();
+
+        // primitive union of two snapshots, does not check for
+        // different versions etc...
+        state_a.iter().for_each(|(id, value)| {
+            result.insert(*id, value.clone());
+        });
+
+        state_b.iter().for_each(|(id, value)| {
+            result.insert(*id, value.clone());
+        });
+
+        Ok(Snapshot::new(SnapshotState(result)))
+    }
+
+    /// Reads a snapshot from provided path
+    pub fn read_snapshot_with_full_path<P>(path: P, key: &Key) -> crate::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        let data = SnapshotState::deserialize(read_from(path.as_ref(), &key, &[])?);
+        Ok(Self::new(data))
+    }
+
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
     pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<Self> {

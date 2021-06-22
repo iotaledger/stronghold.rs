@@ -27,6 +27,17 @@ impl<T> ResultMessage<T> {
     pub fn is_err(&self) -> bool {
         !self.is_ok()
     }
+
+    /// Maps [`ResultMessage<T>`] to [`Result<T, F>`]
+    pub fn map_err<F, O>(self, op: O) -> Result<T, F>
+    where
+        O: FnOnce(String) -> F,
+    {
+        match self {
+            ResultMessage::Ok(v) => Ok(v),
+            ResultMessage::Error(s) => Err(op(s)),
+        }
+    }
 }
 
 impl<T> From<Result<T, String>> for ResultMessage<T> {
@@ -38,9 +49,11 @@ impl<T> From<Result<T, String>> for ResultMessage<T> {
     }
 }
 
-/// A [`Location`] type used to specify where in the [`Stronghold`] a piece of data should be stored. A generic location
-/// specifies a location while a counter location specifies a versioned location. If a counter [`Location`] is used,
-/// then the implementation must maintain the counters for the versioning.
+/// A `Location` type used to specify where in the `Stronghold` a piece of data should be stored. A generic location
+/// specifies a non-versioned location while a counter location specifies a versioned location. The Counter location can
+/// be used to get the head of the version chain by passing in `0` as the counter index. Otherwise, counter records
+/// are referenced through their associated index.  On Read, the `0` location is the latest record in the version
+/// chain while on Write, the `0` location is the next record in the version chain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Location {
     Generic { vault_path: Vec<u8>, record_path: Vec<u8> },
@@ -99,6 +112,6 @@ pub enum StrongholdFlags {
     IsReadable(bool),
 }
 
-/// Policy options for for a specific vault.  Must be specified on creation.
+/// Policy options for a specific vault.  Must be specified on creation.
 #[derive(Clone, Debug)]
 pub enum VaultFlags {}

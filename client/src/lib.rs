@@ -40,6 +40,7 @@ pub use crate::{
     actors::{ProcResult, Procedure, SLIP10DeriveInput},
     interface::Stronghold,
     internals::Provider,
+    state::snapshot::Snapshot,
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 

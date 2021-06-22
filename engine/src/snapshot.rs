@@ -27,7 +27,6 @@ mod compression;
 pub mod diff;
 pub mod files;
 pub mod kdf;
-pub mod sync;
 
 mod logic;
 pub use compression::{compress, decompress};
