@@ -24,10 +24,12 @@ impl Default for PendingResponses {
     }
 }
 
-/// Active connections to a remote peer and pending responses on each connection.
+// Active connections to a remote peer and pending responses on each connection.
 #[derive(Debug)]
 pub(super) struct PeerConnectionManager {
+    // Currently active connections for each peer.
     connections: HashMap<PeerId, SmallVec<[ConnectionId; 2]>>,
+    // Pending responses for each active connection.
     pending_responses: HashMap<ConnectionId, PendingResponses>,
 }
 
@@ -39,6 +41,7 @@ impl PeerConnectionManager {
         }
     }
 
+    // Check if the local peer currently has at least one active connection to the remote.
     pub fn is_connected(&self, peer: &PeerId) -> bool {
         self.connections
             .get(peer)
@@ -46,6 +49,7 @@ impl PeerConnectionManager {
             .unwrap_or(false)
     }
 
+    // Get the ids of the active connections.
     pub fn get_connections(&self, peer: &PeerId) -> SmallVec<[ConnectionId; 2]> {
         self.connections.get(peer).cloned().unwrap_or_default()
     }
@@ -60,6 +64,7 @@ impl PeerConnectionManager {
         self.connections.remove(peer)
     }
 
+    // Insert a newly established connection.
     pub fn add_connection(&mut self, peer: PeerId, connection: ConnectionId) {
         self.connections.entry(peer).or_default().push(connection);
     }
@@ -76,7 +81,8 @@ impl PeerConnectionManager {
     }
 
     // New request that has been sent/ received, but with no response yet.
-    // Assigns the request to one of the established connections to the peer, return `None` if there are no connections.
+    // Assigns the request to one of the established connections to the peer, return [`None`] if there are no
+    // connections.
     pub fn add_request(
         &mut self,
         peer: &PeerId,
@@ -97,6 +103,7 @@ impl PeerConnectionManager {
         Some(connection)
     }
 
+    // Remove a request from the list of pending responses.
     pub fn remove_request(&mut self, connection: &ConnectionId, request_id: &RequestId, direction: &RequestDirection) {
         self.pending_responses
             .get_mut(connection)

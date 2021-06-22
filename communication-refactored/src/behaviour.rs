@@ -42,6 +42,8 @@ use futures::{
 };
 pub use handler::CommunicationProtocol;
 use handler::{ConnectionHandler, HandlerInEvent, HandlerOutEvent, ProtocolSupport};
+#[cfg(feature = "mdns")]
+use libp2p::mdns::Mdns;
 use libp2p::{
     core::{
         connection::{ConnectionId, ListenerId},
@@ -54,9 +56,6 @@ use libp2p::{
         NotifyHandler, PollParameters, ProtocolsHandler,
     },
 };
-
-#[cfg(feature = "mdns")]
-use libp2p::mdns::Mdns;
 use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -78,19 +77,26 @@ type SecondProtocolsHandler = IntoProtocolsHandlerSelect<
 #[cfg(not(feature = "mdns"))]
 type SecondProtocolsHandler = <Relay as NetworkBehaviour>::ProtocolsHandler;
 
-pub type PendingPeerRuleRequest = BoxFuture<'static, (PeerId, RuleDirection, Option<FirewallRules>)>;
-pub type PendingApprovalRequest = BoxFuture<'static, (RequestId, bool)>;
+// Future for a pending response to a sent [`FirewallRequest::PeerSpecificRule`].
+type PendingPeerRuleRequest = BoxFuture<'static, (PeerId, RuleDirection, Option<FirewallRules>)>;
+// Future for a pending responses to a sent [`FirewallRequest::RequestApproval`].
+type PendingApprovalRequest = BoxFuture<'static, (RequestId, bool)>;
 
 const EMPTY_QUEUE_SHRINK_THRESHOLD: usize = 100;
 
+/// Requests and failure events emitted by the [`NetBehaviour`].
 #[derive(Debug)]
 pub enum BehaviourEvent<Rq, Rs> {
+    /// An inbound request was received from a remote peer.
+    /// The request was checked and approved by the firewall.
     Request(ReceiveRequest<Rq, Rs>),
+    /// A failure occurred in the context of receiving an inbound request and sending a response.
     InboundFailure {
         request_id: RequestId,
         peer: PeerId,
         failure: InboundFailure,
     },
+    /// A failure occurred in the context of sending an outbound request and receiving a response.
     OutboundFailure {
         request_id: RequestId,
         peer: PeerId,
@@ -98,20 +104,23 @@ pub enum BehaviourEvent<Rq, Rs> {
     },
 }
 
-impl<Rq, Rs> Unpin for BehaviourEvent<Rq, Rs> {}
-
+/// Configuration of the [`NetBehaviour`].
 #[derive(Debug)]
-pub struct NetBehaviourConfig {
+pub(super) struct NetBehaviourConfig {
+    /// Supported versions of the `CommunicationProtocol`.
     pub supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
+    /// Timeout for inbound and outbound requests.
     pub request_timeout: Duration,
+    /// Keep-alive timeout of idle connections.
     pub connection_timeout: Duration,
+    /// Configuration for the firewall that checks every outbound and inbound request.
     pub firewall: FirewallConfiguration,
 }
 
 impl Default for NetBehaviourConfig {
     fn default() -> Self {
         Self {
-            supported_protocols: smallvec![CommunicationProtocol],
+            supported_protocols: smallvec![CommunicationProtocol::new_version(1, 0, 0)],
             connection_timeout: Duration::from_secs(10),
             request_timeout: Duration::from_secs(10),
             firewall: FirewallConfiguration::default(),
@@ -119,29 +128,53 @@ impl Default for NetBehaviourConfig {
     }
 }
 
-pub struct NetBehaviour<Rq, Rs, P>
+/// Protocol for customization for the [`Swarm`][libp2p::Swarm].
+///
+/// The protocol is based on the [`RequestResponse`][libp2p::request_response::RequestResponse] protocol from libp2p
+/// and integrates the libp2p [`Relay`][libp2p::relay::Relay] and [`Mdns`][libp2p::mdns::Mdns] protocols.
+///
+/// This allows sending request messages to remote peers, handling of inbound requests and failures, and additionally
+/// the configuration of a firewall to set permissions individually for different peers and request types.
+pub(super) struct NetBehaviour<Rq, Rs, P>
 where
     Rq: RqRsMessage + ToPermissionVariants<P>,
     Rs: RqRsMessage,
     P: VariantPermission,
 {
+    // integrate Mdns protocol
     #[cfg(feature = "mdns")]
     mdns: Mdns,
+    // integrate Relay protocl
     relay: Relay,
 
+    // List of supported protocol versions.
     supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
+    // Timeout for inbound and outbound requests.
     request_timeout: Duration,
+    // Keep-alive timeout of idle connections.
     connection_timeout: Duration,
 
+    // ID assigned to the next outbound request.
     next_request_id: RequestId,
+    // ID assigned to the next inbound request.
     next_inbound_id: Arc<AtomicU64>,
 
+    // Manager for pending requests, their state and necessary actions.
     request_manager: RequestManager<Rq, Rs, P>,
+    // Address information and relay settings for known peers.
     addresses: AddressInfo,
+    // Configuration of the firewall.
+    // Each inbound/ outbound request is checked, and only forwarded if the firewall configuration approves the request
+    // for this peer.
     firewall: FirewallConfiguration,
 
+    // Channel for firewall requests.
+    // The channel is used if there is no rule set for a peer, or if the configuration demands individual approval for
+    // each request.
     permission_req_channel: mpsc::Sender<FirewallRequest<P>>,
+    // Futures for pending responses to sent [`FirewallRequest::PeerSpecificRule`]s.
     pending_rule_rqs: FuturesUnordered<PendingPeerRuleRequest>,
+    // Futures for pending responses to sent [`FirewallRequest::RequestApproval`]s.
     pending_approval_rqs: FuturesUnordered<PendingApprovalRequest>,
 }
 
@@ -151,6 +184,7 @@ where
     Rs: RqRsMessage,
     P: VariantPermission,
 {
+    /// Create a new instance of a NetBehaviour to customize the [`Swarm`][libp2p::Swarm].
     pub fn new(
         config: NetBehaviourConfig,
         #[cfg(feature = "mdns")] mdns: Mdns,
@@ -282,7 +316,8 @@ where
     }
 
     /// Dial the target via the specified relay.
-    /// The `is_exclusive` specifies whether other known relays should be used if using the set relay is not successful.
+    /// The `is_exclusive` paramter specifies whether other known relays should be used if using the set relay is not
+    /// successful.
     ///
     /// Returns the relayed address of the local peer (`<relay-addr>/<relay-id>/p2p-circuit/<local-id>),
     /// if an address for the relay is known.
@@ -587,7 +622,7 @@ where
         #[cfg(feature = "mdns")]
         let _ = self.mdns.poll(cx, params);
 
-        // Update firewall rules if a peer specific rule was return after a `FirewallRequest::PeerSpecificRule` query.
+        // Update firewall rules if a peer specific rule was return after a [`FirewallRequest::PeerSpecificRule`] query.
         while let Poll::Ready(Some((peer, direction, rules))) = self.pending_rule_rqs.poll_next_unpin(cx) {
             if let Some(rules) = rules {
                 if direction.is_inbound() {
@@ -604,7 +639,8 @@ where
             }
         }
 
-        // Handle individual approvals fro requests that were returned after a `FirewallRequest::RequestApproval` query.
+        // Handle individual approvals fro requests that were returned after a [`FirewallRequest::RequestApproval`]
+        // query.
         while let Poll::Ready(Some((request_id, is_allowed))) = self.pending_approval_rqs.poll_next_unpin(cx) {
             self.request_manager.on_request_approval(request_id, is_allowed);
         }
@@ -712,9 +748,9 @@ mod test {
         noise::{Keypair, NoiseConfig, X25519Spec},
         relay::{new_transport_and_behaviour, RelayConfig},
         swarm::{Swarm, SwarmEvent},
-        tcp::TcpConfig,
         yamux::YamuxConfig,
     };
+    use libp2p_tcp::TcpConfig;
     use serde::{Deserialize, Serialize};
 
     // Exercises a simple ping protocol.

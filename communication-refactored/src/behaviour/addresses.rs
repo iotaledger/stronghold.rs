@@ -5,10 +5,10 @@ use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
 
-// Addresses of a remote peer
+// Known addresses and relay config of a remote peer
 #[derive(Debug, Clone)]
 struct PeerAddress {
-    // Known addresses e.g. that have been explicitly added or already connected
+    // Known addresses e.g. that have been explicitly added or already connected.
     known: VecDeque<Multiaddr>,
     // Try relay peer if a target can not be reached directly.
     use_relay_fallback: bool,
@@ -56,6 +56,7 @@ impl AddressInfo {
         peer_addrs
     }
 
+    // Add address from the list of addresses that are tried when dialing the remote.
     pub fn add_addrs(&mut self, peer: PeerId, addr: Multiaddr) {
         let addrs = self.peers.entry(peer).or_default();
         if !addrs.known.contains(&addr) {
@@ -63,17 +64,20 @@ impl AddressInfo {
         }
     }
 
+    // Remove address from the list of addresses that are tried when dialing the remote.
     pub fn remove_address(&mut self, peer: &PeerId, addrs: &Multiaddr) {
         if let Some(PeerAddress { known, .. }) = self.peers.get_mut(peer) {
             known.retain(|a| a != addrs);
         }
     }
+
+    // Configure whether to try reaching the target via a relay if no known address can be reached.
     pub fn set_relay_fallback(&mut self, peer: PeerId, use_relay_fallback: bool) {
         let addrs = self.peers.entry(peer).or_default();
         addrs.use_relay_fallback = use_relay_fallback;
     }
 
-    // Add a address for target via the given relay.
+    // Add a address for dialing the target via the given relay.
     // Optionally stop using other relays as fallback.
     pub fn use_relay(&mut self, target: PeerId, relay: PeerId, is_exclusive: bool) -> Option<Multiaddr> {
         let relayed_addr = self
@@ -106,7 +110,7 @@ impl AddressInfo {
     }
 
     // Get the first address of a relay peer.
-    // Return `None` if the peer is not a relay, or no address is known.
+    // Return [`None`] if the peer is not a relay, or no address is known.
     pub fn get_relay_addr(&self, peer: &PeerId) -> Option<Multiaddr> {
         if !self.relays.contains(peer) {
             return None;
@@ -115,8 +119,8 @@ impl AddressInfo {
     }
 
     // Add a peer as relay peer, optionally add a known address for the peer.
-    // Return `None` if no address for the relay is known yet.
-    // Note: even if no address is known, the peer will be added to the dialing relays.
+    // Return [`None`] if no address for the relay is known yet.
+    // Note: even if no addresses are known, the peer will be added to the dialing relays.
     pub fn add_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
         if self.relays.contains(&peer) {
             return self.get_relay_addr(&peer);
@@ -128,14 +132,16 @@ impl AddressInfo {
         address.or_else(|| self.peers.get(&peer).and_then(|addrs| addrs.known.front().cloned()))
     }
 
+    // Remove a peer from the list of fallback dialing relays.
+    // Note: Known relayed addresses for remote peers using this relay will not be influenced by this.
     pub fn remove_relay(&mut self, peer: &PeerId) {
         self.relays.retain(|p| p == peer)
     }
 }
 
 /// Assemble a relayed address for the target following the syntax
-/// `<relay-addr>/p2p/<relay-id>/p2p-circuit/p2p/<target-id>` that can be used to reach the target peer if they are
-/// listening on that relay.
+/// `<relay-addr>/p2p/<relay-id>/p2p-circuit/p2p/<target-id>`.
+/// The address can be used to reach the target peer if they are listening on that relay.
 pub fn assemble_relayed_addr(target: PeerId, relay: PeerId, mut relay_addr: Multiaddr) -> Multiaddr {
     let relay_proto = Multiaddr::empty()
         .with(Protocol::P2p(relay.into()))

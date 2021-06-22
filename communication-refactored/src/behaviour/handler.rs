@@ -46,17 +46,17 @@ type ProtocolsHandlerEventType<Rq, Rs> = ProtocolsHandlerEvent<
 
 type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, RequestMessage<Rq, Rs>), oneshot::Canceled>>;
 
-/// The level of support for the [`CommunicationProtocol`] protocol.
-/// This is set according to the currently effective firewall rules for the remote peer.
+// The level of support for the [`CommunicationProtocol`] protocol.
+// This is set according to the currently effective firewall rules for the remote peer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProtocolSupport {
-    /// The protocol is only supported for inbound requests.
+    // The protocol is only supported for inbound requests.
     Inbound,
-    /// The protocol is only supported for outbound requests.
+    // The protocol is only supported for outbound requests.
     Outbound,
-    /// The protocol is supported for inbound and outbound requests.
+    // The protocol is supported for all requests.
     Full,
-    /// Neither inbound, nor outbound requests are supported.
+    // Neither inbound, nor outbound requests are supported.
     None,
 }
 
@@ -67,8 +67,8 @@ impl Default for ProtocolSupport {
 }
 
 impl ProtocolSupport {
-    /// Derive the supported protocols from the firewall rules.
-    /// A direction will only be not supported if the firewall is configured to reject all request in that direction.
+    // Derive the supported protocols from the firewall rules.
+    // A direction will only be not supported if the firewall is configured to reject all request in that direction.
     pub fn from_rules(inbound: Option<&Rule>, outbound: Option<&Rule>) -> Self {
         let allow_inbound = inbound.map(|r| !r.is_reject_all()).unwrap_or(true);
         let allow_outbound = outbound.map(|r| !r.is_reject_all()).unwrap_or(true);
@@ -80,7 +80,7 @@ impl ProtocolSupport {
         }
     }
 
-    /// Whether inbound requests are supported.
+    // Check if inbound requests are supported.
     pub fn is_inbound(&self) -> bool {
         match self {
             ProtocolSupport::Inbound | ProtocolSupport::Full => true,
@@ -88,7 +88,7 @@ impl ProtocolSupport {
         }
     }
 
-    /// Whether outbound requests are supported.
+    // Check if  outbound requests are supported.
     pub fn is_outbound(&self) -> bool {
         match self {
             ProtocolSupport::Outbound | ProtocolSupport::Full => true,
@@ -97,89 +97,89 @@ impl ProtocolSupport {
     }
 }
 
-/// Events emitted in `NetBehaviour::poll` and injected to [`ConnectionHandler::inject_event`].
+// Events emitted in `NetBehaviour::poll` and injected to [`ConnectionHandler::inject_event`].
 #[derive(Debug)]
 pub enum HandlerInEvent<Rq, Rs>
 where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    /// Send an outbound request.
+    // Send an outbound request.
     SendRequest {
         request_id: RequestId,
         request: RequestMessage<Rq, Rs>,
     },
-    /// Set the protocol support for inbound and outbound requests.
-    /// This will be sent to the handler when the connection is first established,
-    /// and each time the effective firewall rules for the remote change.
+    // Set the protocol support for inbound and outbound requests.
+    // This will be sent to the handler when the connection is first established,
+    // and each time the effective firewall rules for the remote change.
     SetProtocolSupport(ProtocolSupport),
 }
 
-/// Events emitted in [`ConnectionHandler::poll`] and injected to `NetBehaviour::inject_event`.
+// Events emitted in [`ConnectionHandler::poll`] and injected to `NetBehaviour::inject_event`.
 #[derive(Debug)]
 pub enum HandlerOutEvent<Rq, Rs>
 where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    /// Received an inbound request from remote.
+    // Received an inbound request from remote.
     ReceivedRequest {
         request_id: RequestId,
         request: RequestMessage<Rq, Rs>,
     },
-    /// A response for an inbound requests was successfully sent.
+    // A response for an inbound requests was successfully sent.
     SentResponse(RequestId),
-    /// The response channel closed from the sender side before a response was sent.
+    // The response channel closed from the sender side before a response was sent.
     SendResponseOmission(RequestId),
-    /// Timeout on sending a response.
+    // Timeout on sending a response.
     InboundTimeout(RequestId),
-    /// The inbound request was rejected because the local peer does not support any of the requested protocols.
-    /// This could be either because the protocols differ, or because the local firewall rejects all inbound requests.
+    // The inbound request was rejected because the local peer does not support any of the requested protocols.
+    // This could be either because the protocols differ, or because the local firewall rejects all inbound requests.
     InboundUnsupportedProtocols(RequestId),
 
-    /// A response for an outbound requests was successfully received.
+    // A response for an outbound requests was successfully received.
     ReceivedResponse(RequestId),
-    /// A response for an outbound requests was received, but the response channel closed on the receiving side before
-    /// the response was forwarded.
+    // A response for an outbound requests was received, but the response channel closed on the receiving side before
+    // the response was forwarded.
     RecvResponseOmission(RequestId),
-    /// Timeout on receiving a response.
+    // Timeout on receiving a response.
     OutboundTimeout(RequestId),
-    /// The outbound request was rejected because the remote peer does not support any of the requested protocols.
-    /// This could be either because the protocols differ, or because the remote firewall rejects all inbound requests.
+    // The outbound request was rejected because the remote peer does not support any of the requested protocols.
+    // This could be either because the protocols differ, or because the remote firewall rejects all inbound requests.
     OutboundUnsupportedProtocols(RequestId),
 }
 
-/// Handler for a single connection to a remote peer.
-/// One connection can have multiple substreams that each either negotiate the [`RequestProtocol`] or the
-/// [`ResponseProtocol`] by performing the respective handshake (send `Rq` - receive `Rs` | receive `Rq` - send `Rs`).
+// Handler for a single connection to a remote peer.
+// One connection can have multiple substreams that each either negotiate the [`RequestProtocol`] or the
+// [`ResponseProtocol`] by performing the respective handshake (send `Rq` - receive `Rs` | receive `Rq` - send `Rs`).
 pub struct ConnectionHandler<Rq, Rs>
 where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    /// Protocol version that are potentially supported.
+    // Protocol versions that are potentially supported.
     supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
-    /// Protocol support according the the firewall configuration for the remote peer.
+    // Protocol support according to the firewall configuration for the remote peer.
     protocol_support: ProtocolSupport,
-    /// Timeout for negotiating a handshake on a substream i.g. sending a requests and receiving the response.
+    // Timeout for negotiating a handshake on a substream i.g. sending a requests and receiving the response.
     request_timeout: Duration,
-    /// Timeout for an idle connection.
+    // Timeout for an idle connection.
     keep_alive_timeout: Duration,
 
-    /// Current setting whether the connection to the remote should be kept alive.
-    /// This is set according to timeout config and pending requests.
+    // Current setting whether the connection to the remote should be kept alive.
+    // This is set according to timeout configuration and pending requests.
     keep_alive: KeepAlive,
     // Request id assigned to the next inbound request.
     inbound_request_id: Arc<AtomicU64>,
 
-    /// Fatal error in connection.
+    // Fatal error in connection.
     pending_error: Option<ProtocolsHandlerUpgrErr<io::Error>>,
 
-    /// Pending events to emit to the `NetBehaviour`
+    // Pending events to emit to the `NetBehaviour`
     pending_events: VecDeque<HandlerOutEvent<Rq, Rs>>,
-    /// Pending outbound request that require a new [`ProtocolsHandlerEvent::OutboundSubstreamRequest`].
+    // Pending outbound request that require a new [`ProtocolsHandlerEvent::OutboundSubstreamRequest`].
     pending_out_req: VecDeque<(RequestId, RequestMessage<Rq, Rs>)>,
-    /// Pending inbound requests for which a [`ResponseProtocol`] was created, but no request message was received yet.
+    // Pending inbound requests for which a [`ResponseProtocol`] was created, but no request message was received yet.
     pending_in_req: FuturesUnordered<PendingInboundFuture<Rq, Rs>>,
 }
 
@@ -209,7 +209,7 @@ where
         }
     }
 
-    /// Create a new [`RequestProtocol`] for an outbound request.
+    // Create a new [`RequestProtocol`] for an outbound request.
     fn new_outbound_protocol(
         &mut self,
         request_id: RequestId,
@@ -224,7 +224,7 @@ where
         SubstreamProtocol::new(proto, request_id).with_timeout(self.request_timeout)
     }
 
-    /// Create a new [`ResponseProtocol`] for an inbound request.
+    // Create a new [`ResponseProtocol`] for an inbound request.
     fn new_inbound_protocol(&self) -> SubstreamProtocol<ResponseProtocol<Rq, Rs>, RequestId> {
         // Assign a new request id to the expected request.
         let request_id = RequestId::new(self.inbound_request_id.fetch_add(1, Ordering::Relaxed));
@@ -260,11 +260,12 @@ where
     type InboundOpenInfo = RequestId;
     type OutboundOpenInfo = RequestId;
 
+    // Protocol and info for upgrading new inbound substreams.
     fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol, Self::InboundOpenInfo> {
         self.new_inbound_protocol()
     }
 
-    // Successfully received a requests and potentially send a response.
+    // Successfully received a requests and potentially sent a response.
     fn inject_fully_negotiated_inbound(&mut self, send_response: bool, request_id: RequestId) {
         let event = send_response
             .then(|| HandlerOutEvent::SentResponse(request_id))
@@ -272,7 +273,7 @@ where
         self.pending_events.push_back(event);
     }
 
-    // Successfully send a requests and potentially received a response.
+    // Successfully sent a requests and potentially received a response.
     fn inject_fully_negotiated_outbound(&mut self, received_response: bool, request_id: RequestId) {
         let event = received_response
             .then(|| HandlerOutEvent::ReceivedResponse(request_id))
@@ -280,6 +281,7 @@ where
         self.pending_events.push_back(event);
     }
 
+    // New event emitted by the `NetBehaviour`.
     fn inject_event(&mut self, event: Self::InEvent) {
         match event {
             HandlerInEvent::SendRequest { request_id, request } => {
@@ -292,6 +294,7 @@ where
         }
     }
 
+    // Upgrading the outbound substream with the [`RequestProtocol`] failed.
     fn inject_dial_upgrade_error(&mut self, request_id: RequestId, error: ProtocolsHandlerUpgrErr<io::Error>) {
         match error {
             ProtocolsHandlerUpgrErr::Timeout => {
@@ -309,6 +312,7 @@ where
         }
     }
 
+    // Upgrading the inbound substream with the [`ResponseProtocol`] failed.
     fn inject_listen_upgrade_error(&mut self, request_id: RequestId, error: ProtocolsHandlerUpgrErr<io::Error>) {
         match error {
             ProtocolsHandlerUpgrErr::Timeout => {
@@ -335,6 +339,7 @@ where
         }
     }
 
+    // Poll pending futures and emit events for requests, responses and errors.
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<ProtocolsHandlerEventType<Rq, Rs>> {
         // Check for fatal error.
         if let Some(err) = self.pending_error.take() {
@@ -357,7 +362,7 @@ where
                 }));
             }
         }
-        // Create new outbound substream with `RequestProtocol` for outbound requests.
+        // Create new outbound substream with [`RequestProtocol`] for outbound requests.
         if let Some((request_id, request)) = self.pending_out_req.pop_front() {
             self.keep_alive = KeepAlive::Yes;
             let protocol = self.new_outbound_protocol(request_id, request);

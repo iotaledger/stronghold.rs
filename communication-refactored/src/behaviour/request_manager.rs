@@ -17,7 +17,7 @@ use std::{
 
 // Actions for the behaviour to handle i.g. the behaviour emits the appropriate `NetworkBehaviourAction`.
 pub(super) enum BehaviourAction<Rq, Rs> {
-    // Inbound request that was approved and should be emitted as Behaviour Event to the user.
+    // Inbound request that was approved and should be emitted as [`BehaviourEvent::Request`].
     InboundReady {
         request_id: RequestId,
         peer: PeerId,
@@ -36,8 +36,8 @@ pub(super) enum BehaviourAction<Rq, Rs> {
     // Configure if the handler should support inbound / outbound requests.
     SetProtocolSupport {
         peer: PeerId,
-        // If a ConnectionId is provided, only the handler of that specific connection will be informed
-        // otherwise all handlers of that peer will receive the new settings.
+        // The target connection.
+        // For each [`ConnectionId`], a separate handler is running.
         connection: ConnectionId,
         support: ProtocolSupport,
     },
@@ -47,7 +47,7 @@ pub(super) enum BehaviourAction<Rq, Rs> {
         request_id: RequestId,
         reason: OutboundFailure,
     },
-    // Receiving / responding to a inbound request failed.
+    // Receiving / responding to an inbound request failed.
     InboundFailure {
         peer: PeerId,
         request_id: RequestId,
@@ -59,16 +59,19 @@ pub(super) enum BehaviourAction<Rq, Rs> {
 #[derive(Debug)]
 pub(super) enum ApprovalStatus {
     // Neither a peer specific, nor a default rule for the peer + direction exists.
-    // A FirewallRequest::PeerSpecificRule has been send and the NetBehaviour currently awaits a response.
+    // A FirewallRequest::PeerSpecificRule has been send and the `NetBehaviour` currently awaits a response.
     MissingRule,
     // For the peer + direction, the Rule::Ask is set, which requires explicit approval.
-    // The NetBehaviour sent a FirewallRequest::RequestApproval and currently awaits the approval.
+    // The `NetBehaviour` sent a `FirewallRequest::RequestApproval` and currently awaits the approval.
     MissingApproval,
+    // The request is approved by the current firewall rules.
     Approved,
+    // The request is rejected by the current firewall rules.
     Rejected,
 }
 
 // Manager for pending requests that are awaiting a peer rule, individual approval, or a connection to the remote.
+//
 // Stores pending requests, manages rule, approval and connection changes, and queues required [`BehaviourActions`] for
 // the `NetBehaviour` to handle.
 pub(super) struct RequestManager<Rq, Rs, P>
@@ -254,7 +257,7 @@ where
     }
 
     // Handle a failed connection attempt to a currently not connected peer.
-    // Emit failure for outbound requests that are awaiting the connection.
+    // Emit failures for outbound requests that are awaiting the connection.
     pub fn on_dial_failure(&mut self, peer: PeerId) {
         if let Some(requests) = self.awaiting_connection.remove(&peer) {
             requests.into_iter().for_each(|request_id| {
@@ -272,7 +275,7 @@ where
     }
 
     // Handle pending requests for a newly received rule.
-    // Emit necessary ['BehaviourEvents'] depending on rules and direction.
+    // Emit necessary 'BehaviourEvents' depending on rules and direction.
     // The method return the requests for which the `NetBehaviour` should query a `FirewallRequest::RequestApproval`.
     pub fn on_peer_rule(
         &mut self,
@@ -376,7 +379,7 @@ where
         self.handle_request_approval(request_id, &direction, is_allowed)
     }
 
-    // Handle Response / Failure for a previously received request.
+    // Handle response / failure for a previously received request.
     // Remove the request from the list of pending responses, add failure if there is one.
     pub fn on_res_for_inbound(
         &mut self,
@@ -397,7 +400,7 @@ where
         }
     }
 
-    // Handle Response / Failure for a previously sent request.
+    // Handle response / failure for a previously sent request.
     // Remove the request from the list of pending responses, add failure if there is one.
     pub fn on_res_for_outbound(
         &mut self,
@@ -418,7 +421,7 @@ where
         }
     }
 
-    // Check if there are pending requests for a rules for a specific peer.
+    // Check if there are pending requests for rules for a specific peer.
     pub fn pending_rule_requests(&self, peer: &PeerId) -> Option<RuleDirection> {
         let await_rule = self.awaiting_peer_rule.get(&peer)?;
         let is_inbound_pending = await_rule.contains_key(&RequestDirection::Inbound);
@@ -462,7 +465,7 @@ where
         }
     }
 
-    // Remove the next [`BehaviourAction`] from the queue and return it.
+    // Remove the next `BehaviourAction` from the queue and return it.
     pub fn take_next_action(&mut self) -> Option<BehaviourAction<Rq, Rs>> {
         let next = self.actions.pop_front();
         if self.actions.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {

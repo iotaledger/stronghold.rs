@@ -24,12 +24,12 @@ use serde::{de::DeserializeOwned, Serialize};
 use smallvec::SmallVec;
 use std::{convert::TryFrom, fmt, io, num::NonZeroU32};
 
-/// Trait for the generic Request and Response messages.
+/// Trait for the generic request and response messages.
 pub trait RqRsMessage: Serialize + DeserializeOwned + Send + Sync + 'static {}
 impl<T: Serialize + DeserializeOwned + Send + Sync + 'static> RqRsMessage for T {}
 
-/// Unique Id for each Request.
-/// **Note**: This Id is only local and does not match the request's ID at the remote peer.
+/// Unique Id for each request.
+/// **Note**: This ID is only local and does not match the request's ID at the remote peer.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequestId(u64);
 
@@ -54,8 +54,9 @@ impl fmt::Display for RequestId {
     }
 }
 
-/// Generic data structure that provides some information and expects a response to be returned.
-/// This is used for e.g. permission requests to the firewall, and for receiving requests and responding to them.
+/// Generic data structure that provides some data and expects a response to be returned.
+/// This is used for e.g. permission requests to the firewall, and for receiving requests from remote peers and
+/// responding to them.
 #[derive(Debug)]
 pub struct Query<T, U> {
     /// Content or data of the message.
@@ -87,7 +88,8 @@ pub struct ResponseReceiver<U> {
     pub request_id: RequestId,
     /// Channel for receiving the response from remote.
     /// In case of an error, this channel will be dropped from the sender side, and an
-    /// [`NetworkEvent::OutboundFailure`] may be emitted from [`ShCommunication`].
+    /// [`NetworkEvent::OutboundFailure`] may be emitted from [`ShCommunication`][crate::ShCommunication] via the
+    /// passed `net_events_chan`.
     pub response_rx: oneshot::Receiver<U>,
 }
 
@@ -108,26 +110,18 @@ pub enum RequestDirection {
     Outbound,
 }
 
-impl RequestDirection {
-    pub fn is_inbound(&self) -> bool {
-        matches!(self, RequestDirection::Inbound)
-    }
-    pub fn is_outbound(&self) -> bool {
-        matches!(self, RequestDirection::Outbound)
-    }
-}
-
 /// Events happening in the Network.
 /// Includes events about connection and listener status as well as potential failures when sending/ receiving
 /// request-response messages.
 #[derive(Debug)]
 pub enum NetworkEvent {
-    ///
+    /// A failure occurred in the context of receiving an inbound request and sending a response.
     InboundFailure {
         request_id: RequestId,
         peer: PeerId,
         failure: InboundFailure,
     },
+    /// A failure occurred in the context of sending an outbound request and receiving a response.
     OutboundFailure {
         request_id: RequestId,
         peer: PeerId,
@@ -189,7 +183,7 @@ pub enum NetworkEvent {
     },
 }
 
-pub(crate) type SwarmEv<Rq, Rs, THandleErr> = SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>;
+type SwarmEv<Rq, Rs, THandleErr> = SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>;
 
 impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THandleErr>> for NetworkEvent {
     type Error = ();
@@ -268,6 +262,7 @@ impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THand
 
 impl std::error::Error for InboundFailure {}
 
+/// Possible failures occurring in the context of sending an outbound request and receiving the response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutboundFailure {
     /// The request timed out before a response was received.
@@ -308,6 +303,10 @@ impl fmt::Display for OutboundFailure {
     }
 }
 
+/// Possible failures occurring in the context of receiving an inbound request and sending a response.
+///
+/// Note: If the firewall is configured to block per se all requests from the remote peer, the protocol for inbound
+/// requests will not be supported in the first place, and inbound requests are rejected without emitting a failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InboundFailure {
     /// The inbound request timed out, either while reading the

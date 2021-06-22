@@ -19,10 +19,8 @@ async-std = "1.9"
 futures = "0.3"
 libp2p = { version = "0.38", default-features = false, features = [
   "dns-async-std",
-  "mdns",
   "noise",
   "relay",
-  "tcp-async-io",
   "yamux",
   "websocket"
 ] }
@@ -32,9 +30,11 @@ smallvec = "1.6.1"
 stronghold-derive = {path = "../derive", version = "0.2.0"}
 
 [features]
-default = [ "mdns" ]
-mdns = [ ]
+default = [ "mdns", "tcp-transport"]
+mdns = ["libp2p/mdns"]
+tcp-transport = ["libp2p/tcp-async-io"]
 
 [dev-dependencies]
 rand = "0.8.3"
+libp2p-tcp = { version = "0.28"}
   

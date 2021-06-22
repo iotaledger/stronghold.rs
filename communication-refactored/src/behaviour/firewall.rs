@@ -7,14 +7,16 @@ use libp2p::PeerId;
 pub use permissions::*;
 use std::collections::HashMap;
 
-/// Query for rules for a specific peer and direction.
+/// Query for rules of a specific peer and direction.
 /// From the returned [`FirewallRules`], only the rules for the demanded [`RuleDirection`] are handled.
+/// If the response channel is dropped or [`None`] is returned for a direction, pending requests will be rejected.
 pub type PeerRuleQuery = Query<(PeerId, RuleDirection), FirewallRules>;
 
-/// Query for approval for an individual request.
+/// Query for approval of an individual request.
+/// If the response channel is dropped, the request will be rejected.
 pub type RequestApprovalQuery<P> = Query<(PeerId, RequestDirection, P), bool>;
 
-/// Requests to the firewall.
+/// Requests for approval and rules that are not covered by the current [`FirewallConfiguration`].
 #[derive(Debug)]
 pub enum FirewallRequest<P> {
     /// Query for a peer specific rule.
@@ -24,10 +26,10 @@ pub enum FirewallRequest<P> {
     RequestApproval(RequestApprovalQuery<P>),
 }
 
-/// Rules for request in a specific direction.
+/// Rules for requests in a specific [`RequestDirection`].
 #[derive(Debug, Clone)]
 pub enum Rule {
-    /// Approve / Deny the request base on the set permission and request type.
+    /// Approve / Deny the request base on the set permissions and request type.
     Permission(FirewallPermission),
     /// Ask for individual approval for each request by sending a [`FirewallRequest::RequestApproval`] through the
     /// firewall-channel provided to the `NetBehaviour`.
@@ -51,7 +53,7 @@ impl Rule {
         Rule::Permission(FirewallPermission::none())
     }
 
-    /// Is the rule rejecting all types of requests i.g. is permission set to 0.
+    /// Check if the rule is rejecting all types of requests i.g. if permission is set to 0.
     pub fn is_reject_all(&self) -> bool {
         match self {
             Rule::Ask => false,
@@ -60,7 +62,7 @@ impl Rule {
     }
 }
 
-/// The direction for which a rule is applicable for.
+/// The direction for which a rule is applicable.
 #[derive(Debug, Clone, Copy)]
 pub enum RuleDirection {
     /// Only inbound requests.
@@ -72,9 +74,12 @@ pub enum RuleDirection {
 }
 
 impl RuleDirection {
+    /// Check if the rule is applicable for inbound requests.
     pub fn is_inbound(&self) -> bool {
         matches!(self, RuleDirection::Inbound | RuleDirection::Both)
     }
+
+    /// Check if the rule is applicable for outbound requests.
     pub fn is_outbound(&self) -> bool {
         matches!(self, RuleDirection::Outbound | RuleDirection::Both)
     }
@@ -91,8 +96,6 @@ impl RuleDirection {
 }
 
 /// Rule configuration for inbound and outbound requests.
-/// If not rules for a direction are set in the default and peer specific rules,
-/// a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel upon receiving a requests.
 #[derive(Debug, Clone)]
 pub struct FirewallRules {
     /// Rule for inbound requests.
@@ -118,41 +121,33 @@ impl FirewallRules {
         }
     }
 
-    /// Create a new instance with the provided rules.
+    /// Create a new instance with the given rules.
     pub fn new(inbound: Option<Rule>, outbound: Option<Rule>) -> Self {
         FirewallRules { inbound, outbound }
     }
 
-    /// Change one or both rules to the given rule.
+    /// Change one or both rules to the new rule.
     pub fn set_rule(&mut self, rule: Option<Rule>, direction: RuleDirection) {
         direction.is_inbound().then(|| self.inbound = rule.clone());
         direction.is_outbound().then(|| self.outbound = rule);
     }
 
+    /// Current inbound Rule (if there is one).
     pub fn inbound(&self) -> Option<&Rule> {
         self.inbound.as_ref()
     }
 
+    /// Current outbound Rule (if there is one).
     pub fn outbound(&self) -> Option<&Rule> {
         self.outbound.as_ref()
-    }
-
-    pub fn is_reject_all_inbound(&self) -> bool {
-        match self.inbound() {
-            Some(Rule::Permission(permissions)) => permissions.is_no_permissions(),
-            _ => false,
-        }
-    }
-
-    pub fn is_reject_all_outbound(&self) -> bool {
-        match self.outbound() {
-            Some(Rule::Permission(permissions)) => permissions.is_no_permissions(),
-            _ => false,
-        }
     }
 }
 
 /// Configuration for the firewall of the `NetBehaviour`.
+/// This config specifies what inbound and requests from/ to which peer are allowed.
+/// If there are neither default rules, nor a peer specific rule for a request from/ to a peer,
+/// a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel that is passed to
+/// `ShCommunication`.
 #[derive(Debug)]
 pub struct FirewallConfiguration {
     /// Default rules that are used if there are no peer-specific ones for a peer.

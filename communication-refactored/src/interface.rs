@@ -20,6 +20,8 @@ use futures::{
 };
 #[cfg(feature = "mdns")]
 use libp2p::mdns::{Mdns, MdnsConfig};
+#[cfg(feature = "tcp-transport")]
+use libp2p::tcp::TcpConfig;
 use libp2p::{
     core::{
         connection::{ConnectionLimits, ListenerId},
@@ -30,7 +32,6 @@ use libp2p::{
     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
     relay::{new_transport_and_behaviour, RelayConfig},
     swarm::{NetworkBehaviour, Swarm, SwarmBuilder, SwarmEvent},
-    tcp::TcpConfig,
     yamux::YamuxConfig,
 };
 use smallvec::smallvec;
@@ -127,6 +128,7 @@ where
         self
     }
 
+    #[cfg(feature = "tcp-transport")]
     pub async fn build(self) -> ShCommunication<Rq, Rs, P> {
         self.build_with_transport(TcpConfig::new().nodelay(true)).await
     }
@@ -225,6 +227,7 @@ where
     /// - `ask_firewall_chan`: Channel for firewall requests if there are no fixed rule or [`Rule::Ask`] was set
     /// - `inbound_req_chan`: Channel for receiving inbound requests from remote peers
     /// - `net_events_chan`: Optional channel for receiving all events in the network.
+    #[cfg(feature = "tcp-transport")]
     pub async fn new(
         ask_firewall_chan: Sender<FirewallRequest<P>>,
         inbound_req_chan: Sender<ReceiveRequest<Rq, Rs>>,
@@ -460,7 +463,8 @@ where
     }
 
     /// Dial the target via the specified relay.
-    /// The `is_exclusive` specifies whether other known relays should be used if using the set relay is not successful.
+    /// The `is_exclusive` parameter specifies whether other known relays should be used if using the set relay is not
+    /// successful.
     ///
     /// Returns the relayed address of the local peer (`<relay-addr>/<relay-id>/p2p-circuit/<local-id>),
     /// if an address for the relay is known.
@@ -484,7 +488,7 @@ where
         swarm.unban_peer_id(peer);
     }
 
-    /// Checks whether the `Network` has an established connection to a peer.
+    /// Check whether the Network has an established connection to a peer.
     pub fn is_connected(&self, peer: &PeerId) -> bool {
         let swarm = self.swarm.lock().unwrap();
         swarm.is_connected(peer)

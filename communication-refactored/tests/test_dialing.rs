@@ -12,6 +12,8 @@ use futures::{
     channel::mpsc::{self, Receiver},
     future, StreamExt,
 };
+#[cfg(not(feature = "tcp-transport"))]
+use libp2p_tcp::TcpConfig;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -30,6 +32,9 @@ fn init_comms() -> (mpsc::Receiver<NetworkEvent>, TestComms) {
     let builder = ShCommunicationBuilder::new(dummy_fw_tx, dummy_rq_tx, Some(event_tx))
         .with_firewall_config(FirewallConfiguration::allow_all())
         .with_connection_timeout(Duration::from_millis(1));
+    #[cfg(not(feature = "tcp-transport"))]
+    let comms = task::block_on(builder.build_with_transport(TcpConfig::new()));
+    #[cfg(feature = "tcp-transport")]
     let comms = task::block_on(builder.build());
     (event_rx, comms)
 }
@@ -197,39 +202,75 @@ impl TestConfig {
 
         let res = task::block_on(self.source_comms.dial_peer(&self.target_id));
 
-        let allows_direct = matches!(self.source_config.set_relay, UseRelay::Default | UseRelay::NoRelay);
-        let allows_relay = matches!(
-            self.source_config.set_relay,
-            UseRelay::Default | UseRelay::UseSpecificRelay
-        );
-
         if self.target_config.listening_relay {
             Self::expect_connection(&mut self.target_event_rx, self.relay_id, &config_str);
         }
 
-        if allows_direct && self.source_config.knows_direct_target_addr && self.target_config.listening_plain {
-            Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str);
-            Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str);
-            assert!(res.is_ok());
-            return;
-        }
-        if allows_direct && self.source_config.knows_relayed_target_addr
-            || allows_relay && self.source_config.knows_relay && self.source_config.knows_relay_addr
-        {
-            Self::expect_connection(&mut self.source_event_rx, self.relay_id, &config_str);
-
-            if self.target_config.listening_relay {
-                Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str);
-                Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str);
-                assert!(res.is_ok());
-                return;
+        match self.source_config.set_relay {
+            UseRelay::NoRelay => {
+                if self.try_direct(&config_str) {
+                    assert!(res.is_ok());
+                    return;
+                }
+                if self.source_config.knows_relayed_target_addr && self.expect_relayed(false, &config_str) {
+                    assert!(res.is_ok());
+                    return;
+                }
+            }
+            UseRelay::Default => {
+                if self.try_direct(&config_str) {
+                    assert!(res.is_ok());
+                    return;
+                }
+                if (self.source_config.knows_relayed_target_addr
+                    || self.source_config.knows_relay && self.source_config.knows_relay_addr)
+                    && self.expect_relayed(false, &config_str)
+                {
+                    assert!(res.is_ok());
+                    return;
+                }
+            }
+            UseRelay::UseSpecificRelay => {
+                let knows_relay = self.source_config.knows_relay && self.source_config.knows_relay_addr;
+                if knows_relay && self.expect_relayed(false, &config_str) {
+                    assert!(res.is_ok());
+                    return;
+                }
+                if self.try_direct(&config_str) {
+                    assert!(res.is_ok());
+                    return;
+                }
+                if self.source_config.knows_relayed_target_addr && self.expect_relayed(knows_relay, &config_str) {
+                    assert!(res.is_ok());
+                    return;
+                }
             }
         }
-
         // if mdns is enabled, there is a chance that the source received the target address via the mdns service
         if !cfg!(feature = "mdns") {
             assert!(res.is_err(), "Unexpected Event {:?} on config {}", res, config_str);
         }
+    }
+
+    fn try_direct(&mut self, config_str: &str) -> bool {
+        if self.source_config.knows_direct_target_addr && self.target_config.listening_plain {
+            Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str);
+            Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str);
+            return true;
+        }
+        false
+    }
+
+    fn expect_relayed(&mut self, is_connected: bool, config_str: &str) -> bool {
+        if !is_connected {
+            Self::expect_connection(&mut self.source_event_rx, self.relay_id, &config_str);
+        }
+        if self.target_config.listening_relay {
+            Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str);
+            Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str);
+            return true;
+        }
+        false
     }
 
     fn expect_connection(event_rx: &mut Receiver<NetworkEvent>, target: PeerId, config_str: &str) {
@@ -262,7 +303,7 @@ fn test_dialing() {
     let relay_id = relay_comms.get_peer_id();
     let relay_addr = task::block_on(relay_comms.start_listening(None)).unwrap();
 
-    for _ in 0..50 {
+    for _ in 0..100 {
         let mut test = TestConfig::new(relay_id, relay_addr.clone());
         test.configure_comms();
         test.test_dial();

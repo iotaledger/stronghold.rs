@@ -7,6 +7,8 @@ use communication_refactored::{
     ReceiveRequest, RequestMessage, ResponseReceiver, ShCommunication, ShCommunicationBuilder,
 };
 use futures::{channel::mpsc, future::join, StreamExt};
+#[cfg(not(feature = "tcp-transport"))]
+use libp2p_tcp::TcpConfig;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -33,6 +35,9 @@ fn init_comms() -> (
         .with_connection_timeout(Duration::from_secs(1))
         .with_request_timeout(Duration::from_secs(1))
         .with_firewall_config(FirewallConfiguration::allow_all());
+    #[cfg(not(feature = "tcp-transport"))]
+    let comms = task::block_on(builder.build_with_transport(TcpConfig::new()));
+    #[cfg(feature = "tcp-transport")]
     let comms = task::block_on(builder.build());
     (rq_rx, comms)
 }

@@ -29,11 +29,20 @@ use std::{fmt::Debug, io};
 /// Protocol Name.
 /// A Request-Response messages will only be successful if both peers support the [`CommunicationProtocol`].
 #[derive(Debug, Clone)]
-pub struct CommunicationProtocol;
+pub struct CommunicationProtocol {
+    version: String,
+}
+
+impl CommunicationProtocol {
+    pub fn new_version(major: u8, minor: u8, patch: u8) -> Self {
+        let version = format!("/stronghold-communication/{}.{}.{}", major, minor, patch);
+        CommunicationProtocol { version }
+    }
+}
 
 impl ProtocolName for CommunicationProtocol {
     fn protocol_name(&self) -> &[u8] {
-        b"/stronghold-communication/1.0.0"
+        self.version.as_bytes()
     }
 }
 
@@ -49,7 +58,7 @@ where
     // Supported protocols for inbound requests.
     // Rejects all inbound requests if empty.
     pub(crate) protocols: SmallVec<[CommunicationProtocol; 2]>,
-    // Channel to forward the inbound request.
+    // Channel for forwarding the inbound request.
     pub(crate) request_tx: oneshot::Sender<RequestMessage<Rq, Rs>>,
 }
 
@@ -91,7 +100,7 @@ where
 
             // Receive the response, write it back to the substream.
             let res = match rx.await {
-                Ok(response) => parse_and_write(&mut io, response).await.map(|_| true)?,
+                Ok(response) => parse_and_write(&mut io, &response).await.map(|_| true)?,
                 Err(_) => io.close().await.map(|_| false)?,
             };
             Ok(res)
@@ -142,9 +151,9 @@ where
 
     fn upgrade_outbound(self, mut io: NegotiatedSubstream, _: Self::Info) -> Self::Future {
         async move {
-            // Write outbound request to substream.
-            parse_and_write(&mut io, self.request.data).await?;
-            // Read inbound response, forward it through channel.
+            // Write outbound request to the substream.
+            parse_and_write(&mut io, &self.request.data).await?;
+            // Read inbound response, forward it through response channel.
             let response = read_and_parse(&mut io).await?;
             let sent_response = self.request.response_tx.send(response);
             Ok(sent_response.is_ok())
@@ -166,9 +175,9 @@ async fn read_and_parse<T: DeserializeOwned>(io: &mut NegotiatedSubstream) -> Re
         .await
 }
 
-// Serialize the data and write to substream.
-async fn parse_and_write<T: Serialize>(io: &mut NegotiatedSubstream, data: T) -> Result<(), io::Error> {
-    let buf = serde_json::to_vec(&data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+// Serialize the data and write bytes to substream.
+async fn parse_and_write<T: Serialize>(io: &mut NegotiatedSubstream, data: &T) -> Result<(), io::Error> {
+    let buf = serde_json::to_vec(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     write_one(io, buf).await?;
     io.close().await
 }

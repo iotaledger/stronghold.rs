@@ -14,6 +14,8 @@ use futures::{
     channel::mpsc::{self, Receiver},
     prelude::*,
 };
+#[cfg(not(feature = "tcp-transport"))]
+use libp2p_tcp::TcpConfig;
 use serde::{Deserialize, Serialize};
 use std::{fmt, future, thread, time::Duration};
 
@@ -53,7 +55,11 @@ fn init_comms() -> NewComms {
     let (firewall_tx, firewall_rx) = mpsc::channel(1);
     let (rq_tx, rq_rx) = mpsc::channel(1);
     let (event_tx, event_rx) = mpsc::channel(1);
-    let comms = task::block_on(ShCommunicationBuilder::new(firewall_tx, rq_tx, Some(event_tx)).build());
+    let builder = ShCommunicationBuilder::new(firewall_tx, rq_tx, Some(event_tx));
+    #[cfg(not(feature = "tcp-transport"))]
+    let comms = task::block_on(builder.build_with_transport(TcpConfig::new()));
+    #[cfg(feature = "tcp-transport")]
+    let comms = task::block_on(builder.build());
     (firewall_rx, rq_rx, event_rx, comms)
 }
 
@@ -82,11 +88,11 @@ impl TestPermission {
             TestPermission::RejectAll => Rule::reject_all(),
             TestPermission::PingOnly => {
                 let permission = RequestPermission::Ping;
-                Rule::Permission(FirewallPermission::none().add_permission(&permission.permission()))
+                Rule::Permission(FirewallPermission::none().add_permissions([&permission.permission()]))
             }
             TestPermission::OtherOnly => {
                 let permission = RequestPermission::Other;
-                Rule::Permission(FirewallPermission::none().add_permission(&permission.permission()))
+                Rule::Permission(FirewallPermission::none().add_permissions([&permission.permission()]))
             }
         }
     }
@@ -615,7 +621,7 @@ fn firewall_ask() {
     let peer_b_addr = task::block_on(comms_b.start_listening(None)).unwrap();
     comms_a.add_address(peer_b_id, peer_b_addr);
 
-    for _ in 0..50 {
+    for _ in 0..100 {
         let mut test = AskTestConfig::new_test_case(
             &mut comms_a,
             &mut firewall_a,
