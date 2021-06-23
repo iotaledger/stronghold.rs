@@ -65,31 +65,29 @@ pub struct Query<T, U> {
     pub response_tx: oneshot::Sender<U>,
 }
 
-/// Request from / to a remote peer, for which a response is expected.
-pub type RequestMessage<Rq, Rs> = Query<Rq, Rs>;
-
 /// Inbound Request from a remote peer.
+/// It is expected that a response will be returned through the `response_rx` channel,
+/// otherwise an [`OutboundFailure`] will be returned at the remote peer.
 #[derive(Debug)]
 pub struct ReceiveRequest<Rq, Rs> {
     /// ID of the remote peer that send the request.
     pub peer: PeerId,
     /// ID of the request.
     pub request_id: RequestId,
-    /// Request content and response channel.
-    pub request: RequestMessage<Rq, Rs>,
+    /// Request from the remote peer.
+    pub request: Rq,
+    /// Channel for returning the response
+    pub response_tx: oneshot::Sender<Rs>,
 }
 
-/// Data structure for receiving the response for an outbound requests.
+/// Data structure for receiving the response or [`OutboundFailure`] of an outbound request.
 #[derive(Debug)]
 pub struct ResponseReceiver<U> {
     /// ID of the remote peer to whom the requests was send.
     pub peer: PeerId,
     /// ID of the request.
     pub request_id: RequestId,
-    /// Channel for receiving the response from remote.
-    /// In case of an error, this channel will be dropped from the sender side, and an
-    /// [`NetworkEvent::OutboundFailure`] may be emitted from [`ShCommunication`][crate::ShCommunication] via the
-    /// passed `net_events_chan`.
+    /// Channel for receiving the response from remote or a potential [`OutboundFailure`].
     pub response_rx: oneshot::Receiver<U>,
 }
 
@@ -120,12 +118,6 @@ pub enum NetworkEvent {
         request_id: RequestId,
         peer: PeerId,
         failure: InboundFailure,
-    },
-    /// A failure occurred in the context of sending an outbound request and receiving a response.
-    OutboundFailure {
-        request_id: RequestId,
-        peer: PeerId,
-        failure: OutboundFailure,
     },
     /// A connection to the given peer has been opened.
     ConnectionEstablished {
@@ -190,16 +182,7 @@ impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THand
     fn try_from(value: SwarmEv<Rq, Rs, THandleErr>) -> Result<Self, Self::Error> {
         match value {
             SwarmEvent::Behaviour(ev) => match ev {
-                BehaviourEvent::Request(_) => Err(()),
-                BehaviourEvent::OutboundFailure {
-                    request_id,
-                    peer,
-                    failure,
-                } => Ok(NetworkEvent::OutboundFailure {
-                    request_id,
-                    peer,
-                    failure,
-                }),
+                BehaviourEvent::InboundRequest(_) => Err(()),
                 BehaviourEvent::InboundFailure {
                     request_id,
                     peer,
@@ -277,8 +260,6 @@ pub enum OutboundFailure {
     /// It is not known whether the request may have been
     /// received (and processed) by the remote peer.
     ConnectionClosed,
-    /// The Receiver side of the response channel was dropped before the response from remote could be forwarded.
-    RecvResponseOmission,
     /// The remote supports none of the requested protocols.
     UnsupportedProtocols,
     /// The local firewall blocked the request.
@@ -293,10 +274,6 @@ impl fmt::Display for OutboundFailure {
             OutboundFailure::UnsupportedProtocols => {
                 write!(f, "The remote supports none of the requested protocols")
             }
-            OutboundFailure::RecvResponseOmission => write!(
-                f,
-                "The response channel was dropped before receiving a response from the remote"
-            ),
             OutboundFailure::NotPermitted => write!(f, "The firewall blocked the outbound request"),
             OutboundFailure::DialFailure => write!(f, "Failed to dial the requested peer"),
         }

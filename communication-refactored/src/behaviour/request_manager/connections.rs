@@ -81,35 +81,46 @@ impl PeerConnectionManager {
     }
 
     // New request that has been sent/ received, but with no response yet.
-    // Assigns the request to one of the established connections to the peer, return [`None`] if there are no
-    // connections.
+    // Assign the request to the provided connection or else to a random established one.
+    // Return [`None`] if there are no connections.
     pub fn add_request(
         &mut self,
         peer: &PeerId,
         request_id: RequestId,
+        connection: Option<ConnectionId>,
         direction: &RequestDirection,
     ) -> Option<ConnectionId> {
         let conns = self.connections.get(peer)?;
-        let index = (request_id.value() as usize) % conns.len();
-        let connection = conns[index];
+        let conn = match connection {
+            Some(conn) => {
+                // Check if the provided connection is active.
+                conns.into_iter().find(|&c| c == &conn)?;
+                conn
+            }
+            None => {
+                // Assign request to a rather random connection.
+                let index = (request_id.value() as usize) % conns.len();
+                conns[index]
+            }
+        };
         let pending_responses = self
             .pending_responses
-            .entry(connection)
+            .entry(conn)
             .or_insert_with(PendingResponses::default);
         match direction {
             RequestDirection::Inbound => pending_responses.inbound_requests.insert(request_id),
             RequestDirection::Outbound => pending_responses.outbound_requests.insert(request_id),
         };
-        Some(connection)
+        Some(conn)
     }
 
     // Remove a request from the list of pending responses.
-    pub fn remove_request(&mut self, connection: &ConnectionId, request_id: &RequestId, direction: &RequestDirection) {
-        self.pending_responses
-            .get_mut(connection)
-            .map(|requests| match direction {
-                RequestDirection::Inbound => requests.inbound_requests.remove(request_id),
-                RequestDirection::Outbound => requests.outbound_requests.remove(request_id),
-            });
+    pub fn remove_request(&mut self, request_id: &RequestId, direction: &RequestDirection) {
+        self.pending_responses.values_mut().for_each(|pending| {
+            match direction {
+                RequestDirection::Inbound => pending.inbound_requests.remove(request_id),
+                RequestDirection::Outbound => pending.outbound_requests.remove(request_id),
+            };
+        });
     }
 }

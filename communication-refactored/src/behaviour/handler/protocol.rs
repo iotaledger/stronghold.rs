@@ -13,7 +13,7 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
-use crate::{RequestMessage, RqRsMessage};
+use crate::RqRsMessage;
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use libp2p::{
     core::{
@@ -24,7 +24,7 @@ use libp2p::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::SmallVec;
-use std::{fmt::Debug, io};
+use std::{fmt::Debug, io, marker::PhantomData};
 
 /// Protocol Name.
 /// A Request-Response messages will only be successful if both peers support the [`CommunicationProtocol`].
@@ -59,7 +59,7 @@ where
     // Rejects all inbound requests if empty.
     pub(crate) protocols: SmallVec<[CommunicationProtocol; 2]>,
     // Channel for forwarding the inbound request.
-    pub(crate) request_tx: oneshot::Sender<RequestMessage<Rq, Rs>>,
+    pub(crate) request_tx: oneshot::Sender<(Rq, oneshot::Sender<Rs>)>,
 }
 
 impl<Rq, Rs> UpgradeInfo for ResponseProtocol<Rq, Rs>
@@ -92,11 +92,7 @@ where
             let request = read_and_parse(&mut io).await?;
             // Create channel to receive the response.
             let (tx, rx) = oneshot::channel();
-            let query = RequestMessage {
-                data: request,
-                response_tx: tx,
-            };
-            let _ = self.request_tx.send(query);
+            let _ = self.request_tx.send((request, tx));
 
             // Receive the response, write it back to the substream.
             let res = match rx.await {
@@ -122,7 +118,9 @@ where
     // Rejects all outbound requests if empty.
     pub(crate) protocols: SmallVec<[CommunicationProtocol; 2]>,
     // Outbound request.
-    pub(crate) request: RequestMessage<Rq, Rs>,
+    pub(crate) request: Rq,
+
+    pub _marker: PhantomData<Rs>,
 }
 
 impl<Rq, Rs> UpgradeInfo for RequestProtocol<Rq, Rs>
@@ -143,20 +141,18 @@ where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    // If a response was successfully received and forwarded through the response channel.
-    // False if the response channel was dropped on a higher level before a response was received.
-    type Output = bool;
+    // Response from the remote for the sent request.
+    type Output = Rs;
     type Error = io::Error;
     type Future = BoxFuture<'static, Result<Self::Output, Self::Error>>;
 
     fn upgrade_outbound(self, mut io: NegotiatedSubstream, _: Self::Info) -> Self::Future {
         async move {
             // Write outbound request to the substream.
-            parse_and_write(&mut io, &self.request.data).await?;
-            // Read inbound response, forward it through response channel.
+            parse_and_write(&mut io, &self.request).await?;
+            // Read inbound response and return it.
             let response = read_and_parse(&mut io).await?;
-            let sent_response = self.request.response_tx.send(response);
-            Ok(sent_response.is_ok())
+            Ok(response)
         }
         .boxed()
     }

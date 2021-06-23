@@ -21,8 +21,8 @@ mod handler;
 #[doc(hidden)]
 mod request_manager;
 use crate::{
-    unwrap_or_return, InboundFailure, OutboundFailure, ReceiveRequest, RequestDirection, RequestId, RequestMessage,
-    ResponseReceiver, RqRsMessage,
+    unwrap_or_return, InboundFailure, OutboundFailure, ReceiveRequest, RequestDirection, RequestId, ResponseReceiver,
+    RqRsMessage,
 };
 pub use addresses::assemble_relayed_addr;
 use addresses::AddressInfo;
@@ -59,6 +59,7 @@ use libp2p::{
 use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
 use smallvec::{smallvec, SmallVec};
 use std::{
+    collections::HashMap,
     error,
     sync::{atomic::AtomicU64, Arc},
     time::Duration,
@@ -89,18 +90,12 @@ const EMPTY_QUEUE_SHRINK_THRESHOLD: usize = 100;
 pub enum BehaviourEvent<Rq, Rs> {
     /// An inbound request was received from a remote peer.
     /// The request was checked and approved by the firewall.
-    Request(ReceiveRequest<Rq, Rs>),
+    InboundRequest(ReceiveRequest<Rq, Rs>),
     /// A failure occurred in the context of receiving an inbound request and sending a response.
     InboundFailure {
         request_id: RequestId,
         peer: PeerId,
         failure: InboundFailure,
-    },
-    /// A failure occurred in the context of sending an outbound request and receiving a response.
-    OutboundFailure {
-        request_id: RequestId,
-        peer: PeerId,
-        failure: OutboundFailure,
     },
 }
 
@@ -130,7 +125,7 @@ impl Default for NetBehaviourConfig {
 
 /// Protocol for customization for the [`Swarm`][libp2p::Swarm].
 ///
-/// The protocol is based on the [`RequestResponse`][libp2p::request_response::RequestResponse] protocol from libp2p
+/// The protocol is based on the [`RequestResponse`][<https://docs.rs/libp2p-request-response>] protocol from libp2p
 /// and integrates the libp2p [`Relay`][libp2p::relay::Relay] and [`Mdns`][libp2p::mdns::Mdns] protocols.
 ///
 /// This allows sending request messages to remote peers, handling of inbound requests and failures, and additionally
@@ -176,6 +171,8 @@ where
     pending_rule_rqs: FuturesUnordered<PendingPeerRuleRequest>,
     // Futures for pending responses to sent [`FirewallRequest::RequestApproval`]s.
     pending_approval_rqs: FuturesUnordered<PendingApprovalRequest>,
+    // The response channels for pending outbound requests
+    pending_res: HashMap<RequestId, oneshot::Sender<Result<Rs, OutboundFailure>>>,
 }
 
 impl<Rq, Rs, P> NetBehaviour<Rq, Rs, P>
@@ -206,11 +203,12 @@ where
             permission_req_channel,
             pending_rule_rqs: FuturesUnordered::default(),
             pending_approval_rqs: FuturesUnordered::default(),
+            pending_res: HashMap::new(),
         }
     }
 
     /// Send a new request to a remote peer.
-    pub fn send_request(&mut self, peer: PeerId, request: Rq) -> ResponseReceiver<Rs> {
+    pub fn send_request(&mut self, peer: PeerId, request: Rq) -> ResponseReceiver<Result<Rs, OutboundFailure>> {
         let request_id = self.next_request_id();
         let (response_tx, response_rx) = oneshot::channel();
         let receiver = ResponseReceiver {
@@ -218,11 +216,11 @@ where
             request_id,
             response_rx,
         };
-        let request = RequestMessage {
-            data: request,
-            response_tx,
-        };
-        self.handle_new_request(peer, request_id, request, RequestDirection::Outbound);
+        self.pending_res.insert(request_id, response_tx);
+        let approval_status =
+            self.check_approval_status(peer, request_id, request.to_permissioned(), RequestDirection::Outbound);
+        self.request_manager
+            .on_new_out_request(peer, request_id, request, approval_status);
         receiver
     }
 
@@ -330,21 +328,21 @@ where
         *self.next_request_id.inc()
     }
 
-    // Handle a new inbound/ outbound request
-    fn handle_new_request(
+    // Check the approval status of the request and add queries to the firewall if necessary.
+    fn check_approval_status(
         &mut self,
         peer: PeerId,
         request_id: RequestId,
-        request: RequestMessage<Rq, Rs>,
+        request_permission: P,
         direction: RequestDirection,
-    ) {
+    ) -> ApprovalStatus {
         // Check the firewall rules for the target peer and direction.
         let rules = self.firewall.get_effective_rules(&peer);
         let rule = match direction {
             RequestDirection::Inbound => rules.inbound(),
             RequestDirection::Outbound => rules.outbound(),
         };
-        let approval_status = match rule {
+        match rule {
             None => {
                 let rule_direction = match direction {
                     RequestDirection::Inbound => RuleDirection::Inbound,
@@ -356,56 +354,64 @@ where
             }
             Some(Rule::Ask) => {
                 // Query for individual approval for the requests.
-                self.query_rq_approval(peer, request_id, request.data.to_permissioned(), direction.clone());
+                self.query_rq_approval(peer, request_id, request_permission, direction);
                 ApprovalStatus::MissingApproval
             }
             Some(Rule::Permission(permission)) => {
-                if permission.permits(&request.data.to_permissioned().permission()) {
+                if permission.permits(&request_permission.permission()) {
                     ApprovalStatus::Approved
                 } else {
                     ApprovalStatus::Rejected
                 }
             }
-        };
-        self.request_manager
-            .on_new_request(peer, request_id, request, approval_status, direction);
+        }
     }
 
     // Handle new [`HandlerOutEvent`] emitted by the [`ConnectionHandler`].
     fn handle_handler_event(&mut self, peer: PeerId, connection: ConnectionId, event: HandlerOutEvent<Rq, Rs>) {
         match event {
-            HandlerOutEvent::ReceivedResponse(request_id) => {
-                self.request_manager
-                    .on_res_for_outbound(peer, &connection, request_id, Ok(()));
+            HandlerOutEvent::ReceivedRequest {
+                request_id,
+                request,
+                response_tx,
+            } => {
+                let approval_status =
+                    self.check_approval_status(peer, request_id, request.to_permissioned(), RequestDirection::Inbound);
+                self.request_manager.on_new_in_request(
+                    peer,
+                    request_id,
+                    request,
+                    response_tx,
+                    connection,
+                    approval_status,
+                );
             }
-            HandlerOutEvent::RecvResponseOmission(request_id) => {
-                let err = Err(OutboundFailure::RecvResponseOmission);
-                self.request_manager
-                    .on_res_for_outbound(peer, &connection, request_id, err);
-            }
-            HandlerOutEvent::ReceivedRequest { request_id, request } => {
-                self.handle_new_request(peer, request_id, request, RequestDirection::Inbound);
+            HandlerOutEvent::ReceivedResponse { request_id, response } => {
+                self.request_manager.on_res_for_outbound(&request_id);
+                if let Some(response_tx) = self.pending_res.remove(&request_id) {
+                    let _ = response_tx.send(Ok(response));
+                }
             }
             HandlerOutEvent::OutboundTimeout(request_id) => {
-                let err = Err(OutboundFailure::Timeout);
-                self.request_manager
-                    .on_res_for_outbound(peer, &connection, request_id, err);
+                self.request_manager.on_res_for_outbound(&request_id);
+                if let Some(response_tx) = self.pending_res.remove(&request_id) {
+                    let _ = response_tx.send(Err(OutboundFailure::Timeout));
+                }
             }
             HandlerOutEvent::OutboundUnsupportedProtocols(request_id) => {
-                let err = Err(OutboundFailure::UnsupportedProtocols);
-                self.request_manager
-                    .on_res_for_outbound(peer, &connection, request_id, err);
+                self.request_manager.on_res_for_outbound(&request_id);
+                if let Some(response_tx) = self.pending_res.remove(&request_id) {
+                    let _ = response_tx.send(Err(OutboundFailure::UnsupportedProtocols));
+                }
             }
             HandlerOutEvent::InboundTimeout(request_id) => {
                 let err = InboundFailure::Timeout;
-                self.request_manager
-                    .on_res_for_inbound(peer, &connection, request_id, Err(err));
+                self.request_manager.on_res_for_inbound(peer, request_id, Err(err));
             }
             HandlerOutEvent::InboundUnsupportedProtocols(request_id)
             | HandlerOutEvent::SendResponseOmission(request_id)
             | HandlerOutEvent::SentResponse(request_id) => {
-                self.request_manager
-                    .on_res_for_inbound(peer, &connection, request_id, Ok(()));
+                self.request_manager.on_res_for_inbound(peer, request_id, Ok(()));
             }
         }
     }
@@ -676,17 +682,26 @@ where
                 BehaviourAction::InboundReady {
                     request_id,
                     peer,
-                    request,
-                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::Request(ReceiveRequest {
+                    result: Ok((request, response_tx)),
+                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::InboundRequest(ReceiveRequest {
                     peer,
                     request_id,
                     request,
+                    response_tx,
                 })),
+                BehaviourAction::InboundReady {
+                    request_id,
+                    peer,
+                    result: Err(failure),
+                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::InboundFailure {
+                    peer,
+                    request_id,
+                    failure,
+                }),
                 BehaviourAction::OutboundReady {
                     request_id,
                     peer,
-                    connection,
-                    request,
+                    result: Ok((request, connection)),
                 } => {
                     let event = HandlerInEvent::SendRequest { request_id, request };
                     NetworkBehaviourAction::NotifyHandler {
@@ -695,24 +710,16 @@ where
                         event: EitherOutput::First(event),
                     }
                 }
-                BehaviourAction::OutboundFailure {
-                    peer,
+                BehaviourAction::OutboundReady {
                     request_id,
-                    reason,
-                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::OutboundFailure {
-                    peer,
-                    request_id,
-                    failure: reason,
-                }),
-                BehaviourAction::InboundFailure {
-                    peer,
-                    request_id,
-                    reason,
-                } => NetworkBehaviourAction::GenerateEvent(BehaviourEvent::InboundFailure {
-                    peer,
-                    request_id,
-                    failure: reason,
-                }),
+                    result: Err(err),
+                    ..
+                } => {
+                    if let Some(response_tx) = self.pending_res.remove(&request_id) {
+                        let _ = response_tx.send(Err(err));
+                    }
+                    return Poll::Pending;
+                }
                 BehaviourAction::RequireDialAttempt(peer) => NetworkBehaviourAction::DialPeer {
                     peer_id: peer,
                     condition: DialPeerCondition::Disconnected,
@@ -740,7 +747,14 @@ where
 mod test {
     use super::*;
     use crate::firewall::{PermissionValue, RequestPermissions, Rule, RuleDirection, VariantPermission};
-    use futures::{channel::mpsc, executor::LocalPool, future::FutureObj, prelude::*, select, task::Spawn};
+    use futures::{
+        channel::mpsc,
+        executor::LocalPool,
+        future::FutureObj,
+        prelude::*,
+        select,
+        task::{Spawn, SpawnExt},
+    };
     #[cfg(feature = "mdns")]
     use libp2p::mdns::{Mdns, MdnsConfig};
     use libp2p::{
@@ -776,12 +790,13 @@ mod test {
             loop {
                 match swarm1.next_event().await {
                     SwarmEvent::NewListenAddr(addr) => tx.send(addr).await.unwrap(),
-                    SwarmEvent::Behaviour(BehaviourEvent::Request(ReceiveRequest {
+                    SwarmEvent::Behaviour(BehaviourEvent::InboundRequest(ReceiveRequest {
                         peer,
-                        request: RequestMessage { data, response_tx, .. },
+                        response_tx,
+                        request,
                         ..
                     })) => {
-                        assert_eq!(&data, &expected_ping);
+                        assert_eq!(&request, &expected_ping);
                         assert_eq!(&peer, &peer2_id);
                         response_tx.send(pong.clone()).unwrap();
                     }
@@ -843,12 +858,13 @@ mod test {
                 futures::select_biased!(
                     event = swarm2.next().fuse() => panic!("Peer2: Unexpected event: {:?}", event),
                     event = swarm1.next().fuse() => match event {
-                        BehaviourEvent::Request(ReceiveRequest {
+                        BehaviourEvent::InboundRequest(ReceiveRequest {
                             peer,
-                            request: RequestMessage { data, response_tx, .. },
+                            response_tx,
+                            request,
                             ..
                         }) => {
-                            assert_eq!(&data, &ping);
+                            assert_eq!(&request, &ping);
                             assert_eq!(&peer, &peer2_id);
                             break response_tx
                         },
@@ -885,46 +901,46 @@ mod test {
         let addr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
         swarm1.listen_on(addr).unwrap();
 
-        pool.run_until(async move {
+        let addr1 = pool.run_until(async {
             while swarm1.next().now_or_never().is_some() {}
-            let addr1 = Swarm::listeners(&swarm1).next().unwrap();
-
-            swarm2.behaviour_mut().add_address(peer1_id, addr1.clone());
-            let mut response_rx = swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
-
-            // Wait for swarm 1 to receive request by swarm 2.
-            let event = loop {
-                futures::select_biased!(
-                    event = swarm2.next().fuse() => break event,
-                    event = swarm1.next().fuse() => match event {
-                        BehaviourEvent::Request(ReceiveRequest {
-                            peer,
-                            request: RequestMessage { data, response_tx, .. },
-                            ..
-                        }) => {
-                            assert_eq!(&data, &ping);
-                            assert_eq!(&peer, &peer2_id);
-                            drop(response_tx);
-                            continue;
-                        },
-                        e => panic!("Peer1: Unexpected event: {:?}", e)
-                    },
-                )
-            };
-
-            match event {
-                BehaviourEvent::OutboundFailure {
-                    peer,
-                    request_id,
-                    failure: OutboundFailure::ConnectionClosed,
-                } => {
-                    assert_eq!(peer, peer1_id);
-                    assert_eq!(request_id, response_rx.request_id);
-                    assert!(response_rx.response_rx.try_recv().is_err())
-                }
-                e => panic!("unexpected event from peer 2: {:?}", e),
-            };
+            Swarm::listeners(&swarm1).next().unwrap()
         });
+
+        swarm2.behaviour_mut().add_address(peer1_id, addr1.clone());
+        let receiver = swarm2.behaviour_mut().send_request(peer1_id, ping.clone());
+
+        pool.spawner()
+            .spawn(async move {
+                // Wait for swarm 1 to receive request by swarm 2.
+                loop {
+                    futures::select_biased!(
+                        _ = swarm2.next().fuse() => {},
+                        event = swarm1.next().fuse() => match event {
+                            BehaviourEvent::InboundRequest(ReceiveRequest {
+                                peer,
+                                response_tx,
+                                request,
+                                ..
+                            }) => {
+                                assert_eq!(&request, &ping);
+                                assert_eq!(&peer, &peer2_id);
+                                drop(response_tx);
+                                continue;
+                            },
+                            e => panic!("Peer1: Unexpected event: {:?}", e)
+                        },
+                    )
+                }
+            })
+            .unwrap();
+
+        let event = pool.run_until(receiver.response_rx).unwrap();
+        assert_eq!(
+            event,
+            Err(OutboundFailure::ConnectionClosed),
+            "unexpected event from peer 2: {:?}",
+            event
+        );
     }
 
     fn init_swarm(_pool: &mut LocalPool) -> (PeerId, Swarm<NetBehaviour<Ping, Pong, Ping>>) {

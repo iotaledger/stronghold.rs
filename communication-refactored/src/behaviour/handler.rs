@@ -15,7 +15,7 @@
 
 mod protocol;
 use super::EMPTY_QUEUE_SHRINK_THRESHOLD;
-use crate::{firewall::Rule, RequestId, RequestMessage, RqRsMessage};
+use crate::{firewall::Rule, RequestId, RqRsMessage};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},
@@ -29,6 +29,7 @@ use smallvec::SmallVec;
 use std::{
     collections::VecDeque,
     io,
+    marker::PhantomData,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -44,7 +45,7 @@ type ProtocolsHandlerEventType<Rq, Rs> = ProtocolsHandlerEvent<
     <ConnectionHandler<Rq, Rs> as ProtocolsHandler>::Error,
 >;
 
-type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, RequestMessage<Rq, Rs>), oneshot::Canceled>>;
+type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, Rq, oneshot::Sender<Rs>), oneshot::Canceled>>;
 
 // The level of support for the [`CommunicationProtocol`] protocol.
 // This is set according to the currently effective firewall rules for the remote peer.
@@ -99,16 +100,12 @@ impl ProtocolSupport {
 
 // Events emitted in `NetBehaviour::poll` and injected to [`ConnectionHandler::inject_event`].
 #[derive(Debug)]
-pub enum HandlerInEvent<Rq, Rs>
+pub enum HandlerInEvent<Rq>
 where
     Rq: RqRsMessage,
-    Rs: RqRsMessage,
 {
     // Send an outbound request.
-    SendRequest {
-        request_id: RequestId,
-        request: RequestMessage<Rq, Rs>,
-    },
+    SendRequest { request_id: RequestId, request: Rq },
     // Set the protocol support for inbound and outbound requests.
     // This will be sent to the handler when the connection is first established,
     // and each time the effective firewall rules for the remote change.
@@ -125,7 +122,13 @@ where
     // Received an inbound request from remote.
     ReceivedRequest {
         request_id: RequestId,
-        request: RequestMessage<Rq, Rs>,
+        request: Rq,
+        response_tx: oneshot::Sender<Rs>,
+    },
+    // A response for an outbound request.
+    ReceivedResponse {
+        request_id: RequestId,
+        response: Rs,
     },
     // A response for an inbound requests was successfully sent.
     SentResponse(RequestId),
@@ -136,12 +139,6 @@ where
     // The inbound request was rejected because the local peer does not support any of the requested protocols.
     // This could be either because the protocols differ, or because the local firewall rejects all inbound requests.
     InboundUnsupportedProtocols(RequestId),
-
-    // A response for an outbound requests was successfully received.
-    ReceivedResponse(RequestId),
-    // A response for an outbound requests was received, but the response channel closed on the receiving side before
-    // the response was forwarded.
-    RecvResponseOmission(RequestId),
     // Timeout on receiving a response.
     OutboundTimeout(RequestId),
     // The outbound request was rejected because the remote peer does not support any of the requested protocols.
@@ -178,7 +175,7 @@ where
     // Pending events to emit to the `NetBehaviour`
     pending_events: VecDeque<HandlerOutEvent<Rq, Rs>>,
     // Pending outbound request that require a new [`ProtocolsHandlerEvent::OutboundSubstreamRequest`].
-    pending_out_req: VecDeque<(RequestId, RequestMessage<Rq, Rs>)>,
+    pending_out_req: VecDeque<(RequestId, Rq)>,
     // Pending inbound requests for which a [`ResponseProtocol`] was created, but no request message was received yet.
     pending_in_req: FuturesUnordered<PendingInboundFuture<Rq, Rs>>,
 }
@@ -213,14 +210,18 @@ where
     fn new_outbound_protocol(
         &mut self,
         request_id: RequestId,
-        request: RequestMessage<Rq, Rs>,
+        request: Rq,
     ) -> SubstreamProtocol<RequestProtocol<Rq, Rs>, RequestId> {
         let protocols = self
             .protocol_support
             .is_outbound()
             .then(|| self.supported_protocols.clone())
             .unwrap_or_default();
-        let proto = RequestProtocol { protocols, request };
+        let proto = RequestProtocol {
+            protocols,
+            request,
+            _marker: PhantomData,
+        };
         SubstreamProtocol::new(proto, request_id).with_timeout(self.request_timeout)
     }
 
@@ -240,8 +241,11 @@ where
 
         let proto = ResponseProtocol { protocols, request_tx };
 
-        self.pending_in_req
-            .push(request_rx.map_ok(move |request| (request_id, request)).boxed());
+        self.pending_in_req.push(
+            request_rx
+                .map_ok(move |(request, tx)| (request_id, request, tx))
+                .boxed(),
+        );
 
         SubstreamProtocol::new(proto, request_id).with_timeout(self.request_timeout)
     }
@@ -252,7 +256,7 @@ where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    type InEvent = HandlerInEvent<Rq, Rs>;
+    type InEvent = HandlerInEvent<Rq>;
     type OutEvent = HandlerOutEvent<Rq, Rs>;
     type Error = ProtocolsHandlerUpgrErr<io::Error>;
     type InboundProtocol = ResponseProtocol<Rq, Rs>;
@@ -273,11 +277,9 @@ where
         self.pending_events.push_back(event);
     }
 
-    // Successfully sent a requests and potentially received a response.
-    fn inject_fully_negotiated_outbound(&mut self, received_response: bool, request_id: RequestId) {
-        let event = received_response
-            .then(|| HandlerOutEvent::ReceivedResponse(request_id))
-            .unwrap_or(HandlerOutEvent::RecvResponseOmission(request_id));
+    // Successfully sent a requests and received a response.
+    fn inject_fully_negotiated_outbound(&mut self, response: Rs, request_id: RequestId) {
+        let event = HandlerOutEvent::ReceivedResponse { request_id, response };
         self.pending_events.push_back(event);
     }
 
@@ -354,11 +356,12 @@ where
         }
         // Forward inbound requests to `NetBehaviour` once the request was read from the substream.
         while let Poll::Ready(Some(result)) = self.pending_in_req.poll_next_unpin(cx) {
-            if let Ok((request_id, request)) = result {
+            if let Ok((request_id, request, response_tx)) = result {
                 self.keep_alive = KeepAlive::Yes;
                 return Poll::Ready(ProtocolsHandlerEvent::Custom(HandlerOutEvent::ReceivedRequest {
                     request_id,
                     request,
+                    response_tx,
                 }));
             }
         }

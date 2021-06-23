@@ -255,7 +255,8 @@ where
     ///
     /// This will attempt to establish a connection to the remote via one of the known addresses, if there is no active
     /// connection.
-    pub fn send_request(&self, peer: PeerId, request: Rq) -> ResponseReceiver<Rs> {
+    /// The response or a potential failure will be returned through the [`ResponseReceiver.response_rx`] channel.
+    pub fn send_request(&self, peer: PeerId, request: Rq) -> ResponseReceiver<Result<Rs, OutboundFailure>> {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().send_request(peer, request)
     }
@@ -500,7 +501,7 @@ where
         event: SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>,
     ) {
         match event {
-            SwarmEvent::Behaviour(BehaviourEvent::Request(r)) => {
+            SwarmEvent::Behaviour(BehaviourEvent::InboundRequest(r)) => {
                 task::spawn(async move {
                     let _ = poll_fn(|cx: &mut Context| request_channel.poll_ready(cx))
                         .await

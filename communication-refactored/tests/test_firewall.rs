@@ -7,11 +7,12 @@ use communication_refactored::{
         FirewallPermission, FirewallRequest, FirewallRules, PeerRuleQuery, PermissionValue, RequestApprovalQuery,
         RequestPermissions, Rule, RuleDirection, ToPermissionVariants, VariantPermission,
     },
-    InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest, RequestDirection, RequestId, RequestMessage,
-    ResponseReceiver, ShCommunication, ShCommunicationBuilder,
+    InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest, RequestDirection, ResponseReceiver,
+    ShCommunication, ShCommunicationBuilder,
 };
 use futures::{
-    channel::mpsc::{self, Receiver},
+    channel::{mpsc, oneshot},
+    future::join,
     prelude::*,
 };
 #[cfg(not(feature = "tcp-transport"))]
@@ -24,11 +25,6 @@ type TestComms = ShCommunication<Request, Response, RequestPermission>;
 macro_rules! expect_ok (
      ($expression:expr, $config:expr) => {
         $expression.await.expect(&format!("Unexpected Error on unwrap; config: {}", $config));
-    };
-);
-macro_rules! expect_err (
-    ($expression:expr, $config:expr) => {
-        $expression.await.expect_err(&format!("Expected Error on unwrap; config: {}", $config));
     };
 );
 
@@ -100,7 +96,6 @@ impl TestPermission {
 
 struct RulesTestConfig<'a> {
     comms_a: &'a mut TestComms,
-    a_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     comms_b: &'a mut TestComms,
     b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
@@ -131,7 +126,6 @@ impl<'a> fmt::Display for RulesTestConfig<'a> {
 impl<'a> RulesTestConfig<'a> {
     fn new_test_case(
         comms_a: &'a mut TestComms,
-        a_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         comms_b: &'a mut TestComms,
         b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
@@ -143,7 +137,6 @@ impl<'a> RulesTestConfig<'a> {
             .unwrap_or(Request::Other);
         RulesTestConfig {
             comms_a,
-            a_events_rx,
             comms_b,
             b_events_rx,
             b_request_rx,
@@ -180,13 +173,7 @@ impl<'a> RulesTestConfig<'a> {
         let peer_a_id = self.comms_a.get_peer_id();
         let peer_b_id = self.comms_b.get_peer_id();
 
-        let config_str = format!("{}", self);
-
-        let ResponseReceiver {
-            peer,
-            response_rx,
-            request_id,
-        } = self.comms_a.send_request(peer_b_id, self.req.clone());
+        let ResponseReceiver { peer, response_rx, .. } = self.comms_a.send_request(peer_b_id, self.req.clone());
         assert_eq!(peer, peer_b_id);
 
         let a_rule = self.a_rule.unwrap_or(self.a_default);
@@ -199,32 +186,20 @@ impl<'a> RulesTestConfig<'a> {
             TestPermission::OtherOnly => matches!(req, Request::Other),
         };
         if !is_allowed(a_rule) {
-            let f = async { expect_err!(response_rx, config_str) };
-            futures::select! {
-                _ = self.b_request_rx.select_next_some() => panic!("Unexpected request received; config: {}", self),
-                _ = f.fuse() => {}
-            }
-            self.expect_a_outbound_failure(peer_b_id, request_id, vec![OutboundFailure::NotPermitted])
+            self.expect_a_outbound_failure(response_rx, vec![OutboundFailure::NotPermitted])
                 .await;
         } else if !is_allowed(b_rule) {
-            let f = async { expect_err!(response_rx, config_str) };
-            futures::select! {
-                _ = self.b_request_rx.select_next_some() => panic!("Unexpected request received; config: {}", self),
-                _ = f.fuse() => {}
-            }
             match b_rule {
                 TestPermission::RejectAll => {
                     self.expect_a_outbound_failure(
-                        peer_b_id,
-                        request_id,
+                        response_rx,
                         vec![OutboundFailure::UnsupportedProtocols, OutboundFailure::ConnectionClosed],
                     )
-                    .await
+                    .await;
                 }
                 TestPermission::OtherOnly | TestPermission::PingOnly => {
                     self.expect_a_outbound_failure(
-                        peer_b_id,
-                        request_id,
+                        response_rx,
                         vec![OutboundFailure::Timeout, OutboundFailure::ConnectionClosed],
                     )
                     .await;
@@ -233,52 +208,39 @@ impl<'a> RulesTestConfig<'a> {
                 _ => unreachable!(),
             }
         } else {
-            let recv_req = loop {
-                futures::select! {
-                    ev = self.a_events_rx.select_next_some() => {
-                        match ev {
-                            NetworkEvent::OutboundFailure{
-                                request_id: rq_id,
-                                failure: OutboundFailure::UnsupportedProtocols, ..
-                            } if request_id == rq_id => {
-                                panic!("Unexpected Outbound Failure at A: {:?}; config: {}", ev, self);
-                            },
-                            NetworkEvent::OutboundFailure{request_id: rq_id,..} if request_id == rq_id => {
-                                panic!("Unexpected Outbound Failure at A: {:?}; config: {}", ev, self);
-                            }
-                            _ => {}
-                        }
-                    }
-                    ev = self.b_events_rx.select_next_some() => {
-                        if matches!(ev, NetworkEvent::InboundFailure{ request_id: rq_id, ..} if request_id == rq_id) {
-                            panic!("Unexpected Inbound Failure at A: {:?}; config: {}", ev, self);
-                        }
-                    }
-                    r = self.b_request_rx.select_next_some() => break r,
-                }
+            let config_str = format!("{}", self);
+            let source_fut = async {
+                response_rx
+                    .await
+                    .unwrap_or_else(|_| panic!("Unexpected cancellation of response channel; config {}", config_str))
+                    .unwrap_or_else(|err| panic!("Unexpected outbound failure {:?}; config {}", err, config_str));
             };
-            assert_eq!(recv_req.peer, peer_a_id);
-            let RequestMessage { response_tx, data } = recv_req.request;
-            assert_eq!(data, self.req);
-            response_tx.send(Response::Pong).unwrap();
-            expect_ok!(response_rx, self);
+            let dst_fut = async {
+                let ReceiveRequest {
+                    peer,
+                    request,
+                    response_tx,
+                    ..
+                } = self.b_request_rx.select_next_some().await;
+                assert_eq!(peer, peer_a_id);
+                assert_eq!(request, self.req);
+                response_tx.send(Response::Pong).unwrap();
+            };
+            join(source_fut, dst_fut).await;
         }
     }
 
-    async fn expect_a_outbound_failure(&mut self, target: PeerId, rq_id: RequestId, expect_any: Vec<OutboundFailure>) {
-        let mut filtered = self.a_events_rx.filter(|ev| {
-            future::ready(!matches!(
-                ev,
-                NetworkEvent::ConnectionEstablished { .. } | NetworkEvent::ConnectionClosed { .. }
-            ))
-        });
-        match expect_ok!(filtered.next(), self) {
-            NetworkEvent::OutboundFailure {
-                peer,
-                failure,
-                request_id,
-            } if request_id == rq_id => {
-                assert_eq!(peer, target);
+    async fn expect_a_outbound_failure(
+        &mut self,
+        response_rx: oneshot::Receiver<Result<Response, OutboundFailure>>,
+        expect_any: Vec<OutboundFailure>,
+    ) {
+        futures::select! {
+            _ = self.b_request_rx.select_next_some() => panic!("Unexpected request received; config: {}", self),
+            event = response_rx.fuse() => {
+                let failure =  event
+                    .unwrap_or_else(|_| panic!("Unexpected cancellation of response channel; config {}", self))
+                    .expect_err(&format!("Unexpected response; config {}", self));
                 assert!(
                     expect_any.into_iter().any(|f| f == failure),
                     "Unexpected Failure {:?}; config {}",
@@ -286,7 +248,6 @@ impl<'a> RulesTestConfig<'a> {
                     self
                 )
             }
-            other => panic!("Unexpected Result: {:?}; config: {}", other, self),
         }
     }
 
@@ -314,7 +275,7 @@ impl<'a> RulesTestConfig<'a> {
 
 #[test]
 fn firewall_permissions() {
-    let (_, _, mut a_event_rx, mut comms_a) = init_comms();
+    let (_, _, _, mut comms_a) = init_comms();
     let (_, mut b_rq_rx, mut b_event_rx, mut comms_b) = init_comms();
     let peer_b_id = comms_b.get_peer_id();
 
@@ -322,13 +283,7 @@ fn firewall_permissions() {
     comms_a.add_address(peer_b_id, peer_b_addr);
 
     for _ in 0..100 {
-        let mut test = RulesTestConfig::new_test_case(
-            &mut comms_a,
-            &mut a_event_rx,
-            &mut comms_b,
-            &mut b_event_rx,
-            &mut b_rq_rx,
-        );
+        let mut test = RulesTestConfig::new_test_case(&mut comms_a, &mut comms_b, &mut b_event_rx, &mut b_rq_rx);
         test.configure_firewall();
         thread::sleep(Duration::from_millis(100));
         task::block_on(test.test_request());
@@ -381,11 +336,10 @@ enum TestPeer {
 
 struct AskTestConfig<'a> {
     comms_a: &'a mut TestComms,
-    firewall_a: &'a mut Receiver<FirewallRequest<RequestPermission>>,
-    a_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
+    firewall_a: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
 
     comms_b: &'a mut TestComms,
-    firewall_b: &'a mut Receiver<FirewallRequest<RequestPermission>>,
+    firewall_b: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
     b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
 
@@ -408,17 +362,15 @@ impl<'a> fmt::Display for AskTestConfig<'a> {
 impl<'a> AskTestConfig<'a> {
     fn new_test_case(
         comms_a: &'a mut TestComms,
-        firewall_a: &'a mut Receiver<FirewallRequest<RequestPermission>>,
-        a_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
+        firewall_a: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
         comms_b: &'a mut TestComms,
-        firewall_b: &'a mut Receiver<FirewallRequest<RequestPermission>>,
+        firewall_b: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
         b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ) -> Self {
         AskTestConfig {
             comms_a,
             firewall_a,
-            a_events_rx,
             comms_b,
             firewall_b,
             b_events_rx,
@@ -434,13 +386,7 @@ impl<'a> AskTestConfig<'a> {
         let peer_a_id = self.comms_a.get_peer_id();
         let peer_b_id = self.comms_b.get_peer_id();
 
-        let config_str = format!("{}", self);
-
-        let ResponseReceiver {
-            peer,
-            response_rx,
-            request_id,
-        } = self.comms_a.send_request(peer_b_id, Request::Ping);
+        let ResponseReceiver { peer, response_rx, .. } = self.comms_a.send_request(peer_b_id, Request::Ping);
         assert_eq!(peer, peer_b_id);
 
         let is_allowed = |rule: &FwRuleRes, approval: &FwApprovalRes| match rule {
@@ -453,12 +399,7 @@ impl<'a> AskTestConfig<'a> {
         self.firewall_handle_next(TestPeer::A).await;
 
         if !is_allowed(&self.a_rule, &self.a_approval) {
-            let f = async { expect_err!(response_rx, config_str) };
-            futures::select! {
-                _ = self.b_request_rx.select_next_some() => panic!("Unexpected request received; config: {}", self),
-                _ = f.fuse() => {}
-            }
-            self.expect_a_outbound_failure(peer_b_id, vec![OutboundFailure::NotPermitted])
+            self.expect_a_outbound_failure(response_rx, vec![OutboundFailure::NotPermitted])
                 .await;
             return;
         }
@@ -466,58 +407,47 @@ impl<'a> AskTestConfig<'a> {
         self.firewall_handle_next(TestPeer::B).await;
 
         if !is_allowed(&self.b_rule, &self.b_approval) {
-            let f = async { expect_err!(response_rx, config_str) };
-            futures::select! {
-                _ = self.b_request_rx.select_next_some() => panic!("Unexpected request received; config: {}", self),
-                _ = f.fuse() => {}
-            }
             self.expect_a_outbound_failure(
-                peer_b_id,
+                response_rx,
                 vec![OutboundFailure::Timeout, OutboundFailure::ConnectionClosed],
             )
             .await;
             self.expect_b_inbound_reject(peer_a_id).await;
             return;
         }
-
-        let recv_req = loop {
-            futures::select! {
-                ev = self.a_events_rx.select_next_some() => {
-                    if matches!(ev, NetworkEvent::OutboundFailure{ request_id: rq_id, ..} if request_id == rq_id) {
-                        panic!("Unexpected Outbound Failure at A: {:?}; config: {}", ev, self);
-                    }
-                }
-                ev = self.b_events_rx.select_next_some() => {
-                    if matches!(ev, NetworkEvent::InboundFailure{ request_id: rq_id, ..} if request_id == rq_id) {
-                        panic!("Unexpected Inbound Failure at B: {:?}; config: {}", ev, self);
-                    }
-                }
-                r = self.b_request_rx.select_next_some() => break r,
-            }
+        let config_str = format!("{}", self);
+        let source_fut = async {
+            response_rx
+                .await
+                .unwrap_or_else(|_| panic!("Unexpected cancellation of response channel; config {}", config_str))
+                .unwrap_or_else(|err| panic!("Unexpected outbound failure {:?}; config {}", err, config_str));
         };
-        assert_eq!(recv_req.peer, peer_a_id);
-        let RequestMessage { response_tx, .. } = recv_req.request;
-        response_tx.send(Response::Pong).unwrap();
-        expect_ok!(response_rx, self);
+        let dst_fut = async {
+            let ReceiveRequest { peer, response_tx, .. } = self.b_request_rx.select_next_some().await;
+            assert_eq!(peer, peer_a_id);
+            response_tx.send(Response::Pong).unwrap();
+        };
+        join(source_fut, dst_fut).await;
     }
 
-    async fn expect_a_outbound_failure(&mut self, target: PeerId, expect_any: Vec<OutboundFailure>) {
-        let mut filtered = self.a_events_rx.filter(|ev| {
-            future::ready(!matches!(
-                ev,
-                NetworkEvent::ConnectionEstablished { .. } | NetworkEvent::ConnectionClosed { .. }
-            ))
-        });
-        match expect_ok!(filtered.next(), self) {
-            NetworkEvent::OutboundFailure { peer, failure, .. } => {
-                assert_eq!(peer, target);
+    async fn expect_a_outbound_failure(
+        &mut self,
+        response_rx: oneshot::Receiver<Result<Response, OutboundFailure>>,
+        expect_any: Vec<OutboundFailure>,
+    ) {
+        futures::select! {
+            _ = self.b_request_rx.select_next_some() => panic!("Unexpected request received; config: {}", self),
+            event = response_rx.fuse() => {
+                let failure =  event
+                    .unwrap_or_else(|_| panic!("Unexpected cancellation of response channel; config {}", self))
+                    .expect_err(&format!("Unexpected response; config {}", self));
                 assert!(
                     expect_any.into_iter().any(|f| f == failure),
-                    "Unexpected Failure {:?}",
-                    failure
+                    "Unexpected Failure {:?}; config {}",
+                    failure,
+                    self
                 )
             }
-            other => panic!("Unexpected Result: {:?}; config: {}", other, self),
         }
     }
 
@@ -614,7 +544,7 @@ impl<'a> AskTestConfig<'a> {
 
 #[test]
 fn firewall_ask() {
-    let (mut firewall_a, _, mut a_event_rx, mut comms_a) = init_comms();
+    let (mut firewall_a, _, _, mut comms_a) = init_comms();
     let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut comms_b) = init_comms();
     let peer_b_id = comms_b.get_peer_id();
 
@@ -625,7 +555,6 @@ fn firewall_ask() {
         let mut test = AskTestConfig::new_test_case(
             &mut comms_a,
             &mut firewall_a,
-            &mut a_event_rx,
             &mut comms_b,
             &mut firewall_b,
             &mut b_event_rx,

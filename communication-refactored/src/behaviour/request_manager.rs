@@ -4,10 +4,11 @@
 use super::{ProtocolSupport, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use crate::{
     firewall::{FirewallRules, Rule, RuleDirection, ToPermissionVariants, VariantPermission},
-    unwrap_or_return, InboundFailure, OutboundFailure, RequestDirection, RequestId, RequestMessage,
+    unwrap_or_return, InboundFailure, OutboundFailure, RequestDirection, RequestId,
 };
 mod connections;
 use connections::PeerConnectionManager;
+use futures::channel::oneshot;
 use libp2p::{core::connection::ConnectionId, PeerId};
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -17,19 +18,19 @@ use std::{
 
 // Actions for the behaviour to handle i.g. the behaviour emits the appropriate `NetworkBehaviourAction`.
 pub(super) enum BehaviourAction<Rq, Rs> {
-    // Inbound request that was approved and should be emitted as [`BehaviourEvent::Request`].
+    // Inbound request / failures ready to be handled by the `NetBehaviour`.
     InboundReady {
         request_id: RequestId,
         peer: PeerId,
-        request: RequestMessage<Rq, Rs>,
+        result: Result<(Rq, oneshot::Sender<Rs>), InboundFailure>,
     },
-    // Outbound request to a connected peer that was approved and that should be send to the handler of the connection
-    // that this request was assigned to.
+    // Outbound request / failures ready to be handled by the `NetBehaviour`.
+    // In case of `Result: Ok(..)`, the `ConnectionId` specifies the connection and handler that this request was
+    // assigned to.
     OutboundReady {
         request_id: RequestId,
         peer: PeerId,
-        connection: ConnectionId,
-        request: RequestMessage<Rq, Rs>,
+        result: Result<(Rq, ConnectionId), OutboundFailure>,
     },
     // Required dial attempt to connect a peer where at least one approved outbound request is pending.
     RequireDialAttempt(PeerId),
@@ -40,18 +41,6 @@ pub(super) enum BehaviourAction<Rq, Rs> {
         // For each [`ConnectionId`], a separate handler is running.
         connection: ConnectionId,
         support: ProtocolSupport,
-    },
-    // Sending an outbound request failed.
-    OutboundFailure {
-        peer: PeerId,
-        request_id: RequestId,
-        reason: OutboundFailure,
-    },
-    // Receiving / responding to an inbound request failed.
-    InboundFailure {
-        peer: PeerId,
-        request_id: RequestId,
-        reason: InboundFailure,
     },
 }
 
@@ -80,9 +69,9 @@ where
     P: VariantPermission,
 {
     // Store of inbound requests that have not been approved yet.
-    inbound_request_store: HashMap<RequestId, (PeerId, RequestMessage<Rq, Rs>)>,
+    inbound_request_store: HashMap<RequestId, (PeerId, Rq, oneshot::Sender<Rs>)>,
     // Store of outbound requests that have not been approved, or where the target peer is not connected yet.
-    outbound_request_store: HashMap<RequestId, (PeerId, RequestMessage<Rq, Rs>)>,
+    outbound_request_store: HashMap<RequestId, (PeerId, Rq)>,
     // Currently established connections and the requests that have been send/received on the connection, but with no
     // response yet.
     connections: PeerConnectionManager,
@@ -125,61 +114,119 @@ where
         self.connections.get_connected_peers()
     }
 
-    // New inbound/ outbound request was received / issued.
+    // New outbound request that should be sent.
     // Depending on the approval and connection status, the appropriate [`BehaviourAction`] will be issued
     // and/ or the request will be cached if it is waiting for approval or connection.
-    pub fn on_new_request(
+    pub fn on_new_out_request(
         &mut self,
         peer: PeerId,
         request_id: RequestId,
-        request: RequestMessage<Rq, Rs>,
+        request: Rq,
         approval_status: ApprovalStatus,
-        direction: RequestDirection,
     ) {
         match approval_status {
             ApprovalStatus::MissingRule => {
                 // Add request to the list of requests that are awaiting a rule for that peer.
-                self.store_request(peer, request_id, request, &direction);
+                self.outbound_request_store.insert(request_id, (peer, request));
                 let await_rule = self.awaiting_peer_rule.entry(peer).or_default();
-                await_rule.entry(direction).or_default().push(request_id);
+                await_rule
+                    .entry(RequestDirection::Outbound)
+                    .or_default()
+                    .push(request_id);
             }
             ApprovalStatus::MissingApproval => {
                 // Add request to the list of requests that are awaiting individual approval.
-                self.store_request(peer, request_id, request, &direction);
-                self.awaiting_approval.push((request_id, direction));
+                self.outbound_request_store.insert(request_id, (peer, request));
+                self.awaiting_approval.push((request_id, RequestDirection::Outbound));
             }
             ApprovalStatus::Approved => {
                 // Request is ready to be send if a connection exists.
-                // If no connection to the peer exists, add dial attempt (if outbound request) or a failure.
-                if let Some(connection) = self.connections.add_request(&peer, request_id, &direction) {
+                // If no connection to the peer exists, add dial attempt.
+                if let Some(connection) =
+                    self.connections
+                        .add_request(&peer, request_id, None, &RequestDirection::Outbound)
+                {
                     // Request is approved and assigned to an existing connection.
-                    self.add_ready_request(peer, request_id, connection, request, &direction);
-                } else if let RequestDirection::Outbound = direction {
-                    self.store_request(peer, request_id, request, &RequestDirection::Outbound);
-                    self.add_dial_attempt(peer, request_id);
-                } else {
-                    let action = BehaviourAction::InboundFailure {
+                    let action = BehaviourAction::OutboundReady {
                         request_id,
                         peer,
-                        reason: InboundFailure::ConnectionClosed,
+                        result: Ok((request, connection)),
                     };
-                    self.actions.push_back(action);
+                    self.actions.push_back(action)
+                } else {
+                    self.outbound_request_store.insert(request_id, (peer, request));
+                    self.add_dial_attempt(peer, request_id);
                 }
             }
             ApprovalStatus::Rejected => {
-                // Drop response channel, add failure.
-                drop(request.response_tx);
-                let action = match direction {
-                    RequestDirection::Outbound => BehaviourAction::OutboundFailure {
-                        peer,
-                        request_id,
-                        reason: OutboundFailure::NotPermitted,
-                    },
-                    RequestDirection::Inbound => BehaviourAction::InboundFailure {
-                        peer,
-                        request_id,
-                        reason: InboundFailure::NotPermitted,
-                    },
+                let action = BehaviourAction::OutboundReady {
+                    peer,
+                    request_id,
+                    result: Err(OutboundFailure::NotPermitted),
+                };
+                self.actions.push_back(action);
+            }
+        }
+    }
+
+    // New inbound request that was received.
+    // Depending on the approval and connection status, the appropriate [`BehaviourAction`] will be issued
+    // and/ or the request will be cached if it is waiting for approval.
+    pub fn on_new_in_request(
+        &mut self,
+        peer: PeerId,
+        request_id: RequestId,
+        request: Rq,
+        response_tx: oneshot::Sender<Rs>,
+        connection: ConnectionId,
+        approval_status: ApprovalStatus,
+    ) {
+        if !matches!(approval_status, ApprovalStatus::Rejected) {
+            // Add request to the requests of the associated connection.
+            // Return if the connection closed.
+            let conn = self
+                .connections
+                .add_request(&peer, request_id, Some(connection), &RequestDirection::Inbound);
+            if conn.is_none() {
+                let action = BehaviourAction::InboundReady {
+                    request_id,
+                    peer,
+                    result: Err(InboundFailure::ConnectionClosed),
+                };
+                self.actions.push_back(action);
+                return;
+            }
+        }
+        match approval_status {
+            ApprovalStatus::MissingRule => {
+                // Add request to the list of requests that are awaiting a rule for that peer.
+                self.inbound_request_store
+                    .insert(request_id, (peer, request, response_tx));
+                let await_rule = self.awaiting_peer_rule.entry(peer).or_default();
+                await_rule
+                    .entry(RequestDirection::Inbound)
+                    .or_default()
+                    .push(request_id);
+            }
+            ApprovalStatus::MissingApproval => {
+                // Add request to the list of requests that are awaiting individual approval.
+                self.inbound_request_store
+                    .insert(request_id, (peer, request, response_tx));
+                self.awaiting_approval.push((request_id, RequestDirection::Inbound));
+            }
+            ApprovalStatus::Approved => {
+                let action = BehaviourAction::InboundReady {
+                    request_id,
+                    peer,
+                    result: Ok((request, response_tx)),
+                };
+                self.actions.push_back(action);
+            }
+            ApprovalStatus::Rejected => {
+                let action = BehaviourAction::InboundReady {
+                    request_id,
+                    peer,
+                    result: Err(InboundFailure::NotPermitted),
                 };
                 self.actions.push_back(action);
             }
@@ -196,17 +243,15 @@ where
         // Handle pending requests
         if let Some(requests) = self.awaiting_connection.remove(&peer) {
             requests.into_iter().for_each(|request_id| {
-                let (peer, request) =
-                    unwrap_or_return!(self.take_stored_request(&request_id, &RequestDirection::Outbound));
+                let (peer, request) = unwrap_or_return!(self.outbound_request_store.remove(&request_id));
                 let connection = self
                     .connections
-                    .add_request(&peer, request_id, &RequestDirection::Outbound)
+                    .add_request(&peer, request_id, None, &RequestDirection::Outbound)
                     .expect("Peer is connected");
                 let action = BehaviourAction::OutboundReady {
                     request_id,
                     peer,
-                    connection,
-                    request,
+                    result: Ok((request, connection)),
                 };
                 self.actions.push_back(action);
             });
@@ -233,26 +278,30 @@ where
     pub fn on_connection_closed(&mut self, peer: PeerId, connection: &ConnectionId) {
         let pending_res = self.connections.remove_connection(peer, connection);
         if let Some(pending_res) = pending_res {
-            let closed_out =
-                pending_res
-                    .outbound_requests
-                    .into_iter()
-                    .map(|request_id| BehaviourAction::OutboundFailure {
-                        request_id,
-                        peer,
-                        reason: OutboundFailure::ConnectionClosed,
-                    });
-            self.actions.extend(closed_out);
-            let closed_in =
-                pending_res
-                    .inbound_requests
-                    .into_iter()
-                    .map(|request_id| BehaviourAction::InboundFailure {
-                        request_id,
-                        peer,
-                        reason: InboundFailure::ConnectionClosed,
-                    });
-            self.actions.extend(closed_in);
+            for request_id in pending_res.outbound_requests {
+                self.actions.push_back(BehaviourAction::OutboundReady {
+                    request_id,
+                    peer,
+                    result: Err(OutboundFailure::ConnectionClosed),
+                })
+            }
+            for request_id in pending_res.inbound_requests {
+                // Remove request from all queues and lists.
+                self.awaiting_approval.retain(|(r, _)| r != &request_id);
+                if let Some(requests) = self
+                    .awaiting_peer_rule
+                    .get_mut(&peer)
+                    .and_then(|r| r.get_mut(&RequestDirection::Inbound))
+                {
+                    requests.retain(|r| r != &request_id)
+                }
+                self.inbound_request_store.remove(&request_id);
+                self.actions.push_back(BehaviourAction::InboundReady {
+                    request_id,
+                    peer,
+                    result: Err(InboundFailure::ConnectionClosed),
+                })
+            }
         }
     }
 
@@ -261,13 +310,11 @@ where
     pub fn on_dial_failure(&mut self, peer: PeerId) {
         if let Some(requests) = self.awaiting_connection.remove(&peer) {
             requests.into_iter().for_each(|request_id| {
-                if let Some((_, req)) = self.take_stored_request(&request_id, &RequestDirection::Outbound) {
-                    drop(req.response_tx);
-                }
-                let action = BehaviourAction::OutboundFailure {
+                unwrap_or_return!(self.outbound_request_store.remove(&request_id));
+                let action = BehaviourAction::OutboundReady {
                     request_id,
                     peer,
-                    reason: OutboundFailure::DialFailure,
+                    result: Err(OutboundFailure::DialFailure),
                 };
                 self.actions.push_back(action);
             });
@@ -307,14 +354,14 @@ where
                 match rule {
                     Some(Rule::Ask) => {
                         // Requests need to await individual approval.
-                        let rq = self.get_request_value_ref(&request_id)?;
+                        let rq = self.get_request_value_ref(&request_id, &dir)?;
                         let permissioned = rq.to_permissioned();
                         self.awaiting_approval.push((request_id, dir.clone()));
                         Some((request_id, permissioned, dir))
                     }
                     Some(Rule::Permission(permission)) => {
                         // Checking the individual permissions required for the request type.
-                        if let Some(rq) = self.get_request_value_ref(&request_id) {
+                        if let Some(rq) = self.get_request_value_ref(&request_id, &dir) {
                             let is_allowed = permission.permits(&rq.permission_value());
                             self.handle_request_approval(request_id, &dir, is_allowed);
                         }
@@ -341,11 +388,12 @@ where
             if direction.is_inbound() {
                 if let Some(requests) = await_rule.remove(&RequestDirection::Inbound) {
                     for request_id in requests {
-                        self.take_stored_request(&request_id, &RequestDirection::Inbound);
-                        self.actions.push_back(BehaviourAction::InboundFailure {
+                        self.connections.remove_request(&request_id, &RequestDirection::Inbound);
+                        unwrap_or_return!(self.inbound_request_store.remove(&request_id));
+                        self.actions.push_back(BehaviourAction::InboundReady {
                             peer,
                             request_id,
-                            reason: InboundFailure::NotPermitted,
+                            result: Err(InboundFailure::NotPermitted),
                         });
                     }
                 }
@@ -353,11 +401,11 @@ where
             if direction.is_outbound() {
                 if let Some(requests) = await_rule.remove(&RequestDirection::Outbound) {
                     for request_id in requests {
-                        self.take_stored_request(&request_id, &RequestDirection::Outbound);
-                        self.actions.push_back(BehaviourAction::OutboundFailure {
+                        unwrap_or_return!(self.outbound_request_store.remove(&request_id));
+                        self.actions.push_back(BehaviourAction::OutboundReady {
                             peer,
                             request_id,
-                            reason: OutboundFailure::NotPermitted,
+                            result: Err(OutboundFailure::NotPermitted),
                         });
                     }
                 }
@@ -381,44 +429,22 @@ where
 
     // Handle response / failure for a previously received request.
     // Remove the request from the list of pending responses, add failure if there is one.
-    pub fn on_res_for_inbound(
-        &mut self,
-        peer: PeerId,
-        connection: &ConnectionId,
-        request_id: RequestId,
-        result: Result<(), InboundFailure>,
-    ) {
-        self.connections
-            .remove_request(connection, &request_id, &RequestDirection::Inbound);
+    pub fn on_res_for_inbound(&mut self, peer: PeerId, request_id: RequestId, result: Result<(), InboundFailure>) {
+        self.connections.remove_request(&request_id, &RequestDirection::Inbound);
         if let Err(reason) = result {
-            let action = BehaviourAction::InboundFailure {
+            let action = BehaviourAction::InboundReady {
                 peer,
                 request_id,
-                reason,
+                result: Err(reason),
             };
             self.actions.push_back(action)
         }
     }
 
     // Handle response / failure for a previously sent request.
-    // Remove the request from the list of pending responses, add failure if there is one.
-    pub fn on_res_for_outbound(
-        &mut self,
-        peer: PeerId,
-        connection: &ConnectionId,
-        request_id: RequestId,
-        result: Result<(), OutboundFailure>,
-    ) {
-        self.connections
-            .remove_request(connection, &request_id, &RequestDirection::Outbound);
-        if let Err(reason) = result {
-            let action = BehaviourAction::OutboundFailure {
-                peer,
-                request_id,
-                reason,
-            };
-            self.actions.push_back(action)
-        }
+    // Remove the request from the list of pending responses.
+    pub fn on_res_for_outbound(&mut self, request_id: &RequestId) {
+        self.connections.remove_request(request_id, &RequestDirection::Outbound);
     }
 
     // Check if there are pending requests for rules for a specific peer.
@@ -474,63 +500,11 @@ where
         next
     }
 
-    // Temporary store a request until it is approved / a connection to the remote was established.
-    fn store_request(
-        &mut self,
-        peer: PeerId,
-        request_id: RequestId,
-        request: RequestMessage<Rq, Rs>,
-        direction: &RequestDirection,
-    ) {
-        match direction {
-            RequestDirection::Inbound => self.inbound_request_store.insert(request_id, (peer, request)),
-            RequestDirection::Outbound => self.outbound_request_store.insert(request_id, (peer, request)),
-        };
-    }
-
-    // Remove a cached request from the store and return it, so it can be used or discarded.
-    fn take_stored_request(
-        &mut self,
-        request_id: &RequestId,
-        direction: &RequestDirection,
-    ) -> Option<(PeerId, RequestMessage<Rq, Rs>)> {
-        match direction {
-            RequestDirection::Inbound => self.inbound_request_store.remove(request_id),
-            RequestDirection::Outbound => self.outbound_request_store.remove(request_id),
-        }
-    }
-
     // Add a [`BehaviourAction::RequireDialAttempt`] to the action queue to demand a dial attempt to the remote.
     fn add_dial_attempt(&mut self, peer: PeerId, request_id: RequestId) {
         let reqs = self.awaiting_connection.entry(peer).or_default();
         reqs.push(request_id);
         self.actions.push_back(BehaviourAction::RequireDialAttempt(peer));
-    }
-
-    // Add a [`BehaviourAction::InboundReady`] / [`BehaviourAction::OutboundReady`] to the action queue to forward the
-    // request.
-    fn add_ready_request(
-        &mut self,
-        peer: PeerId,
-        request_id: RequestId,
-        connection: ConnectionId,
-        request: RequestMessage<Rq, Rs>,
-        direction: &RequestDirection,
-    ) {
-        let event = match direction {
-            RequestDirection::Inbound => BehaviourAction::InboundReady {
-                request_id,
-                peer,
-                request,
-            },
-            RequestDirection::Outbound => BehaviourAction::OutboundReady {
-                request_id,
-                peer,
-                connection,
-                request,
-            },
-        };
-        self.actions.push_back(event)
     }
 
     // Handle the approval / rejection of a individual request.
@@ -540,66 +514,59 @@ where
         direction: &RequestDirection,
         is_allowed: bool,
     ) -> Option<()> {
-        // Emit a failure if the request was rejected.
-        if !is_allowed {
-            let (peer, req) = self.take_stored_request(&request_id, direction)?;
-            drop(req.response_tx);
-            let action = match direction {
-                RequestDirection::Outbound => BehaviourAction::OutboundFailure {
-                    request_id,
-                    peer,
-                    reason: OutboundFailure::NotPermitted,
-                },
-                RequestDirection::Inbound => BehaviourAction::InboundFailure {
-                    request_id,
-                    peer,
-                    reason: InboundFailure::NotPermitted,
-                },
-            };
-            self.actions.push_back(action);
-            return Some(());
-        }
-
-        let peer = *self.get_request_peer_ref(&request_id)?;
-
-        // Assign the request to a connection if the remote is connected.
-        // If no connection to the peer exists, add dial attempt (if outbound request) or drop the request and emit a
-        // failure.
-        if let Some(connection) = self.connections.add_request(&peer, request_id, &direction) {
-            let (peer, request) = self.take_stored_request(&request_id, direction)?;
-            self.add_ready_request(peer, request_id, connection, request, direction);
-            Some(())
-        } else {
-            match direction {
-                RequestDirection::Inbound => {
-                    let (_, req) = self.take_stored_request(&request_id, direction)?;
-                    drop(req.response_tx);
-                    let action = BehaviourAction::InboundFailure {
+        self.awaiting_approval.retain(|(r, _)| r != &request_id);
+        let action = match direction {
+            RequestDirection::Inbound => {
+                let (peer, request, response_tx) = self.inbound_request_store.remove(&request_id)?;
+                if !is_allowed {
+                    self.connections.remove_request(&request_id, direction);
+                    BehaviourAction::InboundReady {
                         request_id,
                         peer,
-                        reason: InboundFailure::ConnectionClosed,
-                    };
-                    self.actions.push_back(action);
+                        result: Err(InboundFailure::NotPermitted),
+                    }
+                } else {
+                    BehaviourAction::InboundReady {
+                        request_id,
+                        peer,
+                        result: Ok((request, response_tx)),
+                    }
                 }
-                RequestDirection::Outbound => self.add_dial_attempt(peer, request_id),
             }
-            Some(())
-        }
-    }
-
-    // Get the peer id for a stored request.
-    fn get_request_peer_ref(&self, request_id: &RequestId) -> Option<&PeerId> {
-        self.inbound_request_store
-            .get(request_id)
-            .or_else(|| self.outbound_request_store.get(request_id))
-            .map(|(peer, _)| peer)
+            RequestDirection::Outbound => {
+                let peer = self.outbound_request_store.get(&request_id).map(|(p, _)| *p)?;
+                if !is_allowed {
+                    self.outbound_request_store.remove(&request_id)?;
+                    BehaviourAction::OutboundReady {
+                        request_id,
+                        peer,
+                        result: Err(OutboundFailure::NotPermitted),
+                    }
+                } else if let Some(connection) =
+                    self.connections
+                        .add_request(&peer, request_id, None, &RequestDirection::Outbound)
+                {
+                    let (peer, request) = self.outbound_request_store.remove(&request_id)?;
+                    BehaviourAction::OutboundReady {
+                        request_id,
+                        peer,
+                        result: Ok((request, connection)),
+                    }
+                } else {
+                    self.awaiting_connection.entry(peer).or_default().push(request_id);
+                    BehaviourAction::RequireDialAttempt(peer)
+                }
+            }
+        };
+        self.actions.push_back(action);
+        Some(())
     }
 
     // Get the request type of a store request.
-    fn get_request_value_ref(&self, request_id: &RequestId) -> Option<&Rq> {
-        self.inbound_request_store
-            .get(request_id)
-            .or_else(|| self.outbound_request_store.get(request_id))
-            .map(|(_, query)| &query.data)
+    fn get_request_value_ref(&self, request_id: &RequestId, dir: &RequestDirection) -> Option<&Rq> {
+        match dir {
+            RequestDirection::Inbound => self.inbound_request_store.get(request_id).map(|(_, rq, _)| rq),
+            RequestDirection::Outbound => self.outbound_request_store.get(request_id).map(|(_, rq)| rq),
+        }
     }
 }

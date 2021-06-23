@@ -4,7 +4,7 @@
 use async_std::task;
 use communication_refactored::{
     firewall::{FirewallConfiguration, PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission},
-    ReceiveRequest, RequestMessage, ResponseReceiver, ShCommunication, ShCommunicationBuilder,
+    ReceiveRequest, ResponseReceiver, ShCommunication, ShCommunicationBuilder,
 };
 use futures::{channel::mpsc, future::join, StreamExt};
 #[cfg(not(feature = "tcp-transport"))]
@@ -54,15 +54,16 @@ fn test_send_req() {
     let ResponseReceiver { response_rx, .. } = alice.send_request(bob_id, Request::Ping);
 
     let handle_b = task::spawn(async move {
-        let ReceiveRequest {
-            request: RequestMessage { response_tx, .. },
-            ..
-        } = bob_request_rx.next().await.unwrap();
+        let ReceiveRequest { response_tx, .. } = bob_request_rx.next().await.unwrap();
         response_tx.send(Response::Pong).unwrap();
     });
 
     let handle_a = task::spawn(async move {
-        response_rx.await.unwrap();
+        let res = response_rx.await.expect("Unexpected cancellation of response channel");
+        match res {
+            Ok(_) => {}
+            Err(e) => panic!("Unexpected error: {}", e),
+        }
     });
 
     task::block_on(async {
