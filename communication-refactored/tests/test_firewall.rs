@@ -282,10 +282,10 @@ fn firewall_permissions() {
     let peer_b_addr = task::block_on(comms_b.start_listening(None)).unwrap();
     comms_a.add_address(peer_b_id, peer_b_addr);
 
-    for _ in 0..100 {
+    for _ in 0..50 {
         let mut test = RulesTestConfig::new_test_case(&mut comms_a, &mut comms_b, &mut b_event_rx, &mut b_rq_rx);
         test.configure_firewall();
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(200));
         task::block_on(test.test_request());
     }
 }

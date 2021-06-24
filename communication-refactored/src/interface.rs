@@ -240,8 +240,15 @@ where
 
     /// Shutdown the swarm and all network interaction.
     pub fn shutdown(mut self) {
+        {
+            let mut swarm = self.swarm.lock().unwrap();
+            swarm.behaviour_mut().shutdown();
+        }
         drop(self.shutdown_chan);
         self.request_chan.close_channel();
+        if let Some(mut events_chan) = self.net_events_chan {
+            events_chan.close_channel();
+        }
         let _ = self.task_handle.join();
     }
 
@@ -530,10 +537,15 @@ where
         mut shutdown_chan: oneshot::Receiver<()>,
     ) {
         while shutdown_chan.try_recv().is_ok() {
-            if let Ok(mut swarm) = swarm_mutex.lock() {
-                if let Some(event) = swarm.next_event().now_or_never() {
-                    Self::handle_swarm_event(request_channel.clone(), net_events_chan.clone(), event);
+            let event = {
+                if let Ok(mut swarm) = swarm_mutex.lock() {
+                    swarm.next_event().now_or_never()
+                } else {
+                    None
                 }
+            };
+            if let Some(e) = event {
+                Self::handle_swarm_event(request_channel.clone(), net_events_chan.clone(), e);
             }
         }
     }

@@ -264,6 +264,8 @@ pub enum OutboundFailure {
     UnsupportedProtocols,
     /// The local firewall blocked the request.
     NotPermitted,
+    /// `SHCommunication` was shut down before a response was received.
+    Shutdown,
 }
 
 impl fmt::Display for OutboundFailure {
@@ -276,6 +278,7 @@ impl fmt::Display for OutboundFailure {
             }
             OutboundFailure::NotPermitted => write!(f, "The firewall blocked the outbound request"),
             OutboundFailure::DialFailure => write!(f, "Failed to dial the requested peer"),
+            OutboundFailure::Shutdown => write!(f, "The local peer was shut down before a response was received."),
         }
     }
 }

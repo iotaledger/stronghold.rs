@@ -323,6 +323,13 @@ where
         self.addresses.use_relay(target, relay, is_exclusive)
     }
 
+    pub fn shutdown(&mut self) {
+        self.permission_req_channel.disconnect();
+        for (_, response_tx) in self.pending_res.drain() {
+            let _ = response_tx.send(Err(OutboundFailure::Shutdown));
+        }
+    }
+
     /// [`RequestId`] for the next outbound request.
     fn next_request_id(&mut self) -> RequestId {
         *self.next_request_id.inc()
