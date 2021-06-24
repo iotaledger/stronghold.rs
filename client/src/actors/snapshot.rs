@@ -49,6 +49,14 @@ pub enum SMsg {
         id: ClientId,
         fid: Option<ClientId>,
     },
+    SynchronizeSnapshot {
+        id: ClientId,
+        key: snapshot::Key,
+        f_other: Option<String>,
+        p_other: Option<PathBuf>,
+        p_target: PathBuf,
+        k_target: snapshot::Key,
+    },
 }
 
 /// Actor Factory for the Snapshot.
@@ -145,6 +153,27 @@ impl Receive<SMsg> for Snapshot {
                     .expect(line_error!())
                     .try_tell(SHResults::ReturnWriteSnap(StatusMessage::OK), None)
                     .expect(line_error!());
+            }
+            SMsg::SynchronizeSnapshot {
+                id,
+                key,
+                f_other,
+                p_other,
+                p_target,
+                k_target,
+            } => {
+                if !self.has_data(id) {
+                    println!("No data present");
+                }
+
+                self.synchronize(p_other.as_deref(), f_other.as_deref(), key, p_target, k_target)
+                    .expect(line_error!());
+
+                sender
+                    .as_ref()
+                    .expect("Could not get sender")
+                    .try_tell(SHResults::ReturnSynchronizeSnapshot(StatusMessage::Ok(())), None)
+                    .expect("Could not tell sender result");
             }
         }
     }

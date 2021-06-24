@@ -12,9 +12,10 @@ use engine::{
 
 use crate::{line_error, state::client::Store, Provider};
 
-use std::path::Path;
-
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 /// Wrapper for the [`SnapshotState`] data structure.
 pub struct Snapshot {
@@ -44,21 +45,21 @@ impl Snapshot {
         self.state.0.contains_key(&cid)
     }
 
-    /// Added functionality
-    /// Synchronizes two snapshots
-    /// this operation needs to be protected! If you see this comment,
-    // and executing the method won't work, the protection is not yet in place
-    pub fn synchronize<P>(&self, path: P, key: Key) -> crate::Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        println!("synchronize::WARNING! Potententially unintended security related side effects!");
-        // load b
-        let b = Self::read_from_snapshot(None, Some(path.as_ref()), key)?;
+    /// Synchronizes this [`Snapshot`] with another and writes it to provided target path.
+    pub fn synchronize(
+        &self,
+        other_path: Option<&Path>,
+        other_filename: Option<&str>,
+        other_key: Key,
+        target_path: PathBuf,
+        target_key: Key,
+    ) -> crate::Result<()> {
+        // load other
+        let other = Self::read_from_snapshot(other_filename, other_path, other_key)?;
 
         // get states
         let state_a = &self.state.0;
-        let state_b = &b.state.0;
+        let state_b = &other.state.0;
 
         let mut result = HashMap::new();
 
@@ -72,7 +73,13 @@ impl Snapshot {
             result.insert(*id, value.clone());
         });
 
-        Ok(Snapshot::new(SnapshotState(result)))
+        let state = SnapshotState(result);
+        let plain = state.serialize();
+
+        write_to(&plain, target_path.as_path(), &target_key, &[])
+            .expect("Failed to write synchronized snapshot to disk.");
+
+        Ok(())
     }
 
     /// Reads a snapshot from provided path

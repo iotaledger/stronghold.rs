@@ -62,7 +62,14 @@ pub enum InternalMsg {
     ListIds(VaultId),
     /// Checks to see if a record exists at the given [`VaultId`] and [`RecordId`]
     CheckRecord(VaultId, RecordId),
-    /// Reads the snapshot from the file.
+    SynchronizeSnapshot {
+        id: ClientId,
+        key: snapshot::Key,
+        f_other: Option<String>,
+        p_other: Option<PathBuf>,
+        p_target: PathBuf,
+        k_target: snapshot::Key,
+    },
     ReadSnapshot(
         snapshot::Key,
         Option<String>,
@@ -365,6 +372,27 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         path,
                         id,
                         fid,
+                    },
+                    sender,
+                );
+            }
+            InternalMsg::SynchronizeSnapshot {
+                id,
+                key,
+                f_other,
+                p_other,
+                p_target,
+                k_target,
+            } => {
+                let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
+                snapshot.try_tell(
+                    SMsg::SynchronizeSnapshot {
+                        id,
+                        key,
+                        f_other,
+                        p_other,
+                        p_target,
+                        k_target,
                     },
                     sender,
                 );

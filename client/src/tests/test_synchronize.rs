@@ -3,7 +3,7 @@
 
 //! snapshots synchronization tests
 
-use crate::{naive_kdf, ActorSystem, Location, RecordHint, Snapshot, Stronghold};
+use crate::{naive_kdf, ActorSystem, Location, RecordHint, StatusMessage, Stronghold};
 use engine::snapshot::Key;
 use rand::Rng;
 use std::{env::temp_dir, error::Error, io, path::PathBuf};
@@ -31,6 +31,31 @@ macro_rules! delete_files {
     }
 }
 
+#[derive(Clone)]
+struct TestConfig {
+    paths: Vec<TestPath>,
+    record_hint: RecordHint,
+    password: Vec<u8>,
+    output: Option<PathBuf>,
+    payload: Vec<u8>,
+}
+
+#[derive(Clone)]
+struct TestPath {
+    client_path: Vec<u8>,
+    vault_path: Vec<u8>,
+    record_path: Vec<u8>,
+}
+
+impl Into<Location> for TestPath {
+    fn into(self) -> Location {
+        Location::Generic {
+            record_path: self.record_path,
+            vault_path: self.vault_path,
+        }
+    }
+}
+
 /// creates a snapshot inside temp dir, returns the path and filename as tuple
 /// on successful creating a snapshot
 async fn create_snapshot<K>(
@@ -39,18 +64,18 @@ async fn create_snapshot<K>(
     payload: Vec<u8>,
     system: ActorSystem,
     config: TestConfig,
-) -> Result<(Snapshot, PathBuf), Box<dyn Error>>
+) -> Result<PathBuf, Box<dyn Error>>
 where
     K: Zeroize + AsRef<Vec<u8>>,
 {
-    let mut stronghold = Stronghold::init_stronghold_system(system, config.paths.client_path.clone(), vec![]);
+    let mut stronghold = Stronghold::init_stronghold_system(system, config.paths[0].client_path.clone(), vec![]);
 
-    // write to store
+    // write records to store
     stronghold
         .write_to_store(
             Location::Generic {
-                vault_path: config.paths.vault_path.clone(),
-                record_path: config.paths.record_path.clone(),
+                vault_path: config.paths[0].vault_path.clone(),
+                record_path: config.paths[0].record_path.clone(),
             },
             payload.clone(),
             None,
@@ -58,14 +83,14 @@ where
         .await
         .map_err(|err| err)?;
 
-    // write to vault
+    // write records to vault
     stronghold
         .write_to_vault(
             Location::Generic {
-                vault_path: config.paths.vault_path.clone(),
-                record_path: config.paths.record_path.clone(),
+                vault_path: config.paths[0].vault_path.clone(),
+                record_path: config.paths[0].record_path.clone(),
             },
-            payload,
+            payload.clone(),
             config.record_hint,
             vec![],
         )
@@ -78,10 +103,40 @@ where
         .await
         .map_err(|err| err)?;
 
-    Ok((
-        Snapshot::read_snapshot_with_full_path(path.clone(), &create_key_from(keydata))?,
-        path,
-    ))
+    let result = stronghold
+        .read_from_store(Location::Generic {
+            vault_path: config.paths[0].vault_path.clone(),
+            record_path: config.paths[0].record_path.clone(),
+        })
+        .await;
+
+    assert_eq!(result.0, payload);
+
+    // verify vault entry
+    verify_payload(
+        &mut stronghold,
+        payload.clone(),
+        Location::Generic {
+            vault_path: config.paths[0].vault_path.clone(),
+            record_path: config.paths[0].record_path.clone(),
+        },
+    )
+    .await
+    .map(|_| path)
+}
+
+async fn verify_payload(
+    stronghold: &mut Stronghold,
+    payload: Vec<u8>,
+    location: Location,
+) -> Result<(), Box<dyn Error>> {
+    let secret = stronghold.read_secret(location).await;
+
+    if secret.0.unwrap().eq(&payload) {
+        Ok(())
+    } else {
+        Err("Payload mismatch".into())
+    }
 }
 
 /// Creates a temporary file
@@ -105,10 +160,11 @@ where
 }
 
 /// Delete file
+#[inline(always)]
 fn delete_file(path: PathBuf) -> Result<(), io::Error> {
     std::fs::remove_file(path)
 }
-
+// Create a key from a passphrase
 fn create_key(passphrase: &[u8], salt: Option<[u8; 32]>) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = salt.unwrap_or([1u8; 32]);
@@ -117,59 +173,49 @@ fn create_key(passphrase: &[u8], salt: Option<[u8; 32]>) -> Result<Vec<u8>, Box<
     Ok(key.to_vec())
 }
 
-fn create_payload() -> Vec<u8> {
-    let mut payload = [0u8; 256];
-    rand::thread_rng().fill(&mut payload);
-    payload.to_vec()
-}
-
-#[derive(Clone)]
-struct TestConfig {
-    paths: TestPath,
-    record_hint: RecordHint,
-    password: Vec<u8>,
-    output: Option<PathBuf>,
-}
-
-#[derive(Clone)]
-struct TestPath {
-    client_path: Vec<u8>,
-    vault_path: Vec<u8>,
-    record_path: Vec<u8>,
-}
-
 // Creates a testing target
 fn create_test_table() -> Vec<(TestConfig, TestConfig, TestConfig)> {
     vec![(
         TestConfig {
-            paths: TestPath {
-                client_path: b"client_path".to_vec(),
-                vault_path: b"vault_path".to_vec(),
-                record_path: b"record_path".to_vec(),
-            },
+            paths: vec![TestPath {
+                client_path: b"client_path_a".to_vec(),
+                vault_path: b"vault_path_a".to_vec(),
+                record_path: b"record_path_a".to_vec(),
+            }],
             record_hint: RecordHint::new([0xDE, 0xAD, 0xBE, 0xEF]).expect("Could not create `RecordHint`"),
             password: b"password2".to_vec(),
             output: None,
+            payload: b"AAA:payload".to_vec(),
         },
         TestConfig {
-            paths: TestPath {
-                client_path: b"client_path".to_vec(),
-                vault_path: b"vault_path".to_vec(),
-                record_path: b"record_path".to_vec(),
-            },
+            paths: vec![TestPath {
+                client_path: b"client_path_b".to_vec(),
+                vault_path: b"vault_path_b".to_vec(),
+                record_path: b"record_path_b".to_vec(),
+            }],
             record_hint: RecordHint::new([0xDE, 0xAD, 0xBE, 0xEF]).expect("Could not create `RecordHint`"),
             password: b"password2".to_vec(),
             output: None,
+            payload: b"BBB:payload".to_vec(),
         },
+        // todo: this is the expected value, and needs to test all available paths
         TestConfig {
-            paths: TestPath {
-                client_path: b"client_path".to_vec(),
-                vault_path: b"vault_path".to_vec(),
-                record_path: b"record_path".to_vec(),
-            },
+            paths: vec![
+                TestPath {
+                    client_path: b"client_path_b".to_vec(),
+                    vault_path: b"vault_path_b".to_vec(),
+                    record_path: b"record_path_b".to_vec(),
+                },
+                TestPath {
+                    client_path: b"client_path_a".to_vec(),
+                    vault_path: b"vault_path_a".to_vec(),
+                    record_path: b"record_path_a".to_vec(),
+                },
+            ],
             record_hint: RecordHint::new([0xDE, 0xAD, 0xBE, 0xEF]).expect("Could not create `RecordHint`"),
             password: b"password2".to_vec(),
             output: Some(create_temp_file().expect("Could not create temp file")),
+            payload: vec![],
         },
     )]
 }
@@ -183,11 +229,30 @@ fn test_synchronize_local_snapshots() -> Result<(), Box<dyn Error>> {
         .into_iter()
         .for_each(|(config_a, config_b, config_expected)| {
             runtime.block_on(async {
+                // locals
+                let keydata_a = keygen!(&config_a.password);
+                let _key_a = create_key_from(keydata_a.clone());
+                let keydata_b = keygen!(&config_b.password);
+                let key_b = create_key_from(keydata_b.clone());
+
+                // target config
+                let p_target = create_temp_file().expect("Failed to create temp file");
+                let keydata_target = keygen!(&config_expected.password);
+                let k_target = create_key_from(keydata_target.clone());
+
+                // fixme: move payloads into target
+                // locations
+                let loc_a = config_a.clone().paths[0].clone();
+                let loc_a_payload = config_a.clone().payload;
+
+                let loc_b = config_b.clone().paths[0].clone();
+                let loc_b_payload = config_b.clone().payload;
+
                 // create snapshot a and b
                 let a = create_snapshot(
                     create_temp_file().expect("Failed to create temporary file"),
-                    keygen!(&config_a.password),
-                    create_payload(),
+                    keydata_a,
+                    config_a.payload.clone(),
                     ActorSystem::new().expect("Failed to initialize actor system"),
                     config_a.clone(),
                 )
@@ -196,49 +261,92 @@ fn test_synchronize_local_snapshots() -> Result<(), Box<dyn Error>> {
 
                 let b = create_snapshot(
                     create_temp_file().expect("Failed to create temporary file"),
-                    keygen!(&config_b.clone().password),
-                    create_payload(),
+                    keydata_b,
+                    config_b.payload.clone(),
                     ActorSystem::new().expect("Failed to initialize actor system"),
                     config_b.clone(),
                 )
                 .await
                 .expect("Could not create snapshot b");
 
-                // synchronized snapshot
-                let sync =
-                    a.0.synchronize(b.1.clone(), create_key_from(keygen!(&config_b.password)))
-                        .expect("Failed to synchronize snapshots");
-
-                // write snapshot
-                let output = config_expected.output.unwrap();
-                sync.write_to_snapshot(
-                    None,
-                    Some(output.clone().as_path()),
-                    create_key_from(keygen!(&config_expected.password)),
-                )
-                .expect("Could not write synchronized snapshot");
-
-                // --- testing ---
+                // for paths in
                 // load synchronized snapshot
                 let mut stronghold = Stronghold::init_stronghold_system(
                     ActorSystem::new().expect("Failed to initialize actor system"),
-                    vec![],
+                    config_a.clone().paths[0].client_path.clone(),
                     vec![],
                 );
+
+                // load snapshot a
                 stronghold
                     .read_snapshot(
-                        config_expected.paths.client_path,
+                        config_a.clone().paths[0].client_path.clone(),
+                        Some(config_a.clone().paths[0].client_path.clone()),
+                        &keygen!(&config_a.password),
                         None,
-                        &keygen!(&config_expected.password),
-                        None,
-                        Some(output.clone()),
+                        Some(a.clone()),
                     )
                     .await
                     .map_err(|err| err)
                     .expect("Could not load synchronized snapshot");
 
+                // synchronize snapshot a with b
+                assert!(
+                    matches!(
+                        stronghold
+                            .synchronize_snapshot(
+                                config_a.clone().paths[0].client_path.clone(),
+                                key_b,
+                                None,
+                                Some(b.clone()),
+                                p_target.clone(),
+                                k_target,
+                            )
+                            .await,
+                        StatusMessage::OK
+                    ),
+                    "Synchronizing two snapshots failed"
+                );
+
+                for paths in config_expected.paths {
+                    let loc_a = loc_a.clone();
+                    let loc_b = loc_b.clone();
+
+                    let mut stronghold = Stronghold::init_stronghold_system(
+                        ActorSystem::new().expect("Failed to initialize actor system"),
+                        paths.clone().client_path,
+                        vec![],
+                    );
+
+                    stronghold
+                        .read_snapshot(
+                            paths.clone().client_path,
+                            Some(paths.clone().client_path),
+                            &keydata_target, // fixme: not needed
+                            None,
+                            Some(p_target.clone()),
+                        )
+                        .await;
+
+                    // --- testing ---
+                    match paths.clone().client_path.as_slice() {
+                        b"client_path_a" => {
+                            assert_eq!(stronghold.read_from_store(loc_a.clone().into()).await.0, loc_a_payload);
+                            if let Some(data) = stronghold.read_secret(loc_a.into()).await.0 {
+                                assert_eq!(data, loc_a_payload);
+                            }
+                        }
+                        b"client_path_b" => {
+                            assert_eq!(stronghold.read_from_store(loc_b.clone().into()).await.0, loc_b_payload);
+                            if let Some(data) = stronghold.read_secret(loc_b.into()).await.0 {
+                                assert_eq!(data, loc_b_payload);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 // --- finalize ---
-                delete_files!(a.1, b.1, output);
+                delete_files!(a, b);
             });
         });
 

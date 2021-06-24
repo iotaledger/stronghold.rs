@@ -257,6 +257,16 @@ pub enum SHRequest {
 
     // Interact with the runtime.
     ControlRequest(Procedure),
+
+    // Synchronize snapshot
+    SynchronizeSnapshot {
+        id: ClientId,
+        key: snapshot::Key,
+        f_other: Option<String>,
+        p_other: Option<PathBuf>,
+        p_target: PathBuf,
+        k_target: snapshot::Key,
+    },
 }
 
 /// Return messages that come from stronghold
@@ -278,6 +288,7 @@ pub enum SHResults {
     ReturnControlRequest(ProcResult),
     ReturnExistsVault(bool),
     ReturnExistsRecord(bool),
+    ReturnSynchronizeSnapshot(StatusMessage),
 }
 
 impl ActorFactoryArgs<ClientId> for Client {
@@ -521,6 +532,35 @@ impl Receive<SHRequest> for Client {
                         .expect(line_error!());
                 }
             }
+            SHRequest::SynchronizeSnapshot {
+                id,
+                key,
+                f_other,
+                p_other,
+                p_target,
+                k_target,
+            } => {
+                let client_str = self.get_client_str();
+
+                let internal = ctx
+                    .select(&format!("/user/internal-{}/", client_str))
+                    .expect(line_error!());
+
+                // let snapshot = ctx.select("/user/snapshot/").expect(line_error!());
+
+                internal.try_tell(
+                    InternalMsg::SynchronizeSnapshot {
+                        id,
+                        key,
+                        f_other,
+                        p_other,
+                        p_target,
+                        k_target,
+                    },
+                    sender,
+                );
+            }
+
             SHRequest::ControlRequest(procedure) => {
                 let client_str = self.get_client_str();
 

@@ -13,8 +13,6 @@
 //! ``` no_run
 //! ```
 
-// #![allow(dead_code, unused_variables)]
-
 use thiserror::Error as DeriveError;
 
 // re-export diff

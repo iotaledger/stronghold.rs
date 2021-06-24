@@ -7,11 +7,7 @@ use futures::{
     channel::mpsc::{channel, Receiver, Sender},
     future::RemoteHandle,
 };
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 use zeroize::Zeroize;
 
 use engine::{snapshot::Key, vault::RecordHint};
@@ -460,14 +456,41 @@ impl Stronghold {
 
     /// Tries to fully synchronize this snapshot with a second local snapshot.
     /// All serialized data from both snapshots will be taken into consideration, when
-    /// synchronizing.
-    /// The two snapshots need their own keys respectively, and a path to store the
+    /// synchronizing. The two snapshots need their own keys respectively, and a path to store the
     /// new synchronized snapshot.
-    pub async fn synchronize_snapshot<P>(&self, _other: P, _key: &Key, _output: P) -> StatusMessage
-    where
-        P: AsRef<Path>,
-    {
-        todo!()
+    pub async fn synchronize_snapshot(
+        &self,
+        client_path: Vec<u8>,
+        key: Key,
+        f_other: Option<String>,
+        p_other: Option<PathBuf>,
+        p_target: PathBuf,
+        k_target: Key,
+    ) -> StatusMessage {
+        let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
+
+        let actor = match self.clients.get(&client_id) {
+            Some(a) => a,
+            None => return StatusMessage::Error("Could not load client actor".to_string()),
+        };
+
+        let _: SHResults = ask(&self.system, actor, SHRequest::FillSnapshot).await;
+
+        let _: SHResults = ask(
+            &self.system,
+            &self.target,
+            SHRequest::SynchronizeSnapshot {
+                id: client_id,
+                key,
+                f_other,
+                p_other,
+                p_target,
+                k_target,
+            },
+        )
+        .await;
+
+        StatusMessage::Ok(())
     }
 
     /// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If
