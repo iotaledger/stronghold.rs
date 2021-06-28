@@ -5,6 +5,7 @@ use crate::types::*;
 
 use libsodium_sys::sodium_memcmp;
 
+/// A trait for comparing types in Constant Time using [`sodium_memcmp`].
 pub trait ConstEq: ContiguousBytes {
     fn const_eq(&self, rhs: &Self) -> bool {
         unsafe {
