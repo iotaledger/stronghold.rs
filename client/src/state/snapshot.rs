@@ -148,3 +148,167 @@ impl SnapshotState {
         bincode::deserialize(&data).expect(line_error!())
     }
 }
+
+mod sync {
+    #![allow(clippy::all)]
+    #![allow(dead_code, unused_variables)]
+
+    pub use super::*;
+    use serde::Serialize;
+
+    use engine::runtime::{Bytes, Guarded};
+    use thiserror::Error as DeriveError;
+    use zeroize::Zeroize;
+
+    // use engine::snapshot::diff::*;
+
+    #[derive(Debug, DeriveError)]
+    pub enum SyncError {
+        #[error("Types incompatible")]
+        TypesIncompatible,
+    }
+
+    pub struct Chunk<'a, T>
+    where
+        T: Zeroize + Bytes,
+    {
+        entry: &'a Guarded<T>,
+        data: Vec<T>,
+    }
+
+    impl<'a, T> Chunk<'a, T>
+    where
+        T: Zeroize + Bytes + 'static,
+    {
+        pub fn into_chunks(&'a mut self, input: T) -> impl Iterator<Item = &'a T> {
+            self.data.extend_from_slice(vec![input].as_slice());
+            self.data.iter()
+        }
+    }
+
+    /// Default impl for [`SynchronizePolicy`]
+    /// The defaulted policy is [`SynchronizePolicy::Deny`]
+    pub enum SynchronizePolicy {
+        Allow,
+        Deny,
+        Retain,
+        Delete,
+    }
+
+    impl Default for SynchronizePolicy {
+        fn default() -> Self {
+            SynchronizePolicy::Deny
+        }
+    }
+
+    pub trait Bootstrap<T>: Serialize
+    where
+        T: Serialize,
+    {
+        fn with_chunks<'a, C>(self, chunks: Vec<Chunk<'a, C>>) -> Self
+        where
+            C: Zeroize + Bytes;
+
+        fn with_key<K>(self, key: K) -> Self
+        where
+            K: Into<Key>;
+    }
+
+    pub trait Synchronize<T>: Bootstrap<T>
+    where
+        T: Serialize,
+    {
+        fn lazy<I>(&self, other: T) -> I
+        where
+            I: Iterator;
+
+        fn full(&self, other: T) -> Result<T, SyncError>;
+
+        fn partial<Y>(&self, other: T, policy: Y) -> Result<T, SyncError>
+        where
+            Y: AsRef<SynchronizePolicy>;
+    }
+
+    #[derive(Serialize)]
+    pub struct Local<P, T>
+    where
+        P: AsRef<Path> + Serialize,
+        T: Serialize,
+    {
+        storage_location: P,
+        data: T,
+    }
+
+    impl<P, T> Local<P, T>
+    where
+        P: AsRef<Path> + Serialize,
+        T: Serialize,
+    {
+        fn with_target(path: P, this: T) -> Self {
+            todo!()
+        }
+    }
+
+    impl<T, P> Bootstrap<T> for Local<P, T>
+    where
+        P: AsRef<Path> + Serialize,
+        T: Serialize,
+    {
+        #[allow(clippy::all)]
+        fn with_chunks<'a, C>(self, chunks: Vec<Chunk<'a, C>>) -> Self
+        where
+            C: Zeroize + Bytes,
+        {
+            todo!()
+        }
+
+        fn with_key<K>(self, key: K) -> Self
+        where
+            K: Into<Key>,
+        {
+            todo!()
+        }
+    }
+
+    impl<K, T> Synchronize<T> for K
+    where
+        T: Serialize,
+        K: Bootstrap<T> + Serialize,
+    {
+        fn lazy<I>(&self, other: T) -> I
+        where
+            I: Iterator,
+        {
+            todo!()
+        }
+
+        fn full(&self, other: T) -> Result<T, SyncError> {
+            todo!()
+        }
+
+        fn partial<Y>(&self, other: T, policy: Y) -> Result<T, SyncError>
+        where
+            Y: AsRef<SynchronizePolicy>,
+        {
+            todo!()
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+
+        use super::*;
+
+        #[derive(Serialize, Default)]
+        struct Container {}
+
+        #[test]
+        fn test_synchronize() {
+            let a = Container::default();
+            let b = Container::default();
+
+            let local_sync = Local::with_target("/path/to/snapshot.stronghold", a).with_key([0u8; 32]);
+            assert!(local_sync.full(b).is_ok());
+        }
+    }
+}
