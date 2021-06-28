@@ -1,13 +1,13 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-// a base64 encoder and decoder
+/// a [`Base64`] encoder and decoder used in the Vault.
 pub struct Base64;
 impl Base64 {
     /// base64 padding character
     const PADDING: u8 = b'=';
 
-    /// encode `data` using a base64 uri-safe character set.
+    /// encode a [`&[u8]`] using a base64 uri-safe character set.
     pub fn encode_data(data: &[u8]) -> String {
         // encode data
         let mut base = Vec::new();
@@ -41,7 +41,7 @@ impl Base64 {
         }
     }
 
-    /// decode data from base64 based off of the URI safe character set
+    /// decode a [`&[u8]`] from base64 based off of the URI safe character set
     pub fn decode_data(base: &[u8]) -> crate::Result<Vec<u8>> {
         // find and remove padding.
         let (padded, base) = match base.iter().rev().take_while(|b| **b == Self::PADDING).count() {

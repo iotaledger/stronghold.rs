@@ -15,44 +15,49 @@ use std::collections::HashMap;
 
 use runtime::GuardedVec;
 
-/// A view over the data inside of the Stronghold database.
+/// A view over the data inside of a collection of [`Vault`] types.
 #[derive(Deserialize, Serialize, Clone, Default)]
 pub struct DbView<P: BoxProvider> {
+    /// A hashmap of the [`Vault`] types.
     pub vaults: HashMap<VaultId, Vault<P>>,
 }
 
-/// A enclave of data that is encrypted under one key.
+/// A enclave of data that is encrypted under one [`Key`].
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Vault<P: BoxProvider> {
     key: Key<P>,
     entries: HashMap<ChainId, Record>,
 }
 
-/// A bit of data inside of a Vault.
+/// A bit of data inside of a [`Vault`].
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Record {
+    /// record id.
     id: ChainId,
+    /// data transaction metadata.
     data: SealedTransaction,
+    /// revocation transaction metadata.
     revoke: Option<SealedTransaction>,
+    /// encrypted data in blob format.
     blob: SealedBlob,
 }
 
 impl<P: BoxProvider> DbView<P> {
-    /// Create a new Database View.
+    /// Create a new [`DbView`] to interface with the [`Vault`] types in the database.
     pub fn new() -> DbView<P> {
         let vaults = HashMap::new();
 
         Self { vaults }
     }
 
-    /// Initialize a new vault if it doesn't exist.
+    /// Initialize a new [`Vault`] if it doesn't exist.
     pub fn init_vault(&mut self, key: &Key<P>, vid: VaultId) -> crate::Result<()> {
         self.vaults.entry(vid).or_insert(Vault::init_vault(key)?);
 
         Ok(())
     }
 
-    /// Write a new record to the Vault.
+    /// Write a new record to a [`Vault`]. Will instead update a [`Record`] if it already exists.
     pub fn write(
         &mut self,
         key: &Key<P>,
@@ -74,7 +79,7 @@ impl<P: BoxProvider> DbView<P> {
         Ok(())
     }
 
-    /// Lists all of the hints and ids for the given vault.
+    /// Lists all of the [`RecordHint`] values and [`RecordId`] values for the given [`Vault`].
     pub fn list_hints_and_ids(&self, key: &Key<P>, vid: VaultId) -> Vec<(RecordId, RecordHint)> {
         let buf: Vec<(RecordId, RecordHint)> = if let Some(vault) = self.vaults.get(&vid) {
             vault.list_hints_and_ids(&key)
@@ -85,7 +90,7 @@ impl<P: BoxProvider> DbView<P> {
         buf
     }
 
-    /// Check to see if vault contains a specific record id.
+    /// Check to see if a [`Vault`] contains a [`Record`] through the given [`RecordId`].
     pub fn contains_record(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId) -> bool {
         if let Some(vault) = self.vaults.get(&vid) {
             vault.contains_record(key, rid)
@@ -94,7 +99,7 @@ impl<P: BoxProvider> DbView<P> {
         }
     }
 
-    /// execute a procedure on the guarded record data.
+    /// Get access the decrypted [`GuardedVec`] of the specified [`Record`].
     pub fn get_guard<F>(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId, f: F) -> crate::Result<()>
     where
         F: FnOnce(GuardedVec<u8>) -> crate::Result<()>,
@@ -108,6 +113,8 @@ impl<P: BoxProvider> DbView<P> {
         Ok(())
     }
 
+    /// Access the decrypted [`GuardedVec`] of the specified [`Record`] and place the return value into the second
+    /// specified [`Record`]
     #[allow(clippy::too_many_arguments)]
     pub fn exec_proc<F>(
         &mut self,
@@ -138,7 +145,7 @@ impl<P: BoxProvider> DbView<P> {
         Ok(())
     }
 
-    /// mark a record as revoked.
+    /// Add a revocation transaction to the [`Record`]
     pub fn revoke_record(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId) -> crate::Result<()> {
         if let Some(vault) = self.vaults.get_mut(&vid) {
             vault.revoke(key, rid.0)?;
@@ -147,7 +154,7 @@ impl<P: BoxProvider> DbView<P> {
         Ok(())
     }
 
-    /// Garbage collect a vault.
+    /// Garbage collect a [`Vault`]. Deletes any records that contain revocation transactions.
     pub fn garbage_collect_vault(&mut self, key: &Key<P>, vid: VaultId) -> crate::Result<()> {
         if let Some(vault) = self.vaults.get_mut(&vid) {
             if &vault.key == key {
@@ -158,6 +165,7 @@ impl<P: BoxProvider> DbView<P> {
         Ok(())
     }
 
+    /// Clears the entire [`Vault`] from memory.
     pub fn clear(&mut self) -> crate::Result<()> {
         self.vaults.clear();
 
@@ -166,6 +174,7 @@ impl<P: BoxProvider> DbView<P> {
 }
 
 impl<P: BoxProvider> Vault<P> {
+    /// Initialize a new [`Vault`]
     pub fn init_vault(key: &Key<P>) -> crate::Result<Vault<P>> {
         let entries = HashMap::new();
 
@@ -175,8 +184,8 @@ impl<P: BoxProvider> Vault<P> {
         })
     }
 
-    /// Adds a new entry to the vault if the entry doesn't already exist. Otherwise, updates the data in the existing
-    /// entry as long as it hasn't been revoked.
+    /// Adds a new [`Record`] to the [`Vault`] if the [`Record`] doesn't already exist. Otherwise, updates the data in
+    /// the existing [`Record`] as long as it hasn't been revoked.
     pub fn add_or_update_record(
         &mut self,
         key: &Key<P>,
@@ -197,7 +206,7 @@ impl<P: BoxProvider> Vault<P> {
         Ok(())
     }
 
-    /// List the hints and ids of the specified vault.
+    /// List the [`RecordHint`] values and [`RecordId`] values of the specified [`Vault`].
     pub(crate) fn list_hints_and_ids(&self, key: &Key<P>) -> Vec<(RecordId, RecordHint)> {
         let mut buf: Vec<(RecordId, RecordHint)> = Vec::new();
 
@@ -213,6 +222,7 @@ impl<P: BoxProvider> Vault<P> {
         buf
     }
 
+    /// Check if the [`Vault`] contains a [`Record`]
     fn contains_record(&self, key: &Key<P>, rid: RecordId) -> bool {
         if key == &self.key {
             self.entries.values().into_iter().any(|entry| entry.check_id(rid))
@@ -221,7 +231,7 @@ impl<P: BoxProvider> Vault<P> {
         }
     }
 
-    /// Revokes an entry by its chain id.  Does nothing if the entry doesn't exist.
+    /// Revokes an [`Record`] by its [`ChainId`].  Does nothing if the [`Record`] doesn't exist.
     pub fn revoke(&mut self, key: &Key<P>, id: ChainId) -> crate::Result<()> {
         if key == &self.key {
             if let Some(entry) = self.entries.get_mut(&id) {
@@ -232,6 +242,7 @@ impl<P: BoxProvider> Vault<P> {
         Ok(())
     }
 
+    /// Gets the decrypted [`GuardedVec`] from the [`Record`]
     pub fn get_guard(&self, key: &Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
         if key == &self.key {
             if let Some(entry) = self.entries.get(&id) {
@@ -262,7 +273,7 @@ impl<P: BoxProvider> Vault<P> {
 }
 
 impl Record {
-    // create a new entry in the vault.
+    // create a new [`Record`].
     pub fn new<P: BoxProvider>(
         key: &Key<P>,
         id: ChainId,
@@ -284,7 +295,7 @@ impl Record {
         })
     }
 
-    /// Get the id and record hint for this record.
+    /// gets the [`RecordHint`] and [`RecordId`] of the [`Record`].
     fn get_hint_and_id<P: BoxProvider>(&self, key: &Key<P>) -> Option<(RecordId, RecordHint)> {
         if self.revoke.is_none() {
             let tx = self.data.decrypt(key, self.id).expect("Unable to decrypt transaction");
@@ -302,7 +313,8 @@ impl Record {
         }
     }
 
-    /// Check to see if a record id is in this vault.
+    /// Check to see if a [`RecordId`] pairs with the [`Record`]. Comes back as false if there is a revocation
+    /// transaction
     fn check_id(&self, rid: RecordId) -> bool {
         if self.revoke.is_none() {
             rid.0 == self.id
@@ -311,7 +323,7 @@ impl Record {
         }
     }
 
-    /// Get the blob from this entry.
+    /// Get the blob from this [`Record`].
     fn get_blob<P: BoxProvider>(&self, key: &Key<P>, id: ChainId) -> crate::Result<GuardedVec<u8>> {
         // check if id id and tx id match.
         if self.id == id {
@@ -336,12 +348,12 @@ impl Record {
             }
         } else {
             Err(crate::Error::DatabaseError(
-                "Invalid id for entry. Ids must match a valid entry.".to_string(),
+                "Invalid id for record. Ids must match a valid record.".to_string(),
             ))
         }
     }
 
-    /// Update the data in an existing entry.
+    /// Update the data in an existing [`Record`].
     fn update<P: BoxProvider>(&mut self, key: &Key<P>, id: ChainId, new_data: &[u8]) -> crate::Result<()> {
         // check if ids match
         if self.id == id {
@@ -367,7 +379,7 @@ impl Record {
         Ok(())
     }
 
-    // add a recovation transaction to an entry.
+    // add a revocation transaction to the [`Record`].
     fn revoke<P: BoxProvider>(&mut self, key: &Key<P>, id: ChainId) -> crate::Result<()> {
         // check if id and id match.
         if self.id == id {

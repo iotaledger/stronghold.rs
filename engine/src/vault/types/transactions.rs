@@ -20,7 +20,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-/// generic transaction type enum
+/// A generic transaction type enum.  Data Transactions refer to `SealedBlobs` while revocation transactions are used to
+/// revoke records.
 #[repr(u64)]
 #[derive(Debug, Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub enum TransactionType {
@@ -51,7 +52,7 @@ impl TransactionType {
     }
 }
 
-/// a generic transaction (untyped)
+/// a generic transaction (untyped) in a byte format.
 #[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Transaction(Vec<u8>);
 
@@ -79,7 +80,7 @@ pub struct UntypedTransaction {
     pub id: ChainId,
 }
 
-/// a data transaction
+/// A structured data transaction
 #[repr(packed)]
 #[derive(Debug)]
 pub struct DataTransaction {
@@ -106,7 +107,7 @@ pub trait TypedTransaction {
     fn type_id() -> Val;
 }
 
-/// a revocation transaction
+/// A structured revocation transaction.
 #[repr(packed)]
 #[derive(Debug)]
 pub struct RevocationTransaction {
@@ -119,7 +120,7 @@ pub struct RevocationTransaction {
 }
 
 impl DataTransaction {
-    /// create a new data transaction.
+    /// create a new data transaction from a [`ChainId`], a len, a [`BlobId`] and a [`RecordHint`].
     pub fn new(id: ChainId, len: u64, blob: BlobId, record_hint: RecordHint) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
@@ -199,7 +200,8 @@ impl AsMut<[u8]> for Transaction {
     }
 }
 
-/// implemented traits.
+/// implemented traits for the transaction types.  Allows the transaction types to be turned into views and converted
+/// into bytes.
 impl AsView<UntypedTransaction> for Transaction {}
 impl AsView<DataTransaction> for Transaction {}
 impl AsViewMut<DataTransaction> for Transaction {}
@@ -237,7 +239,7 @@ impl AsMut<[u8]> for SealedTransaction {
 impl Encrypt<SealedTransaction> for Transaction {}
 impl Decrypt<(), Transaction> for SealedTransaction {}
 
-/// a sealed blob
+/// A sealed blob type which contains encrypted data in byte format.
 #[derive(Deserialize, Serialize, Clone)]
 pub struct SealedBlob(Vec<u8>);
 
@@ -265,6 +267,7 @@ impl AsMut<[u8]> for SealedBlob {
     }
 }
 
+/// Encryption and Decryption Traits for the [`SealedBlob`], [`Vec<u8>`], and [`&[u8]`] types.
 impl Decrypt<Infallible, Vec<u8>> for SealedBlob {}
 impl Encrypt<SealedBlob> for Vec<u8> {}
 impl Encrypt<SealedBlob> for &[u8] {}
