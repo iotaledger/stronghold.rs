@@ -181,9 +181,11 @@ fuzz_target!(|data: &[u8]| {
                         vec![],
                     )
                     .await;
+
             }
             Err(e) => {
-                error!("{}", e);
+                // force exit
+                panic!("{}", e);
             }
         };
     });

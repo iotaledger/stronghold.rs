@@ -10,4 +10,4 @@ ENV ARTIFACT_NAME=${ARTIFACT_NAME}
 ADD ./target/${BUILD_TARGET}/${ARTIFACT_NAME} /fuzz/${ARTIFACT_NAME}
 RUN sh -c env
 
-CMD ["sh", "-c","/fuzz/${ARTIFACT_NAME}","-rss_limit_mb=1024Mb"]
+CMD ["bash", "-c","/fuzz/${ARTIFACT_NAME}","-rss_limit_mb=800","-jobs=0", "-max_len=1000"]
