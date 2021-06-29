@@ -35,3 +35,7 @@ The `Secret` type provides fewer security features:
 * values are compared in constant time.
 * values are prevented from being Debugged.
 * Values can not be cloned.
+
+## Zeroing Allocator
+
+For the sake of providing a method of clearing out memory after it is used, the runtime also implements a zeroing allocator in the form of the `ZeroingAlloc` struct. This global allocator is merely a wrapper around the standard rust memory allocator which just adds a memory zeroing step to the dealloc process. The memory is zeroed by using the `sodium_memzero` function prior to being deallocated. 
