@@ -290,8 +290,6 @@ impl Stronghold {
             } else {
                 return StatusMessage::Error("Failed to garbage collect the vault".into());
             };
-
-            status
         } else {
             status = if let SHResults::ReturnRevoke(status) =
                 ask(&self.system, &self.target, SHRequest::RevokeData { location }).await
@@ -300,9 +298,9 @@ impl Stronghold {
             } else {
                 return StatusMessage::Error("Could not revoke data".into());
             };
-
-            status
         }
+
+        status
     }
 
     /// Garbage collects any revokes in a Vault based on the given vault_path and the current target actor.
@@ -539,7 +537,7 @@ impl Stronghold {
         }
     }
 
-    ///  Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.
+    /// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.
     pub async fn start_listening(&self, addr: Option<Multiaddr>) -> ResultMessage<Multiaddr> {
         match self
             .ask_communication_actor(CommunicationRequest::StartListening(addr))
@@ -549,6 +547,15 @@ impl Stronghold {
             Ok(CommunicationResults::StartListeningResult(Err(_))) => ResultMessage::Error("Listener Error".into()),
             Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
             Err(err) => ResultMessage::Error(err),
+        }
+    }
+
+    /// Stop listening on the swarm.
+    pub async fn stop_listening(&self) -> StatusMessage {
+        match self.ask_communication_actor(CommunicationRequest::RemoveListener).await {
+            Ok(CommunicationResults::RemoveListenerAck) => StatusMessage::OK,
+            Ok(_) => StatusMessage::Error("Invalid communication actor response".into()),
+            Err(err) => StatusMessage::Error(err),
         }
     }
 
