@@ -153,12 +153,13 @@ mod sync {
     #![allow(clippy::all)]
     #![allow(dead_code, unused_variables)]
 
+    use crate::state::client::Client;
+
     pub use super::*;
+    use engine::vault::RecordId;
     use serde::Serialize;
 
-    use engine::runtime::{Bytes, Guarded};
     use thiserror::Error as DeriveError;
-    use zeroize::Zeroize;
 
     // use engine::snapshot::diff::*;
 
@@ -168,19 +169,18 @@ mod sync {
         TypesIncompatible,
     }
 
-    pub struct Chunk<'a, T>
+    pub struct Chunk<T>
     where
-        T: Zeroize + Bytes,
+        T: Clone,
     {
-        entry: &'a Guarded<T>,
         data: Vec<T>,
     }
 
-    impl<'a, T> Chunk<'a, T>
+    impl<T> Chunk<T>
     where
-        T: Zeroize + Bytes + 'static,
+        T: Clone,
     {
-        pub fn into_chunks(&'a mut self, input: T) -> impl Iterator<Item = &'a T> {
+        pub fn into_chunks(&mut self, input: T) -> impl Iterator<Item = &T> {
             self.data.extend_from_slice(vec![input].as_slice());
             self.data.iter()
         }
@@ -191,8 +191,12 @@ mod sync {
     pub enum SynchronizePolicy {
         Allow,
         Deny,
-        Retain,
-        Delete,
+    }
+
+    pub enum EntryType {
+        RecordId(RecordId),
+        VaultId(VaultId),
+        ClientId(Client),
     }
 
     impl Default for SynchronizePolicy {
@@ -203,20 +207,28 @@ mod sync {
 
     pub trait Bootstrap<T>: Serialize
     where
-        T: Serialize,
+        T: Serialize + AsRef<EntryType>,
     {
-        fn with_chunks<'a, C>(self, chunks: Vec<Chunk<'a, C>>) -> Self
+        fn with_chunks<C>(self, chunks: Vec<Chunk<C>>) -> Self
         where
-            C: Zeroize + Bytes;
+            C: Clone;
 
         fn with_key<K>(self, key: K) -> Self
         where
             K: Into<Key>;
+
+        fn allow<Y>(self, policy: Y, target_id: T) -> Self
+        where
+            Y: AsRef<SynchronizePolicy>;
+
+        fn deny<Y>(self, policty: Y, target_id: T) -> Self
+        where
+            Y: AsRef<SynchronizePolicy>;
     }
 
     pub trait Synchronize<T>: Bootstrap<T>
     where
-        T: Serialize,
+        T: Serialize + AsRef<EntryType>,
     {
         fn lazy<I>(&self, other: T) -> I
         where
@@ -229,70 +241,83 @@ mod sync {
             Y: AsRef<SynchronizePolicy>;
     }
 
-    #[derive(Serialize)]
-    pub struct Local<P, T>
-    where
-        P: AsRef<Path> + Serialize,
-        T: Serialize,
-    {
-        storage_location: P,
-        data: T,
-    }
+    // #[derive(Serialize)]
+    // pub struct Local<P, T>
+    // where
+    //     P: AsRef<Path> + Serialize,
+    //     T: Serialize + AsRef<EntryType>,
+    // {
+    //     storage_location: P,
+    //     data: T,
+    // }
 
-    impl<P, T> Local<P, T>
-    where
-        P: AsRef<Path> + Serialize,
-        T: Serialize,
-    {
-        fn with_target(path: P, this: T) -> Self {
-            todo!()
-        }
-    }
+    // impl<P, T> Local<P, T>
+    // where
+    //     P: AsRef<Path> + Serialize,
+    //     T: Serialize + AsRef<EntryType>,
+    // {
+    //     fn with_target(path: P, this: T) -> Self {
+    //         todo!()
+    //     }
+    // }
 
-    impl<T, P> Bootstrap<T> for Local<P, T>
-    where
-        P: AsRef<Path> + Serialize,
-        T: Serialize,
-    {
-        #[allow(clippy::all)]
-        fn with_chunks<'a, C>(self, chunks: Vec<Chunk<'a, C>>) -> Self
-        where
-            C: Zeroize + Bytes,
-        {
-            todo!()
-        }
+    // impl<T, P> Bootstrap<T> for Local<P, T>
+    // where
+    //     P: AsRef<Path> + Serialize,
+    //     T: Serialize + AsRef<EntryType>,
+    // {
+    //     fn with_chunks<C>(self, chunks: Vec<Chunk<C>>) -> Self
+    //     where
+    //         C: Clone,
+    //     {
+    //         todo!()
+    //     }
 
-        fn with_key<K>(self, key: K) -> Self
-        where
-            K: Into<Key>,
-        {
-            todo!()
-        }
-    }
+    //     fn with_key<K>(self, key: K) -> Self
+    //     where
+    //         K: Into<Key>,
+    //     {
+    //         todo!()
+    //     }
 
-    impl<K, T> Synchronize<T> for K
-    where
-        T: Serialize,
-        K: Bootstrap<T> + Serialize,
-    {
-        fn lazy<I>(&self, other: T) -> I
-        where
-            I: Iterator,
-        {
-            todo!()
-        }
+    //     fn allow<Y>(self, policy: Y, target_id: T) -> Self
+    //     where
+    //         Y: AsRef<SynchronizePolicy>,
+    //     {
+    //         todo!()
+    //     }
 
-        fn full(&self, other: T) -> Result<T, SyncError> {
-            todo!()
-        }
+    //     fn deny<Y>(self, policty: Y, target_id: T) -> Self
+    //     where
+    //         Y: AsRef<SynchronizePolicy>,
+    //     {
+    //         todo!()
+    //     }
+    // }
 
-        fn partial<Y>(&self, other: T, policy: Y) -> Result<T, SyncError>
-        where
-            Y: AsRef<SynchronizePolicy>,
-        {
-            todo!()
-        }
-    }
+    // impl<K, T> Synchronize<T> for K
+    // where
+    //     T: Serialize,
+    //     K: Bootstrap<T> + Serialize,
+    // {
+    //     fn lazy<I>(&self, other: T) -> I
+    //     where
+    //         I: Iterator,
+    //     {
+    //         todo!()
+    //     }
+
+    //     fn full(&self, other: T) -> Result<T, SyncError> {
+    //         todo!()
+    //     }
+
+    //     fn partial<Y>(&self, other: T, policy: Y) -> Result<T, SyncError>
+    //     where
+    //         Y: AsRef<SynchronizePolicy>,
+    //     {
+    //         todo!()
+    //     }
+    // }
 
     #[cfg(test)]
     mod tests {
@@ -304,11 +329,13 @@ mod sync {
 
         #[test]
         fn test_synchronize() {
-            let a = Container::default();
-            let b = Container::default();
+            // let a = Container::default();
+            // let b = Container::default();
 
-            let local_sync = Local::with_target("/path/to/snapshot.stronghold", a).with_key([0u8; 32]);
-            assert!(local_sync.full(b).is_ok());
+            // let local_sync = Local::with_target("/path/to/snapshot.stronghold", a).with_key([0u8; 32]);
+
+            // local_sync.allow(SynchronizePolicy::Allow, b"non-secret-record-id");
+            // assert!(local_sync.full(b).is_ok());
         }
     }
 }

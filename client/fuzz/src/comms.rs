@@ -1,6 +1,6 @@
-//! Copyright 2021 IOTA Stiftung
-//! SPDX-License-Identifier: Apache-2.0
-//!
+// Copyright 2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 //! Stronghold communications fuzzer
 
 #![no_main]
@@ -9,14 +9,13 @@ use iota::{Location, Multiaddr, PeerId, ProcResult, RecordHint, ResultMessage};
 use iota_stronghold as iota;
 use libfuzzer_sys::fuzz_target;
 use log::*;
-use redis::{self, Client, Commands};
-use std::{error::Error, str::FromStr};
+use std::sync::Arc;
+use std::{collections::HashMap, error::Error, str::FromStr, sync::Mutex};
 use tokio::runtime::Runtime;
 use Location::Generic;
 
 const REDIS_KEY_PEER_ID: &str = "peer_id";
 const REDIS_KEY_MULTI_ADDR: &str = "multiaddr";
-const REDIS_INSTANCE_ADDR: &str = "redis://config";
 
 /// Parses a comma separated [`Multiaddr`]
 async fn parse_multiaddr(input: String) -> Result<Vec<Multiaddr>, Box<dyn Error>> {
@@ -28,29 +27,64 @@ async fn parse_multiaddr(input: String) -> Result<Vec<Multiaddr>, Box<dyn Error>
     Ok(result)
 }
 
-/// Connects to a `config` named redis instance, tries to read the [`PeerId`] and [`Multiaddr`]
-/// and returns them.
-async fn read_infos(timeout: u64) -> Result<(PeerId, Vec<Multiaddr>), Box<dyn Error>> {
-    let client = Client::open(REDIS_INSTANCE_ADDR)?;
-    let mut connection = client.get_connection_with_timeout(std::time::Duration::from_millis(timeout))?;
-    let p: String = connection.get(REDIS_KEY_PEER_ID)?;
-    let m: String = connection.get(REDIS_KEY_MULTI_ADDR)?;
+async fn read_infos(
+    map: Arc<Mutex<HashMap<&'static str, String>>>,
+) -> Result<(PeerId, Vec<Multiaddr>), Box<dyn Error>> {
+    let map = map.lock().unwrap();
+    let p = map.get(&REDIS_KEY_PEER_ID).unwrap();
+    let m = map.get(&REDIS_KEY_MULTI_ADDR).unwrap();
+
     let peer_id = PeerId::from_str(p.as_str())?;
 
-    let multiaddr: Vec<Multiaddr> = parse_multiaddr(m).await?;
+    let multiaddr: Vec<Multiaddr> = parse_multiaddr(m.clone()).await?;
 
     Ok((peer_id, multiaddr))
 }
 
+async fn start_listener(map: Arc<Mutex<HashMap<&'static str, String>>>) -> iota::Stronghold {
+    let system = iota::ActorSystem::new().unwrap();
+    let options = vec![];
+
+    let client_path = b"client_path".to_vec();
+
+    let mut stronghold = iota::Stronghold::init_stronghold_system(system, client_path, options);
+
+    // communications fuzzing
+    stronghold.spawn_communication();
+
+    stronghold
+        .start_listening(Some(Multiaddr::from_str("/ip4/0.0.0.0/tcp/7001").unwrap()))
+        .await;
+
+    if let iota::ResultMessage::Ok((id, v_address, _)) = stronghold.get_swarm_info().await {
+        let addr: String = v_address
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<String>>()
+            .join(",");
+
+        map.lock().unwrap().insert(REDIS_KEY_PEER_ID, id.to_base58());
+        map.lock().unwrap().insert(REDIS_KEY_MULTI_ADDR, addr.clone());
+
+        info!("LISTENING ON: peer_id: {:#?}, addr {:?}", id.to_base58(), addr);
+    }
+
+    stronghold
+}
+
 fuzz_target!(|data: &[u8]| {
     let runtime = Runtime::new().unwrap();
+    let map = Arc::from(Mutex::from(HashMap::new()));
+    let listener = runtime.block_on(start_listener(map.clone()));
+
+    info!("connecting to listener");
     let system = iota::ActorSystem::new().unwrap();
     let mut stronghold = iota::Stronghold::init_stronghold_system(system, b"client".to_vec(), vec![]);
 
     stronghold.spawn_communication();
 
-    runtime.block_on(async {
-        match read_infos(200).await {
+    runtime.block_on(async move {
+        match read_infos(map.clone()).await {
             Ok((peer_id, addr)) => {
                 // 1. Fuzz Write To Store
                 let vid = b"storepath_0";
@@ -181,12 +215,14 @@ fuzz_target!(|data: &[u8]| {
                         vec![],
                     )
                     .await;
-
             }
             Err(e) => {
                 // force exit
                 panic!("{}", e);
             }
         };
+        listener.stop_listening().await;
+        drop(listener);
+        drop(stronghold);
     });
 });

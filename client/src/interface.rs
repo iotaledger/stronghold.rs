@@ -454,10 +454,22 @@ impl Stronghold {
         }
     }
 
+    /// Tries to synchronize this snapshot with a second remote snapshot.
+    /// TODO: move this function into communications module
+    #[cfg(feature = "communication")]
+    pub async fn synchronize_snapshot_remote(&self) {
+
+        // TODO
+    }
+
     /// Tries to fully synchronize this snapshot with a second local snapshot.
     /// All serialized data from both snapshots will be taken into consideration, when
     /// synchronizing. The two snapshots need their own keys respectively, and a path to store the
     /// new synchronized snapshot.
+    ///
+    /// FIXME:
+    /// - set policies to allow / deny synchronization of certain entries (remote only)
+    /// - generalize the type of resource of the snapshot to synchronize
     pub async fn synchronize_snapshot(
         &self,
         client_path: Vec<u8>,
@@ -937,6 +949,14 @@ impl Stronghold {
                 };
                 block_on(waiter);
             }
+        }
+    }
+
+    /// Tries to stop listening on previously given configuration
+    pub async fn stop_listening(&self) -> StatusMessage {
+        match self.ask_communication_actor(CommunicationRequest::RemoveListener).await {
+            Ok(CommunicationResults::RemoveListenerAck) => StatusMessage::Ok(()),
+            _ => StatusMessage::Error("Could not exit listening".to_string()),
         }
     }
 }

@@ -1,6 +1,6 @@
-//! Copyright 2021 IOTA Stiftung
-//! SPDX-License-Identifier: Apache-2.0
-//!
+// Copyright 2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 //! Stronghold communications fuzzer util.
 //!
 //! This module keeps a running stronghold instance for
