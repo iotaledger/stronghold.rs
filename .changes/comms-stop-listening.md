@@ -1,6 +1,6 @@
 ---
-"iota-stronghold": minor
-"stronghold-communication": minor
+"iota-stronghold": patch
+"stronghold-communication": patch
 ---
 
 Add method `stop_listening` to `Stronghold` interface.
