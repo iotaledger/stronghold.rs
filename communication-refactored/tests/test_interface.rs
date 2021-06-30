@@ -44,7 +44,7 @@ fn init_comms() -> (
 
 #[test]
 fn test_send_req() {
-    let (mut bob_request_rx, mut bob) = init_comms();
+    let (mut bob_request_rx, bob) = init_comms();
     let bob_id = bob.get_peer_id();
     let bob_addr = task::block_on(bob.start_listening(None)).unwrap();
 

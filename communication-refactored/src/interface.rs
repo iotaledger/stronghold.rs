@@ -39,7 +39,7 @@ use std::{
     collections::HashMap,
     convert::TryFrom,
     fmt::Debug,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     thread::{self, JoinHandle},
     time::Duration,
 };
@@ -192,7 +192,7 @@ where
         ShCommunication {
             task_handle,
             swarm: swarm_rw_lock,
-            listeners: HashMap::new(),
+            listeners: Arc::new(RwLock::new(HashMap::new())),
             request_chan: self.inbound_req_chan,
             net_events_chan: self.net_events_chan,
             shutdown_chan: shutdown_tx,
@@ -210,7 +210,7 @@ where
     task_handle: JoinHandle<()>,
     shutdown_chan: oneshot::Sender<()>,
     swarm: Arc<Mutex<Swarm<NetBehaviour<Rq, Rs, P>>>>,
-    listeners: HashMap<ListenerId, Listener>,
+    listeners: Arc<RwLock<HashMap<ListenerId, Listener>>>,
     request_chan: Sender<ReceiveRequest<Rq, Rs>>,
     net_events_chan: Option<Sender<NetworkEvent>>,
 }
@@ -270,7 +270,7 @@ where
 
     /// Start listening on the network.
     /// If no address is given, the listening address will be OS-assigned.
-    pub async fn start_listening(&mut self, address: Option<Multiaddr>) -> Result<Multiaddr, TransportErr> {
+    pub async fn start_listening(&self, address: Option<Multiaddr>) -> Result<Multiaddr, TransportErr> {
         let mut swarm = self.swarm.lock().unwrap();
         let a = address.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress."));
         let listener_id = swarm.listen_on(a).map_err(TransportErr::from)?;
@@ -283,7 +283,8 @@ where
                         addrs: smallvec![addr.clone()],
                         uses_relay: None,
                     };
-                    self.listeners.insert(listener_id, listener);
+                    let mut listeners = self.listeners.write().unwrap();
+                    listeners.insert(listener_id, listener);
                     Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), event);
                     return Ok(addr);
                 }
@@ -296,7 +297,7 @@ where
     /// `<relay-addr>/<relay-id>/p2p-circuit/<local-id>`. This will establish a keep-alive connection to the relay,
     /// the relay will forward all requests to the local peer.
     pub async fn start_relayed_listening(
-        &mut self,
+        &self,
         relay: PeerId,
         relay_addr: Option<Multiaddr>,
     ) -> Result<Multiaddr, ListenRelayErr> {
@@ -321,7 +322,8 @@ where
                         addrs: smallvec![addr.clone()],
                         uses_relay: None,
                     };
-                    self.listeners.insert(listener_id, listener);
+                    let mut listeners = self.listeners.write().unwrap();
+                    listeners.insert(listener_id, listener);
                     return Ok(addr);
                 }
                 _ => Self::handle_swarm_event(self.request_chan.clone(), self.net_events_chan.clone(), event),
@@ -329,42 +331,42 @@ where
         }
     }
 
-    /// Currently active listeners.
-    pub fn get_listeners(&self) -> Vec<&Listener> {
-        self.listeners.values().collect()
+    //// Currently active listeners.
+    pub fn get_listeners(&self) -> Vec<Listener> {
+        let listeners = self.listeners.read().unwrap();
+        listeners.values().cloned().collect()
     }
 
     /// Stop listening on all listeners.
-    pub fn stop_listening(&mut self) {
-        let mut swarm = self.swarm.lock().unwrap();
-        for (listener_id, _) in self.listeners.drain() {
-            let _ = swarm.remove_listener(listener_id);
-        }
+    pub fn stop_listening(&self) {
+        self.remove_listener(|_| true);
     }
 
     /// Stop listening on the listener associated with the given address.
-    pub fn stop_listening_addr(&mut self, addr: Multiaddr) {
-        let mut remove_listeners = Vec::new();
-        for (id, listener) in self.listeners.iter() {
-            if listener.addrs.contains(&addr) {
-                remove_listeners.push(*id);
-            }
-        }
-        for id in remove_listeners {
-            let _ = self.listeners.remove(&id);
-        }
+    pub fn stop_listening_addr(&self, addr: Multiaddr) {
+        self.remove_listener(|l: &Listener| l.addrs.contains(&addr));
     }
 
     /// Stop listening via the given relay.
-    pub fn stop_listening_relay(&mut self, relay: PeerId) {
+    pub fn stop_listening_relay(&self, relay: PeerId) {
+        self.remove_listener(|l: &Listener| l.uses_relay == Some(relay));
+    }
+
+    fn remove_listener<F: Fn(&Listener) -> bool>(&self, cond: F) {
         let mut remove_listeners = Vec::new();
-        for (id, listener) in self.listeners.iter() {
-            if listener.uses_relay == Some(relay) {
+        let mut listeners = self.listeners.write().unwrap();
+        for (id, listener) in listeners.iter() {
+            if cond(&listener) {
                 remove_listeners.push(*id);
             }
         }
+        if remove_listeners.is_empty() {
+            return;
+        }
+        let mut swarm = self.swarm.lock().unwrap();
         for id in remove_listeners {
-            let _ = self.listeners.remove(&id);
+            let _ = listeners.remove(&id);
+            let _ = swarm.remove_listener(id);
         }
     }
 
@@ -476,7 +478,7 @@ where
     ///
     /// Returns the relayed address of the local peer (`<relay-addr>/<relay-id>/p2p-circuit/<local-id>),
     /// if an address for the relay is known.
-    pub fn use_specific_relay(&mut self, target: PeerId, relay: PeerId, is_exclusive: bool) -> Option<Multiaddr> {
+    pub fn use_specific_relay(&self, target: PeerId, relay: PeerId, is_exclusive: bool) -> Option<Multiaddr> {
         let mut swarm = self.swarm.lock().unwrap();
         swarm.behaviour_mut().use_specific_relay(target, relay, is_exclusive)
     }

@@ -92,6 +92,7 @@ pub struct ResponseReceiver<U> {
 }
 
 /// Active Listener of the local peer.
+#[derive(Debug, Clone)]
 pub struct Listener {
     /// The addresses associated with this listener.
     pub addrs: SmallVec<[Multiaddr; 6]>,

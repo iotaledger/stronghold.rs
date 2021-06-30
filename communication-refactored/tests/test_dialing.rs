@@ -299,7 +299,7 @@ impl TestConfig {
 
 #[test]
 fn test_dialing() {
-    let (_, mut relay_comms) = init_comms();
+    let (_, relay_comms) = init_comms();
     let relay_id = relay_comms.get_peer_id();
     let relay_addr = task::block_on(relay_comms.start_listening(None)).unwrap();
 

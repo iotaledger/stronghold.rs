@@ -95,8 +95,8 @@ impl TestPermission {
 }
 
 struct RulesTestConfig<'a> {
-    comms_a: &'a mut TestComms,
-    comms_b: &'a mut TestComms,
+    comms_a: &'a TestComms,
+    comms_b: &'a TestComms,
     b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
 
@@ -125,8 +125,8 @@ impl<'a> fmt::Display for RulesTestConfig<'a> {
 
 impl<'a> RulesTestConfig<'a> {
     fn new_test_case(
-        comms_a: &'a mut TestComms,
-        comms_b: &'a mut TestComms,
+        comms_a: &'a TestComms,
+        comms_b: &'a TestComms,
         b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ) -> Self {
@@ -275,15 +275,15 @@ impl<'a> RulesTestConfig<'a> {
 
 #[test]
 fn firewall_permissions() {
-    let (_, _, _, mut comms_a) = init_comms();
-    let (_, mut b_rq_rx, mut b_event_rx, mut comms_b) = init_comms();
+    let (_, _, _, comms_a) = init_comms();
+    let (_, mut b_rq_rx, mut b_event_rx, comms_b) = init_comms();
     let peer_b_id = comms_b.get_peer_id();
 
     let peer_b_addr = task::block_on(comms_b.start_listening(None)).unwrap();
     comms_a.add_address(peer_b_id, peer_b_addr);
 
     for _ in 0..50 {
-        let mut test = RulesTestConfig::new_test_case(&mut comms_a, &mut comms_b, &mut b_event_rx, &mut b_rq_rx);
+        let mut test = RulesTestConfig::new_test_case(&comms_a, &comms_b, &mut b_event_rx, &mut b_rq_rx);
         test.configure_firewall();
         thread::sleep(Duration::from_millis(200));
         task::block_on(test.test_request());
@@ -335,10 +335,10 @@ enum TestPeer {
 }
 
 struct AskTestConfig<'a> {
-    comms_a: &'a mut TestComms,
+    comms_a: &'a TestComms,
     firewall_a: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
 
-    comms_b: &'a mut TestComms,
+    comms_b: &'a TestComms,
     firewall_b: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
     b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
@@ -361,9 +361,9 @@ impl<'a> fmt::Display for AskTestConfig<'a> {
 
 impl<'a> AskTestConfig<'a> {
     fn new_test_case(
-        comms_a: &'a mut TestComms,
+        comms_a: &'a TestComms,
         firewall_a: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
-        comms_b: &'a mut TestComms,
+        comms_b: &'a TestComms,
         firewall_b: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
         b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
@@ -544,8 +544,8 @@ impl<'a> AskTestConfig<'a> {
 
 #[test]
 fn firewall_ask() {
-    let (mut firewall_a, _, _, mut comms_a) = init_comms();
-    let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut comms_b) = init_comms();
+    let (mut firewall_a, _, _, comms_a) = init_comms();
+    let (mut firewall_b, mut b_rq_rx, mut b_event_rx, comms_b) = init_comms();
     let peer_b_id = comms_b.get_peer_id();
 
     let peer_b_addr = task::block_on(comms_b.start_listening(None)).unwrap();
@@ -553,9 +553,9 @@ fn firewall_ask() {
 
     for _ in 0..100 {
         let mut test = AskTestConfig::new_test_case(
-            &mut comms_a,
+            &comms_a,
             &mut firewall_a,
-            &mut comms_b,
+            &comms_b,
             &mut firewall_b,
             &mut b_event_rx,
             &mut b_rq_rx,
