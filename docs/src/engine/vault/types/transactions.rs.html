@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `engine/src/vault/types/transactions.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>transactions.rs - source</title><link rel="stylesheet" type="text/css" href="../../../../normalize.css"><link rel="stylesheet" type="text/css" href="../../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../../../ayu.css" disabled ><script id="default-settings"></script><script src="../../../../storage.js"></script><script src="../../../../crates.js"></script><noscript><link rel="stylesheet" href="../../../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../../../favicon.svg">
 <link rel="alternate icon" type="image/png" href="../../../../favicon-16x16.png">
-<link rel="alternate icon" type="image/png" href="../../../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../../../engine/index.html'><div class='logo-container rust-logo'><img src='../../../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../../../brush.svg" width="18" height="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
+<link rel="alternate icon" type="image/png" href="../../../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../../../engine/index.html'><div class='logo-container rust-logo'><img src='../../../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../../../brush.svg" width="18" height="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
                 <a id="settings-menu" href="../../../../settings.html"><img src="../../../../wheel.svg" width="18" height="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
 <span id="2">  2</span>
 <span id="3">  3</span>
@@ -275,10 +275,10 @@
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
 
-<span class="attribute">#![<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">new_ret_no_self</span>)]</span> <span class="comment">// Used for new() fns in InitTransaction, DataTransaction &amp; RevocationTransaction impls</span>
+<span class="attribute">#![<span class="ident">allow</span>(<span class="ident">clippy::new_ret_no_self</span>)]</span> <span class="comment">// Used for new() fns in InitTransaction, DataTransaction &amp; RevocationTransaction impls</span>
                                    <span class="comment">// These fns don&#39;t return Self, instead return Transaction struct which let us write this code in a simpler way</span>
 
-<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">vault</span>::{
+<span class="kw">use</span> <span class="kw">crate</span><span class="ident">::vault</span>::{
     <span class="ident">crypto_box</span>::{<span class="ident">Decrypt</span>, <span class="ident">Encrypt</span>},
     <span class="ident">types</span>::{
         <span class="ident">utils</span>::{<span class="ident">BlobId</span>, <span class="ident">ChainId</span>, <span class="ident">RecordHint</span>, <span class="ident">Val</span>},
@@ -289,7 +289,7 @@
 <span class="kw">use</span> <span class="ident">std</span>::{
     <span class="ident">convert</span>::{<span class="ident">Infallible</span>, <span class="ident">TryFrom</span>},
     <span class="ident">fmt</span>::{<span class="self">self</span>, <span class="ident">Debug</span>, <span class="ident">Formatter</span>},
-    <span class="ident">hash</span>::<span class="ident">Hash</span>,
+    <span class="ident">hash::Hash</span>,
 };
 
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
@@ -303,14 +303,14 @@
 }
 
 <span class="kw">impl</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">Val</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">TransactionType</span> {
-    <span class="kw">type</span> <span class="ident">Error</span> <span class="op">=</span> <span class="kw">crate</span>::<span class="ident">Error</span>;
+    <span class="kw">type</span> <span class="ident">Error</span> <span class="op">=</span> <span class="kw">crate</span><span class="ident">::Error</span>;
 
-    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">v</span>: <span class="ident">Val</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span>::<span class="ident">Error</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">v</span>: <span class="ident">Val</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span><span class="ident">::Error</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="ident">v</span>.<span class="ident">u64</span>() {
-            <span class="number">1</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">TransactionType</span>::<span class="ident">Data</span>),
-            <span class="number">2</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">TransactionType</span>::<span class="ident">Revocation</span>),
+            <span class="number">1</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">TransactionType::Data</span>),
+            <span class="number">2</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">TransactionType::Revocation</span>),
 
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="kw">crate</span>::<span class="ident">Error</span>::<span class="ident">ValueError</span>(<span class="macro">format</span><span class="macro">!</span>(
+            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="kw">crate</span><span class="ident">::Error::ValueError</span>(<span class="macro">format!</span>(
                 <span class="string">&quot;{:?} is not a valid transaction type&quot;</span>,
                 <span class="ident">v</span>
             ))),
@@ -321,7 +321,7 @@
 <span class="kw">impl</span> <span class="ident">TransactionType</span> {
     <span class="doccomment">/// convert transaction type into its associated number value.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">val</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Val</span> {
-        <span class="ident">Val</span>::<span class="ident">from</span>(<span class="kw-2">*</span><span class="self">self</span> <span class="kw">as</span> <span class="ident">u64</span>)
+        <span class="ident">Val::from</span>(<span class="kw-2">*</span><span class="self">self</span> <span class="kw">as</span> <span class="ident">u64</span>)
     }
 }
 
@@ -330,12 +330,12 @@
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Transaction</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>);
 
 <span class="kw">impl</span> <span class="ident">Debug</span> <span class="kw">for</span> <span class="ident">Transaction</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Formatter</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">fmt</span>::<span class="prelude-ty">Result</span> {
+    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Formatter</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">fmt::Result</span> {
         <span class="kw">let</span> <span class="ident">t</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">untyped</span>();
         <span class="ident">f</span>.<span class="ident">debug_struct</span>(<span class="string">&quot;Transaction&quot;</span>)
             .<span class="ident">field</span>(
                 <span class="string">&quot;type&quot;</span>,
-                <span class="kw-2">&amp;</span><span class="ident">TransactionType</span>::<span class="ident">try_from</span>(<span class="ident">t</span>.<span class="ident">type_id</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">fmt</span>::<span class="ident">Error</span> {})<span class="question-mark">?</span>,
+                <span class="kw-2">&amp;</span><span class="ident">TransactionType::try_from</span>(<span class="ident">t</span>.<span class="ident">type_id</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">fmt::Error</span> {})<span class="question-mark">?</span>,
             )
             .<span class="ident">field</span>(<span class="string">&quot;id&quot;</span>, <span class="kw-2">&amp;</span><span class="ident">t</span>.<span class="ident">id</span>)
             .<span class="ident">finish</span>()
@@ -395,10 +395,10 @@
 <span class="kw">impl</span> <span class="ident">DataTransaction</span> {
     <span class="doccomment">/// create a new data transaction.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">id</span>: <span class="ident">ChainId</span>, <span class="ident">len</span>: <span class="ident">u64</span>, <span class="ident">blob</span>: <span class="ident">BlobId</span>, <span class="ident">record_hint</span>: <span class="ident">RecordHint</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Transaction</span> {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">transaction</span> <span class="op">=</span> <span class="ident">Transaction</span>::<span class="ident">default</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">transaction</span> <span class="op">=</span> <span class="ident">Transaction::default</span>();
         <span class="kw">let</span> <span class="ident">view</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span> <span class="op">=</span> <span class="ident">transaction</span>.<span class="ident">view_mut</span>();
 
-        <span class="ident">view</span>.<span class="ident">type_id</span> <span class="op">=</span> (<span class="ident">TransactionType</span>::<span class="ident">Data</span> <span class="kw">as</span> <span class="ident">u64</span>).<span class="ident">into</span>();
+        <span class="ident">view</span>.<span class="ident">type_id</span> <span class="op">=</span> (<span class="ident">TransactionType::Data</span> <span class="kw">as</span> <span class="ident">u64</span>).<span class="ident">into</span>();
         <span class="ident">view</span>.<span class="ident">len</span> <span class="op">=</span> <span class="ident">len</span>.<span class="ident">into</span>();
         <span class="ident">view</span>.<span class="ident">id</span> <span class="op">=</span> <span class="ident">id</span>;
         <span class="ident">view</span>.<span class="ident">blob</span> <span class="op">=</span> <span class="ident">blob</span>;
@@ -409,24 +409,24 @@
 
 <span class="kw">impl</span> <span class="ident">TypedTransaction</span> <span class="kw">for</span> <span class="ident">DataTransaction</span> {
     <span class="kw">fn</span> <span class="ident">type_id</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Val</span> {
-        <span class="ident">TransactionType</span>::<span class="ident">Data</span>.<span class="ident">val</span>()
+        <span class="ident">TransactionType::Data</span>.<span class="ident">val</span>()
     }
 }
 
 <span class="kw">impl</span> <span class="ident">RevocationTransaction</span> {
     <span class="doccomment">/// create a new revocation transaction.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">id</span>: <span class="ident">ChainId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Transaction</span> {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">transaction</span> <span class="op">=</span> <span class="ident">Transaction</span>::<span class="ident">default</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">transaction</span> <span class="op">=</span> <span class="ident">Transaction::default</span>();
         <span class="kw">let</span> <span class="ident">view</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span> <span class="op">=</span> <span class="ident">transaction</span>.<span class="ident">view_mut</span>();
 
-        <span class="ident">view</span>.<span class="ident">type_id</span> <span class="op">=</span> (<span class="ident">TransactionType</span>::<span class="ident">Revocation</span> <span class="kw">as</span> <span class="ident">u64</span>).<span class="ident">into</span>();
+        <span class="ident">view</span>.<span class="ident">type_id</span> <span class="op">=</span> (<span class="ident">TransactionType::Revocation</span> <span class="kw">as</span> <span class="ident">u64</span>).<span class="ident">into</span>();
         <span class="ident">view</span>.<span class="ident">id</span> <span class="op">=</span> <span class="ident">id</span>;
         <span class="ident">transaction</span>
     }
 }
 <span class="kw">impl</span> <span class="ident">TypedTransaction</span> <span class="kw">for</span> <span class="ident">RevocationTransaction</span> {
     <span class="kw">fn</span> <span class="ident">type_id</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Val</span> {
-        <span class="ident">TransactionType</span>::<span class="ident">Revocation</span>.<span class="ident">val</span>()
+        <span class="ident">TransactionType::Revocation</span>.<span class="ident">val</span>()
     }
 }
 
@@ -440,7 +440,7 @@
         <span class="self">Self</span>: <span class="ident">AsView</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>,
     {
         <span class="kw">match</span> <span class="self">self</span>.<span class="ident">untyped</span>().<span class="ident">type_id</span> {
-            <span class="ident">type_id</span> <span class="kw">if</span> <span class="ident">type_id</span> <span class="op">=</span><span class="op">=</span> <span class="ident">T</span>::<span class="ident">type_id</span>() <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="self">self</span>.<span class="ident">view</span>()),
+            <span class="ident">type_id</span> <span class="kw">if</span> <span class="ident">type_id</span> <span class="op">=</span><span class="op">=</span> <span class="ident">T::type_id</span>() <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="self">self</span>.<span class="ident">view</span>()),
             <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">None</span>,
         }
     }
@@ -450,12 +450,12 @@
 
 <span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">Transaction</span> {
     <span class="kw">fn</span> <span class="ident">default</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="self">Self</span>(<span class="macro">vec</span><span class="macro">!</span>[<span class="number">0</span>; <span class="ident">TRANSACTION_MAX_BYTES</span>])
+        <span class="self">Self</span>(<span class="macro">vec!</span>[<span class="number">0</span>; <span class="ident">TRANSACTION_MAX_BYTES</span>])
     }
 }
 <span class="kw">impl</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Transaction</span> {
     <span class="kw">type</span> <span class="ident">Error</span> <span class="op">=</span> ();
-    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">vec</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span>::<span class="ident">Error</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">vec</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span><span class="ident">::Error</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="ident">vec</span>.<span class="ident">len</span>() {
             <span class="ident">TRANSACTION_MAX_BYTES</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="self">Self</span>(<span class="ident">vec</span>)),
             <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(()),
@@ -543,5 +543,5 @@
 <span class="kw">impl</span> <span class="ident">Encrypt</span><span class="op">&lt;</span><span class="ident">SealedBlob</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span> {}
 <span class="kw">impl</span> <span class="ident">Encrypt</span><span class="op">&lt;</span><span class="ident">SealedBlob</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="kw-2">&amp;</span>[<span class="ident">u8</span>] {}
 </pre></div>
-</section><section id="search" class="content hidden"></section><section class="footer"></section><div id="rustdoc-vars" data-root-path="../../../../" data-current-crate="engine" data-search-js="../../../../search-index.js"></div>
+</section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../../../../" data-current-crate="engine" data-search-index-js="../../../../search-index.js" data-search-js="../../../../search.js"></div>
     <script src="../../../../main.js"></script><script src="../../../../source-script.js"></script><script src="../../../../source-files.js"></script></body></html>

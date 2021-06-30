@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `client/src/interface.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>interface.rs - source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings"></script><script src="../../storage.js"></script><script src="../../crates.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg">
 <link rel="alternate icon" type="image/png" href="../../favicon-16x16.png">
-<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../iota_stronghold/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" height="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
+<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../iota_stronghold/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" height="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
                 <a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" height="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
 <span id="2">  2</span>
 <span id="3">  3</span>
@@ -901,35 +901,42 @@
 <span id="898">898</span>
 <span id="899">899</span>
 <span id="900">900</span>
+<span id="901">901</span>
+<span id="902">902</span>
+<span id="903">903</span>
+<span id="904">904</span>
+<span id="905">905</span>
+<span id="906">906</span>
+<span id="907">907</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
 
-<span class="kw">use</span> <span class="ident">riker</span>::<span class="ident">actors</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="ident">riker::actors</span>::<span class="kw-2">*</span>;
 
 <span class="kw">use</span> <span class="ident">futures</span>::{
-    <span class="ident">channel</span>::<span class="ident">mpsc</span>::{<span class="ident">channel</span>, <span class="ident">Receiver</span>, <span class="ident">Sender</span>},
-    <span class="ident">future</span>::<span class="ident">RemoteHandle</span>,
+    <span class="ident">channel::mpsc</span>::{<span class="ident">channel</span>, <span class="ident">Receiver</span>, <span class="ident">Sender</span>},
+    <span class="ident">future::RemoteHandle</span>,
 };
 
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-<span class="kw">use</span> <span class="ident">futures</span>::{<span class="ident">executor</span>::<span class="ident">block_on</span>, <span class="ident">StreamExt</span>};
+<span class="kw">use</span> <span class="ident">futures</span>::{<span class="ident">executor::block_on</span>, <span class="ident">StreamExt</span>};
 
-<span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">collections</span>::<span class="ident">HashMap</span>, <span class="ident">path</span>::<span class="ident">PathBuf</span>, <span class="ident">time</span>::<span class="ident">Duration</span>};
-<span class="kw">use</span> <span class="ident">zeroize</span>::<span class="ident">Zeroize</span>;
+<span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">collections::HashMap</span>, <span class="ident">path::PathBuf</span>, <span class="ident">time::Duration</span>};
+<span class="kw">use</span> <span class="ident">zeroize::Zeroize</span>;
 
-<span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::<span class="ident">RecordHint</span>;
+<span class="kw">use</span> <span class="ident">engine::vault::RecordHint</span>;
 
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">actors</span>::<span class="ident">SHRequestPermission</span>;
+<span class="kw">use</span> <span class="kw">crate</span><span class="ident">::actors::SHRequestPermission</span>;
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">utils</span>::<span class="ident">ResultMessage</span>;
+<span class="kw">use</span> <span class="kw">crate</span><span class="ident">::utils::ResultMessage</span>;
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">actors</span>::{<span class="ident">InternalActor</span>, <span class="ident">ProcResult</span>, <span class="ident">Procedure</span>, <span class="ident">SHRequest</span>, <span class="ident">SHResults</span>},
     <span class="ident">line_error</span>,
     <span class="ident">state</span>::{
         <span class="ident">client</span>::{<span class="ident">Client</span>, <span class="ident">ClientMsg</span>},
-        <span class="ident">snapshot</span>::<span class="ident">Snapshot</span>,
+        <span class="ident">snapshot::Snapshot</span>,
     },
     <span class="ident">utils</span>::{<span class="ident">LoadFromPath</span>, <span class="ident">StatusMessage</span>, <span class="ident">StrongholdFlags</span>, <span class="ident">VaultFlags</span>},
     <span class="ident">Location</span>, <span class="ident">Provider</span>,
@@ -940,12 +947,12 @@
         <span class="ident">CommunicationActor</span>, <span class="ident">CommunicationActorConfig</span>, <span class="ident">CommunicationRequest</span>, <span class="ident">CommunicationResults</span>,
         <span class="ident">EstablishedConnection</span>, <span class="ident">FirewallPermission</span>, <span class="ident">FirewallRule</span>, <span class="ident">RelayDirection</span>, <span class="ident">RequestDirection</span>, <span class="ident">VariantPermission</span>,
     },
-    <span class="ident">behaviour</span>::<span class="ident">BehaviourConfig</span>,
+    <span class="ident">behaviour::BehaviourConfig</span>,
     <span class="ident">libp2p</span>::{<span class="ident">Keypair</span>, <span class="ident">Multiaddr</span>, <span class="ident">PeerId</span>},
 };
-<span class="kw">use</span> <span class="ident">stronghold_utils</span>::<span class="ident">ask</span>;
+<span class="kw">use</span> <span class="ident">stronghold_utils::ask</span>;
 
-<span class="kw">use</span> <span class="ident">engine</span>::<span class="ident">vault</span>::{<span class="ident">ClientId</span>, <span class="ident">RecordId</span>};
+<span class="kw">use</span> <span class="ident">engine::vault</span>::{<span class="ident">ClientId</span>, <span class="ident">RecordId</span>};
 
 <span class="doccomment">/// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of</span>
 <span class="doccomment">/// metadata to interpret the data in the vault and store.</span>
@@ -965,18 +972,18 @@
     <span class="doccomment">/// Initializes a new instance of the system.  Sets up the first client actor. Accepts a `ActorSystem`, the first</span>
     <span class="doccomment">/// client_path: `Vec&lt;u8&gt;` and any `StrongholdFlags` which pertain to the first actor.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">init_stronghold_system</span>(<span class="ident">system</span>: <span class="ident">ActorSystem</span>, <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">_options</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">StrongholdFlags</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId</span>::<span class="ident">load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
         <span class="kw">let</span> <span class="ident">id_str</span>: <span class="ident">String</span> <span class="op">=</span> <span class="ident">client_id</span>.<span class="ident">into</span>();
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">clients</span> <span class="op">=</span> <span class="ident">HashMap</span>::<span class="ident">new</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">clients</span> <span class="op">=</span> <span class="ident">HashMap::new</span>();
 
         <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="ident">system</span>
             .<span class="ident">actor_of_args</span>::<span class="op">&lt;</span><span class="ident">Client</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="ident">id_str</span>, <span class="ident">client_id</span>)
-            .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+            .<span class="ident">expect</span>(<span class="macro">line_error!</span>());
         <span class="ident">system</span>
-            .<span class="ident">actor_of_args</span>::<span class="op">&lt;</span><span class="ident">InternalActor</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;internal-{}&quot;</span>, <span class="ident">id_str</span>), <span class="ident">client_id</span>)
-            .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+            .<span class="ident">actor_of_args</span>::<span class="op">&lt;</span><span class="ident">InternalActor</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">&quot;internal-{}&quot;</span>, <span class="ident">id_str</span>), <span class="ident">client_id</span>)
+            .<span class="ident">expect</span>(<span class="macro">line_error!</span>());
 
-        <span class="ident">system</span>.<span class="ident">actor_of</span>::<span class="op">&lt;</span><span class="ident">Snapshot</span><span class="op">&gt;</span>(<span class="string">&quot;snapshot&quot;</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+        <span class="ident">system</span>.<span class="ident">actor_of</span>::<span class="op">&lt;</span><span class="ident">Snapshot</span><span class="op">&gt;</span>(<span class="string">&quot;snapshot&quot;</span>).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
 
         <span class="ident">clients</span>.<span class="ident">insert</span>(<span class="ident">client_id</span>, <span class="ident">client</span>.<span class="ident">clone</span>());
 
@@ -998,32 +1005,32 @@
         <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
         <span class="ident">_options</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">StrongholdFlags</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId</span>::<span class="ident">load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>()).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>()).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
         <span class="kw">let</span> <span class="ident">id_str</span>: <span class="ident">String</span> <span class="op">=</span> <span class="ident">client_id</span>.<span class="ident">into</span>();
 
-        <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy</span>::<span class="ident">map_entry</span>)]</span>
+        <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::map_entry</span>)]</span>
         <span class="kw">if</span> <span class="self">self</span>.<span class="ident">clients</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">client_id</span>) {
             <span class="self">self</span>.<span class="ident">switch_actor_target</span>(<span class="ident">client_path</span>).<span class="kw">await</span>;
         } <span class="kw">else</span> {
             <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="self">self</span>
                 .<span class="ident">system</span>
                 .<span class="ident">actor_of_args</span>::<span class="op">&lt;</span><span class="ident">Client</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="ident">id_str</span>, <span class="ident">client_id</span>)
-                .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+                .<span class="ident">expect</span>(<span class="macro">line_error!</span>());
             <span class="self">self</span>.<span class="ident">system</span>
-                .<span class="ident">actor_of_args</span>::<span class="op">&lt;</span><span class="ident">InternalActor</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;internal-{}&quot;</span>, <span class="ident">id_str</span>), <span class="ident">client_id</span>)
-                .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+                .<span class="ident">actor_of_args</span>::<span class="op">&lt;</span><span class="ident">InternalActor</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">&quot;internal-{}&quot;</span>, <span class="ident">id_str</span>), <span class="ident">client_id</span>)
+                .<span class="ident">expect</span>(<span class="macro">line_error!</span>());
 
             <span class="self">self</span>.<span class="ident">clients</span>.<span class="ident">insert</span>(<span class="ident">client_id</span>, <span class="ident">client</span>.<span class="ident">clone</span>());
 
             <span class="self">self</span>.<span class="ident">target</span> <span class="op">=</span> <span class="ident">client</span>;
         }
 
-        <span class="ident">StatusMessage</span>::<span class="ident">OK</span>
+        <span class="ident">StatusMessage::OK</span>
     }
 
     <span class="doccomment">/// Switches the actor target to another actor in the system specified by the client_path: `Vec&lt;u8&gt;`.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">switch_actor_target</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId</span>::<span class="ident">load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>()).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>()).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
 
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">client</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">clients</span>.<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">client_id</span>) {
             <span class="self">self</span>.<span class="ident">target</span> <span class="op">=</span> <span class="ident">client</span>.<span class="ident">clone</span>();
@@ -1033,19 +1040,19 @@
                 <span class="kw">match</span> <span class="ident">ask</span>(
                     <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
                     <span class="ident">communication_actor</span>,
-                    <span class="ident">CommunicationRequest</span>::<span class="ident">SetClientRef</span>(<span class="ident">client</span>.<span class="ident">clone</span>()),
+                    <span class="ident">CommunicationRequest::SetClientRef</span>(<span class="ident">client</span>.<span class="ident">clone</span>()),
                 )
                 .<span class="kw">await</span>
                 {
-                    <span class="ident">CommunicationResults</span>::<span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span>::<span class="ident">SetClientRefAck</span> <span class="op">=</span><span class="op">&gt;</span> {}
+                    <span class="ident">CommunicationResults</span>::<span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span><span class="ident">::SetClientRefAck</span> <span class="op">=</span><span class="op">&gt;</span> {}
                     <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Could not set communication client target&quot;</span>.<span class="ident">into</span>());
+                        <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Could not set communication client target&quot;</span>.<span class="ident">into</span>());
                     }
                 }
             }
-            <span class="ident">StatusMessage</span>::<span class="ident">OK</span>
+            <span class="ident">StatusMessage::OK</span>
         } <span class="kw">else</span> {
-            <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to find the actor with that client path&quot;</span>.<span class="ident">into</span>())
+            <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Unable to find the actor with that client path&quot;</span>.<span class="ident">into</span>())
         }
     }
 
@@ -1062,15 +1069,15 @@
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">location</span>.<span class="ident">vault_path</span>();
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">vault_path</span>.<span class="ident">to_vec</span>();
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnExistsVault</span>(<span class="ident">b</span>) <span class="op">=</span>
-            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">CheckVault</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>())).<span class="kw">await</span>
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnExistsVault</span>(<span class="ident">b</span>) <span class="op">=</span>
+            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::CheckVault</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>())).<span class="kw">await</span>
         {
             <span class="comment">// check if vault exists</span>
             <span class="kw">if</span> <span class="ident">b</span> {
-                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnWriteVault</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(
+                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnWriteVault</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(
                     <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
                     <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>,
-                    <span class="ident">SHRequest</span>::<span class="ident">WriteToVault</span> {
+                    <span class="ident">SHRequest::WriteToVault</span> {
                         <span class="ident">location</span>: <span class="ident">location</span>.<span class="ident">clone</span>(),
                         <span class="ident">payload</span>: <span class="ident">payload</span>.<span class="ident">clone</span>(),
                         <span class="ident">hint</span>,
@@ -1080,22 +1087,22 @@
                 {
                     <span class="kw">return</span> <span class="ident">status</span>;
                 } <span class="kw">else</span> {
-                    <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Error Writing data&quot;</span>.<span class="ident">into</span>());
+                    <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Error Writing data&quot;</span>.<span class="ident">into</span>());
                 };
             } <span class="kw">else</span> {
                 <span class="comment">// no vault so create new one before writing.</span>
-                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnCreateVault</span>(<span class="ident">status</span>) <span class="op">=</span>
-                    <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">CreateNewVault</span>(<span class="ident">location</span>.<span class="ident">clone</span>())).<span class="kw">await</span>
+                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnCreateVault</span>(<span class="ident">status</span>) <span class="op">=</span>
+                    <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::CreateNewVault</span>(<span class="ident">location</span>.<span class="ident">clone</span>())).<span class="kw">await</span>
                 {
                     <span class="ident">status</span>
                 } <span class="kw">else</span> {
-                    <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid Message&quot;</span>.<span class="ident">into</span>());
+                    <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Invalid Message&quot;</span>.<span class="ident">into</span>());
                 };
 
-                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnWriteVault</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(
+                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnWriteVault</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(
                     <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
                     <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>,
-                    <span class="ident">SHRequest</span>::<span class="ident">WriteToVault</span> {
+                    <span class="ident">SHRequest::WriteToVault</span> {
                         <span class="ident">location</span>,
                         <span class="ident">payload</span>,
                         <span class="ident">hint</span>,
@@ -1105,12 +1112,12 @@
                 {
                     <span class="kw">return</span> <span class="ident">status</span>;
                 } <span class="kw">else</span> {
-                    <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Error Writing data&quot;</span>.<span class="ident">into</span>());
+                    <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Error Writing data&quot;</span>.<span class="ident">into</span>());
                 };
             }
         };
 
-        <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to write the data&quot;</span>.<span class="ident">into</span>())
+        <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to write the data&quot;</span>.<span class="ident">into</span>())
     }
 
     <span class="doccomment">/// Writes data into an insecure cache.  This method, accepts a `Location`, a `Vec&lt;u8&gt;` and an optional `Duration`.</span>
@@ -1126,7 +1133,7 @@
         <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(
             <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
             <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>,
-            <span class="ident">SHRequest</span>::<span class="ident">WriteToStore</span> {
+            <span class="ident">SHRequest::WriteToStore</span> {
                 <span class="ident">location</span>,
                 <span class="ident">payload</span>,
                 <span class="ident">lifetime</span>,
@@ -1134,10 +1141,10 @@
         )
         .<span class="kw">await</span>;
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnWriteStore</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnWriteStore</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
             <span class="ident">status</span>
         } <span class="kw">else</span> {
-            <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to write to the store&quot;</span>.<span class="ident">into</span>())
+            <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to write to the store&quot;</span>.<span class="ident">into</span>())
         }
     }
 
@@ -1146,24 +1153,24 @@
     <span class="doccomment">/// `StatusMessage`.  Note: One store is mapped to</span>
     <span class="doccomment">/// one client. Can specify the same location across multiple clients.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_from_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
+        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::ReadFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnReadStore</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnReadStore</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
             (<span class="ident">payload</span>, <span class="ident">status</span>)
         } <span class="kw">else</span> {
-            (<span class="macro">vec</span><span class="macro">!</span>[], <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to read from the store&quot;</span>.<span class="ident">into</span>()))
+            (<span class="macro">vec!</span>[], <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to read from the store&quot;</span>.<span class="ident">into</span>()))
         }
     }
 
     <span class="doccomment">/// A method to delete data from an insecure cache. This method, accepts a `Location` and returns a `StatusMessage`.</span>
     <span class="doccomment">/// Note: One store is mapped to one client. Can specify the same location across multiple clients.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">delete_from_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">DeleteFromStore</span>(<span class="ident">location</span>)).<span class="kw">await</span>;
+        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::DeleteFromStore</span>(<span class="ident">location</span>)).<span class="kw">await</span>;
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnDeleteStore</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnDeleteStore</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
             <span class="ident">status</span>
         } <span class="kw">else</span> {
-            <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to delete from the store&quot;</span>.<span class="ident">into</span>())
+            <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to delete from the store&quot;</span>.<span class="ident">into</span>())
         }
     }
 
@@ -1175,48 +1182,46 @@
         <span class="kw">let</span> <span class="ident">status</span>;
 
         <span class="kw">if</span> <span class="ident">should_gc</span> {
-            <span class="kw">let</span> <span class="kw">_</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnRevoke</span>(<span class="ident">status</span>) <span class="op">=</span>
-                <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">RevokeData</span> { <span class="ident">location</span> }).<span class="kw">await</span>
+            <span class="kw">let</span> <span class="kw">_</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnRevoke</span>(<span class="ident">status</span>) <span class="op">=</span>
+                <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::RevokeData</span> { <span class="ident">location</span> }).<span class="kw">await</span>
             {
                 <span class="ident">status</span>
             } <span class="kw">else</span> {
-                <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Could not revoke data&quot;</span>.<span class="ident">into</span>());
+                <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Could not revoke data&quot;</span>.<span class="ident">into</span>());
             };
 
-            <span class="ident">status</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnGarbage</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(
+            <span class="ident">status</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnGarbage</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(
                 <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
                 <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>,
-                <span class="ident">SHRequest</span>::<span class="ident">GarbageCollect</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>()),
+                <span class="ident">SHRequest::GarbageCollect</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>()),
             )
             .<span class="kw">await</span>
             {
                 <span class="ident">status</span>
             } <span class="kw">else</span> {
-                <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to garbage collect the vault&quot;</span>.<span class="ident">into</span>());
+                <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to garbage collect the vault&quot;</span>.<span class="ident">into</span>());
             };
-
-            <span class="ident">status</span>
         } <span class="kw">else</span> {
-            <span class="ident">status</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnRevoke</span>(<span class="ident">status</span>) <span class="op">=</span>
-                <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">RevokeData</span> { <span class="ident">location</span> }).<span class="kw">await</span>
+            <span class="ident">status</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnRevoke</span>(<span class="ident">status</span>) <span class="op">=</span>
+                <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::RevokeData</span> { <span class="ident">location</span> }).<span class="kw">await</span>
             {
                 <span class="ident">status</span>
             } <span class="kw">else</span> {
-                <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Could not revoke data&quot;</span>.<span class="ident">into</span>());
+                <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Could not revoke data&quot;</span>.<span class="ident">into</span>());
             };
-
-            <span class="ident">status</span>
         }
+
+        <span class="ident">status</span>
     }
 
     <span class="doccomment">/// Garbage collects any revokes in a Vault based on the given vault_path and the current target actor.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">garbage_collect</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnGarbage</span>(<span class="ident">status</span>) <span class="op">=</span>
-            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">GarbageCollect</span>(<span class="ident">vault_path</span>)).<span class="kw">await</span>
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnGarbage</span>(<span class="ident">status</span>) <span class="op">=</span>
+            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::GarbageCollect</span>(<span class="ident">vault_path</span>)).<span class="kw">await</span>
         {
             <span class="ident">status</span>
         } <span class="kw">else</span> {
-            <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to garbage collect the vault&quot;</span>.<span class="ident">into</span>())
+            <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to garbage collect the vault&quot;</span>.<span class="ident">into</span>())
         }
     }
 
@@ -1225,14 +1230,14 @@
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">vault_path</span>: <span class="ident">V</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordId</span>, <span class="ident">RecordHint</span>)<span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnList</span>(<span class="ident">ids</span>, <span class="ident">status</span>) <span class="op">=</span>
-            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">ListIds</span>(<span class="ident">vault_path</span>.<span class="ident">into</span>())).<span class="kw">await</span>
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnList</span>(<span class="ident">ids</span>, <span class="ident">status</span>) <span class="op">=</span>
+            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::ListIds</span>(<span class="ident">vault_path</span>.<span class="ident">into</span>())).<span class="kw">await</span>
         {
             (<span class="ident">ids</span>, <span class="ident">status</span>)
         } <span class="kw">else</span> {
             (
-                <span class="macro">vec</span><span class="macro">!</span>[],
-                <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to list hints and indexes from the vault&quot;</span>.<span class="ident">into</span>()),
+                <span class="macro">vec!</span>[],
+                <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to list hints and indexes from the vault&quot;</span>.<span class="ident">into</span>()),
             )
         }
     }
@@ -1240,19 +1245,19 @@
     <span class="doccomment">/// Executes a runtime command given a `Procedure`.  Returns a `ProcResult` based off of the control_request</span>
     <span class="doccomment">/// specified.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">runtime_exec</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">control_request</span>: <span class="ident">Procedure</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ProcResult</span> {
-        <span class="kw">let</span> <span class="ident">shr</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">ControlRequest</span>(<span class="ident">control_request</span>)).<span class="kw">await</span>;
+        <span class="kw">let</span> <span class="ident">shr</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::ControlRequest</span>(<span class="ident">control_request</span>)).<span class="kw">await</span>;
         <span class="kw">match</span> <span class="ident">shr</span> {
-            <span class="ident">SHResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">pr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">pr</span>,
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProcResult</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication event&quot;</span>.<span class="ident">into</span>()),
+            <span class="ident">SHResults::ReturnControlRequest</span>(<span class="ident">pr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">pr</span>,
+            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProcResult::Error</span>(<span class="string">&quot;Invalid communication event&quot;</span>.<span class="ident">into</span>()),
         }
     }
 
     <span class="doccomment">/// Checks whether a record exists in the client based off of the given `Location`.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">record_exists</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnExistsRecord</span>(<span class="ident">b</span>) <span class="op">=</span> <span class="ident">ask</span>(
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnExistsRecord</span>(<span class="ident">b</span>) <span class="op">=</span> <span class="ident">ask</span>(
             <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
             <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>,
-            <span class="ident">SHRequest</span>::<span class="ident">CheckRecord</span> {
+            <span class="ident">SHRequest::CheckRecord</span> {
                 <span class="ident">location</span>: <span class="ident">location</span>.<span class="ident">clone</span>(),
             },
         )
@@ -1269,8 +1274,8 @@
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">location</span>.<span class="ident">vault_path</span>();
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">vault_path</span>.<span class="ident">to_vec</span>();
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnExistsVault</span>(<span class="ident">b</span>) <span class="op">=</span>
-            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">CheckVault</span>(<span class="ident">vault_path</span>)).<span class="kw">await</span>
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnExistsVault</span>(<span class="ident">b</span>) <span class="op">=</span>
+            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::CheckVault</span>(<span class="ident">vault_path</span>)).<span class="kw">await</span>
         {
             <span class="ident">b</span>
         } <span class="kw">else</span> {
@@ -1290,9 +1295,9 @@
         <span class="ident">filename</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
         <span class="ident">path</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PathBuf</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId</span>::<span class="ident">load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
 
-        <span class="kw">let</span> <span class="ident">former_cid</span> <span class="op">=</span> <span class="ident">former_client_path</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">cp</span><span class="op">|</span> <span class="ident">ClientId</span>::<span class="ident">load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">cp</span>, <span class="kw-2">&amp;</span><span class="ident">cp</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>()));
+        <span class="kw">let</span> <span class="ident">former_cid</span> <span class="op">=</span> <span class="ident">former_client_path</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">cp</span><span class="op">|</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">cp</span>, <span class="kw-2">&amp;</span><span class="ident">cp</span>).<span class="ident">expect</span>(<span class="macro">line_error!</span>()));
 
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">key</span>: [<span class="ident">u8</span>; <span class="number">32</span>] <span class="op">=</span> [<span class="number">0u8</span>; <span class="number">32</span>];
 
@@ -1300,10 +1305,10 @@
 
         <span class="ident">key</span>.<span class="ident">copy_from_slice</span>(<span class="ident">keydata</span>);
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnReadSnap</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnReadSnap</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">ask</span>(
             <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
             <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>,
-            <span class="ident">SHRequest</span>::<span class="ident">ReadSnapshot</span> {
+            <span class="ident">SHRequest::ReadSnapshot</span> {
                 <span class="ident">key</span>,
                 <span class="ident">filename</span>,
                 <span class="ident">path</span>,
@@ -1315,7 +1320,7 @@
         {
             <span class="ident">status</span>
         } <span class="kw">else</span> {
-            <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to read snapshot&quot;</span>.<span class="ident">into</span>())
+            <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Unable to read snapshot&quot;</span>.<span class="ident">into</span>())
         }
     }
 
@@ -1330,7 +1335,7 @@
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">num_of_actors</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">clients</span>.<span class="ident">len</span>();
 
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">futures</span> <span class="op">=</span> <span class="macro">vec</span><span class="macro">!</span>[];
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">futures</span> <span class="op">=</span> <span class="macro">vec!</span>[];
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">key</span>: [<span class="ident">u8</span>; <span class="number">32</span>] <span class="op">=</span> [<span class="number">0u8</span>; <span class="number">32</span>];
 
         <span class="kw">let</span> <span class="ident">keydata</span> <span class="op">=</span> <span class="ident">keydata</span>.<span class="ident">as_ref</span>();
@@ -1339,11 +1344,11 @@
 
         <span class="kw">if</span> <span class="ident">num_of_actors</span> <span class="op">!</span><span class="op">=</span> <span class="number">0</span> {
             <span class="kw">for</span> <span class="ident">actor</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">clients</span>.<span class="ident">values</span>() {
-                <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">RemoteHandle</span><span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">actor</span>, <span class="ident">SHRequest</span>::<span class="ident">FillSnapshot</span>);
+                <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">RemoteHandle</span><span class="op">&lt;</span><span class="ident">SHResults</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">actor</span>, <span class="ident">SHRequest::FillSnapshot</span>);
                 <span class="ident">futures</span>.<span class="ident">push</span>(<span class="ident">res</span>);
             }
         } <span class="kw">else</span> {
-            <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to write snapshot without any actors.&quot;</span>.<span class="ident">into</span>());
+            <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Unable to write snapshot without any actors.&quot;</span>.<span class="ident">into</span>());
         }
 
         <span class="kw">for</span> <span class="ident">fut</span> <span class="kw">in</span> <span class="ident">futures</span> {
@@ -1353,14 +1358,14 @@
         <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(
             <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
             <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>,
-            <span class="ident">SHRequest</span>::<span class="ident">WriteSnapshot</span> { <span class="ident">key</span>, <span class="ident">filename</span>, <span class="ident">path</span> },
+            <span class="ident">SHRequest::WriteSnapshot</span> { <span class="ident">key</span>, <span class="ident">filename</span>, <span class="ident">path</span> },
         )
         .<span class="kw">await</span>;
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnWriteSnap</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnWriteSnap</span>(<span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
             <span class="ident">status</span>
         } <span class="kw">else</span> {
-            <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to write snapshot&quot;</span>.<span class="ident">into</span>())
+            <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Unable to write snapshot&quot;</span>.<span class="ident">into</span>())
         }
     }
 
@@ -1368,37 +1373,37 @@
     <span class="doccomment">/// `kill_actor` is `true` both the internal actor and the client actor will be killed.  Otherwise, the cache of the</span>
     <span class="doccomment">/// current target actor will be cleared.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">kill_stronghold</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">kill_actor</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId</span>::<span class="ident">load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>(), <span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>(), <span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
         <span class="self">self</span>.<span class="ident">switch_actor_target</span>(<span class="ident">client_path</span>).<span class="kw">await</span>;
 
         <span class="kw">if</span> <span class="ident">kill_actor</span> {
             <span class="self">self</span>.<span class="ident">clients</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">client_id</span>);
         }
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnClearCache</span>(<span class="ident">status</span>) <span class="op">=</span>
-            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">ClearCache</span> { <span class="ident">kill</span>: <span class="ident">kill_actor</span> }).<span class="kw">await</span>
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnClearCache</span>(<span class="ident">status</span>) <span class="op">=</span>
+            <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::ClearCache</span> { <span class="ident">kill</span>: <span class="ident">kill_actor</span> }).<span class="kw">await</span>
         {
             <span class="ident">status</span>
         } <span class="kw">else</span> {
-            <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to clear cache&quot;</span>.<span class="ident">into</span>())
+            <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Unable to clear cache&quot;</span>.<span class="ident">into</span>())
         }
     }
 
     <span class="doccomment">/// Unimplemented until Policies are implemented.</span>
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>
     <span class="kw">fn</span> <span class="ident">check_config_flags</span>() {
-        <span class="macro">unimplemented</span><span class="macro">!</span>()
+        <span class="macro">unimplemented!</span>()
     }
 
     <span class="doccomment">/// A test function for reading data from a vault.</span>
     <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_secret</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromVault</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
+        <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::ReadFromVault</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults</span>::<span class="ident">ReturnReadVault</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
+        <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnReadVault</span>(<span class="ident">payload</span>, <span class="ident">status</span>) <span class="op">=</span> <span class="ident">res</span> {
             (<span class="prelude-val">Some</span>(<span class="ident">payload</span>), <span class="ident">status</span>)
         } <span class="kw">else</span> {
-            (<span class="prelude-val">None</span>, <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Unable to read data&quot;</span>.<span class="ident">into</span>()))
+            (<span class="prelude-val">None</span>, <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Unable to read data&quot;</span>.<span class="ident">into</span>()))
         }
     }
 }
@@ -1409,14 +1414,14 @@
     <span class="doccomment">/// Per default, the firewall allows all outgoing, and reject all incoming requests.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">spawn_communication_with_keypair</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">keypair</span>: <span class="ident">Keypair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">if</span> <span class="self">self</span>.<span class="ident">communication_actor</span>.<span class="ident">is_some</span>() {
-            <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;Communication was already spawned&quot;</span>));
+            <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">String::from</span>(<span class="string">&quot;Communication was already spawned&quot;</span>));
         }
 
-        <span class="kw">let</span> <span class="ident">behaviour_config</span> <span class="op">=</span> <span class="ident">BehaviourConfig</span>::<span class="ident">default</span>();
+        <span class="kw">let</span> <span class="ident">behaviour_config</span> <span class="op">=</span> <span class="ident">BehaviourConfig::default</span>();
         <span class="kw">let</span> <span class="ident">actor_config</span> <span class="op">=</span> <span class="ident">CommunicationActorConfig</span> {
             <span class="ident">client</span>: <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">clone</span>(),
-            <span class="ident">firewall_default_in</span>: <span class="ident">FirewallPermission</span>::<span class="ident">all</span>(),
-            <span class="ident">firewall_default_out</span>: <span class="ident">FirewallPermission</span>::<span class="ident">all</span>(),
+            <span class="ident">firewall_default_in</span>: <span class="ident">FirewallPermission::all</span>(),
+            <span class="ident">firewall_default_out</span>: <span class="ident">FirewallPermission::all</span>(),
         };
 
         <span class="kw">let</span> <span class="ident">communication_actor</span> <span class="op">=</span> <span class="self">self</span>
@@ -1425,15 +1430,15 @@
                 <span class="string">&quot;communication&quot;</span>,
                 (<span class="ident">keypair</span>, <span class="ident">actor_config</span>, <span class="ident">behaviour_config</span>),
             )
-            .<span class="ident">expect</span>(<span class="macro">line_error</span><span class="macro">!</span>());
+            .<span class="ident">expect</span>(<span class="macro">line_error!</span>());
         <span class="self">self</span>.<span class="ident">communication_actor</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">communication_actor</span>);
-        <span class="ident">StatusMessage</span>::<span class="ident">OK</span>
+        <span class="ident">StatusMessage::OK</span>
     }
 
     <span class="doccomment">/// Spawn the communication actor and swarm.</span>
     <span class="doccomment">/// Per default, the firewall allows all outgoing, and reject all incoming requests.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">spawn_communication</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="self">self</span>.<span class="ident">spawn_communication_with_keypair</span>(<span class="ident">Keypair</span>::<span class="ident">generate_ed25519</span>())
+        <span class="self">self</span>.<span class="ident">spawn_communication_with_keypair</span>(<span class="ident">Keypair::generate_ed25519</span>())
     }
 
     <span class="doccomment">/// Gracefully stop the communication actor and swarm</span>
@@ -1443,16 +1448,25 @@
         }
     }
 
-    <span class="doccomment">///  Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.</span>
+    <span class="doccomment">/// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">start_listening</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">addr</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">StartListening</span>(<span class="ident">addr</span>))
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest::StartListening</span>(<span class="ident">addr</span>))
             .<span class="kw">await</span>
         {
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">StartListeningResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">addr</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">addr</span>),
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">StartListeningResult</span>(<span class="prelude-val">Err</span>(<span class="kw">_</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Listener Error&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::StartListeningResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">addr</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Ok</span>(<span class="ident">addr</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::StartListeningResult</span>(<span class="prelude-val">Err</span>(<span class="kw">_</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;Listener Error&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="ident">err</span>),
+        }
+    }
+
+    <span class="doccomment">/// Stop listening on the swarm.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">stop_listening</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest::RemoveListener</span>).<span class="kw">await</span> {
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::RemoveListenerAck</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">err</span>),
         }
     }
 
@@ -1460,14 +1474,14 @@
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">get_swarm_info</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span>(<span class="ident">PeerId</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>, <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">PeerId</span>, <span class="ident">EstablishedConnection</span>)<span class="op">&gt;</span>)<span class="op">&gt;</span> {
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">GetSwarmInfo</span>).<span class="kw">await</span> {
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">SwarmInfo</span> {
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest::GetSwarmInfo</span>).<span class="kw">await</span> {
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::SwarmInfo</span> {
                 <span class="ident">peer_id</span>,
                 <span class="ident">listeners</span>,
                 <span class="ident">connections</span>,
-            }) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>((<span class="ident">peer_id</span>, <span class="ident">listeners</span>, <span class="ident">connections</span>)),
-            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+            }) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Ok</span>((<span class="ident">peer_id</span>, <span class="ident">listeners</span>, <span class="ident">connections</span>)),
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="ident">err</span>),
         }
     }
 
@@ -1486,19 +1500,19 @@
         <span class="ident">is_relay</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">RelayDirection</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">AddPeer</span> {
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest::AddPeer</span> {
                 <span class="ident">peer_id</span>,
                 <span class="ident">addr</span>,
                 <span class="ident">is_relay</span>,
             })
             .<span class="kw">await</span>
         {
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">AddPeerResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">peer_id</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">peer_id</span>),
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">AddPeerResult</span>(<span class="prelude-val">Err</span>(<span class="ident">err</span>))) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;Error connecting peer: {:?}&quot;</span>, <span class="ident">err</span>))
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::AddPeerResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">peer_id</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Ok</span>(<span class="ident">peer_id</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::AddPeerResult</span>(<span class="prelude-val">Err</span>(<span class="ident">err</span>))) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="ident">ResultMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;Error connecting peer: {:?}&quot;</span>, <span class="ident">err</span>))
             }
-            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="ident">err</span>),
         }
     }
 
@@ -1510,37 +1524,37 @@
     <span class="doccomment">/// The relay has to be added beforehand with its multi-address via the `add_peer` method.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">change_relay_direction</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">direction</span>: <span class="ident">RelayDirection</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">ConfigRelay</span> { <span class="ident">peer_id</span>, <span class="ident">direction</span> })
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest::ConfigRelay</span> { <span class="ident">peer_id</span>, <span class="ident">direction</span> })
             .<span class="kw">await</span>
         {
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">ConfigRelayResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">peer_id</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="prelude-val">Ok</span>(<span class="ident">peer_id</span>),
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">ConfigRelayResult</span>(<span class="prelude-val">Err</span>(<span class="ident">err</span>))) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;Error connecting peer: {:?}&quot;</span>, <span class="ident">err</span>))
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::ConfigRelayResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">peer_id</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Ok</span>(<span class="ident">peer_id</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::ConfigRelayResult</span>(<span class="prelude-val">Err</span>(<span class="ident">err</span>))) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="ident">ResultMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;Error connecting peer: {:?}&quot;</span>, <span class="ident">err</span>))
             }
-            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="ident">err</span>),
         }
     }
 
     <span class="doccomment">/// Remove a relay so that it will not be used anymore for dialing or listening.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remove_relay</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">RemoveRelay</span>(<span class="ident">peer_id</span>))
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest::RemoveRelay</span>(<span class="ident">peer_id</span>))
             .<span class="kw">await</span>
         {
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">RemoveRelayAck</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">OK</span>,
-            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::RemoveRelayAck</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="ident">err</span>),
         }
     }
 
     <span class="doccomment">/// Allow all requests from the given peers, optionally also set default to allow all.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">allow_all_requests</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peers</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>, <span class="ident">set_default</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule</span>::<span class="ident">SetRules</span> {
-            <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule::SetRules</span> {
+            <span class="ident">direction</span>: <span class="ident">RequestDirection::In</span>,
             <span class="ident">peers</span>,
             <span class="ident">set_default</span>,
-            <span class="ident">permission</span>: <span class="ident">FirewallPermission</span>::<span class="ident">all</span>(),
+            <span class="ident">permission</span>: <span class="ident">FirewallPermission::all</span>(),
         };
         <span class="self">self</span>.<span class="ident">configure_firewall</span>(<span class="ident">rule</span>).<span class="kw">await</span>
     }
@@ -1561,8 +1575,8 @@
         <span class="ident">change_default</span>: <span class="ident">bool</span>,
         <span class="ident">requests</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SHRequestPermission</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule</span>::<span class="ident">AddPermissions</span> {
-            <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule::AddPermissions</span> {
+            <span class="ident">direction</span>: <span class="ident">RequestDirection::In</span>,
             <span class="ident">peers</span>,
             <span class="ident">change_default</span>,
             <span class="ident">permissions</span>: <span class="ident">requests</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">req</span><span class="op">|</span> <span class="ident">req</span>.<span class="ident">permission</span>()).<span class="ident">collect</span>(),
@@ -1586,8 +1600,8 @@
         <span class="ident">change_default</span>: <span class="ident">bool</span>,
         <span class="ident">requests</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SHRequestPermission</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule</span>::<span class="ident">RemovePermissions</span> {
-            <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule::RemovePermissions</span> {
+            <span class="ident">direction</span>: <span class="ident">RequestDirection::In</span>,
             <span class="ident">peers</span>,
             <span class="ident">change_default</span>,
             <span class="ident">permissions</span>: <span class="ident">requests</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">req</span><span class="op">|</span> <span class="ident">req</span>.<span class="ident">permission</span>()).<span class="ident">collect</span>(),
@@ -1598,19 +1612,19 @@
     <span class="doccomment">/// Configure the firewall to reject all requests from the given peers, optionally also set default rule to reject</span>
     <span class="doccomment">/// all.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">reject_all_requests</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peers</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>, <span class="ident">set_default</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule</span>::<span class="ident">SetRules</span> {
-            <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule::SetRules</span> {
+            <span class="ident">direction</span>: <span class="ident">RequestDirection::In</span>,
             <span class="ident">peers</span>,
             <span class="ident">set_default</span>,
-            <span class="ident">permission</span>: <span class="ident">FirewallPermission</span>::<span class="ident">none</span>(),
+            <span class="ident">permission</span>: <span class="ident">FirewallPermission::none</span>(),
         };
         <span class="self">self</span>.<span class="ident">configure_firewall</span>(<span class="ident">rule</span>).<span class="kw">await</span>
     }
 
     <span class="doccomment">/// Remove peer specific rules from the firewall configuration.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remove_firewall_rules</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peers</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule</span>::<span class="ident">RemoveRule</span> {
-            <span class="ident">direction</span>: <span class="ident">RequestDirection</span>::<span class="ident">In</span>,
+        <span class="kw">let</span> <span class="ident">rule</span> <span class="op">=</span> <span class="ident">FirewallRule::RemoveRule</span> {
+            <span class="ident">direction</span>: <span class="ident">RequestDirection::In</span>,
             <span class="ident">peers</span>,
         };
         <span class="self">self</span>.<span class="ident">configure_firewall</span>(<span class="ident">rule</span>).<span class="kw">await</span>
@@ -1630,29 +1644,29 @@
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">vault_path</span>.<span class="ident">to_vec</span>();
         <span class="comment">// check if vault exists</span>
         <span class="kw">let</span> <span class="ident">vault_exists</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest</span>::<span class="ident">CheckVault</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>()))
+            .<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest::CheckVault</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>()))
             .<span class="kw">await</span>
         {
-            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnExistsVault</span>(<span class="ident">b</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">b</span>,
-            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to check at remote if vault exists&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults::ReturnExistsVault</span>(<span class="ident">b</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">b</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to check at remote if vault exists&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">err</span>),
         };
         <span class="kw">if</span> <span class="op">!</span><span class="ident">vault_exists</span> {
             <span class="comment">// no vault so create new one before writing.</span>
             <span class="kw">match</span> <span class="self">self</span>
-                .<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest</span>::<span class="ident">CreateNewVault</span>(<span class="ident">location</span>.<span class="ident">clone</span>()))
+                .<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest::CreateNewVault</span>(<span class="ident">location</span>.<span class="ident">clone</span>()))
                 .<span class="kw">await</span>
             {
-                <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnCreateVault</span>(<span class="kw">_</span>)) <span class="op">=</span><span class="op">&gt;</span> {}
-                <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to create vault at remote&quot;</span>.<span class="ident">into</span>()),
-                <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+                <span class="prelude-val">Ok</span>(<span class="ident">SHResults::ReturnCreateVault</span>(<span class="kw">_</span>)) <span class="op">=</span><span class="op">&gt;</span> {}
+                <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to create vault at remote&quot;</span>.<span class="ident">into</span>()),
+                <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">err</span>),
             };
         }
         <span class="comment">// write data</span>
         <span class="kw">match</span> <span class="self">self</span>
             .<span class="ident">ask_remote</span>(
                 <span class="ident">peer_id</span>,
-                <span class="ident">SHRequest</span>::<span class="ident">WriteToVault</span> {
+                <span class="ident">SHRequest::WriteToVault</span> {
                     <span class="ident">location</span>: <span class="ident">location</span>.<span class="ident">clone</span>(),
                     <span class="ident">payload</span>: <span class="ident">payload</span>.<span class="ident">clone</span>(),
                     <span class="ident">hint</span>,
@@ -1660,9 +1674,9 @@
             )
             .<span class="kw">await</span>
         {
-            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnWriteVault</span>(<span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">status</span>,
-            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to write the data at remote vault&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults::ReturnWriteVault</span>(<span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">status</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to write the data at remote vault&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">err</span>),
         }
     }
 
@@ -1678,7 +1692,7 @@
         <span class="kw">match</span> <span class="self">self</span>
             .<span class="ident">ask_remote</span>(
                 <span class="ident">peer_id</span>,
-                <span class="ident">SHRequest</span>::<span class="ident">WriteToStore</span> {
+                <span class="ident">SHRequest::WriteToStore</span> {
                     <span class="ident">location</span>,
                     <span class="ident">payload</span>,
                     <span class="ident">lifetime</span>,
@@ -1686,22 +1700,22 @@
             )
             .<span class="kw">await</span>
         {
-            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnWriteStore</span>(<span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">status</span>,
-            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to write at the remote store&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults::ReturnWriteStore</span>(<span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">status</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to write at the remote store&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">err</span>),
         }
     }
 
     <span class="doccomment">/// Read from the store of a remote Stronghold.</span>
     <span class="doccomment">/// It is required that the peer has successfully been added with the `add_peer` method.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_from_remote_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest</span>::<span class="ident">ReadFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
-            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnReadStore</span>(<span class="ident">payload</span>, <span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">payload</span>, <span class="ident">status</span>),
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest::ReadFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults::ReturnReadStore</span>(<span class="ident">payload</span>, <span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">payload</span>, <span class="ident">status</span>),
             <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> (
-                <span class="macro">vec</span><span class="macro">!</span>[],
-                <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to read at the remote store&quot;</span>.<span class="ident">into</span>()),
+                <span class="macro">vec!</span>[],
+                <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to read at the remote store&quot;</span>.<span class="ident">into</span>()),
             ),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="macro">vec</span><span class="macro">!</span>[], <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>)),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="macro">vec!</span>[], <span class="ident">StatusMessage::Error</span>(<span class="ident">err</span>)),
         }
     }
 
@@ -1712,13 +1726,13 @@
         <span class="ident">peer_id</span>: <span class="ident">PeerId</span>,
         <span class="ident">vault_path</span>: <span class="ident">V</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordId</span>, <span class="ident">RecordHint</span>)<span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest</span>::<span class="ident">ListIds</span>(<span class="ident">vault_path</span>.<span class="ident">into</span>())).<span class="kw">await</span> {
-            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnList</span>(<span class="ident">ids</span>, <span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">ids</span>, <span class="ident">status</span>),
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest::ListIds</span>(<span class="ident">vault_path</span>.<span class="ident">into</span>())).<span class="kw">await</span> {
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults::ReturnList</span>(<span class="ident">ids</span>, <span class="ident">status</span>)) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">ids</span>, <span class="ident">status</span>),
             <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> (
-                <span class="macro">vec</span><span class="macro">!</span>[],
-                <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Failed to list hints and indexes from at remote vault&quot;</span>.<span class="ident">into</span>()),
+                <span class="macro">vec!</span>[],
+                <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to list hints and indexes from at remote vault&quot;</span>.<span class="ident">into</span>()),
             ),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="macro">vec</span><span class="macro">!</span>[], <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>)),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="macro">vec!</span>[], <span class="ident">StatusMessage::Error</span>(<span class="ident">err</span>)),
         }
     }
 
@@ -1726,12 +1740,12 @@
     <span class="doccomment">/// It is required that the peer has successfully been added with the `add_peer` method.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remote_runtime_exec</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">control_request</span>: <span class="ident">Procedure</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ProcResult</span> {
         <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest</span>::<span class="ident">ControlRequest</span>(<span class="ident">control_request</span>))
+            .<span class="ident">ask_remote</span>(<span class="ident">peer_id</span>, <span class="ident">SHRequest::ControlRequest</span>(<span class="ident">control_request</span>))
             .<span class="kw">await</span>
         {
-            <span class="prelude-val">Ok</span>(<span class="ident">SHResults</span>::<span class="ident">ReturnControlRequest</span>(<span class="ident">pr</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">pr</span>,
-            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProcResult</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid procedure result&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProcResult</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">SHResults::ReturnControlRequest</span>(<span class="ident">pr</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">pr</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProcResult::Error</span>(<span class="string">&quot;Invalid procedure result&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProcResult::Error</span>(<span class="ident">err</span>),
         }
     }
 
@@ -1740,11 +1754,11 @@
     <span class="comment">// was returned from the communication actor,</span>
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">ask_remote</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_id</span>: <span class="ident">PeerId</span>, <span class="ident">request</span>: <span class="ident">SHRequest</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">SHResults</span>, <span class="ident">String</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">RequestMsg</span> { <span class="ident">peer_id</span>, <span class="ident">request</span> })
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest::RequestMsg</span> { <span class="ident">peer_id</span>, <span class="ident">request</span> })
             .<span class="kw">await</span>
         {
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">ok</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ok</span>),
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">RequestMsgResult</span>(<span class="prelude-val">Err</span>(<span class="ident">e</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;Error sending request to peer {:?}&quot;</span>, <span class="ident">e</span>)),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::RequestMsgResult</span>(<span class="prelude-val">Ok</span>(<span class="ident">ok</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ok</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::RequestMsgResult</span>(<span class="prelude-val">Err</span>(<span class="ident">e</span>))) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="macro">format!</span>(<span class="string">&quot;Error sending request to peer {:?}&quot;</span>, <span class="ident">e</span>)),
             <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
             <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>),
         }
@@ -1753,12 +1767,12 @@
     <span class="comment">// Send a request to the communication actor to configure the firewall by adding, changing or removing rules.</span>
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">configure_firewall</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">rule</span>: <span class="ident">FirewallRule</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest</span>::<span class="ident">ConfigureFirewall</span>(<span class="ident">rule</span>))
+            .<span class="ident">ask_communication_actor</span>(<span class="ident">CommunicationRequest::ConfigureFirewall</span>(<span class="ident">rule</span>))
             .<span class="kw">await</span>
         {
-            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults</span>::<span class="ident">ConfigureFirewallAck</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">OK</span>,
-            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
-            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span>::<span class="ident">Error</span>(<span class="ident">err</span>),
+            <span class="prelude-val">Ok</span>(<span class="ident">CommunicationResults::ConfigureFirewallAck</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
+            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Invalid communication actor response&quot;</span>.<span class="ident">into</span>()),
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">err</span>),
         }
     }
 
@@ -1771,7 +1785,7 @@
             <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="ident">communication_actor</span>, <span class="ident">request</span>).<span class="kw">await</span>;
             <span class="prelude-val">Ok</span>(<span class="ident">res</span>)
         } <span class="kw">else</span> {
-            <span class="prelude-val">Err</span>(<span class="ident">String</span>::<span class="ident">from</span>(<span class="string">&quot;No communication spawned&quot;</span>))
+            <span class="prelude-val">Err</span>(<span class="ident">String::from</span>(<span class="string">&quot;No communication spawned&quot;</span>))
         }
     }
 
@@ -1781,7 +1795,7 @@
     <span class="doccomment">/// stronghold shall block.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">keep_alive</span><span class="op">&lt;</span><span class="ident">F</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">callback</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">F</span><span class="op">&gt;</span>)
     <span class="kw">where</span>
-        <span class="ident">F</span>: <span class="ident">FnOnce</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">std</span>::<span class="ident">error</span>::<span class="ident">Error</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+        <span class="ident">F</span>: <span class="ident">FnOnce</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">std::error::Error</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     {
         <span class="kw">match</span> <span class="ident">callback</span> {
             <span class="prelude-val">Some</span>(<span class="ident">cb</span>) <span class="op">=</span><span class="op">&gt;</span> {
@@ -1803,5 +1817,5 @@
     }
 }
 </pre></div>
-</section><section id="search" class="content hidden"></section><section class="footer"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="iota_stronghold" data-search-js="../../search-index.js"></div>
+</section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="iota_stronghold" data-search-index-js="../../search-index.js" data-search-js="../../search.js"></div>
     <script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script></body></html>
