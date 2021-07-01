@@ -1,0 +1,13 @@
+[package]
+name = "iota-rule"
+version = "0.1.0"
+edition = "2018"
+authors = ["IOTA Stiftung"]
+license = "Apache-2.0"
+
+[lib]
+name = "rulesengine"
+
+[dependencies.thiserror]
+version = "1.0.25"
+

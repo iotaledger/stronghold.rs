@@ -149,6 +149,9 @@ impl SnapshotState {
     }
 }
 
+/// rules engine impl
+mod rules {}
+
 mod sync {
     #![allow(clippy::all)]
     #![allow(dead_code, unused_variables)]
@@ -162,6 +165,8 @@ mod sync {
     use thiserror::Error as DeriveError;
 
     // use engine::snapshot::diff::*;
+
+    // --- api
 
     #[derive(Debug, DeriveError)]
     pub enum SyncError {
@@ -205,119 +210,123 @@ mod sync {
         }
     }
 
-    pub trait Bootstrap<T>: Serialize
+    pub trait Bootstrap<T>: Serialize + Sized
     where
-        T: Serialize + AsRef<EntryType>,
+        T: Serialize + AsRef<EntryType> + Clone,
     {
-        fn with_chunks<C>(self, chunks: Vec<Chunk<C>>) -> Self
-        where
-            C: Clone;
+        fn with_source(self, chunks: Vec<Chunk<T>>) -> Self;
 
         fn with_key<K>(self, key: K) -> Self
         where
             K: Into<Key>;
 
-        fn allow<Y>(self, policy: Y, target_id: T) -> Self
-        where
-            Y: AsRef<SynchronizePolicy>;
+        fn with_key_and_chunks() -> Self;
 
-        fn deny<Y>(self, policty: Y, target_id: T) -> Self
+        fn with_target(self) -> Self;
+
+        fn with_callback<F>(self, callback: F) -> Self
         where
-            Y: AsRef<SynchronizePolicy>;
+            F: Fn();
+
+        fn allow(&self, target_id: T) -> Self {
+            self.policy(SynchronizePolicy::Allow, target_id)
+        }
+
+        fn deny(&self, target_id: T) -> Self {
+            self.policy(SynchronizePolicy::Deny, target_id)
+        }
+
+        fn deny_all(self) -> Self;
+
+        fn policy(&self, policy: SynchronizePolicy, target_id: T) -> Self;
     }
 
     pub trait Synchronize<T>: Bootstrap<T>
     where
-        T: Serialize + AsRef<EntryType>,
+        T: Serialize + AsRef<EntryType> + Clone,
     {
-        fn lazy<I>(&self, other: T) -> I
-        where
-            I: Iterator;
-
-        fn full(&self, other: T) -> Result<T, SyncError>;
-
-        fn partial<Y>(&self, other: T, policy: Y) -> Result<T, SyncError>
-        where
-            Y: AsRef<SynchronizePolicy>;
+        type ReturnType;
     }
 
-    // #[derive(Serialize)]
-    // pub struct Local<P, T>
-    // where
-    //     P: AsRef<Path> + Serialize,
-    //     T: Serialize + AsRef<EntryType>,
-    // {
-    //     storage_location: P,
-    //     data: T,
-    // }
+    pub trait Full<T>: Synchronize<T>
+    where
+        T: Serialize + Clone + AsRef<EntryType>,
+    {
+        fn sync(&self) -> Self::ReturnType;
+    }
 
-    // impl<P, T> Local<P, T>
-    // where
-    //     P: AsRef<Path> + Serialize,
-    //     T: Serialize + AsRef<EntryType>,
-    // {
-    //     fn with_target(path: P, this: T) -> Self {
-    //         todo!()
-    //     }
-    // }
+    pub trait Partial<T>: Synchronize<T>
+    where
+        T: Serialize + Clone + AsRef<EntryType>,
+    {
+        fn sync(&self) -> Self::ReturnType;
+    }
 
-    // impl<T, P> Bootstrap<T> for Local<P, T>
-    // where
-    //     P: AsRef<Path> + Serialize,
-    //     T: Serialize + AsRef<EntryType>,
-    // {
-    //     fn with_chunks<C>(self, chunks: Vec<Chunk<C>>) -> Self
-    //     where
-    //         C: Clone,
-    //     {
-    //         todo!()
-    //     }
+    pub trait Lazy<T>: Synchronize<T>
+    where
+        T: Serialize + Clone + AsRef<EntryType>,
+    {
+        fn sync(&self) -> Self::ReturnType;
+    }
 
-    //     fn with_key<K>(self, key: K) -> Self
-    //     where
-    //         K: Into<Key>,
-    //     {
-    //         todo!()
-    //     }
+    // --- impl
 
-    //     fn allow<Y>(self, policy: Y, target_id: T) -> Self
-    //     where
-    //         Y: AsRef<SynchronizePolicy>,
-    //     {
-    //         todo!()
-    //     }
+    #[derive(Default, Clone, Serialize)]
+    pub struct DefaultSync;
 
-    //     fn deny<Y>(self, policty: Y, target_id: T) -> Self
-    //     where
-    //         Y: AsRef<SynchronizePolicy>,
-    //     {
-    //         todo!()
-    //     }
-    // }
+    impl<T> Bootstrap<T> for DefaultSync
+    where
+        T: Serialize + Clone + AsRef<EntryType>,
+    {
+        fn with_source(self, chunks: Vec<Chunk<T>>) -> Self {
+            todo!()
+        }
 
-    // impl<K, T> Synchronize<T> for K
-    // where
-    //     T: Serialize,
-    //     K: Bootstrap<T> + Serialize,
-    // {
-    //     fn lazy<I>(&self, other: T) -> I
-    //     where
-    //         I: Iterator,
-    //     {
-    //         todo!()
-    //     }
+        fn with_key<K>(self, key: K) -> Self
+        where
+            K: Into<Key>,
+        {
+            todo!()
+        }
+        fn with_key_and_chunks() -> Self {
+            todo!()
+        }
 
-    //     fn full(&self, other: T) -> Result<T, SyncError> {
-    //         todo!()
-    //     }
+        fn with_target(self) -> Self {
+            todo!()
+        }
 
-    //     fn partial<Y>(&self, other: T, policy: Y) -> Result<T, SyncError>
-    //     where
-    //         Y: AsRef<SynchronizePolicy>,
-    //     {
-    //         todo!()
-    //     }
-    // }
+        fn with_callback<F>(self, callback: F) -> Self
+        where
+            F: Fn(),
+        {
+            todo!()
+        }
+
+        fn deny_all(self) -> Self {
+            todo!()
+        }
+
+        fn policy(&self, policy: SynchronizePolicy, target_id: T) -> Self {
+            todo!()
+        }
+    }
+
+    impl<T> Synchronize<T> for DefaultSync
+    where
+        T: Clone + Serialize + AsRef<EntryType>,
+    {
+        type ReturnType = Result<Snapshot, SyncError>;
+    }
+
+    impl<T> Partial<T> for DefaultSync
+    where
+        T: Clone + Serialize + AsRef<EntryType>,
+    {
+        fn sync(&self) -> Self::ReturnType {
+            todo!()
+        }
+    }
 
     #[cfg(test)]
     mod tests {
@@ -328,14 +337,17 @@ mod sync {
         struct Container {}
 
         #[test]
-        fn test_synchronize() {
-            // let a = Container::default();
-            // let b = Container::default();
+        fn test_partial_synchronize() {
+            let sync = DefaultSync::default();
 
-            // let local_sync = Local::with_target("/path/to/snapshot.stronghold", a).with_key([0u8; 32]);
-
-            // local_sync.allow(SynchronizePolicy::Allow, b"non-secret-record-id");
-            // assert!(local_sync.full(b).is_ok());
+            // assert!(sync
+            //     .with_source(vec![])
+            //     .with_target()
+            //     .deny_all()
+            //     .allow(super::EntryType::RecordId(b"sjshjkdahkjnjcknajn"))
+            //     .allow(b"cscdsassx")
+            //     .sync()
+            //     .is_ok());
         }
     }
 }
