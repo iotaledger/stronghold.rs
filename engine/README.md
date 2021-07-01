@@ -12,10 +12,11 @@ It is composed of 4 primary module:
 
 The snapshot protocol follows a fairly simple transparent pattern. Each Snapshot file follows a simple structure:
 
-|---------------|
-| magic bytes   |
-| version bytes |
-| header/tag    |
-| --------------|
-| cipher text   |
-| --------------|
+|  **Header**   |
+| :-----------: |
+|  Magic Bytes  |
+| Version Bytes |
+|   **Body**    |
+| Ephemeral Key |
+| xchacha20 tag |
+|  Cipher Text  |
