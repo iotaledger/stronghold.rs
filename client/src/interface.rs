@@ -56,8 +56,8 @@ pub struct Stronghold {
 }
 
 impl Stronghold {
-    /// Initializes a new instance of the system.  Sets up the first client actor. Accepts a `ActorSystem`, the first
-    /// client_path: `Vec<u8>` and any `StrongholdFlags` which pertain to the first actor.
+    /// Initializes a new instance of the system.  Sets up the first client actor. Accepts a [`ActorSystem`], the first
+    /// client_path: [`Vec<u8>`] and any [`StrongholdFlags`] which pertain to the first actor.
     pub fn init_stronghold_system(system: ActorSystem, client_path: Vec<u8>, _options: Vec<StrongholdFlags>) -> Self {
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
         let id_str: String = client_id.into();
@@ -85,7 +85,7 @@ impl Stronghold {
         }
     }
 
-    /// Spawns a new set of actors for the Stronghold system. Accepts the client_path: `Vec<u8>` and the options:
+    /// Spawns a new set of actors for the Stronghold system. Accepts the client_path: [`Vec<u8>`] and the options:
     /// `StrongholdFlags`
     pub async fn spawn_stronghold_actor(
         &mut self,
@@ -115,7 +115,7 @@ impl Stronghold {
         StatusMessage::OK
     }
 
-    /// Switches the actor target to another actor in the system specified by the client_path: `Vec<u8>`.
+    /// Switches the actor target to another actor in the system specified by the client_path: [`Vec<u8>`].
     pub async fn switch_actor_target(&mut self, client_path: Vec<u8>) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
 
@@ -144,8 +144,8 @@ impl Stronghold {
     }
 
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified
-    /// location of `Location` type. The payload must be specified as a `Vec<u8>` and a `RecordHint` can be provided.
-    /// Also accepts `VaultFlags` for when a new Vault is created.
+    /// location of [`Location`] type. The payload must be specified as a [`Vec<u8>`] and a [`RecordHint`] can be provided.
+    /// Also accepts [`VaultFlags`] for when a new Vault is created.
     pub async fn write_to_vault(
         &self,
         location: Location,
@@ -207,8 +207,8 @@ impl Stronghold {
         StatusMessage::Error("Failed to write the data".into())
     }
 
-    /// Writes data into an insecure cache.  This method, accepts a `Location`, a `Vec<u8>` and an optional `Duration`.
-    /// The lifetime allows the data to be deleted after the specified duration has passed.  If not lifetime is
+    /// Writes data into an insecure cache.  This method, accepts a [`Location`], a [`Vec<u8>`] and an optional [`Duration`].
+    /// The lifetime allows the data to be deleted after the specified duration has passed.  If no lifetime is
     /// specified, the data will persist until it is manually deleted or over-written. Note: One store is mapped to
     /// one client. Can specify the same location across multiple clients.
     pub async fn write_to_store(
@@ -235,9 +235,9 @@ impl Stronghold {
         }
     }
 
-    /// A method that reads from an insecure cache.  This method, accepts a `Location` and returns the payload in the
-    /// form of a `Vec<u8>`.  If the location does not exist, an empty vector will be returned along with an error
-    /// `StatusMessage`.  Note: One store is mapped to
+    /// A method that reads from an insecure cache.  This method, accepts a [`Location`] and returns the payload in the
+    /// form of a ([`Vec<u8>`], [`StatusMessage`]).  If the location does not exist, an empty vector will be returned along with an error
+    /// [`StatusMessage`].  Note: One store is mapped to
     /// one client. Can specify the same location across multiple clients.
     pub async fn read_from_store(&self, location: Location) -> (Vec<u8>, StatusMessage) {
         let res: SHResults = ask(&self.system, &self.target, SHRequest::ReadFromStore { location }).await;
@@ -249,7 +249,7 @@ impl Stronghold {
         }
     }
 
-    /// A method to delete data from an insecure cache. This method, accepts a `Location` and returns a `StatusMessage`.
+    /// A method to delete data from an insecure cache. This method, accepts a [`Location`] and returns a [`StatusMessage`].
     /// Note: One store is mapped to one client. Can specify the same location across multiple clients.
     pub async fn delete_from_store(&self, location: Location) -> StatusMessage {
         let res: SHResults = ask(&self.system, &self.target, SHRequest::DeleteFromStore(location)).await;
@@ -261,7 +261,7 @@ impl Stronghold {
         }
     }
 
-    /// Revokes the data from the specified location of type `Location`. Revoked data is not readable and can be removed
+    /// Revokes the data from the specified location of type [`Location`]. Revoked data is not readable and can be removed
     /// from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call with
     /// automatically cleanup the revoke. Otherwise, the data is just marked as revoked.
     pub async fn delete_data(&self, location: Location, should_gc: bool) -> StatusMessage {
@@ -303,7 +303,7 @@ impl Stronghold {
         }
     }
 
-    /// Garbage collects any revokes in a Vault based on the given vault_path and the current target actor.
+    /// Garbage collects any revokes in a Vault based on the given `vault_path` and the current target actor.
     pub async fn garbage_collect(&self, vault_path: Vec<u8>) -> StatusMessage {
         if let SHResults::ReturnGarbage(status) =
             ask(&self.system, &self.target, SHRequest::GarbageCollect(vault_path)).await
@@ -314,7 +314,7 @@ impl Stronghold {
         }
     }
 
-    /// Returns a list of the available `RecordId` and `RecordHint` values in a vault by the given `vault_path`.
+    /// Returns a list of the available [`RecordId`] and [`RecordHint`] values in a vault by the given `vault_path`.
     pub async fn list_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
         vault_path: V,
@@ -331,7 +331,7 @@ impl Stronghold {
         }
     }
 
-    /// Executes a runtime command given a `Procedure`.  Returns a `ProcResult` based off of the control_request
+    /// Executes a runtime command given a [`Procedure`].  Returns a [`ProcResult`] based off of the control_request
     /// specified.
     pub async fn runtime_exec(&self, control_request: Procedure) -> ProcResult {
         let shr = ask(&self.system, &self.target, SHRequest::ControlRequest(control_request)).await;
@@ -341,7 +341,7 @@ impl Stronghold {
         }
     }
 
-    /// Checks whether a record exists in the client based off of the given `Location`.
+    /// Checks whether a record exists in the client based off of the given [`Location`].
     pub async fn record_exists(&self, location: Location) -> bool {
         if let SHResults::ReturnExistsRecord(b) = ask(
             &self.system,
@@ -413,7 +413,7 @@ impl Stronghold {
         }
     }
 
-    /// Writes the entire state of the `Stronghold` into a snapshot.  All Actors and their associated data will be
+    /// Writes the entire state of the [`Stronghold`] into a snapshot.  All Actors and their associated data will be
     /// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be
     /// specified. The Keydata should implement and use Zeroize.
     pub async fn write_all_to_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
