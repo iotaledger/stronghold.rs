@@ -9,6 +9,7 @@ pub use self::{
     types::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
+/// Gets the index of a slice.
 #[allow(dead_code)]
 pub fn index_of_unchecked<T>(slice: &[T], item: &T) -> usize {
     if ::std::mem::size_of::<T>() == 0 {

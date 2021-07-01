@@ -1,6 +1,6 @@
 ## Stronghold Client
 
-This is the official client layer of Stronghold. It provides a Riker actor model system for easy Interface as well as functional passthrough to Stronghold's internal actor system for integrators not using Riker. 
+This is the official client layer of Stronghold. It uses the Riker actor model and provides an easy interface which acts as a functional passthrough to Stronghold's internal actor system. 
 
 **Stronghold Interface**: 
 - `init_stronghold_system`: Initializes a new instance of the Stronghold system.  Sets up the first client actor. Accepts a `ActorSystem`, the first `client_path`: `Vec<u8>` and any `StrongholdFlags` which pertain to the first actor.

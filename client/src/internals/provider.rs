@@ -10,23 +10,28 @@ use engine::vault::{BoxProvider, Key};
 
 use serde::{Deserialize, Serialize};
 
-/// An implementation of the Vault's `BoxProvider type.  Used to encrypt and decrypt the data in this Stronghold.
+/// An implementation of the Vault's [`BoxProvider`] type.  Used to encrypt and decrypt the data in this Stronghold.
 #[derive(Ord, PartialEq, Eq, PartialOrd, Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Provider;
 impl Provider {
+    /// Nonce length.
     const NONCE_LEN: usize = XChaCha20Poly1305::NONCE_LENGTH;
+    /// Tag Length.
     const TAG_LEN: usize = XChaCha20Poly1305::TAG_LENGTH;
 }
 
 impl BoxProvider for Provider {
+    /// Key size.
     fn box_key_len() -> usize {
         32
     }
 
+    /// Nonce length plus Tag length.
     fn box_overhead() -> usize {
         Self::NONCE_LEN + Self::TAG_LEN
     }
 
+    /// Encrypts the data using the xchacha20-poly1305 algorithm.
     fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> engine::Result<Vec<u8>> {
         let mut cipher = vec![0u8; data.len()];
 
@@ -45,6 +50,7 @@ impl BoxProvider for Provider {
         Ok(r#box)
     }
 
+    /// Decrypts the data using the xchacha20-poly1305 algorithm.
     fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> engine::Result<Vec<u8>> {
         let (tag, ct) = data.split_at(Self::TAG_LEN);
         let (nonce, cipher) = ct.split_at(Self::NONCE_LEN);
@@ -59,6 +65,7 @@ impl BoxProvider for Provider {
         Ok(plain)
     }
 
+    /// fills a buffer with random bytes.
     fn random_buf(buf: &mut [u8]) -> engine::Result<()> {
         fill(buf).map_err(|_| engine::Error::ProviderError(String::from("Can't generate random Bytes")))
     }

@@ -1,14 +1,21 @@
-## Engine
+## engine
 
-Engine is the collection of low-level modules with which application architects can build higher-level implementations of Stronghold for a variety of purposes. It is platform agnostic, in that it should run anywhere a Rust Compiler will work.
+Engine is the collection of low-level module with which application architects can build higher-level implementations of Strongholds for a variety of purposes. It is platform agnostic, in that it should run anywhere a Rust Compiler will work.
 
-The engine is composed of 3 primary modules:
+It is composed of 4 primary module:
 - snapshot
 - vault
 - store
+- runtime
 
-For more information on each of these modules, see their associated READMEs. 
+### Snapshot
 
-### Runtime
+The snapshot protocol follows a fairly simple transparent pattern. Each Snapshot file follows a simple structure:
 
-Runtime is a crate that provides guarded types for the engine.  It is the lowest level library of the stronghold and it also defines the `ZeroingAlloc` allocator used by the entire system. Any library that implements the engine or runtime will also implement the `ZeroingAlloc` allocator by default.  For more information, see the Runtime's README.
+|---------------|
+| magic bytes   |
+| version bytes |
+| header/tag    |
+| --------------|
+| cipher text   |
+| --------------|
