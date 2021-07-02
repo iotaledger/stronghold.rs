@@ -144,8 +144,8 @@ impl Stronghold {
     }
 
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified
-    /// location of [`Location`] type. The payload must be specified as a [`Vec<u8>`] and a [`RecordHint`] can be provided.
-    /// Also accepts [`VaultFlags`] for when a new Vault is created.
+    /// location of [`Location`] type. The payload must be specified as a [`Vec<u8>`] and a [`RecordHint`] can be
+    /// provided. Also accepts [`VaultFlags`] for when a new Vault is created.
     pub async fn write_to_vault(
         &self,
         location: Location,
@@ -207,10 +207,10 @@ impl Stronghold {
         StatusMessage::Error("Failed to write the data".into())
     }
 
-    /// Writes data into an insecure cache.  This method, accepts a [`Location`], a [`Vec<u8>`] and an optional [`Duration`].
-    /// The lifetime allows the data to be deleted after the specified duration has passed.  If no lifetime is
-    /// specified, the data will persist until it is manually deleted or over-written. Note: One store is mapped to
-    /// one client. Can specify the same location across multiple clients.
+    /// Writes data into an insecure cache.  This method, accepts a [`Location`], a [`Vec<u8>`] and an optional
+    /// [`Duration`]. The lifetime allows the data to be deleted after the specified duration has passed.  If no
+    /// lifetime is specified, the data will persist until it is manually deleted or over-written. Note: One store
+    /// is mapped to one client. Can specify the same location across multiple clients.
     pub async fn write_to_store(
         &self,
         location: Location,
@@ -236,8 +236,8 @@ impl Stronghold {
     }
 
     /// A method that reads from an insecure cache.  This method, accepts a [`Location`] and returns the payload in the
-    /// form of a ([`Vec<u8>`], [`StatusMessage`]).  If the location does not exist, an empty vector will be returned along with an error
-    /// [`StatusMessage`].  Note: One store is mapped to
+    /// form of a ([`Vec<u8>`], [`StatusMessage`]).  If the location does not exist, an empty vector will be returned
+    /// along with an error [`StatusMessage`].  Note: One store is mapped to
     /// one client. Can specify the same location across multiple clients.
     pub async fn read_from_store(&self, location: Location) -> (Vec<u8>, StatusMessage) {
         let res: SHResults = ask(&self.system, &self.target, SHRequest::ReadFromStore { location }).await;
@@ -249,8 +249,9 @@ impl Stronghold {
         }
     }
 
-    /// A method to delete data from an insecure cache. This method, accepts a [`Location`] and returns a [`StatusMessage`].
-    /// Note: One store is mapped to one client. Can specify the same location across multiple clients.
+    /// A method to delete data from an insecure cache. This method, accepts a [`Location`] and returns a
+    /// [`StatusMessage`]. Note: One store is mapped to one client. Can specify the same location across multiple
+    /// clients.
     pub async fn delete_from_store(&self, location: Location) -> StatusMessage {
         let res: SHResults = ask(&self.system, &self.target, SHRequest::DeleteFromStore(location)).await;
 
@@ -261,9 +262,9 @@ impl Stronghold {
         }
     }
 
-    /// Revokes the data from the specified location of type [`Location`]. Revoked data is not readable and can be removed
-    /// from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call with
-    /// automatically cleanup the revoke. Otherwise, the data is just marked as revoked.
+    /// Revokes the data from the specified location of type [`Location`]. Revoked data is not readable and can be
+    /// removed from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call
+    /// with automatically cleanup the revoke. Otherwise, the data is just marked as revoked.
     pub async fn delete_data(&self, location: Location, should_gc: bool) -> StatusMessage {
         let vault_path = location.vault_path().to_vec();
         let status;
