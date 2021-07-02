@@ -28,6 +28,7 @@ serde = { version = "1.0", default-features = false, features = [ "alloc", "deri
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 smallvec = "1.6.1"
 stronghold-derive = {path = "../derive", version = "0.2.0"}
+wasm-timer = "0.2.5"
 
 [features]
 default = [ "mdns", "tcp-transport"]

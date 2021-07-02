@@ -35,8 +35,9 @@ use std::{
         Arc,
     },
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
+use wasm_timer::Instant;
 
 type ProtocolsHandlerEventType<Rq, Rs> = ProtocolsHandlerEvent<
     RequestProtocol<Rq, Rs>,
