@@ -1,3 +1,7 @@
+---
+slug: /retrospective
+---
+
 #### Authors: Tensor Programming - \<tensor@tauri.studio>
 
 # **Stronghold Engine Retrospective Document**
