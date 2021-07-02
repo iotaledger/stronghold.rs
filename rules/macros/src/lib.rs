@@ -34,16 +34,18 @@ pub fn impl_count_tuples(input: proc_macro::TokenStream) -> TokenStream {
         .into()
 }
 
-/// Returns an iterator of characters of the alphabet (A-Z). The iterator is infinite.
-fn alphabetical(size: usize) -> impl Iterator<Item = String> {
+/// Returns an iterator of [`String`]s of the alphabet (A-Z). If the last character
+/// is 'Z', the next string returned will be 'AA'.
+fn alphabetical(count: usize) -> impl Iterator<Item = String> {
     let radix = 26;
     let end = ('A' as usize + radix) as u8 as char;
-    let digits = (size as f64).log(radix as f64) as usize;
+    let digits = (count as f64).log(radix as f64) as usize;
     let alpha = ('A'..end).collect::<Vec<char>>();
 
-    (0..size).map(move |i| {
+    (0..count).map(move |i| {
         let mut div = i;
         let mut index = 0;
+
         let mut result = vec!['A'; digits + 1];
 
         while div != 0 {
