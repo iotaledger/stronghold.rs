@@ -29,7 +29,7 @@ path = "../engine"
 version = "0.4"
 
 [dependencies.iota-crypto]
-version = "0.5.0"
+version = "0.6.0"
 features = [
 "random",
 "ed25519",
