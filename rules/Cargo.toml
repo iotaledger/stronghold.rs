@@ -8,6 +8,9 @@ license = "Apache-2.0"
 [lib]
 name = "rulesengine"
 
-[dependencies.thiserror]
-version = "1.0.25"
+[dependencies]
+thiserror = { version = "1.0.25" }
+macros  =    {path = "macros/"}
 
+[dev-dependencies]
+criterion = "0.3.4"

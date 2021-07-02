@@ -1,12 +1,22 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+//! Rules Engine
+//!
+//! A Rules Engine for Stronghold.
+
 #![allow(clippy::all)]
 #![allow(dead_code, unused_variables)]
+
+mod types;
 
 use core::convert::{TryFrom, TryInto};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error as DeriveError;
+use types::Count;
+
+// impl tuple count fn
+macros::impl_count_tuples!(26);
 
 pub enum Cmp {
     Equal,
@@ -139,30 +149,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_tuple_count() {
+        assert_eq!((1, 2, 3, 4).count(), 4);
+        assert_eq!((1, 2, 3, 4, "string").count(), 5);
+        assert_eq!((1, 2, 3, 4, 232.32, 34, 'a', "other string").count(), 8);
+    }
+
+    #[test]
     fn test_match_rules() {
         let mut re = RuleEngine::new();
 
         re.create_rule(|a| true, || {});
 
         assert!(re.eval("").is_ok());
-    }
-
-    trait TupleCount {
-        fn count(&self) -> usize;
-    }
-
-    impl<A, B, C, D> TupleCount for (A, B, C, D) {
-        #[inline(always)]
-        fn count(&self) -> usize {
-            4
-        }
-    }
-
-    #[test]
-    fn test_count_tuple() {
-        let a = (0, "456", 1.2, 5);
-        // let v = vec![0u8; size!(0, "456", 1.2)];
-
-        println!("{:?}", a.count());
     }
 }
