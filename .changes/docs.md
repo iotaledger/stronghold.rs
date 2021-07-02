@@ -1,5 +1,5 @@
 ---
-"iota_stronghold": minor
+"iota-stronghold": minor
 "stronghold-engine": minor
 "stronghold-derive": minor
 "stronghold-runtime": minor
