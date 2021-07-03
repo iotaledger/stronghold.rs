@@ -211,7 +211,7 @@
 <tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/client"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/iota_stronghold"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/iota_stronghold"><img src="https://img.shields.io/crates/v/iota_stronghold.svg" alt="" /></a></td></tr>
 </tbody></table>
 <h2 id="stronghold-client"><a class="header" href="#stronghold-client">Stronghold Client</a></h2>
-<p>This is the official client layer of Stronghold. It provides a Riker actor model system for easy Interface as well as functional passthrough to Stronghold's internal actor system for integrators not using Riker. </p>
+<p>This is the official client layer of Stronghold. It uses the Riker actor model and provides an easy interface which acts as a functional passthrough to Stronghold's internal actor system. </p>
 <p><strong>Stronghold Interface</strong>: </p>
 <ul>
 <li><code>init_stronghold_system</code>: Initializes a new instance of the Stronghold system.  Sets up the first client actor. Accepts a <code>ActorSystem</code>, the first <code>client_path</code>: <code>Vec&lt;u8&gt;</code> and any <code>StrongholdFlags</code> which pertain to the first actor.</li>
@@ -259,21 +259,41 @@ Also requires keydata to unlock the snapshot and the keydata must implement and 
 <tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-engine"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-engine"><img src="https://img.shields.io/crates/v/stronghold-engine.svg" alt="" /></a></td></tr>
 </tbody></table>
 <h2 id="engine"><a class="header" href="#engine">engine</a></h2>
-<p>Engine is the collection of low-level crates with which application architects can build higher-level implementations of Strongholds for a variety of purposes. It is platform agnostic, in that it should run anywhere a Rust Compiler will work.</p>
-<p>It is composed of 4 primary crates:</p>
+<p>Engine is the collection of low-level module with which application architects can build higher-level implementations of Strongholds for a variety of purposes. It is platform agnostic, in that it should run anywhere a Rust Compiler will work.</p>
+<p>It is composed of 4 primary module:</p>
 <ul>
 <li>snapshot</li>
 <li>vault</li>
 <li>store</li>
 <li>runtime</li>
 </ul>
+<h3 id="snapshot"><a class="header" href="#snapshot">Snapshot</a></h3>
+<p>The snapshot protocol follows a fairly simple transparent pattern. Each Snapshot file follows a simple structure:</p>
+<table><thead><tr><th align="center"><strong>Header</strong></th></tr></thead><tbody>
+<tr><td align="center">Magic Bytes</td></tr>
+<tr><td align="center">Version Bytes</td></tr>
+<tr><td align="center"><strong>Body</strong></td></tr>
+<tr><td align="center">Ephemeral Key</td></tr>
+<tr><td align="center">xchacha20 tag</td></tr>
+<tr><td align="center">Cipher Text</td></tr>
+</tbody></table>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="structure-enginesnapshot"><a class="header" href="#structure-enginesnapshot">Structure: Engine::Snapshot</a></h1>
 <table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
 <tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine/src/snapshot"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold_engine/engine/latest/snapshot/index.html"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-engine"><img src="https://img.shields.io/crates/v/stronghold-engine.svg" alt="" /></a></td></tr>
 </tbody></table>
 <h2 id="stronghold-snapshot"><a class="header" href="#stronghold-snapshot">Stronghold Snapshot</a></h2>
 <p>This crate defines and implements the encrypted offline storage format used by the Stronghold ecosystem.</p>
-<p>The format has a header with version and magic bytes to appease applications wishing to provide file-type detection.</p>
+<p>The snapshot format follows a fairly simple specification:</p>
+<table><thead><tr><th align="center"><strong>Header</strong></th></tr></thead><tbody>
+<tr><td align="center">Magic Bytes</td></tr>
+<tr><td align="center">Version Bytes</td></tr>
+<tr><td align="center"><strong>Body</strong></td></tr>
+<tr><td align="center">Ephemeral Key</td></tr>
+<tr><td align="center">xchacha20 tag</td></tr>
+<tr><td align="center">Cipher Text</td></tr>
+</tbody></table>
+<p>The format has a header with version and magic bytes to appease applications wishing to provide file-type detection. </p>
+<p>The body format has a ephemeral public key followed by the xchacha20 tag and the cipher text. </p>
 <p>The data stored within a snapshot is considered opaque and uses 256 bit keys. It provides recommended ways to derive the snapshot encryption key from a user provided password. The format also allows using an authenticated data bytestring to further protect the offline snapshot files (one might consider using a secondary user password strengthened by an HSM).</p>
 <p>The current version of the format is using X25519 together with an ephemeral key to derive a shared key for the symmetric XChaCha20 cipher and uses the Poly1305 message authentication algorithm. Future versions, when the demands for larger snapshot sizes and/or random access is desired, might consider encrypting smaller chunks (B-trees?) or similar using per chunk derived ephemeral keys.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="structure-enginevault"><a class="header" href="#structure-enginevault">Structure: Engine::Vault</a></h1>
@@ -281,55 +301,60 @@ Also requires keydata to unlock the snapshot and the keydata must implement and 
 <tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine/src/vault"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold_engine/engine/latest/vault/index.html"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-engine"><img src="https://img.shields.io/crates/v/stronghold-engine.svg" alt="" /></a></td></tr>
 </tbody></table>
 <h2 id="stronghold-vault"><a class="header" href="#stronghold-vault">Stronghold Vault</a></h2>
-<p>Vault is an in-memory database specification which is designed to work without a central server. Only the user which holds the associated id and key may modify the data in a vault. Another owner can take control over the data if they know the id and the key.</p>
-<p>Data can be added to the chain via a [DataTransaction]. The [DataTransaction] is associated to the chain through the owner’s ID and it contains its own randomly generated ID.</p>
-<p>Records may also be revoked from the Vault through a [RevocationTransaction]. A [RevocationTransaction] is created and it references the id of a existing [DataTransaction]. The RevocationTransaction stages the associated record for deletion. The record is deleted when the DbView preforms a garbage collection and the [RevocationTransaction] is deleted along with it.</p>
+<p>Vault is an implementation of a secure database for secrets. From an abstract point of view, each database view is a vault which is a collection of records which are all encrypted using the same key.  And a collection of vaults is called a Stronghold. </p>
+<p>The vault module defines a <code>Vault</code> type. Each of these vaults is composed of <code>Records</code>. Each <code>Record</code> is split into multiple pieces: an id, a data transaction, an optional revocation transaction and the blob of encrypted data. Internally, the data uses the <code>GuardedVec</code> type from the runtime module to guard the data for when it is accessed from the <code>DbView</code> interface. On the <code>DbView</code> interface there are methods for writing data, updating data and deleting data. To delete a record from a vault, a revocation transaction must be added to a record which marks it for garbage collection via the <code>revoke_record</code> method. The records may then be garbage collected using the <code>garbage_collect_vault</code> method. The <code>write</code> method can be used to both write to a new record or update existing records. </p>
+<p>The <code>get_guard</code> method allows the user to insert a closure which accepts the <code>GuardedVec</code> and returns a <code>engine::Result&lt;()&gt;</code>.  Through this closure, the user can interact with the <code>GuardedVec</code> to manipulate the data. The <code>exec_proc</code> method is a version of <code>get_guard</code> that accepts two vault locations, vault keys and also a closure of type <code>FnOnce(GuardedVec&lt;u8&gt;) -&gt; crate::Result&lt;Vec&lt;u8&gt;&gt;</code>. This method places the result of the closure into the newly specified <code>Record</code> in the vault. </p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="structure-enginestore"><a class="header" href="#structure-enginestore">Structure: Engine::Store</a></h1>
 <table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
 <tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine/src/store"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold_engine/engine/latest/store/index.html"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-engine"><img src="https://img.shields.io/crates/v/stronghold-engine.svg" alt="" /></a></td></tr>
 </tbody></table>
 <h2 id="stronghold-store"><a class="header" href="#stronghold-store">Stronghold Store</a></h2>
-<p>This crate contains a key/value cache for the Stronghold Engine. Data is stored in key-value pairs and an expiration timestamp can be set. The data is stored in a structured format and can be quickly retrieved at will. Along with the Vault, this crate is used to store general unencrypted data.</p>
+<p>This crate contains a key/value cache for the Stronghold Engine. Data is stored in key-value pairs and an expiration timestamp can be set. The data is stored in a structured format and can be quickly retrieved at will. Along with the Vault, this crate is used to store general unencrypted data.  The data is written into the snapshot like with the vault in an encrypted format. </p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="structure-runtime"><a class="header" href="#structure-runtime">Structure: Runtime</a></h1>
 <table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
 <tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine/runtime"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-runtime"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-runtime"><img src="https://img.shields.io/crates/v/stronghold-runtime.svg" alt="" /></a></td></tr>
 </tbody></table>
 <h1 id="stronghold-runtime-system-utilities"><a class="header" href="#stronghold-runtime-system-utilities">Stronghold runtime system utilities</a></h1>
-<p>This crate aims to provide utilities for performing computations as securely as
-possible with respect to the underlying operating system.</p>
-<p>Among the considered concepts:</p>
+<p>This crate aims to provide utilities for performing computations as securely as possible with respect to the underlying operating system.</p>
+<p>The crate provides three primary Types for guarding data; <code>GuardedVec</code>, <code>Guarded</code>, and <code>Secret</code>. Here are the primary concerns centered around this library:</p>
 <ul>
-<li>guarded memory allocations
-<ul>
+<li>guarded memory allocations</li>
 <li>assists with read/write protecting sensitive data</li>
 <li>zeroes the allocated memory when handing it back to the operating system</li>
 <li>uses canary and garbage values to protect the memory pages.</li>
 <li>leverages NACL <code>libsodium</code> for use on all supported platforms.</li>
 </ul>
-</li>
-</ul>
-<h2 id="faq"><a class="header" href="#faq">FAQ:</a></h2>
-<h3 id="why-does-my-program-get-killed-with-sigbussigill-signals"><a class="header" href="#why-does-my-program-get-killed-with-sigbussigill-signals">Why does my program get killed with SIGBUS/SIGILL signals?</a></h3>
-<p>It's common to restrict the amount of memory that can a non-privileged user can
-lock into main memory (i.e. forbidden to be swapped out to disk).</p>
-<p>The following limit is sufficient to make the tests pass:</p>
-<pre><code>ulimit -l $((1024*1024))
-</code></pre>
-<p>But it's quite likely that that command will fail because the system defaults
-are sometimes very strict. On Arch the file that manages those limits is
-<a href="https://wiki.archlinux.org/index.php/Limits.conf">limit.conf</a> and the
-following addition raises the limit to sufficiently run the tests:</p>
-<pre><code>username  hard  memlock 1048576
-</code></pre>
-<p>Note also that the tests in the crate allocates <em>a lot</em> more memory than an
-application using these runtime utilities are expected to allocate: by the
-principle of least privilege only the necessary sensitive/cryptographic
-operations should be performed in the most restricted sandbox.</p>
-<h2 id="low-hanging-fruit"><a class="header" href="#low-hanging-fruit">Low-hanging fruit</a></h2>
+<p>The <code>GuardedVec</code> type is used for protecting variable-length secrets allocated on the heap. The <code>Guarded</code> type is used for protecting fixed-length secrets allocated on the heap. The <code>Secret</code> type is used for guarding secrets allocated to the stack.</p>
+<p><code>GuardedVec</code> and <code>Guarded</code> include the following guarantees:</p>
 <ul>
-<li><input disabled="" type="checkbox"/>
-encrypt/authenticate locked memory with a fast algorithm such as AES.</li>
+<li>Causes segfault upon access without using a borrow.</li>
+<li>Protected using mprotect:
+<ul>
+<li><code>Prot::NoAccess</code> - when the box has no current borrows.</li>
+<li><code>Prot::ReadOnly</code> - when the box has at least one current immutable borrow.</li>
+<li><code>Prot::ReadWrite</code> - when the box has a current mutable borrow (can only have one at a time).</li>
 </ul>
+</li>
+<li>The allocated memory uses guard pages both proceeding and following the memory. Overflows and large underflows cause immediate termination of the program.</li>
+<li>A canary proceeds the memory location to detect smaller underflows.  The program will drop the underlying memory and terminate if detected.</li>
+<li>The Memory is locked with <code>mlock</code>.</li>
+<li>When the memory is freed, <code>munlock</code> is called.</li>
+<li>The memory is zeroed when no longer in use via <code>sodium_free</code>.</li>
+<li><code>Guarded</code> types can be compared in constant time.</li>
+<li><code>Guarded</code> types can not be printed using <code>Debug</code>.</li>
+<li>The interior data of a <code>Guarded</code> type may not be <code>Clone</code>. <code>GuardedVec</code> includes serialization which converts the data into a vector before its serialized by serde. Upon deserialization, the data is returned back to a new GuardedVec.</li>
+</ul>
+<p>The <code>Secret</code> type provides fewer security features:</p>
+<ul>
+<li>The Memory is locked with [<code>mlock</code>].</li>
+<li>When the memory is freed, [<code>munlock</code>] is called.</li>
+<li>the memory is zeroed out when no longer in use.</li>
+<li>values are compared in constant time.</li>
+<li>values are prevented from being Debugged.</li>
+<li>Values can not be cloned.</li>
+</ul>
+<h2 id="zeroing-allocator"><a class="header" href="#zeroing-allocator">Zeroing Allocator</a></h2>
+<p>For the sake of providing a method of clearing out memory after it is used, the runtime also implements a zeroing allocator in the form of the <code>ZeroingAlloc</code> struct. This global allocator is merely a wrapper around the standard rust memory allocator which just adds a memory zeroing step to the dealloc process. The memory is zeroed by using the <code>sodium_memzero</code> function prior to being deallocated. </p>
 <p>The primary components are:</p>
 <ul>
 <li><strong>Guarded</strong> - A guarded type for protecting fixed-length secrets allocated on the heap.</li>
@@ -369,7 +394,29 @@ incoming requests are sent to the client actor that has to be provided in the <c
 <tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/derive"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-communication"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-derive"><img src="https://img.shields.io/crates/v/stronghold-derive.svg" alt="" /></a></td></tr>
 </tbody></table>
 <h2 id="derive"><a class="header" href="#derive">Derive</a></h2>
-<p>Proc macros for Stronghold.</p>
+<p>This crate contains procedural macros for Stronghold.</p>
+<h4 id="guarddebug"><a class="header" href="#guarddebug">GuardDebug</a></h4>
+<p>The GuardDebug macro is used to block inspection of a data structure.  It implements the Debug trait and explicitly blocks the reading of the internal data on the structure its derived on. Instead, the data will be returned out as a <code>(guarded)</code> string.</p>
+<h5 id="example"><a class="header" href="#example">Example:</a></h5>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(GuardDebug)]
+struct Foo {
+    some_data: String
+}
+...
+
+let foo = Foo { some_data: &quot;Some data&quot;};
+
+println!(&quot;{:?}&quot;, foo);
+...
+
+&gt; Foo(guarded)
+<span class="boring">}
+</span></code></pre></pre>
+<h4 id="requestpermissions"><a class="header" href="#requestpermissions">RequestPermissions</a></h4>
+<p>Implements the <code>VariantPermission</code> for struct/unions with PermissionValue(1). For enums, it implements <code>ToPermissionVariants</code>, which creates an according new enum <code>&lt;Ident&gt;Permission</code> with Unit variants, and implements <code>VariantPermission</code> by assigning different <code>PermissionValue</code> for each variant. The permission value is the &quot;index&quot; in the enum as exponent for the power of 2, thus from top to bottom 1, 2, 4, 8...</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="structure-utils"><a class="header" href="#structure-utils">Structure: Utils</a></h1>
 <table><thead><tr><th></th><th></th><th></th></tr></thead><tbody>
 <tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/utils"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-utils"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-utils"><img src="https://img.shields.io/crates/v/stronghold-utils.svg" alt="" /></a></td></tr>
@@ -779,6 +826,23 @@ updated: 2021-Apr-27
 <p><strong>Personal Concluding Thoughts</strong></p>
 <p>I found working on this project was a learning experience; it was interesting and a nice change of pace. Developing the Engine forced me to examine aspects of cryptography that I had only barely been exposed to in the past. While I have worked on Cryptocurrency platforms such as Steem, I've never worked with secure data this closely. Some of my initial assumptions were either wrong or incomplete and by the end of this development process I had a much more thorough understanding of cryptography as a whole.</p>
 <p>I do believe that  Engine is a very strong starting line for the Stronghold platform. The future developers will be able to use it effectively in their projects and I look forward to seeing how they extend it. I thank IOTA for giving me the opportunity to work on this project and I wish them luck going forward.</p>
+<h2 id="addendum"><a class="header" href="#addendum">Addendum</a></h2>
+<p><em><strong>Architectural changes</strong></em></p>
+<p>The Random, Crypto and Primitives crates were removed from the engine in favor of IOTA’s Crypto.rs library.  There were some pain points in implementing crypto.rs due to it being immature at the time but it has now taken over the logic that was delegated to the aforementioned crates. The versioning system was also removed from the engine due to a lack of use by the implementing libraries. The versioning abstraction has now been delegated to the end user for the sake of simplicity and a <code>Location.counter</code> API was added to facilitate this. </p>
+<p>The Vault logic was completely re-written for the sake of simplifying the core and also increasing the general performance of the library.  Along these lines, a new crate was introduced called Runtime which adds so-called <code>guarded types</code>.  The guarded types make it so that any piece of data which is placed into the vault is protected from memory based attacks and other potential misuses. A global allocator was also added to zero out all of the memory when it gets dropped from use. Runtime relies heavily on libsodium for these features. </p>
+<p>A new Client was defined which uses the Riker Actor model - though it should be noted that Riker is to be removed in favor of Actix.  The Client provides a generic interface for using the various engine pieces and it was extended with Cryptographic Procedures. These procedures allow implementers to call cryptographic operations on the vault’s internal data without exposing the data. For example, the vault could contain a seed for a wallet; a procedure could be called to generate the secret key and return the public key. </p>
+<p>Snapshot was only slightly modified, in that it was given a compression engine; LZ4, and it now uses ephemeral keys rather than direct passwords for the encryption.  A user puts in their password, a key is derived from that password, a shared key is derived from this new key and then it is used to encrypt the data into the snapshot file format. Outside of those changes, the snapshot format is roughly the same as it was before except it now also uses crypto.rs for its encryption algorithms.</p>
+<p>The final major crate that was added to stronghold is the communications crate.  The communications crate uses libp2p to set up the noise protocol and it mirrors the client interface.  This system allows users to trigger procedures on remote strongholds and synchronize their snapshots between these remote systems.  Eventually, they will also offer a borrowing mechanism that uses references to allow remote users to “use” secrets without having them on their local system. </p>
+<p><em><strong>Future Development Options</strong></em></p>
+<p>Going forward, the team on stronghold has discussed a couple features which can be written into the library prior to its release. </p>
+<ul>
+<li>A DSL for allowing users to define their own procedures using a set of given cryptographic primitives.  This would effectively allow outside users to define their own procedures without exposing the secrets to malicious actors. </li>
+<li>A set of macros to easily allow devs to add new procedures to the system.  The object of this system would be to make it easier for developers to plug in new procedures without having to create large sweeping changes.  For example, a developer could simply annotate a function and on compilation, the system would generate the appropriate code and boilerplate. </li>
+<li>Migration from Riker to Actix.  Unfortunately, the Riker actor model library has been left stranded by its contributors. Rather than taking ownership of the library and working to maintain it in the IOTA foundation, a decision was made to move forward with using Actix inside of the stronghold client. </li>
+<li>Continued development on the communication crate. </li>
+</ul>
+<p><strong>Addendum Concluding Thoughts</strong></p>
+<p>Many of the same take-aways mentioned above still apply here. Stronghold, all and all, was a very interesting project to work on. I am confident that the new team will be able to take it forward all the way to release. I am satisfied that I was able to work on this project up until this point and I look forward to seeing how it progresses towards the RC. </p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="contribute-to-the-project"><a class="header" href="#contribute-to-the-project">Contribute to the project</a></h1>
 <p><strong>Thanks for thinking about contributing to the project! We have the following ways that you can contribute.</strong></p>
 <h2 id="join-the-iota-stronghold-initiative"><a class="header" href="#join-the-iota-stronghold-initiative">Join the IOTA Stronghold Initiative</a></h2>

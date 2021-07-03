@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["macros",""],["storage",""]],"struct":[["Cache","The cache struct used to store the data in an ordered format."]]});
+initSidebarItems({"mod":[["macros",""],["storage",""]],"struct":[["Cache","The [`Cache`] struct used to store the data in an ordered format."]]});

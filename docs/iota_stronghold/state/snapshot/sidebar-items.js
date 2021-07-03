@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Snapshot",""],["SnapshotState",""]]});
+initSidebarItems({"struct":[["Snapshot","Wrapper for the [`SnapshotState`] data structure."],["SnapshotState","Data structure that is written to the snapshot."]]});

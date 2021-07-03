@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Base64",""]],"trait":[["Base64Decodable","a trait to make types base64 decodable"],["Base64Encodable","a trait to make types base64 encodable"]]});
+initSidebarItems({"struct":[["Base64","a [`Base64`] encoder and decoder used in the Vault."]],"trait":[["Base64Decodable","a trait to make types base64 decodable"],["Base64Encodable","a trait to make types base64 encodable"]]});

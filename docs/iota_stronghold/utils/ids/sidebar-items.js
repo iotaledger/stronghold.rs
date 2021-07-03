@@ -1,1 +1,1 @@
-initSidebarItems({"trait":[["LoadFromPath",""]]});
+initSidebarItems({"trait":[["LoadFromPath","A trait that allows a datatype to load and setup its internal data through the use of a path and some data."]]});

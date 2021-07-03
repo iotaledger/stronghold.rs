@@ -105,22 +105,6 @@
 <span id="102">102</span>
 <span id="103">103</span>
 <span id="104">104</span>
-<span id="105">105</span>
-<span id="106">106</span>
-<span id="107">107</span>
-<span id="108">108</span>
-<span id="109">109</span>
-<span id="110">110</span>
-<span id="111">111</span>
-<span id="112">112</span>
-<span id="113">113</span>
-<span id="114">114</span>
-<span id="115">115</span>
-<span id="116">116</span>
-<span id="117">117</span>
-<span id="118">118</span>
-<span id="119">119</span>
-<span id="120">120</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -130,7 +114,7 @@
 <span class="doccomment">/// A type alias for the empty `ResultMessage&lt;()&gt;` type.</span>
 <span class="kw">pub</span> <span class="kw">type</span> <span class="ident">StatusMessage</span> <span class="op">=</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span>()<span class="op">&gt;</span>;
 
-<span class="doccomment">/// Return value used for Actor Messages.  Can specify an Error or an Ok result.</span>
+<span class="doccomment">/// Return value used for Actor Messages.  Can specify an `Error` or an `Ok` result.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
     <span class="prelude-val">Ok</span>(<span class="ident">T</span>),
@@ -162,11 +146,9 @@
     }
 }
 
-<span class="doccomment">/// A `Location` type used to specify where in the `Stronghold` a piece of data should be stored. A generic location</span>
-<span class="doccomment">/// specifies a non-versioned location while a counter location specifies a versioned location. The Counter location can</span>
-<span class="doccomment">/// be used to get the head of the version chain by passing in `None` as the counter index. Otherwise, counter records</span>
-<span class="doccomment">/// are referenced through their associated index.  On Read, the `None` location is the latest record in the version</span>
-<span class="doccomment">/// chain while on Write, the `None` location is the next record in the version chain.</span>
+<span class="doccomment">/// A [`Location`] type used to specify where in the [`Stronghold`] a piece of data should be stored. A generic location</span>
+<span class="doccomment">/// specifies a location while a counter location specifies a versioned location. If a counter [`Location`] is used,</span>
+<span class="doccomment">/// then the implementation must maintain the counters for the versioning.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Location</span> {
     <span class="ident">Generic</span> { <span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">record_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span> },
@@ -182,7 +164,7 @@
         }
     }
 
-    <span class="doccomment">/// Creates a generic location from types that implement `Into&lt;Vec&lt;u8&gt;&gt;`.</span>
+    <span class="doccomment">/// Creates a generic location from types that implement [`Into&lt;Vec&lt;u8&gt;&gt;`].</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">generic</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">R</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="ident">vault_path</span>: <span class="ident">V</span>, <span class="ident">record_path</span>: <span class="ident">R</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span><span class="ident">::Generic</span> {
             <span class="ident">vault_path</span>: <span class="ident">vault_path</span>.<span class="ident">into</span>(),
@@ -190,26 +172,12 @@
         }
     }
 
-    <span class="doccomment">/// Creates a counter location from a type that implements `Into&lt;Vec&lt;u8&gt;&gt;` and a counter type that implements</span>
-    <span class="doccomment">/// `Into&lt;usize&gt;`</span>
+    <span class="doccomment">/// Creates a counter location from a type that implements [`Into&lt;Vec&lt;u8&gt;&gt;`] and a counter type that implements</span>
+    <span class="doccomment">/// [`Into&lt;usize&gt;`]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">counter</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">C</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="ident">vault_path</span>: <span class="ident">V</span>, <span class="ident">counter</span>: <span class="ident">C</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span><span class="ident">::Counter</span> {
             <span class="ident">vault_path</span>: <span class="ident">vault_path</span>.<span class="ident">into</span>(),
             <span class="ident">counter</span>: <span class="ident">counter</span>.<span class="ident">into</span>(),
-        }
-    }
-
-    <span class="doccomment">/// Helper method used to increment counter locations.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">increment_counter</span>(<span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident">Location::Generic</span> {
-                <span class="ident">vault_path</span>,
-                <span class="ident">record_path</span>,
-            } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">Location::Generic</span> {
-                <span class="ident">vault_path</span>,
-                <span class="ident">record_path</span>,
-            },
-            <span class="ident">Location::Counter</span> { <span class="ident">vault_path</span>, <span class="ident">counter</span> } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">Location::Counter</span> { <span class="ident">vault_path</span>, <span class="ident">counter</span> },
         }
     }
 

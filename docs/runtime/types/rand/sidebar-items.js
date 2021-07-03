@@ -1,1 +1,1 @@
-initSidebarItems({"trait":[["Randomized",""]]});
+initSidebarItems({"trait":[["Randomized","A trait for generating random bytes via [`randombytes_buf`]."]]});

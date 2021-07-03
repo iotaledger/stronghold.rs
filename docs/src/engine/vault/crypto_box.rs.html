@@ -141,6 +141,8 @@
 <span id="138">138</span>
 <span id="139">139</span>
 <span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -157,21 +159,21 @@
 
 <span class="doccomment">/// A provider interface between the vault and a crypto box. See libsodium&#39;s [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">BoxProvider</span>: <span class="ident">Sized</span> <span class="op">+</span> <span class="ident">Ord</span> <span class="op">+</span> <span class="ident">PartialOrd</span> {
-    <span class="doccomment">/// function for the key length of the crypto box</span>
+    <span class="doccomment">/// defines the key length for the [`BoxProvider`].</span>
     <span class="kw">fn</span> <span class="ident">box_key_len</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="ident">usize</span>;
-    <span class="doccomment">/// gets the crypto box&#39;s overhead</span>
+    <span class="doccomment">/// defines the size of the Nonce combined with the Ad for the [`BoxProvider`].</span>
     <span class="kw">fn</span> <span class="ident">box_overhead</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="ident">usize</span>;
 
-    <span class="doccomment">/// seals some data into the crypto box using the `key` and the `ad`</span>
+    <span class="doccomment">/// seals some data into the crypto box using the [`Key`] and the associated data.</span>
     <span class="kw">fn</span> <span class="ident">box_seal</span>(<span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">Key</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>, <span class="ident">ad</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>], <span class="ident">data</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span><span class="ident">::Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 
-    <span class="doccomment">/// opens a crypto box to get data using the `key` and the `ad`.</span>
+    <span class="doccomment">/// opens a crypto box to get data using the [`Key`] and the associated data.</span>
     <span class="kw">fn</span> <span class="ident">box_open</span>(<span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">Key</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>, <span class="ident">ad</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>], <span class="ident">data</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span><span class="ident">::Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 
-    <span class="doccomment">/// fills a buffer `buf` with secure random bytes.</span>
+    <span class="doccomment">/// fills a buffer [`&amp;mut [u8]`] with secure random bytes.</span>
     <span class="kw">fn</span> <span class="ident">random_buf</span>(<span class="ident">buf</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> [<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span><span class="ident">::Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span>;
 
-    <span class="doccomment">/// creates a vector with secure random bytes based off of an inputted length `len`.</span>
+    <span class="doccomment">/// creates a vector with secure random bytes based off of an inputted [`usize`] length.</span>
     <span class="kw">fn</span> <span class="ident">random_vec</span>(<span class="ident">len</span>: <span class="ident">usize</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span><span class="ident">::Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">buf</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="number">0</span>; <span class="ident">len</span>];
         <span class="self">Self</span><span class="ident">::random_buf</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">buf</span>)<span class="question-mark">?</span>;
@@ -179,12 +181,14 @@
     }
 }
 
-<span class="doccomment">/// A key to the crypto box.  Key is stored on the heap which makes it easier to erase.</span>
+<span class="doccomment">/// A key to the crypto box.  [`Key`] is stored on the heap which makes it easier to erase. Makes use of the</span>
+<span class="doccomment">/// [`GuardedVec&lt;u8&gt;`] type to protect the data.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">BoxProvider</span><span class="op">&gt;</span> {
     <span class="doccomment">/// the guarded raw bytes that make up the key</span>
     <span class="kw">pub</span> <span class="ident">key</span>: <span class="ident">GuardedVec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
 
+    <span class="doccomment">/// phantom data to call to the provider.</span>
     <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">skip_serializing</span>, <span class="ident">skip_deserializing</span>)]</span>
     <span class="ident">_box_provider</span>: <span class="ident">PhantomData</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>,
 }
@@ -216,7 +220,7 @@
         }
     }
 
-    <span class="doccomment">/// get the key&#39;s bytes</span>
+    <span class="doccomment">/// get the key&#39;s bytes from the [`GuardedVec`]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">bytes</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span> {
         <span class="comment">// hacks the guarded type.  Probably not the best solution.</span>
         (<span class="kw-2">*</span><span class="self">self</span>.<span class="ident">key</span>.<span class="ident">borrow</span>()).<span class="ident">to_vec</span>()
@@ -274,7 +278,7 @@
     }
 }
 
-<span class="doccomment">/// Trait for decryptable data.  Allows the data to be decrypted.</span>
+<span class="doccomment">/// Trait for decryptable data. Allows the data to be decrypted.</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">Decrypt</span><span class="op">&lt;</span><span class="ident">E</span>, <span class="ident">T</span>: <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">Error</span> <span class="op">=</span> <span class="ident">E</span><span class="op">&gt;</span><span class="op">&gt;</span>: <span class="ident">AsRef</span><span class="op">&lt;</span>[<span class="ident">u8</span>]<span class="op">&gt;</span> {
     <span class="doccomment">/// decrypts raw data and creates a new type T from the plaintext</span>
     <span class="kw">fn</span> <span class="ident">decrypt</span><span class="op">&lt;</span><span class="ident">B</span>: <span class="ident">BoxProvider</span>, <span class="ident">AD</span>: <span class="ident">AsRef</span><span class="op">&lt;</span>[<span class="ident">u8</span>]<span class="op">&gt;</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">Key</span><span class="op">&lt;</span><span class="ident">B</span><span class="op">&gt;</span>, <span class="ident">ad</span>: <span class="ident">AD</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">crate</span><span class="ident">::Result</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {

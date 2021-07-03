@@ -1,1 +1,1 @@
-initSidebarItems({"trait":[["ConstEq",""]]});
+initSidebarItems({"trait":[["ConstEq","A trait for comparing types in Constant Time using [`sodium_memcmp`]."]]});

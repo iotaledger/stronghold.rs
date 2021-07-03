@@ -770,7 +770,6 @@
 <span id="767">767</span>
 <span id="768">768</span>
 <span id="769">769</span>
-<span id="770">770</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -989,8 +988,7 @@
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
     },
 
-    <span class="comment">// Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not</span>
-    <span class="comment">// specified, it reads the head.  Returns with `ReturnRead`.</span>
+    <span class="comment">// Reads data from a record in the vault. Accepts a vault id and an optional record id. Returns with `ReturnRead`.</span>
     <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
     <span class="ident">ReadFromVault</span> {
         <span class="ident">location</span>: <span class="ident">Location</span>,
@@ -1034,7 +1032,7 @@
     <span class="ident">ControlRequest</span>(<span class="ident">Procedure</span>),
 }
 
-<span class="doccomment">/// Messages that come from stronghold</span>
+<span class="doccomment">/// Return messages that come from stronghold</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">SHResults</span> {
     <span class="ident">ReturnWriteStore</span>(<span class="ident">StatusMessage</span>),

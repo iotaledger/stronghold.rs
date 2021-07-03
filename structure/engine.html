@@ -151,14 +151,24 @@
 <tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/engine"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-engine"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-engine"><img src="https://img.shields.io/crates/v/stronghold-engine.svg" alt="" /></a></td></tr>
 </tbody></table>
 <h2 id="engine"><a class="header" href="#engine">engine</a></h2>
-<p>Engine is the collection of low-level crates with which application architects can build higher-level implementations of Strongholds for a variety of purposes. It is platform agnostic, in that it should run anywhere a Rust Compiler will work.</p>
-<p>It is composed of 4 primary crates:</p>
+<p>Engine is the collection of low-level module with which application architects can build higher-level implementations of Strongholds for a variety of purposes. It is platform agnostic, in that it should run anywhere a Rust Compiler will work.</p>
+<p>It is composed of 4 primary module:</p>
 <ul>
 <li>snapshot</li>
 <li>vault</li>
 <li>store</li>
 <li>runtime</li>
 </ul>
+<h3 id="snapshot"><a class="header" href="#snapshot">Snapshot</a></h3>
+<p>The snapshot protocol follows a fairly simple transparent pattern. Each Snapshot file follows a simple structure:</p>
+<table><thead><tr><th align="center"><strong>Header</strong></th></tr></thead><tbody>
+<tr><td align="center">Magic Bytes</td></tr>
+<tr><td align="center">Version Bytes</td></tr>
+<tr><td align="center"><strong>Body</strong></td></tr>
+<tr><td align="center">Ephemeral Key</td></tr>
+<tr><td align="center">xchacha20 tag</td></tr>
+<tr><td align="center">Cipher Text</td></tr>
+</tbody></table>
 
                     </main>
 

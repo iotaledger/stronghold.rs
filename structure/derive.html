@@ -151,7 +151,29 @@
 <tr><td><a href="https://github.com/iotaledger/stronghold.rs/tree/dev/derive"><img src="https://img.shields.io/badge/github-source-blue.svg" alt="github" /></a></td><td><a href="https://docs.rs/stronghold-communication"><img src="https://img.shields.io/badge/rust-docs-green.svg" alt="github" /></a></td><td><a href="https://crates.io/crates/stronghold-derive"><img src="https://img.shields.io/crates/v/stronghold-derive.svg" alt="" /></a></td></tr>
 </tbody></table>
 <h2 id="derive"><a class="header" href="#derive">Derive</a></h2>
-<p>Proc macros for Stronghold.</p>
+<p>This crate contains procedural macros for Stronghold.</p>
+<h4 id="guarddebug"><a class="header" href="#guarddebug">GuardDebug</a></h4>
+<p>The GuardDebug macro is used to block inspection of a data structure.  It implements the Debug trait and explicitly blocks the reading of the internal data on the structure its derived on. Instead, the data will be returned out as a <code>(guarded)</code> string.</p>
+<h5 id="example"><a class="header" href="#example">Example:</a></h5>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(GuardDebug)]
+struct Foo {
+    some_data: String
+}
+...
+
+let foo = Foo { some_data: &quot;Some data&quot;};
+
+println!(&quot;{:?}&quot;, foo);
+...
+
+&gt; Foo(guarded)
+<span class="boring">}
+</span></code></pre></pre>
+<h4 id="requestpermissions"><a class="header" href="#requestpermissions">RequestPermissions</a></h4>
+<p>Implements the <code>VariantPermission</code> for struct/unions with PermissionValue(1). For enums, it implements <code>ToPermissionVariants</code>, which creates an according new enum <code>&lt;Ident&gt;Permission</code> with Unit variants, and implements <code>VariantPermission</code> by assigning different <code>PermissionValue</code> for each variant. The permission value is the &quot;index&quot; in the enum as exponent for the power of 2, thus from top to bottom 1, 2, 4, 8...</p>
 
                     </main>
 

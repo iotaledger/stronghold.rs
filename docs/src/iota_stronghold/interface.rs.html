@@ -908,6 +908,7 @@
 <span id="905">905</span>
 <span id="906">906</span>
 <span id="907">907</span>
+<span id="908">908</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -969,8 +970,8 @@
 }
 
 <span class="kw">impl</span> <span class="ident">Stronghold</span> {
-    <span class="doccomment">/// Initializes a new instance of the system.  Sets up the first client actor. Accepts a `ActorSystem`, the first</span>
-    <span class="doccomment">/// client_path: `Vec&lt;u8&gt;` and any `StrongholdFlags` which pertain to the first actor.</span>
+    <span class="doccomment">/// Initializes a new instance of the system.  Sets up the first client actor. Accepts a [`ActorSystem`], the first</span>
+    <span class="doccomment">/// client_path: [`Vec&lt;u8&gt;`] and any [`StrongholdFlags`] which pertain to the first actor.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">init_stronghold_system</span>(<span class="ident">system</span>: <span class="ident">ActorSystem</span>, <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">_options</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">StrongholdFlags</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
         <span class="kw">let</span> <span class="ident">id_str</span>: <span class="ident">String</span> <span class="op">=</span> <span class="ident">client_id</span>.<span class="ident">into</span>();
@@ -998,7 +999,7 @@
         }
     }
 
-    <span class="doccomment">/// Spawns a new set of actors for the Stronghold system. Accepts the client_path: `Vec&lt;u8&gt;` and the options:</span>
+    <span class="doccomment">/// Spawns a new set of actors for the Stronghold system. Accepts the client_path: [`Vec&lt;u8&gt;`] and the options:</span>
     <span class="doccomment">/// `StrongholdFlags`</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">spawn_stronghold_actor</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
@@ -1028,7 +1029,7 @@
         <span class="ident">StatusMessage::OK</span>
     }
 
-    <span class="doccomment">/// Switches the actor target to another actor in the system specified by the client_path: `Vec&lt;u8&gt;`.</span>
+    <span class="doccomment">/// Switches the actor target to another actor in the system specified by the client_path: [`Vec&lt;u8&gt;`].</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">switch_actor_target</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>()).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
 
@@ -1057,8 +1058,8 @@
     }
 
     <span class="doccomment">/// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified</span>
-    <span class="doccomment">/// location of `Location` type. The payload must be specified as a `Vec&lt;u8&gt;` and a `RecordHint` can be provided.</span>
-    <span class="doccomment">/// Also accepts `VaultFlags` for when a new Vault is created.</span>
+    <span class="doccomment">/// location of [`Location`] type. The payload must be specified as a [`Vec&lt;u8&gt;`] and a [`RecordHint`] can be</span>
+    <span class="doccomment">/// provided. Also accepts [`VaultFlags`] for when a new Vault is created.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">write_to_vault</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">location</span>: <span class="ident">Location</span>,
@@ -1120,10 +1121,10 @@
         <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Failed to write the data&quot;</span>.<span class="ident">into</span>())
     }
 
-    <span class="doccomment">/// Writes data into an insecure cache.  This method, accepts a `Location`, a `Vec&lt;u8&gt;` and an optional `Duration`.</span>
-    <span class="doccomment">/// The lifetime allows the data to be deleted after the specified duration has passed.  If not lifetime is</span>
-    <span class="doccomment">/// specified, the data will persist until it is manually deleted or over-written. Note: One store is mapped to</span>
-    <span class="doccomment">/// one client. Can specify the same location across multiple clients.</span>
+    <span class="doccomment">/// Writes data into an insecure cache.  This method, accepts a [`Location`], a [`Vec&lt;u8&gt;`] and an optional</span>
+    <span class="doccomment">/// [`Duration`]. The lifetime allows the data to be deleted after the specified duration has passed.  If no</span>
+    <span class="doccomment">/// lifetime is specified, the data will persist until it is manually deleted or over-written. Note: One store</span>
+    <span class="doccomment">/// is mapped to one client. Can specify the same location across multiple clients.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">write_to_store</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">location</span>: <span class="ident">Location</span>,
@@ -1148,9 +1149,9 @@
         }
     }
 
-    <span class="doccomment">/// A method that reads from an insecure cache.  This method, accepts a `Location` and returns the payload in the</span>
-    <span class="doccomment">/// form of a `Vec&lt;u8&gt;`.  If the location does not exist, an empty vector will be returned along with an error</span>
-    <span class="doccomment">/// `StatusMessage`.  Note: One store is mapped to</span>
+    <span class="doccomment">/// A method that reads from an insecure cache.  This method, accepts a [`Location`] and returns the payload in the</span>
+    <span class="doccomment">/// form of a ([`Vec&lt;u8&gt;`], [`StatusMessage`]).  If the location does not exist, an empty vector will be returned</span>
+    <span class="doccomment">/// along with an error [`StatusMessage`].  Note: One store is mapped to</span>
     <span class="doccomment">/// one client. Can specify the same location across multiple clients.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_from_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
         <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::ReadFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span>;
@@ -1162,8 +1163,9 @@
         }
     }
 
-    <span class="doccomment">/// A method to delete data from an insecure cache. This method, accepts a `Location` and returns a `StatusMessage`.</span>
-    <span class="doccomment">/// Note: One store is mapped to one client. Can specify the same location across multiple clients.</span>
+    <span class="doccomment">/// A method to delete data from an insecure cache. This method, accepts a [`Location`] and returns a</span>
+    <span class="doccomment">/// [`StatusMessage`]. Note: One store is mapped to one client. Can specify the same location across multiple</span>
+    <span class="doccomment">/// clients.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">delete_from_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">res</span>: <span class="ident">SHResults</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::DeleteFromStore</span>(<span class="ident">location</span>)).<span class="kw">await</span>;
 
@@ -1174,9 +1176,9 @@
         }
     }
 
-    <span class="doccomment">/// Revokes the data from the specified location of type `Location`. Revoked data is not readable and can be removed</span>
-    <span class="doccomment">/// from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call with</span>
-    <span class="doccomment">/// automatically cleanup the revoke. Otherwise, the data is just marked as revoked.</span>
+    <span class="doccomment">/// Revokes the data from the specified location of type [`Location`]. Revoked data is not readable and can be</span>
+    <span class="doccomment">/// removed from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call</span>
+    <span class="doccomment">/// with automatically cleanup the revoke. Otherwise, the data is just marked as revoked.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">delete_data</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>, <span class="ident">should_gc</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">location</span>.<span class="ident">vault_path</span>().<span class="ident">to_vec</span>();
         <span class="kw">let</span> <span class="ident">status</span>;
@@ -1214,7 +1216,7 @@
         <span class="ident">status</span>
     }
 
-    <span class="doccomment">/// Garbage collects any revokes in a Vault based on the given vault_path and the current target actor.</span>
+    <span class="doccomment">/// Garbage collects any revokes in a Vault based on the given `vault_path` and the current target actor.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">garbage_collect</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnGarbage</span>(<span class="ident">status</span>) <span class="op">=</span>
             <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::GarbageCollect</span>(<span class="ident">vault_path</span>)).<span class="kw">await</span>
@@ -1225,7 +1227,7 @@
         }
     }
 
-    <span class="doccomment">/// Returns a list of the available `RecordId` and `RecordHint` values in a vault by the given `vault_path`.</span>
+    <span class="doccomment">/// Returns a list of the available [`RecordId`] and [`RecordHint`] values in a vault by the given `vault_path`.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">list_hints_and_ids</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">vault_path</span>: <span class="ident">V</span>,
@@ -1242,7 +1244,7 @@
         }
     }
 
-    <span class="doccomment">/// Executes a runtime command given a `Procedure`.  Returns a `ProcResult` based off of the control_request</span>
+    <span class="doccomment">/// Executes a runtime command given a [`Procedure`].  Returns a [`ProcResult`] based off of the control_request</span>
     <span class="doccomment">/// specified.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">runtime_exec</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">control_request</span>: <span class="ident">Procedure</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ProcResult</span> {
         <span class="kw">let</span> <span class="ident">shr</span> <span class="op">=</span> <span class="ident">ask</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">target</span>, <span class="ident">SHRequest::ControlRequest</span>(<span class="ident">control_request</span>)).<span class="kw">await</span>;
@@ -1252,7 +1254,7 @@
         }
     }
 
-    <span class="doccomment">/// Checks whether a record exists in the client based off of the given `Location`.</span>
+    <span class="doccomment">/// Checks whether a record exists in the client based off of the given [`Location`].</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">record_exists</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">SHResults::ReturnExistsRecord</span>(<span class="ident">b</span>) <span class="op">=</span> <span class="ident">ask</span>(
             <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">system</span>,
@@ -1324,7 +1326,7 @@
         }
     }
 
-    <span class="doccomment">/// Writes the entire state of the `Stronghold` into a snapshot.  All Actors and their associated data will be</span>
+    <span class="doccomment">/// Writes the entire state of the [`Stronghold`] into a snapshot.  All Actors and their associated data will be</span>
     <span class="doccomment">/// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be</span>
     <span class="doccomment">/// specified. The Keydata should implement and use Zeroize.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">write_all_to_snapshot</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Zeroize</span> <span class="op">+</span> <span class="ident">AsRef</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(

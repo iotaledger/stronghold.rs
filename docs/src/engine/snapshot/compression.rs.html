@@ -20,6 +20,9 @@
 <span id="17">17</span>
 <span id="18">18</span>
 <span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -29,12 +32,15 @@
 
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">decoder::decompress</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">encoder::compress</span>;
+
+<span class="doccomment">/// Block for the LZ4 compression algorithm.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct</span> <span class="ident">Block</span> {
     <span class="ident">literal_length</span>: <span class="ident">usize</span>,
     <span class="ident">duplicates</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duplicate</span><span class="op">&gt;</span>,
 }
 
+<span class="doccomment">/// Duplicate represented in the LZ4 algorithm.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Copy</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct</span> <span class="ident">Duplicate</span> {
     <span class="ident">offset</span>: <span class="ident">u16</span>,

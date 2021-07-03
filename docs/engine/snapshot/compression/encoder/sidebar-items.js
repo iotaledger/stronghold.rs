@@ -1,1 +1,1 @@
-initSidebarItems({"constant":[["DICT_SIZE",""]],"fn":[["compress","Compress data using an LZ4 Algorithm."],["compress_into",""]],"struct":[["Lz4Encoder",""]]});
+initSidebarItems({"constant":[["DICT_SIZE","Dictionary size."]],"fn":[["compress","Compress data using an LZ4 Algorithm."],["compress_into","Public function for compression some input into an output buffer."]],"struct":[["Lz4Encoder","Lz4Encoder implementation."]]});

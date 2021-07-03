@@ -22,6 +22,7 @@
 <span id="19">19</span>
 <span id="20">20</span>
 <span id="21">21</span>
+<span id="22">22</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -30,6 +31,7 @@
 
 <span class="kw">use</span> <span class="ident">libsodium_sys::sodium_memcmp</span>;
 
+<span class="doccomment">/// A trait for comparing types in Constant Time using [`sodium_memcmp`].</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">ConstEq</span>: <span class="ident">ContiguousBytes</span> {
     <span class="kw">fn</span> <span class="ident">const_eq</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">rhs</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="kw">unsafe</span> {

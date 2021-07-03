@@ -1,1 +1,1 @@
-initSidebarItems({"trait":[["Zeroed",""]]});
+initSidebarItems({"trait":[["Zeroed","A trait for zeroing out memory on drop using [`sodium_memzero`]."]]});

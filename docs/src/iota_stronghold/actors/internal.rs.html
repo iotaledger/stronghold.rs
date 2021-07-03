@@ -723,6 +723,20 @@
 <span id="720">720</span>
 <span id="721">721</span>
 <span id="722">722</span>
+<span id="723">723</span>
+<span id="724">724</span>
+<span id="725">725</span>
+<span id="726">726</span>
+<span id="727">727</span>
+<span id="728">728</span>
+<span id="729">729</span>
+<span id="730">730</span>
+<span id="731">731</span>
+<span id="732">732</span>
+<span id="733">733</span>
+<span id="734">734</span>
+<span id="735">735</span>
+<span id="736">736</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -763,24 +777,32 @@
     <span class="ident">utils</span>::{<span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>},
 };
 
+<span class="doccomment">/// State for the internal actor used as the runtime.</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">InternalActor</span><span class="op">&lt;</span><span class="ident">P</span>: <span class="ident">BoxProvider</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="lifetime">&#39;static</span><span class="op">&gt;</span> {
     <span class="ident">client_id</span>: <span class="ident">ClientId</span>,
     <span class="ident">keystore</span>: <span class="ident">KeyStore</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>,
     <span class="ident">db</span>: <span class="ident">DbView</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>,
 }
 
-<span class="doccomment">/// Messages used for the KeyStore Actor.</span>
+<span class="doccomment">/// Messages used for the Internal Actor.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">GuardDebug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">InternalMsg</span> {
+    <span class="doccomment">/// Creates a new vault at the given [`VaultId`] and [`RecordId`]</span>
     <span class="ident">CreateVault</span>(<span class="ident">VaultId</span>, <span class="ident">RecordId</span>),
+    <span class="doccomment">/// Reads data from a vault at the location of the given [`VaultId`] and [`RecordId`]</span>
     <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
     <span class="ident">ReadFromVault</span>(<span class="ident">VaultId</span>, <span class="ident">RecordId</span>),
+    <span class="doccomment">/// Writes data to a vault at the location of the given [`VaultId`] and [`RecordId`]</span>
     <span class="ident">WriteToVault</span>(<span class="ident">VaultId</span>, <span class="ident">RecordId</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">RecordHint</span>),
+    <span class="doccomment">/// Revokes data from a vault at the location of the given [`VaultId`] and [`RecordId`]</span>
     <span class="ident">RevokeData</span>(<span class="ident">VaultId</span>, <span class="ident">RecordId</span>),
+    <span class="doccomment">/// Garbage collects a vault at the given [`VaultId`]</span>
     <span class="ident">GarbageCollect</span>(<span class="ident">VaultId</span>),
+    <span class="doccomment">/// Lists ids of the vault at the given [`VaultId`]</span>
     <span class="ident">ListIds</span>(<span class="ident">VaultId</span>),
+    <span class="doccomment">/// Checks to see if a record exists at the given [`VaultId`] and [`RecordId`]</span>
     <span class="ident">CheckRecord</span>(<span class="ident">VaultId</span>, <span class="ident">RecordId</span>),
-
+    <span class="doccomment">/// Reads the snapshot from the file.</span>
     <span class="ident">ReadSnapshot</span>(
         <span class="ident">snapshot::Key</span>,
         <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
@@ -788,23 +810,27 @@
         <span class="ident">ClientId</span>,
         <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">ClientId</span><span class="op">&gt;</span>,
     ),
+    <span class="doccomment">/// Reloads the data from the snapshot.</span>
     <span class="ident">ReloadData</span> {
         <span class="ident">id</span>: <span class="ident">ClientId</span>,
         <span class="ident">data</span>: <span class="ident">Box</span><span class="op">&lt;</span>(<span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">DbView</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="ident">Store</span>)<span class="op">&gt;</span>,
         <span class="ident">status</span>: <span class="ident">StatusMessage</span>,
     },
+    <span class="doccomment">/// Clears the cache.</span>
     <span class="ident">ClearCache</span>,
+    <span class="doccomment">/// Kills the internal actor.</span>
     <span class="ident">KillInternal</span>,
-    <span class="ident">FillSnapshot</span> {
-        <span class="ident">client</span>: <span class="ident">Client</span>,
-    },
+    <span class="doccomment">/// Fills the snapshot state with the current internal state.</span>
+    <span class="ident">FillSnapshot</span> { <span class="ident">client</span>: <span class="ident">Client</span> },
 
+    <span class="doccomment">/// [`SLIP10Generate`] seed Proc.</span>
     <span class="ident">SLIP10Generate</span> {
         <span class="ident">vault_id</span>: <span class="ident">VaultId</span>,
         <span class="ident">record_id</span>: <span class="ident">RecordId</span>,
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
         <span class="ident">size_bytes</span>: <span class="ident">usize</span>,
     },
+    <span class="doccomment">/// [`SLIP10DeriveFromSeed`] Proc</span>
     <span class="ident">SLIP10DeriveFromSeed</span> {
         <span class="ident">chain</span>: <span class="ident">Chain</span>,
         <span class="ident">seed_vault_id</span>: <span class="ident">VaultId</span>,
@@ -813,6 +839,7 @@
         <span class="ident">key_record_id</span>: <span class="ident">RecordId</span>,
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
     },
+    <span class="doccomment">/// [`SLIP10DeriveFromKey`] Proc</span>
     <span class="ident">SLIP10DeriveFromKey</span> {
         <span class="ident">chain</span>: <span class="ident">Chain</span>,
         <span class="ident">parent_vault_id</span>: <span class="ident">VaultId</span>,
@@ -821,12 +848,14 @@
         <span class="ident">child_record_id</span>: <span class="ident">RecordId</span>,
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
     },
+    <span class="doccomment">/// [`BIP39Generate`] Proc</span>
     <span class="ident">BIP39Generate</span> {
         <span class="ident">passphrase</span>: <span class="ident">String</span>,
         <span class="ident">vault_id</span>: <span class="ident">VaultId</span>,
         <span class="ident">record_id</span>: <span class="ident">RecordId</span>,
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
     },
+    <span class="doccomment">/// [`BIP39Recover`] Proc</span>
     <span class="ident">BIP39Recover</span> {
         <span class="ident">mnemonic</span>: <span class="ident">String</span>,
         <span class="ident">passphrase</span>: <span class="ident">String</span>,
@@ -834,10 +863,9 @@
         <span class="ident">record_id</span>: <span class="ident">RecordId</span>,
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
     },
-    <span class="ident">Ed25519PublicKey</span> {
-        <span class="ident">vault_id</span>: <span class="ident">VaultId</span>,
-        <span class="ident">record_id</span>: <span class="ident">RecordId</span>,
-    },
+    <span class="doccomment">/// [`Ed25519PublicKey`] Proc</span>
+    <span class="ident">Ed25519PublicKey</span> { <span class="ident">vault_id</span>: <span class="ident">VaultId</span>, <span class="ident">record_id</span>: <span class="ident">RecordId</span> },
+    <span class="doccomment">/// [`Ed25519Sign`] Proc</span>
     <span class="ident">Ed25519Sign</span> {
         <span class="ident">vault_id</span>: <span class="ident">VaultId</span>,
         <span class="ident">record_id</span>: <span class="ident">RecordId</span>,
@@ -845,7 +873,7 @@
     },
 }
 
-<span class="doccomment">/// Messages used internally by the client.</span>
+<span class="doccomment">/// Return messages used internally by the client.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">GuardDebug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">InternalResults</span> {
     <span class="ident">ReturnCreateVault</span>(<span class="ident">StatusMessage</span>),

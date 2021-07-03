@@ -152,7 +152,17 @@
 </tbody></table>
 <h2 id="stronghold-snapshot"><a class="header" href="#stronghold-snapshot">Stronghold Snapshot</a></h2>
 <p>This crate defines and implements the encrypted offline storage format used by the Stronghold ecosystem.</p>
-<p>The format has a header with version and magic bytes to appease applications wishing to provide file-type detection.</p>
+<p>The snapshot format follows a fairly simple specification:</p>
+<table><thead><tr><th align="center"><strong>Header</strong></th></tr></thead><tbody>
+<tr><td align="center">Magic Bytes</td></tr>
+<tr><td align="center">Version Bytes</td></tr>
+<tr><td align="center"><strong>Body</strong></td></tr>
+<tr><td align="center">Ephemeral Key</td></tr>
+<tr><td align="center">xchacha20 tag</td></tr>
+<tr><td align="center">Cipher Text</td></tr>
+</tbody></table>
+<p>The format has a header with version and magic bytes to appease applications wishing to provide file-type detection. </p>
+<p>The body format has a ephemeral public key followed by the xchacha20 tag and the cipher text. </p>
 <p>The data stored within a snapshot is considered opaque and uses 256 bit keys. It provides recommended ways to derive the snapshot encryption key from a user provided password. The format also allows using an authenticated data bytestring to further protect the offline snapshot files (one might consider using a secondary user password strengthened by an HSM).</p>
 <p>The current version of the format is using X25519 together with an ephemeral key to derive a shared key for the symmetric XChaCha20 cipher and uses the Poly1305 message authentication algorithm. Future versions, when the demands for larger snapshot sizes and/or random access is desired, might consider encrypting smaller chunks (B-trees?) or similar using per chunk derived ephemeral keys.</p>
 

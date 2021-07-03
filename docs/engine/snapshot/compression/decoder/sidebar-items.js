@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["decompress","Decompress data using an LZ4 Algorithm."],["decompress_into",""]],"struct":[["Lz4Decoder",""]]});
+initSidebarItems({"fn":[["decompress","Decompress data using an LZ4 Algorithm."],["decompress_into","Public function to decompress some data into an output."]],"struct":[["Lz4Decoder","Lz4Decoder implementation."]]});

@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["index_of_unchecked",""]],"mod":[["ids",""],["types",""]]});
+initSidebarItems({"fn":[["index_of_unchecked","Gets the index of a slice."]],"mod":[["ids",""],["types",""]]});

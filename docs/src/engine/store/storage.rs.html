@@ -28,6 +28,10 @@
 <span id="25">25</span>
 <span id="26">26</span>
 <span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -37,14 +41,17 @@
 
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">cache</span>;
 
-<span class="doccomment">/// The general value used for the Store.</span>
+<span class="doccomment">/// The general value used for the [`Store`].</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct</span> <span class="ident">Value</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+    <span class="comment">// data field.</span>
     <span class="kw">pub</span> <span class="ident">val</span>: <span class="ident">T</span>,
+    <span class="comment">// expiration time.</span>
     <span class="ident">expiration</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">SystemTime</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Value</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+    <span class="doccomment">/// Create a new [`Value`] with a specified expiration.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">val</span>: <span class="ident">T</span>, <span class="ident">duration</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="ident">Value</span> {
             <span class="ident">val</span>,
@@ -52,6 +59,7 @@
         }
     }
 
+    <span class="doccomment">/// Checks to see if the [`Value`] has expired.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">has_expired</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">time_now</span>: <span class="ident">SystemTime</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="self">self</span>.<span class="ident">expiration</span>.<span class="ident">map_or</span>(<span class="bool-val">false</span>, <span class="op">|</span><span class="ident">time</span><span class="op">|</span> <span class="ident">time_now</span> <span class="op">&gt;</span><span class="op">=</span> <span class="ident">time</span>)
     }

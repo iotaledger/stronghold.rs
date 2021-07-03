@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["transactions",""],["utils",""]],"trait":[["AsView","a view over raw data."],["AsViewMut","a mutable view over raw data."]]});
+initSidebarItems({"mod":[["transactions",""],["utils",""]],"trait":[["AsView","A trait that is used to make a view over some raw data."],["AsViewMut","A trait used to make a mutable view over some raw data."]]});

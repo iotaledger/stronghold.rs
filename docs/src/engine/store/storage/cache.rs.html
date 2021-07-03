@@ -260,6 +260,10 @@
 <span id="257">257</span>
 <span id="258">258</span>
 <span id="259">259</span>
+<span id="260">260</span>
+<span id="261">261</span>
+<span id="262">262</span>
+<span id="263">263</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -275,21 +279,25 @@
     <span class="ident">time</span>::{<span class="ident">Duration</span>, <span class="ident">SystemTime</span>},
 };
 
-<span class="doccomment">/// The cache struct used to store the data in an ordered format.</span>
+<span class="doccomment">/// The [`Cache`] struct used to store the data in an ordered format.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Serialize</span>, <span class="ident">Deserialize</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Cache</span><span class="op">&lt;</span><span class="ident">K</span>, <span class="ident">V</span><span class="op">&gt;</span>
 <span class="kw">where</span>
     <span class="ident">K</span>: <span class="ident">Hash</span> <span class="op">+</span> <span class="ident">Eq</span>,
     <span class="ident">V</span>: <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Debug</span>,
 {
+    <span class="comment">// hashmap of data.</span>
     <span class="ident">table</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">K</span>, <span class="ident">Value</span><span class="op">&lt;</span><span class="ident">V</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="comment">// the scan frequency for removing data based on the expiration time.</span>
     <span class="ident">scan_freq</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
+    <span class="comment">// a created at timestamp.</span>
     <span class="ident">created_at</span>: <span class="ident">SystemTime</span>,
+    <span class="comment">// a last scan timestamp.</span>
     <span class="ident">last_scan_at</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">SystemTime</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">K</span>: <span class="ident">Hash</span> <span class="op">+</span> <span class="ident">Eq</span>, <span class="ident">V</span>: <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Debug</span><span class="op">&gt;</span> <span class="ident">Cache</span><span class="op">&lt;</span><span class="ident">K</span>, <span class="ident">V</span><span class="op">&gt;</span> {
-    <span class="doccomment">/// creates a new empty `Cache`</span>
+    <span class="doccomment">/// creates a new empty [`Cache`]</span>
     <span class="doccomment">/// # Example</span>
     <span class="doccomment">/// ```</span>
     <span class="doccomment">/// use engine::store::Cache;</span>
@@ -313,7 +321,7 @@
         }
     }
 
-    <span class="doccomment">/// creates an empty `Cache` with a periodic scanner which identifies expired entries.</span>
+    <span class="doccomment">/// creates an empty [`Cache`] with a periodic scanner which identifies expired entries.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// # Example</span>
     <span class="doccomment">/// ```</span>
@@ -365,7 +373,7 @@
             .<span class="ident">map</span>(<span class="op">|</span><span class="ident">value</span><span class="op">|</span> <span class="kw-2">&amp;</span><span class="ident">value</span>.<span class="ident">val</span>)
     }
 
-    <span class="doccomment">/// Gets the value associated with the specified key.  If the key could not be found in the `Cache`, creates and</span>
+    <span class="doccomment">/// Gets the value associated with the specified key.  If the key could not be found in the [`Cache`], creates and</span>
     <span class="doccomment">/// inserts the value using a specified `func` function. # Example</span>
     <span class="doccomment">/// ```</span>
     <span class="doccomment">/// use engine::store::Cache;</span>
@@ -400,7 +408,7 @@
     }
 
     <span class="doccomment">/// Insert a key-value pair into the cache.</span>
-    <span class="doccomment">/// If key was not present, a `None` is returned, else the value is updated and the old value is returned.  </span>
+    <span class="doccomment">/// If key was not present, a [`None`] is returned, else the value is updated and the old value is returned.  </span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// # Example</span>
     <span class="doccomment">/// ```</span>
@@ -456,7 +464,7 @@
             .<span class="ident">map</span>(<span class="op">|</span><span class="ident">value</span><span class="op">|</span> <span class="ident">value</span>.<span class="ident">val</span>)
     }
 
-    <span class="comment">// Check if the `Cache&lt;K, V&gt;` contains a specific key.</span>
+    <span class="comment">// Check if the [`Cache&lt;K, V&gt;`] contains a specific key.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">K</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="kw">let</span> <span class="ident">now</span> <span class="op">=</span> <span class="ident">SystemTime::now</span>();
 
@@ -514,7 +522,7 @@
     }
 }
 
-<span class="doccomment">/// Default implementation for `Cache&lt;K, V&gt;`</span>
+<span class="doccomment">/// Default implementation for [`Cache&lt;K, V&gt;`]</span>
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">K</span>: <span class="ident">Hash</span> <span class="op">+</span> <span class="ident">Eq</span>, <span class="ident">V</span>: <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Debug</span><span class="op">&gt;</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">Cache</span><span class="op">&lt;</span><span class="ident">K</span>, <span class="ident">V</span><span class="op">&gt;</span> {
     <span class="kw">fn</span> <span class="ident">default</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="ident">Cache::new</span>()

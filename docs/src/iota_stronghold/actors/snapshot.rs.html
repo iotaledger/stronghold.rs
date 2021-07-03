@@ -149,6 +149,9 @@
 <span id="146">146</span>
 <span id="147">147</span>
 <span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -182,15 +185,18 @@
 <span class="doccomment">/// Messages used for the Snapshot Actor.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">GuardDebug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">SMsg</span> {
+    <span class="doccomment">/// Write the snapshot to the file.</span>
     <span class="ident">WriteSnapshot</span> {
         <span class="ident">key</span>: <span class="ident">snapshot::Key</span>,
         <span class="ident">filename</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
         <span class="ident">path</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PathBuf</span><span class="op">&gt;</span>,
     },
+    <span class="doccomment">/// Fill the snapshot structure with data.</span>
     <span class="ident">FillSnapshot</span> {
         <span class="ident">data</span>: <span class="ident">Box</span><span class="op">&lt;</span>(<span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">DbView</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="ident">Store</span>)<span class="op">&gt;</span>,
         <span class="ident">id</span>: <span class="ident">ClientId</span>,
     },
+    <span class="doccomment">/// Reead from the snapshot.</span>
     <span class="ident">ReadFromSnapshot</span> {
         <span class="ident">key</span>: <span class="ident">snapshot::Key</span>,
         <span class="ident">filename</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
