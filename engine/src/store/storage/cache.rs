@@ -12,21 +12,25 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-/// The cache struct used to store the data in an ordered format.
+/// The [`Cache`] struct used to store the data in an ordered format.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Cache<K, V>
 where
     K: Hash + Eq,
     V: Clone + Debug,
 {
+    // hashmap of data.
     table: HashMap<K, Value<V>>,
+    // the scan frequency for removing data based on the expiration time.
     scan_freq: Option<Duration>,
+    // a created at timestamp.
     created_at: SystemTime,
+    // a last scan timestamp.
     last_scan_at: Option<SystemTime>,
 }
 
 impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
-    /// creates a new empty `Cache`
+    /// creates a new empty [`Cache`]
     /// # Example
     /// ```
     /// use engine::store::Cache;
@@ -50,7 +54,7 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
         }
     }
 
-    /// creates an empty `Cache` with a periodic scanner which identifies expired entries.
+    /// creates an empty [`Cache`] with a periodic scanner which identifies expired entries.
     ///
     /// # Example
     /// ```
@@ -102,7 +106,7 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
             .map(|value| &value.val)
     }
 
-    /// Gets the value associated with the specified key.  If the key could not be found in the `Cache`, creates and
+    /// Gets the value associated with the specified key.  If the key could not be found in the [`Cache`], creates and
     /// inserts the value using a specified `func` function. # Example
     /// ```
     /// use engine::store::Cache;
@@ -137,7 +141,7 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     }
 
     /// Insert a key-value pair into the cache.
-    /// If key was not present, a `None` is returned, else the value is updated and the old value is returned.  
+    /// If key was not present, a [`None`] is returned, else the value is updated and the old value is returned.  
     ///
     /// # Example
     /// ```
@@ -193,7 +197,7 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
             .map(|value| value.val)
     }
 
-    // Check if the `Cache<K, V>` contains a specific key.
+    // Check if the [`Cache<K, V>`] contains a specific key.
     pub fn contains_key(&self, key: &K) -> bool {
         let now = SystemTime::now();
 
@@ -251,7 +255,7 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     }
 }
 
-/// Default implementation for `Cache<K, V>`
+/// Default implementation for [`Cache<K, V>`]
 impl<K: Hash + Eq, V: Clone + Debug> Default for Cache<K, V> {
     fn default() -> Self {
         Cache::new()

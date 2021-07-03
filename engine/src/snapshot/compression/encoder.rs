@@ -5,8 +5,10 @@ use std::convert::TryInto;
 
 use super::{Block, Duplicate};
 
+/// Dictionary size.
 const DICT_SIZE: usize = 4096;
 
+/// Public function for compression some input into an output buffer.
 pub fn compress_into(input: &[u8], output: &mut Vec<u8>) {
     Lz4Encoder {
         input,
@@ -26,6 +28,7 @@ pub fn compress(input: &[u8]) -> Vec<u8> {
     vec
 }
 
+/// Lz4Encoder implementation.
 struct Lz4Encoder<'a> {
     input: &'a [u8],
     output: &'a mut Vec<u8>,

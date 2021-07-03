@@ -11,7 +11,7 @@ pub use const_eq::ConstEq;
 pub use rand::Randomized;
 pub use zero::Zeroed;
 
-/// Implements the traits onto primitive types and slices.
+/// Implements the traits [`Bytes`] onto primitive types and slices.
 macro_rules! impls {
     ($($type:ty),* ; $size:tt) => {$(
         impls!{prim  $type}
@@ -28,6 +28,8 @@ macro_rules! impls {
     )*};
 }
 
+// Implements [`Bytes`] on primitive types and slices up to length 89.  Length 128, 256, 384, 512, 1024, 2048, 4096, and
+// 8192 are also supported for the slices.
 impls! {
     (),
     u8, u16, u32, u64, u128; (

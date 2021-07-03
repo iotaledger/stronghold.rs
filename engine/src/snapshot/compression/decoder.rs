@@ -3,6 +3,7 @@
 
 use std::convert::TryInto;
 
+/// Public function to decompress some data into an output.
 pub fn decompress_into(input: &[u8], output: &mut Vec<u8>) -> crate::Result<()> {
     Lz4Decoder {
         input,
@@ -23,6 +24,7 @@ pub fn decompress(input: &[u8]) -> crate::Result<Vec<u8>> {
     Ok(vec)
 }
 
+/// Lz4Decoder implementation.
 struct Lz4Decoder<'a> {
     input: &'a [u8],
     output: &'a mut Vec<u8>,
