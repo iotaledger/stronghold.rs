@@ -152,5 +152,5 @@ Going forward, the team on stronghold has discussed a couple features which can 
 
 **Addendum Concluding Thoughts**
 
-Many of the same take-aways mentioned above still apply here. Stronghold, all and all, was a very interesting project to work on. I am confident that the new team will be able to take it forward all the way to release and I am satisfied that I was able to work on it up until this point and I look forward to seeing how it progresses towards the RC. 
+Many of the same take-aways mentioned above still apply here. Stronghold, all and all, was a very interesting project to work on. I am confident that the new team will be able to take it forward all the way to release. I am satisfied that I was able to work on this project up until this point and I look forward to seeing how it progresses towards the RC. 
 
