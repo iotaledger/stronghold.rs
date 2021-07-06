@@ -1,9 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-//! Some macros for rule engine
-//!
-//! - count number of tuple elements
+//! macro crate for rules engine
 
 use proc_macro::*;
 use quote::quote;

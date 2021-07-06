@@ -149,6 +149,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore]
     fn test_tuple_count() {
         assert_eq!((1, 2, 3, 4).count(), 4);
         assert_eq!((1, 2, 3, 4, "string").count(), 5);
@@ -156,6 +157,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_match_rules() {
         let mut re = RuleEngine::new();
 
