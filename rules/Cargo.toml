@@ -1,16 +1,20 @@
 [package]
-name = "iota-rule"
+name = "stronghold-rules"
 version = "0.1.0"
 edition = "2018"
 authors = ["IOTA Stiftung"]
 license = "Apache-2.0"
+readme = "README.md"
+description = "Common rule-manager for Stronghold"
+homepage = "https://stronghold.docs.iota.org"
+repository = "https://github.com/iotaledger/stronghold.rs"
 
 [lib]
 name = "rulesengine"
 
 [dependencies]
 thiserror = { version = "1.0.25" }
-macros  =    {path = "macros/"}
+stronghold-rules-macros = { path = "macros", version = "0.1.0" }
 
 [dev-dependencies]
 criterion = "0.3.4"

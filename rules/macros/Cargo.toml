@@ -1,9 +1,15 @@
 [package]
-name = "macros"
+name = "stronghold-rules-macros"
 version = "0.1.0"
+authors = ["IOTA Stiftung"]
 edition = "2018"
+license = "Apache-2.0"
+description = "Macros for building rules"
+homepage = "https://stronghold.docs.iota.org"
+repository = "https://github.com/iotaledger/stronghold.rs"
 
 [lib]
+name = "macros"
 proc-macro = true
 src = "src/lib.rs"
 
