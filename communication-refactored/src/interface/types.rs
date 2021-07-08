@@ -67,28 +67,20 @@ pub struct Query<T, U> {
 
 /// Inbound Request from a remote peer.
 /// It is expected that a response will be returned through the `response_rx` channel,
-/// otherwise an [`OutboundFailure`] will be returned at the remote peer.
+/// otherwise an [`OutboundFailure`] will occur at the remote peer.
 #[derive(Debug)]
 pub struct ReceiveRequest<Rq, Rs> {
+    /// ID of the request.
+    pub request_id: RequestId,
     /// ID of the remote peer that send the request.
     pub peer: PeerId,
-    /// ID of the request.
-    pub request_id: RequestId,
     /// Request from the remote peer.
     pub request: Rq,
-    /// Channel for returning the response
+    /// Channel for returning the response.
+    ///
+    /// **Note:** If an [`InboundFailure`] occurs before a response was sent, the Receiver side of this channel is
+    /// dropped.
     pub response_tx: oneshot::Sender<Rs>,
-}
-
-/// Data structure for receiving the response or [`OutboundFailure`] of an outbound request.
-#[derive(Debug)]
-pub struct ResponseReceiver<U> {
-    /// ID of the remote peer to whom the requests was send.
-    pub peer: PeerId,
-    /// ID of the request.
-    pub request_id: RequestId,
-    /// Channel for receiving the response from remote or a potential [`OutboundFailure`].
-    pub response_rx: oneshot::Receiver<U>,
 }
 
 /// Active Listener of the local peer.
@@ -182,18 +174,15 @@ impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THand
     type Error = ();
     fn try_from(value: SwarmEv<Rq, Rs, THandleErr>) -> Result<Self, Self::Error> {
         match value {
-            SwarmEvent::Behaviour(ev) => match ev {
-                BehaviourEvent::InboundRequest(_) => Err(()),
-                BehaviourEvent::InboundFailure {
-                    request_id,
-                    peer,
-                    failure,
-                } => Ok(NetworkEvent::InboundFailure {
-                    request_id,
-                    peer,
-                    failure,
-                }),
-            },
+            SwarmEvent::Behaviour(BehaviourEvent::InboundFailure {
+                request_id,
+                peer,
+                failure,
+            }) => Ok(NetworkEvent::InboundFailure {
+                request_id,
+                peer,
+                failure,
+            }),
             SwarmEvent::ConnectionEstablished {
                 peer_id,
                 endpoint,
@@ -229,16 +218,16 @@ impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THand
                 send_back_addr,
                 error: error.into(),
             }),
-            SwarmEvent::ExpiredListenAddr(addr) => Ok(NetworkEvent::ExpiredListenAddr(addr)),
-            SwarmEvent::ListenerClosed { addresses, reason } => {
+            SwarmEvent::ExpiredListenAddr { address, .. } => Ok(NetworkEvent::ExpiredListenAddr(address)),
+            SwarmEvent::ListenerClosed { addresses, reason, .. } => {
                 let cause = match reason {
                     Ok(()) => None,
                     Err(e) => Some(e),
                 };
                 Ok(NetworkEvent::ListenerClosed { addresses, cause })
             }
-            SwarmEvent::ListenerError { error } => Ok(NetworkEvent::ListenerError { error }),
-            SwarmEvent::NewListenAddr(addr) => Ok(NetworkEvent::NewListenAddr(addr)),
+            SwarmEvent::ListenerError { error, .. } => Ok(NetworkEvent::ListenerError { error }),
+            SwarmEvent::NewListenAddr { address, .. } => Ok(NetworkEvent::NewListenAddr(address)),
             _ => Err(()),
         }
     }

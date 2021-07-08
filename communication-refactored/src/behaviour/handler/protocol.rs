@@ -17,7 +17,7 @@ use crate::RqRsMessage;
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use libp2p::{
     core::{
-        upgrade::{read_one, write_one, InboundUpgrade, OutboundUpgrade, ReadOneError, UpgradeInfo},
+        upgrade::{read_length_prefixed, write_length_prefixed, InboundUpgrade, OutboundUpgrade, UpgradeInfo},
         ProtocolName,
     },
     swarm::NegotiatedSubstream,
@@ -97,8 +97,9 @@ where
             // Receive the response, write it back to the substream.
             let res = match rx.await {
                 Ok(response) => parse_and_write(&mut io, &response).await.map(|_| true)?,
-                Err(_) => io.close().await.map(|_| false)?,
+                Err(_) => false,
             };
+            io.close().await?;
             Ok(res)
         }
         .boxed()
@@ -152,6 +153,7 @@ where
             parse_and_write(&mut io, &self.request).await?;
             // Read inbound response and return it.
             let response = read_and_parse(&mut io).await?;
+            io.close().await?;
             Ok(response)
         }
         .boxed()
@@ -160,12 +162,11 @@ where
 
 // Read from substream and deserialize the received bytes.
 async fn read_and_parse<T: DeserializeOwned>(io: &mut NegotiatedSubstream) -> Result<T, io::Error> {
-    read_one(io, usize::MAX)
+    read_length_prefixed(io, usize::MAX)
         .map(|res| match res {
             Ok(bytes) => {
                 serde_json::from_slice(bytes.as_slice()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
             }
-            Err(ReadOneError::Io(io_err)) => Err(io_err),
             Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
         })
         .await
@@ -174,6 +175,5 @@ async fn read_and_parse<T: DeserializeOwned>(io: &mut NegotiatedSubstream) -> Re
 // Serialize the data and write bytes to substream.
 async fn parse_and_write<T: Serialize>(io: &mut NegotiatedSubstream, data: &T) -> Result<(), io::Error> {
     let buf = serde_json::to_vec(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    write_one(io, buf).await?;
-    io.close().await
+    write_length_prefixed(io, buf).await
 }

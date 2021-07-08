@@ -18,19 +18,37 @@ use std::{
 
 // Actions for the behaviour to handle i.g. the behaviour emits the appropriate `NetworkBehaviourAction`.
 pub(super) enum BehaviourAction<Rq, Rs> {
-    // Inbound request / failures ready to be handled by the `NetBehaviour`.
-    InboundReady {
+    // Approved inbound request to forward to the user.
+    InboundOk {
         request_id: RequestId,
         peer: PeerId,
-        result: Result<(Rq, oneshot::Sender<Rs>), InboundFailure>,
+        request: Rq,
+        response_tx: oneshot::Sender<Rs>,
+    },
+    // Failures on inbound requests
+    InboundFailure {
+        request_id: RequestId,
+        peer: PeerId,
+        failure: InboundFailure,
     },
     // Outbound request / failures ready to be handled by the `NetBehaviour`.
     // In case of `Result: Ok(..)`, the `ConnectionId` specifies the connection and handler that this request was
     // assigned to.
-    OutboundReady {
+    OutboundOk {
         request_id: RequestId,
         peer: PeerId,
-        result: Result<(Rq, ConnectionId), OutboundFailure>,
+        request: Rq,
+        connection: ConnectionId,
+    },
+    OutboundFailure {
+        request_id: RequestId,
+        peer: PeerId,
+        failure: OutboundFailure,
+    },
+    OutboundReceivedRes {
+        request_id: RequestId,
+        peer: PeerId,
+        response: Rs,
     },
     // Required dial attempt to connect a peer where at least one approved outbound request is pending.
     RequireDialAttempt(PeerId),
@@ -147,10 +165,11 @@ where
                         .add_request(&peer, request_id, None, &RequestDirection::Outbound)
                 {
                     // Request is approved and assigned to an existing connection.
-                    let action = BehaviourAction::OutboundReady {
+                    let action = BehaviourAction::OutboundOk {
                         request_id,
                         peer,
-                        result: Ok((request, connection)),
+                        request,
+                        connection,
                     };
                     self.actions.push_back(action)
                 } else {
@@ -159,10 +178,10 @@ where
                 }
             }
             ApprovalStatus::Rejected => {
-                let action = BehaviourAction::OutboundReady {
+                let action = BehaviourAction::OutboundFailure {
                     peer,
                     request_id,
-                    result: Err(OutboundFailure::NotPermitted),
+                    failure: OutboundFailure::NotPermitted,
                 };
                 self.actions.push_back(action);
             }
@@ -188,10 +207,10 @@ where
                 .connections
                 .add_request(&peer, request_id, Some(connection), &RequestDirection::Inbound);
             if conn.is_none() {
-                let action = BehaviourAction::InboundReady {
+                let action = BehaviourAction::InboundFailure {
                     request_id,
                     peer,
-                    result: Err(InboundFailure::ConnectionClosed),
+                    failure: InboundFailure::ConnectionClosed,
                 };
                 self.actions.push_back(action);
                 return;
@@ -215,18 +234,19 @@ where
                 self.awaiting_approval.push((request_id, RequestDirection::Inbound));
             }
             ApprovalStatus::Approved => {
-                let action = BehaviourAction::InboundReady {
+                let action = BehaviourAction::InboundOk {
                     request_id,
                     peer,
-                    result: Ok((request, response_tx)),
+                    request,
+                    response_tx,
                 };
                 self.actions.push_back(action);
             }
             ApprovalStatus::Rejected => {
-                let action = BehaviourAction::InboundReady {
+                let action = BehaviourAction::InboundFailure {
                     request_id,
                     peer,
-                    result: Err(InboundFailure::NotPermitted),
+                    failure: InboundFailure::NotPermitted,
                 };
                 self.actions.push_back(action);
             }
@@ -248,10 +268,11 @@ where
                     .connections
                     .add_request(&peer, request_id, None, &RequestDirection::Outbound)
                     .expect("Peer is connected");
-                let action = BehaviourAction::OutboundReady {
+                let action = BehaviourAction::OutboundOk {
                     request_id,
                     peer,
-                    result: Ok((request, connection)),
+                    request,
+                    connection,
                 };
                 self.actions.push_back(action);
             });
@@ -279,10 +300,10 @@ where
         let pending_res = self.connections.remove_connection(peer, connection);
         if let Some(pending_res) = pending_res {
             for request_id in pending_res.outbound_requests {
-                self.actions.push_back(BehaviourAction::OutboundReady {
+                self.actions.push_back(BehaviourAction::OutboundFailure {
                     request_id,
                     peer,
-                    result: Err(OutboundFailure::ConnectionClosed),
+                    failure: OutboundFailure::ConnectionClosed,
                 })
             }
             for request_id in pending_res.inbound_requests {
@@ -296,10 +317,10 @@ where
                     requests.retain(|r| r != &request_id)
                 }
                 self.inbound_request_store.remove(&request_id);
-                self.actions.push_back(BehaviourAction::InboundReady {
+                self.actions.push_back(BehaviourAction::InboundFailure {
                     request_id,
                     peer,
-                    result: Err(InboundFailure::ConnectionClosed),
+                    failure: InboundFailure::ConnectionClosed,
                 })
             }
         }
@@ -311,10 +332,10 @@ where
         if let Some(requests) = self.awaiting_connection.remove(&peer) {
             requests.into_iter().for_each(|request_id| {
                 unwrap_or_return!(self.outbound_request_store.remove(&request_id));
-                let action = BehaviourAction::OutboundReady {
+                let action = BehaviourAction::OutboundFailure {
                     request_id,
                     peer,
-                    result: Err(OutboundFailure::DialFailure),
+                    failure: OutboundFailure::DialFailure,
                 };
                 self.actions.push_back(action);
             });
@@ -390,10 +411,10 @@ where
                     for request_id in requests {
                         self.connections.remove_request(&request_id, &RequestDirection::Inbound);
                         unwrap_or_return!(self.inbound_request_store.remove(&request_id));
-                        self.actions.push_back(BehaviourAction::InboundReady {
+                        self.actions.push_back(BehaviourAction::InboundFailure {
                             peer,
                             request_id,
-                            result: Err(InboundFailure::NotPermitted),
+                            failure: InboundFailure::NotPermitted,
                         });
                     }
                 }
@@ -402,10 +423,10 @@ where
                 if let Some(requests) = await_rule.remove(&RequestDirection::Outbound) {
                     for request_id in requests {
                         unwrap_or_return!(self.outbound_request_store.remove(&request_id));
-                        self.actions.push_back(BehaviourAction::OutboundReady {
+                        self.actions.push_back(BehaviourAction::OutboundFailure {
                             peer,
                             request_id,
-                            result: Err(OutboundFailure::NotPermitted),
+                            failure: OutboundFailure::NotPermitted,
                         });
                     }
                 }
@@ -431,11 +452,11 @@ where
     // Remove the request from the list of pending responses, add failure if there is one.
     pub fn on_res_for_inbound(&mut self, peer: PeerId, request_id: RequestId, result: Result<(), InboundFailure>) {
         self.connections.remove_request(&request_id, &RequestDirection::Inbound);
-        if let Err(reason) = result {
-            let action = BehaviourAction::InboundReady {
+        if let Err(failure) = result {
+            let action = BehaviourAction::InboundFailure {
                 peer,
                 request_id,
-                result: Err(reason),
+                failure,
             };
             self.actions.push_back(action)
         }
@@ -443,8 +464,22 @@ where
 
     // Handle response / failure for a previously sent request.
     // Remove the request from the list of pending responses.
-    pub fn on_res_for_outbound(&mut self, request_id: &RequestId) {
-        self.connections.remove_request(request_id, &RequestDirection::Outbound);
+    pub fn on_res_for_outbound(&mut self, peer: PeerId, request_id: RequestId, result: Result<Rs, OutboundFailure>) {
+        self.connections
+            .remove_request(&request_id, &RequestDirection::Outbound);
+        let action = match result {
+            Ok(response) => BehaviourAction::OutboundReceivedRes {
+                request_id,
+                peer,
+                response,
+            },
+            Err(failure) => BehaviourAction::OutboundFailure {
+                request_id,
+                peer,
+                failure,
+            },
+        };
+        self.actions.push_back(action)
     }
 
     // Check if there are pending requests for rules for a specific peer.
@@ -520,16 +555,17 @@ where
                 let (peer, request, response_tx) = self.inbound_request_store.remove(&request_id)?;
                 if !is_allowed {
                     self.connections.remove_request(&request_id, direction);
-                    BehaviourAction::InboundReady {
+                    BehaviourAction::InboundFailure {
                         request_id,
                         peer,
-                        result: Err(InboundFailure::NotPermitted),
+                        failure: InboundFailure::NotPermitted,
                     }
                 } else {
-                    BehaviourAction::InboundReady {
+                    BehaviourAction::InboundOk {
                         request_id,
                         peer,
-                        result: Ok((request, response_tx)),
+                        request,
+                        response_tx,
                     }
                 }
             }
@@ -537,20 +573,21 @@ where
                 let peer = self.outbound_request_store.get(&request_id).map(|(p, _)| *p)?;
                 if !is_allowed {
                     self.outbound_request_store.remove(&request_id)?;
-                    BehaviourAction::OutboundReady {
+                    BehaviourAction::OutboundFailure {
                         request_id,
                         peer,
-                        result: Err(OutboundFailure::NotPermitted),
+                        failure: OutboundFailure::NotPermitted,
                     }
                 } else if let Some(connection) =
                     self.connections
                         .add_request(&peer, request_id, None, &RequestDirection::Outbound)
                 {
                     let (peer, request) = self.outbound_request_store.remove(&request_id)?;
-                    BehaviourAction::OutboundReady {
+                    BehaviourAction::OutboundOk {
                         request_id,
                         peer,
-                        result: Ok((request, connection)),
+                        request,
+                        connection,
                     }
                 } else {
                     self.awaiting_connection.entry(peer).or_default().push(request_id);

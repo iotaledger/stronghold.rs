@@ -34,6 +34,8 @@ pub enum DialErr {
     UnreachableAddrs,
     /// No direct or relayed addresses for the peer are known.
     NoAddresses,
+    /// The communication system was shut down before the dialing attempt resolved.
+    Shutdown,
 }
 
 impl From<DialError> for DialErr {
@@ -59,6 +61,7 @@ impl fmt::Display for DialErr {
             DialErr::InvalidAddress(a) => write!(f, "Dial error: invalid address: {}", a),
             DialErr::UnreachableAddrs => write!(f, "Dial error: no known address could be reached"),
             DialErr::Banned => write!(f, "Dial error: peer is banned."),
+            DialErr::Shutdown => write!(f, "Dial error: the swarm task was shut down."),
         }
     }
 }
@@ -139,6 +142,21 @@ impl From<TransportError<io::Error>> for TransportErr {
 
 impl std::error::Error for TransportErr {}
 
+/// Error on listening on an address.
+#[derive(Debug)]
+pub enum ListenErr {
+    /// Listening on the address failed on the transport layer.
+    Transport(TransportErr),
+    /// The communication system was shut down before the listening attempt resolved.
+    Shutdown,
+}
+
+impl From<TransportError<io::Error>> for ListenErr {
+    fn from(err: TransportError<io::Error>) -> Self {
+        ListenErr::Transport(err.into())
+    }
+}
+
 /// Error on listening on a relayed address.
 #[derive(Debug)]
 pub enum ListenRelayErr {
@@ -146,6 +164,8 @@ pub enum ListenRelayErr {
     DialRelay(DialErr),
     /// Listening on the address failed on the transport layer.
     Transport(TransportErr),
+    /// The communication system was shut down before the listening attempt resolved.
+    Shutdown,
 }
 
 impl From<DialError> for ListenRelayErr {
@@ -171,6 +191,7 @@ impl fmt::Display for ListenRelayErr {
         match self {
             ListenRelayErr::DialRelay(e) => write!(f, "Listen on Relay error: Dial Relay Error: {}", e),
             ListenRelayErr::Transport(e) => write!(f, "Listen on Relay error: Listening Error: {}", e),
+            ListenRelayErr::Shutdown => write!(f, "Listen on Relay error: the swarm task was shut down."),
         }
     }
 }

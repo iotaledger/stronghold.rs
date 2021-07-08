@@ -15,27 +15,23 @@ homepage = "https://stronghold.docs.iota.org"
 name = "communication_refactored"
 
 [dependencies]
-async-std = "1.9"
 futures = "0.3"
-libp2p = { version = "0.38", default-features = false, features = [
-  "dns-async-std",
-  "noise",
-  "relay",
-  "yamux",
-  "websocket"
-] }
+libp2p = { version = "0.39", git = "https://github.com/libp2p/rust-libp2p", default-features = false, features = ["noise", "yamux"] }
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 smallvec = "1.6.1"
 stronghold-derive = {path = "../derive", version = "0.2.0"}
+tokio = { version = "1.7", default-features = false, features = ["rt", "sync"] }
 wasm-timer = "0.2.5"
 
 [features]
-default = [ "mdns", "tcp-transport"]
+default = [ "mdns", "relay", "tcp-transport"]
 mdns = ["libp2p/mdns"]
-tcp-transport = ["libp2p/tcp-async-io"]
+relay = ["libp2p/relay"]
+tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
 
 [dev-dependencies]
 rand = "0.8.3"
-libp2p-tcp = { version = "0.28"}
+tokio = {version = "1.7", features = ["time", "macros"]}
+libp2p = { version = "0.39", git = "https://github.com/libp2p/rust-libp2p", default-features = false, features = ["tcp-tokio"] }
   

@@ -1,14 +1,13 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use async_std::task;
 use communication_refactored::{
     firewall::{FirewallConfiguration, PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission},
-    ReceiveRequest, ResponseReceiver, ShCommunication, ShCommunicationBuilder,
+    ReceiveRequest, ShCommunication, ShCommunicationBuilder,
 };
 use futures::{channel::mpsc, future::join, StreamExt};
 #[cfg(not(feature = "tcp-transport"))]
-use libp2p_tcp::TcpConfig;
+use libp2p::tcp::TokioTcpConfig;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -24,51 +23,54 @@ enum Response {
     Other,
 }
 
-fn init_comms() -> (
+async fn init_comms() -> (
     mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ShCommunication<Request, Response, RequestPermission>,
 ) {
-    let (dummy_tx, _) = mpsc::channel(1);
-    let (rq_tx, rq_rx) = mpsc::channel(1);
+    let (dummy_tx, _) = mpsc::channel(10);
+    let (rq_tx, rq_rx) = mpsc::channel(10);
 
     let builder = ShCommunicationBuilder::new(dummy_tx, rq_tx, None)
         .with_connection_timeout(Duration::from_secs(1))
         .with_request_timeout(Duration::from_secs(1))
         .with_firewall_config(FirewallConfiguration::allow_all());
     #[cfg(not(feature = "tcp-transport"))]
-    let comms = task::block_on(builder.build_with_transport(TcpConfig::new()));
+    let comms = builder.build_with_transport(TokioTcpConfig::new()).await;
     #[cfg(feature = "tcp-transport")]
-    let comms = task::block_on(builder.build());
+    let comms = builder.build().await.unwrap();
     (rq_rx, comms)
 }
 
-#[test]
-fn test_send_req() {
-    let (mut bob_request_rx, bob) = init_comms();
+#[tokio::test]
+async fn test_send_req() {
+    let (mut bob_request_rx, mut bob) = init_comms().await;
     let bob_id = bob.get_peer_id();
-    let bob_addr = task::block_on(bob.start_listening(None)).unwrap();
+    let bob_addr = bob.start_listening(None).await.unwrap();
 
-    let (_, alice) = init_comms();
+    let (_, mut alice) = init_comms().await;
 
-    alice.add_address(bob_id, bob_addr);
-    let ResponseReceiver { response_rx, .. } = alice.send_request(bob_id, Request::Ping);
+    // Alice adds Bob's address and sends a request.
+    alice.add_address(bob_id, bob_addr).await;
 
-    let handle_b = task::spawn(async move {
-        let ReceiveRequest { response_tx, .. } = bob_request_rx.next().await.unwrap();
-        response_tx.send(Response::Pong).unwrap();
-    });
+    // Alice sends a request.
+    let alice_send_req = alice.send_request(bob_id, Request::Ping);
 
-    let handle_a = task::spawn(async move {
-        let res = response_rx.await.expect("Unexpected cancellation of response channel");
-        match res {
-            Ok(_) => {}
-            Err(e) => panic!("Unexpected error: {}", e),
-        }
-    });
+    // Bob receives the request and sends a response.
+    let bob_recv_req = async {
+        let ReceiveRequest {
+            response_tx: bob_response_tx,
+            ..
+        } = bob_request_rx.next().await.unwrap();
+        bob_response_tx.send(Response::Pong).unwrap();
+    };
 
-    task::block_on(async {
-        join(handle_a, handle_b).await;
-        alice.shutdown();
-        bob.shutdown();
-    })
+    let (res, ()) = join(alice_send_req, bob_recv_req).await;
+    match res {
+        Ok(_) => {}
+        Err(e) => panic!("Unexpected error: {}", e),
+    }
+
+    // Drop Bob, expect bob's incoming-requests channel to close
+    drop(bob);
+    assert!(bob_request_rx.next().await.is_none());
 }

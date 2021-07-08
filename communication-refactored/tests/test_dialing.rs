@@ -1,7 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use async_std::task;
+#![cfg(feature = "relay")]
+
 use communication_refactored::{
     assemble_relayed_addr,
     firewall::{FirewallConfiguration, PermissionValue, RequestPermissions, VariantPermission},
@@ -13,9 +14,10 @@ use futures::{
     future, StreamExt,
 };
 #[cfg(not(feature = "tcp-transport"))]
-use libp2p_tcp::TcpConfig;
+use libp2p::tcp::TokioTcpConfig;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use tokio::runtime::Builder;
 
 type TestComms = ShCommunication<Request, Response, Request>;
 
@@ -25,17 +27,17 @@ struct Request;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
 struct Response;
 
-fn init_comms() -> (mpsc::Receiver<NetworkEvent>, TestComms) {
-    let (dummy_fw_tx, _) = mpsc::channel(1);
-    let (dummy_rq_tx, _) = mpsc::channel(1);
-    let (event_tx, event_rx) = mpsc::channel(1);
+async fn init_comms() -> (mpsc::Receiver<NetworkEvent>, TestComms) {
+    let (dummy_fw_tx, _) = mpsc::channel(10);
+    let (dummy_rq_tx, _) = mpsc::channel(10);
+    let (event_tx, event_rx) = mpsc::channel(10);
     let builder = ShCommunicationBuilder::new(dummy_fw_tx, dummy_rq_tx, Some(event_tx))
         .with_firewall_config(FirewallConfiguration::allow_all())
         .with_connection_timeout(Duration::from_millis(1));
     #[cfg(not(feature = "tcp-transport"))]
-    let comms = task::block_on(builder.build_with_transport(TcpConfig::new()));
+    let comms = builder.build_with_transport(TokioTcpConfig::new()).await;
     #[cfg(feature = "tcp-transport")]
-    let comms = task::block_on(builder.build());
+    let comms = builder.build().await.unwrap();
     (event_rx, comms)
 }
 
@@ -124,10 +126,10 @@ impl fmt::Display for TestConfig {
     }
 }
 impl TestConfig {
-    fn new(relay_id: PeerId, relay_addr: Multiaddr) -> Self {
-        let (source_event_rx, source_comms) = init_comms();
+    async fn new(relay_id: PeerId, relay_addr: Multiaddr) -> Self {
+        let (source_event_rx, source_comms) = init_comms().await;
         let source_id = source_comms.get_peer_id();
-        let (target_event_rx, target_comms) = init_comms();
+        let (target_event_rx, target_comms) = init_comms().await;
         let target_id = target_comms.get_peer_id();
         TestConfig {
             source_config: TestSourceConfig::random(),
@@ -145,17 +147,17 @@ impl TestConfig {
         }
     }
 
-    fn configure_comms(&mut self) {
+    async fn configure_comms(&mut self) {
         if self.target_config.listening_plain {
-            let target_addr = task::block_on(self.target_comms.start_listening(None)).unwrap();
+            let target_addr = self.target_comms.start_listening(None).await.unwrap();
             self.target_addr = Some(target_addr);
         }
         if self.target_config.listening_relay {
-            let relayed_addr = task::block_on(
-                self.target_comms
-                    .start_relayed_listening(self.relay_id, Some(self.relay_addr.clone())),
-            )
-            .unwrap();
+            let relayed_addr = self
+                .target_comms
+                .start_relayed_listening(self.relay_id, Some(self.relay_addr.clone()))
+                .await
+                .unwrap();
             self.target_relayed_addr = Some(relayed_addr)
         }
         if self.source_config.knows_direct_target_addr {
@@ -163,28 +165,31 @@ impl TestConfig {
                 .target_addr
                 .clone()
                 .unwrap_or_else(|| "/ip4/127.0.0.1/tcp/12345".parse().expect("Invalid Multiaddress."));
-            self.source_comms.add_address(self.target_id, addr);
+            self.source_comms.add_address(self.target_id, addr).await;
         }
         if self.source_config.knows_relayed_target_addr {
             let relayed_addr = assemble_relayed_addr(self.target_id, self.relay_id, self.relay_addr.clone());
-            self.source_comms.add_address(self.target_id, relayed_addr);
+            self.source_comms.add_address(self.target_id, relayed_addr).await;
         }
 
         if self.source_config.knows_relay_addr {
-            self.source_comms.add_address(self.relay_id, self.relay_addr.clone());
+            self.source_comms
+                .add_address(self.relay_id, self.relay_addr.clone())
+                .await;
         }
         if self.source_config.knows_relay {
-            let addr = self.source_comms.add_dialing_relay(self.relay_id, None);
+            let addr = self.source_comms.add_dialing_relay(self.relay_id, None).await;
             assert_eq!(addr.is_some(), self.source_config.knows_relay_addr);
         }
 
         match self.source_config.set_relay {
             UseRelay::Default => {}
-            UseRelay::NoRelay => self.source_comms.set_relay_fallback(self.target_id, false),
+            UseRelay::NoRelay => self.source_comms.set_relay_fallback(self.target_id, false).await,
             UseRelay::UseSpecificRelay => {
                 let addr = self
                     .source_comms
-                    .use_specific_relay(self.target_id, self.relay_id, true);
+                    .use_specific_relay(self.target_id, self.relay_id, true)
+                    .await;
                 if self.source_config.knows_relay_addr && self.source_config.knows_relay {
                     assert_eq!(
                         addr.unwrap(),
@@ -197,34 +202,34 @@ impl TestConfig {
         }
     }
 
-    fn test_dial(&mut self) {
+    async fn test_dial(&mut self) {
         let config_str = format!("{}", self);
 
-        let res = task::block_on(self.source_comms.dial_peer(&self.target_id));
+        let res = self.source_comms.connect_peer(self.target_id).await;
 
         if self.target_config.listening_relay {
-            Self::expect_connection(&mut self.target_event_rx, self.relay_id, &config_str);
+            Self::expect_connection(&mut self.target_event_rx, self.relay_id, &config_str).await;
         }
 
         match self.source_config.set_relay {
             UseRelay::NoRelay => {
-                if self.try_direct(&config_str) {
+                if self.try_direct(&config_str).await {
                     assert!(res.is_ok());
                     return;
                 }
-                if self.source_config.knows_relayed_target_addr && self.expect_relayed(false, &config_str) {
+                if self.source_config.knows_relayed_target_addr && self.expect_relayed(false, &config_str).await {
                     assert!(res.is_ok());
                     return;
                 }
             }
             UseRelay::Default => {
-                if self.try_direct(&config_str) {
+                if self.try_direct(&config_str).await {
                     assert!(res.is_ok());
                     return;
                 }
                 if (self.source_config.knows_relayed_target_addr
                     || self.source_config.knows_relay && self.source_config.knows_relay_addr)
-                    && self.expect_relayed(false, &config_str)
+                    && self.expect_relayed(false, &config_str).await
                 {
                     assert!(res.is_ok());
                     return;
@@ -232,15 +237,15 @@ impl TestConfig {
             }
             UseRelay::UseSpecificRelay => {
                 let knows_relay = self.source_config.knows_relay && self.source_config.knows_relay_addr;
-                if knows_relay && self.expect_relayed(false, &config_str) {
+                if knows_relay && self.expect_relayed(false, &config_str).await {
                     assert!(res.is_ok());
                     return;
                 }
-                if self.try_direct(&config_str) {
+                if self.try_direct(&config_str).await {
                     assert!(res.is_ok());
                     return;
                 }
-                if self.source_config.knows_relayed_target_addr && self.expect_relayed(knows_relay, &config_str) {
+                if self.source_config.knows_relayed_target_addr && self.expect_relayed(knows_relay, &config_str).await {
                     assert!(res.is_ok());
                     return;
                 }
@@ -252,35 +257,37 @@ impl TestConfig {
         }
     }
 
-    fn try_direct(&mut self, config_str: &str) -> bool {
+    async fn try_direct(&mut self, config_str: &str) -> bool {
         if self.source_config.knows_direct_target_addr && self.target_config.listening_plain {
-            Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str);
-            Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str);
+            Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str).await;
+            Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str).await;
             return true;
         }
         false
     }
 
-    fn expect_relayed(&mut self, is_connected: bool, config_str: &str) -> bool {
+    async fn expect_relayed(&mut self, is_connected: bool, config_str: &str) -> bool {
         if !is_connected {
-            Self::expect_connection(&mut self.source_event_rx, self.relay_id, &config_str);
+            Self::expect_connection(&mut self.source_event_rx, self.relay_id, &config_str).await;
         }
         if self.target_config.listening_relay {
-            Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str);
-            Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str);
+            Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str).await;
+            Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str).await;
             return true;
         }
         false
     }
 
-    fn expect_connection(event_rx: &mut Receiver<NetworkEvent>, target: PeerId, config_str: &str) {
+    async fn expect_connection(event_rx: &mut Receiver<NetworkEvent>, target: PeerId, config_str: &str) {
         let mut filtered = event_rx.filter(|ev| {
             future::ready(!matches!(
                 ev,
-                NetworkEvent::NewListenAddr(..) | NetworkEvent::ConnectionClosed { .. }
+                NetworkEvent::NewListenAddr(..)
+                    | NetworkEvent::ConnectionClosed { .. }
+                    | NetworkEvent::ListenerClosed { .. }
             ))
         });
-        let event = task::block_on(filtered.next()).unwrap();
+        let event = filtered.next().await.unwrap();
         assert!(
             matches!(event,  NetworkEvent::ConnectionEstablished { peer, .. } if peer == target),
             "Unexpected Event {:?} on config {}",
@@ -288,25 +295,21 @@ impl TestConfig {
             config_str
         );
     }
-
-    fn shutdown(self) {
-        task::block_on(async {
-            self.source_comms.shutdown();
-            self.target_comms.shutdown();
-        })
-    }
 }
 
 #[test]
 fn test_dialing() {
-    let (_, relay_comms) = init_comms();
-    let relay_id = relay_comms.get_peer_id();
-    let relay_addr = task::block_on(relay_comms.start_listening(None)).unwrap();
+    let task = async {
+        let (_, mut relay_comms) = init_comms().await;
+        let relay_id = relay_comms.get_peer_id();
+        let relay_addr = relay_comms.start_listening(None).await.unwrap();
 
-    for _ in 0..100 {
-        let mut test = TestConfig::new(relay_id, relay_addr.clone());
-        test.configure_comms();
-        test.test_dial();
-        test.shutdown()
-    }
+        for _ in 0..100 {
+            let mut test = TestConfig::new(relay_id, relay_addr.clone()).await;
+            test.configure_comms().await;
+            test.test_dial().await;
+        }
+    };
+    let rt = Builder::new_current_thread().enable_all().build().unwrap();
+    rt.block_on(task);
 }
