@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// A type alias for the empty `ResultMessage<()>` type.
 pub type StatusMessage = ResultMessage<()>;
 
-/// Return value used for Actor Messages.  Can specify an Error or an Ok result.
+/// Return value used for Actor Messages.  Can specify an `Error` or an `Ok` result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ResultMessage<T> {
     Ok(T),
@@ -15,6 +15,18 @@ pub enum ResultMessage<T> {
 
 impl ResultMessage<()> {
     pub const OK: Self = ResultMessage::Ok(());
+}
+
+impl<T> ResultMessage<T> {
+    /// Returns true, if the [`ResultMessage`] contains an `Ok` value
+    pub fn is_ok(&self) -> bool {
+        matches!(self, ResultMessage::Ok(_))
+    }
+
+    /// Returns true, if the [`ResultMessage`] contains an `Error`
+    pub fn is_err(&self) -> bool {
+        !self.is_ok()
+    }
 }
 
 impl<T> From<Result<T, String>> for ResultMessage<T> {
@@ -26,11 +38,9 @@ impl<T> From<Result<T, String>> for ResultMessage<T> {
     }
 }
 
-/// A `Location` type used to specify where in the `Stronghold` a piece of data should be stored. A generic location
-/// specifies a non-versioned location while a counter location specifies a versioned location. The Counter location can
-/// be used to get the head of the version chain by passing in `None` as the counter index. Otherwise, counter records
-/// are referenced through their associated index.  On Read, the `None` location is the latest record in the version
-/// chain while on Write, the `None` location is the next record in the version chain.
+/// A [`Location`] type used to specify where in the [`Stronghold`] a piece of data should be stored. A generic location
+/// specifies a location while a counter location specifies a versioned location. If a counter [`Location`] is used,
+/// then the implementation must maintain the counters for the versioning.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Location {
     Generic { vault_path: Vec<u8>, record_path: Vec<u8> },
@@ -46,7 +56,7 @@ impl Location {
         }
     }
 
-    /// Creates a generic location from types that implement `Into<Vec<u8>>`.
+    /// Creates a generic location from types that implement [`Into<Vec<u8>>`].
     pub fn generic<V: Into<Vec<u8>>, R: Into<Vec<u8>>>(vault_path: V, record_path: R) -> Self {
         Self::Generic {
             vault_path: vault_path.into(),
@@ -54,26 +64,12 @@ impl Location {
         }
     }
 
-    /// Creates a counter location from a type that implements `Into<Vec<u8>>` and a counter type that implements
-    /// `Into<usize>`
+    /// Creates a counter location from a type that implements [`Into<Vec<u8>>`] and a counter type that implements
+    /// [`Into<usize>`]
     pub fn counter<V: Into<Vec<u8>>, C: Into<usize>>(vault_path: V, counter: C) -> Self {
         Self::Counter {
             vault_path: vault_path.into(),
             counter: counter.into(),
-        }
-    }
-
-    /// Helper method used to increment counter locations.
-    pub fn increment_counter(self) -> Self {
-        match self {
-            Location::Generic {
-                vault_path,
-                record_path,
-            } => Location::Generic {
-                vault_path,
-                record_path,
-            },
-            Location::Counter { vault_path, counter } => Location::Counter { vault_path, counter },
         }
     }
 

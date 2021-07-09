@@ -12,7 +12,8 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput};
 
-/// A version of the Debug macro that blocks parsing the data inside of a struct or enum.
+/// A version of the derive [`Debug`] trait that blocks parsing the data inside of a struct or enum.
+/// Use [`GuardDebug`] to block reading and inspection of a data structure via the [`Debug`] trait.
 #[proc_macro_derive(GuardDebug)]
 pub fn derive_guard_debug(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

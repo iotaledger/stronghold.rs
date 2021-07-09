@@ -1,6 +1,6 @@
 #![no_main]
 
-use engine::vault::{DBView, Key, PreparedRead, ReadResult, RecordHint, RecordId, WriteRequest};
+use engine::vault::{DbView, Key, RecordHint, RecordId, VaultId};
 use rand::Rng;
 
 use libfuzzer_sys::fuzz_target;
@@ -17,34 +17,99 @@ pub fn record_hint() -> RecordHint {
 
 // Requires Linux, MacOS or WSL to compile.  Requires the nightly toolchain and cargo fuzz tool.
 fuzz_target!(|data: &[u8]| {
-    let mut writes: Vec<ReadResult> = vec![];
+    let mut view: DbView<Provider> = DbView::new();
 
-    let k: Key<Provider> = Key::random().expect("unable to generate key");
-    let v0 = DBView::load(k.clone(), writes.iter()).expect("unable to load DBView");
+    let key0 = Key::random().unwrap();
+    let vid0 = VaultId::random::<Provider>().unwrap();
+    let rid0 = RecordId::random::<Provider>().unwrap();
 
-    let id = RecordId::random::<Provider>().expect("unable to generate record id");
-    let mut w = v0.writer(id);
+    // init vaults.
+    view.init_vault(&key0, vid0).unwrap();
+    // write to vault0 and record0
+    view.write(&key0, vid0, rid0, data, RecordHint::new(b"hint").unwrap())
+        .unwrap();
 
-    writes.push(write_to_read(&w.truncate().expect("unable to truncate record")));
-    let hint = record_hint();
-    let wrs = w.write(&data, hint).expect("unable to write data");
+    let list0 = view.list_hints_and_ids(&key0, vid0);
 
-    wrs.iter().for_each(|w| writes.push(write_to_read(w)));
+    assert_eq!(list0.len(), 1);
 
-    let v1 = DBView::load(k, writes.iter()).expect("unable to load DBView");
+    // read from vault0 and record0
+    view.get_guard(&key0, vid0, rid0, |g| {
+        assert_eq!(data, &(*g.borrow()));
 
-    assert_eq!(v1.all().len(), 1);
-    assert_eq!(v1.records().count(), 1);
-    assert_eq!(v1.absolute_balance(), (2, 2));
-    assert_eq!(v1.chain_ctrs(), vec![(id, 1u64)].into_iter().collect());
-    assert_eq!(v1.gc().len(), 0);
+        Ok(())
+    })
+    .unwrap();
 
-    assert_eq!(
-        v1.reader().prepare_read(&id).expect("unable to prepare_read"),
-        PreparedRead::CacheHit(data.to_vec())
-    );
+    let list0 = view.list_hints_and_ids(&key0, vid0);
+
+    assert_eq!(list0.len(), 1);
+
+    // garbage collect vid0.
+    view.garbage_collect_vault(&key0, vid0).unwrap();
+
+    let list0 = view.list_hints_and_ids(&key0, vid0);
+
+    assert_eq!(list0.len(), 1);
+
+    let b = view.contains_record(&key0, vid0, rid0);
+
+    assert!(b);
+
+    // read vid0 and rid0.
+    view.get_guard(&key0, vid0, rid0, |g| {
+        assert_eq!(data, &(*g.borrow()));
+
+        Ok(())
+    })
+    .unwrap();
+
+    let key0 = Key::random().unwrap();
+    let vid0 = VaultId::random::<Provider>().unwrap();
+    let rid0 = RecordId::random::<Provider>().unwrap();
+
+    let key1 = Key::random().unwrap();
+    let vid1 = VaultId::random::<Provider>().unwrap();
+    let rid1 = RecordId::random::<Provider>().unwrap();
+
+    // Write data into vid0/rid0
+    view.write(&key0, vid0, rid0, b"test", RecordHint::new(b"hint").unwrap())
+        .unwrap();
+
+    // execute a procedure and put the result into a new record
+    view.exec_proc(
+        &key0,
+        vid0,
+        rid0,
+        &key1,
+        vid1,
+        rid1,
+        RecordHint::new(b"tester").unwrap(),
+        |guard| {
+            let data = guard.borrow();
+            let mut ret = Vec::new();
+
+            ret.extend(data.iter());
+            ret.extend(data.iter());
+
+            Ok(ret)
+        },
+    )
+    .unwrap();
+
+    // read vid0 and rid0.
+    view.get_guard(&key0, vid0, rid0, |g| {
+        assert_eq!(b"test", &(*g.borrow()));
+
+        Ok(())
+    })
+    .unwrap();
+
+    // read vid1 and rid1.
+    view.get_guard(&key1, vid1, rid1, |g| {
+        assert_eq!(b"testtest", &(*g.borrow()));
+
+        Ok(())
+    })
+    .unwrap();
 });
-
-fn write_to_read(wr: &WriteRequest) -> ReadResult {
-    ReadResult::new(wr.kind(), wr.id(), wr.data())
-}

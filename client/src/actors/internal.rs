@@ -37,24 +37,32 @@ use crate::{
     utils::{ResultMessage, StatusMessage},
 };
 
+/// State for the internal actor used as the runtime.
 pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
     client_id: ClientId,
     keystore: KeyStore<P>,
     db: DbView<P>,
 }
 
-/// Messages used for the KeyStore Actor.
+/// Messages used for the Internal Actor.
 #[derive(Clone, GuardDebug)]
 pub enum InternalMsg {
+    /// Creates a new vault at the given [`VaultId`] and [`RecordId`]
     CreateVault(VaultId, RecordId),
+    /// Reads data from a vault at the location of the given [`VaultId`] and [`RecordId`]
     #[cfg(test)]
     ReadFromVault(VaultId, RecordId),
+    /// Writes data to a vault at the location of the given [`VaultId`] and [`RecordId`]
     WriteToVault(VaultId, RecordId, Vec<u8>, RecordHint),
+    /// Revokes data from a vault at the location of the given [`VaultId`] and [`RecordId`]
     RevokeData(VaultId, RecordId),
+    /// Garbage collects a vault at the given [`VaultId`]
     GarbageCollect(VaultId),
+    /// Lists ids of the vault at the given [`VaultId`]
     ListIds(VaultId),
+    /// Checks to see if a record exists at the given [`VaultId`] and [`RecordId`]
     CheckRecord(VaultId, RecordId),
-
+    /// Reads the snapshot from the file.
     ReadSnapshot(
         snapshot::Key,
         Option<String>,
@@ -62,23 +70,27 @@ pub enum InternalMsg {
         ClientId,
         Option<ClientId>,
     ),
+    /// Reloads the data from the snapshot.
     ReloadData {
         id: ClientId,
         data: Box<(HashMap<VaultId, Key<Provider>>, DbView<Provider>, Store)>,
         status: StatusMessage,
     },
+    /// Clears the cache.
     ClearCache,
+    /// Kills the internal actor.
     KillInternal,
-    FillSnapshot {
-        client: Client,
-    },
+    /// Fills the snapshot state with the current internal state.
+    FillSnapshot { client: Client },
 
+    /// [`SLIP10Generate`] seed Proc.
     SLIP10Generate {
         vault_id: VaultId,
         record_id: RecordId,
         hint: RecordHint,
         size_bytes: usize,
     },
+    /// [`SLIP10DeriveFromSeed`] Proc
     SLIP10DeriveFromSeed {
         chain: Chain,
         seed_vault_id: VaultId,
@@ -87,6 +99,7 @@ pub enum InternalMsg {
         key_record_id: RecordId,
         hint: RecordHint,
     },
+    /// [`SLIP10DeriveFromKey`] Proc
     SLIP10DeriveFromKey {
         chain: Chain,
         parent_vault_id: VaultId,
@@ -95,12 +108,14 @@ pub enum InternalMsg {
         child_record_id: RecordId,
         hint: RecordHint,
     },
+    /// [`BIP39Generate`] Proc
     BIP39Generate {
         passphrase: String,
         vault_id: VaultId,
         record_id: RecordId,
         hint: RecordHint,
     },
+    /// [`BIP39Recover`] Proc
     BIP39Recover {
         mnemonic: String,
         passphrase: String,
@@ -108,10 +123,9 @@ pub enum InternalMsg {
         record_id: RecordId,
         hint: RecordHint,
     },
-    Ed25519PublicKey {
-        vault_id: VaultId,
-        record_id: RecordId,
-    },
+    /// [`Ed25519PublicKey`] Proc
+    Ed25519PublicKey { vault_id: VaultId, record_id: RecordId },
+    /// [`Ed25519Sign`] Proc
     Ed25519Sign {
         vault_id: VaultId,
         record_id: RecordId,
@@ -119,7 +133,7 @@ pub enum InternalMsg {
     },
 }
 
-/// Messages used internally by the client.
+/// Return messages used internally by the client.
 #[derive(Clone, GuardDebug)]
 pub enum InternalResults {
     ReturnCreateVault(StatusMessage),

@@ -43,18 +43,25 @@ pub use crate::{
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
+// pull up dependency on riker actor system, or change api to hide this dependency
+// on lower levels to avoid calling this explicit dependency
+pub use riker::system::ActorSystem;
+
 #[cfg(feature = "communication")]
 pub use crate::actors::SHRequestPermission;
 #[cfg(feature = "communication")]
 pub use communication::{
     actor::RelayDirection,
-    libp2p::{Multiaddr, PeerId},
+    libp2p::{Keypair, Multiaddr, PeerId},
 };
 
-pub use engine::snapshot::{
-    files::{home_dir, snapshot_dir},
-    kdf::naive_kdf,
-    Key,
+pub use engine::{
+    snapshot::{
+        files::{home_dir, snapshot_dir},
+        kdf::naive_kdf,
+        Key,
+    },
+    vault::RecordId,
 };
 
 pub use engine::vault::RecordHint;
@@ -70,8 +77,10 @@ macro_rules! line_error {
     };
 }
 
+/// Stronghold Client Result Type.
 pub type Result<T> = anyhow::Result<T, Error>;
 
+/// Stronghold Client error block.
 #[derive(DeriveError, Debug)]
 pub enum Error {
     #[error("Id Error")]

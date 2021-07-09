@@ -17,33 +17,44 @@ use crypto::{
 
 use crate::snapshot::{compress, decompress};
 
-/// Magic bytes (bytes 0-4 in a snapshot file)
+/// Magic bytes (bytes 0-4 in a snapshot file) aka PARTI
 pub const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
 
 /// Current version bytes (bytes 5-6 in a snapshot file)
 pub const VERSION: [u8; 2] = [0x2, 0x0];
 // pub const OLD_VERSION: [u8; 2] = [0x2, 0x0];
 
+/// Key size for the ephemeral key
 const KEY_SIZE: usize = 32;
+/// Key type alias.
 pub type Key = [u8; KEY_SIZE];
 
+/// Nonce size for XChaCha20Poly1305
 const NONCE_SIZE: usize = XChaCha20Poly1305::NONCE_LENGTH;
+/// Nonce type alias
 pub type Nonce = [u8; NONCE_SIZE];
 
-/// Encrypt the opaque plaintext bytestring using the specified key and optional associated data
+/// Encrypt the opaque plaintext bytestring using the specified [`Key`] and optional associated data
 /// and writes the ciphertext to the specifed output
 pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
+    // write magic and version bytes
     output.write_all(&MAGIC)?;
     output.write_all(&VERSION)?;
 
+    // create ephemeral key pair.
     let ephemeral_key = x25519::SecretKey::generate()?;
 
+    // get public key.
     let ephemeral_pk = ephemeral_key.public_key();
+    // write public key into output.
     output.write_all(ephemeral_pk.as_bytes())?;
 
+    // get `x25519` secret key from public key.
     let pk = x25519::SecretKey::from_bytes(key)?.public_key();
+    // do a diffie_hellman exchange to make a shared secret key.
     let shared = ephemeral_key.diffie_hellman(&pk);
 
+    // compute the nonce using the ephemeral keys.
     let nonce = {
         let mut i = ephemeral_pk.to_bytes().to_vec();
         i.extend_from_slice(pk.as_bytes());
@@ -52,11 +63,16 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
         v
     };
 
+    // create the XChaCha20Poly1305 tag.
     let mut tag = [0; XChaCha20Poly1305::TAG_LENGTH];
 
+    // creates the ciphertext.
     let mut ct = vec![0; plain.len()];
+
+    // encrypts the data.
     XChaCha20Poly1305::try_encrypt(&shared.to_bytes(), &nonce, associated_data, &plain, &mut ct, &mut tag)?;
 
+    // write tag and ciphertext into the output.
     output.write_all(&tag)?;
     output.write_all(&ct)?;
 
@@ -66,18 +82,24 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
 /// Read ciphertext from the input, decrypts it using the specified key and the associated data
 /// specified during encryption and returns the plaintext
 pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate::Result<Vec<u8>> {
-    // check the header
+    // check the header for structure.
     check_header(input)?;
 
+    // create ephemeral private key.
     let mut ephemeral_pk = [0; x25519::PUBLIC_KEY_LEN];
+    // get ephemeral private key from input.
     input.read_exact(&mut ephemeral_pk)?;
+    // derive public key from ephemeral private key
     let ephemeral_pk = x25519::PublicKey::from_bytes(&ephemeral_pk)?;
 
+    // get x25519 key pair from ephemeral private key.
     let sk = x25519::SecretKey::from_bytes(key)?;
     let pk = sk.public_key();
 
+    // diffie hellman to create the shared secret.
     let shared = sk.diffie_hellman(&ephemeral_pk);
 
+    // compute the nonce using the ephemeral keys.
     let nonce = {
         let mut i = ephemeral_pk.to_bytes().to_vec();
         i.extend_from_slice(pk.as_bytes());
@@ -86,13 +108,17 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
         v
     };
 
+    // create and read tag from input.
     let mut tag = [0; XChaCha20Poly1305::TAG_LENGTH];
     input.read_exact(&mut tag)?;
 
+    // create and read ciphertext from input.
     let mut ct = Vec::new();
     input.read_to_end(&mut ct)?;
 
+    // create plain text buffer.
     let mut pt = vec![0; ct.len()];
+    // attempt to decrypt the ciphertext into the plain text buffer.
     XChaCha20Poly1305::try_decrypt(&shared.to_bytes(), &nonce, associated_data, &mut pt, &ct, &tag)?;
 
     Ok(pt)
@@ -144,6 +170,7 @@ fn check_min_file_len(input: &mut File) -> crate::Result<()> {
     }
 }
 
+/// Checks the header for a specific structure; explicitly the magic and version bytes.
 fn check_header<I: Read>(input: &mut I) -> crate::Result<()> {
     // check the magic bytes
     let mut magic = [0u8; 5];
