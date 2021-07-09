@@ -34,4 +34,3 @@ tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
 rand = "0.8.3"
 tokio = {version = "1.7", features = ["time", "macros"]}
 libp2p = { version = "0.39", git = "https://github.com/libp2p/rust-libp2p", default-features = false, features = ["tcp-tokio"] }
-  

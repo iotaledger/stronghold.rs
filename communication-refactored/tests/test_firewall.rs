@@ -18,10 +18,10 @@ use futures::{
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
 use serde::{Deserialize, Serialize};
-use std::{fmt, future, task::Poll, time::Duration};
+use std::{fmt, future, marker::PhantomData, task::Poll, time::Duration};
 use tokio::time::sleep;
 
-type TestComms = ShCommunication<Request, Response, RequestPermission>;
+type TestComms = ShCommunication<Request, Response>;
 
 macro_rules! expect_ok (
      ($expression:expr, $config:expr) => {
@@ -42,10 +42,10 @@ enum Response {
 }
 
 type NewComms = (
-    mpsc::Receiver<FirewallRequest<RequestPermission>>,
+    mpsc::Receiver<FirewallRequest<Request>>,
     mpsc::Receiver<ReceiveRequest<Request, Response>>,
     mpsc::Receiver<NetworkEvent>,
-    ShCommunication<Request, Response, RequestPermission>,
+    ShCommunication<Request, Response>,
 );
 
 async fn init_comms() -> NewComms {
@@ -79,18 +79,23 @@ impl TestPermission {
         }
     }
 
-    fn as_rule(&self) -> Rule {
+    fn restrict_by_type(rq: &Request, allowed: RequestPermission) -> bool {
+        let permissions = FirewallPermission::none().add_permissions([&allowed.permission()]);
+        permissions.permits(&rq.to_permissioned().permission())
+    }
+
+    fn as_rule(&self) -> Rule<Request> {
         match self {
-            TestPermission::AllowAll => Rule::allow_all(),
-            TestPermission::RejectAll => Rule::reject_all(),
-            TestPermission::PingOnly => {
-                let permission = RequestPermission::Ping;
-                Rule::Permission(FirewallPermission::none().add_permissions([&permission.permission()]))
-            }
-            TestPermission::OtherOnly => {
-                let permission = RequestPermission::Other;
-                Rule::Permission(FirewallPermission::none().add_permissions([&permission.permission()]))
-            }
+            TestPermission::AllowAll => Rule::AllowAll,
+            TestPermission::RejectAll => Rule::RejectAll,
+            TestPermission::PingOnly => Rule::Restricted {
+                restriction: |rq: &Request| Self::restrict_by_type(rq, RequestPermission::Ping),
+                _maker: PhantomData,
+            },
+            TestPermission::OtherOnly => Rule::Restricted {
+                restriction: |rq: &Request| Self::restrict_by_type(rq, RequestPermission::Other),
+                _maker: PhantomData,
+            },
         }
     }
 }
@@ -202,7 +207,7 @@ impl<'a> RulesTestConfig<'a> {
                     Err(OutboundFailure::UnsupportedProtocols) | Err(OutboundFailure::ConnectionClosed) => {}
                     Err(e) => panic!("Unexpected Failure {:?}; config {}", e, self),
                 },
-                TestPermission::OtherOnly | TestPermission::PingOnly => {
+                TestPermission::PingOnly | TestPermission::OtherOnly => {
                     match res_future.await {
                         Ok(_) => panic!("Unexpected response; config {}", self),
                         Err(OutboundFailure::Timeout) | Err(OutboundFailure::ConnectionClosed) => {}
@@ -329,10 +334,10 @@ enum TestPeer {
 
 struct AskTestConfig<'a> {
     comms_a: &'a mut TestComms,
-    firewall_a: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
+    firewall_a: &'a mut mpsc::Receiver<FirewallRequest<Request>>,
 
     comms_b: &'a mut TestComms,
-    firewall_b: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
+    firewall_b: &'a mut mpsc::Receiver<FirewallRequest<Request>>,
     b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
 
@@ -355,9 +360,9 @@ impl<'a> fmt::Display for AskTestConfig<'a> {
 impl<'a> AskTestConfig<'a> {
     fn new_test_case(
         comms_a: &'a mut TestComms,
-        firewall_a: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
+        firewall_a: &'a mut mpsc::Receiver<FirewallRequest<Request>>,
         comms_b: &'a mut TestComms,
-        firewall_b: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
+        firewall_b: &'a mut mpsc::Receiver<FirewallRequest<Request>>,
         b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ) -> Self {
@@ -491,11 +496,11 @@ impl<'a> AskTestConfig<'a> {
         };
 
         let (rule, other) = match peer_rule {
-            FwRuleRes::AllowAll => (Rule::allow_all(), Rule::reject_all()),
-            FwRuleRes::RejectAll => (Rule::reject_all(), Rule::allow_all()),
+            FwRuleRes::AllowAll => (Rule::AllowAll, Rule::RejectAll),
+            FwRuleRes::RejectAll => (Rule::RejectAll, Rule::AllowAll),
             FwRuleRes::Ask => match approval {
-                FwApprovalRes::Allow => (Rule::Ask, Rule::reject_all()),
-                _ => (Rule::Ask, Rule::allow_all()),
+                FwApprovalRes::Allow => (Rule::Ask, Rule::RejectAll),
+                _ => (Rule::Ask, Rule::AllowAll),
             },
             FwRuleRes::Drop => {
                 drop(response_tx);

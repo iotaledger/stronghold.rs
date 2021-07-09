@@ -4,9 +4,8 @@
 #![cfg(feature = "relay")]
 
 use communication_refactored::{
-    assemble_relayed_addr,
-    firewall::{FirewallConfiguration, PermissionValue, RequestPermissions, VariantPermission},
-    Multiaddr, NetworkEvent, PeerId, ShCommunication, ShCommunicationBuilder,
+    assemble_relayed_addr, firewall::FirewallConfiguration, Multiaddr, NetworkEvent, PeerId, ShCommunication,
+    ShCommunicationBuilder,
 };
 use core::fmt;
 use futures::{
@@ -19,12 +18,12 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::runtime::Builder;
 
-type TestComms = ShCommunication<Request, Response, Request>;
+type TestComms = ShCommunication<Request, Response>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Request;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Response;
 
 async fn init_comms() -> (mpsc::Receiver<NetworkEvent>, TestComms) {

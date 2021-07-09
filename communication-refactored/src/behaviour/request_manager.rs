@@ -3,7 +3,7 @@
 
 use super::{ProtocolSupport, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use crate::{
-    firewall::{FirewallRules, Rule, RuleDirection, ToPermissionVariants, VariantPermission},
+    firewall::{FirewallRules, Rule, RuleDirection},
     unwrap_or_return, InboundFailure, OutboundFailure, RequestDirection, RequestId,
 };
 mod connections;
@@ -11,10 +11,7 @@ use connections::PeerConnectionManager;
 use futures::channel::oneshot;
 use libp2p::{core::connection::ConnectionId, PeerId};
 use smallvec::{smallvec, SmallVec};
-use std::{
-    collections::{HashMap, VecDeque},
-    marker::PhantomData,
-};
+use std::collections::{HashMap, VecDeque};
 
 // Actions for the behaviour to handle i.g. the behaviour emits the appropriate `NetworkBehaviourAction`.
 pub(super) enum BehaviourAction<Rq, Rs> {
@@ -81,11 +78,7 @@ pub(super) enum ApprovalStatus {
 //
 // Stores pending requests, manages rule, approval and connection changes, and queues required [`BehaviourActions`] for
 // the `NetBehaviour` to handle.
-pub(super) struct RequestManager<Rq, Rs, P>
-where
-    Rq: ToPermissionVariants<P>,
-    P: VariantPermission,
-{
+pub(super) struct RequestManager<Rq: Clone, Rs> {
     // Store of inbound requests that have not been approved yet.
     inbound_request_store: HashMap<RequestId, (PeerId, Rq, oneshot::Sender<Rs>)>,
     // Store of outbound requests that have not been approved, or where the target peer is not connected yet.
@@ -106,14 +99,9 @@ where
 
     // Actions that should be emitted by the NetBehaviour as NetworkBehaviourAction.
     actions: VecDeque<BehaviourAction<Rq, Rs>>,
-    marker: PhantomData<P>,
 }
 
-impl<Rq, Rs, P> RequestManager<Rq, Rs, P>
-where
-    Rq: ToPermissionVariants<P>,
-    P: VariantPermission,
-{
+impl<Rq: Clone, Rs> RequestManager<Rq, Rs> {
     pub fn new() -> Self {
         RequestManager {
             inbound_request_store: HashMap::new(),
@@ -123,7 +111,6 @@ where
             awaiting_peer_rule: HashMap::new(),
             awaiting_approval: SmallVec::new(),
             actions: VecDeque::new(),
-            marker: PhantomData,
         }
     }
 
@@ -348,9 +335,9 @@ where
     pub fn on_peer_rule(
         &mut self,
         peer: PeerId,
-        rules: FirewallRules,
+        rules: FirewallRules<Rq>,
         direction: RuleDirection,
-    ) -> Option<Vec<(RequestId, P, RequestDirection)>> {
+    ) -> Option<Vec<(RequestId, Rq, RequestDirection)>> {
         let mut await_rule = self.awaiting_peer_rule.remove(&peer)?;
         // Affected requests.
         let mut requests = vec![];
@@ -375,15 +362,22 @@ where
                 match rule {
                     Some(Rule::Ask) => {
                         // Requests need to await individual approval.
-                        let rq = self.get_request_value_ref(&request_id, &dir)?;
-                        let permissioned = rq.to_permissioned();
+                        let rq = self.get_request_value_ref(&request_id, &dir).cloned()?;
                         self.awaiting_approval.push((request_id, dir.clone()));
-                        Some((request_id, permissioned, dir))
+                        Some((request_id, rq, dir))
                     }
-                    Some(Rule::Permission(permission)) => {
+                    Some(Rule::AllowAll) => {
+                        self.handle_request_approval(request_id, &dir, true);
+                        None
+                    }
+                    Some(Rule::RejectAll) => {
+                        self.handle_request_approval(request_id, &dir, false);
+                        None
+                    }
+                    Some(Rule::Restricted { restriction, .. }) => {
                         // Checking the individual permissions required for the request type.
                         if let Some(rq) = self.get_request_value_ref(&request_id, &dir) {
-                            let is_allowed = permission.permits(&rq.permission_value());
+                            let is_allowed = restriction(rq);
                             self.handle_request_approval(request_id, &dir, is_allowed);
                         }
                         None

@@ -4,12 +4,10 @@
 mod errors;
 mod swarm_task;
 mod types;
+use self::swarm_task::{SwarmOperation, SwarmTask};
 use crate::{
     behaviour::{BehaviourEvent, NetBehaviour, NetBehaviourConfig},
-    firewall::{
-        FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection, ToPermissionVariants,
-        VariantPermission,
-    },
+    firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection},
     Keypair,
 };
 pub use errors::*;
@@ -36,11 +34,8 @@ use libp2p::{
 use libp2p::{dns::TokioDnsConfig, tcp::TokioTcpConfig, websocket::WsConfig};
 #[cfg(feature = "tcp-transport")]
 use std::io;
-use std::{fmt::Debug, marker::PhantomData, time::Duration};
-
+use std::time::Duration;
 pub use types::*;
-
-use self::swarm_task::{SwarmOperation, SwarmTask};
 
 /// Use existing keypair for authentication on the transport layer.
 ///
@@ -57,13 +52,27 @@ pub enum InitKeypair {
     },
 }
 
-pub struct ShCommunicationBuilder<Rq, Rs, P>
+/// Builder for new `ShCommunication`.
+///
+/// Default behaviour:
+/// - No firewall rules are set. In case of inbound / outbound requests, a [`FirewallRequest::PeerSpecificRule`] request
+///   is sent through the `ask_firewall_chan` to specify the permissions.
+/// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
+/// - No limit for simultaneous connections.
+/// - Request-timeout and Connection-timeout are 10s.
+///
+/// `ShCommunication` is build either via [`ShCommunicationBuilder::build`] (requires feature **tcp-transport**) with a
+/// pre-configured transport, or [`ShCommunicationBuilder::build_with_transport`] with a custom transport.
+///
+/// When building a new `ShCommunication` a new [`Swarm`][libp2p::Swarm] is created and continuously polled for events.
+/// Inbound requests are forwarded through a mpsc::channel<ReceiveRequest<Rq, Rs>>.
+/// Optionally all events regarding connections and listeners are forwarded as [`NetworkEvent`].
+pub struct ShCommunicationBuilder<Rq, Rs>
 where
-    Rq: Debug + RqRsMessage + ToPermissionVariants<P>,
-    Rs: Debug + RqRsMessage,
-    P: VariantPermission,
+    Rq: RqRsMessage + Clone,
+    Rs: RqRsMessage,
 {
-    ask_firewall_chan: mpsc::Sender<FirewallRequest<P>>,
+    ask_firewall_chan: mpsc::Sender<FirewallRequest<Rq>>,
     inbound_req_chan: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
     net_events_chan: Option<mpsc::Sender<NetworkEvent>>,
 
@@ -71,20 +80,24 @@ where
     ident: Option<(AuthenticKeypair<X25519Spec>, PeerId)>,
 
     // Configuration of the underlying [`NetBehaviour`].
-    behaviour_config: NetBehaviourConfig,
+    behaviour_config: NetBehaviourConfig<Rq>,
 
     // Limit of simultaneous connections.
     connections_limit: Option<ConnectionLimits>,
 }
 
-impl<Rq, Rs, P> ShCommunicationBuilder<Rq, Rs, P>
+impl<Rq, Rs> ShCommunicationBuilder<Rq, Rs>
 where
-    Rq: Debug + RqRsMessage + ToPermissionVariants<P>,
-    Rs: Debug + RqRsMessage,
-    P: VariantPermission,
+    Rq: RqRsMessage + Clone,
+    Rs: RqRsMessage,
 {
+    /// Parameters:
+    /// - `ask_firewall_chan`: Channel for [`FirewallRequest`] if there are no fixed rules in the firewall or
+    ///   [`Rule::Ask`] was set.
+    /// - `inbound_req_chan`: Channel for forwarding inbound requests from remote peers
+    /// - `net_events_chan`: Optional channel for forwarding all events in the swarm.
     pub fn new(
-        ask_firewall_chan: mpsc::Sender<FirewallRequest<P>>,
+        ask_firewall_chan: mpsc::Sender<FirewallRequest<Rq>>,
         inbound_req_chan: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
         net_events_chan: Option<mpsc::Sender<NetworkEvent>>,
     ) -> Self {
@@ -128,27 +141,43 @@ where
         self
     }
 
+    /// Set the timeout for a idle connection to a remote peer.
     pub fn with_connection_timeout(mut self, t: Duration) -> Self {
         self.behaviour_config.connection_timeout = t;
         self
     }
 
-    pub fn with_firewall_config(mut self, config: FirewallConfiguration) -> Self {
+    /// Set the firewall configuration.
+    /// The peer-specific rules overwrite the default rules for that peer.
+    ///
+    /// Per default, no rules are set and a [`FirewallRequest::PeerSpecificRule`] request is sent through the
+    /// `ask_firewall_chan` when a peer connect or an inbound/ outbound request is sent.
+    pub fn with_firewall_config(mut self, config: FirewallConfiguration<Rq>) -> Self {
         self.behaviour_config.firewall = config;
         self
     }
 
     #[cfg(feature = "tcp-transport")]
-    pub async fn build(self) -> Result<ShCommunication<Rq, Rs, P>, io::Error> {
+    /// [`Self::build_with_transport`] with a [`Transport`] based on TCP/IP that supports dns resolution and websockets.
+    pub async fn build(self) -> Result<ShCommunication<Rq, Rs>, io::Error> {
         let dns_transport = TokioDnsConfig::system(TokioTcpConfig::new())?;
         let transport = dns_transport.clone().or_transport(WsConfig::new(dns_transport));
         Ok(self.build_with_transport(transport).await)
     }
 
-    /// Create a new [`ShCommunication`] instance with an underlying [`Swarm`] that uses the provided transport.
-    /// This spawns a new task that handles all ineraction with the Swarm, this task runs until [`ShCommunication`] is
-    /// dropped.
-    pub async fn build_with_transport<T>(self, transport: T) -> ShCommunication<Rq, Rs, P>
+    /// Create a new [`ShCommunication`] instance with an underlying [`Swarm`][libp2p::Swarm] that uses the provided
+    /// transport.
+    ///
+    /// The transport is upgraded with:
+    /// - [Relay protocol][<https://docs.libp2p.io/concepts/circuit-relay/>] (requires *feature = "relay"*)
+    /// - Authentication and encryption with the Noise-Protocol, using the XX-handshake
+    /// - Yamux substream multiplexing
+    ///
+    /// The method spawns a new task that handles all interaction with the Swarm.
+    /// The task runs until [`ShCommunication`] is dropped, [`ShCommunication`] provides an interface to perform
+    /// operations on the swarm-task. **Note:** The task is spawned using [`tokio::spawn`], hence this method has to
+    /// be called in the context of a tokio.rs runtime.
+    pub async fn build_with_transport<T>(self, transport: T) -> ShCommunication<Rq, Rs>
     where
         T: Transport + Sized + Clone + Send + Sync + 'static,
         T::Output: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -199,7 +228,6 @@ where
         ShCommunication {
             local_peer_id,
             command_tx,
-            _marker: PhantomData,
         }
     }
 }
@@ -210,34 +238,27 @@ where
 /// All Swarm interaction takes place in a separate task.
 /// [`ShCommunication`] is essentially a wrapper for the Sender side of channel, which is used to initiate operations on
 /// the swarm.
-pub struct ShCommunication<Rq, Rs, P>
+///
+/// Refer to [`ShCommunicationBuilder`] for more information on the default configuration.
+pub struct ShCommunication<Rq, Rs>
 where
-    Rq: Debug + RqRsMessage + ToPermissionVariants<P>,
-    Rs: Debug + RqRsMessage,
-    P: VariantPermission,
+    Rq: RqRsMessage + Clone,
+    Rs: RqRsMessage,
 {
     local_peer_id: PeerId,
     command_tx: mpsc::Sender<SwarmOperation<Rq, Rs>>,
-    _marker: PhantomData<P>,
 }
 
-impl<Rq, Rs, P> ShCommunication<Rq, Rs, P>
+impl<Rq, Rs> ShCommunication<Rq, Rs>
 where
-    Rq: Debug + RqRsMessage + ToPermissionVariants<P>,
-    Rs: Debug + RqRsMessage,
-    P: VariantPermission,
+    Rq: RqRsMessage + Clone,
+    Rs: RqRsMessage,
 {
-    /// Spawn a new task for with a new [`Swarm`].
-    /// Create a new ShCommunication instance to initiate operations on the Swarm.
-    ///
-    /// Parameters:
-    /// - `ask_firewall_chan`: Channel for [`FirewallRequest`] if there are no fixed rules in the firewall or
-    ///   [`Rule::Ask`] was set.
-    /// - `inbound_req_chan`: Channel for forwarding inbound requests from remote peers
-    /// - `net_events_chan`: Optional channel for forwarding all events in the swarm.
+    /// Create a new [`ShCommunication`] instance with the default configuration.
+    /// Refer to [`ShCommunicationBuilder::new`] and [`ShCommunicationBuilder::build`] for detailed information.
     #[cfg(feature = "tcp-transport")]
     pub async fn new(
-        ask_firewall_chan: mpsc::Sender<FirewallRequest<P>>,
+        ask_firewall_chan: mpsc::Sender<FirewallRequest<Rq>>,
         inbound_req_chan: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
         net_events_chan: Option<mpsc::Sender<NetworkEvent>>,
     ) -> Result<Self, io::Error> {
@@ -255,7 +276,6 @@ where
     ///
     /// This will attempt to establish a connection to the remote via one of the known addresses, if there is no active
     /// connection.
-    /// The response or a potential failure will be returned through the [`ResponseReceiver.response_rx`] channel.
     pub async fn send_request(&mut self, peer: PeerId, request: Rq) -> Result<Rs, OutboundFailure> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::SendRequest {
@@ -339,7 +359,7 @@ where
 
     /// Set the default configuration for the firewall.
     /// The default rules are used for peers that do not have any explicit rules.
-    pub async fn set_firewall_default(&mut self, direction: RuleDirection, default: Rule) {
+    pub async fn set_firewall_default(&mut self, direction: RuleDirection, default: Rule<Rq>) {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::SetFirewallDefault {
             direction,
@@ -352,7 +372,7 @@ where
 
     /// Get the current default rules for the firewall.
     /// The default rules are used for peers that do not have any explicit rules.
-    pub async fn get_firewall_default(&mut self) -> FirewallRules {
+    pub async fn get_firewall_default(&mut self) -> FirewallRules<Rq> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::GetFirewallDefault { tx_yield };
         self.send_command(command).await;
@@ -370,7 +390,7 @@ where
     }
 
     /// Get the explicit rules for a peer, if there are any.
-    pub async fn get_peer_rules(&mut self, peer: PeerId) -> Option<FirewallRules> {
+    pub async fn get_peer_rules(&mut self, peer: PeerId) -> Option<FirewallRules<Rq>> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::GetPeerRules { peer, tx_yield };
         self.send_command(command).await;
@@ -378,7 +398,7 @@ where
     }
 
     /// Set a peer specific rule to overwrite the default behaviour for that peer.
-    pub async fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule) {
+    pub async fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule<Rq>) {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::SetPeerRule {
             peer,

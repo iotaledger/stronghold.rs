@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use communication_refactored::{
-    firewall::{FirewallConfiguration, PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission},
-    ReceiveRequest, ShCommunication, ShCommunicationBuilder,
+    firewall::FirewallConfiguration, ReceiveRequest, ShCommunication, ShCommunicationBuilder,
 };
 use futures::{channel::mpsc, future::join, StreamExt};
 #[cfg(not(feature = "tcp-transport"))]
@@ -11,13 +10,13 @@ use libp2p::tcp::TokioTcpConfig;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum Request {
     Ping,
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum Response {
     Pong,
     Other,
@@ -25,7 +24,7 @@ enum Response {
 
 async fn init_comms() -> (
     mpsc::Receiver<ReceiveRequest<Request, Response>>,
-    ShCommunication<Request, Response, RequestPermission>,
+    ShCommunication<Request, Response>,
 ) {
     let (dummy_tx, _) = mpsc::channel(10);
     let (rq_tx, rq_rx) = mpsc::channel(10);

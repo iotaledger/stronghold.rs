@@ -71,9 +71,9 @@ impl Default for ProtocolSupport {
 impl ProtocolSupport {
     // Derive the supported protocols from the firewall rules.
     // A direction will only be not supported if the firewall is configured to reject all request in that direction.
-    pub fn from_rules(inbound: Option<&Rule>, outbound: Option<&Rule>) -> Self {
-        let allow_inbound = inbound.map(|r| !r.is_reject_all()).unwrap_or(true);
-        let allow_outbound = outbound.map(|r| !r.is_reject_all()).unwrap_or(true);
+    pub fn from_rules<Rq: Clone>(inbound: Option<&Rule<Rq>>, outbound: Option<&Rule<Rq>>) -> Self {
+        let allow_inbound = inbound.map(|r| !matches!(r, Rule::RejectAll)).unwrap_or(true);
+        let allow_outbound = outbound.map(|r| !matches!(r, Rule::RejectAll)).unwrap_or(true);
         match allow_inbound && allow_outbound {
             true => ProtocolSupport::Full,
             _ if allow_inbound => ProtocolSupport::Inbound,
@@ -103,7 +103,7 @@ impl ProtocolSupport {
 #[derive(Debug)]
 pub enum HandlerInEvent<Rq>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
 {
     // Send an outbound request.
     SendRequest { request_id: RequestId, request: Rq },
@@ -117,7 +117,7 @@ where
 #[derive(Debug)]
 pub enum HandlerOutEvent<Rq, Rs>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
 {
     // Received an inbound request from remote.
@@ -152,7 +152,7 @@ where
 // [`ResponseProtocol`] by performing the respective handshake (send `Rq` - receive `Rs` | receive `Rq` - send `Rs`).
 pub struct ConnectionHandler<Rq, Rs>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
 {
     // Protocol versions that are potentially supported.
@@ -183,7 +183,7 @@ where
 
 impl<Rq, Rs> ConnectionHandler<Rq, Rs>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
 {
     pub(super) fn new(
@@ -254,7 +254,7 @@ where
 
 impl<Rq, Rs> ProtocolsHandler for ConnectionHandler<Rq, Rs>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
 {
     type InEvent = HandlerInEvent<Rq>;

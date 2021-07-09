@@ -52,7 +52,7 @@ impl ProtocolName for CommunicationProtocol {
 #[derive(Debug)]
 pub struct ResponseProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
 {
     // Supported protocols for inbound requests.
@@ -64,7 +64,7 @@ where
 
 impl<Rq, Rs> UpgradeInfo for ResponseProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
 {
     type Info = CommunicationProtocol;
@@ -77,7 +77,7 @@ where
 
 impl<Rq, Rs> InboundUpgrade<NegotiatedSubstream> for ResponseProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
 {
     // If a response was send back to remote.
@@ -112,7 +112,7 @@ where
 #[derive(Debug)]
 pub struct RequestProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
 {
     // Supported protocols for outbound requests.
@@ -126,7 +126,7 @@ where
 
 impl<Rq, Rs> UpgradeInfo for RequestProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
 {
     type Info = CommunicationProtocol;
@@ -139,7 +139,7 @@ where
 
 impl<Rq, Rs> OutboundUpgrade<NegotiatedSubstream> for RequestProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
 {
     // Response from the remote for the sent request.

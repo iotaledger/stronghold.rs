@@ -26,7 +26,6 @@ pub use addresses::assemble_relayed_addr;
 use addresses::AddressInfo;
 use firewall::{
     FirewallConfiguration, FirewallRequest, FirewallRules, PeerRuleQuery, RequestApprovalQuery, Rule, RuleDirection,
-    ToPermissionVariants, VariantPermission,
 };
 use futures::{
     channel::{
@@ -88,7 +87,7 @@ type ProtoHandler<Rq, Rs> =
 type ProtoHandler<Rq, Rs> = ConnectionHandler<Rq, Rs>;
 
 // Future for a pending response to a sent [`FirewallRequest::PeerSpecificRule`].
-type PendingPeerRuleRequest = BoxFuture<'static, (PeerId, RuleDirection, Option<FirewallRules>)>;
+type PendingPeerRuleRequest<Rq> = BoxFuture<'static, (PeerId, RuleDirection, Option<FirewallRules<Rq>>)>;
 // Future for a pending responses to a sent [`FirewallRequest::RequestApproval`].
 type PendingApprovalRequest = BoxFuture<'static, (RequestId, bool)>;
 
@@ -129,8 +128,7 @@ pub enum BehaviourEvent<Rq, Rs> {
 }
 
 /// Configuration of the [`NetBehaviour`].
-#[derive(Debug)]
-pub(super) struct NetBehaviourConfig {
+pub(super) struct NetBehaviourConfig<Rq: Clone> {
     /// Supported versions of the `CommunicationProtocol`.
     pub supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
     /// Timeout for inbound and outbound requests.
@@ -138,10 +136,10 @@ pub(super) struct NetBehaviourConfig {
     /// Keep-alive timeout of idle connections.
     pub connection_timeout: Duration,
     /// Configuration for the firewall that checks every outbound and inbound request.
-    pub firewall: FirewallConfiguration,
+    pub firewall: FirewallConfiguration<Rq>,
 }
 
-impl Default for NetBehaviourConfig {
+impl<Rq: Clone> Default for NetBehaviourConfig<Rq> {
     fn default() -> Self {
         Self {
             supported_protocols: smallvec![CommunicationProtocol::new_version(1, 0, 0)],
@@ -159,11 +157,10 @@ impl Default for NetBehaviourConfig {
 ///
 /// This allows sending request messages to remote peers, handling of inbound requests and failures, and additionally
 /// the configuration of a firewall to set permissions individually for different peers and request types.
-pub(super) struct NetBehaviour<Rq, Rs, P>
+pub(super) struct NetBehaviour<Rq, Rs>
 where
-    Rq: RqRsMessage + ToPermissionVariants<P>,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
-    P: VariantPermission,
 {
     // integrate Mdns protocol
     #[cfg(feature = "mdns")]
@@ -185,36 +182,35 @@ where
     next_inbound_id: Arc<AtomicU64>,
 
     // Manager for pending requests, their state and necessary actions.
-    request_manager: RequestManager<Rq, Rs, P>,
+    request_manager: RequestManager<Rq, Rs>,
     // Address information and relay settings for known peers.
     addresses: AddressInfo,
     // Configuration of the firewall.
     // Each inbound/ outbound request is checked, and only forwarded if the firewall configuration approves the request
     // for this peer.
-    firewall: FirewallConfiguration,
+    firewall: FirewallConfiguration<Rq>,
 
     // Channel for firewall requests.
     // The channel is used if there is no rule set for a peer, or if the configuration demands individual approval for
     // each request.
-    permission_req_channel: mpsc::Sender<FirewallRequest<P>>,
+    permission_req_channel: mpsc::Sender<FirewallRequest<Rq>>,
     // Futures for pending responses to sent [`FirewallRequest::PeerSpecificRule`]s.
-    pending_rule_rqs: FuturesUnordered<PendingPeerRuleRequest>,
+    pending_rule_rqs: FuturesUnordered<PendingPeerRuleRequest<Rq>>,
     // Futures for pending responses to sent [`FirewallRequest::RequestApproval`]s.
     pending_approval_rqs: FuturesUnordered<PendingApprovalRequest>,
 }
 
-impl<Rq, Rs, P> NetBehaviour<Rq, Rs, P>
+impl<Rq, Rs> NetBehaviour<Rq, Rs>
 where
-    Rq: RqRsMessage + ToPermissionVariants<P>,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
-    P: VariantPermission,
 {
     /// Create a new instance of a NetBehaviour to customize the [`Swarm`][libp2p::Swarm].
     pub fn new(
-        config: NetBehaviourConfig,
+        config: NetBehaviourConfig<Rq>,
         #[cfg(feature = "mdns")] mdns: Mdns,
         #[cfg(feature = "relay")] relay: Relay,
-        permission_req_channel: mpsc::Sender<FirewallRequest<P>>,
+        permission_req_channel: mpsc::Sender<FirewallRequest<Rq>>,
     ) -> Self {
         NetBehaviour {
             #[cfg(feature = "mdns")]
@@ -238,8 +234,7 @@ where
     /// Send a new request to a remote peer.
     pub fn send_request(&mut self, peer: PeerId, request: Rq) -> RequestId {
         let request_id = self.next_request_id();
-        let approval_status =
-            self.check_approval_status(peer, request_id, request.to_permissioned(), RequestDirection::Outbound);
+        let approval_status = self.check_approval_status(peer, request_id, request.clone(), RequestDirection::Outbound);
         self.request_manager
             .on_new_out_request(peer, request_id, request, approval_status);
         request_id
@@ -247,13 +242,13 @@ where
 
     /// Get the current default rules for the firewall.
     /// The default rules are used for peers that do not have any explicit rules.
-    pub fn get_firewall_default(&self) -> &FirewallRules {
+    pub fn get_firewall_default(&self) -> &FirewallRules<Rq> {
         self.firewall.get_default_rules()
     }
 
     /// Set the default configuration for the firewall.
     /// The default rules are used for peers that do not have any explicit rules.
-    pub fn set_firewall_default(&mut self, direction: RuleDirection, default: Rule) {
+    pub fn set_firewall_default(&mut self, direction: RuleDirection, default: Rule<Rq>) {
         self.firewall.set_default(Some(default), direction);
         self.request_manager.connected_peers().into_iter().for_each(|peer| {
             if let Some(rules) = self.firewall.get_rules(&peer) {
@@ -292,12 +287,12 @@ where
     }
 
     /// Get the explicit rules for a peer, if there are any.
-    pub fn get_peer_rules(&self, peer: &PeerId) -> Option<&FirewallRules> {
+    pub fn get_peer_rules(&self, peer: &PeerId) -> Option<&FirewallRules<Rq>> {
         self.firewall.get_rules(peer)
     }
 
     /// Set a peer specific rule to overwrite the default behaviour for that peer.
-    pub fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule) {
+    pub fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule<Rq>) {
         self.firewall.set_rule(peer, Some(rule), direction);
         self.handle_updated_peer_rule(peer, direction);
     }
@@ -358,7 +353,7 @@ where
         &mut self,
         peer: PeerId,
         request_id: RequestId,
-        request_permission: P,
+        request: Rq,
         direction: RequestDirection,
     ) -> ApprovalStatus {
         // Check the firewall rules for the target peer and direction.
@@ -379,11 +374,13 @@ where
             }
             Some(Rule::Ask) => {
                 // Query for individual approval for the requests.
-                self.query_rq_approval(peer, request_id, request_permission, direction);
+                self.query_rq_approval(peer, request_id, request, direction);
                 ApprovalStatus::MissingApproval
             }
-            Some(Rule::Permission(permission)) => {
-                if permission.permits(&request_permission.permission()) {
+            Some(Rule::AllowAll) => ApprovalStatus::Approved,
+            Some(Rule::RejectAll) => ApprovalStatus::Rejected,
+            Some(Rule::Restricted { restriction, .. }) => {
+                if restriction(&request) {
                     ApprovalStatus::Approved
                 } else {
                     ApprovalStatus::Rejected
@@ -401,7 +398,7 @@ where
                 response_tx,
             } => {
                 let approval_status =
-                    self.check_approval_status(peer, request_id, request.to_permissioned(), RequestDirection::Inbound);
+                    self.check_approval_status(peer, request_id, request.clone(), RequestDirection::Inbound);
                 self.request_manager.on_new_in_request(
                     peer,
                     request_id,
@@ -444,7 +441,7 @@ where
             .unwrap_or(Some(direction));
         let direction = unwrap_or_return!(reduced_direction);
         let (rule_tx, rule_rx) = oneshot::channel();
-        let firewall_req = FirewallRequest::<P>::PeerSpecificRule(PeerRuleQuery {
+        let firewall_req = FirewallRequest::<Rq>::PeerSpecificRule(PeerRuleQuery {
             data: (peer, direction),
             response_tx: rule_tx,
         });
@@ -463,10 +460,10 @@ where
 
     // Query for individual approval of a requests.
     // This is necessary if the firewall is configured with [`Rule::Ask`].
-    fn query_rq_approval(&mut self, peer: PeerId, request_id: RequestId, rq_type: P, direction: RequestDirection) {
+    fn query_rq_approval(&mut self, peer: PeerId, request_id: RequestId, rq: Rq, direction: RequestDirection) {
         let (approval_tx, approval_rx) = oneshot::channel();
         let firewall_req = FirewallRequest::RequestApproval(RequestApprovalQuery {
-            data: (peer, direction, rq_type),
+            data: (peer, direction, rq),
             response_tx: approval_tx,
         });
         let send_firewall = Self::send_firewall(self.permission_req_channel.clone(), firewall_req).map_err(|_| ());
@@ -480,8 +477,8 @@ where
 
     // Send a request through the firewall channel.
     async fn send_firewall(
-        mut channel: mpsc::Sender<FirewallRequest<P>>,
-        request: FirewallRequest<P>,
+        mut channel: mpsc::Sender<FirewallRequest<Rq>>,
+        request: FirewallRequest<Rq>,
     ) -> Result<(), SendError> {
         poll_fn(|cx: &mut Context<'_>| channel.poll_ready(cx)).await?;
         channel.start_send(request)
@@ -502,11 +499,10 @@ where
     }
 }
 
-impl<Rq, Rs, P> NetworkBehaviour for NetBehaviour<Rq, Rs, P>
+impl<Rq, Rs> NetworkBehaviour for NetBehaviour<Rq, Rs>
 where
-    Rq: RqRsMessage + ToPermissionVariants<P>,
+    Rq: RqRsMessage + Clone,
     Rs: RqRsMessage,
-    P: VariantPermission,
 {
     type ProtocolsHandler = ProtoHandler<Rq, Rs>;
     type OutEvent = BehaviourEvent<Rq, Rs>;
@@ -999,7 +995,7 @@ mod test {
         }
     }
 
-    async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong, Ping>>) {
+    async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong>>) {
         let id_keys = identity::Keypair::generate_ed25519();
         let peer = id_keys.public().into_peer_id();
         let noise_keys = NoiseKeypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
@@ -1013,7 +1009,7 @@ mod test {
             .boxed();
 
         let mut cfg = NetBehaviourConfig::default();
-        cfg.firewall.set_default(Some(Rule::allow_all()), RuleDirection::Both);
+        cfg.firewall.set_default(Some(Rule::AllowAll), RuleDirection::Both);
         #[cfg(feature = "mdns")]
         let mdns = Mdns::new(MdnsConfig::default())
             .await
