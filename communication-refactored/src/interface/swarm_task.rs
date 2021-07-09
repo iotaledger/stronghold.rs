@@ -6,12 +6,11 @@ use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
 };
-#[cfg(feature = "relay")]
-use libp2p::multiaddr::Protocol;
 use libp2p::{
     swarm::{NetworkBehaviour, Swarm, SwarmEvent},
     Multiaddr, PeerId,
 };
+use smallvec::SmallVec;
 use std::{collections::HashMap, convert::TryFrom, fmt::Debug};
 
 use super::{
@@ -288,6 +287,7 @@ where
                     .map(|(listener_id, _)| *listener_id)
                 {
                     let (_, result_tx) = self.await_relayed_listen.remove(&listener_id).unwrap();
+                    self.listeners.remove(&listener_id);
                     let _ = result_tx.send(Err(ListenRelayErr::DialRelay(DialErr::UnreachableAddrs)));
                 }
             }
@@ -295,15 +295,26 @@ where
                 ref address,
                 ref listener_id,
             } => {
+                if let Some(listener) = self.listeners.get_mut(listener_id) {
+                    listener.addrs.push(address.clone());
+                }
                 #[cfg(feature = "relay")]
-                if address.iter().any(|p| p == Protocol::P2pCircuit) {
-                    if let Some((_, result_tx)) = self.await_relayed_listen.remove(listener_id) {
-                        let _ = result_tx.send(Ok(address.clone()));
-                    }
-                    return;
+                if let Some((_, result_tx)) = self.await_relayed_listen.remove(listener_id) {
+                    let _ = result_tx.send(Ok(address.clone()));
                 }
                 if let Some(result_tx) = self.await_listen.remove(listener_id) {
                     let _ = result_tx.send(Ok(address.clone()));
+                }
+            }
+            SwarmEvent::ListenerClosed { ref listener_id, .. } => {
+                self.listeners.remove(listener_id);
+            }
+            SwarmEvent::ExpiredListenAddr {
+                ref listener_id,
+                ref address,
+            } => {
+                if let Some(listener) = self.listeners.get_mut(listener_id) {
+                    listener.addrs.retain(|a| a != address);
                 }
             }
             _ => {}
@@ -347,6 +358,11 @@ where
                 match self.swarm.listen_on(address) {
                     Ok(listener_id) => {
                         self.await_listen.insert(listener_id, tx_yield);
+                        let new_listener = Listener {
+                            addrs: SmallVec::new(),
+                            uses_relay: None,
+                        };
+                        self.listeners.insert(listener_id, new_listener);
                     }
                     Err(err) => {
                         let _ = tx_yield.send(Err(ListenErr::from(err)));
@@ -361,6 +377,11 @@ where
             } => match self.start_relayed_listening(relay, relay_addr) {
                 Ok(listener_id) => {
                     self.await_relayed_listen.insert(listener_id, (relay, tx_yield));
+                    let new_listener = Listener {
+                        addrs: SmallVec::new(),
+                        uses_relay: Some(relay),
+                    };
+                    self.listeners.insert(listener_id, new_listener);
                 }
                 Err(err) => {
                     let _ = tx_yield.send(Err(err));

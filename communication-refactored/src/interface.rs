@@ -34,9 +34,9 @@ use libp2p::{
 };
 #[cfg(feature = "tcp-transport")]
 use libp2p::{dns::TokioDnsConfig, tcp::TokioTcpConfig, websocket::WsConfig};
-use std::{fmt::Debug, marker::PhantomData, time::Duration};
 #[cfg(feature = "tcp-transport")]
 use std::io;
+use std::{fmt::Debug, marker::PhantomData, time::Duration};
 
 pub use types::*;
 

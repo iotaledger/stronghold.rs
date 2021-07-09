@@ -150,6 +150,13 @@ impl TestConfig {
     async fn configure_comms(&mut self) {
         if self.target_config.listening_plain {
             let target_addr = self.target_comms.start_listening(None).await.unwrap();
+
+            let mut target_listeners = self.target_comms.get_listeners().await;
+            assert_eq!(target_listeners.len(), 1);
+            let target_listener = target_listeners.pop().unwrap();
+            assert!(target_listener.uses_relay.is_none());
+            assert!(target_listener.addrs.into_iter().any(|a| a == target_addr));
+
             self.target_addr = Some(target_addr);
         }
         if self.target_config.listening_relay {
@@ -158,6 +165,17 @@ impl TestConfig {
                 .start_relayed_listening(self.relay_id, Some(self.relay_addr.clone()))
                 .await
                 .unwrap();
+
+            let target_listeners = self.target_comms.get_listeners().await;
+            let mut expected_len = 1;
+            self.target_config.listening_plain.then(|| expected_len = 2);
+            assert_eq!(target_listeners.len(), expected_len);
+            let target_relayed_listener = target_listeners
+                .into_iter()
+                .find(|l| l.uses_relay == Some(self.relay_id))
+                .unwrap();
+            assert!(target_relayed_listener.addrs.into_iter().any(|a| a == relayed_addr));
+
             self.target_relayed_addr = Some(relayed_addr)
         }
         if self.source_config.knows_direct_target_addr {
@@ -303,6 +321,11 @@ fn test_dialing() {
         let (_, mut relay_comms) = init_comms().await;
         let relay_id = relay_comms.get_peer_id();
         let relay_addr = relay_comms.start_listening(None).await.unwrap();
+        let mut relay_listeners = relay_comms.get_listeners().await;
+        assert_eq!(relay_listeners.len(), 1);
+        let relay_listener = relay_listeners.pop().unwrap();
+        assert!(relay_listener.uses_relay.is_none());
+        assert!(relay_listener.addrs.into_iter().any(|a| a == relay_addr));
 
         for _ in 0..100 {
             let mut test = TestConfig::new(relay_id, relay_addr.clone()).await;
