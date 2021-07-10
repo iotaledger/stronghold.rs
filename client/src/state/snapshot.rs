@@ -16,19 +16,22 @@ use std::path::Path;
 
 use std::collections::HashMap;
 
+/// Wrapper for the [`SnapshotState`] data structure.
 pub struct Snapshot {
     pub state: SnapshotState,
 }
 
+/// Data structure that is written to the snapshot.
 #[derive(Deserialize, Serialize, Default)]
 pub struct SnapshotState(HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
 
 impl Snapshot {
-    /// Creates a new `Snapshot` from a buffer of `Vec<u8>` state.
+    /// Creates a new [`Snapshot`] from a buffer of [`SnapshotState`] state.
     pub fn new(state: SnapshotState) -> Self {
         Self { state }
     }
 
+    /// Gets the state component parts as a tuple.
     pub fn get_state(&mut self, id: ClientId) -> (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store) {
         match self.state.0.remove(&id) {
             Some(t) => t,
@@ -36,6 +39,7 @@ impl Snapshot {
         }
     }
 
+    /// Checks to see if the [`ClientId`] exists in the snapshot hashmap.
     pub fn has_data(&self, cid: ClientId) -> bool {
         self.state.0.contains_key(&cid)
     }
@@ -74,6 +78,7 @@ impl Snapshot {
 }
 
 impl SnapshotState {
+    /// Creates a new snapshot state.
     pub fn new(id: ClientId, data: (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)) -> Self {
         let mut state = HashMap::new();
         state.insert(id, data);
@@ -81,14 +86,17 @@ impl SnapshotState {
         Self(state)
     }
 
+    /// Adds data to the snapshot state hashmap.
     pub fn add_data(&mut self, id: ClientId, data: (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)) {
         self.0.insert(id, data);
     }
 
+    /// Serializes the snapshot state into bytes.
     pub fn serialize(&self) -> Vec<u8> {
         bincode::serialize(&self).expect(line_error!())
     }
 
+    /// Deserializes the snapshot state from bytes.
     pub fn deserialize(data: Vec<u8>) -> Self {
         bincode::deserialize(&data).expect(line_error!())
     }

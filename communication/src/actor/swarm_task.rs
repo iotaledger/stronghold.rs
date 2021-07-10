@@ -42,7 +42,7 @@ where
     // channel from the communication actor to this task
     swarm_rx: UnboundedReceiver<(CommunicationRequest<Req, ClientMsg>, Sender)>,
     // Listener in the local swarm
-    listener: Option<(ListenerId, Multiaddr)>,
+    listener: Option<ListenerId>,
     // relays that are tried if a peer can not be reached directly
     dialing_relays: Vec<PeerId>,
     // relays that are used for listening
@@ -109,7 +109,7 @@ where
     }
 
     fn shutdown(mut self) {
-        if let Some((listener_id, _)) = self.listener.take() {
+        if let Some(listener_id) = self.listener.take() {
             let _ = self.swarm.remove_listener(listener_id);
         }
         self.swarm_rx.close();
@@ -159,17 +159,6 @@ where
         };
         let res: Option<Multiaddr> = self.await_event(Duration::from_secs(3), &match_event);
         res.map(|addr| (listener_id, addr)).ok_or(())
-    }
-
-    // Stop listening to the swarm.
-    fn stop_listening(&mut self, listener: ListenerId, addr: &Multiaddr) -> Result<(), ()> {
-        self.swarm.remove_listener(listener)?;
-        let match_event = |event: &SwarmEvent<P2PEvent<Req, Res>, _>| match event {
-            SwarmEvent::ExpiredListenAddr(address) if address == addr => Some(()),
-            SwarmEvent::ListenerClosed { addresses, .. } if addresses.contains(&addr) => Some(()),
-            _ => None,
-        };
-        self.await_event(Duration::from_secs(3), &match_event).ok_or(())
     }
 
     // Poll for the result of an connection attempt to a remote peer.
@@ -242,7 +231,7 @@ where
                 let addr = self.relay_addr.get(&relay)?;
                 let relayed_addr = addr
                     .clone()
-                    .with(Protocol::P2p(relay.into()))
+                    .with(Protocol::P2p(relay.to_owned().into()))
                     .with(Protocol::P2pCircuit)
                     .with(Protocol::P2p(target_peer.into()));
                 self.connect_peer_via_addr(&target_peer, relayed_addr).map(Ok).ok()
@@ -315,10 +304,7 @@ where
         match direction {
             RelayDirection::Dialing => {
                 if let Some(listener) = self.listening_relays.remove(&peer_id) {
-                    let _ = match self.relay_addr.get(&peer_id).cloned() {
-                        Some(addr) => self.stop_listening(listener, &addr),
-                        None => self.swarm.remove_listener(listener),
-                    };
+                    let _ = self.swarm.remove_listener(listener);
                 }
                 if !self.dialing_relays.contains(&peer_id) {
                     self.dialing_relays.push(peer_id);
@@ -437,7 +423,7 @@ where
                     .is_none()
                     .then(|| {
                         self.start_listening(addr).map(|(listener, addr)| {
-                            self.listener = Some((listener, addr.clone()));
+                            self.listener = Some(listener);
                             addr
                         })
                     })
@@ -445,8 +431,8 @@ where
                 Self::send_response(CommunicationResults::StartListeningResult(res), sender);
             }
             CommunicationRequest::RemoveListener => {
-                if let Some((listener, addr)) = self.listener.take() {
-                    let _ = self.stop_listening(listener, &addr);
+                if let Some(listener) = self.listener.take() {
+                    let _ = self.swarm.remove_listener(listener);
                 }
                 Self::send_response(CommunicationResults::RemoveListenerAck, sender);
             }

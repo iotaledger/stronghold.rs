@@ -215,8 +215,7 @@ pub enum SHRequest {
         hint: RecordHint,
     },
 
-    // Reads data from a record in the vault. Accepts a vault id and an optional record id.  If the record id is not
-    // specified, it reads the head.  Returns with `ReturnRead`.
+    // Reads data from a record in the vault. Accepts a vault id and an optional record id. Returns with `ReturnRead`.
     #[cfg(test)]
     ReadFromVault {
         location: Location,
@@ -260,7 +259,7 @@ pub enum SHRequest {
     ControlRequest(Procedure),
 }
 
-/// Messages that come from stronghold
+/// Return messages that come from stronghold
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SHResults {
     ReturnWriteStore(StatusMessage),

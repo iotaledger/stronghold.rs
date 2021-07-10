@@ -6,16 +6,19 @@ pub use stronghold_utils::test_utils::{self, fresh::*};
 
 use crate::{Location, RecordHint};
 
+/// Creates a random [`RecordHint`]
 pub fn record_hint() -> RecordHint {
     let mut bs = [0; 24];
     fill(&mut bs).expect("Unable to fill record hint");
     bs.into()
 }
 
+/// Generates a random [`Location`].
 pub fn location() -> Location {
     Location::generic(bytestring(), bytestring())
 }
 
+/// generates a random string based on a coinflip.
 pub fn passphrase() -> Option<String> {
     if coinflip() {
         Some(string())
@@ -24,6 +27,7 @@ pub fn passphrase() -> Option<String> {
     }
 }
 
+/// Creates a random hd_path.
 pub fn hd_path() -> (String, Chain) {
     let mut s = "m".to_string();
     let mut is = vec![];

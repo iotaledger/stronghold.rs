@@ -17,7 +17,10 @@ use stronghold_utils::ask;
 use core::task::{Context as TaskContext, Poll};
 use futures::{future, prelude::*};
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
 
 fn init_system(
     sys: &ActorSystem,
@@ -27,7 +30,7 @@ fn init_system(
     // init actor system
     let keys = Keypair::generate_ed25519();
     let peer_id = PeerId::from(keys.public());
-    let behaviour_config = BehaviourConfig::default();
+    let behaviour_config = BehaviourConfig::new(Some(Duration::from_secs(1)), Some(Duration::from_secs(1)), None, None);
     let actor_config = CommunicationActorConfig {
         client,
         firewall_default_in: default,
@@ -681,6 +684,15 @@ fn relay() {
     // destination stops listening to relay and only uses it for Dialing
     let peer_id = config_relay(&dest_sys, &dest_comms_actor, relay_peer_id, RelayDirection::Dialing);
     assert_eq!(peer_id, relay_peer_id);
+
+    // Wait for destination peer to disconnect from relay.
+    while get_swarm_info(&dest_sys, &dest_comms_actor)
+        .2
+        .into_iter()
+        .any(|(p, _)| p == relay_peer_id)
+    {
+        thread::sleep(Duration::from_millis(500));
+    }
 
     // Sending request from source to destination should not be allowed anymore
     let res = send_request(&src_sys, &src_comms_actor, dest_peer_id);

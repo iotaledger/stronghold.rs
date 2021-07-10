@@ -34,6 +34,7 @@ pub use runtime;
 #[global_allocator]
 static ALLOC: ZeroingAlloc<std::alloc::System> = ZeroingAlloc(std::alloc::System);
 
+/// Error block for the Engine.
 #[derive(Debug, DeriveError)]
 pub enum Error {
     #[error("IOError: `{0}`")]
@@ -68,6 +69,7 @@ pub enum Error {
     ProtocolError(String),
 }
 
+/// Result type for the Engine.
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl From<crypto::Error> for Error {

@@ -35,30 +35,29 @@ fn test_read_write() {
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 }
 
-// test read and write with the counter head.
+// test read and write with a counter.
 #[test]
 fn test_head_read_write() {
     let stronghold = setup_stronghold();
 
-    let lochead = Location::counter::<_, usize>("path", 0);
+    let loc0 = Location::counter::<_, usize>("path", 0);
+    let loc1 = Location::counter::<_, usize>("path", 1);
 
     futures::executor::block_on(stronghold.write_to_vault(
-        lochead.clone(),
+        loc0,
         b"test".to_vec(),
         RecordHint::new(b"first hint").expect(line_error!()),
         vec![],
     ));
 
-    let lochead = lochead.increment_counter();
-
     futures::executor::block_on(stronghold.write_to_vault(
-        lochead.clone(),
+        loc1.clone(),
         b"another test".to_vec(),
         RecordHint::new(b"second hint").expect(line_error!()),
         vec![],
     ));
 
-    let (p, _) = futures::executor::block_on(stronghold.read_secret(lochead));
+    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc1));
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 }
@@ -113,16 +112,14 @@ fn test_multi_write_read_counter_head() {
 #[test]
 fn test_revoke_with_gc() {
     let stronghold = setup_stronghold();
-    let lochead = Location::counter::<_, usize>("path", 0);
 
     for i in 0..10 {
-        let lochead = Location::counter::<_, usize>("path", i);
+        let loc = Location::counter::<_, usize>("path", i);
         futures::executor::block_on(async {
-            let lochead = lochead.clone().increment_counter();
             let data = format!("test {:?}", i);
             stronghold
                 .write_to_vault(
-                    lochead.clone(),
+                    loc.clone(),
                     data.as_bytes().to_vec(),
                     RecordHint::new(data).expect(line_error!()),
                     vec![],
@@ -142,6 +139,7 @@ fn test_revoke_with_gc() {
             assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
         })
     }
+    let lochead = Location::counter::<_, usize>("path", 0);
 
     let (ids, _res) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path().to_vec()));
 

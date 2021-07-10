@@ -30,15 +30,18 @@ use std::collections::HashMap;
 /// Messages used for the Snapshot Actor.
 #[derive(Clone, GuardDebug)]
 pub enum SMsg {
+    /// Write the snapshot to the file.
     WriteSnapshot {
         key: snapshot::Key,
         filename: Option<String>,
         path: Option<PathBuf>,
     },
+    /// Fill the snapshot structure with data.
     FillSnapshot {
         data: Box<(HashMap<VaultId, Key<Provider>>, DbView<Provider>, Store)>,
         id: ClientId,
     },
+    /// Reead from the snapshot.
     ReadFromSnapshot {
         key: snapshot::Key,
         filename: Option<String>,

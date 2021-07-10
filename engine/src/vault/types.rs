@@ -8,7 +8,7 @@ pub use transactions::{DataTransaction, SealedBlob, SealedTransaction};
 pub mod transactions;
 pub mod utils;
 
-/// a view over raw data.
+/// A trait that is used to make a view over some raw data.
 pub trait AsView<T: Sized>: AsRef<[u8]> {
     /// creates a view over `self`.
     fn view(&self) -> &T {
@@ -29,7 +29,7 @@ pub trait AsView<T: Sized>: AsRef<[u8]> {
     }
 }
 
-/// a mutable view over raw data.
+/// A trait used to make a mutable view over some raw data.
 pub trait AsViewMut<T: Sized>: AsMut<[u8]> {
     /// creates a mutable view over `self`.
     fn view_mut(&mut self) -> &mut T {
