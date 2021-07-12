@@ -5,7 +5,9 @@ use riker::actors::*;
 
 use futures::{
     channel::mpsc::{channel, Receiver, Sender},
+    executor::block_on,
     future::RemoteHandle,
+    StreamExt,
 };
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use zeroize::Zeroize;
@@ -949,14 +951,6 @@ impl Stronghold {
                 };
                 block_on(waiter);
             }
-        }
-    }
-
-    /// Tries to stop listening on previously given configuration
-    pub async fn stop_listening(&self) -> StatusMessage {
-        match self.ask_communication_actor(CommunicationRequest::RemoveListener).await {
-            Ok(CommunicationResults::RemoveListenerAck) => StatusMessage::Ok(()),
-            _ => StatusMessage::Error("Could not exit listening".to_string()),
         }
     }
 }
