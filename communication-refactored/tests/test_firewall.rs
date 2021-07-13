@@ -3,8 +3,8 @@
 
 use communication_refactored::{
     firewall::{
-        FirewallPermission, FirewallRequest, FirewallRules, PeerRuleQuery, PermissionValue, RequestApprovalQuery,
-        RequestPermissions, Rule, RuleDirection, ToPermissionVariants, VariantPermission,
+        FirewallPermission, FirewallRequest, FirewallRules, PermissionValue, RequestPermissions, Rule, RuleDirection,
+        VariantPermission,
     },
     InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest, RequestDirection, ShCommunication,
     ShCommunicationBuilder,
@@ -18,10 +18,10 @@ use futures::{
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
 use serde::{Deserialize, Serialize};
-use std::{fmt, future, marker::PhantomData, task::Poll, time::Duration};
+use std::{borrow::Borrow, fmt, future, marker::PhantomData, task::Poll, time::Duration};
 use tokio::time::sleep;
 
-type TestComms = ShCommunication<Request, Response>;
+type TestComms = ShCommunication<Request, Response, RequestPermission>;
 
 macro_rules! expect_ok (
      ($expression:expr, $config:expr) => {
@@ -35,24 +35,25 @@ enum Request {
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum Response {
     Pong,
     Other,
 }
 
 type NewComms = (
-    mpsc::Receiver<FirewallRequest<Request>>,
+    mpsc::Receiver<FirewallRequest<RequestPermission>>,
     mpsc::Receiver<ReceiveRequest<Request, Response>>,
     mpsc::Receiver<NetworkEvent>,
-    ShCommunication<Request, Response>,
+    ShCommunication<Request, Response, RequestPermission>,
 );
 
 async fn init_comms() -> NewComms {
     let (firewall_tx, firewall_rx) = mpsc::channel(10);
     let (rq_tx, rq_rx) = mpsc::channel(10);
     let (event_tx, event_rx) = mpsc::channel(10);
-    let builder = ShCommunicationBuilder::new(firewall_tx, rq_tx, Some(event_tx));
+    let builder =
+        ShCommunicationBuilder::<Request, Response, RequestPermission>::new(firewall_tx, rq_tx, Some(event_tx));
     #[cfg(not(feature = "tcp-transport"))]
     let comms = builder.build_with_transport(TokioTcpConfig::new()).await;
     #[cfg(feature = "tcp-transport")]
@@ -79,21 +80,21 @@ impl TestPermission {
         }
     }
 
-    fn restrict_by_type(rq: &Request, allowed: RequestPermission) -> bool {
+    fn restrict_by_type(rq: &RequestPermission, allowed: RequestPermission) -> bool {
         let permissions = FirewallPermission::none().add_permissions([&allowed.permission()]);
-        permissions.permits(&rq.to_permissioned().permission())
+        permissions.permits(&rq.permission())
     }
 
-    fn as_rule(&self) -> Rule<Request> {
+    fn as_rule(&self) -> Rule<RequestPermission> {
         match self {
             TestPermission::AllowAll => Rule::AllowAll,
             TestPermission::RejectAll => Rule::RejectAll,
             TestPermission::PingOnly => Rule::Restricted {
-                restriction: |rq: &Request| Self::restrict_by_type(rq, RequestPermission::Ping),
+                restriction: |rq: &RequestPermission| Self::restrict_by_type(rq, RequestPermission::Ping),
                 _maker: PhantomData,
             },
             TestPermission::OtherOnly => Rule::Restricted {
-                restriction: |rq: &Request| Self::restrict_by_type(rq, RequestPermission::Other),
+                restriction: |rq: &RequestPermission| Self::restrict_by_type(rq, RequestPermission::Other),
                 _maker: PhantomData,
             },
         }
@@ -334,10 +335,10 @@ enum TestPeer {
 
 struct AskTestConfig<'a> {
     comms_a: &'a mut TestComms,
-    firewall_a: &'a mut mpsc::Receiver<FirewallRequest<Request>>,
+    firewall_a: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
 
     comms_b: &'a mut TestComms,
-    firewall_b: &'a mut mpsc::Receiver<FirewallRequest<Request>>,
+    firewall_b: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
     b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
 
@@ -360,9 +361,9 @@ impl<'a> fmt::Display for AskTestConfig<'a> {
 impl<'a> AskTestConfig<'a> {
     fn new_test_case(
         comms_a: &'a mut TestComms,
-        firewall_a: &'a mut mpsc::Receiver<FirewallRequest<Request>>,
+        firewall_a: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
         comms_b: &'a mut TestComms,
-        firewall_b: &'a mut mpsc::Receiver<FirewallRequest<Request>>,
+        firewall_b: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
         b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ) -> Self {
@@ -429,9 +430,9 @@ impl<'a> AskTestConfig<'a> {
                     }
                     if matches!(self.b_rule, FwRuleRes::Drop) {
                         match self.firewall_b.poll_next_unpin(cx) {
-                            Poll::Ready(Some(FirewallRequest::PeerSpecificRule(rq))) => drop(rq.response_tx),
+                            Poll::Ready(Some(FirewallRequest::PeerSpecificRule { rule_tx, .. })) => drop(rule_tx),
                             Poll::Ready(Some(_)) => panic!(
-                                "Unexpected RequestApprovalQuery after PeerRuleQuery was dropped; config {}",
+                                "Unexpected RequestApproval after PeerSpecificRule was dropped; config {}",
                                 self
                             ),
                             Poll::Ready(None) => panic!("Unexpected firewall channel closed; config {}", self),
@@ -491,8 +492,8 @@ impl<'a> AskTestConfig<'a> {
             TestPeer::B => (&mut self.firewall_b, &self.b_rule, &self.b_approval),
         };
         let response_tx = match expect_ok!(fw_channel.next(), config) {
-            FirewallRequest::PeerSpecificRule(PeerRuleQuery { response_tx, .. }) => response_tx,
-            _ => panic!("Unexpected RequestApprovalQuery before PeerRuleQuery"),
+            FirewallRequest::PeerSpecificRule { rule_tx, .. } => rule_tx,
+            _ => panic!("Unexpected RequestApproval before PeerSpecificRule"),
         };
 
         let (rule, other) = match peer_rule {
@@ -518,16 +519,14 @@ impl<'a> AskTestConfig<'a> {
 
         if matches!(peer_rule, FwRuleRes::Ask) {
             let response_tx = match expect_ok!(fw_channel.next(), self) {
-                FirewallRequest::RequestApproval(RequestApprovalQuery {
-                    response_tx,
-                    data: (_, dir, _),
-                    ..
-                }) => {
+                FirewallRequest::RequestApproval {
+                    approval_tx, direction, ..
+                } => {
                     match test_peer {
-                        TestPeer::A => assert_eq!(dir, RequestDirection::Outbound),
-                        TestPeer::B => assert_eq!(dir, RequestDirection::Inbound),
+                        TestPeer::A => assert_eq!(direction, RequestDirection::Outbound),
+                        TestPeer::B => assert_eq!(direction, RequestDirection::Inbound),
                     }
-                    response_tx
+                    approval_tx
                 }
                 _ => panic!("Unexpected double PeerRuleQuery"),
             };

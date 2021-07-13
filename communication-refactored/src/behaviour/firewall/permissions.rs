@@ -92,17 +92,3 @@ impl PartialEq<u32> for FirewallPermission {
 pub trait VariantPermission: 'static + Send + Sync + Clone {
     fn permission(&self) -> PermissionValue;
 }
-
-/// Convert an element to implement permissions.
-pub trait ToPermissionVariants<P: VariantPermission> {
-    fn to_permissioned(&self) -> P;
-
-    fn permission_value(&self) -> PermissionValue {
-        self.to_permissioned().permission()
-    }
-}
-impl<T: VariantPermission + Clone> ToPermissionVariants<T> for T {
-    fn to_permissioned(&self) -> T {
-        self.clone()
-    }
-}

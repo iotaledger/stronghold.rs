@@ -11,7 +11,7 @@ use libp2p::{
     Multiaddr, PeerId,
 };
 use smallvec::SmallVec;
-use std::{collections::HashMap, convert::TryFrom};
+use std::{borrow::Borrow, collections::HashMap, convert::TryFrom};
 
 use super::{errors::*, types::*, BehaviourEvent, ListenerId, NetBehaviour, Rule, RuleDirection};
 
@@ -19,7 +19,7 @@ pub(super) type Ack = ();
 
 // Perform actions on the Swarm.
 // The return value is sent back through the `tx_yield` oneshot channel.
-pub(super) enum SwarmOperation<Rq: Clone, Rs> {
+pub(super) enum SwarmOperation<Rq, Rs, TRq: Clone> {
     SendRequest {
         peer: PeerId,
         request: Rq,
@@ -102,11 +102,11 @@ pub(super) enum SwarmOperation<Rq: Clone, Rs> {
     },
 
     GetFirewallDefault {
-        tx_yield: oneshot::Sender<FirewallRules<Rq>>,
+        tx_yield: oneshot::Sender<FirewallRules<TRq>>,
     },
     SetFirewallDefault {
         direction: RuleDirection,
-        default: Rule<Rq>,
+        default: Rule<TRq>,
         tx_yield: oneshot::Sender<Ack>,
     },
     RemoveFirewallDefault {
@@ -115,12 +115,12 @@ pub(super) enum SwarmOperation<Rq: Clone, Rs> {
     },
     GetPeerRules {
         peer: PeerId,
-        tx_yield: oneshot::Sender<Option<FirewallRules<Rq>>>,
+        tx_yield: oneshot::Sender<Option<FirewallRules<TRq>>>,
     },
     SetPeerRule {
         peer: PeerId,
         direction: RuleDirection,
-        rule: Rule<Rq>,
+        rule: Rule<TRq>,
         tx_yield: oneshot::Sender<Ack>,
     },
     RemovePeerRule {
@@ -145,45 +145,56 @@ pub(super) enum SwarmOperation<Rq: Clone, Rs> {
 // Operations on the Swarm are performed based on the [`SwarmOperation`]s that are received through the `command_rx`
 // channel. The outcome for each operation is returned through the oneshot channel that is included in the
 // [`SwarmOperation`]. No operation is blocking, instead the return-channel is cached until an outcome yields.
-pub(super) struct SwarmTask<Rq, Rs>
+pub(super) struct SwarmTask<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage + Clone,
+    Rq: RqRsMessage + Borrow<TRq>,
     Rs: RqRsMessage,
+    TRq: Clone + Send + 'static,
 {
     // libp2p [`Swarm`][libp2p::Swarm] that uses `NetBehaviour` as network behaviour protocol.
-    swarm: Swarm<NetBehaviour<Rq, Rs>>,
+    swarm: Swarm<NetBehaviour<Rq, Rs, TRq>>,
 
-    // Channel for receiving commands for operations.
-    command_rx: mpsc::Receiver<SwarmOperation<Rq, Rs>>,
+    // Channel for to receiving [`SwarmOperation`].
+    // This will trigger and according action on the Swarm.
+    // The result of an operation is send via the oneshot Sender that is included in each type.
+    command_rx: mpsc::Receiver<SwarmOperation<Rq, Rs, TRq>>,
 
     // Channel for forwarding inbound requests.
+    // [`ReceiveRequest`] includes a oneshot Sender for returning a response.
     request_tx: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
-    // Optional channel for forwarding swarm events on connections and listeners.
+    // Optional channel for forwarding all events on the swarm on listeners and connections.
     event_tx: Option<mpsc::Sender<NetworkEvent>>,
 
     // Currently active listeners.
     listeners: HashMap<ListenerId, Listener>,
 
     // Response channels for sent outbound requests.
+    // The channels are cached until a response was received or [`OutboundFailure`] occurred.
     await_response: HashMap<RequestId, oneshot::Sender<Result<Rs, OutboundFailure>>>,
     // Response channels for the connection attempts to a remote peer.
+    // A result if returned once the remote connected or the dial attempt failed.
     await_connection: HashMap<PeerId, oneshot::Sender<Result<Multiaddr, DialErr>>>,
     // Response channels for start-listening on the transport.
+    // A result is returned once the associated listener reported it's first new listening address or a listener error
+    // occurred.
     await_listen: HashMap<ListenerId, oneshot::Sender<Result<Multiaddr, ListenErr>>>,
     // Response channels for start-listening via a relay.
+    // A result is returned once the associated listener reported it's first new listening address, or a listener error
+    // occurred. Additionally, an error will be returned if the relay could not be connected.
     #[cfg(feature = "relay")]
     await_relayed_listen: HashMap<ListenerId, (PeerId, oneshot::Sender<Result<Multiaddr, ListenRelayErr>>)>,
 }
 
-impl<Rq, Rs> SwarmTask<Rq, Rs>
+impl<Rq, Rs, TRq> SwarmTask<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage + Clone,
+    Rq: RqRsMessage + Borrow<TRq>,
     Rs: RqRsMessage,
+    TRq: Clone + Send + 'static,
 {
     // Create new instance of a swarm-task.
     pub fn new(
-        swarm: Swarm<NetBehaviour<Rq, Rs>>,
-        command_rx: mpsc::Receiver<SwarmOperation<Rq, Rs>>,
+        swarm: Swarm<NetBehaviour<Rq, Rs, TRq>>,
+        command_rx: mpsc::Receiver<SwarmOperation<Rq, Rs, TRq>>,
         request_tx: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
         event_tx: Option<mpsc::Sender<NetworkEvent>>,
     ) -> Self {
@@ -322,11 +333,11 @@ where
         }
     }
 
-    // Perform an operation on the Swarm.
+    // Perform an operation on the Swarm / NetBehaviour.
     //
     // Return the outcome with the oneshot `tx_yield` channel.
     // Cache `tx_yield` if the outcome depends on receiving a `SwarmEvent`.
-    fn handle_command(&mut self, command: SwarmOperation<Rq, Rs>) {
+    fn handle_command(&mut self, command: SwarmOperation<Rq, Rs, TRq>) {
         match command {
             SwarmOperation::SendRequest {
                 peer,

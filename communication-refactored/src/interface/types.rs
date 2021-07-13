@@ -26,7 +26,7 @@ use std::{convert::TryFrom, fmt, io, num::NonZeroU32};
 
 /// Trait for the generic request and response messages.
 pub trait RqRsMessage: Serialize + DeserializeOwned + Send + Sync + 'static {}
-impl<T: Serialize + DeserializeOwned + Send + Sync + 'static> RqRsMessage for T {}
+impl<TRq: Serialize + DeserializeOwned + Send + Sync + 'static> RqRsMessage for TRq {}
 
 /// Unique Id for each request.
 /// **Note**: This ID is only local and does not match the request's ID at the remote peer.
@@ -52,17 +52,6 @@ impl fmt::Display for RequestId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
-}
-
-/// Generic data structure that provides some data and expects a response to be returned.
-/// This is used for e.g. permission requests to the firewall, and for receiving requests from remote peers and
-/// responding to them.
-#[derive(Debug)]
-pub struct Query<T, U> {
-    /// Content or data of the message.
-    pub data: T,
-    /// Chanel for sending the response.
-    pub response_tx: oneshot::Sender<U>,
 }
 
 /// Inbound Request from a remote peer.
@@ -102,7 +91,7 @@ pub enum RequestDirection {
 }
 
 /// Events happening in the Network.
-/// Includes events about connection and listener status as well as potential failures when sending/ receiving
+/// Includes events about connection and listener status as well as potential failures when receiving
 /// request-response messages.
 #[derive(Debug)]
 pub enum NetworkEvent {
@@ -170,7 +159,7 @@ pub enum NetworkEvent {
 
 type SwarmEv<Rq, Rs, THandleErr> = SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>;
 
-impl<Rq: RqRsMessage + Clone, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THandleErr>> for NetworkEvent {
+impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THandleErr>> for NetworkEvent {
     type Error = ();
     fn try_from(value: SwarmEv<Rq, Rs, THandleErr>) -> Result<Self, Self::Error> {
         match value {

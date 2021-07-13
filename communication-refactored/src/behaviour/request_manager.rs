@@ -11,7 +11,11 @@ use connections::PeerConnectionManager;
 use futures::channel::oneshot;
 use libp2p::{core::connection::ConnectionId, PeerId};
 use smallvec::{smallvec, SmallVec};
-use std::collections::{HashMap, VecDeque};
+use std::{
+    borrow::Borrow,
+    collections::{HashMap, VecDeque},
+    marker::PhantomData,
+};
 
 // Actions for the behaviour to handle i.g. the behaviour emits the appropriate `NetworkBehaviourAction`.
 pub(super) enum BehaviourAction<Rq, Rs> {
@@ -78,7 +82,7 @@ pub(super) enum ApprovalStatus {
 //
 // Stores pending requests, manages rule, approval and connection changes, and queues required [`BehaviourActions`] for
 // the `NetBehaviour` to handle.
-pub(super) struct RequestManager<Rq: Clone, Rs> {
+pub(super) struct RequestManager<Rq: Borrow<TRq>, Rs, TRq> {
     // Store of inbound requests that have not been approved yet.
     inbound_request_store: HashMap<RequestId, (PeerId, Rq, oneshot::Sender<Rs>)>,
     // Store of outbound requests that have not been approved, or where the target peer is not connected yet.
@@ -99,9 +103,11 @@ pub(super) struct RequestManager<Rq: Clone, Rs> {
 
     // Actions that should be emitted by the NetBehaviour as NetworkBehaviourAction.
     actions: VecDeque<BehaviourAction<Rq, Rs>>,
+
+    _marker: PhantomData<TRq>,
 }
 
-impl<Rq: Clone, Rs> RequestManager<Rq, Rs> {
+impl<Rq: Borrow<TRq>, Rs, TRq: Clone> RequestManager<Rq, Rs, TRq> {
     pub fn new() -> Self {
         RequestManager {
             inbound_request_store: HashMap::new(),
@@ -111,6 +117,7 @@ impl<Rq: Clone, Rs> RequestManager<Rq, Rs> {
             awaiting_peer_rule: HashMap::new(),
             awaiting_approval: SmallVec::new(),
             actions: VecDeque::new(),
+            _marker: PhantomData,
         }
     }
 
@@ -335,9 +342,9 @@ impl<Rq: Clone, Rs> RequestManager<Rq, Rs> {
     pub fn on_peer_rule(
         &mut self,
         peer: PeerId,
-        rules: FirewallRules<Rq>,
+        rules: FirewallRules<TRq>,
         direction: RuleDirection,
-    ) -> Option<Vec<(RequestId, Rq, RequestDirection)>> {
+    ) -> Option<Vec<(RequestId, TRq, RequestDirection)>> {
         let mut await_rule = self.awaiting_peer_rule.remove(&peer)?;
         // Affected requests.
         let mut requests = vec![];
@@ -356,13 +363,13 @@ impl<Rq: Clone, Rs> RequestManager<Rq, Rs> {
             .into_iter()
             .filter_map(|(request_id, dir)| {
                 let rule = match dir {
-                    RequestDirection::Inbound => rules.inbound(),
-                    RequestDirection::Outbound => rules.outbound(),
+                    RequestDirection::Inbound => rules.inbound.as_ref(),
+                    RequestDirection::Outbound => rules.outbound.as_ref(),
                 };
                 match rule {
                     Some(Rule::Ask) => {
                         // Requests need to await individual approval.
-                        let rq = self.get_request_value_ref(&request_id, &dir).cloned()?;
+                        let rq = self.get_request_value_ref(&request_id, &dir)?;
                         self.awaiting_approval.push((request_id, dir.clone()));
                         Some((request_id, rq, dir))
                     }
@@ -375,9 +382,9 @@ impl<Rq: Clone, Rs> RequestManager<Rq, Rs> {
                         None
                     }
                     Some(Rule::Restricted { restriction, .. }) => {
-                        // Checking the individual permissions required for the request type.
+                        // Checking the individual restriction for the request.
                         if let Some(rq) = self.get_request_value_ref(&request_id, &dir) {
-                            let is_allowed = restriction(rq);
+                            let is_allowed = restriction(&rq);
                             self.handle_request_approval(request_id, &dir, is_allowed);
                         }
                         None
@@ -395,41 +402,6 @@ impl<Rq: Clone, Rs> RequestManager<Rq, Rs> {
             self.awaiting_peer_rule.insert(peer, await_rule);
         }
         Some(require_ask)
-    }
-
-    // Add failures for pending requests that are awaiting the peer rule.
-    pub fn on_no_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
-        if let Some(mut await_rule) = self.awaiting_peer_rule.remove(&peer) {
-            if direction.is_inbound() {
-                if let Some(requests) = await_rule.remove(&RequestDirection::Inbound) {
-                    for request_id in requests {
-                        self.connections.remove_request(&request_id, &RequestDirection::Inbound);
-                        unwrap_or_return!(self.inbound_request_store.remove(&request_id));
-                        self.actions.push_back(BehaviourAction::InboundFailure {
-                            peer,
-                            request_id,
-                            failure: InboundFailure::NotPermitted,
-                        });
-                    }
-                }
-            }
-            if direction.is_outbound() {
-                if let Some(requests) = await_rule.remove(&RequestDirection::Outbound) {
-                    for request_id in requests {
-                        unwrap_or_return!(self.outbound_request_store.remove(&request_id));
-                        self.actions.push_back(BehaviourAction::OutboundFailure {
-                            peer,
-                            request_id,
-                            failure: OutboundFailure::NotPermitted,
-                        });
-                    }
-                }
-            }
-            // Keep unaffected requests in map.
-            if !await_rule.is_empty() {
-                self.awaiting_peer_rule.insert(peer, await_rule);
-            }
-        }
     }
 
     // Handle the approval of an individual request.
@@ -477,27 +449,13 @@ impl<Rq: Clone, Rs> RequestManager<Rq, Rs> {
     }
 
     // Check if there are pending requests for rules for a specific peer.
-    pub fn pending_rule_requests(&self, peer: &PeerId) -> Option<RuleDirection> {
-        let await_rule = self.awaiting_peer_rule.get(&peer)?;
-        let is_inbound_pending = await_rule.contains_key(&RequestDirection::Inbound);
-        let is_outbound_pending = await_rule.contains_key(&RequestDirection::Outbound);
-        let is_both = is_inbound_pending && is_outbound_pending;
-        is_both
-            .then(|| RuleDirection::Both)
-            .or_else(|| is_inbound_pending.then(|| RuleDirection::Inbound))
-            .or_else(|| is_outbound_pending.then(|| RuleDirection::Outbound))
+    pub fn is_rule_request_pending(&self, peer: &PeerId) -> bool {
+        self.awaiting_peer_rule.get(&peer).is_some()
     }
 
-    // Add a placeholder to the map of pending rule requests for the given direction to mark that there is a pending
-    // rule request.
-    pub fn add_pending_rule_requests(&mut self, peer: PeerId, direction: RuleDirection) {
-        let pending = self.awaiting_peer_rule.entry(peer).or_insert_with(HashMap::new);
-        if direction.is_inbound() && !pending.contains_key(&RequestDirection::Inbound) {
-            pending.insert(RequestDirection::Inbound, SmallVec::new());
-        }
-        if direction.is_outbound() && !pending.contains_key(&RequestDirection::Outbound) {
-            pending.insert(RequestDirection::Outbound, SmallVec::new());
-        }
+    // Add a placeholder to the map of pending rule requests to mark that there is one for this peer.
+    pub fn add_pending_rule_request(&mut self, peer: PeerId) {
+        self.awaiting_peer_rule.entry(peer).or_insert_with(HashMap::new);
     }
 
     // Add a [`BehaviourAction::SetProtocolSupport`] to the action queue to inform the `ConnectionHandler` of changed
@@ -594,10 +552,11 @@ impl<Rq: Clone, Rs> RequestManager<Rq, Rs> {
     }
 
     // Get the request type of a store request.
-    fn get_request_value_ref(&self, request_id: &RequestId, dir: &RequestDirection) -> Option<&Rq> {
-        match dir {
+    fn get_request_value_ref(&self, request_id: &RequestId, dir: &RequestDirection) -> Option<TRq> {
+        let request = match dir {
             RequestDirection::Inbound => self.inbound_request_store.get(request_id).map(|(_, rq, _)| rq),
             RequestDirection::Outbound => self.outbound_request_store.get(request_id).map(|(_, rq)| rq),
-        }
+        };
+        request.map(|rq| rq.borrow().clone())
     }
 }

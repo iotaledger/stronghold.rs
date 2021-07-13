@@ -52,7 +52,7 @@ impl ProtocolName for CommunicationProtocol {
 #[derive(Debug)]
 pub struct ResponseProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage + Clone,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
     // Supported protocols for inbound requests.
@@ -64,7 +64,7 @@ where
 
 impl<Rq, Rs> UpgradeInfo for ResponseProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage + Clone,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
     type Info = CommunicationProtocol;
@@ -77,7 +77,7 @@ where
 
 impl<Rq, Rs> InboundUpgrade<NegotiatedSubstream> for ResponseProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage + Clone,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
     // If a response was send back to remote.
@@ -112,7 +112,7 @@ where
 #[derive(Debug)]
 pub struct RequestProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage + Clone,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
     // Supported protocols for outbound requests.
@@ -126,7 +126,7 @@ where
 
 impl<Rq, Rs> UpgradeInfo for RequestProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage + Clone,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
     type Info = CommunicationProtocol;
@@ -139,7 +139,7 @@ where
 
 impl<Rq, Rs> OutboundUpgrade<NegotiatedSubstream> for RequestProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage + Clone,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
     // Response from the remote for the sent request.
@@ -161,7 +161,7 @@ where
 }
 
 // Read from substream and deserialize the received bytes.
-async fn read_and_parse<T: DeserializeOwned>(io: &mut NegotiatedSubstream) -> Result<T, io::Error> {
+async fn read_and_parse<TRq: DeserializeOwned>(io: &mut NegotiatedSubstream) -> Result<TRq, io::Error> {
     read_length_prefixed(io, usize::MAX)
         .map(|res| match res {
             Ok(bytes) => {
@@ -173,7 +173,7 @@ async fn read_and_parse<T: DeserializeOwned>(io: &mut NegotiatedSubstream) -> Re
 }
 
 // Serialize the data and write bytes to substream.
-async fn parse_and_write<T: Serialize>(io: &mut NegotiatedSubstream, data: &T) -> Result<(), io::Error> {
+async fn parse_and_write<TRq: Serialize>(io: &mut NegotiatedSubstream, data: &TRq) -> Result<(), io::Error> {
     let buf = serde_json::to_vec(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     write_length_prefixed(io, buf).await
 }
