@@ -16,7 +16,7 @@ pub enum FirewallRequest<TRq: Clone> {
         /// The remote peer for which the rule is required.
         peer: PeerId,
         /// Channel for returning the new firewall rule.
-        /// Rejects all pending requests for this direction if the channel is dropped.
+        /// If the Sender is dropped, all request that are awaiting the rule will be rejected.
         rule_tx: oneshot::Sender<FirewallRules<TRq>>,
     },
     /// Request approval for a specific request due a [`Rule::Ask`] setting for this direction.
@@ -27,7 +27,8 @@ pub enum FirewallRequest<TRq: Clone> {
         direction: RequestDirection,
         /// The request message.
         request: TRq,
-        ///
+        /// Channel for returning the approval.
+        /// If the Sender is dropped, the request will be rejected.
         approval_tx: oneshot::Sender<bool>,
     },
 }
@@ -47,15 +48,6 @@ where
     /// Ask for individual approval for each request by sending a [`FirewallRequest::RequestApproval`] through the
     /// firewall-channel provided to the `NetBehaviour`.
     Ask,
-}
-
-impl<TRq, F> Default for Rule<TRq, F>
-where
-    F: Fn(&TRq) -> bool,
-{
-    fn default() -> Self {
-        Rule::RejectAll
-    }
 }
 
 /// The direction for which a rule is applicable.
@@ -78,16 +70,6 @@ impl RuleDirection {
     /// Check if the rule is applicable for outbound requests.
     pub fn is_outbound(&self) -> bool {
         matches!(self, RuleDirection::Outbound | RuleDirection::Both)
-    }
-
-    /// "Subtract" a different [`RuleDirection`] from self.
-    /// This checks if the other rule is applicable for a direction that self is not.
-    pub fn reduce(&self, other: RuleDirection) -> Option<RuleDirection> {
-        match other {
-            RuleDirection::Inbound if self.is_outbound() => Some(RuleDirection::Outbound),
-            RuleDirection::Outbound if self.is_inbound() => Some(RuleDirection::Inbound),
-            _ => None,
-        }
     }
 }
 

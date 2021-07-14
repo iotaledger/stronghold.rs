@@ -8,7 +8,7 @@ use std::collections::{hash_map::HashMap, HashSet};
 
 // Sent requests that have not yet received a response.
 #[derive(Debug)]
-pub(super) struct PendingResponses {
+pub struct PendingResponses {
     // Outbound request sent to remote, waiting for an inbound response.
     pub outbound_requests: HashSet<RequestId>,
     // Inbound requests received from remote, waiting for an outbound response.
@@ -26,7 +26,7 @@ impl Default for PendingResponses {
 
 // Active connections to a remote peer and pending responses on each connection.
 #[derive(Debug)]
-pub(super) struct PeerConnectionManager {
+pub struct PeerConnectionManager {
     // Currently active connections for each peer.
     connections: HashMap<PeerId, SmallVec<[ConnectionId; 2]>>,
     // Pending responses for each active connection.

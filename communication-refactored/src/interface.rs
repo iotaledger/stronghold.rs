@@ -41,8 +41,8 @@ pub use types::*;
 /// Interface for the stronghold-communication library to create a swarm, handle events and perform operations.
 ///
 /// All Swarm interaction takes place in a separate task.
-/// [`ShCommunication`] is essentially a wrapper for the Sender side of channel, which is used to initiate operations on
-/// the swarm.
+/// [`ShCommunication`] is essentially a wrapper for the Sender side of a mpsc channel, which is used to initiate
+/// operations on the swarm.
 ///
 /// Refer to [`ShCommunicationBuilder`] for more information on the default configuration.
 pub struct ShCommunication<Rq, Rs, TRq = Rq>
@@ -544,7 +544,10 @@ where
         let swarm = swarm_builder.build();
         let local_peer_id = *swarm.local_peer_id();
 
+        // Channel for sending `SwarmOperation`s.
         let (command_tx, command_rx) = mpsc::channel(10);
+
+        // Spawn a new task responsible for all Swarm interaction.
         let swarm_task = SwarmTask::new(swarm, command_rx, self.requests_channel, self.events_channel);
         tokio::spawn(swarm_task.run());
 

@@ -15,6 +15,7 @@ homepage = "https://stronghold.docs.iota.org"
 name = "communication_refactored"
 
 [dependencies]
+actix = { version = "0.12", optional = true }
 futures = "0.3"
 libp2p = { version = "0.39", default-features = false, features = ["noise", "yamux"] }
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
@@ -29,8 +30,10 @@ default = [ "mdns", "relay", "tcp-transport"]
 mdns = ["libp2p/mdns"]
 relay = ["libp2p/relay"]
 tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
+actor = ["actix"]
 
 [dev-dependencies]
 rand = "0.8.3"
 tokio = {version = "1.7", features = ["time", "macros"]}
 libp2p = { version = "0.39", default-features = false, features = ["tcp-tokio"] }
+actix-rt = { version = "2.2"}

@@ -11,6 +11,8 @@ mod libp2p_reexport {
         Multiaddr, PeerId,
     };
 }
+#[cfg(feature = "actor")]
+pub mod actor;
 pub use libp2p_reexport::*;
 mod interface;
 #[cfg(feature = "relay")]

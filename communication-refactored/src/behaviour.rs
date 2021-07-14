@@ -127,7 +127,7 @@ pub enum BehaviourEvent<Rq, Rs> {
 }
 
 /// Configuration of the [`NetBehaviour`].
-pub(super) struct NetBehaviourConfig<TRq: Clone> {
+pub struct NetBehaviourConfig<TRq: Clone> {
     /// Supported versions of the `CommunicationProtocol`.
     pub supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
     /// Timeout for inbound and outbound requests.
@@ -156,7 +156,7 @@ impl<TRq: Clone> Default for NetBehaviourConfig<TRq> {
 ///
 /// This allows sending request messages to remote peers, handling of inbound requests and failures, and additionally
 /// the configuration of a firewall to set permissions individually for different peers and request types.
-pub(super) struct NetBehaviour<Rq, Rs, TRq>
+pub struct NetBehaviour<Rq, Rs, TRq>
 where
     Rq: RqRsMessage + Borrow<TRq>,
     Rs: RqRsMessage,

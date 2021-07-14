@@ -15,11 +15,11 @@ use std::{borrow::Borrow, collections::HashMap, convert::TryFrom};
 
 use super::{errors::*, types::*, BehaviourEvent, ListenerId, NetBehaviour, Rule, RuleDirection};
 
-pub(super) type Ack = ();
+pub type Ack = ();
 
 // Perform actions on the Swarm.
 // The return value is sent back through the `tx_yield` oneshot channel.
-pub(super) enum SwarmOperation<Rq, Rs, TRq: Clone> {
+pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
     SendRequest {
         peer: PeerId,
         request: Rq,
@@ -145,7 +145,7 @@ pub(super) enum SwarmOperation<Rq, Rs, TRq: Clone> {
 // Operations on the Swarm are performed based on the [`SwarmOperation`]s that are received through the `command_rx`
 // channel. The outcome for each operation is returned through the oneshot channel that is included in the
 // [`SwarmOperation`]. No operation is blocking, instead the return-channel is cached until an outcome yields.
-pub(super) struct SwarmTask<Rq, Rs, TRq>
+pub struct SwarmTask<Rq, Rs, TRq>
 where
     Rq: RqRsMessage + Borrow<TRq>,
     Rs: RqRsMessage,

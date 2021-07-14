@@ -57,9 +57,9 @@ where
 {
     // Supported protocols for inbound requests.
     // Rejects all inbound requests if empty.
-    pub(crate) protocols: SmallVec<[CommunicationProtocol; 2]>,
+    pub protocols: SmallVec<[CommunicationProtocol; 2]>,
     // Channel for forwarding the inbound request.
-    pub(crate) request_tx: oneshot::Sender<(Rq, oneshot::Sender<Rs>)>,
+    pub request_tx: oneshot::Sender<(Rq, oneshot::Sender<Rs>)>,
 }
 
 impl<Rq, Rs> UpgradeInfo for ResponseProtocol<Rq, Rs>
@@ -117,9 +117,9 @@ where
 {
     // Supported protocols for outbound requests.
     // Rejects all outbound requests if empty.
-    pub(crate) protocols: SmallVec<[CommunicationProtocol; 2]>,
+    pub protocols: SmallVec<[CommunicationProtocol; 2]>,
     // Outbound request.
-    pub(crate) request: Rq,
+    pub request: Rq,
 
     pub _marker: PhantomData<Rs>,
 }

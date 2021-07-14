@@ -18,7 +18,7 @@ use std::{
 };
 
 // Actions for the behaviour to handle i.g. the behaviour emits the appropriate `NetworkBehaviourAction`.
-pub(super) enum BehaviourAction<Rq, Rs> {
+pub enum BehaviourAction<Rq, Rs> {
     // Approved inbound request to forward to the user.
     InboundOk {
         request_id: RequestId,
@@ -65,7 +65,7 @@ pub(super) enum BehaviourAction<Rq, Rs> {
 
 // The status of a new request according to the firewall rules of the associated peer.
 #[derive(Debug)]
-pub(super) enum ApprovalStatus {
+pub enum ApprovalStatus {
     // Neither a peer specific, nor a default rule for the peer + direction exists.
     // A FirewallRequest::PeerSpecificRule has been send and the `NetBehaviour` currently awaits a response.
     MissingRule,
@@ -82,7 +82,7 @@ pub(super) enum ApprovalStatus {
 //
 // Stores pending requests, manages rule, approval and connection changes, and queues required [`BehaviourActions`] for
 // the `NetBehaviour` to handle.
-pub(super) struct RequestManager<Rq: Borrow<TRq>, Rs, TRq> {
+pub struct RequestManager<Rq: Borrow<TRq>, Rs, TRq> {
     // Store of inbound requests that have not been approved yet.
     inbound_request_store: HashMap<RequestId, (PeerId, Rq, oneshot::Sender<Rs>)>,
     // Store of outbound requests that have not been approved, or where the target peer is not connected yet.

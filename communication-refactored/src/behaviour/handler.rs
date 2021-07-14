@@ -186,7 +186,7 @@ where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    pub(super) fn new(
+    pub fn new(
         supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
         protocol_support: ProtocolSupport,
         keep_alive_timeout: Duration,
