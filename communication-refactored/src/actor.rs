@@ -8,7 +8,29 @@ use crate::{ListenErr, Multiaddr, OutboundFailure, PeerId, ReceiveRequest, RqRsM
 use actix::{dev::ToEnvelope, prelude::*};
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
 use messages::*;
-use std::{io, marker::PhantomData};
+use std::{borrow::Borrow, io, marker::PhantomData};
+
+#[macro_use]
+macro_rules! impl_handler {
+    ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $($body:stmt)+ ) => {
+        impl<ARegistry, C, Rq, Rs, TRq> Handler<$mty> for CommunicationActor<ARegistry, C, Rq, Rs, TRq>
+        where
+            ARegistry: ArbiterService + Handler<GetClient<Rq, C>>,
+            ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
+            C: Actor + Handler<Rq> + Send,
+            C::Context: ToEnvelope<C, Rq>,
+            Rq: Message<Result = Rs> + RqRsMessage + Borrow<TRq> + Clone,
+            Rs: RqRsMessage + Clone,
+            TRq: Clone + Send + 'static,
+        {
+            type Result = ResponseActFuture<Self, $rty>;
+            fn handle(&mut self, $mid: $mty, _: &mut Self::Context) -> Self::Result {
+                let mut $cid = self.comms.clone();
+                async move { $($body)+ }.into_actor(self).boxed_local()
+            }
+        }
+    };
+}
 
 pub struct GetClient<Rq: Message, C: Actor + Handler<Rq>> {
     pub remote: PeerId,
@@ -19,53 +41,48 @@ impl<Rq: Message, C: Actor + Handler<Rq>> Message for GetClient<Rq, C> {
     type Result = Addr<C>;
 }
 
-pub struct CommunicationActor<ARegistry, C, Rq, Rs>
+pub struct CommunicationActor<ARegistry, C, Rq, Rs, TRq = Rq>
 where
-    ARegistry: Actor + Handler<GetClient<Rq, C>>,
-    ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
-    C: Actor + Handler<Rq> + Send,
-    C::Context: ToEnvelope<C, Rq>,
-    Rq: Clone + Message<Result = Rs> + RqRsMessage,
-    Rs: Clone + RqRsMessage,
+    ARegistry: Actor,
+    Rq: Message + RqRsMessage + Borrow<TRq>,
+    Rs: RqRsMessage,
+    TRq: Clone + Send + 'static,
 {
-    comms: ShCommunication<Rq, Rs>,
+    comms: ShCommunication<Rq, Rs, TRq>,
     inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<Rq, Rs>>>,
-    registry: Addr<ARegistry>,
-    _marker: PhantomData<C>,
+    _marker: (PhantomData<ARegistry>, PhantomData<C>),
 }
 
-impl<ARegistry, C, Rq, Rs> CommunicationActor<ARegistry, C, Rq, Rs>
+impl<ARegistry, C, Rq, Rs, TRq> CommunicationActor<ARegistry, C, Rq, Rs, TRq>
 where
-    ARegistry: Actor + Handler<GetClient<Rq, C>>,
-    ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
-    C: Actor + Handler<Rq> + Send,
-    C::Context: ToEnvelope<C, Rq>,
-    Rq: Clone + Message<Result = Rs> + RqRsMessage,
-    Rs: Clone + RqRsMessage,
+    ARegistry: Actor,
+    Rq: Message + RqRsMessage + Borrow<TRq>,
+    Rs: RqRsMessage,
+    TRq: Clone + Send + 'static,
 {
     #[cfg(feature = "tcp-transport")]
-    pub async fn new(registry: Addr<ARegistry>) -> Result<Self, io::Error> {
+    pub async fn new() -> Result<Self, io::Error> {
         let (firewall_tx, _) = mpsc::channel(0);
         let (inbound_request_tx, inbound_request_rx) = mpsc::channel(1);
         let comms = ShCommunication::new(firewall_tx, inbound_request_tx, None).await?;
         let actor = Self {
             comms,
             inbound_request_rx: Some(inbound_request_rx),
-            registry,
-            _marker: PhantomData,
+            _marker: (PhantomData, PhantomData),
         };
         Ok(actor)
     }
 }
 
-impl<ARegistry, C, Rq, Rs> Actor for CommunicationActor<ARegistry, C, Rq, Rs>
+impl<ARegistry, C, Rq, Rs, TRq> Actor for CommunicationActor<ARegistry, C, Rq, Rs, TRq>
 where
-    ARegistry: Actor + Handler<GetClient<Rq, C>>,
+    ARegistry: ArbiterService + Handler<GetClient<Rq, C>>,
     ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
     C: Actor + Handler<Rq> + Send,
     C::Context: ToEnvelope<C, Rq>,
-    Rq: Clone + Message<Result = Rs> + RqRsMessage,
-    Rs: Clone + RqRsMessage,
+    Rq: Message<Result = Rs> + RqRsMessage + Borrow<TRq>,
+    Rs: RqRsMessage,
+    TRq: Clone + Send + 'static,
 {
     type Context = Context<Self>;
 
@@ -75,121 +92,15 @@ where
     }
 }
 
-impl<ARegistry, C, Rq, Rs> Handler<SendRequest<Rq, Rs>> for CommunicationActor<ARegistry, C, Rq, Rs>
+impl<ARegistry, C, Rq, Rs, TRq> StreamHandler<ReceiveRequest<Rq, Rs>> for CommunicationActor<ARegistry, C, Rq, Rs, TRq>
 where
-    ARegistry: Actor + Handler<GetClient<Rq, C>>,
+    ARegistry: ArbiterService + Handler<GetClient<Rq, C>>,
     ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
     C: Actor + Handler<Rq> + Send,
     C::Context: ToEnvelope<C, Rq>,
-    Rq: Clone + Message<Result = Rs> + RqRsMessage,
-    Rs: Clone + RqRsMessage,
-{
-    type Result = ResponseActFuture<Self, Result<Rs, OutboundFailure>>;
-
-    fn handle(&mut self, msg: SendRequest<Rq, Rs>, _ctx: &mut Context<Self>) -> Self::Result {
-        let mut comms = self.comms.clone();
-        async move { comms.send_request(msg.peer, msg.request).await }
-            .into_actor(self)
-            .boxed_local()
-    }
-}
-
-impl<ARegistry, C, Rq, Rs> Handler<StartListening> for CommunicationActor<ARegistry, C, Rq, Rs>
-where
-    ARegistry: Actor + Handler<GetClient<Rq, C>>,
-    ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
-    C: Actor + Handler<Rq> + Send,
-    C::Context: ToEnvelope<C, Rq>,
-    Rq: Clone + Message<Result = Rs> + RqRsMessage,
-    Rs: Clone + RqRsMessage,
-{
-    type Result = ResponseActFuture<Self, Result<Multiaddr, ListenErr>>;
-
-    fn handle(&mut self, msg: StartListening, _ctx: &mut Context<Self>) -> Self::Result {
-        let mut comms = self.comms.clone();
-        let future = async move { comms.start_listening(msg.address).await };
-        future.into_actor(self).boxed_local()
-    }
-}
-
-impl<ARegistry, C, Rq, Rs> Handler<GetLocalPeerId> for CommunicationActor<ARegistry, C, Rq, Rs>
-where
-    ARegistry: Actor + Handler<GetClient<Rq, C>>,
-    ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
-    C: Actor + Handler<Rq> + Send,
-    C::Context: ToEnvelope<C, Rq>,
-    Rq: Clone + Message<Result = Rs> + RqRsMessage,
-    Rs: Clone + RqRsMessage,
-{
-    type Result = MessageResult<GetLocalPeerId>;
-
-    fn handle(&mut self, _: GetLocalPeerId, _ctx: &mut Context<Self>) -> Self::Result {
-        MessageResult(self.comms.get_peer_id())
-    }
-}
-
-impl<ARegistry, C, Rq, Rs> Handler<AddPeerAddr> for CommunicationActor<ARegistry, C, Rq, Rs>
-where
-    ARegistry: Actor + Handler<GetClient<Rq, C>>,
-    ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
-    C: Actor + Handler<Rq> + Send,
-    C::Context: ToEnvelope<C, Rq>,
-    Rq: Clone + Message<Result = Rs> + RqRsMessage,
-    Rs: Clone + RqRsMessage,
-{
-    type Result = ResponseActFuture<Self, ()>;
-
-    fn handle(&mut self, msg: AddPeerAddr, _ctx: &mut Context<Self>) -> Self::Result {
-        let mut comms = self.comms.clone();
-        let future = async move { comms.add_address(msg.peer, msg.address).await };
-        future.into_actor(self).boxed_local()
-    }
-}
-
-impl<ARegistry, C, Rq, Rs> Handler<SetFirewallRule<Rq>> for CommunicationActor<ARegistry, C, Rq, Rs>
-where
-    ARegistry: Actor + Handler<GetClient<Rq, C>>,
-    ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
-    C: Actor + Handler<Rq> + Send,
-    C::Context: ToEnvelope<C, Rq>,
-    Rq: Clone + Message<Result = Rs> + RqRsMessage,
-    Rs: Clone + RqRsMessage,
-{
-    type Result = ResponseActFuture<Self, ()>;
-
-    fn handle(&mut self, msg: SetFirewallRule<Rq>, _ctx: &mut Context<Self>) -> Self::Result {
-        let mut comms = self.comms.clone();
-        let future = async move { comms.set_peer_rule(msg.peer, msg.direction, msg.rule).await };
-        future.into_actor(self).boxed_local()
-    }
-}
-
-impl<ARegistry, C, Rq, Rs> Handler<SetFirewallDefault<Rq>> for CommunicationActor<ARegistry, C, Rq, Rs>
-where
-    ARegistry: Actor + Handler<GetClient<Rq, C>>,
-    ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
-    C: Actor + Handler<Rq> + Send,
-    C::Context: ToEnvelope<C, Rq>,
-    Rq: Clone + Message<Result = Rs> + RqRsMessage,
-    Rs: Clone + RqRsMessage,
-{
-    type Result = ResponseActFuture<Self, ()>;
-
-    fn handle(&mut self, msg: SetFirewallDefault<Rq>, _ctx: &mut Context<Self>) -> Self::Result {
-        let mut comms = self.comms.clone();
-        let future = async move { comms.set_firewall_default(msg.direction, msg.rule).await };
-        future.into_actor(self).boxed_local()
-    }
-}
-
-impl<ARegistry, C, Rq, Rs> StreamHandler<ReceiveRequest<Rq, Rs>> for CommunicationActor<ARegistry, C, Rq, Rs>
-where
-    ARegistry: Actor + Handler<GetClient<Rq, C>>,
-    ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
-    C: Actor + Handler<Rq> + Send,
-    C::Context: ToEnvelope<C, Rq>,
-    Rq: Clone + Message<Result = Rs> + RqRsMessage,
-    Rs: Clone + RqRsMessage,
+    Rq: Message<Result = Rs> + RqRsMessage + Borrow<TRq>,
+    Rs: RqRsMessage,
+    TRq: Clone + Send + 'static,
 {
     fn handle(&mut self, item: ReceiveRequest<Rq, Rs>, ctx: &mut Self::Context) {
         let ReceiveRequest {
@@ -199,8 +110,8 @@ where
             ..
         } = item;
 
-        let fut = self
-            .registry
+        let registry = ARegistry::from_registry();
+        let fut = registry
             .send(GetClient {
                 remote: peer,
                 _marker: (PhantomData, PhantomData),
@@ -212,3 +123,44 @@ where
         ctx.wait(fut);
     }
 }
+
+impl<ARegistry, C, Rq, Rs, TRq> From<(ShCommunication<Rq, Rs, TRq>, mpsc::Receiver<ReceiveRequest<Rq, Rs>>)>
+    for CommunicationActor<ARegistry, C, Rq, Rs, TRq>
+where
+    ARegistry: Actor,
+    Rq: Message + RqRsMessage + Borrow<TRq>,
+    Rs: RqRsMessage,
+    TRq: Clone + Send + 'static,
+{
+    fn from((comms, request_rx): (ShCommunication<Rq, Rs, TRq>, mpsc::Receiver<ReceiveRequest<Rq, Rs>>)) -> Self {
+        Self {
+            comms,
+            inbound_request_rx: Some(request_rx),
+            _marker: (PhantomData, PhantomData),
+        }
+    }
+}
+
+impl_handler!(SendRequest<Rq, Rs> => Result<Rs, OutboundFailure>, |comms, msg| {
+    comms.send_request(msg.peer, msg.request).await
+});
+
+impl_handler!(StartListening => Result<Multiaddr, ListenErr>, |comms, msg| {
+     comms.start_listening(msg.address).await
+});
+
+impl_handler!(GetLocalPeerId => PeerId, |_comms, _msg| {
+    _comms.get_peer_id()
+});
+
+impl_handler!(AddPeerAddr => (), |comms, msg| {
+    comms.add_address(msg.peer, msg.address).await
+});
+
+impl_handler!(SetFirewallRule<TRq> => (), |comms, msg| {
+    comms.set_peer_rule(msg.peer, msg.direction, msg.rule).await
+});
+
+impl_handler!(SetFirewallDefault<TRq> => (), |comms, msg| {
+    comms.set_firewall_default(msg.direction, msg.rule).await
+});
