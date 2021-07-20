@@ -8,7 +8,7 @@ module.exports = {
   url: 'https://stronghold.docs.iota.org/',
   baseUrl: '/',
   onBrokenLinks: 'warn',
-  onBrokenMarkdownLinks: 'throw',
+  onBrokenMarkdownLinks: 'warn',
   favicon: '/img/logo/favicon.ico',
   organizationName: 'iotaledger', // Usually your GitHub org/user name.
   projectName: 'Stronghold', // Usually your repo name.
