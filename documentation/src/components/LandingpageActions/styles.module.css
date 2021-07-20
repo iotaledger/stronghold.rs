@@ -1,0 +1,61 @@
+:global(.card) {
+    background-color: #FFFFFF;
+    border-radius: var(--ifm-global-radius);
+    height: 100%;
+    cursor: pointer;
+  }
+  
+  :global([data-theme='dark'] .card)  {
+    background-color: #293858;
+  }
+  
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  
+  .headerTitle {
+    padding: 0;
+    margin: 0;
+    font-size: 1.5rem;
+    letter-spacing: 0.02em;
+    font-family: 'Metropolis Semi Bold';
+  }
+  
+  .button {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    color: var(--ifm-color-emphasis-1000);
+    position: relative;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    background-color: var(--ifm-color-primary);
+    transition: all 0.2s ease;
+  }
+  
+  .button:hover {
+    color: var(--ifm-color-emphasis-1000);
+  }
+  
+  .icon {
+    color: #FFFFFF;
+    align-items: center;
+    display: flex;
+    height: 100%;
+    width: 100%;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: 500;
+    line-height: 1;
+    -webkit-font-smoothing: antialiased;
+  }
+  
+  .icon::before {
+    position: absolute;
+  }
+  
+  .body {
+    letter-spacing: 0.02em;
+  }

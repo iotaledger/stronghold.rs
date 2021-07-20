@@ -1,7 +1,3 @@
----
-slug: /
----
-
 # Welcome
 Stronghold is an open-source software library that was originally built to protect IOTA Seeds, but can be used to protect any digital secret. 
 
