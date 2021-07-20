@@ -2,9 +2,9 @@ name: deploy
 
 on:
   pull_request:
-    branches: [docs/migrateToDocusaurus, dev, main]
+    branches: [dev, main]
   push:
-    branches: [docs/migrateToDocusaurus, dev, main]
+    branches: [dev, main]
 
 jobs:
   checks:

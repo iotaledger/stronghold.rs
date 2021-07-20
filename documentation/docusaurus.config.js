@@ -6,7 +6,7 @@ module.exports = {
   title: 'IOTA Stronghold',
   tagline: 'Official IOTA Stronghold Software',
   url: 'https://stronghold.docs.iota.org/',
-  baseUrl: '/stronghold.rs/',
+  baseUrl: '/',
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'throw',
   favicon: '/img/logo/favicon.ico',
