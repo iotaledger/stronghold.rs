@@ -12,12 +12,12 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-/// a record hint.  Used as a hint to what this data is.
+/// a record hint.  Used as a hint to what this data is used for.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RecordHint([u8; 24]);
 
-/// A record identifier.  Contains a ChainID which refers to the "chain" of transactions in the Version.
+/// A record identifier.  Contains a [`ChainId`] which refers to the transaction.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RecordId(pub(crate) ChainId);
@@ -32,7 +32,7 @@ pub struct ClientId(pub Id);
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VaultId(pub Id);
 
-/// A chain identifier.  Used to identify a set of transactions in a version.
+/// A chain identifier.  Used to identify a transaction.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ChainId([u8; 24]);
@@ -42,17 +42,12 @@ pub struct ChainId([u8; 24]);
 #[derive(Copy, Clone, Hash, Default, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Id([u8; 24]);
 
-/// A transaction identifier
-#[repr(transparent)]
-#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
-pub struct TransactionId([u8; 24]);
-
-/// A blob identifier
+/// A blob identifier used to refer to a [`SealedBlob`]
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BlobId([u8; 24]);
 
-/// a big endian encoded number
+/// a big endian encoded number used as a counter.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Val([u8; 8]);
@@ -72,6 +67,88 @@ impl RecordHint {
     }
 }
 
+impl Val {
+    /// converts a val to a u64.
+    pub fn u64(self) -> u64 {
+        u64::from_be_bytes(self.0)
+    }
+}
+
+impl ChainId {
+    /// Generates a random [`ChainId`]
+    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
+        let mut buf = [0; 24];
+        P::random_buf(&mut buf)?;
+
+        Ok(Self(buf))
+    }
+
+    /// Loads a [`ChainId`] from a buffer of bytes.
+    pub fn load(data: &[u8]) -> crate::Result<Self> {
+        data.try_into()
+    }
+}
+
+impl BlobId {
+    /// Generates a random [`BlobId`]
+    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
+        let mut buf = [0; 24];
+        P::random_buf(&mut buf)?;
+        Ok(Self(buf))
+    }
+}
+
+impl RecordId {
+    /// Generates a random [`RecordId`]
+    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
+        Ok(RecordId(ChainId::random::<P>()?))
+    }
+
+    /// load [`RecordId`] from a buffer of bytes.
+    pub fn load(data: &[u8]) -> crate::Result<Self> {
+        Ok(RecordId(ChainId::load(data)?))
+    }
+}
+
+impl Id {
+    /// Generates a random [`Id`]
+    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
+        let mut buf = [0; 24];
+        P::random_buf(&mut buf)?;
+
+        Ok(Self(buf))
+    }
+
+    /// load [`Id`] from a buffer of bytes.
+    pub fn load(data: &[u8]) -> crate::Result<Self> {
+        data.try_into()
+    }
+}
+
+impl VaultId {
+    /// Generates a random [`VaultId`]
+    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
+        Ok(VaultId(Id::random::<P>()?))
+    }
+
+    /// load [`VaultId`] from a buffer of bytes.
+    pub fn load(data: &[u8]) -> crate::Result<Self> {
+        Ok(VaultId(Id::load(data)?))
+    }
+}
+
+impl ClientId {
+    /// Generates a random [`ClientId`]
+    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
+        Ok(ClientId(Id::random::<P>()?))
+    }
+
+    /// load [`ClientId`] from a buffer of bytes.
+    pub fn load(data: &[u8]) -> crate::Result<Self> {
+        Ok(ClientId(Id::load(data)?))
+    }
+}
+
 impl AsRef<[u8]> for RecordHint {
     fn as_ref(&self) -> &[u8] {
         &self.0
@@ -86,12 +163,6 @@ impl Debug for RecordHint {
 impl From<[u8; 24]> for RecordHint {
     fn from(bs: [u8; 24]) -> Self {
         Self(bs)
-    }
-}
-
-impl Val {
-    pub fn u64(self) -> u64 {
-        u64::from_be_bytes(self.0)
     }
 }
 
@@ -144,19 +215,6 @@ impl Debug for ChainId {
     }
 }
 
-impl ChainId {
-    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
-        let mut buf = [0; 24];
-        P::random_buf(&mut buf)?;
-
-        Ok(Self(buf))
-    }
-
-    pub fn load(data: &[u8]) -> crate::Result<Self> {
-        data.try_into()
-    }
-}
-
 impl TryFrom<&[u8]> for ChainId {
     type Error = crate::Error;
 
@@ -176,51 +234,6 @@ impl TryFrom<Vec<u8>> for ChainId {
 
     fn try_from(bs: Vec<u8>) -> Result<Self, Self::Error> {
         Self::try_from(bs.as_slice())
-    }
-}
-
-impl AsRef<[u8]> for TransactionId {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl Debug for TransactionId {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "Transaction({})", self.0.base64())
-    }
-}
-
-impl From<&TransactionId> for Vec<u8> {
-    fn from(id: &TransactionId) -> Self {
-        id.0.to_vec()
-    }
-}
-
-impl TransactionId {
-    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
-        let mut buf = [0; 24];
-        P::random_buf(&mut buf)?;
-
-        Ok(Self(buf))
-    }
-
-    pub fn load(data: &[u8]) -> crate::Result<Self> {
-        data.try_into()
-    }
-}
-
-impl TryFrom<&[u8]> for TransactionId {
-    type Error = crate::Error;
-
-    fn try_from(bs: &[u8]) -> Result<Self, Self::Error> {
-        if bs.len() != 24 {
-            return Err(crate::Error::InterfaceError);
-        }
-
-        let mut tmp = [0; 24];
-        tmp.copy_from_slice(bs);
-        Ok(Self(tmp))
     }
 }
 
@@ -262,14 +275,6 @@ impl TryFrom<&[u8]> for BlobId {
     }
 }
 
-impl BlobId {
-    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
-        let mut buf = [0; 24];
-        P::random_buf(&mut buf)?;
-        Ok(Self(buf))
-    }
-}
-
 impl Debug for RecordId {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "Record({})", self.0.as_ref().base64())
@@ -298,17 +303,6 @@ impl TryFrom<&[u8]> for RecordId {
     }
 }
 
-impl RecordId {
-    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
-        Ok(RecordId(ChainId::random::<P>()?))
-    }
-
-    /// load record_id from data
-    pub fn load(data: &[u8]) -> crate::Result<Self> {
-        Ok(RecordId(ChainId::load(data)?))
-    }
-}
-
 impl AsRef<[u8]> for Id {
     fn as_ref(&self) -> &[u8] {
         &self.0
@@ -318,45 +312,6 @@ impl AsRef<[u8]> for Id {
 impl Debug for Id {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "Chain({})", self.0.base64())
-    }
-}
-
-impl Id {
-    /// Create a new random `Id`.
-    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
-        let mut buf = [0; 24];
-        P::random_buf(&mut buf)?;
-
-        Ok(Self(buf))
-    }
-
-    /// Load an `Id` from some data.
-    pub fn load(data: &[u8]) -> crate::Result<Self> {
-        data.try_into()
-    }
-}
-
-impl VaultId {
-    /// Create a new random `VaultId`.
-    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
-        Ok(VaultId(Id::random::<P>()?))
-    }
-
-    /// Load a `VaultId` from some data.
-    pub fn load(data: &[u8]) -> crate::Result<Self> {
-        Ok(VaultId(Id::load(data)?))
-    }
-}
-
-impl ClientId {
-    /// Create a new random `ClientId`.
-    pub fn random<P: BoxProvider>() -> crate::Result<Self> {
-        Ok(ClientId(Id::random::<P>()?))
-    }
-
-    /// Load a `ClientId` from some data.
-    pub fn load(data: &[u8]) -> crate::Result<Self> {
-        Ok(ClientId(Id::load(data)?))
     }
 }
 

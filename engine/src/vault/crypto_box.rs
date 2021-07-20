@@ -13,21 +13,21 @@ use serde::{Deserialize, Serialize};
 
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
 pub trait BoxProvider: Sized + Ord + PartialOrd {
-    /// function for the key length of the crypto box
+    /// defines the key length for the [`BoxProvider`].
     fn box_key_len() -> usize;
-    /// gets the crypto box's overhead
+    /// defines the size of the Nonce combined with the Ad for the [`BoxProvider`].
     fn box_overhead() -> usize;
 
-    /// seals some data into the crypto box using the `key` and the `ad`
+    /// seals some data into the crypto box using the [`Key`] and the associated data.
     fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> crate::Result<Vec<u8>>;
 
-    /// opens a crypto box to get data using the `key` and the `ad`.
+    /// opens a crypto box to get data using the [`Key`] and the associated data.
     fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> crate::Result<Vec<u8>>;
 
-    /// fills a buffer `buf` with secure random bytes.
+    /// fills a buffer [`&mut [u8]`] with secure random bytes.
     fn random_buf(buf: &mut [u8]) -> crate::Result<()>;
 
-    /// creates a vector with secure random bytes based off of an inputted length `len`.
+    /// creates a vector with secure random bytes based off of an inputted [`usize`] length.
     fn random_vec(len: usize) -> crate::Result<Vec<u8>> {
         let mut buf = vec![0; len];
         Self::random_buf(&mut buf)?;
@@ -35,12 +35,14 @@ pub trait BoxProvider: Sized + Ord + PartialOrd {
     }
 }
 
-/// A key to the crypto box.  Key is stored on the heap which makes it easier to erase.
+/// A key to the crypto box.  [`Key`] is stored on the heap which makes it easier to erase. Makes use of the
+/// [`GuardedVec<u8>`] type to protect the data.
 #[derive(Serialize, Deserialize)]
 pub struct Key<T: BoxProvider> {
     /// the guarded raw bytes that make up the key
     pub key: GuardedVec<u8>,
 
+    /// phantom data to call to the provider.
     #[serde(skip_serializing, skip_deserializing)]
     _box_provider: PhantomData<T>,
 }
@@ -72,7 +74,7 @@ impl<T: BoxProvider> Key<T> {
         }
     }
 
-    /// get the key's bytes
+    /// get the key's bytes from the [`GuardedVec`]
     pub fn bytes(&self) -> Vec<u8> {
         // hacks the guarded type.  Probably not the best solution.
         (*self.key.borrow()).to_vec()
@@ -130,7 +132,7 @@ pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
     }
 }
 
-/// Trait for decryptable data.  Allows the data to be decrypted.
+/// Trait for decryptable data. Allows the data to be decrypted.
 pub trait Decrypt<E, T: TryFrom<Vec<u8>, Error = E>>: AsRef<[u8]> {
     /// decrypts raw data and creates a new type T from the plaintext
     fn decrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> crate::Result<T> {

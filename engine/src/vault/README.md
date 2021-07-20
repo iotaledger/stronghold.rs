@@ -1,7 +1,8 @@
 ## Stronghold Vault
+ 
+Vault is an implementation of a secure database for secrets. From an abstract point of view, each database view is a vault which is a collection of records which are all encrypted using the same key.  And a collection of vaults is called a Stronghold. 
 
-Vault is an in-memory database specification which is designed to work without a central server. Only the user which holds the associated id and key may modify the data in a vault. Another owner can take control over the data if they know the id and the key.
+The vault module defines a `Vault` type. Each of these vaults is composed of `Records`. Each `Record` is split into multiple pieces: an id, a data transaction, an optional revocation transaction and the blob of encrypted data. Internally, the data uses the `GuardedVec` type from the runtime module to guard the data for when it is accessed from the `DbView` interface. On the `DbView` interface there are methods for writing data, updating data and deleting data. To delete a record from a vault, a revocation transaction must be added to a record which marks it for garbage collection via the `revoke_record` method. The records may then be garbage collected using the `garbage_collect_vault` method. The `write` method can be used to both write to a new record or update existing records. 
 
-Data can be added to the chain via a [DataTransaction]. The [DataTransaction] is associated to the chain through the owner’s ID and it contains its own randomly generated ID.
+The `get_guard` method allows the user to insert a closure which accepts the `GuardedVec` and returns a `engine::Result<()>`.  Through this closure, the user can interact with the `GuardedVec` to manipulate the data. The `exec_proc` method is a version of `get_guard` that accepts two vault locations, vault keys and also a closure of type `FnOnce(GuardedVec<u8>) -> crate::Result<Vec<u8>>`. This method places the result of the closure into the newly specified `Record` in the vault. 
 
-Records may also be revoked from the Vault through a [RevocationTransaction]. A [RevocationTransaction] is created and it references the id of a existing [DataTransaction]. The RevocationTransaction stages the associated record for deletion. The record is deleted when the DbView preforms a garbage collection and the [RevocationTransaction] is deleted along with it.

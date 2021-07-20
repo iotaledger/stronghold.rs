@@ -77,8 +77,10 @@ macro_rules! line_error {
     };
 }
 
+/// Stronghold Client Result Type.
 pub type Result<T> = anyhow::Result<T, Error>;
 
+/// Stronghold Client error block.
 #[derive(DeriveError, Debug)]
 pub enum Error {
     #[error("Id Error")]
