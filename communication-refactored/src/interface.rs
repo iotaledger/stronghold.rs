@@ -14,7 +14,7 @@ pub use errors::*;
 use futures::{
     channel::{mpsc, oneshot},
     future::poll_fn,
-    AsyncRead, AsyncWrite,
+    AsyncRead, AsyncWrite, FutureExt,
 };
 #[cfg(feature = "mdns")]
 use libp2p::mdns::{Mdns, MdnsConfig};
@@ -24,7 +24,7 @@ use libp2p::{
     core::{
         connection::{ConnectionLimits, ListenerId},
         transport::Transport,
-        upgrade, Multiaddr, PeerId,
+        upgrade, Executor, Multiaddr, PeerId,
     },
     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
     swarm::SwarmBuilder,
@@ -103,9 +103,14 @@ where
         rx_yield.await.unwrap()
     }
 
-    /// Start listening on the network.
-    /// If no address is given, the listening address will be OS-assigned.
-    pub async fn start_listening(&mut self, address: Option<Multiaddr>) -> Result<Multiaddr, ListenErr> {
+    /// Start listening on the network on the given address.
+    /// In case of a tcp-transport, the address `/ip4/0.0.0.0/tcp/0` can be set if an OS-assigned address should be
+    /// used.
+    ///
+    /// Note: Depending on the used transport, this may produce multiple listening addresses.
+    /// This method only returns the first reported listening address for the new listener.
+    /// All active listening addresses for each listener can be obtained from [`ShCommunication::get_listeners`]
+    pub async fn start_listening(&mut self, address: Multiaddr) -> Result<Multiaddr, ListenErr> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::StartListening { address, tx_yield };
         self.send_command(command).await;
@@ -363,7 +368,7 @@ where
 /// The local [`PeerId`] is derived from public key of the IdKeys.
 /// If this is not the case, remote Peers will reject the communication.
 pub enum InitKeypair {
-    /// Identity Keys that are be used to derive the noise keypair and peer id.
+    /// Identity Keys that are used to derive the noise keypair and peer id.
     IdKeys(Keypair),
     /// Use authenticated noise-keypair.
     /// **Note**: The peer-id has to be derived from the same keypair that is used to create the noise-keypair.
@@ -482,10 +487,14 @@ where
 
     #[cfg(feature = "tcp-transport")]
     /// [`Self::build_with_transport`] with a [`Transport`] based on TCP/IP that supports dns resolution and websockets.
+    /// It uses [`tokio::spawn`] as executor, hence this method has to be called in the context of a tokio.rs runtime.
     pub async fn build(self) -> Result<ShCommunication<Rq, Rs, TRq>, io::Error> {
         let dns_transport = TokioDnsConfig::system(TokioTcpConfig::new())?;
         let transport = dns_transport.clone().or_transport(WsConfig::new(dns_transport));
-        Ok(self.build_with_transport(transport).await)
+        let executor = |fut| {
+            tokio::spawn(fut);
+        };
+        Ok(self.build_with_transport(transport, executor).await)
     }
 
     /// Create a new [`ShCommunication`] instance with an underlying [`Swarm`][libp2p::Swarm] that uses the provided
@@ -496,11 +505,12 @@ where
     /// - Authentication and encryption with the Noise-Protocol, using the XX-handshake
     /// - Yamux substream multiplexing
     ///
-    /// The method spawns a new task that handles all interaction with the Swarm.
+    /// The method spawns a new task with the provided executor, that handles all interaction with the Swarm.
     /// The task runs until [`ShCommunication`] is dropped, [`ShCommunication`] provides an interface to perform
-    /// operations on the swarm-task. **Note:** The task is spawned using [`tokio::spawn`], hence this method has to
-    /// be called in the context of a tokio.rs runtime.
-    pub async fn build_with_transport<Tp>(self, transport: Tp) -> ShCommunication<Rq, Rs, TRq>
+    /// operations on the swarm-task.
+    /// Additionally, the executor is used to configure the
+    /// [`SwarmBuilder::executor`][libp2p::swarm::SwarmBuilder::executor].
+    pub async fn build_with_transport<Tp, E>(self, transport: Tp, executor: E) -> ShCommunication<Rq, Rs, TRq>
     where
         Tp: Transport + Sized + Clone + Send + Sync + 'static,
         Tp::Output: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -508,6 +518,7 @@ where
         Tp::Listener: Send + 'static,
         Tp::ListenerUpgrade: Send + 'static,
         Tp::Error: Send + Sync,
+        E: Executor + Send + 'static + Clone,
     {
         // Use the configured keypair or create a new one.
         let (noise_keypair, peer_id) = self.ident.unwrap_or_else(|| {
@@ -535,9 +546,8 @@ where
             relay_behaviour,
             self.firewall_channel,
         );
-        let mut swarm_builder = SwarmBuilder::new(transport, behaviour, peer_id).executor(Box::new(|fut| {
-            tokio::spawn(fut);
-        }));
+
+        let mut swarm_builder = SwarmBuilder::new(transport, behaviour, peer_id).executor(Box::new(executor.clone()));
         if let Some(limit) = self.connections_limit {
             swarm_builder = swarm_builder.connection_limits(limit);
         }
@@ -549,7 +559,7 @@ where
 
         // Spawn a new task responsible for all Swarm interaction.
         let swarm_task = SwarmTask::new(swarm, command_rx, self.requests_channel, self.events_channel);
-        tokio::spawn(swarm_task.run());
+        executor.exec(swarm_task.run().boxed());
 
         ShCommunication {
             local_peer_id,

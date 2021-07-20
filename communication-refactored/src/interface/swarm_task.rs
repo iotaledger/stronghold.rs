@@ -36,7 +36,7 @@ pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
     },
 
     StartListening {
-        address: Option<Multiaddr>,
+        address: Multiaddr,
         tx_yield: oneshot::Sender<Result<Multiaddr, ListenErr>>,
     },
     #[cfg(feature = "relay")]
@@ -359,41 +359,13 @@ where
                 let is_connected = self.swarm.is_connected(&peer);
                 let _ = tx_yield.send(is_connected);
             }
-            SwarmOperation::StartListening { address, tx_yield } => {
-                let os_assigned_addr = "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid Multiaddress.");
-                let address = address.unwrap_or(os_assigned_addr);
-                match self.swarm.listen_on(address) {
-                    Ok(listener_id) => {
-                        self.await_listen.insert(listener_id, tx_yield);
-                        let new_listener = Listener {
-                            addrs: SmallVec::new(),
-                            uses_relay: None,
-                        };
-                        self.listeners.insert(listener_id, new_listener);
-                    }
-                    Err(err) => {
-                        let _ = tx_yield.send(Err(ListenErr::from(err)));
-                    }
-                }
-            }
+            SwarmOperation::StartListening { address, tx_yield } => self.start_listening(address, tx_yield),
             #[cfg(feature = "relay")]
             SwarmOperation::StartRelayedListening {
                 relay,
                 relay_addr,
                 tx_yield,
-            } => match self.start_relayed_listening(relay, relay_addr) {
-                Ok(listener_id) => {
-                    self.await_relayed_listen.insert(listener_id, (relay, tx_yield));
-                    let new_listener = Listener {
-                        addrs: SmallVec::new(),
-                        uses_relay: Some(relay),
-                    };
-                    self.listeners.insert(listener_id, new_listener);
-                }
-                Err(err) => {
-                    let _ = tx_yield.send(Err(err));
-                }
-            },
+            } => self.start_relayed_listening(relay, relay_addr, tx_yield),
             SwarmOperation::GetListeners { tx_yield } => {
                 let listeners = self.listeners.values().cloned().collect();
                 let _ = tx_yield.send(listeners);
@@ -515,23 +487,58 @@ where
         }
     }
 
+    fn start_listening(&mut self, address: Multiaddr, tx_yield: oneshot::Sender<Result<Multiaddr, ListenErr>>) {
+        match self.swarm.listen_on(address) {
+            Ok(listener_id) => {
+                self.await_listen.insert(listener_id, tx_yield);
+                let new_listener = Listener {
+                    addrs: SmallVec::new(),
+                    uses_relay: None,
+                };
+                self.listeners.insert(listener_id, new_listener);
+            }
+            Err(err) => {
+                let _ = tx_yield.send(Err(ListenErr::from(err)));
+            }
+        }
+    }
+
     // Start listening on a relayed address.
     #[cfg(feature = "relay")]
     fn start_relayed_listening(
         &mut self,
         relay: PeerId,
         relay_addr: Option<Multiaddr>,
-    ) -> Result<ListenerId, ListenRelayErr> {
+        tx_yield: oneshot::Sender<Result<Multiaddr, ListenRelayErr>>,
+    ) {
         use crate::assemble_relayed_addr;
 
         if let Some(addr) = relay_addr.as_ref() {
             self.swarm.behaviour_mut().add_address(relay, addr.clone());
         }
-        let relay_addr = relay_addr
-            .or_else(|| self.swarm.behaviour_mut().addresses_of_peer(&relay).first().cloned())
-            .ok_or(ListenRelayErr::DialRelay(DialErr::NoAddresses))?;
-        let relayed_addr = assemble_relayed_addr(*self.swarm.local_peer_id(), relay, relay_addr);
-        self.swarm.listen_on(relayed_addr).map_err(ListenRelayErr::from)
+        let relay_addr = relay_addr.or_else(|| self.swarm.behaviour_mut().addresses_of_peer(&relay).first().cloned());
+        let relayed_addr = match relay_addr {
+            Some(a) => assemble_relayed_addr(*self.swarm.local_peer_id(), relay, a),
+            None => {
+                let err = ListenRelayErr::DialRelay(DialErr::NoAddresses);
+                let _ = tx_yield.send(Err(err));
+                return;
+            }
+        };
+        let listen = self.swarm.listen_on(relayed_addr).map_err(ListenRelayErr::from);
+        match listen {
+            Ok(listener_id) => {
+                self.await_relayed_listen.insert(listener_id, (relay, tx_yield));
+                let new_listener = Listener {
+                    addrs: SmallVec::new(),
+                    uses_relay: Some(relay),
+                };
+                self.listeners.insert(listener_id, new_listener);
+            }
+            Err(err) => {
+                let _ = tx_yield.send(Err(err));
+            }
+        }
     }
 
     // Remove listeners based on the given condition.

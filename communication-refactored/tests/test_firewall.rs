@@ -55,7 +55,12 @@ async fn init_comms() -> NewComms {
     let builder =
         ShCommunicationBuilder::<Request, Response, RequestPermission>::new(firewall_tx, rq_tx, Some(event_tx));
     #[cfg(not(feature = "tcp-transport"))]
-    let comms = builder.build_with_transport(TokioTcpConfig::new()).await;
+    let comms = {
+        let executor = |fut| {
+            tokio::spawn(fut);
+        };
+        builder.build_with_transport(TokioTcpConfig::new(), executor).await
+    };
     #[cfg(feature = "tcp-transport")]
     let comms = builder.build().await.unwrap();
     (firewall_rx, rq_rx, event_rx, comms)
@@ -277,7 +282,10 @@ async fn firewall_permissions() {
     let (_, mut b_rq_rx, mut b_event_rx, mut comms_b) = init_comms().await;
     let peer_b_id = comms_b.get_peer_id();
 
-    let peer_b_addr = comms_b.start_listening(None).await.unwrap();
+    let peer_b_addr = comms_b
+        .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+        .await
+        .unwrap();
     comms_a.add_address(peer_b_id, peer_b_addr).await;
 
     for _ in 0..100 {
@@ -559,7 +567,10 @@ async fn firewall_ask() {
     let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut comms_b) = init_comms().await;
     let peer_b_id = comms_b.get_peer_id();
 
-    let peer_b_addr = comms_b.start_listening(None).await.unwrap();
+    let peer_b_addr = comms_b
+        .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+        .await
+        .unwrap();
     comms_a.add_address(peer_b_id, peer_b_addr).await;
 
     for _ in 0..100 {

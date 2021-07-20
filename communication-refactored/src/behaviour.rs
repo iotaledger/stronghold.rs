@@ -671,7 +671,7 @@ where
             self.handle_updated_peer_rule(peer, RuleDirection::Both);
         }
 
-        // Handle individual approvals fro requests that were returned after a [`FirewallRequest::RequestApproval`]
+        // Handle individual approvals for requests that were returned after a [`FirewallRequest::RequestApproval`]
         // query.
         while let Poll::Ready(Some((request_id, is_allowed))) = self.pending_approval_rqs.poll_next_unpin(cx) {
             self.request_manager.on_request_approval(request_id, is_allowed);

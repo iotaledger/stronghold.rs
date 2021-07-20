@@ -34,7 +34,11 @@ async fn init_comms() -> (
         .with_request_timeout(Duration::from_secs(1))
         .with_firewall_config(FirewallConfiguration::allow_all());
     #[cfg(not(feature = "tcp-transport"))]
-    let comms = builder.build_with_transport(TokioTcpConfig::new()).await;
+    let comms = builder
+        .build_with_transport(TokioTcpConfig::new(), |fut| {
+            tokio::spawn(fut);
+        })
+        .await;
     #[cfg(feature = "tcp-transport")]
     let comms = builder.build().await.unwrap();
     (rq_rx, comms)
@@ -44,7 +48,10 @@ async fn init_comms() -> (
 async fn test_send_req() {
     let (mut bob_request_rx, mut bob) = init_comms().await;
     let bob_id = bob.get_peer_id();
-    let bob_addr = bob.start_listening(None).await.unwrap();
+    let bob_addr = bob
+        .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+        .await
+        .unwrap();
 
     let (_, mut alice) = init_comms().await;
 

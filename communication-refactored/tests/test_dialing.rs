@@ -34,7 +34,12 @@ async fn init_comms() -> (mpsc::Receiver<NetworkEvent>, TestComms) {
         .with_firewall_config(FirewallConfiguration::allow_all())
         .with_connection_timeout(Duration::from_millis(1));
     #[cfg(not(feature = "tcp-transport"))]
-    let comms = builder.build_with_transport(TokioTcpConfig::new()).await;
+    let comms = {
+        let executor = |fut| {
+            tokio::spawn(fut);
+        };
+        builder.build_with_transport(TokioTcpConfig::new(), executor).await
+    };
     #[cfg(feature = "tcp-transport")]
     let comms = builder.build().await.unwrap();
     (event_rx, comms)
@@ -148,7 +153,11 @@ impl TestConfig {
 
     async fn configure_comms(&mut self) {
         if self.target_config.listening_plain {
-            let target_addr = self.target_comms.start_listening(None).await.unwrap();
+            let target_addr = self
+                .target_comms
+                .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+                .await
+                .unwrap();
 
             let mut target_listeners = self.target_comms.get_listeners().await;
             assert_eq!(target_listeners.len(), 1);
@@ -319,7 +328,10 @@ fn test_dialing() {
     let task = async {
         let (_, mut relay_comms) = init_comms().await;
         let relay_id = relay_comms.get_peer_id();
-        let relay_addr = relay_comms.start_listening(None).await.unwrap();
+        let relay_addr = relay_comms
+            .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+            .await
+            .unwrap();
         let mut relay_listeners = relay_comms.get_listeners().await;
         assert_eq!(relay_listeners.len(), 1);
         let relay_listener = relay_listeners.pop().unwrap();

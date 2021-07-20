@@ -1,8 +1,6 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-#![cfg(feature = "actor")]
-
 pub mod messages;
 use crate::{ListenErr, Multiaddr, OutboundFailure, PeerId, ReceiveRequest, RqRsMessage, ShCommunication};
 use actix::{dev::ToEnvelope, prelude::*};
@@ -32,13 +30,11 @@ macro_rules! impl_handler {
     };
 }
 
+#[derive(Message)]
+#[rtype(result = "Addr<C>")]
 pub struct GetClient<Rq: Message, C: Actor + Handler<Rq>> {
     pub remote: PeerId,
     _marker: (PhantomData<C>, PhantomData<Rq>),
-}
-
-impl<Rq: Message, C: Actor + Handler<Rq>> Message for GetClient<Rq, C> {
-    type Result = Addr<C>;
 }
 
 pub struct CommunicationActor<ARegistry, C, Rq, Rs, TRq = Rq>
@@ -146,7 +142,8 @@ impl_handler!(SendRequest<Rq, Rs> => Result<Rs, OutboundFailure>, |comms, msg| {
 });
 
 impl_handler!(StartListening => Result<Multiaddr, ListenErr>, |comms, msg| {
-     comms.start_listening(msg.address).await
+    let addr = msg.address.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().unwrap());
+    comms.start_listening(addr).await
 });
 
 impl_handler!(GetLocalPeerId => PeerId, |_comms, _msg| {
