@@ -110,10 +110,7 @@ module.exports = {
       'docusaurus-plugin-includes',
       {
         sharedFolders: [
-          { source: '../../bindings/nodejs/examples', target: 'docs/nodejs/examples/'},
-          { source: '../../bindings/python/examples', target: 'docs/python/examples/'},
-          { source: '../../bindings/java/examples', target: 'docs/java/examples/'},
-          { source: '../../examples/', target: 'docs/rust/examples/'},
+          { source: '../../', target: 'docs/shared/'}
         ],
       },
     ],

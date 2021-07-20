@@ -6,7 +6,7 @@ import styles from './styles.module.css';
 const ActionList = [
   {
     title: 'Learn',
-    link: 'docs',
+    link: 'docs/welcome',
     description: (
       <>
         Learn the Basics about IOTA Stronghold and how it works behind the scenes.
