@@ -1,7 +1,7 @@
 ---
 slug: /retrospective
 ---
-# **Stronghold Engine Retrospective Document**
+# Stronghold Engine Retrospective Document
 
 #### Authors: Tensor Programming - \<tensor@tauri.studio>
 
