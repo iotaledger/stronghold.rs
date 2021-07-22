@@ -45,19 +45,6 @@ jobs:
           npm i
           fi
           npm run build
-#      - name: Install rust-docs with nightly toolchain
-#        uses: actions-rs/toolchain@v1
-#        with:
-#            profile: minimal
-#            toolchain: nightly
-#            override: true
-#            components: rust-docs
-#      - name: Deploy Rust Docs
-#        run: |
-#          sudo apt-get update
-#          sudo apt-get install libudev-dev libusb-1.0-0-dev
-#          DOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features --document-private-items --no-deps --release
-#          cp -r target/doc documentation/build/rust
       - name: Release to GitHub Pages
         uses: iotaledger/actions-gh-pages@v3
         with:
