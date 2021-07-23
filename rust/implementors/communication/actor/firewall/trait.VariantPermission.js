@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["iota_stronghold"] = [{"text":"impl <a class=\"trait\" href=\"communication/actor/firewall/trait.VariantPermission.html\" title=\"trait communication::actor::firewall::VariantPermission\">VariantPermission</a> for <a class=\"enum\" href=\"iota_stronghold/actors/client/enum.SHRequestPermission.html\" title=\"enum iota_stronghold::actors::client::SHRequestPermission\">SHRequestPermission</a>","synthetic":false,"types":["iota_stronghold::actors::client::SHRequestPermission"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
