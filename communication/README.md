@@ -30,4 +30,4 @@ incoming requests are sent to the client actor that has to be provided in the `C
 All swarm interaction, and configuration of the `Communication Actor` is accomplished by sending the appropriate `CommunicationRequest` to it, for each `CommunicationRequest` a `CommunicationResults` is returned to the sender, this also allows using the [ask pattern](https://riker.rs/patterns/#ask).
 
 #### Firewall
-The communication actor implements a firewall that checks the permission of each outgoing and incoming requests and drops them if the necessary permission has not been set. The required `ToPermissionVariants` trait for messages can be derived with the [communication-macros](communication-macros/README.md), this allows in case of enum Request types to accept specific variants while rejecting others.
+The communication actor implements a firewall that checks the permission of each outgoing and incoming requests and drops them if the necessary permission has not been set. The required `ToPermissionVariants` trait for messages can be derived with the communication-macros, this allows in case of enum Request types to accept specific variants while rejecting others.
