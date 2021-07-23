@@ -63,4 +63,4 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./documentation/build
-          cname: wallet-lib.docs.iota.org
+          cname: stronghold.docs.iota.org/
