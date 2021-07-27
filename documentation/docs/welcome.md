@@ -16,7 +16,7 @@ It provides its own peer-to-peer communication layer, so that different apps can
 
 
 ## 3rd Party Independent Security Audit
-In April of 2021, F-Secure performed a security assessment of the core crates of IOTA Stronghold and found nothing of concern. This is not an explicit declaration of fitness or freedom of error, but it is an indicator of the high quality of the code. You may review [the audit here](https://github.com/iotaledger/stronghold.rs/blob/dev/docs/meta/Audit.pdf).
+In April of 2021, F-Secure performed a security assessment of the core crates of IOTA Stronghold and found nothing of concern. This is not an explicit declaration of fitness or freedom of error, but it is an indicator of the high quality of the code. You may review [the audit here](https://github.com/iotaledger/stronghold.rs/blob/dev/documentation/docs/meta/Audit.pdf).
 
 ## Joining the discussion
 If you want to get involved in discussions about this library, or you're looking for support, go to the #stronghold-discussion channel on [Discord](https://discord.iota.org).
