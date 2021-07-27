@@ -3,10 +3,6 @@
 
 #![cfg(feature = "relay")]
 
-use communication_refactored::{
-    assemble_relayed_addr, firewall::FirewallConfiguration, Multiaddr, NetworkEvent, PeerId, ShCommunication,
-    ShCommunicationBuilder,
-};
 use core::fmt;
 use futures::{
     channel::mpsc::{self, Receiver},
@@ -14,11 +10,15 @@ use futures::{
 };
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
+use p2p::{
+    assemble_relayed_addr, firewall::FirewallConfiguration, Multiaddr, NetworkEvent, PeerId, StrongholdP2p,
+    StrongholdP2pBuilder,
+};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::runtime::Builder;
 
-type TestComms = ShCommunication<Request, Response>;
+type TestPeer = StrongholdP2p<Request, Response>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Request;
@@ -26,23 +26,23 @@ struct Request;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Response;
 
-async fn init_comms() -> (mpsc::Receiver<NetworkEvent>, TestComms) {
+async fn init_peer() -> (mpsc::Receiver<NetworkEvent>, TestPeer) {
     let (dummy_fw_tx, _) = mpsc::channel(10);
     let (dummy_rq_tx, _) = mpsc::channel(10);
     let (event_tx, event_rx) = mpsc::channel(10);
-    let builder = ShCommunicationBuilder::new(dummy_fw_tx, dummy_rq_tx, Some(event_tx))
+    let builder = StrongholdP2pBuilder::new(dummy_fw_tx, dummy_rq_tx, Some(event_tx))
         .with_firewall_config(FirewallConfiguration::allow_all())
         .with_connection_timeout(Duration::from_millis(1));
     #[cfg(not(feature = "tcp-transport"))]
-    let comms = {
+    let peer = {
         let executor = |fut| {
             tokio::spawn(fut);
         };
         builder.build_with_transport(TokioTcpConfig::new(), executor).await
     };
     #[cfg(feature = "tcp-transport")]
-    let comms = builder.build().await.unwrap();
-    (event_rx, comms)
+    let peer = builder.build().await.unwrap();
+    (event_rx, peer)
 }
 
 fn rand_bool(n: u8) -> bool {
@@ -103,7 +103,7 @@ impl TestSourceConfig {
 
 struct TestConfig {
     source_config: TestSourceConfig,
-    source_comms: TestComms,
+    source_peer: TestPeer,
     source_event_rx: mpsc::Receiver<NetworkEvent>,
     source_id: PeerId,
 
@@ -111,7 +111,7 @@ struct TestConfig {
     relay_addr: Multiaddr,
 
     target_config: TestTargetConfig,
-    target_comms: TestComms,
+    target_peer: TestPeer,
     target_event_rx: mpsc::Receiver<NetworkEvent>,
     target_id: PeerId,
     target_addr: Option<Multiaddr>,
@@ -131,19 +131,19 @@ impl fmt::Display for TestConfig {
 }
 impl TestConfig {
     async fn new(relay_id: PeerId, relay_addr: Multiaddr) -> Self {
-        let (source_event_rx, source_comms) = init_comms().await;
-        let source_id = source_comms.get_peer_id();
-        let (target_event_rx, target_comms) = init_comms().await;
-        let target_id = target_comms.get_peer_id();
+        let (source_event_rx, source_peer) = init_peer().await;
+        let source_id = source_peer.get_peer_id();
+        let (target_event_rx, target_peer) = init_peer().await;
+        let target_id = target_peer.get_peer_id();
         TestConfig {
             source_config: TestSourceConfig::random(),
-            source_comms,
+            source_peer,
             source_event_rx,
             source_id,
             relay_id,
             relay_addr,
             target_config: TestTargetConfig::random(),
-            target_comms,
+            target_peer,
             target_event_rx,
             target_id,
             target_addr: None,
@@ -151,15 +151,15 @@ impl TestConfig {
         }
     }
 
-    async fn configure_comms(&mut self) {
+    async fn configure_peer(&mut self) {
         if self.target_config.listening_plain {
             let target_addr = self
-                .target_comms
+                .target_peer
                 .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
                 .await
                 .unwrap();
 
-            let mut target_listeners = self.target_comms.get_listeners().await;
+            let mut target_listeners = self.target_peer.get_listeners().await;
             assert_eq!(target_listeners.len(), 1);
             let target_listener = target_listeners.pop().unwrap();
             assert!(target_listener.uses_relay.is_none());
@@ -169,12 +169,12 @@ impl TestConfig {
         }
         if self.target_config.listening_relay {
             let relayed_addr = self
-                .target_comms
+                .target_peer
                 .start_relayed_listening(self.relay_id, Some(self.relay_addr.clone()))
                 .await
                 .unwrap();
 
-            let target_listeners = self.target_comms.get_listeners().await;
+            let target_listeners = self.target_peer.get_listeners().await;
             let mut expected_len = 1;
             self.target_config.listening_plain.then(|| expected_len = 2);
             assert_eq!(target_listeners.len(), expected_len);
@@ -191,29 +191,29 @@ impl TestConfig {
                 .target_addr
                 .clone()
                 .unwrap_or_else(|| "/ip4/127.0.0.1/tcp/12345".parse().expect("Invalid Multiaddress."));
-            self.source_comms.add_address(self.target_id, addr).await;
+            self.source_peer.add_address(self.target_id, addr).await;
         }
         if self.source_config.knows_relayed_target_addr {
             let relayed_addr = assemble_relayed_addr(self.target_id, self.relay_id, self.relay_addr.clone());
-            self.source_comms.add_address(self.target_id, relayed_addr).await;
+            self.source_peer.add_address(self.target_id, relayed_addr).await;
         }
 
         if self.source_config.knows_relay_addr {
-            self.source_comms
+            self.source_peer
                 .add_address(self.relay_id, self.relay_addr.clone())
                 .await;
         }
         if self.source_config.knows_relay {
-            let addr = self.source_comms.add_dialing_relay(self.relay_id, None).await;
+            let addr = self.source_peer.add_dialing_relay(self.relay_id, None).await;
             assert_eq!(addr.is_some(), self.source_config.knows_relay_addr);
         }
 
         match self.source_config.set_relay {
             UseRelay::Default => {}
-            UseRelay::NoRelay => self.source_comms.set_relay_fallback(self.target_id, false).await,
+            UseRelay::NoRelay => self.source_peer.set_relay_fallback(self.target_id, false).await,
             UseRelay::UseSpecificRelay => {
                 let addr = self
-                    .source_comms
+                    .source_peer
                     .use_specific_relay(self.target_id, self.relay_id, true)
                     .await;
                 if self.source_config.knows_relay_addr && self.source_config.knows_relay {
@@ -231,7 +231,7 @@ impl TestConfig {
     async fn test_dial(&mut self) {
         let config_str = format!("{}", self);
 
-        let res = self.source_comms.connect_peer(self.target_id).await;
+        let res = self.source_peer.connect_peer(self.target_id).await;
 
         if self.target_config.listening_relay {
             Self::expect_connection(&mut self.target_event_rx, self.relay_id, &config_str).await;
@@ -326,13 +326,13 @@ impl TestConfig {
 #[test]
 fn test_dialing() {
     let task = async {
-        let (_, mut relay_comms) = init_comms().await;
-        let relay_id = relay_comms.get_peer_id();
-        let relay_addr = relay_comms
+        let (_, mut relay_peer) = init_peer().await;
+        let relay_id = relay_peer.get_peer_id();
+        let relay_addr = relay_peer
             .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
             .await
             .unwrap();
-        let mut relay_listeners = relay_comms.get_listeners().await;
+        let mut relay_listeners = relay_peer.get_listeners().await;
         assert_eq!(relay_listeners.len(), 1);
         let relay_listener = relay_listeners.pop().unwrap();
         assert!(relay_listener.uses_relay.is_none());
@@ -340,7 +340,7 @@ fn test_dialing() {
 
         for _ in 0..100 {
             let mut test = TestConfig::new(relay_id, relay_addr.clone()).await;
-            test.configure_comms().await;
+            test.configure_peer().await;
             test.test_dial().await;
         }
     };

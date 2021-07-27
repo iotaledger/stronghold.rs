@@ -214,9 +214,9 @@ where
 
     // Central loop:
     // - Drive the [`Swarm`] by polling it for events.
-    // - Poll the commands-channel for [`SwarmOperation`]s that are sent from [`ShCommunication`].
+    // - Poll the commands-channel for [`SwarmOperation`]s that are sent from [`StrongholdP2p`].
     //
-    // If all [`ShCommunication`] clones are dropped, the command-channel will return `None` and [`SwarmTask`] will shut
+    // If all [`StrongholdP2p`] clones are dropped, the command-channel will return `None` and [`SwarmTask`] will shut
     // down.
     pub async fn run(mut self) {
         loop {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod messages;
-use crate::{ListenErr, Multiaddr, OutboundFailure, PeerId, ReceiveRequest, RqRsMessage, ShCommunication};
+use crate::{ListenErr, Multiaddr, OutboundFailure, PeerId, ReceiveRequest, RqRsMessage, StrongholdP2p};
 use actix::{dev::ToEnvelope, prelude::*};
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
 use messages::*;
@@ -11,7 +11,7 @@ use std::{borrow::Borrow, io, marker::PhantomData};
 #[macro_use]
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $($body:stmt)+ ) => {
-        impl<ARegistry, C, Rq, Rs, TRq> Handler<$mty> for CommunicationActor<ARegistry, C, Rq, Rs, TRq>
+        impl<ARegistry, C, Rq, Rs, TRq> Handler<$mty> for NetworkActor<ARegistry, C, Rq, Rs, TRq>
         where
             ARegistry: ArbiterService + Handler<GetClient<Rq, C>>,
             ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
@@ -37,19 +37,19 @@ pub struct GetClient<Rq: Message, C: Actor + Handler<Rq>> {
     _marker: (PhantomData<C>, PhantomData<Rq>),
 }
 
-pub struct CommunicationActor<ARegistry, C, Rq, Rs, TRq = Rq>
+pub struct NetworkActor<ARegistry, C, Rq, Rs, TRq = Rq>
 where
     ARegistry: Actor,
     Rq: Message + RqRsMessage + Borrow<TRq>,
     Rs: RqRsMessage,
     TRq: Clone + Send + 'static,
 {
-    comms: ShCommunication<Rq, Rs, TRq>,
+    comms: StrongholdP2p<Rq, Rs, TRq>,
     inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<Rq, Rs>>>,
     _marker: (PhantomData<ARegistry>, PhantomData<C>),
 }
 
-impl<ARegistry, C, Rq, Rs, TRq> CommunicationActor<ARegistry, C, Rq, Rs, TRq>
+impl<ARegistry, C, Rq, Rs, TRq> NetworkActor<ARegistry, C, Rq, Rs, TRq>
 where
     ARegistry: Actor,
     Rq: Message + RqRsMessage + Borrow<TRq>,
@@ -60,7 +60,7 @@ where
     pub async fn new() -> Result<Self, io::Error> {
         let (firewall_tx, _) = mpsc::channel(0);
         let (inbound_request_tx, inbound_request_rx) = mpsc::channel(1);
-        let comms = ShCommunication::new(firewall_tx, inbound_request_tx, None).await?;
+        let comms = StrongholdP2p::new(firewall_tx, inbound_request_tx, None).await?;
         let actor = Self {
             comms,
             inbound_request_rx: Some(inbound_request_rx),
@@ -70,7 +70,7 @@ where
     }
 }
 
-impl<ARegistry, C, Rq, Rs, TRq> Actor for CommunicationActor<ARegistry, C, Rq, Rs, TRq>
+impl<ARegistry, C, Rq, Rs, TRq> Actor for NetworkActor<ARegistry, C, Rq, Rs, TRq>
 where
     ARegistry: ArbiterService + Handler<GetClient<Rq, C>>,
     ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
@@ -88,7 +88,7 @@ where
     }
 }
 
-impl<ARegistry, C, Rq, Rs, TRq> StreamHandler<ReceiveRequest<Rq, Rs>> for CommunicationActor<ARegistry, C, Rq, Rs, TRq>
+impl<ARegistry, C, Rq, Rs, TRq> StreamHandler<ReceiveRequest<Rq, Rs>> for NetworkActor<ARegistry, C, Rq, Rs, TRq>
 where
     ARegistry: ArbiterService + Handler<GetClient<Rq, C>>,
     ARegistry::Context: ToEnvelope<ARegistry, GetClient<Rq, C>>,
@@ -120,15 +120,15 @@ where
     }
 }
 
-impl<ARegistry, C, Rq, Rs, TRq> From<(ShCommunication<Rq, Rs, TRq>, mpsc::Receiver<ReceiveRequest<Rq, Rs>>)>
-    for CommunicationActor<ARegistry, C, Rq, Rs, TRq>
+impl<ARegistry, C, Rq, Rs, TRq> From<(StrongholdP2p<Rq, Rs, TRq>, mpsc::Receiver<ReceiveRequest<Rq, Rs>>)>
+    for NetworkActor<ARegistry, C, Rq, Rs, TRq>
 where
     ARegistry: Actor,
     Rq: Message + RqRsMessage + Borrow<TRq>,
     Rs: RqRsMessage,
     TRq: Clone + Send + 'static,
 {
-    fn from((comms, request_rx): (ShCommunication<Rq, Rs, TRq>, mpsc::Receiver<ReceiveRequest<Rq, Rs>>)) -> Self {
+    fn from((comms, request_rx): (StrongholdP2p<Rq, Rs, TRq>, mpsc::Receiver<ReceiveRequest<Rq, Rs>>)) -> Self {
         Self {
             comms,
             inbound_request_rx: Some(request_rx),

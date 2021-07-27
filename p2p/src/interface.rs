@@ -38,14 +38,14 @@ use std::{borrow::Borrow, time::Duration};
 pub use types::*;
 
 #[derive(Clone)]
-/// Interface for the stronghold-communication library to create a swarm, handle events and perform operations.
+/// Interface for the stronghold-p2p library to create a swarm, handle events and perform operations.
 ///
 /// All Swarm interaction takes place in a separate task.
-/// [`ShCommunication`] is essentially a wrapper for the Sender side of a mpsc channel, which is used to initiate
+/// [`StrongholdP2p`] is essentially a wrapper for the Sender side of a mpsc channel, which is used to initiate
 /// operations on the swarm.
 ///
-/// Refer to [`ShCommunicationBuilder`] for more information on the default configuration.
-pub struct ShCommunication<Rq, Rs, TRq = Rq>
+/// Refer to [`StrongholdP2pBuilder`] for more information on the default configuration.
+pub struct StrongholdP2p<Rq, Rs, TRq = Rq>
 where
     // Request message type
     Rq: RqRsMessage + Borrow<TRq>,
@@ -64,21 +64,21 @@ where
     command_tx: mpsc::Sender<SwarmOperation<Rq, Rs, TRq>>,
 }
 
-impl<Rq, Rs, TRq> ShCommunication<Rq, Rs, TRq>
+impl<Rq, Rs, TRq> StrongholdP2p<Rq, Rs, TRq>
 where
     Rq: RqRsMessage + Borrow<TRq>,
     Rs: RqRsMessage,
     TRq: Clone + Send + 'static,
 {
-    /// Create a new [`ShCommunication`] instance with the default configuration.
-    /// Refer to [`ShCommunicationBuilder::new`] and [`ShCommunicationBuilder::build`] for detailed information.
+    /// Create a new [`StrongholdP2p`] instance with the default configuration.
+    /// Refer to [`StrongholdP2pBuilder::new`] and [`StrongholdP2pBuilder::build`] for detailed information.
     #[cfg(feature = "tcp-transport")]
     pub async fn new(
         firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
         requests_channel: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
         events_channel: Option<mpsc::Sender<NetworkEvent>>,
     ) -> Result<Self, io::Error> {
-        ShCommunicationBuilder::new(firewall_channel, requests_channel, events_channel)
+        StrongholdP2pBuilder::new(firewall_channel, requests_channel, events_channel)
             .build()
             .await
     }
@@ -109,7 +109,7 @@ where
     ///
     /// Note: Depending on the used transport, this may produce multiple listening addresses.
     /// This method only returns the first reported listening address for the new listener.
-    /// All active listening addresses for each listener can be obtained from [`ShCommunication::get_listeners`]
+    /// All active listening addresses for each listener can be obtained from [`StrongholdP2p::get_listeners`]
     pub async fn start_listening(&mut self, address: Multiaddr) -> Result<Multiaddr, ListenErr> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::StartListening { address, tx_yield };
@@ -378,7 +378,7 @@ pub enum InitKeypair {
     },
 }
 
-/// Builder for new `ShCommunication`.
+/// Builder for new `StrongholdP2p`.
 ///
 /// Default behaviour:
 /// - No firewall rules are set. In case of inbound / outbound requests, a [`FirewallRequest::PeerSpecificRule`] request
@@ -387,13 +387,13 @@ pub enum InitKeypair {
 /// - No limit for simultaneous connections.
 /// - Request-timeout and Connection-timeout are 10s.
 ///
-/// `ShCommunication` is build either via [`ShCommunicationBuilder::build`] (requires feature **tcp-transport**) with a
-/// pre-configured transport, or [`ShCommunicationBuilder::build_with_transport`] with a custom transport.
+/// `StrongholdP2p` is build either via [`StrongholdP2pBuilder::build`] (requires feature **tcp-transport**) with a
+/// pre-configured transport, or [`StrongholdP2pBuilder::build_with_transport`] with a custom transport.
 ///
-/// When building a new `ShCommunication` a new [`Swarm`][libp2p::Swarm] is created and continuously polled for events.
+/// When building a new `StrongholdP2p` a new [`Swarm`][libp2p::Swarm] is created and continuously polled for events.
 /// Inbound requests are forwarded through a mpsc::channel<ReceiveRequest<Rq, Rs>>.
 /// Optionally all events regarding connections and listeners are forwarded as [`NetworkEvent`].
-pub struct ShCommunicationBuilder<Rq, Rs, TRq = Rq>
+pub struct StrongholdP2pBuilder<Rq, Rs, TRq = Rq>
 where
     Rq: RqRsMessage + Borrow<TRq>,
     Rs: RqRsMessage,
@@ -413,7 +413,7 @@ where
     connections_limit: Option<ConnectionLimits>,
 }
 
-impl<Rq, Rs, TRq> ShCommunicationBuilder<Rq, Rs, TRq>
+impl<Rq, Rs, TRq> StrongholdP2pBuilder<Rq, Rs, TRq>
 where
     Rq: RqRsMessage + Borrow<TRq>,
     Rs: RqRsMessage,
@@ -429,7 +429,7 @@ where
         requests_channel: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
         events_channel: Option<mpsc::Sender<NetworkEvent>>,
     ) -> Self {
-        ShCommunicationBuilder {
+        StrongholdP2pBuilder {
             firewall_channel,
             requests_channel,
             events_channel,
@@ -488,7 +488,7 @@ where
     #[cfg(feature = "tcp-transport")]
     /// [`Self::build_with_transport`] with a [`Transport`] based on TCP/IP that supports dns resolution and websockets.
     /// It uses [`tokio::spawn`] as executor, hence this method has to be called in the context of a tokio.rs runtime.
-    pub async fn build(self) -> Result<ShCommunication<Rq, Rs, TRq>, io::Error> {
+    pub async fn build(self) -> Result<StrongholdP2p<Rq, Rs, TRq>, io::Error> {
         let dns_transport = TokioDnsConfig::system(TokioTcpConfig::new())?;
         let transport = dns_transport.clone().or_transport(WsConfig::new(dns_transport));
         let executor = |fut| {
@@ -497,7 +497,7 @@ where
         Ok(self.build_with_transport(transport, executor).await)
     }
 
-    /// Create a new [`ShCommunication`] instance with an underlying [`Swarm`][libp2p::Swarm] that uses the provided
+    /// Create a new [`StrongholdP2p`] instance with an underlying [`Swarm`][libp2p::Swarm] that uses the provided
     /// transport.
     ///
     /// The transport is upgraded with:
@@ -506,11 +506,11 @@ where
     /// - Yamux substream multiplexing
     ///
     /// The method spawns a new task with the provided executor, that handles all interaction with the Swarm.
-    /// The task runs until [`ShCommunication`] is dropped, [`ShCommunication`] provides an interface to perform
+    /// The task runs until [`StrongholdP2p`] is dropped, [`StrongholdP2p`] provides an interface to perform
     /// operations on the swarm-task.
     /// Additionally, the executor is used to configure the
     /// [`SwarmBuilder::executor`][libp2p::swarm::SwarmBuilder::executor].
-    pub async fn build_with_transport<Tp, E>(self, transport: Tp, executor: E) -> ShCommunication<Rq, Rs, TRq>
+    pub async fn build_with_transport<Tp, E>(self, transport: Tp, executor: E) -> StrongholdP2p<Rq, Rs, TRq>
     where
         Tp: Transport + Sized + Clone + Send + Sync + 'static,
         Tp::Output: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -561,7 +561,7 @@ where
         let swarm_task = SwarmTask::new(swarm, command_rx, self.requests_channel, self.events_channel);
         executor.exec(swarm_task.run().boxed());
 
-        ShCommunication {
+        StrongholdP2p {
             local_peer_id,
             command_tx,
         }

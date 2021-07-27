@@ -1,14 +1,6 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use communication_refactored::{
-    firewall::{
-        FirewallPermission, FirewallRequest, FirewallRules, PermissionValue, RequestPermissions, Rule, RuleDirection,
-        VariantPermission,
-    },
-    InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest, RequestDirection, ShCommunication,
-    ShCommunicationBuilder,
-};
 use futures::{
     channel::{mpsc, oneshot},
     future::{join, poll_fn},
@@ -17,11 +9,19 @@ use futures::{
 };
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
+use p2p::{
+    firewall::{
+        FirewallPermission, FirewallRequest, FirewallRules, PermissionValue, RequestPermissions, Rule, RuleDirection,
+        VariantPermission,
+    },
+    InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest, RequestDirection, StrongholdP2p,
+    StrongholdP2pBuilder,
+};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, fmt, future, marker::PhantomData, task::Poll, time::Duration};
 use tokio::time::sleep;
 
-type TestComms = ShCommunication<Request, Response, RequestPermission>;
+type TestPeer = StrongholdP2p<Request, Response, RequestPermission>;
 
 macro_rules! expect_ok (
      ($expression:expr, $config:expr) => {
@@ -41,29 +41,28 @@ enum Response {
     Other,
 }
 
-type NewComms = (
+type NewPeer = (
     mpsc::Receiver<FirewallRequest<RequestPermission>>,
     mpsc::Receiver<ReceiveRequest<Request, Response>>,
     mpsc::Receiver<NetworkEvent>,
-    ShCommunication<Request, Response, RequestPermission>,
+    TestPeer,
 );
 
-async fn init_comms() -> NewComms {
+async fn init_peer() -> NewPeer {
     let (firewall_tx, firewall_rx) = mpsc::channel(10);
     let (rq_tx, rq_rx) = mpsc::channel(10);
     let (event_tx, event_rx) = mpsc::channel(10);
-    let builder =
-        ShCommunicationBuilder::<Request, Response, RequestPermission>::new(firewall_tx, rq_tx, Some(event_tx));
+    let builder = StrongholdP2pBuilder::<Request, Response, RequestPermission>::new(firewall_tx, rq_tx, Some(event_tx));
     #[cfg(not(feature = "tcp-transport"))]
-    let comms = {
+    let peer = {
         let executor = |fut| {
             tokio::spawn(fut);
         };
         builder.build_with_transport(TokioTcpConfig::new(), executor).await
     };
     #[cfg(feature = "tcp-transport")]
-    let comms = builder.build().await.unwrap();
-    (firewall_rx, rq_rx, event_rx, comms)
+    let peer = builder.build().await.unwrap();
+    (firewall_rx, rq_rx, event_rx, peer)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -107,8 +106,8 @@ impl TestPermission {
 }
 
 struct RulesTestConfig<'a> {
-    comms_a: &'a mut TestComms,
-    comms_b: &'a mut TestComms,
+    peer_a: &'a mut TestPeer,
+    peer_b: &'a mut TestPeer,
     b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
 
@@ -137,8 +136,8 @@ impl<'a> fmt::Display for RulesTestConfig<'a> {
 
 impl<'a> RulesTestConfig<'a> {
     fn new_test_case(
-        comms_a: &'a mut TestComms,
-        comms_b: &'a mut TestComms,
+        peer_a: &'a mut TestPeer,
+        peer_b: &'a mut TestPeer,
         b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ) -> Self {
@@ -148,8 +147,8 @@ impl<'a> RulesTestConfig<'a> {
             .then(|| Request::Ping)
             .unwrap_or(Request::Other);
         RulesTestConfig {
-            comms_a,
-            comms_b,
+            peer_a,
+            peer_b,
             b_events_rx,
             b_request_rx,
             a_default: TestPermission::random(),
@@ -161,32 +160,32 @@ impl<'a> RulesTestConfig<'a> {
     }
 
     async fn configure_firewall(&mut self) {
-        let peer_a_id = self.comms_a.get_peer_id();
-        let peer_b_id = self.comms_b.get_peer_id();
+        let peer_a_id = self.peer_a.get_peer_id();
+        let peer_b_id = self.peer_b.get_peer_id();
         if let Some(peer_rule) = self.b_rule.as_ref() {
-            self.comms_b
+            self.peer_b
                 .set_peer_rule(peer_a_id, RuleDirection::Inbound, peer_rule.as_rule())
                 .await;
         }
-        self.comms_b
+        self.peer_b
             .set_firewall_default(RuleDirection::Inbound, self.b_default.as_rule())
             .await;
         if let Some(peer_rule) = self.a_rule.as_ref() {
-            self.comms_a
+            self.peer_a
                 .set_peer_rule(peer_b_id, RuleDirection::Outbound, peer_rule.as_rule())
                 .await;
         }
-        self.comms_a
+        self.peer_a
             .set_firewall_default(RuleDirection::Outbound, self.a_default.as_rule())
             .await;
     }
 
     async fn test_request(&mut self) {
-        let peer_a_id = self.comms_a.get_peer_id();
-        let peer_b_id = self.comms_b.get_peer_id();
+        let peer_a_id = self.peer_a.get_peer_id();
+        let peer_b_id = self.peer_b.get_peer_id();
 
-        let mut comms_a = self.comms_a.clone();
-        let res_future = comms_a.send_request(peer_b_id, self.req.clone()).boxed();
+        let mut peer_a = self.peer_a.clone();
+        let res_future = peer_a.send_request(peer_b_id, self.req.clone()).boxed();
 
         let a_rule = self.a_rule.unwrap_or(self.a_default);
         let b_rule = self.b_rule.unwrap_or(self.b_default);
@@ -267,29 +266,29 @@ impl<'a> RulesTestConfig<'a> {
     }
 
     async fn clean(self) {
-        let peer_a_id = self.comms_a.get_peer_id();
-        let peer_b_id = self.comms_b.get_peer_id();
-        self.comms_b.remove_peer_rule(peer_a_id, RuleDirection::Both).await;
-        self.comms_b.remove_firewall_default(RuleDirection::Both).await;
-        self.comms_a.remove_peer_rule(peer_b_id, RuleDirection::Both).await;
-        self.comms_a.remove_firewall_default(RuleDirection::Both).await;
+        let peer_a_id = self.peer_a.get_peer_id();
+        let peer_b_id = self.peer_b.get_peer_id();
+        self.peer_b.remove_peer_rule(peer_a_id, RuleDirection::Both).await;
+        self.peer_b.remove_firewall_default(RuleDirection::Both).await;
+        self.peer_a.remove_peer_rule(peer_b_id, RuleDirection::Both).await;
+        self.peer_a.remove_firewall_default(RuleDirection::Both).await;
     }
 }
 
 #[tokio::test]
 async fn firewall_permissions() {
-    let (_, _, _, mut comms_a) = init_comms().await;
-    let (_, mut b_rq_rx, mut b_event_rx, mut comms_b) = init_comms().await;
-    let peer_b_id = comms_b.get_peer_id();
+    let (_, _, _, mut peer_a) = init_peer().await;
+    let (_, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
+    let peer_b_id = peer_b.get_peer_id();
 
-    let peer_b_addr = comms_b
+    let peer_b_addr = peer_b
         .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
         .await
         .unwrap();
-    comms_a.add_address(peer_b_id, peer_b_addr).await;
+    peer_a.add_address(peer_b_id, peer_b_addr).await;
 
     for _ in 0..100 {
-        let mut test = RulesTestConfig::new_test_case(&mut comms_a, &mut comms_b, &mut b_event_rx, &mut b_rq_rx);
+        let mut test = RulesTestConfig::new_test_case(&mut peer_a, &mut peer_b, &mut b_event_rx, &mut b_rq_rx);
         test.configure_firewall().await;
         sleep(Duration::from_millis(10)).await;
         test.test_request().await;
@@ -336,16 +335,16 @@ impl FwApprovalRes {
 }
 
 #[derive(Debug)]
-enum TestPeer {
+enum Peer {
     A,
     B,
 }
 
 struct AskTestConfig<'a> {
-    comms_a: &'a mut TestComms,
+    peer_a: &'a mut TestPeer,
     firewall_a: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
 
-    comms_b: &'a mut TestComms,
+    peer_b: &'a mut TestPeer,
     firewall_b: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
     b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
     b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
@@ -368,17 +367,17 @@ impl<'a> fmt::Display for AskTestConfig<'a> {
 
 impl<'a> AskTestConfig<'a> {
     fn new_test_case(
-        comms_a: &'a mut TestComms,
+        peer_a: &'a mut TestPeer,
         firewall_a: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
-        comms_b: &'a mut TestComms,
+        peer_b: &'a mut TestPeer,
         firewall_b: &'a mut mpsc::Receiver<FirewallRequest<RequestPermission>>,
         b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ) -> Self {
         AskTestConfig {
-            comms_a,
+            peer_a,
             firewall_a,
-            comms_b,
+            peer_b,
             firewall_b,
             b_events_rx,
             b_request_rx,
@@ -390,8 +389,8 @@ impl<'a> AskTestConfig<'a> {
     }
 
     async fn test_request_with_ask(&mut self) {
-        let peer_a_id = self.comms_a.get_peer_id();
-        let peer_b_id = self.comms_b.get_peer_id();
+        let peer_a_id = self.peer_a.get_peer_id();
+        let peer_b_id = self.peer_b.get_peer_id();
 
         let is_allowed = |rule: &FwRuleRes, approval: &FwApprovalRes| match rule {
             FwRuleRes::AllowAll => true,
@@ -400,16 +399,16 @@ impl<'a> AskTestConfig<'a> {
             _ => false,
         };
 
-        let mut comms_a = self.comms_a.clone();
+        let mut peer_a = self.peer_a.clone();
         let (tx_res, mut rx_res) = oneshot::channel();
 
         let operation_future = async {
-            let res = comms_a.send_request(peer_b_id, Request::Ping).await;
+            let res = peer_a.send_request(peer_b_id, Request::Ping).await;
             tx_res.send(res).unwrap();
         };
 
         let resolved = async {
-            self.firewall_handle_next(TestPeer::A).await;
+            self.firewall_handle_next(Peer::A).await;
 
             if !is_allowed(&self.a_rule, &self.a_approval) {
                 let res = rx_res
@@ -426,7 +425,7 @@ impl<'a> AskTestConfig<'a> {
                 return;
             }
 
-            self.firewall_handle_next(TestPeer::B).await;
+            self.firewall_handle_next(Peer::B).await;
 
             if !is_allowed(&self.b_rule, &self.b_approval) {
                 let res = poll_fn(|cx| {
@@ -493,11 +492,11 @@ impl<'a> AskTestConfig<'a> {
         }
     }
 
-    async fn firewall_handle_next(&mut self, test_peer: TestPeer) {
+    async fn firewall_handle_next(&mut self, test_peer: Peer) {
         let config = format!("{}", self);
         let (fw_channel, peer_rule, approval) = match test_peer {
-            TestPeer::A => (&mut self.firewall_a, &self.a_rule, &self.a_approval),
-            TestPeer::B => (&mut self.firewall_b, &self.b_rule, &self.b_approval),
+            Peer::A => (&mut self.firewall_a, &self.a_rule, &self.a_approval),
+            Peer::B => (&mut self.firewall_b, &self.b_rule, &self.b_approval),
         };
         let response_tx = match expect_ok!(fw_channel.next(), config) {
             FirewallRequest::PeerSpecificRule { rule_tx, .. } => rule_tx,
@@ -517,8 +516,8 @@ impl<'a> AskTestConfig<'a> {
             }
         };
         let (inbound, outbound) = match test_peer {
-            TestPeer::A => (other, rule),
-            TestPeer::B => (rule, other),
+            Peer::A => (other, rule),
+            Peer::B => (rule, other),
         };
 
         response_tx
@@ -531,8 +530,8 @@ impl<'a> AskTestConfig<'a> {
                     approval_tx, direction, ..
                 } => {
                     match test_peer {
-                        TestPeer::A => assert_eq!(direction, RequestDirection::Outbound),
-                        TestPeer::B => assert_eq!(direction, RequestDirection::Inbound),
+                        Peer::A => assert_eq!(direction, RequestDirection::Outbound),
+                        Peer::B => assert_eq!(direction, RequestDirection::Inbound),
                     }
                     approval_tx
                 }
@@ -554,30 +553,30 @@ impl<'a> AskTestConfig<'a> {
     }
 
     async fn clean(self) {
-        let peer_a_id = self.comms_a.get_peer_id();
-        let peer_b_id = self.comms_b.get_peer_id();
-        self.comms_a.remove_peer_rule(peer_b_id, RuleDirection::Both).await;
-        self.comms_b.remove_peer_rule(peer_a_id, RuleDirection::Both).await;
+        let peer_a_id = self.peer_a.get_peer_id();
+        let peer_b_id = self.peer_b.get_peer_id();
+        self.peer_a.remove_peer_rule(peer_b_id, RuleDirection::Both).await;
+        self.peer_b.remove_peer_rule(peer_a_id, RuleDirection::Both).await;
     }
 }
 
 #[tokio::test]
 async fn firewall_ask() {
-    let (mut firewall_a, _, _, mut comms_a) = init_comms().await;
-    let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut comms_b) = init_comms().await;
-    let peer_b_id = comms_b.get_peer_id();
+    let (mut firewall_a, _, _, mut peer_a) = init_peer().await;
+    let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
+    let peer_b_id = peer_b.get_peer_id();
 
-    let peer_b_addr = comms_b
+    let peer_b_addr = peer_b
         .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
         .await
         .unwrap();
-    comms_a.add_address(peer_b_id, peer_b_addr).await;
+    peer_a.add_address(peer_b_id, peer_b_addr).await;
 
     for _ in 0..100 {
         let mut test = AskTestConfig::new_test_case(
-            &mut comms_a,
+            &mut peer_a,
             &mut firewall_a,
-            &mut comms_b,
+            &mut peer_b,
             &mut firewall_b,
             &mut b_event_rx,
             &mut b_rq_rx,

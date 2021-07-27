@@ -35,7 +35,7 @@ use futures::{
     task::{Context, Poll},
     FutureExt, StreamExt, TryFutureExt,
 };
-pub use handler::CommunicationProtocol;
+pub use handler::MessageProtocol;
 use handler::{ConnectionHandler, HandlerInEvent, HandlerOutEvent, ProtocolSupport};
 #[cfg(feature = "mdns")]
 use libp2p::mdns::Mdns;
@@ -128,8 +128,8 @@ pub enum BehaviourEvent<Rq, Rs> {
 
 /// Configuration of the [`NetBehaviour`].
 pub struct NetBehaviourConfig<TRq: Clone> {
-    /// Supported versions of the `CommunicationProtocol`.
-    pub supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
+    /// Supported versions of the `MessageProtocol`.
+    pub supported_protocols: SmallVec<[MessageProtocol; 2]>,
     /// Timeout for inbound and outbound requests.
     pub request_timeout: Duration,
     /// Keep-alive timeout of idle connections.
@@ -141,7 +141,7 @@ pub struct NetBehaviourConfig<TRq: Clone> {
 impl<TRq: Clone> Default for NetBehaviourConfig<TRq> {
     fn default() -> Self {
         Self {
-            supported_protocols: smallvec![CommunicationProtocol::new_version(1, 0, 0)],
+            supported_protocols: smallvec![MessageProtocol::new_version(1, 0, 0)],
             connection_timeout: Duration::from_secs(10),
             request_timeout: Duration::from_secs(10),
             firewall: FirewallConfiguration::default(),
@@ -170,7 +170,7 @@ where
     relay: Relay,
 
     // List of supported protocol versions.
-    supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
+    supported_protocols: SmallVec<[MessageProtocol; 2]>,
     // Timeout for inbound and outbound requests.
     request_timeout: Duration,
     // Keep-alive timeout of idle connections.

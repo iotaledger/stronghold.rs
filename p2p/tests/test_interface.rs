@@ -1,12 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use communication_refactored::{
-    firewall::FirewallConfiguration, ReceiveRequest, ShCommunication, ShCommunicationBuilder,
-};
 use futures::{channel::mpsc, future::join, StreamExt};
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
+use p2p::{firewall::FirewallConfiguration, ReceiveRequest, StrongholdP2p, StrongholdP2pBuilder};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -22,38 +20,38 @@ enum Response {
     Other,
 }
 
-async fn init_comms() -> (
+async fn init_peer() -> (
     mpsc::Receiver<ReceiveRequest<Request, Response>>,
-    ShCommunication<Request, Response>,
+    StrongholdP2p<Request, Response>,
 ) {
     let (dummy_tx, _) = mpsc::channel(10);
     let (rq_tx, rq_rx) = mpsc::channel(10);
 
-    let builder = ShCommunicationBuilder::new(dummy_tx, rq_tx, None)
+    let builder = StrongholdP2pBuilder::new(dummy_tx, rq_tx, None)
         .with_connection_timeout(Duration::from_secs(1))
         .with_request_timeout(Duration::from_secs(1))
         .with_firewall_config(FirewallConfiguration::allow_all());
     #[cfg(not(feature = "tcp-transport"))]
-    let comms = builder
+    let peer = builder
         .build_with_transport(TokioTcpConfig::new(), |fut| {
             tokio::spawn(fut);
         })
         .await;
     #[cfg(feature = "tcp-transport")]
-    let comms = builder.build().await.unwrap();
-    (rq_rx, comms)
+    let peer = builder.build().await.unwrap();
+    (rq_rx, peer)
 }
 
 #[tokio::test]
 async fn test_send_req() {
-    let (mut bob_request_rx, mut bob) = init_comms().await;
+    let (mut bob_request_rx, mut bob) = init_peer().await;
     let bob_id = bob.get_peer_id();
     let bob_addr = bob
         .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
         .await
         .unwrap();
 
-    let (_, mut alice) = init_comms().await;
+    let (_, mut alice) = init_peer().await;
 
     // Alice adds Bob's address and sends a request.
     alice.add_address(bob_id, bob_addr).await;

@@ -17,7 +17,7 @@ pub use libp2p_reexport::*;
 mod interface;
 #[cfg(feature = "relay")]
 pub use behaviour::assemble_relayed_addr;
-pub use behaviour::{firewall, CommunicationProtocol};
+pub use behaviour::{firewall, MessageProtocol};
 pub use interface::*;
 
 #[macro_export]

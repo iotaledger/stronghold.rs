@@ -115,7 +115,7 @@ impl<TRq: Clone> FirewallRules<TRq> {
 /// This config specifies what inbound and requests from/ to which peer are allowed.
 /// If there are neither default rules, nor a peer specific rule for a request from/ to a peer,
 /// a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel that is passed to
-/// `ShCommunication`.
+/// `StrongholdP2p`.
 pub struct FirewallConfiguration<TRq: Clone> {
     /// Default rules that are used if there are no peer-specific ones for a peer.
     default: FirewallRules<TRq>,

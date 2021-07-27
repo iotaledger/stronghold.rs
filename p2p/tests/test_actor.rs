@@ -4,11 +4,11 @@
 #![cfg(feature = "actor")]
 
 use actix::prelude::*;
-use communication_refactored::{
-    actor::{messages, CommunicationActor, GetClient},
+use futures::channel::oneshot;
+use p2p::{
+    actor::{messages, GetClient, NetworkActor},
     firewall::{Rule, RuleDirection},
 };
-use futures::channel::oneshot;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
@@ -61,9 +61,9 @@ async fn test_actor() {
     Arbiter::new().spawn(async move {
         let client_a = Client.start();
         Registry { client: Some(client_a) }.start();
-        let comms_a = CommunicationActor::<Registry, _, _, _, _>::new().await.unwrap().start();
-        let a_id = comms_a.send(messages::GetLocalPeerId).await.unwrap();
-        let a_address = comms_a
+        let peer_a = NetworkActor::<Registry, _, _, _, _>::new().await.unwrap().start();
+        let a_id = peer_a.send(messages::GetLocalPeerId).await.unwrap();
+        let a_address = peer_a
             .send(messages::StartListening { address: None })
             .await
             .unwrap()
@@ -72,14 +72,14 @@ async fn test_actor() {
             direction: RuleDirection::Inbound,
             rule: Rule::AllowAll,
         };
-        comms_a.send(set_firewall_msg).await.unwrap();
+        peer_a.send(set_firewall_msg).await.unwrap();
         tx.send((a_id, a_address)).unwrap();
     });
 
     Arbiter::new().spawn(async move {
         let client_b = Client.start();
         Registry { client: Some(client_b) }.start();
-        let comms_b = CommunicationActor::<Registry, _, _, _, _>::new().await.unwrap().start();
+        let peer_b = NetworkActor::<Registry, _, _, _, _>::new().await.unwrap().start();
 
         let (a_id, a_address) = rx.await.unwrap();
 
@@ -87,16 +87,16 @@ async fn test_actor() {
             peer: a_id,
             address: a_address,
         };
-        comms_b.send(add_peer_msg).await.unwrap();
+        peer_b.send(add_peer_msg).await.unwrap();
 
         let set_firewall_msg = messages::SetFirewallRule {
             peer: a_id,
             direction: RuleDirection::Outbound,
             rule: Rule::AllowAll,
         };
-        comms_b.send(set_firewall_msg).await.unwrap();
+        peer_b.send(set_firewall_msg).await.unwrap();
 
-        let res = comms_b.send(messages::SendRequest::new(a_id, Request)).await.unwrap();
+        let res = peer_b.send(messages::SendRequest::new(a_id, Request)).await.unwrap();
         assert!(res.is_ok(), "Unexpected Error: {:?}", res);
     });
 }

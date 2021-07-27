@@ -243,7 +243,7 @@ pub enum OutboundFailure {
     UnsupportedProtocols,
     /// The local firewall blocked the request.
     NotPermitted,
-    /// `SHCommunication` was shut down before a response was received.
+    /// `StrongholdP2p` was shut down before a response was received.
     Shutdown,
 }
 

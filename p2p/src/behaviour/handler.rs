@@ -24,7 +24,7 @@ use libp2p::{
         SubstreamProtocol,
     },
 };
-pub use protocol::{CommunicationProtocol, RequestProtocol, ResponseProtocol};
+pub use protocol::{MessageProtocol, RequestProtocol, ResponseProtocol};
 use smallvec::SmallVec;
 use std::{
     collections::VecDeque,
@@ -48,7 +48,7 @@ type ProtocolsHandlerEventType<Rq, Rs> = ProtocolsHandlerEvent<
 
 type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, Rq, oneshot::Sender<Rs>), oneshot::Canceled>>;
 
-// The level of support for the [`CommunicationProtocol`] protocol.
+// The level of support for the [`MessageProtocol`] protocol.
 // This is set according to the currently effective firewall rules for the remote peer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProtocolSupport {
@@ -156,7 +156,7 @@ where
     Rs: RqRsMessage,
 {
     // Protocol versions that are potentially supported.
-    supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
+    supported_protocols: SmallVec<[MessageProtocol; 2]>,
     // Protocol support according to the firewall configuration for the remote peer.
     protocol_support: ProtocolSupport,
     // Timeout for negotiating a handshake on a substream i.g. sending a requests and receiving the response.
@@ -187,7 +187,7 @@ where
     Rs: RqRsMessage,
 {
     pub fn new(
-        supported_protocols: SmallVec<[CommunicationProtocol; 2]>,
+        supported_protocols: SmallVec<[MessageProtocol; 2]>,
         protocol_support: ProtocolSupport,
         keep_alive_timeout: Duration,
         request_timeout: Duration,

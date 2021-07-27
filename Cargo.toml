@@ -3,7 +3,7 @@ members = [
   "engine",
   "engine/runtime",
   "client",
-  "communication-refactored",
+  "p2p",
   "utils",
   "derive"
 ]

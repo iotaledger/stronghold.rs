@@ -94,6 +94,13 @@
         "stronghold-utils"
       ]
     },
+    "stronghold-p2p": {
+      "path": "./p2p/",
+      "manager": "rust",
+      "dependencies": [
+        "stronghold-utils"
+      ]
+    },
     "stronghold-communication": {
       "path": "./communication/",
       "manager": "rust",
@@ -106,7 +113,7 @@
       "manager": "rust",
       "dependencies": [
         "stronghold-engine",
-        "stronghold-communication",
+        "stronghold-p2p",
         "stronghold-utils",
         "stronghold-runtime"
       ]

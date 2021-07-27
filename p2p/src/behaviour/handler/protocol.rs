@@ -27,20 +27,20 @@ use smallvec::SmallVec;
 use std::{fmt::Debug, io, marker::PhantomData};
 
 /// Protocol Name.
-/// A Request-Response messages will only be successful if both peers support the [`CommunicationProtocol`].
+/// A Request-Response messages will only be successful if both peers support the [`MessageProtocol`].
 #[derive(Debug, Clone)]
-pub struct CommunicationProtocol {
+pub struct MessageProtocol {
     version: String,
 }
 
-impl CommunicationProtocol {
+impl MessageProtocol {
     pub fn new_version(major: u8, minor: u8, patch: u8) -> Self {
-        let version = format!("/stronghold-communication/{}.{}.{}", major, minor, patch);
-        CommunicationProtocol { version }
+        let version = format!("/stronghold-p2p/{}.{}.{}", major, minor, patch);
+        MessageProtocol { version }
     }
 }
 
-impl ProtocolName for CommunicationProtocol {
+impl ProtocolName for MessageProtocol {
     fn protocol_name(&self) -> &[u8] {
         self.version.as_bytes()
     }
@@ -57,7 +57,7 @@ where
 {
     // Supported protocols for inbound requests.
     // Rejects all inbound requests if empty.
-    pub protocols: SmallVec<[CommunicationProtocol; 2]>,
+    pub protocols: SmallVec<[MessageProtocol; 2]>,
     // Channel for forwarding the inbound request.
     pub request_tx: oneshot::Sender<(Rq, oneshot::Sender<Rs>)>,
 }
@@ -67,7 +67,7 @@ where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    type Info = CommunicationProtocol;
+    type Info = MessageProtocol;
     type InfoIter = smallvec::IntoIter<[Self::Info; 2]>;
 
     fn protocol_info(&self) -> Self::InfoIter {
@@ -117,7 +117,7 @@ where
 {
     // Supported protocols for outbound requests.
     // Rejects all outbound requests if empty.
-    pub protocols: SmallVec<[CommunicationProtocol; 2]>,
+    pub protocols: SmallVec<[MessageProtocol; 2]>,
     // Outbound request.
     pub request: Rq,
 
@@ -129,7 +129,7 @@ where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    type Info = CommunicationProtocol;
+    type Info = MessageProtocol;
     type InfoIter = smallvec::IntoIter<[Self::Info; 2]>;
 
     fn protocol_info(&self) -> Self::InfoIter {

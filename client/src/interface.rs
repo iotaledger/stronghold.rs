@@ -3,10 +3,7 @@
 
 use riker::actors::*;
 
-use futures::{
-    channel::mpsc::{channel, Receiver, Sender},
-    future::RemoteHandle,
-};
+use futures::future::RemoteHandle;
 
 #[cfg(feature = "communication")]
 use futures::{executor::block_on, StreamExt};
