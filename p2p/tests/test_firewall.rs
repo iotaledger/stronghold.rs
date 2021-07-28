@@ -14,8 +14,8 @@ use p2p::{
         FirewallPermission, FirewallRequest, FirewallRules, PermissionValue, RequestPermissions, Rule, RuleDirection,
         VariantPermission,
     },
-    InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest, RequestDirection, StrongholdP2p,
-    StrongholdP2pBuilder,
+    ChannelSinkConfig, EventChannel, InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest,
+    RequestDirection, StrongholdP2p, StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, fmt, future, marker::PhantomData, task::Poll, time::Duration};
@@ -50,9 +50,13 @@ type NewPeer = (
 
 async fn init_peer() -> NewPeer {
     let (firewall_tx, firewall_rx) = mpsc::channel(10);
-    let (rq_tx, rq_rx) = mpsc::channel(10);
-    let (event_tx, event_rx) = mpsc::channel(10);
-    let builder = StrongholdP2pBuilder::<Request, Response, RequestPermission>::new(firewall_tx, rq_tx, Some(event_tx));
+    let (request_channel, rq_rx) = EventChannel::new(10, ChannelSinkConfig::Block);
+    let (event_channel, event_rx) = EventChannel::new(10, ChannelSinkConfig::Block);
+    let builder = StrongholdP2pBuilder::<Request, Response, RequestPermission>::new(
+        firewall_tx,
+        request_channel,
+        Some(event_channel),
+    );
     #[cfg(not(feature = "tcp-transport"))]
     let peer = {
         let executor = |fut| {

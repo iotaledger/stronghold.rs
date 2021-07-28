@@ -58,9 +58,11 @@ where
 {
     #[cfg(feature = "tcp-transport")]
     pub async fn new() -> Result<Self, io::Error> {
+        use crate::EventChannel;
+
         let (firewall_tx, _) = mpsc::channel(0);
-        let (inbound_request_tx, inbound_request_rx) = mpsc::channel(1);
-        let comms = StrongholdP2p::new(firewall_tx, inbound_request_tx, None).await?;
+        let (channel, inbound_request_rx) = EventChannel::new(10, crate::ChannelSinkConfig::BufferLatest);
+        let comms = StrongholdP2p::new(firewall_tx, channel, None).await?;
         let actor = Self {
             comms,
             inbound_request_rx: Some(inbound_request_rx),

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod errors;
+mod msg_channel;
 mod swarm_task;
 mod types;
 use self::swarm_task::{SwarmOperation, SwarmTask};
@@ -32,6 +33,7 @@ use libp2p::{
 };
 #[cfg(feature = "tcp-transport")]
 use libp2p::{dns::TokioDnsConfig, tcp::TokioTcpConfig, websocket::WsConfig};
+pub use msg_channel::{ChannelSinkConfig, EventChannel};
 #[cfg(feature = "tcp-transport")]
 use std::io;
 use std::{borrow::Borrow, time::Duration};
@@ -75,8 +77,8 @@ where
     #[cfg(feature = "tcp-transport")]
     pub async fn new(
         firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
-        requests_channel: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
-        events_channel: Option<mpsc::Sender<NetworkEvent>>,
+        requests_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
+        events_channel: Option<EventChannel<NetworkEvent>>,
     ) -> Result<Self, io::Error> {
         StrongholdP2pBuilder::new(firewall_channel, requests_channel, events_channel)
             .build()
@@ -400,8 +402,8 @@ where
     TRq: Clone + Send + 'static,
 {
     firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
-    requests_channel: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
-    events_channel: Option<mpsc::Sender<NetworkEvent>>,
+    requests_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
+    events_channel: Option<EventChannel<NetworkEvent>>,
 
     // Use an existing keypair instead of creating a new one.
     ident: Option<(AuthenticKeypair<X25519Spec>, PeerId)>,
@@ -426,8 +428,8 @@ where
     /// - `events_channel`: Optional channel for forwarding all events in the swarm.
     pub fn new(
         firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
-        requests_channel: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
-        events_channel: Option<mpsc::Sender<NetworkEvent>>,
+        requests_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
+        events_channel: Option<EventChannel<NetworkEvent>>,
     ) -> Self {
         StrongholdP2pBuilder {
             firewall_channel,

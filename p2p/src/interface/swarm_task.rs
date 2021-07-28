@@ -13,7 +13,7 @@ use libp2p::{
 use smallvec::SmallVec;
 use std::{borrow::Borrow, collections::HashMap, convert::TryFrom};
 
-use super::{errors::*, types::*, BehaviourEvent, ListenerId, NetBehaviour, Rule, RuleDirection};
+use super::{errors::*, types::*, BehaviourEvent, EventChannel, ListenerId, NetBehaviour, Rule, RuleDirection};
 
 pub type Ack = ();
 
@@ -161,9 +161,9 @@ where
 
     // Channel for forwarding inbound requests.
     // [`ReceiveRequest`] includes a oneshot Sender for returning a response.
-    request_tx: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
+    request_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
     // Optional channel for forwarding all events on the swarm on listeners and connections.
-    event_tx: Option<mpsc::Sender<NetworkEvent>>,
+    event_channel: Option<EventChannel<NetworkEvent>>,
 
     // Currently active listeners.
     listeners: HashMap<ListenerId, Listener>,
@@ -195,14 +195,14 @@ where
     pub fn new(
         swarm: Swarm<NetBehaviour<Rq, Rs, TRq>>,
         command_rx: mpsc::Receiver<SwarmOperation<Rq, Rs, TRq>>,
-        request_tx: mpsc::Sender<ReceiveRequest<Rq, Rs>>,
-        event_tx: Option<mpsc::Sender<NetworkEvent>>,
+        request_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
+        event_channel: Option<EventChannel<NetworkEvent>>,
     ) -> Self {
         SwarmTask {
             swarm,
             command_rx,
-            request_tx,
-            event_tx,
+            request_channel,
+            event_channel,
             listeners: HashMap::new(),
             await_response: HashMap::new(),
             await_connection: HashMap::new(),
@@ -220,17 +220,35 @@ where
     // down.
     pub async fn run(mut self) {
         loop {
-            futures::select! {
-                // Receive [`SwarmOperation`]s to initiate operations on the [`Swarm`].
-                command = self.command_rx.next().fuse() => {
-                    if let Some(c) = command {
-                        self.handle_command(c)
-                    } else {
-                        break;
-                    }
-                },
-                // Drive the swarm and handle events
-                event = self.swarm.select_next_some() => self.handle_swarm_event(event)
+            if let Some(event_channel) = self.event_channel.as_mut() {
+                futures::select_biased! {
+                    // Drive the swarm and handle events
+                    event = self.swarm.select_next_some() => self.handle_swarm_event(event).await,
+                    // Receive [`SwarmOperation`]s to initiate operations on the [`Swarm`].
+                    command = self.command_rx.next().fuse() => {
+                        if let Some(c) = command {
+                            self.handle_command(c)
+                        } else {
+                            break;
+                        }
+                    },
+                    // Forward inbound requests if the channel is ready
+                    _ = self.request_channel.next().fuse() => {}
+                    // Forward network events if the channel is ready
+                    _ = event_channel.next().fuse() => {}
+                }
+            } else {
+                futures::select_biased! {
+                    event = self.swarm.select_next_some() => self.handle_swarm_event(event).await,
+                    command = self.command_rx.next().fuse() => {
+                        if let Some(c) = command {
+                            self.handle_command(c)
+                        } else {
+                            break;
+                        }
+                    },
+                    _ = self.request_channel.next().fuse() => {}
+                }
             }
         }
         self.shutdown();
@@ -238,7 +256,7 @@ where
 
     // Check if the swarm events yields a result for a previously initiated operation.
     // Optionally forward a [`NetworkEvent`] for the event.
-    fn handle_swarm_event<THandleErr>(&mut self, event: SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>) {
+    async fn handle_swarm_event<THandleErr>(&mut self, event: SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>) {
         match event {
             SwarmEvent::Behaviour(BehaviourEvent::ReceivedRequest {
                 request_id,
@@ -252,7 +270,7 @@ where
                     request,
                     response_tx,
                 };
-                let _ = self.request_tx.try_send(received_rq);
+                let _ = self.request_channel.send(received_rq).await;
                 return;
             }
             SwarmEvent::Behaviour(BehaviourEvent::ReceivedResponse {
@@ -327,8 +345,8 @@ where
             _ => {}
         }
         if let Ok(ev) = NetworkEvent::try_from(event) {
-            if let Some(event_tx) = self.event_tx.as_mut() {
-                let _ = event_tx.try_send(ev);
+            if let Some(event_tx) = self.event_channel.as_mut() {
+                let _ = event_tx.send(ev).await;
             }
         }
     }
@@ -569,10 +587,6 @@ where
         #[cfg(feature = "relay")]
         for (_, (_, tx_yield)) in self.await_relayed_listen.drain() {
             let _ = tx_yield.send(Err(ListenRelayErr::Shutdown));
-        }
-        self.request_tx.close_channel();
-        if let Some(mut event_tx) = self.event_tx.take() {
-            event_tx.close_channel();
         }
     }
 }
