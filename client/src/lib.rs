@@ -30,6 +30,7 @@ use thiserror::Error as DeriveError;
 mod actors;
 mod interface;
 mod internals;
+mod procedures;
 mod state;
 mod utils;
 
