@@ -8,26 +8,50 @@ use engine::{
 
 use crate::state::key_store::KeyStore;
 
-struct ProcContext<Bp>
-where
-    Bp: BoxProvider + Clone + Send + Sync + 'static,
-{
-    view: DbView<Bp>,
-    keystore: KeyStore<Bp>,
+struct ProcedureBuilder {
+    curr_vault_id: Option<VaultId>,
+    curr_record_id: Option<RecordId>,
 }
 
-impl<Bp> ProcContext<Bp>
-where
-    Bp: BoxProvider + Clone + Send + Sync + 'static,
-{
-    fn create(view: DbView<Bp>, keystore: KeyStore<Bp>) -> Self {
-        Self { view, keystore }
+impl ProcedureBuilder {
+    fn new() -> Self {
+        ProcedureBuilder {
+            curr_record_id: None,
+            curr_vault_id: None,
+        }
     }
 
-    fn switch(mut self, new_view: DbView<Bp>, new_keystore: KeyStore<Bp>) -> Self {
-        self.view = new_view;
-        self.keystore = new_keystore;
+    fn switch_vault(mut self, vault_id: VaultId, record_id: RecordId) -> Self {
+        self.curr_vault_id = Some(vault_id);
+        self.curr_record_id = Some(record_id);
         self
+    }
+
+    fn switch_record(mut self, record_id: RecordId) -> Self {
+        self.curr_record_id = Some(record_id);
+        self
+    }
+
+    // abstract from different procedure types
+    fn with_proc<P>(mut self, proc: P) -> Self
+    where
+        P: Proc,
+        Self: AsMut<P::Context>,
+    {
+        let _exec: P::Exec = proc.exec_on_ctx(self.as_mut());
+        // add to chain of ExecProcs
+        todo!()
+    }
+
+    fn flush_state(self) -> Self {
+        todo!()
+    }
+
+    fn build<'a, Bp>(self) -> Runner<'a, Bp>
+    where
+        Bp: BoxProvider + Clone + Send + Sync + 'static,
+    {
+        todo!()
     }
 }
 
@@ -35,108 +59,230 @@ trait Proc {
     type Input;
     type Write;
     type Return;
+    type Context;
+    type Exec: ExecProc<Self::Input, Self::Write, Return = Self::Return>;
 
-    fn exec(self, input: Self::Input) -> Result<(Self::Write, Self::Return), engine::Error>;
+    fn exec_on_ctx(self, context: &mut Self::Context) -> Self::Exec;
 }
 
-trait ExecProc<Bp: BoxProvider>: Proc {
-    fn run(self, db_view: &mut DbView<Bp>) -> Result<<Self as Proc>::Return, engine::Error>;
+trait ExecProc<I, W> {
+    type Return;
+    fn exec(self, input: I) -> Result<(W, Self::Return), engine::Error>;
 }
 
-impl<'a, Bp, P> ExecProc<Bp> for P
+struct Runner<'a, Bp: BoxProvider>
 where
-    Bp: BoxProvider + 'a,
-    P: Proc<Input = ()> + WriteVault<'a, Bp>,
+    Bp: BoxProvider + Clone + Send + Sync + 'static,
 {
-    fn run(self, db_view: &mut DbView<Bp>) -> Result<P::Return, anyhow::Error> {
-        let (vault_id, record_id) = self.get_target();
-        let key = self.get_target_key();
+    db_view: &'a mut DbView<Bp>,
+    keystore: &'a mut KeyStore<Bp>,
+}
 
-        let hint = self.get_hint();
-        let (write, ret) = self.exec(())?;
-
-        db_view.write(&key, vault_id, record_id, &write, hint)?;
-        Ok(ret)
+impl<'a, Bp> Runner<'a, Bp>
+where
+    Bp: BoxProvider + Clone + Send + Sync + 'static,
+{
+    fn get_source_key(&mut self, vault_id: VaultId) -> Option<Key<Bp>> {
+        let key = self.keystore.get_key(vault_id);
+        if let Some(pkey) = key.as_ref() {
+            self.keystore.insert_key(vault_id, pkey.clone());
+        }
+        key
     }
-}
 
-impl<'a, Bp, P> ExecProc<Bp> for P
-where
-    Bp: BoxProvider + 'a,
-    P: Proc<Write = ()> + ReadSecret<'a, Bp>,
-    P::Return: Default,
-{
-    fn run(self, db_view: &mut DbView<Bp>) -> Result<P::Return, engine::Error> {
-        if let Some(key) = self.get_src_key() {
-            let (vault_id, record_id) = self.get_source();
-            let mut ret = P::Return::default();
-
-            db_view.get_guard(&key, vault_id, record_id, |guard| {
-                let ((), r) = self.exec(guard)?;
-                ret = r;
-                Ok(())
-            })?;
-            Ok(ret)
+    fn get_or_insert_target_key(&mut self, vault_id: VaultId) -> Result<Key<Bp>, anyhow::Error> {
+        if !self.keystore.vault_exists(vault_id) {
+            let k = self.keystore.create_key(vault_id);
+            if let Err(e) = self.db_view.init_vault(&k, vault_id) {
+                return Err(anyhow::anyhow!(e));
+            };
+            Ok(k)
         } else {
-            Err(anyhow::anyhow!("Failed to access Vault"))
+            match self.keystore.get_key(vault_id) {
+                Some(key) => Ok(key),
+                None => {
+                    return Err(anyhow::anyhow!("Non existing"));
+                }
+            }
         }
     }
 }
 
-impl<'a, Bp, P> ExecProc<Bp> for P
+trait RunProc<P: ExecProc<I, W>, I, W> {
+    fn run_proc(&mut self, proc: P) -> Result<P::Return, engine::Error>;
+}
+
+impl<'a, Bp, P> RunProc<P, GuardedVec<u8>, ()> for Runner<'a, Bp>
 where
-    Bp: BoxProvider + 'a,
-    P: ReadSecret<'a, Bp> + WriteVault<'a, Bp>,
-    P::Return: Default,
+    Bp: BoxProvider + Clone + Send + Sync + 'static,
+    P: ExecProc<GuardedVec<u8>, ()> + ReadSecret,
 {
-    fn run(self, db_view: &mut DbView<Bp>) -> Result<P::Return, engine::Error> {
-        let (src_vault_id, src_record_id) = self.get_source();
-        let src_key = self.get_src_key();
+    fn run_proc(&mut self, proc: P) -> Result<P::Return, engine::Error> {
+        let (vault_id, record_id) = proc.get_source();
+        let key = self
+            .get_source_key(vault_id)
+            .ok_or(engine::Error::OtherError("Access error".to_string()))?;
+        self.keystore.insert_key(vault_id, key.clone());
+        let mut ret = None;
 
-        let (target_vault_id, target_record_id) = self.get_target();
-        let target_key = self.get_target_key();
+        self.db_view.get_guard(&key, vault_id, record_id, |guard| {
+            let ((), r) = proc.exec(guard)?;
+            ret = Some(r);
+            Ok(())
+        })?;
+        Ok(ret.unwrap())
+    }
+}
 
-        let hint = self.get_hint();
+impl<'a, Bp, P> RunProc<P, (), Vec<u8>> for Runner<'a, Bp>
+where
+    Bp: BoxProvider + Clone + Send + Sync + 'static,
+    P: ExecProc<(), Vec<u8>> + WriteVault,
+{
+    fn run_proc(&mut self, proc: P) -> Result<P::Return, engine::Error> {
+        let (vault_id, record_id) = proc.get_target();
+        let key = self
+            .get_or_insert_target_key(vault_id)
+            .map_err(|_| engine::Error::OtherError("Non existing".to_string()))?;
 
-        let mut ret = P::Return::default();
+        let hint = proc.get_hint();
+        let (write, ret) = proc.exec(())?;
 
-        db_view.exec_proc(
-            src_key,
-            src_vault_id,
-            src_record_id,
-            target_key,
-            target_vault_id,
-            target_record_id,
-            hint,
-            |guard| {
-                let (w, r) = self.exec(guard)?;
-                ret = r;
-                Ok(w)
-            },
-        )?;
+        self.db_view.write(&key, vault_id, record_id, &write, hint)?;
         Ok(ret)
     }
 }
 
-trait ReadSecret<'a, Bp: BoxProvider>: Proc<Input = GuardedVec<u8>> {
-    fn get_source(&self) -> (VaultId, RecordId);
-    fn get_src_key(&self) -> &'a Key<Bp>;
-}
+impl<'a, Bp, P> RunProc<P, GuardedVec<u8>, Vec<u8>> for Runner<'a, Bp>
+where
+    Bp: BoxProvider + Clone + Send + Sync + 'static,
+    P: ExecProc<GuardedVec<u8>, Vec<u8>> + ReadSecret + WriteVault,
+{
+    fn run_proc(&mut self, proc: P) -> Result<P::Return, engine::Error> {
+        let (src_vault_id, src_record_id) = proc.get_source();
+        let src_key = self
+            .get_source_key(src_vault_id)
+            .ok_or(engine::Error::OtherError("Access error".to_string()))?;
 
-trait WriteVault<'a, Bp: BoxProvider>: Proc<Write = Vec<u8>> {
-    fn get_hint(&self) -> RecordHint;
-    fn get_target(&self) -> (VaultId, RecordId);
-    fn get_target_key(&self) -> &'a Key<Bp>;
-}
+        let (target_vault_id, target_record_id) = proc.get_target();
+        let target_key = self
+            .get_or_insert_target_key(target_vault_id)
+            .map_err(|_| engine::Error::OtherError("Non existing".to_string()))?;
 
-struct Plain;
+        let hint = proc.get_hint();
 
-impl Proc for Plain {
-    type Input = ();
-    type Write = ();
-    type Return = String;
+        let mut ret = None;
 
-    fn exec(self, _: ()) -> Result<(Self::Write, Self::Return), engine::Error> {
-        Ok(((), "test".to_string()))
+        self.db_view.exec_proc(
+            &src_key,
+            src_vault_id,
+            src_record_id,
+            &target_key,
+            target_vault_id,
+            target_record_id,
+            hint,
+            |guard| {
+                let (w, r) = proc.exec(guard)?;
+                ret = Some(r);
+                Ok(w)
+            },
+        )?;
+        Ok(ret.unwrap())
     }
+}
+
+trait ReadSecret {
+    fn get_source(&self) -> (VaultId, RecordId);
+}
+
+trait WriteVault {
+    fn get_target(&self) -> (VaultId, RecordId);
+    fn get_hint(&self) -> RecordHint;
+}
+
+// ==========================
+// Example
+// ==========================
+
+trait Cipher {
+    fn encrypt(&self, data: Vec<u8>) -> Vec<u8>;
+    fn decrypt(&self, data: Vec<u8>) -> Vec<u8>;
+}
+
+impl<T: Cipher> Proc for T {
+    type Input = GuardedVec<u8>;
+    type Write = ();
+    type Return = Vec<u8>;
+    type Context = CipherContext;
+    type Exec = ExecCipher;
+
+    fn exec_on_ctx(self, context: &mut Self::Context) -> Self::Exec {
+        ExecCipher {
+            vault_id: context.vault_id.clone(),
+            record_id: context.record_id.clone(),
+        }
+    }
+}
+
+struct CipherContext {
+    vault_id: VaultId,
+    record_id: RecordId,
+}
+
+impl AsMut<CipherContext> for ProcedureBuilder {
+    fn as_mut(&mut self) -> &mut CipherContext {
+        // Provide assurance that vault-id and record-id exist
+        let _ctx = CipherContext {
+            vault_id: self.curr_vault_id.clone().unwrap(),
+            record_id: self.curr_record_id.clone().unwrap(),
+        };
+        todo!()
+    }
+}
+
+struct ExecCipher {
+    vault_id: VaultId,
+    record_id: RecordId,
+}
+
+impl ExecProc<GuardedVec<u8>, ()> for ExecCipher {
+    type Return = Vec<u8>;
+    fn exec(self, _guard: GuardedVec<u8>) -> Result<((), Vec<u8>), engine::Error> {
+        todo!();
+    }
+}
+
+impl ReadSecret for ExecCipher {
+    fn get_source(&self) -> (VaultId, RecordId) {
+        (self.vault_id.clone(), self.record_id.clone())
+    }
+}
+
+struct PlainCipher;
+
+impl PlainCipher {
+    fn new() -> Self {
+        PlainCipher
+    }
+}
+
+impl Cipher for PlainCipher {
+    fn encrypt(&self, data: Vec<u8>) -> Vec<u8> {
+        data
+    }
+
+    fn decrypt(&self, data: Vec<u8>) -> Vec<u8> {
+        data
+    }
+}
+
+/// Usage
+
+fn main() {
+    let _proc = ProcedureBuilder::new().with_proc(PlainCipher::new()).flush_state(); //.build();
+                                                                                     // let sh = Stronghold::
+                                                                                     // init_stronghold_system(None,
+                                                                                     // Vec::new(),
+                                                                                     // Vec::new()).unwrap();
+                                                                                     // sh.runtime_exec(proc)
 }
