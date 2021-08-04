@@ -5,7 +5,7 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 module.exports = {
   title: 'IOTA Stronghold',
   tagline: 'Official IOTA Stronghold Software',
-  url: 'https://stronghold-docs.iota.org/',
+  url: 'https://stronghold.docs.iota.org/',
   baseUrl: '/',
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
@@ -94,6 +94,7 @@ module.exports = {
       '@docusaurus/preset-classic',
       {
         docs: {
+          remarkPlugins: [require('remark-code-import'), require('remark-import-partial')],
           sidebarPath: require.resolve('./sidebars.js'),
           // Please change this to your repo.
           editUrl:
@@ -106,13 +107,5 @@ module.exports = {
     ],
   ],
   plugins: [
-    [
-      'docusaurus-plugin-includes',
-      {
-        sharedFolders: [
-          { source: '../../', target: 'docs/shared/'}
-        ],
-      },
-    ],
   ],
 };

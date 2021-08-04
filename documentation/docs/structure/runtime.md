@@ -5,7 +5,7 @@
 [![github](https://img.shields.io/badge/github-source-blue.svg)](https://github.com/iotaledger/stronghold.rs/tree/dev/engine/runtime) | [![github](https://img.shields.io/badge/rust-docs-green.svg)](https://docs.rs/stronghold-runtime)| [![](https://img.shields.io/crates/v/stronghold-runtime.svg)](https://crates.io/crates/stronghold-runtime)
 
 
-{@include: ../../../engine/runtime//README.md}
+{@import ../../../engine/runtime//README.md}
 
 The primary components are:
 
