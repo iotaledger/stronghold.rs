@@ -94,6 +94,7 @@ module.exports = {
       '@docusaurus/preset-classic',
       {
         docs: {
+          remarkPlugins: [require('remark-code-import'), require('remark-import-partial')],
           sidebarPath: require.resolve('./sidebars.js'),
           // Please change this to your repo.
           editUrl:
@@ -106,13 +107,5 @@ module.exports = {
     ],
   ],
   plugins: [
-    [
-      'docusaurus-plugin-includes',
-      {
-        sharedFolders: [
-          { source: '../../', target: 'docs/shared/'}
-        ],
-      },
-    ],
   ],
 };
