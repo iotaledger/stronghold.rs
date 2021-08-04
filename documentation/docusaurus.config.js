@@ -5,7 +5,7 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 module.exports = {
   title: 'IOTA Stronghold',
   tagline: 'Official IOTA Stronghold Software',
-  url: 'https://stronghold-docs.iota.org/',
+  url: 'https://stronghold.docs.iota.org/',
   baseUrl: '/',
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',

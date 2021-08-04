@@ -29,7 +29,7 @@
     "remark-code-import": "^0.3.0",
     "remark-import-partial": "^0.0.2",
     "url-loader": "^4.1.1",
-    "webpack": "^5.0.0"
+    "webpack":"^4.0.0"
   },
   "resolutions": {
     "trim": ">=0.0.3",
