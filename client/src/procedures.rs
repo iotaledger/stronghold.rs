@@ -12,28 +12,56 @@ use engine::{
 // Traits
 // ==========================
 
+type ProcFn<DIn, DOut, SIn, SOut> = Box<dyn Fn(SIn, DIn) -> Result<(SOut, DOut), engine::Error>>;
+
 trait GetSourceVault {
     fn get_source(&self) -> (VaultId, RecordId);
+}
+
+impl<T, U> GetSourceVault for T
+where
+    U: GetSourceVault,
+    T: Deref<Target = U>,
+{
+    fn get_source(&self) -> (VaultId, RecordId) {
+        self.deref().get_source()
+    }
 }
 
 trait GetTargetVault {
     fn get_target(&self) -> (VaultId, RecordId, RecordHint);
 }
 
-trait ExecProc<I, O, G, W> {
-    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: I) -> Result<O, engine::Error>;
+impl<T, U> GetTargetVault for T
+where
+    U: GetTargetVault,
+    T: Deref<Target = U>,
+{
+    fn get_target(&self) -> (VaultId, RecordId, RecordHint) {
+        self.deref().get_target()
+    }
+}
+
+trait ExecProc {
+    type InputData;
+    type OutputData;
+    type InputSecret; // GuardedVec<u8> | ()     impl<P: ExecProc<InputSecret = GuardedVec<u8>>> + GetSourceVault
+    type OutputSecret; // Vec<u8> | ()
+    fn exec<PExe: ProcExecutor>(
+        self,
+        executor: &mut PExe,
+        input: Self::InputData,
+    ) -> Result<Self::OutputData, engine::Error>;
 }
 
 trait ProcExecutor {
-    fn exec_on_guarded<F, I, O, W>(
+    fn exec_on_guarded<DIn, DOut, SOut>(
         &mut self,
         vault_id: VaultId,
         record_id: RecordId,
-        f: F,
-        input: I,
-    ) -> Result<(W, O), engine::Error>
-    where
-        F: FnOnce(GuardedVec<u8>, I) -> Result<(W, O), engine::Error>;
+        f: &ProcFn<DIn, DOut, GuardedVec<u8>, SOut>,
+        input: DIn,
+    ) -> Result<(SOut, DOut), engine::Error>;
 
     fn write_to_vault(
         &mut self,
@@ -48,35 +76,25 @@ trait ProcExecutor {
 // Primitive Procs
 // ==========================
 
-struct PrimitiveProc<F, I, O, G, W>
-where
-    F: FnOnce(G, I) -> Result<(W, O), engine::Error>,
-{
-    f: F,
+struct PrimitiveProc<DIn, DOut, SIn, SOut> {
+    f: ProcFn<DIn, DOut, SIn, SOut>,
     location_0: Option<(VaultId, RecordId)>,
     location_1: Option<(VaultId, RecordId, RecordHint)>,
-    _marker: (PhantomData<I>, PhantomData<O>, PhantomData<G>, PhantomData<W>),
+    _marker: (PhantomData<DIn>, PhantomData<DOut>, PhantomData<SIn>, PhantomData<SOut>),
 }
 
-impl<F, I, O, G, W> PrimitiveProc<F, I, O, G, W>
+impl<DIn, DOut, SIn, SOut> PrimitiveProc<DIn, DOut, SIn, SOut>
 where
-    F: FnOnce(G, I) -> Result<(W, O), engine::Error>,
-    Self: ExecProc<I, O, G, W>,
+    Self: ExecProc<InputData = DIn, OutputData = DOut>,
 {
-    fn into_complex(self) -> ComplexProc<Self, I, O, G, W> {
-        ComplexProc {
-            proc: self,
-            _marker: (PhantomData, PhantomData, PhantomData, PhantomData),
-        }
+    fn into_complex(self) -> ComplexProc<Self> {
+        ComplexProc { proc: self }
     }
 }
 
 // A PrimitiveProc<_, _, _, GuardedVec<u8>, _> can only be created via Processor::new or Sink::new, in both cases there
 // is a location_0 / source-vault.
-impl<F, I, O, W> GetSourceVault for PrimitiveProc<F, I, O, GuardedVec<u8>, W>
-where
-    F: FnOnce(GuardedVec<u8>, I) -> Result<(W, O), engine::Error>,
-{
+impl<DIn, DOut, SOut> GetSourceVault for PrimitiveProc<DIn, DOut, GuardedVec<u8>, SOut> {
     fn get_source(&self) -> (VaultId, RecordId) {
         self.location_0.unwrap()
     }
@@ -84,73 +102,9 @@ where
 
 // A PrimitiveProc<_, _, _, _, Vec<u8>> can only be created via Generator::new or Processor::new, in both cases there is
 // a location_1 / target-vault.
-impl<F, I, O, G> GetTargetVault for PrimitiveProc<F, I, O, G, Vec<u8>>
-where
-    F: FnOnce(G, I) -> Result<(Vec<u8>, O), engine::Error>,
-{
+impl<DIn, DOut, SIn> GetTargetVault for PrimitiveProc<DIn, DOut, SIn, Vec<u8>> {
     fn get_target(&self) -> (VaultId, RecordId, RecordHint) {
         self.location_1.unwrap()
-    }
-}
-
-impl<F, I, O, G, W> ExecProc<I, O, G, W> for PrimitiveProc<F, I, O, G, W>
-where
-    F: FnOnce(G, I) -> Result<(W, O), engine::Error>,
-    Self: ExecOnGuard<I, O, W> + WriteVault<W>,
-{
-    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: I) -> Result<O, engine::Error> {
-        let (write_vault, output) = self.exec_on_guard(executor, input)?;
-        self.write_secret(executor, write_vault)?;
-        Ok(output)
-    }
-}
-
-trait ExecOnGuard<I, O, W> {
-    fn exec_on_guard<PExe: ProcExecutor>(&self, executor: &mut PExe, input: I) -> Result<(W, O), engine::Error>;
-}
-
-impl<F, I, O, W> ExecOnGuard<I, O, W> for PrimitiveProc<F, I, O, (), W>
-where
-    F: FnOnce((), I) -> Result<(W, O), engine::Error>,
-{
-    fn exec_on_guard<PExe: ProcExecutor>(&self, _: &mut PExe, input: I) -> Result<(W, O), engine::Error> {
-        let f = self.f;
-        f((), input)
-    }
-}
-
-impl<F, I, O, W> ExecOnGuard<I, O, W> for PrimitiveProc<F, I, O, GuardedVec<u8>, W>
-where
-    F: FnOnce(GuardedVec<u8>, I) -> Result<(W, O), engine::Error>,
-    Self: GetSourceVault,
-{
-    fn exec_on_guard<PExe: ProcExecutor>(&self, executor: &mut PExe, input: I) -> Result<(W, O), engine::Error> {
-        let (vault_id_0, record_id_0) = self.get_source();
-        executor.exec_on_guarded(vault_id_0, record_id_0, self.f, input)
-    }
-}
-
-trait WriteVault<W> {
-    fn write_secret<PExe: ProcExecutor>(&self, executor: &mut PExe, value: W) -> Result<(), engine::Error>;
-}
-
-impl<F, I, O, G> WriteVault<()> for PrimitiveProc<F, I, O, G, ()>
-where
-    F: FnOnce(G, I) -> Result<((), O), engine::Error>,
-{
-    fn write_secret<PExe: ProcExecutor>(&self, executor: &mut PExe, value: ()) -> Result<(), engine::Error> {
-        Ok(())
-    }
-}
-
-impl<F, I, O, G> WriteVault<Vec<u8>> for PrimitiveProc<F, I, O, G, Vec<u8>>
-where
-    F: FnOnce(G, I) -> Result<(Vec<u8>, O), engine::Error>,
-    Self: GetTargetVault,
-{
-    fn write_secret<PExe: ProcExecutor>(&self, executor: &mut PExe, value: Vec<u8>) -> Result<(), engine::Error> {
-        let (vault_id, record_id, hint) = self.get_target();
-        executor.write_to_vault(vault_id, record_id, hint, value)
     }
 }
 
@@ -158,31 +112,19 @@ where
 // Primitive Proc Types
 // ==========================
 
-// No secret used, no new secret created
-type PlainProc<F, I, O> = PrimitiveProc<F, I, O, (), ()>;
+// ---------------
+//=== No secret used, create new secret in vault
+// ---------------
 
-impl<F, I, O> PlainProc<F, I, O>
-where
-    F: FnOnce((), I) -> Result<((), O), engine::Error>,
-{
-    fn new(f: F) -> Self {
-        Self {
-            f,
-            location_0: None,
-            location_1: None,
-            _marker: (PhantomData, PhantomData, PhantomData, PhantomData),
-        }
-    }
-}
+type Generator<DIn, DOut> = PrimitiveProc<DIn, DOut, (), Vec<u8>>;
 
-// No secret used, create new secret in vault
-type Generator<F, I, O> = PrimitiveProc<F, I, O, (), Vec<u8>>;
-
-impl<F, I, O> Generator<F, I, O>
-where
-    F: FnOnce((), I) -> Result<(Vec<u8>, O), engine::Error>,
-{
-    fn new(f: F, vault_id_1: VaultId, record_id_1: RecordId, hint: RecordHint) -> Self {
+impl<DIn, DOut> Generator<DIn, DOut> {
+    pub fn new(
+        f: ProcFn<DIn, DOut, (), Vec<u8>>,
+        vault_id_1: VaultId,
+        record_id_1: RecordId,
+        hint: RecordHint,
+    ) -> Self {
         Self {
             f,
             location_0: None,
@@ -192,15 +134,33 @@ where
     }
 }
 
-// Existing secret used, no new secret created
-type Processor<F, I, O> = PrimitiveProc<F, I, O, GuardedVec<u8>, Vec<u8>>;
-
-impl<F, I, O> Processor<F, I, O>
+impl<DIn, DOut> ExecProc for Generator<DIn, DOut>
 where
-    F: FnOnce(GuardedVec<u8>, I) -> Result<(Vec<u8>, O), engine::Error>,
+    Self: GetTargetVault,
 {
+    type InputData = DIn;
+    type OutputData = DOut;
+    type InputSecret = ();
+    type OutputSecret = Vec<u8>;
+
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: DIn) -> Result<DOut, engine::Error> {
+        let (vault_id_1, record_id_1, hint) = self.get_target();
+        let f = self.f;
+        let (write_vault, output) = f((), input)?;
+        executor.write_to_vault(vault_id_1, record_id_1, hint, write_vault)?;
+        Ok(output)
+    }
+}
+
+// ---------------
+//=== Existing secret used, new secret created
+// ---------------
+
+type Processor<DIn, DOut> = PrimitiveProc<DIn, DOut, GuardedVec<u8>, Vec<u8>>;
+
+impl<DIn, DOut> Processor<DIn, DOut> {
     fn new(
-        f: F,
+        f: ProcFn<DIn, DOut, GuardedVec<u8>, Vec<u8>>,
         vault_id_0: VaultId,
         record_id_0: RecordId,
         vault_id_1: VaultId,
@@ -216,14 +176,32 @@ where
     }
 }
 
-// Existing secret used, no new secret created
-type Sink<F, I, O> = PrimitiveProc<F, I, O, GuardedVec<u8>, ()>;
-
-impl<F, I, O> Sink<F, I, O>
+impl<DIn, DOut> ExecProc for Processor<DIn, DOut>
 where
-    F: FnOnce(GuardedVec<u8>, I) -> Result<((), O), engine::Error>,
+    Self: GetSourceVault + GetTargetVault,
 {
-    fn new(f: F, vault_id_0: VaultId, record_id_0: RecordId) -> Self {
+    type InputData = DIn;
+    type OutputData = DOut;
+    type InputSecret = GuardedVec<u8>;
+    type OutputSecret = Vec<u8>;
+
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: DIn) -> Result<DOut, engine::Error> {
+        let (vault_id_0, record_id_0) = self.get_source();
+        let (write_vault, output) = executor.exec_on_guarded(vault_id_0, record_id_0, &self.f, input)?;
+        let (vault_id_1, record_id_1, hint) = self.get_target();
+        executor.write_to_vault(vault_id_1, record_id_1, hint, write_vault)?;
+        Ok(output)
+    }
+}
+
+// ---------------
+//=== Existing secret used, no new secret created
+// ---------------
+
+type Sink<DIn, DOut> = PrimitiveProc<DIn, DOut, GuardedVec<u8>, ()>;
+
+impl<DIn, DOut> Sink<DIn, DOut> {
+    fn new(f: ProcFn<DIn, DOut, GuardedVec<u8>, ()>, vault_id_0: VaultId, record_id_0: RecordId) -> Self {
         Self {
             f,
             location_0: Some((vault_id_0, record_id_0)),
@@ -233,18 +211,33 @@ where
     }
 }
 
-// ==========================
-// Complex Proc
-// ==========================
+impl<DIn, DOut> ExecProc for Sink<DIn, DOut>
+where
+    Self: GetSourceVault,
+{
+    type InputData = DIn;
+    type OutputData = DOut;
+    type InputSecret = GuardedVec<u8>;
+    type OutputSecret = ();
 
-struct ComplexProc<P: ExecProc<I, O, G, W>, I, O, G, W> {
-    proc: P,
-    _marker: (PhantomData<I>, PhantomData<O>, PhantomData<G>, PhantomData<W>),
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: DIn) -> Result<DOut, engine::Error> {
+        let (vault_id_0, record_id_0) = self.get_source();
+        let ((), output) = executor.exec_on_guarded(vault_id_0, record_id_0, &self.f, input)?;
+        Ok(output)
+    }
 }
 
-impl<P, I, O, G, W> Deref for ComplexProc<P, I, O, G, W>
+// ==========================
+// Complex Proc: combine Primitive Procs with other Procs and ProcFns
+// ==========================
+
+struct ComplexProc<P: ExecProc> {
+    proc: P,
+}
+
+impl<P> Deref for ComplexProc<P>
 where
-    P: ExecProc<I, O, G, W> + GetSourceVault,
+    P: ExecProc,
 {
     type Target = P;
     fn deref(&self) -> &Self::Target {
@@ -252,66 +245,205 @@ where
     }
 }
 
-impl<P: ExecProc<I, O, G, W>, I, O, G, W> ExecProc<I, O, G, W> for ComplexProc<P, I, O, G, W> {
-    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: I) -> Result<O, engine::Error> {
+impl<P: ExecProc> ExecProc for ComplexProc<P> {
+    type InputData = P::InputData;
+    type OutputData = P::OutputData;
+    type InputSecret = P::InputSecret;
+    type OutputSecret = P::OutputSecret;
+
+    fn exec<PExe: ProcExecutor>(
+        self,
+        executor: &mut PExe,
+        input: Self::InputData,
+    ) -> Result<Self::OutputData, engine::Error> {
         self.proc.exec(executor, input)
     }
 }
 
 // ==========================
-// Example for a Combinator
+// Combinators
 // ==========================
 
-impl<P, I, O, G> ComplexProc<P, I, O, G, Vec<u8>>
+// ---------------
+// === Map ExecProc::OutputData into a new type
+// ---------------
+
+impl<P: ExecProc> ComplexProc<P> {
+    fn map_output<F: Fn(P::OutputData) -> OData1, OData1>(self, f: F) -> ComplexProc<MapProc<P, F, OData1>> {
+        let proc = MapProc { proc: self.proc, f };
+        ComplexProc { proc }
+    }
+}
+
+struct MapProc<P, F, OData1>
 where
-    P: ExecProc<I, O, G, Vec<u8>> + GetTargetVault,
+    P: ExecProc,
+    F: Fn(P::OutputData) -> OData1,
 {
-    fn and_then<F, O1>(self, other: F) -> ComplexProc<ChainedProc<P, Sink<F, O, O1>, I, O, O1, G, ()>, I, O1, G, ()>
+    proc: P,
+    f: F,
+}
+
+impl<P, F, OData1> Deref for MapProc<P, F, OData1>
+where
+    P: ExecProc,
+    F: Fn(P::OutputData) -> OData1,
+{
+    type Target = P;
+    fn deref(&self) -> &Self::Target {
+        &self.proc
+    }
+}
+
+impl<P, F, OData1> ExecProc for MapProc<P, F, OData1>
+where
+    P: ExecProc,
+    F: Fn(P::OutputData) -> OData1,
+{
+    type InputData = P::InputData;
+    type OutputData = OData1;
+    type InputSecret = P::InputSecret;
+    type OutputSecret = P::OutputSecret;
+
+    fn exec<PExe: ProcExecutor>(
+        self,
+        executor: &mut PExe,
+        input: Self::InputData,
+    ) -> Result<Self::OutputData, engine::Error> {
+        self.proc.exec(executor, input).map(self.f)
+    }
+}
+
+// ---------------
+// === Chain a next procedure P1 that takes Self::OutputData as P1::InputData
+// ---------------
+
+impl<P> ComplexProc<P>
+where
+    P: ExecProc<OutputSecret = Vec<u8>> + GetTargetVault,
+{
+    fn and_then<OData1, ISecret1, OSecret1>(
+        self,
+        other: ProcFn<P::OutputData, OData1, ISecret1, OSecret1>,
+    ) -> ComplexProc<
+        impl ExecProc<InputData = P::InputData, OutputData = OData1, InputSecret = P::InputSecret, OutputSecret = OSecret1>,
+    >
     where
-        F: FnOnce(GuardedVec<u8>, O) -> Result<((), O1), engine::Error>,
+        PrimitiveProc<P::OutputData, OData1, ISecret1, OSecret1>:
+            ExecProc<InputData = P::OutputData, OutputData = OData1, InputSecret = ISecret1, OutputSecret = OSecret1>,
     {
         let (vault_id, record_id, _) = self.proc.get_target();
-        let proc_1 = Sink::new(other, vault_id, record_id);
+        let proc_1 = PrimitiveProc {
+            f: other,
+            location_0: Some((vault_id, record_id)),
+            location_1: None,
+            _marker: (PhantomData, PhantomData, PhantomData, PhantomData),
+        };
         ComplexProc {
             proc: ChainedProc {
-                proc_0: self,
+                proc_0: self.proc,
                 proc_1,
-                _marker: (PhantomData, PhantomData, PhantomData),
             },
-            _marker: (PhantomData, PhantomData, PhantomData, PhantomData),
         }
     }
 }
 
-struct ChainedProc<P, P1, I, O, O1, G, W1>
+struct ChainedProc<P, P1>
 where
-    P: ExecProc<I, O, G, Vec<u8>> + GetTargetVault,
-    P1: ExecProc<O, O1, GuardedVec<u8>, W1>,
+    P: ExecProc,
+    P1: ExecProc,
 {
-    proc_0: ComplexProc<P, I, O, G, Vec<u8>>,
+    proc_0: P,
     proc_1: P1,
-    _marker: (PhantomData<G>, PhantomData<O1>, PhantomData<W1>),
 }
 
-impl<P, P1, I, O, O1, G, W1> ExecProc<I, O1, G, W1> for ChainedProc<P, P1, I, O, O1, G, W1>
+impl<P, P1> GetTargetVault for ChainedProc<P, P1>
 where
-    P: ExecProc<I, O, G, Vec<u8>> + GetTargetVault,
-    P1: ExecProc<O, O1, GuardedVec<u8>, W1>,
+    P: ExecProc,
+    P1: ExecProc + GetTargetVault,
 {
-    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: I) -> Result<O1, engine::Error> {
+    fn get_target(&self) -> (VaultId, RecordId, RecordHint) {
+        self.proc_1.get_target()
+    }
+}
+
+impl<P, P1> GetSourceVault for ChainedProc<P, P1>
+where
+    P: ExecProc + GetSourceVault,
+    P1: ExecProc,
+{
+    fn get_source(&self) -> (VaultId, RecordId) {
+        self.proc_0.get_source()
+    }
+}
+
+impl<P, P1> ExecProc for ChainedProc<P, P1>
+where
+    P: ExecProc,
+    P1: ExecProc<InputData = P::OutputData>,
+{
+    type InputData = P::InputData;
+    type OutputData = P1::OutputData;
+    type InputSecret = P::InputSecret;
+    type OutputSecret = P1::OutputSecret;
+
+    fn exec<PExe: ProcExecutor>(
+        self,
+        executor: &mut PExe,
+        input: Self::InputData,
+    ) -> Result<Self::OutputData, engine::Error> {
         let out = self.proc_0.exec(executor, input)?;
         self.proc_1.exec(executor, out)
     }
 }
 
+// ---------------
+// === Reduce the Result of two Procedures to one
+// ---------------
+
+struct ReduceProc<P, P1, F, DOut, SOut>
+where
+    P: ExecProc<InputData = ()>,
+    P1: ExecProc<InputData = ()>,
+    F: FnOnce(P::OutputData, P1::OutputData) -> DOut,
+{
+    proc_0: P,
+    proc_1: P1,
+    f: F,
+    _marker: PhantomData<SOut>,
+}
+
+impl<P, P1, F, DOut, SOut> ExecProc for ReduceProc<P, P1, F, DOut, SOut>
+where
+    P: ExecProc<InputData = ()>,
+    P1: ExecProc<InputData = ()>,
+    F: FnOnce(P::OutputData, P1::OutputData) -> DOut,
+{
+    type InputData = ();
+    type OutputData = DOut;
+    type InputSecret = ();
+    type OutputSecret = SOut;
+
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, _: ()) -> Result<Self::OutputData, engine::Error> {
+        let out_0 = self.proc_0.exec(executor, ())?;
+        let out_1 = self.proc_1.exec(executor, ())?;
+        let f = self.f;
+        Ok(f(out_0, out_1))
+    }
+}
+
 // ==========================
-// Example Applications
+// Example Application
 // ==========================
 
 mod test {
+    use std::collections::HashMap;
+
     use engine::vault::{DbView, Key};
 
-    use crate::state::key_store::KeyStore;
+    struct KeyStore<P: BoxProvider + Clone + Send + Sync + 'static> {
+        store: HashMap<VaultId, Key<P>>,
+    }
 
     use super::*;
 
@@ -325,13 +457,13 @@ mod test {
         fn box_overhead() -> usize {
             todo!()
         }
-        fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> engine::Result<Vec<u8>> {
+        fn box_seal(_key: &Key<Self>, _ad: &[u8], _data: &[u8]) -> engine::Result<Vec<u8>> {
             todo!()
         }
-        fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> engine::Result<Vec<u8>> {
+        fn box_open(_key: &Key<Self>, _ad: &[u8], _data: &[u8]) -> engine::Result<Vec<u8>> {
             todo!()
         }
-        fn random_buf(buf: &mut [u8]) -> engine::Result<()> {
+        fn random_buf(_buf: &mut [u8]) -> engine::Result<()> {
             todo!()
         }
     }
@@ -340,27 +472,42 @@ mod test {
         db: DbView<MockProvider>,
         keystore: KeyStore<MockProvider>,
     }
+    impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
+        pub fn new() -> Self {
+            todo!()
+        }
+        pub fn get_key(&mut self, _: VaultId) -> Option<Key<P>> {
+            todo!()
+        }
+        pub fn vault_exists(&self, _: VaultId) -> bool {
+            todo!()
+        }
+        pub fn create_key(&mut self, _: VaultId) -> Key<P> {
+            todo!()
+        }
+        pub fn insert_key(&mut self, _: VaultId, _: Key<P>) -> &Key<P> {
+            todo!()
+        }
+    }
+
     impl ProcedureExecutor {
         fn new() -> Self {
             todo!()
         }
     }
     impl ProcExecutor for ProcedureExecutor {
-        fn exec_on_guarded<F, I, O, W>(
+        fn exec_on_guarded<DIn, DOut, SOut>(
             &mut self,
             vault_id: VaultId,
             record_id: RecordId,
-            f: F,
-            input: I,
-        ) -> Result<(W, O), engine::Error>
-        where
-            F: FnOnce(GuardedVec<u8>, I) -> Result<(W, O), engine::Error>,
-        {
+            f: &ProcFn<DIn, DOut, GuardedVec<u8>, SOut>,
+            input: DIn,
+        ) -> Result<(SOut, DOut), engine::Error> {
             let key = self.keystore.get_key(vault_id);
             if let Some(pkey) = key.as_ref() {
                 self.keystore.insert_key(vault_id, pkey.clone());
             };
-            let key = key.ok_or(engine::Error::OtherError("Not existing".to_string()))?;
+            let key = key.ok_or_else(|| engine::Error::OtherError("Not existing".to_string()))?;
             let mut ret = None;
             self.db.get_guard(&key, vault_id, record_id, |guard: GuardedVec<u8>| {
                 let r = f(guard, input);
@@ -382,24 +529,22 @@ mod test {
                 self.db.init_vault(&k, vault_id)?;
                 k
             } else {
-                let k = self
-                    .keystore
+                self.keystore
                     .get_key(vault_id)
-                    .ok_or(engine::Error::OtherError("Not existing".to_string()))?;
-                k
+                    .ok_or_else(|| engine::Error::OtherError("Not existing".to_string()))?
             };
             self.db.write(&key, vault_id, record_id, &value, hint)
         }
     }
 
-    fn generate_secret<T>(_: (), data: T) -> Result<(Vec<u8>, T), engine::Error> {
-        Ok(("Super secret Secret".as_bytes().to_vec(), data))
+    fn generate_secret(_: (), _: ()) -> Result<(Vec<u8>, ()), engine::Error> {
+        Ok(("Super secret Secret".as_bytes().to_vec(), ()))
     }
 
     struct DummyCipher;
 
     impl DummyCipher {
-        fn encrypt(guard: GuardedVec<u8>, data: String) -> Result<((), String), engine::Error> {
+        fn encrypt(_guard: GuardedVec<u8>, data: String) -> Result<((), String), engine::Error> {
             Ok(((), data))
         }
     }
@@ -407,14 +552,14 @@ mod test {
     fn main() {
         let mut executor = ProcedureExecutor::new();
 
-        let encrypt_string = "This is my message".to_string();
         let vault_id = VaultId::random::<MockProvider>().unwrap();
         let record_id = RecordId::random::<MockProvider>().unwrap();
         let hint = RecordHint::new("".as_bytes()).unwrap();
 
-        let proc = Generator::new(generate_secret, vault_id, record_id, hint)
+        let proc = Generator::new(Box::new(generate_secret), vault_id, record_id, hint)
             .into_complex()
-            .and_then(DummyCipher::encrypt);
-        let res = proc.exec(&mut executor, encrypt_string).unwrap();
+            .map_output(|()| "This is my message".to_string())
+            .and_then(Box::new(DummyCipher::encrypt));
+        let _res = proc.exec(&mut executor, ()).unwrap();
     }
 }
