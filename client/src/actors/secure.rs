@@ -8,13 +8,16 @@
 
 #![allow(clippy::type_complexity)]
 
-use crate::internals;
 pub use crate::{
     actors::{GetSnapshot, Registry},
     internals::Provider,
     state::{key_store::KeyStore, secure::SecureClient, snapshot::Snapshot},
     utils::StatusMessage,
     ResultMessage,
+};
+use crate::{
+    internals,
+    procedures::{BuildProcedure, ExecProc, ProcExecutor, ProcFn},
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
 
@@ -27,6 +30,7 @@ use crypto::{
     utils::rand::fill,
 };
 use engine::{
+    runtime::GuardedVec,
     store::Cache,
     vault::{ClientId, DbView, Key, RecordHint, RecordId, VaultId},
 };
@@ -695,6 +699,59 @@ impl_handler!(
 // ----
 // impl for procedures
 // ---
+
+impl<Proc> Handler<BuildProcedure<Proc>> for SecureClient
+where
+    Proc: ExecProc<InData = ()> + 'static,
+{
+    type Result = Result<Proc::OutData, anyhow::Error>;
+
+    fn handle(&mut self, proc: BuildProcedure<Proc>, _: &mut Self::Context) -> Self::Result {
+        proc.0.exec(self, ())
+    }
+}
+
+impl ProcExecutor for SecureClient {
+    fn exec_on_guarded<DIn, DOut, SOut>(
+        &mut self,
+        vault_id: VaultId,
+        record_id: RecordId,
+        f: &ProcFn<DIn, DOut, engine::runtime::GuardedVec<u8>, SOut>,
+        input: DIn,
+    ) -> Result<(SOut, DOut), anyhow::Error> {
+        let key = self.keystore.get_key(vault_id);
+        if let Some(pkey) = key.as_ref() {
+            self.keystore.insert_key(vault_id, pkey.clone());
+        };
+        let key = key.ok_or_else(|| anyhow::anyhow!(VaultError::NotExisting))?;
+        let mut ret = None;
+        self.db.get_guard(&key, vault_id, record_id, |guard: GuardedVec<u8>| {
+            let r = f(guard, input);
+            ret = Some(r);
+            Ok(())
+        })?;
+        ret.unwrap()
+    }
+
+    fn write_to_vault(
+        &mut self,
+        vault_id: VaultId,
+        record_id: RecordId,
+        hint: RecordHint,
+        value: Vec<u8>,
+    ) -> Result<(), anyhow::Error> {
+        let key = if !self.keystore.vault_exists(vault_id) {
+            let k = self.keystore.create_key(vault_id);
+            self.db.init_vault(&k, vault_id)?;
+            k
+        } else {
+            self.keystore.get_key(vault_id).unwrap()
+        };
+        self.db
+            .write(&key, vault_id, record_id, &value, hint)
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+}
 
 /// Intermediate handler for executing procedures
 /// will be replace by upcoming `procedures api`

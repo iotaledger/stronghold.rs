@@ -69,7 +69,7 @@ impl<A, C>  ProcedureBuilder<A, C>  {
         todo!()
     }
 
-    fn build<'a, Bp>(self) -> Runner<'a, Bp>
+    pub fn build<'a, Bp>(self) -> Runner<'a, Bp>
     where
         Bp: BoxProvider + Clone + Send + Sync + 'static,
     {
@@ -813,5 +813,80 @@ where
 {
     fn get_target(&self) -> (VaultId, RecordId, RecordHint) {
         (self.vault_id_1, self.record_id_1, self.hint)
+    }
+}
+
+
+
+pub struct ComplexProc<P: ExecProc> {
+    proc: P,
+}
+
+impl<P> Deref for ComplexProc<P>
+where
+    P: ExecProc,
+{
+    type Target = P;
+    fn deref(&self) -> &Self::Target {
+        &self.proc
+    }
+}
+
+impl<P: ExecProc> ExecProc for ComplexProc<P> {
+    type InData = P::InData;
+    type OutData = P::OutData;
+    type InSecret = P::InSecret;
+    type OutSecret = P::OutSecret;
+
+    fn exec<PExe: ProcExecutor>(
+        self,
+        executor: &mut PExe,
+        input: Self::InData,
+    ) -> Result<Self::OutData, engine::Error> {
+        self.proc.exec(executor, input)
+    }
+}
+
+impl<P: ExecProc> ComplexProc<P> {
+    pub fn map_output<F, OData1>(
+        self,
+        f: F,
+    ) -> ComplexProc<
+        impl ExecProc<InData = P::InData, OutData = OData1, InSecret = P::InSecret, OutSecret = P::OutSecret>,
+    >
+    where
+        F: Fn(P::OutData) -> OData1,
+    {
+        let proc = MapProc { proc: self.proc, f };
+        ComplexProc { proc }
+    }
+}
+
+
+impl<P> ComplexProc<P>
+where
+    P: ExecProc<OutSecret = Vec<u8>> + GetTargetVault,
+{
+    pub fn and_then<OData1, ISecret1, OSecret1>(
+        self,
+        other: ProcFn<P::OutData, OData1, ISecret1, OSecret1>,
+    ) -> ComplexProc<ChainedProc<P, PrimitiveProc<P::OutData, OData1, ISecret1, OSecret1>>>
+    where
+        PrimitiveProc<P::OutData, OData1, ISecret1, OSecret1>:
+            ExecProc<InData = P::OutData, OutData = OData1, InSecret = ISecret1, OutSecret = OSecret1>,
+    {
+        let (vault_id, record_id, _) = self.get_target();
+        let proc_1 = PrimitiveProc {
+            f: other,
+            location_0: Some((vault_id, record_id)),
+            location_1: None,
+            _marker: (PhantomData, PhantomData, PhantomData, PhantomData),
+        };
+        ComplexProc {
+            proc: ChainedProc {
+                proc_0: self.proc,
+                proc_1,
+            },
+        }
     }
 }
