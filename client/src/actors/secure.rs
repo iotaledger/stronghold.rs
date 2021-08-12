@@ -44,9 +44,6 @@ pub use self::procedures::ProcResult;
 /// Store typedef on `engine::store::Cache`
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
-// #[cfg(feature = "communication")]
-// use communication::actor::{PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission};
-
 use stronghold_utils::GuardDebug;
 use thiserror::Error as DeriveError;
 
@@ -79,6 +76,7 @@ pub mod messages {
 
     use super::*;
     use crate::{internals, Location};
+    use serde::{Deserialize, Serialize};
     use std::time::Duration;
 
     #[derive(Clone, GuardDebug)]
@@ -102,7 +100,7 @@ pub mod messages {
         type Result = ();
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct CreateVault {
         pub location: Location,
     }
@@ -111,7 +109,7 @@ pub mod messages {
         type Result = ();
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct WriteToVault {
         pub location: Location,
 
@@ -123,7 +121,7 @@ pub mod messages {
         type Result = Result<(), anyhow::Error>;
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct RevokeData {
         pub location: Location,
     }
@@ -132,7 +130,7 @@ pub mod messages {
         type Result = Result<(), anyhow::Error>;
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct GarbageCollect {
         pub location: Location,
     }
@@ -141,7 +139,7 @@ pub mod messages {
         type Result = Result<(), anyhow::Error>;
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct ListIds {
         pub vault_path: Vec<u8>,
     }
@@ -150,7 +148,7 @@ pub mod messages {
         type Result = Result<Vec<(RecordId, RecordHint)>, anyhow::Error>;
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct CheckRecord {
         pub location: Location,
     }
@@ -159,14 +157,14 @@ pub mod messages {
         type Result = bool;
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct ClearCache;
 
     impl Message for ClearCache {
         type Result = Result<(), anyhow::Error>;
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct CheckVault {
         pub vault_path: Vec<u8>,
     }
@@ -175,7 +173,7 @@ pub mod messages {
         type Result = Result<(), anyhow::Error>;
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct WriteToStore {
         pub location: Location,
         pub payload: Vec<u8>,
@@ -186,7 +184,7 @@ pub mod messages {
         type Result = Result<(), anyhow::Error>;
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct ReadFromStore {
         pub location: Location,
     }
@@ -195,7 +193,7 @@ pub mod messages {
         type Result = Result<Vec<u8>, anyhow::Error>;
     }
 
-    #[derive(Clone, GuardDebug)]
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct DeleteFromStore {
         pub location: Location,
     }
@@ -220,12 +218,16 @@ pub mod messages {
 
 pub mod procedures {
 
+    use std::array::TryFromSliceError;
+
     use super::*;
     use crate::Location;
     use crypto::keys::slip10::ChainCode;
     use serde::{Deserialize, Serialize};
+    use std::convert::TryInto;
 
     /// for old client (cryptographic) procedure calling
+    #[derive(Clone, Serialize, Deserialize)]
     pub enum Procedure {
         /// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in
         /// the `output` location
@@ -273,7 +275,9 @@ pub mod procedures {
         Ed25519Sign { private_key: Location, msg: Vec<u8> },
     }
 
-    #[derive(GuardDebug)]
+    #[derive(GuardDebug, Clone, Serialize, Deserialize)]
+    #[serde(try_from = "SerdeProcResult")]
+    #[serde(into = "SerdeProcResult")]
     pub enum ProcResult {
         /// Return from generating a `SLIP10` seed.
         SLIP10Generate(StatusMessage),
@@ -293,7 +297,77 @@ pub mod procedures {
         Error(String),
     }
 
-    #[derive(GuardDebug)]
+    impl TryFrom<SerdeProcResult> for ProcResult {
+        type Error = TryFromSliceError;
+
+        fn try_from(serde_proc_result: SerdeProcResult) -> Result<Self, TryFromSliceError> {
+            match serde_proc_result {
+                SerdeProcResult::SLIP10Generate(msg) => Ok(ProcResult::SLIP10Generate(msg)),
+                SerdeProcResult::SLIP10Derive(msg) => Ok(ProcResult::SLIP10Derive(msg)),
+                SerdeProcResult::BIP39Recover(msg) => Ok(ProcResult::BIP39Recover(msg)),
+                SerdeProcResult::BIP39Generate(msg) => Ok(ProcResult::BIP39Generate(msg)),
+                SerdeProcResult::BIP39MnemonicSentence(msg) => Ok(ProcResult::BIP39MnemonicSentence(msg)),
+                SerdeProcResult::Ed25519PublicKey(msg) => {
+                    let msg: ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> = match msg
+                    {
+                        ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
+                        ResultMessage::Error(e) => ResultMessage::Error(e),
+                    };
+                    Ok(ProcResult::Ed25519PublicKey(msg))
+                }
+                SerdeProcResult::Ed25519Sign(msg) => {
+                    let msg: ResultMessage<[u8; crypto::signatures::ed25519::SIGNATURE_LENGTH]> = match msg {
+                        ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
+                        ResultMessage::Error(e) => ResultMessage::Error(e),
+                    };
+                    Ok(ProcResult::Ed25519Sign(msg))
+                }
+                SerdeProcResult::Error(err) => Ok(ProcResult::Error(err)),
+            }
+        }
+    }
+
+    // Replaces arrays in ProcResult with vectors to derive Serialize/ Deserialize
+    #[derive(Clone, Serialize, Deserialize)]
+    enum SerdeProcResult {
+        SLIP10Generate(StatusMessage),
+        SLIP10Derive(ResultMessage<ChainCode>),
+        BIP39Recover(StatusMessage),
+        BIP39Generate(StatusMessage),
+        BIP39MnemonicSentence(ResultMessage<String>),
+        Ed25519PublicKey(ResultMessage<Vec<u8>>),
+        Ed25519Sign(ResultMessage<Vec<u8>>),
+        Error(String),
+    }
+
+    impl From<ProcResult> for SerdeProcResult {
+        fn from(proc_result: ProcResult) -> Self {
+            match proc_result {
+                ProcResult::SLIP10Generate(msg) => SerdeProcResult::SLIP10Generate(msg),
+                ProcResult::SLIP10Derive(msg) => SerdeProcResult::SLIP10Derive(msg),
+                ProcResult::BIP39Recover(msg) => SerdeProcResult::BIP39Recover(msg),
+                ProcResult::BIP39Generate(msg) => SerdeProcResult::BIP39Generate(msg),
+                ProcResult::BIP39MnemonicSentence(msg) => SerdeProcResult::BIP39MnemonicSentence(msg),
+                ProcResult::Ed25519PublicKey(msg) => {
+                    let msg = match msg {
+                        ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
+                        ResultMessage::Error(error) => ResultMessage::Error(error),
+                    };
+                    SerdeProcResult::Ed25519PublicKey(msg)
+                }
+                ProcResult::Ed25519Sign(msg) => {
+                    let msg = match msg {
+                        ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
+                        ResultMessage::Error(error) => ResultMessage::Error(error),
+                    };
+                    SerdeProcResult::Ed25519Sign(msg)
+                }
+                ProcResult::Error(err) => SerdeProcResult::Error(err),
+            }
+        }
+    }
+
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct CallProcedure {
         pub proc: Procedure, // is procedure from client
     }
@@ -420,11 +494,13 @@ pub mod testing {
 
     use super::*;
     use crate::Location;
+    use serde::{Deserialize, Serialize};
 
     /// INSECURE MESSAGE
     /// MAY ONLY BE USED IN TESTING CONFIGURATIONS
     ///
     /// Reads data from the vault
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct ReadFromVault {
         pub location: Location,
     }

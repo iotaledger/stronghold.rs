@@ -1,9 +1,9 @@
-//! Copyright 2021 IOTA Stiftung
-//! SPDX-License-Identifier: Apache-2.0
-//!
-//! Stronghold communications fuzzer
+// Copyright 2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
 
 #![no_main]
+
+//! Stronghold P2P-Network fuzzer
 
 use iota::{Location, Multiaddr, PeerId, ProcResult, RecordHint, ResultMessage};
 use iota_stronghold as iota;
@@ -47,7 +47,7 @@ fuzz_target!(|data: &[u8]| {
     let system = iota::ActorSystem::new().unwrap();
     let mut stronghold = iota::Stronghold::init_stronghold_system(system, b"client".to_vec(), vec![]);
 
-    stronghold.spawn_communication();
+    stronghold.spawn_p2p();
 
     runtime.block_on(async {
         match read_infos(200).await {

@@ -3,11 +3,15 @@
 
 use crate::{line_error, Location, RecordHint, Stronghold};
 
-#[cfg(feature = "communication")]
-use super::fresh;
+#[cfg(feature = "p2p")]
+use p2p::firewall::Rule;
 
-#[cfg(feature = "communication")]
-use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, StatusMessage};
+#[cfg(feature = "p2p")]
+use crate::{
+    actors::p2p::{messages::SwarmInfo, NetworkConfig},
+    tests::fresh,
+    ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, StatusMessage,
+};
 
 #[actix::test]
 async fn test_stronghold() {
@@ -342,109 +346,164 @@ async fn test_stronghold_generics() {
 }
 
 /// this test has not been ported to actix
-#[cfg(feature = "communication")]
-#[ignore = "unimplemented"]
+#[cfg(feature = "p2p")]
 #[actix::test]
-async fn test_communication() {
-    let system = actix::System::new();
-    let local_client = b"local".to_vec();
-    let mut local_stronghold = Stronghold::init_stronghold_system(local_client, vec![])
-        .await
-        .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
-    local_stronghold.spawn_communication();
+async fn test_stronghold_p2p() {
+    use tokio::sync::{mpsc, oneshot};
 
-    let remote_sys = actix::System::new();
-    let remote_client = b"remote".to_vec();
-    let mut remote_stronghold = Stronghold::init_stronghold_system(remote_client, vec![])
-        .await
-        .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
-    remote_stronghold.spawn_communication();
+    let system = actix::System::current();
+    let arbiter = system.arbiter();
 
-    // remotes
-    if let StatusMessage::Error(_) = remote_sys.block_on(remote_stronghold.allow_all_requests(vec![], true)) {
-        panic!("Could not configure firewall.")
-    }
+    let (addr_tx, addr_rx) = oneshot::channel();
 
-    let addr = match remote_sys.block_on(remote_stronghold.start_listening(None)) {
-        ResultMessage::Ok(addr) => addr,
-        ResultMessage::Error(_) => panic!("Could not start listening"),
-    };
+    // Channel for signaling that local/ remote is ready i.g. performed a necessary write, before the other ran try
+    // read.
+    let (remote_ready_tx, mut remote_ready_rx) = mpsc::channel(1);
+    let (local_ready_tx, mut local_ready_rx) = mpsc::channel(1);
 
-    let (peer_id, listeners) = match remote_sys.block_on(remote_stronghold.get_swarm_info()) {
-        ResultMessage::Ok((peer_id, listeners, _)) => (peer_id, listeners),
-        ResultMessage::Error(_) => panic!("Could not get swarm info."),
-    };
+    let loc1 = Location::counter::<_, usize>("path", 0);
+    let data1 = b"some data".to_vec();
+    let loc1_clone = loc1.clone();
+    let data1_clone = data1.clone();
 
-    assert!(listeners.as_slice().contains(&addr));
+    let loc2 = Location::counter::<_, usize>("path", 1);
+    let data2 = b"some second data".to_vec();
+    let loc2_clone = loc2.clone();
+    let data2_clone = data2.clone();
 
-    match system.block_on(local_stronghold.add_peer(peer_id, Some(addr), None)) {
-        ResultMessage::Ok(_) => {}
-        ResultMessage::Error(_) => panic!("Could not establish connection to remote."),
-    }
+    let seed1 = fresh::location();
+    let seed1_clone = seed1.clone();
 
-    // test writing at remote and reading it from local stronghold
-    let loc = Location::counter::<_, usize>("path", 0);
-    let original_data = b"some data".to_vec();
-    match remote_sys.block_on(remote_stronghold.write_to_store(loc.clone(), original_data.clone(), None)) {
-        StatusMessage::OK => {}
-        StatusMessage::Error(_) => panic!("Could not write store."),
-    }
-    let payload = match system.block_on(local_stronghold.read_from_remote_store(peer_id, loc)) {
-        (payload, StatusMessage::OK) => payload,
-        (_, StatusMessage::Error(_)) => panic!("Could not read from remote store."),
-    };
-    assert_eq!(payload, original_data);
+    let (res_tx, mut res_rx) = mpsc::channel(1);
+    let res_tx_clone = res_tx.clone();
 
-    // test writing from local and reading it at remote
-    let loc = Location::counter::<_, usize>("path", 1);
-    let original_data = b"some second data".to_vec();
-    match system.block_on(local_stronghold.write_to_remote_store(peer_id, loc.clone(), original_data.clone(), None)) {
-        StatusMessage::OK => {}
-        StatusMessage::Error(_) => panic!("Could not write to remote store"),
-    }
-    let payload = match remote_sys.block_on(remote_stronghold.read_from_store(loc)) {
-        (payload, StatusMessage::OK) => payload,
-        (_, StatusMessage::Error(_)) => panic!("Could not read from store."),
-    };
-    assert_eq!(payload, original_data);
+    let spawned_local = arbiter.spawn(async move {
+        let local_client = b"local".to_vec();
+        let mut local_stronghold = Stronghold::init_stronghold_system(local_client, vec![])
+            .await
+            .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
+        local_stronghold
+            .spawn_p2p(Rule::AllowAll, NetworkConfig::default())
+            .await;
 
-    // test writing and reading from local
-    let loc = Location::counter::<_, usize>("path", 2);
-    let original_data = b"some third data".to_vec();
-    match system.block_on(local_stronghold.write_to_remote_store(peer_id, loc.clone(), original_data.clone(), None)) {
-        StatusMessage::OK => {}
-        StatusMessage::Error(_) => panic!("Could not write to remote store."),
-    }
-    let payload = match system.block_on(local_stronghold.read_from_remote_store(peer_id, loc)) {
-        (payload, StatusMessage::OK) => payload,
-        (_, StatusMessage::Error(_)) => panic!("Could not read from remote store."),
-    };
-    assert_eq!(payload, original_data);
+        let (peer_id, addr) = addr_rx.await.unwrap();
+        match local_stronghold.add_peer(peer_id, Some(addr), false, false).await {
+            ResultMessage::Ok(_) => {}
+            ResultMessage::Error(_) => panic!("Could not establish connection to remote."),
+        }
 
-    // test procedure execution
+        remote_ready_rx.recv().await.unwrap();
 
-    let seed = fresh::location();
+        // test writing at remote and reading it from local stronghold
+        let payload = match local_stronghold.read_from_remote_store(peer_id, loc1).await {
+            ResultMessage::Ok(payload) => payload,
+            ResultMessage::Error(_) => panic!("Could not read from remote store."),
+        };
+        assert_eq!(payload, data1);
 
-    match remote_sys.block_on(remote_stronghold.runtime_exec(Procedure::SLIP10Generate {
-        size_bytes: None,
-        output: seed.clone(),
-        hint: fresh::record_hint(),
-    })) {
-        ProcResult::SLIP10Generate(ResultMessage::OK) => (),
-        r => panic!("unexpected result: {:?}", r),
-    };
+        // test writing from local and reading it at remote
+        match local_stronghold.write_to_remote_store(peer_id, loc2, data2, None).await {
+            StatusMessage::OK => {}
+            StatusMessage::Error(_) => panic!("Could not write to remote store"),
+        }
+        local_ready_tx.send(()).await.unwrap();
 
-    let (_path, chain) = fresh::hd_path();
-    let procedure = Procedure::SLIP10Derive {
-        chain,
-        input: SLIP10DeriveInput::Seed(seed),
-        output: fresh::location(),
-        hint: fresh::record_hint(),
-    };
+        // test writing and reading from local
+        let loc3 = Location::counter::<_, usize>("path", 2);
+        let original_data3 = b"some third data".to_vec();
+        match local_stronghold
+            .write_to_remote_store(peer_id, loc3.clone(), original_data3.clone(), None)
+            .await
+        {
+            StatusMessage::OK => {}
+            StatusMessage::Error(_) => panic!("Could not write to remote store."),
+        }
+        let payload = match local_stronghold.read_from_remote_store(peer_id, loc3).await {
+            ResultMessage::Ok(payload) => payload,
+            ResultMessage::Error(_) => panic!("Could not read from remote store."),
+        };
+        assert_eq!(payload, original_data3);
 
-    match system.block_on(local_stronghold.remote_runtime_exec(peer_id, procedure)) {
-        ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => {}
-        ProcResult::Error(err) => panic!("Procedure failed: {:?}", err),
-        r => panic!("unexpected result: {:?}", r),
-    };
+        remote_ready_rx.recv().await.unwrap();
+
+        let (_path, chain) = fresh::hd_path();
+        let procedure = Procedure::SLIP10Derive {
+            chain,
+            input: SLIP10DeriveInput::Seed(seed1),
+            output: fresh::location(),
+            hint: fresh::record_hint(),
+        };
+
+        match local_stronghold.remote_runtime_exec(peer_id, procedure).await {
+            ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => {}
+            ProcResult::Error(err) => panic!("Procedure failed: {:?}", err),
+            r => panic!("unexpected result: {:?}", r),
+        };
+        res_tx.send(()).await.unwrap();
+    });
+    assert!(spawned_local);
+
+    let spawned_remote = arbiter.spawn(async move {
+        let remote_client = b"remote".to_vec();
+        let mut remote_stronghold = Stronghold::init_stronghold_system(remote_client, vec![])
+            .await
+            .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
+        remote_stronghold
+            .spawn_p2p(Rule::AllowAll, NetworkConfig::default())
+            .await;
+
+        let addr = match remote_stronghold.start_listening(None).await {
+            ResultMessage::Ok(addr) => addr,
+            ResultMessage::Error(_) => panic!("Could not start listening"),
+        };
+
+        let (peer_id, listeners) = match remote_stronghold.get_swarm_info().await {
+            ResultMessage::Ok(SwarmInfo {
+                local_peer_id,
+                listeners,
+                ..
+            }) => (local_peer_id, listeners),
+            ResultMessage::Error(_) => panic!("Could not get swarm info."),
+        };
+
+        assert!(listeners.into_iter().any(|l| l.addrs.contains(&addr)));
+        addr_tx.send((peer_id, addr)).unwrap();
+
+        // test writing at remote and reading it from local stronghold
+        match remote_stronghold.write_to_store(loc1_clone, data1_clone, None).await {
+            StatusMessage::OK => {}
+            StatusMessage::Error(_) => panic!("Could not write store."),
+        };
+
+        remote_ready_tx.send(()).await.unwrap();
+        local_ready_rx.recv().await.unwrap();
+
+        // test writing from local and reading it at remoteom local and reading it at remote
+        let payload = match remote_stronghold.read_from_store(loc2_clone).await {
+            (payload, StatusMessage::OK) => payload,
+            (_, StatusMessage::Error(_)) => panic!("Could not read from store."),
+        };
+        assert_eq!(payload, data2_clone);
+
+        // test procedure execution
+        match remote_stronghold
+            .runtime_exec(Procedure::SLIP10Generate {
+                size_bytes: None,
+                output: seed1_clone,
+                hint: fresh::record_hint(),
+            })
+            .await
+        {
+            ProcResult::SLIP10Generate(ResultMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        };
+
+        remote_ready_tx.send(()).await.unwrap();
+        res_tx_clone.send(()).await.unwrap();
+    });
+    assert!(spawned_remote);
+
+    // wait for both threads to return
+    res_rx.recv().await.unwrap();
+    res_rx.recv().await.unwrap();
 }

@@ -117,9 +117,9 @@ impl<T> Sink<T> for EventChannel<T> {
                         buffer.pop_front();
                     }
                     buffer.push_back(e.into_inner());
-                    if let Some(waker) = self.waker.as_ref() {
+                    if let Some(waker) = self.waker.take() {
                         // Inform the waker of `<Self as Stream>::poll_next` that a new event was added to the buffer.
-                        waker.wake_by_ref()
+                        waker.wake()
                     }
                     Ok(())
                 }

@@ -7,7 +7,7 @@ mod swarm_task;
 mod types;
 use self::swarm_task::{SwarmOperation, SwarmTask};
 use crate::{
-    behaviour::{BehaviourEvent, NetBehaviour, NetBehaviourConfig},
+    behaviour::{BehaviourEvent, EstablishedConnections, NetBehaviour, NetBehaviourConfig},
     firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection},
     Keypair,
 };
@@ -213,7 +213,7 @@ where
     }
 
     /// Get the explicit rules for a peer, if there are any.
-    pub async fn get_peer_rules(&mut self, peer: PeerId) -> Option<FirewallRules<TRq>> {
+    pub async fn get_peer_rules(&mut self, peer: PeerId) -> FirewallRules<TRq> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::GetPeerRules { peer, tx_yield };
         self.send_command(command).await;
@@ -355,6 +355,14 @@ where
     pub async fn is_connected(&mut self, peer: PeerId) -> bool {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::GetIsConnected { peer, tx_yield };
+        self.send_command(command).await;
+        rx_yield.await.unwrap()
+    }
+
+    // Get currently established connections.
+    pub async fn get_connections(&mut self) -> Vec<(PeerId, EstablishedConnections)> {
+        let (tx_yield, rx_yield) = oneshot::channel();
+        let command = SwarmOperation::GetConnections { tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }

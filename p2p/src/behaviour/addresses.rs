@@ -53,7 +53,7 @@ impl AddressInfo {
     pub fn get_addrs(&self, target: &PeerId) -> Vec<Multiaddr> {
         let addrs = self.peers.get(target).cloned().unwrap_or_default();
         #[allow(unused_mut)]
-        let mut peer_addrs: Vec<Multiaddr> = addrs.known.clone().into();
+        let mut peer_addrs: Vec<Multiaddr> = addrs.known.into();
 
         #[cfg(feature = "relay")]
         if addrs.use_relay_fallback {

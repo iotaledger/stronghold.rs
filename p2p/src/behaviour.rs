@@ -20,6 +20,7 @@ pub mod firewall;
 mod handler;
 #[doc(hidden)]
 mod request_manager;
+pub use self::request_manager::EstablishedConnections;
 use crate::{InboundFailure, OutboundFailure, RequestDirection, RequestId, RqRsMessage};
 #[cfg(feature = "relay")]
 pub use addresses::assemble_relayed_addr;
@@ -275,7 +276,7 @@ where
         if is_change {
             self.request_manager.connected_peers().iter().for_each(|peer| {
                 // Check if peer is affected
-                if let Some(rules) = self.firewall.get_rules(&peer) {
+                if let Some(rules) = self.firewall.get_rules(peer) {
                     if (rules.inbound.is_some() || !direction.is_inbound())
                         && (rules.outbound.is_some() || !direction.is_outbound())
                     {
@@ -343,6 +344,11 @@ where
     /// if an address for the relay is known.
     pub fn use_specific_relay(&mut self, target: PeerId, relay: PeerId, is_exclusive: bool) -> Option<Multiaddr> {
         self.addresses.use_relay(target, relay, is_exclusive)
+    }
+
+    // Get currently established connections.
+    pub fn get_established_connections(&self) -> Vec<(PeerId, EstablishedConnections)> {
+        self.request_manager.get_established_connections()
     }
 
     /// [`RequestId`] for the next outbound request.
@@ -572,7 +578,8 @@ where
         self.request_manager
             .set_protocol_support(*peer, Some(*connection), support);
 
-        self.request_manager.on_connection_established(*peer, *connection);
+        self.request_manager
+            .on_connection_established(*peer, *connection, endpoint.clone());
         self.addresses
             .prioritize_addr(*peer, endpoint.get_remote_address().clone());
         #[cfg(feature = "relay")]

@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::firewall::FirewallRules;
+use crate::{behaviour::EstablishedConnections, firewall::FirewallRules};
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
@@ -33,6 +33,9 @@ pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
     GetIsConnected {
         peer: PeerId,
         tx_yield: oneshot::Sender<bool>,
+    },
+    GetConnections {
+        tx_yield: oneshot::Sender<Vec<(PeerId, EstablishedConnections)>>,
     },
 
     StartListening {
@@ -115,7 +118,7 @@ pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
     },
     GetPeerRules {
         peer: PeerId,
-        tx_yield: oneshot::Sender<Option<FirewallRules<TRq>>>,
+        tx_yield: oneshot::Sender<FirewallRules<TRq>>,
     },
     SetPeerRule {
         peer: PeerId,
@@ -377,6 +380,10 @@ where
                 let is_connected = self.swarm.is_connected(&peer);
                 let _ = tx_yield.send(is_connected);
             }
+            SwarmOperation::GetConnections { tx_yield } => {
+                let connections = self.swarm.behaviour().get_established_connections();
+                let _ = tx_yield.send(connections);
+            }
             SwarmOperation::StartListening { address, tx_yield } => self.start_listening(address, tx_yield),
             #[cfg(feature = "relay")]
             SwarmOperation::StartRelayedListening {
@@ -475,7 +482,7 @@ where
             }
             SwarmOperation::GetPeerRules { peer, tx_yield } => {
                 let fw_rules = self.swarm.behaviour().get_peer_rules(&peer).cloned();
-                let _ = tx_yield.send(fw_rules);
+                let _ = tx_yield.send(fw_rules.unwrap_or_else(FirewallRules::empty));
             }
             SwarmOperation::SetPeerRule {
                 peer,
@@ -563,7 +570,7 @@ where
     fn remove_listener<F: Fn(&Listener) -> bool>(&mut self, condition_fn: F) {
         let mut remove_listeners = Vec::new();
         for (id, listener) in self.listeners.iter() {
-            if condition_fn(&listener) {
+            if condition_fn(listener) {
                 remove_listeners.push(*id);
             }
         }

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{RequestDirection, RequestId};
-use libp2p::core::{connection::ConnectionId, PeerId};
-use smallvec::SmallVec;
+use libp2p::core::{connection::ConnectionId, ConnectedPoint, PeerId};
 use std::collections::{hash_map::HashMap, HashSet};
+use wasm_timer::Instant;
 
 // Sent requests that have not yet received a response.
 #[derive(Debug)]
@@ -24,11 +24,27 @@ impl Default for PendingResponses {
     }
 }
 
+/// Information about the connection with a remote peer as maintained in the ConnectionManager.
+#[derive(Clone, Debug)]
+pub struct EstablishedConnections {
+    pub start: Instant,
+    pub connections: HashMap<ConnectionId, ConnectedPoint>,
+}
+
+impl Default for EstablishedConnections {
+    fn default() -> Self {
+        EstablishedConnections {
+            start: Instant::now(),
+            connections: HashMap::new(),
+        }
+    }
+}
+
 // Active connections to a remote peer and pending responses on each connection.
 #[derive(Debug)]
 pub struct PeerConnectionManager {
     // Currently active connections for each peer.
-    connections: HashMap<PeerId, SmallVec<[ConnectionId; 2]>>,
+    established: HashMap<PeerId, EstablishedConnections>,
     // Pending responses for each active connection.
     pending_responses: HashMap<ConnectionId, PendingResponses>,
 }
@@ -36,46 +52,58 @@ pub struct PeerConnectionManager {
 impl PeerConnectionManager {
     pub fn new() -> Self {
         PeerConnectionManager {
-            connections: Default::default(),
+            established: Default::default(),
             pending_responses: Default::default(),
         }
     }
 
     // Check if the local peer currently has at least one active connection to the remote.
     pub fn is_connected(&self, peer: &PeerId) -> bool {
-        self.connections
+        self.established
             .get(peer)
-            .map(|connections| !connections.is_empty())
+            .map(|established| !established.connections.is_empty())
             .unwrap_or(false)
-    }
-
-    // Get the ids of the active connections.
-    pub fn get_connections(&self, peer: &PeerId) -> SmallVec<[ConnectionId; 2]> {
-        self.connections.get(peer).cloned().unwrap_or_default()
     }
 
     // List of peers to which at least one connection is currently established.
     pub fn get_connected_peers(&self) -> Vec<PeerId> {
-        self.connections.keys().copied().collect()
+        self.established.keys().copied().collect()
+    }
+
+    // Get the ids of the active connections for the peer.
+    pub fn get_connections(&self, peer: &PeerId) -> Vec<ConnectionId> {
+        self.established
+            .get(peer)
+            .map(|est| est.connections.keys().into_iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    // Get the ids of the active connections.
+    pub fn get_all_connections(&self) -> Vec<(PeerId, EstablishedConnections)> {
+        self.established.iter().map(|(p, c)| (*p, c.clone())).collect()
     }
 
     // Remove all connections of a peer, return the concatenated list of pending responses from the connections.
-    pub fn remove_all_connections(&mut self, peer: &PeerId) -> Option<SmallVec<[ConnectionId; 2]>> {
-        self.connections.remove(peer)
+    pub fn remove_all_connections(&mut self, peer: &PeerId) -> Option<EstablishedConnections> {
+        self.established.remove(peer)
     }
 
     // Insert a newly established connection.
-    pub fn add_connection(&mut self, peer: PeerId, connection: ConnectionId) {
-        self.connections.entry(peer).or_default().push(connection);
+    pub fn add_connection(&mut self, peer: PeerId, id: ConnectionId, point: ConnectedPoint) {
+        self.established.entry(peer).or_default().connections.insert(id, point);
     }
 
     // Remove a connection from the list, return the pending responses on that connection.
     pub fn remove_connection(&mut self, peer: PeerId, connection: &ConnectionId) -> Option<PendingResponses> {
-        self.connections
+        self.established
             .entry(peer)
-            .and_modify(|connections| connections.retain(|c| c != connection));
-        if let Some(true) = self.connections.get(&peer).map(|conns| conns.is_empty()) {
-            self.connections.remove(&peer);
+            .and_modify(|established| established.connections.retain(|id, _| id != connection));
+        if let Some(true) = self
+            .established
+            .get(&peer)
+            .map(|established| established.connections.is_empty())
+        {
+            self.established.remove(&peer);
         }
         self.pending_responses.remove(connection)
     }
@@ -90,17 +118,18 @@ impl PeerConnectionManager {
         connection: Option<ConnectionId>,
         direction: &RequestDirection,
     ) -> Option<ConnectionId> {
-        let conns = self.connections.get(peer)?;
+        let connections = self.established.get(peer)?.connections.keys();
         let conn = match connection {
             Some(conn) => {
                 // Check if the provided connection is active.
-                conns.into_iter().find(|&c| c == &conn)?;
+                connections.into_iter().find(|&c| c == &conn)?;
                 conn
             }
             None => {
                 // Assign request to a rather random connection.
-                let index = (request_id.value() as usize) % conns.len();
-                conns[index]
+                let index = (request_id.value() as usize) % connections.len();
+                #[allow(clippy::iter_skip_next)]
+                connections.skip(index).next().cloned()?
             }
         };
         let pending_responses = self

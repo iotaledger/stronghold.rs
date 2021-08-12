@@ -11,13 +11,11 @@ mod libp2p_reexport {
         Multiaddr, PeerId,
     };
 }
-#[cfg(feature = "actor")]
-pub mod actor;
 pub use libp2p_reexport::*;
 mod interface;
 #[cfg(feature = "relay")]
 pub use behaviour::assemble_relayed_addr;
-pub use behaviour::{firewall, MessageProtocol};
+pub use behaviour::{firewall, EstablishedConnections, MessageProtocol};
 pub use interface::*;
 
 #[macro_export]

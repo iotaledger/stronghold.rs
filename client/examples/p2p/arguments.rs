@@ -6,8 +6,8 @@ use clap::{Clap, Subcommand};
 
 #[derive(Clap, Debug)]
 #[clap(
-    name = "Stronghold Example Communications",
-    about = "Example to show stronghold's communication capabilities"
+    name = "Stronghold Example P2p-Network",
+    about = "Example to show stronghold's p2p-network capabilities"
 )]
 pub struct ExampleApp {
     #[clap(subcommand)]
@@ -19,15 +19,15 @@ pub struct ExampleApp {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    #[cfg(feature = "communication")]
+    #[cfg(feature = "p2p")]
     #[clap(alias = "peers", about = "Lists all peers.")]
     Peers {},
 
-    #[cfg(feature = "communication")]
+    #[cfg(feature = "p2p")]
     #[clap(alias = "swarm-info", about = "Displays information on this node")]
     SwarmInfo {},
 
-    #[cfg(feature = "communication")]
+    #[cfg(feature = "p2p")]
     #[clap(about = "Start listening on multiaddress.")]
     Listen {
         #[clap(

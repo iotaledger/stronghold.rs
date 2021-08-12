@@ -285,8 +285,8 @@ impl TestConfig {
 
     async fn try_direct(&mut self, config_str: &str) -> bool {
         if self.source_config.knows_direct_target_addr && self.target_config.listening_plain {
-            Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str).await;
-            Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str).await;
+            Self::expect_connection(&mut self.source_event_rx, self.target_id, config_str).await;
+            Self::expect_connection(&mut self.target_event_rx, self.source_id, config_str).await;
             return true;
         }
         false
@@ -294,11 +294,11 @@ impl TestConfig {
 
     async fn expect_relayed(&mut self, is_connected: bool, config_str: &str) -> bool {
         if !is_connected {
-            Self::expect_connection(&mut self.source_event_rx, self.relay_id, &config_str).await;
+            Self::expect_connection(&mut self.source_event_rx, self.relay_id, config_str).await;
         }
         if self.target_config.listening_relay {
-            Self::expect_connection(&mut self.source_event_rx, self.target_id, &config_str).await;
-            Self::expect_connection(&mut self.target_event_rx, self.source_id, &config_str).await;
+            Self::expect_connection(&mut self.source_event_rx, self.target_id, config_str).await;
+            Self::expect_connection(&mut self.target_event_rx, self.source_id, config_str).await;
             return true;
         }
         false

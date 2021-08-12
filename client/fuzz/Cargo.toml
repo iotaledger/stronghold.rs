@@ -16,7 +16,7 @@ rand = "0.8.3"
 [dependencies.iota_stronghold]
 path = "../"
 version = "0.4"
-features = ["communication"]
+features = ["p2p"]
 
 [dependencies.redis]
 version = "0.20.1"
@@ -48,12 +48,12 @@ panic = "abort"
 [build-dependencies.iota_stronghold]
 path = "../"
 version = "0.4"
-features = ["communication"]
+features = ["p2p"]
 
 [[bin]]
 name = "listen"
 path = "src/listen.rs"
 
 [[bin]]
-name = "comms"
-path = "src/comms.rs"
+name = "p2p"
+path = "src/p2p.rs"

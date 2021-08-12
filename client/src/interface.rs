@@ -6,7 +6,7 @@
 //! All functionality can be accessed from the interface. Functions
 //! are provided in an asynchronous way, and should be run by the
 //! actor's system [`SystemRunner`].
-use actix::{Addr, SystemService};
+use actix::prelude::*;
 use std::{path::PathBuf, time::Duration};
 use zeroize::Zeroize;
 
@@ -26,33 +26,20 @@ use crate::{
 };
 use engine::vault::{ClientId, RecordHint, RecordId};
 
-#[cfg(feature = "communication")]
-use comm::*;
-
-#[cfg(feature = "communication")]
-/// communication feature relevant imports are bundled here.
-mod comm {
-
-    pub use crate::utils::ResultMessage;
-    use actix::{Actor, Context};
-
-    pub use communication::{
-        actor::{
-            CommunicationActor, CommunicationActorConfig, CommunicationRequest, CommunicationResults,
-            EstablishedConnection, FirewallPermission, FirewallRule, RelayDirection, RequestDirection,
-            VariantPermission,
-        },
-        behaviour::BehaviourConfig,
-        libp2p::{Keypair, Multiaddr, PeerId},
-    };
-
-    // that's a proxy communication actor to be used
-    pub struct CommunicationActorProxy {}
-
-    impl Actor for CommunicationActorProxy {
-        type Context = Context<Self>;
-    }
-}
+#[cfg(feature = "p2p")]
+use crate::{
+    actors::p2p::{
+        messages as network_msg,
+        messages::{ShRequest, SwarmInfo},
+        NetworkActor, NetworkConfig,
+    },
+    ResultMessage,
+};
+#[cfg(feature = "p2p")]
+use p2p::{
+    firewall::{Rule, RuleDirection},
+    Multiaddr, PeerId,
+};
 
 /// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of
 /// metadata to interpret the data in the vault and store.
@@ -60,8 +47,8 @@ pub struct Stronghold {
     registry: Addr<Registry>,
     target: Addr<SecureClient>,
 
-    #[cfg(feature = "communication")]
-    communication_actor: Option<Addr<CommunicationActorProxy>>,
+    #[cfg(feature = "p2p")]
+    network_actor: Option<Addr<NetworkActor>>,
 }
 
 impl Stronghold {
@@ -88,9 +75,8 @@ impl Stronghold {
         Ok(Self {
             registry,
             target,
-
-            #[cfg(feature = "communication")]
-            communication_actor: None,
+            #[cfg(feature = "p2p")]
+            network_actor: None,
         })
     }
 
@@ -128,13 +114,26 @@ impl Stronghold {
 
         if let Ok(result) = self.registry.send(GetClient { id: client_id }).await {
             match result {
-                Some(client) => self.target = client,
-                None => return StatusMessage::Error("Could not find actor with provided client path".into()),
-            }
+                Some(client) => {
+                    #[cfg(feature = "p2p")]
+                    if let Some(network_actor) = self.network_actor.as_ref() {
+                        match network_actor
+                            .send(network_msg::SwitchClient { client: client.clone() })
+                            .await
+                        {
+                            Ok(_) => {}
+                            Err(e) => {
+                                return StatusMessage::Error(format!(
+                                    "Could not switch target for network actor: {:?}",
+                                    e
+                                ))
+                            }
+                        }
+                    }
 
-            #[cfg(feature = "communication")]
-            if let Some(_comm) = &self.communication_actor {
-                // TODO set reference to client actor inside the communication actor
+                    self.target = client
+                }
+                None => return StatusMessage::Error("Could not find actor with provided client path".into()),
             }
         }
 
@@ -561,87 +560,70 @@ impl Stronghold {
     }
 }
 
-#[cfg(feature = "communication")]
-#[allow(clippy::all)]
+#[macro_export]
+macro_rules! unwrap_or_err (
+    ($expression:expr) => {
+        match $expression {
+            Ok(ok) => ok,
+            Err(err) => return ResultMessage::Error(err.to_string())
+        }
+    };
+    ($expression:expr, $error:literal) => {
+        match $expression {
+            Some(item) => item,
+            None => return ResultMessage::Error($error.to_string())
+        }
+    };
+);
+
+#[macro_export]
+macro_rules! unwrap_result_msg (
+    ($expr:expr) => {
+        unwrap_or_err!(unwrap_or_err!($expr))
+    };
+);
+
+#[cfg(feature = "p2p")]
 impl Stronghold {
-    /// Spawn the communication actor and swarm with a pre-existing keypair
-    /// Per default, the firewall allows all outgoing, and reject all incoming requests.
-    pub fn spawn_communication_with_keypair(&mut self, _keypair: Keypair) -> StatusMessage {
-        // if self.communication_actor.is_some() {
-        //     return StatusMessage::Error(String::from("Communication was already spawned"));
-        // }
-
-        // let behaviour_config = BehaviourConfig::default();
-        // let actor_config = CommunicationActorConfig {
-        //     client: self.target.clone(),
-        //     firewall_default_in: FirewallPermission::all(),
-        //     firewall_default_out: FirewallPermission::all(),
-        // };
-
-        // let communication_actor = self
-        //     .system
-        //     .actor_of_args::<CommunicationActor<_, SHResults, _, _>, _>(
-        //         "communication",
-        //         (keypair, actor_config, behaviour_config),
-        //     )
-        //     .expect(line_error!());
-        // self.communication_actor = Some(communication_actor);
-        todo!()
+    /// Spawn the p2p-network actor and swarm.
+    pub async fn spawn_p2p(&mut self, firewall_rule: Rule<ShRequest>, network_config: NetworkConfig) -> StatusMessage {
+        if self.network_actor.is_some() {
+            return StatusMessage::Error(String::from("Network actor was already spawned"));
+        }
+        let network_actor = unwrap_or_err!(NetworkActor::new(self.target.clone(), firewall_rule, network_config).await);
+        self.network_actor = Some(network_actor.start());
+        StatusMessage::OK
     }
 
-    /// Spawn the communication actor and swarm.
-    /// Per default, the firewall allows all outgoing, and reject all incoming requests.
-    pub fn spawn_communication(&mut self) -> StatusMessage {
-        self.spawn_communication_with_keypair(Keypair::generate_ed25519())
-    }
-
-    /// Gracefully stop the communication actor and swarm
-    pub fn stop_communication(&mut self) {
-        // if let Some(communication_actor) = self.communication_actor.as_ref() {
-        //     self.system.stop(communication_actor);
-        // }
+    /// Gracefully stop the network actor and swarm.
+    pub fn stop_p2p(&mut self) {
+        // Dropping the only address of the network actor will stop the actor.
+        // Upon stopping the actor, its `StrongholdP2p` instance will be dropped, which results in a graceful shutdown.
+        self.network_actor.take();
     }
 
     /// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.
-    pub async fn start_listening(&self, _addr: Option<Multiaddr>) -> ResultMessage<Multiaddr> {
-        // match self
-        //     .ask_communication_actor(CommunicationRequest::StartListening(addr))
-        //     .await
-        // {
-        //     Ok(CommunicationResults::StartListeningResult(Ok(addr))) => ResultMessage::Ok(addr),
-        //     Ok(CommunicationResults::StartListeningResult(Err(_))) => ResultMessage::Error("Listener Error".into()),
-        //     Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
-        //     Err(err) => ResultMessage::Error(err),
-        // }
-
-        todo!()
+    pub async fn start_listening(&self, address: Option<Multiaddr>) -> ResultMessage<Multiaddr> {
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let res = actor.send(network_msg::StartListening { address }).await;
+        let addr = unwrap_result_msg!(res);
+        ResultMessage::Ok(addr)
     }
 
     /// Stop listening on the swarm.
     pub async fn stop_listening(&self) -> StatusMessage {
-        // match self.ask_communication_actor(CommunicationRequest::RemoveListener).await {
-        //     Ok(CommunicationResults::RemoveListenerAck) => StatusMessage::OK,
-        //     Ok(_) => StatusMessage::Error("Invalid communication actor response".into()),
-        //     Err(err) => StatusMessage::Error(err),
-        // }
-        todo!()
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let res = actor.send(network_msg::StopListening).await;
+        unwrap_or_err!(res);
+        ResultMessage::OK
     }
 
     ///  Get the peer id, listening addresses and connection info of the local peer
-    pub async fn get_swarm_info(
-        &self,
-    ) -> ResultMessage<(PeerId, Vec<Multiaddr>, Vec<(PeerId, EstablishedConnection)>)> {
-        // match self.ask_communication_actor(CommunicationRequest::GetSwarmInfo).await {
-        //     Ok(CommunicationResults::SwarmInfo {
-        //         peer_id,
-        //         listeners,
-        //         connections,
-        //     }) => ResultMessage::Ok((peer_id, listeners, connections)),
-        //     Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
-        //     Err(err) => ResultMessage::Error(err),
-        // }
-
-        todo!()
+    pub async fn get_swarm_info(&self) -> ResultMessage<SwarmInfo> {
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let res = actor.send(network_msg::GetSwarmInfo).await;
+        let info = unwrap_or_err!(res);
+        ResultMessage::Ok(info)
     }
 
     /// Add dial information for a remote peers.
@@ -654,353 +636,227 @@ impl Stronghold {
     /// Once the peer was successfully added, it can be used as target for operations on the remote stronghold.
     pub async fn add_peer(
         &self,
-        _peer_id: PeerId,
-        _addr: Option<Multiaddr>,
-        _is_relay: Option<RelayDirection>,
-    ) -> ResultMessage<PeerId> {
-        // match self
-        //     .ask_communication_actor(CommunicationRequest::AddPeer {
-        //         peer_id,
-        //         addr,
-        //         is_relay,
-        //     })
-        //     .await
-        // {
-        //     Ok(CommunicationResults::AddPeerResult(Ok(peer_id))) => ResultMessage::Ok(peer_id),
-        //     Ok(CommunicationResults::AddPeerResult(Err(err))) => {
-        //         ResultMessage::Error(format!("Error connecting peer: {:?}", err))
-        //     }
-        //     Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
-        //     Err(err) => ResultMessage::Error(err),
-        // }
-
-        todo!()
-    }
-
-    /// Set / overwrite the direction for which relay is used.
-    /// RelayDirection::Dialing adds the relay to the list of relay nodes that are tried if a peer can not
-    /// be reached directly.
-    /// RelayDirection::Listening connect the local system with the given relay and allows that it can
-    /// be reached by remote peers that use the same relay for dialing.
-    /// The relay has to be added beforehand with its multi-address via the `add_peer` method.
-    pub async fn change_relay_direction(&self, _peer_id: PeerId, _direction: RelayDirection) -> ResultMessage<PeerId> {
-        // match self
-        //     .ask_communication_actor(CommunicationRequest::ConfigRelay { peer_id, direction })
-        //     .await
-        // {
-        //     Ok(CommunicationResults::ConfigRelayResult(Ok(peer_id))) => ResultMessage::Ok(peer_id),
-        //     Ok(CommunicationResults::ConfigRelayResult(Err(err))) => {
-        //         ResultMessage::Error(format!("Error connecting peer: {:?}", err))
-        //     }
-        //     Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
-        //     Err(err) => ResultMessage::Error(err),
-        // }
-
-        todo!()
-    }
-
-    /// Remove a relay so that it will not be used anymore for dialing or listening.
-    pub async fn remove_relay(&self, _peer_id: PeerId) -> StatusMessage {
-        // match self
-        //     .ask_communication_actor(CommunicationRequest::RemoveRelay(peer_id))
-        //     .await
-        // {
-        //     Ok(CommunicationResults::RemoveRelayAck) => StatusMessage::OK,
-        //     Ok(_) => ResultMessage::Error("Invalid communication actor response".into()),
-        //     Err(err) => ResultMessage::Error(err),
-        // }
-
-        todo!()
-    }
-
-    /// Allow all requests from the given peers, optionally also set default to allow all.
-    pub async fn allow_all_requests(&self, peers: Vec<PeerId>, set_default: bool) -> StatusMessage {
-        let rule = FirewallRule::SetRules {
-            direction: RequestDirection::In,
-            peers,
-            set_default,
-            permission: FirewallPermission::all(),
-        };
-        self.configure_firewall(rule).await
-    }
-
-    /// Change or add rules in the firewall to allow the given requests for the peers, optionally also change the
-    /// default rule to allow it.
-    /// The `SHRequestPermission` copy the `SHRequest` with Unit-type variants with individual permission, e.g.
-    /// ```no_run
-    /// // use iota_stronghold::SHRequestPermission;
-    ///
-    /// // let permissions = vec![SHRequestPermission::CheckVault, SHRequestPermission::CheckRecord];
-    /// ```
-    /// Existing permissions for other `SHRequestPermission`s will not be changed by this.
-    /// If no rule has been set for a given peer, the default rule will be used as basis.
-    pub async fn allow_requests(
-        &self,
-        peers: Vec<PeerId>,
-        change_default: bool,
-        // requests: Vec<SHRequestPermission>,
+        peer: PeerId,
+        address: Option<Multiaddr>,
+        is_listening_relay: bool,
+        is_dialing_relay: bool,
     ) -> StatusMessage {
-        let rule = FirewallRule::AddPermissions {
-            direction: RequestDirection::In,
-            peers,
-            change_default,
-            permissions: vec![],
-        };
-        self.configure_firewall(rule).await
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+
+        if is_listening_relay {
+            let res = actor
+                .send(network_msg::StartListeningRelay {
+                    relay: peer,
+                    relay_addr: address,
+                })
+                .await;
+            unwrap_result_msg!(res);
+        } else {
+            if let Some(address) = address {
+                let res = actor.send(network_msg::AddPeerAddr { peer, address }).await;
+                unwrap_or_err!(res);
+            }
+
+            let res = actor.send(network_msg::ConnectPeer { peer }).await;
+            unwrap_result_msg!(res);
+        }
+
+        if is_dialing_relay {
+            let res = actor.send(network_msg::AddDialingRelay { relay: peer }).await;
+            unwrap_or_err!(res);
+        }
+
+        StatusMessage::OK
     }
 
-    /// Change or add rules in the firewall to reject the given requests from the peers, optionally also remove the
-    /// permission from the default rule.
-    /// The `SHRequestPermission` copy the `SHRequest` with Unit-type variants with individual permission, e.g.
-    /// ```no_run
-    /// // use iota_stronghold::SHRequestPermission;
-    ///
-    /// //  let permissions = vec![SHRequestPermission::CheckVault, SHRequestPermission::CheckRecord];
-    /// ```
-    /// Existing permissions for other `SHRequestPermission`s will not be changed
-    /// by this. If no rule has been set for a given peer, the default rule will be used as basis.
-    pub async fn reject_requests(
+    /// Remove a peer from the list of peers used for dialing, and / or stop listening with the relay.
+    pub async fn remove_relay(&self, relay: PeerId, rm_listening_relay: bool, rm_dialing_relay: bool) -> StatusMessage {
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+
+        if rm_listening_relay {
+            let res = actor.send(network_msg::StopListeningRelay { relay }).await;
+            unwrap_or_err!(res);
+        }
+
+        if rm_dialing_relay {
+            let res = actor.send(network_msg::RemoveDialingRelay { relay }).await;
+            unwrap_or_err!(res);
+        }
+        StatusMessage::OK
+    }
+
+    /// Change the firewall rule for specific peers, optionally also set it as the default rule, which applies if there
+    /// are no specific rules for a peer. All inbound requests from the peers that this rule applies to, will be
+    /// approved/ rejected based on this rule.
+    pub async fn set_firewall_rule(
         &self,
+        rule: Rule<ShRequest>,
         peers: Vec<PeerId>,
-        change_default: bool,
-        // requests: Vec<SHRequestPermission>,
+        set_default: bool,
     ) -> StatusMessage {
-        let rule = FirewallRule::RemovePermissions {
-            direction: RequestDirection::In,
-            peers,
-            change_default,
-            permissions: vec![],
-        };
-        self.configure_firewall(rule).await
-    }
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
 
-    /// Configure the firewall to reject all requests from the given peers, optionally also set default rule to reject
-    /// all.
-    pub async fn reject_all_requests(&self, peers: Vec<PeerId>, set_default: bool) -> StatusMessage {
-        let rule = FirewallRule::SetRules {
-            direction: RequestDirection::In,
-            peers,
-            set_default,
-            permission: FirewallPermission::none(),
-        };
-        self.configure_firewall(rule).await
+        for peer in peers {
+            let res = actor
+                .send(network_msg::SetFirewallRule {
+                    peer,
+                    direction: RuleDirection::Inbound,
+                    rule: rule.clone(),
+                })
+                .await;
+            unwrap_or_err!(res);
+        }
+        if set_default {
+            let res = actor
+                .send(network_msg::SetFirewallDefault {
+                    direction: RuleDirection::Inbound,
+                    rule,
+                })
+                .await;
+            unwrap_or_err!(res);
+        }
+        StatusMessage::OK
     }
 
     /// Remove peer specific rules from the firewall configuration.
     pub async fn remove_firewall_rules(&self, peers: Vec<PeerId>) -> StatusMessage {
-        let rule = FirewallRule::RemoveRule {
-            direction: RequestDirection::In,
-            peers,
-        };
-        self.configure_firewall(rule).await
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        for peer in peers {
+            let res = actor
+                .send(network_msg::RemoveFirewallRule {
+                    peer,
+                    direction: RuleDirection::Inbound,
+                })
+                .await;
+            unwrap_or_err!(res);
+        }
+        StatusMessage::OK
     }
 
     /// Write to the vault of a remote Stronghold.
     /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn write_remote_vault(
         &self,
-        _peer_id: PeerId,
-        _location: Location,
-        _payload: Vec<u8>,
-        _hint: RecordHint,
+        peer: PeerId,
+        location: Location,
+        payload: Vec<u8>,
+        hint: RecordHint,
         _options: Vec<VaultFlags>,
     ) -> StatusMessage {
-        // let vault_path = &location.vault_path();
-        // let vault_path = vault_path.to_vec();
-        // // check if vault exists
-        // let vault_exists = match self
-        //     .ask_remote(peer_id, SHRequest::CheckVault(vault_path.clone()))
-        //     .await
-        // {
-        //     Ok(SHResults::ReturnExistsVault(b)) => b,
-        //     Ok(_) => return StatusMessage::Error("Failed to check at remote if vault exists".into()),
-        //     Err(err) => return StatusMessage::Error(err),
-        // };
-        // if !vault_exists {
-        //     // no vault so create new one before writing.
-        //     match self
-        //         .ask_remote(peer_id, SHRequest::CreateNewVault(location.clone()))
-        //         .await
-        //     {
-        //         Ok(SHResults::ReturnCreateVault(_)) => {}
-        //         Ok(_) => return StatusMessage::Error("Failed to create vault at remote".into()),
-        //         Err(err) => return StatusMessage::Error(err),
-        //     };
-        // }
-        // // write data
-        // match self
-        //     .ask_remote(
-        //         peer_id,
-        //         SHRequest::WriteToVault {
-        //             location: location.clone(),
-        //             payload: payload.clone(),
-        //             hint,
-        //         },
-        //     )
-        //     .await
-        // {
-        //     Ok(SHResults::ReturnWriteVault(status)) => status,
-        //     Ok(_) => StatusMessage::Error("Failed to write the data at remote vault".into()),
-        //     Err(err) => StatusMessage::Error(err),
-        // }
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
 
-        todo!()
+        let vault_path = &location.vault_path();
+        let vault_path = vault_path.to_vec();
+
+        // check if vault exists
+
+        let send_request = network_msg::SendRequest {
+            peer,
+            request: CheckVault { vault_path },
+        };
+        let vault_exists = unwrap_result_msg!(actor.send(send_request).await);
+
+        // no vault so create new one before writing.
+        if vault_exists.is_err() {
+            let send_request = network_msg::SendRequest {
+                peer,
+                request: CreateVault {
+                    location: location.clone(),
+                },
+            };
+            unwrap_result_msg!(actor.send(send_request).await);
+        }
+
+        // write data
+        let send_request = network_msg::SendRequest {
+            peer,
+            request: WriteToVault {
+                location: location.clone(),
+                payload: payload.clone(),
+                hint,
+            },
+        };
+
+        match unwrap_result_msg!(actor.send(send_request).await) {
+            Ok(_) => StatusMessage::OK,
+            Err(e) => StatusMessage::Error(e.to_string()),
+        }
     }
 
     /// Write to the store of a remote Stronghold.
     /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn write_to_remote_store(
         &self,
-        _peer_id: PeerId,
-        _location: Location,
-        _payload: Vec<u8>,
-        _lifetime: Option<Duration>,
+        peer: PeerId,
+        location: Location,
+        payload: Vec<u8>,
+        lifetime: Option<Duration>,
     ) -> StatusMessage {
-        // match self
-        //     .ask_remote(
-        //         peer_id,
-        //         SHRequest::WriteToStore {
-        //             location,
-        //             payload,
-        //             lifetime,
-        //         },
-        //     )
-        //     .await
-        // {
-        //     Ok(SHResults::ReturnWriteStore(status)) => status,
-        //     Ok(_) => StatusMessage::Error("Failed to write at the remote store".into()),
-        //     Err(err) => StatusMessage::Error(err),
-        // }
-
-        todo!()
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let send_request = network_msg::SendRequest {
+            peer,
+            request: WriteToStore {
+                location,
+                payload,
+                lifetime,
+            },
+        };
+        match unwrap_result_msg!(actor.send(send_request).await) {
+            Ok(_) => StatusMessage::OK,
+            Err(e) => StatusMessage::Error(e.to_string()),
+        }
     }
 
     /// Read from the store of a remote Stronghold.
     /// It is required that the peer has successfully been added with the `add_peer` method.
-    pub async fn read_from_remote_store(&self, _peer_id: PeerId, _location: Location) -> (Vec<u8>, StatusMessage) {
-        // match self.ask_remote(peer_id, SHRequest::ReadFromStore { location }).await {
-        //     Ok(SHResults::ReturnReadStore(payload, status)) => (payload, status),
-        //     Ok(_) => (
-        //         vec![],
-        //         StatusMessage::Error("Failed to read at the remote store".into()),
-        //     ),
-        //     Err(err) => (vec![], StatusMessage::Error(err)),
-        // }
-
-        todo!()
+    pub async fn read_from_remote_store(&self, peer: PeerId, location: Location) -> ResultMessage<Vec<u8>> {
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let send_request = network_msg::SendRequest {
+            peer,
+            request: ReadFromStore { location },
+        };
+        match unwrap_result_msg!(actor.send(send_request).await) {
+            Ok(res) => ResultMessage::Ok(res),
+            Err(e) => ResultMessage::Error(e.to_string()),
+        }
     }
 
     /// Returns a list of the available records and their `RecordHint` values of a remote vault.
     /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn list_remote_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
-        _peer_id: PeerId,
-        _vault_path: V,
-    ) -> (Vec<(RecordId, RecordHint)>, StatusMessage) {
-        // match self.ask_remote(peer_id, SHRequest::ListIds(vault_path.into())).await {
-        //     Ok(SHResults::ReturnList(ids, status)) => (ids, status),
-        //     Ok(_) => (
-        //         vec![],
-        //         StatusMessage::Error("Failed to list hints and indexes from at remote vault".into()),
-        //     ),
-        //     Err(err) => (vec![], StatusMessage::Error(err)),
-        // }
-
-        todo!()
+        peer: PeerId,
+        vault_path: V,
+    ) -> ResultMessage<Vec<(RecordId, RecordHint)>> {
+        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let send_request = network_msg::SendRequest {
+            peer,
+            request: ListIds {
+                vault_path: vault_path.into(),
+            },
+        };
+        match unwrap_result_msg!(actor.send(send_request).await) {
+            Ok(res) => ResultMessage::Ok(res),
+            Err(e) => ResultMessage::Error(e.to_string()),
+        }
     }
 
     /// Executes a runtime command at a remote Stronghold.
     /// It is required that the peer has successfully been added with the `add_peer` method.
-    pub async fn remote_runtime_exec(&self, _peer_id: PeerId, _control_request: Procedure) -> ProcResult {
-        // match self
-        //     .ask_remote(peer_id, SHRequest::ControlRequest(control_request))
-        //     .await
-        // {
-        //     Ok(SHResults::ReturnControlRequest(pr)) => pr,
-        //     Ok(_) => ProcResult::Error("Invalid procedure result".into()),
-        //     Err(err) => ProcResult::Error(err),
-        // }
-
-        todo!()
+    pub async fn remote_runtime_exec(&self, peer: PeerId, control_request: Procedure) -> ProcResult {
+        let actor = match self.network_actor.as_ref() {
+            Some(a) => a,
+            None => return ProcResult::Error("No network actor spawned.".to_string()),
+        };
+        let send_request = network_msg::SendRequest {
+            peer,
+            request: CallProcedure { proc: control_request },
+        };
+        match actor.send(send_request).await {
+            Ok(Ok(Ok(res))) => res,
+            Ok(Ok(Err(e))) => ProcResult::Error(e.to_string()),
+            Ok(Err(e)) => ProcResult::Error(e.to_string()),
+            Err(e) => ProcResult::Error(e.to_string()),
+        }
     }
-
-    // Wrap the SHRequest in an CommunicationRequest::RequestMsg and send it to the communication actor, to send it to
-    // the remote peer. Fails if no communication actor is present, if sending the request failed or if an invalid event
-    // was returned from the communication actor,
-    async fn ask_remote(
-        &self,
-        _peer_id: PeerId,
-        // request: SHRequest
-    ) -> Result<(), String> {
-        // Result<SHResults, String> {
-        // match self
-        //     .ask_communication_actor(CommunicationRequest::RequestMsg { peer_id, request })
-        //     .await
-        // {
-        //     Ok(CommunicationResults::RequestMsgResult(Ok(ok))) => Ok(ok),
-        //     Ok(CommunicationResults::RequestMsgResult(Err(e))) => Err(format!("Error sending request to peer {:?}",
-        // e)), Ok(_) => Err("Invalid communication actor response".into()),
-        //     Err(err) => Err(err),
-        // }
-
-        todo!()
-    }
-
-    // Send a request to the communication actor to configure the firewall by adding, changing or removing rules.
-    async fn configure_firewall(&self, _rule: FirewallRule) -> StatusMessage {
-        // match self
-        //     .ask_communication_actor(CommunicationRequest::ConfigureFirewall(rule))
-        //     .await
-        // {
-        //     Ok(CommunicationResults::ConfigureFirewallAck) => StatusMessage::OK,
-        //     Ok(_) => StatusMessage::Error("Invalid communication actor response".into()),
-        //     Err(err) => StatusMessage::Error(err),
-        // }
-
-        todo!()
-    }
-
-    // Send request to communication actor, fails if none is present.
-    async fn ask_communication_actor(
-        &self,
-        // request: CommunicationRequest<SHRequest, ClientMsg>,
-    ) -> Result<(), String> {
-        // -> Result<CommunicationResults<SHResults>, String> {
-        // if let Some(communication_actor) = self.communication_actor.as_ref() {
-        //     let res = ask(&self.system, communication_actor, request).await;
-        //     Ok(res)
-        // } else {
-        //     Err(String::from("No communication spawned"))
-        // }
-
-        todo!()
-    }
-
-    // Keeps stronghold in a running state. This call is blocking.
-    //
-    // This function accepts an optional function for more control over how long
-    // stronghold shall block.
-    // #[cfg(test)]
-    // pub fn keep_alive<F>(&self, callback: Option<F>)
-    // where
-    //     F: FnOnce() -> Result<(), Box<dyn std::error::Error>>,
-    // {
-    //     match callback {
-    //         Some(cb) => {
-    //             block_on(async {
-    //                 cb().expect("Calling blocker function failed");
-    //             });
-    //         }
-    //         None => {
-    //             // create a channel, read from it, but never write.
-    //             // this might be a trivial method to keep an instance running.
-    //             let (_tx, rx): (Sender<usize>, Receiver<usize>) = channel(1);
-
-    //             let waiter = async {
-    //                 rx.map(|f| f).collect::<Vec<usize>>().await;
-    //             };
-    //             block_on(waiter);
-    //         }
-    //     }
-    // }
 }

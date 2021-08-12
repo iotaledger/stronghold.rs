@@ -61,7 +61,7 @@ impl fmt::Display for DialErr {
             DialErr::InvalidAddress(a) => write!(f, "Dial error: invalid address: {}", a),
             DialErr::UnreachableAddrs => write!(f, "Dial error: no known address could be reached"),
             DialErr::Banned => write!(f, "Dial error: peer is banned."),
-            DialErr::Shutdown => write!(f, "Dial error: the swarm task was shut down."),
+            DialErr::Shutdown => write!(f, "Dial error: the network task was shut down."),
         }
     }
 }
@@ -157,6 +157,17 @@ impl From<TransportError<io::Error>> for ListenErr {
     }
 }
 
+impl fmt::Display for ListenErr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ListenErr::Transport(e) => write!(f, "Listen error: Transport Error: {}", e),
+            ListenErr::Shutdown => write!(f, "Listen error: the network task was shut down."),
+        }
+    }
+}
+
+impl std::error::Error for ListenErr {}
+
 /// Error on listening on a relayed address.
 #[derive(Debug)]
 pub enum ListenRelayErr {
@@ -191,7 +202,7 @@ impl fmt::Display for ListenRelayErr {
         match self {
             ListenRelayErr::DialRelay(e) => write!(f, "Listen on Relay error: Dial Relay Error: {}", e),
             ListenRelayErr::Transport(e) => write!(f, "Listen on Relay error: Listening Error: {}", e),
-            ListenRelayErr::Shutdown => write!(f, "Listen on Relay error: the swarm task was shut down."),
+            ListenRelayErr::Shutdown => write!(f, "Listen on Relay error: the network task was shut down."),
         }
     }
 }

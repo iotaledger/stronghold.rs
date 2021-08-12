@@ -3,10 +3,11 @@
 
 mod permissions;
 use crate::RequestDirection;
+use core::fmt;
 use futures::channel::oneshot;
 use libp2p::PeerId;
 pub use permissions::*;
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, fmt::Debug, marker::PhantomData};
 
 /// Requests for approval and rules that are not covered by the current [`FirewallConfiguration`].
 pub enum FirewallRequest<TRq: Clone> {
@@ -48,6 +49,20 @@ where
     /// Ask for individual approval for each request by sending a [`FirewallRequest::RequestApproval`] through the
     /// firewall-channel provided to the `NetBehaviour`.
     Ask,
+}
+
+impl<TRq, F> fmt::Debug for Rule<TRq, F>
+where
+    F: Fn(&TRq) -> bool,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Rule::AllowAll { .. } => write!(f, "Rule::AllowAll"),
+            Rule::RejectAll { .. } => write!(f, "Rule::RejectAll"),
+            Rule::Ask { .. } => write!(f, "Rule::Ask"),
+            Rule::Restricted { .. } => write!(f, "Rule::Restricted"),
+        }
+    }
 }
 
 /// The direction for which a rule is applicable.
@@ -134,6 +149,8 @@ impl<TRq: Clone> Default for FirewallConfiguration<TRq> {
 
 impl<TRq: Clone> FirewallConfiguration<TRq> {
     /// Create a new instance with the given default rules.
+    /// If no rules are set, a a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel on
+    /// inbound **and outbound** requests.
     pub fn new(default_in: Option<Rule<TRq>>, default_out: Option<Rule<TRq>>) -> Self {
         FirewallConfiguration {
             default: FirewallRules {

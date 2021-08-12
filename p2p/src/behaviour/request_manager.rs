@@ -1,6 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+pub use self::connections::EstablishedConnections;
 use super::{ProtocolSupport, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use crate::{
     firewall::{FirewallRules, Rule, RuleDirection},
@@ -9,8 +10,11 @@ use crate::{
 mod connections;
 use connections::PeerConnectionManager;
 use futures::channel::oneshot;
-use libp2p::{core::connection::ConnectionId, PeerId};
-use smallvec::{smallvec, SmallVec};
+use libp2p::{
+    core::{connection::ConnectionId, ConnectedPoint},
+    PeerId,
+};
+use smallvec::SmallVec;
 use std::{
     borrow::Borrow,
     collections::{HashMap, VecDeque},
@@ -124,6 +128,11 @@ impl<Rq: Borrow<TRq>, Rs, TRq: Clone> RequestManager<Rq, Rs, TRq> {
     // List of peers to which at least one connection is currently established.
     pub fn connected_peers(&self) -> Vec<PeerId> {
         self.connections.get_connected_peers()
+    }
+
+    // Currently established connections.
+    pub fn get_established_connections(&self) -> Vec<(PeerId, EstablishedConnections)> {
+        self.connections.get_all_connections()
     }
 
     // New outbound request that should be sent.
@@ -276,16 +285,18 @@ impl<Rq: Borrow<TRq>, Rs, TRq: Clone> RequestManager<Rq, Rs, TRq> {
     // Handle a remote peer disconnecting completely.
     // Emit failures for the pending responses on all pending connections.
     pub fn on_peer_disconnected(&mut self, peer: PeerId) {
-        if let Some(conns) = self.connections.remove_all_connections(&peer) {
-            conns
-                .iter()
+        if let Some(established) = self.connections.remove_all_connections(&peer) {
+            established
+                .connections
+                .keys()
+                .into_iter()
                 .for_each(|conn_id| self.on_connection_closed(peer, conn_id))
         }
     }
 
     // Handle a new individual connection to a remote peer.
-    pub fn on_connection_established(&mut self, peer: PeerId, connection: ConnectionId) {
-        self.connections.add_connection(peer, connection);
+    pub fn on_connection_established(&mut self, peer: PeerId, id: ConnectionId, point: ConnectedPoint) {
+        self.connections.add_connection(peer, id, point);
     }
 
     // Handle an individual connection closing.
@@ -450,7 +461,7 @@ impl<Rq: Borrow<TRq>, Rs, TRq: Clone> RequestManager<Rq, Rs, TRq> {
 
     // Check if there are pending requests for rules for a specific peer.
     pub fn is_rule_request_pending(&self, peer: &PeerId) -> bool {
-        self.awaiting_peer_rule.get(&peer).is_some()
+        self.awaiting_peer_rule.get(peer).is_some()
     }
 
     // Add a placeholder to the map of pending rule requests to mark that there is one for this peer.
@@ -467,7 +478,7 @@ impl<Rq: Borrow<TRq>, Rs, TRq: Clone> RequestManager<Rq, Rs, TRq> {
         protocol_support: ProtocolSupport,
     ) {
         let connections = connection
-            .map(|c| smallvec![c])
+            .map(|c| vec![c])
             .unwrap_or_else(|| self.connections.get_connections(&peer));
         for conn in connections {
             self.actions.push_back(BehaviourAction::SetProtocolSupport {

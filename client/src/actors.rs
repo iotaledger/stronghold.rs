@@ -1,10 +1,14 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(feature = "p2p")]
+pub mod p2p;
 mod registry;
 mod secure;
 mod snapshot;
 
+#[cfg(test)]
+pub use self::secure::testing as secure_testing;
 pub use self::{
     registry::{
         messages::{GetAllClients, GetClient, GetSnapshot, HasClient, InsertClient, RemoveClient},

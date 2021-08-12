@@ -1,7 +1,7 @@
 //! Copyright 2021 IOTA Stiftung
 //! SPDX-License-Identifier: Apache-2.0
 //!
-//! Stronghold communications fuzzer util.
+//! Stronghold P2P-Network fuzzer util.
 //!
 //! This module keeps a running stronghold instance for
 //! receiving fuzzed data.
@@ -39,8 +39,8 @@ fn main() {
 
     let mut stronghold = iota::Stronghold::init_stronghold_system(system, client_path, options);
 
-    // communications fuzzing
-    stronghold.spawn_communication();
+    // network fuzzing
+    stronghold.spawn_p2p();
 
     runtime.block_on(async {
         stronghold
