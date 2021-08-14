@@ -19,7 +19,9 @@ use stronghold_utils::GuardDebug;
 // ==========================
 
 #[derive(GuardDebug)]
-pub struct BuildProcedure<P: ExecProc<InData = ()>>(pub(crate) P);
+pub struct BuildProcedure<P: ExecProc<InData = ()>> {
+    pub(crate) inner: P,
+}
 
 impl<P: ExecProc<InData = ()> + 'static> Message for BuildProcedure<P> {
     type Result = Result<P::OutData, anyhow::Error>;
@@ -33,13 +35,13 @@ pub trait ExecProc {
 }
 
 pub trait ProcExecutor {
-    fn exec_on_guarded<DIn, DOut, SOut>(
+    fn exec_on_guarded<DIn, DOut, VOut>(
         &mut self,
         vault_id: VaultId,
         record_id: RecordId,
-        f: &ProcFn<DIn, DOut, GuardedVec<u8>, SOut>,
+        f: &ProcFn<DIn, DOut, GuardedVec<u8>, VOut>,
         input: DIn,
-    ) -> Result<(SOut, DOut), anyhow::Error>;
+    ) -> Result<ProcFnResult<DOut, VOut>, anyhow::Error>;
 
     fn write_to_vault(
         &mut self,
@@ -83,34 +85,22 @@ where
 // ==========================
 
 mod test {
-    use crate::{Provider, Stronghold};
+    use crate::{Location, Stronghold};
 
     use super::*;
-
-    struct DummyCipher;
-
-    impl DummyCipher {
-        fn encrypt(_guard: GuardedVec<u8>, data: String) -> Result<((), String), anyhow::Error> {
-            Ok(((), data))
-        }
-    }
 
     async fn main() {
         let cp = "test client".into();
         let sh = Stronghold::init_stronghold_system(cp, vec![]).await.unwrap();
 
-        let slip10_generate = CryptoProcedure::Slip10Generate {
+        let slip10_generate = Slip10Generate {
             size_bytes: 64,
-            vault_id_1: VaultId::random::<Provider>().unwrap(),
-            record_id_1: RecordId::random::<Provider>().unwrap(),
+            location: Location::generic("v1", "r1"),
             hint: RecordHint::new("".as_bytes()).unwrap(),
         }
-        .into_proc();
-        let slip10_generate_encrypt = slip10_generate
-            .map_output(|()| "This is my message".to_string())
-            .then_sink(DummyCipher::encrypt)
-            .build();
+        .into_proc()
+        .build();
 
-        let _res = sh.runtime_exec(slip10_generate_encrypt).await;
+        let _res = sh.runtime_exec(slip10_generate).await;
     }
 }

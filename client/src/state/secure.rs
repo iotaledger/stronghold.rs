@@ -92,19 +92,19 @@ impl SecureClient {
     }
 
     /// Resolves a location to a `VaultId` and a `RecordId`
-    pub fn resolve_location<L: AsRef<Location>>(&self, l: L) -> (VaultId, RecordId) {
+    pub fn resolve_location<L: AsRef<Location>>(l: L) -> (VaultId, RecordId) {
         match l.as_ref() {
             Location::Generic {
                 vault_path,
                 record_path,
             } => {
-                let vid = self.derive_vault_id(vault_path);
+                let vid = Self::derive_vault_id(vault_path);
                 let rid = RecordId::load_from_path(vid.as_ref(), record_path).expect(line_error!(""));
                 (vid, rid)
             }
             Location::Counter { vault_path, counter } => {
-                let vid = self.derive_vault_id(vault_path);
-                let rid = self.derive_record_id(vault_path, *counter);
+                let vid = Self::derive_vault_id(vault_path);
+                let rid = Self::derive_record_id(vault_path, *counter);
 
                 (vid, rid)
             }
@@ -112,12 +112,12 @@ impl SecureClient {
     }
 
     /// Gets the [`VaultId`] from a specified path.
-    pub fn derive_vault_id<P: AsRef<Vec<u8>>>(&self, path: P) -> VaultId {
+    pub fn derive_vault_id<P: AsRef<Vec<u8>>>(path: P) -> VaultId {
         VaultId::load_from_path(path.as_ref(), path.as_ref()).expect(line_error!(""))
     }
 
     /// Derives the counter [`RecordId`] from the given vault path and the counter value.
-    pub fn derive_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, ctr: usize) -> RecordId {
+    pub fn derive_record_id<P: AsRef<Vec<u8>>>(vault_path: P, ctr: usize) -> RecordId {
         let vault_path = vault_path.as_ref();
 
         let path = if ctr == 0 {
@@ -145,7 +145,7 @@ impl SecureClient {
         let vault_path = vault_path.as_ref();
 
         while ctr <= 32_000_000 {
-            let rid = self.derive_record_id(vault_path, ctr);
+            let rid = Self::derive_record_id(vault_path, ctr);
             if record_id == rid {
                 break;
             }
@@ -185,8 +185,8 @@ mod tests {
         let mut ctr = 0;
         let mut ctr2 = 0;
 
-        let _rid = client.derive_record_id(vault_path.clone(), ctr);
-        let _rid2 = client.derive_record_id(vault_path.clone(), ctr2);
+        let _rid = SecureClient::derive_record_id(vault_path.clone(), ctr);
+        let _rid2 = SecureClient::derive_record_id(vault_path.clone(), ctr2);
 
         client.add_new_vault(vid);
 
@@ -195,14 +195,14 @@ mod tests {
         ctr += 1;
         ctr2 += 1;
 
-        let _rid = client.derive_record_id(vault_path.clone(), ctr);
-        let _rid2 = client.derive_record_id(vault_path.clone(), ctr2);
+        let _rid = SecureClient::derive_record_id(vault_path.clone(), ctr);
+        let _rid2 = SecureClient::derive_record_id(vault_path.clone(), ctr2);
 
         ctr += 1;
 
-        let rid = client.derive_record_id(vault_path.clone(), ctr);
+        let rid = SecureClient::derive_record_id(vault_path.clone(), ctr);
 
-        let test_rid = client.derive_record_id(vault_path.clone(), 2);
+        let test_rid = SecureClient::derive_record_id(vault_path.clone(), 2);
         let ctr = client.get_index_from_record_id(vault_path, rid);
 
         assert_eq!(test_rid, rid);
@@ -218,14 +218,14 @@ mod tests {
 
         let mut client: SecureClient = SecureClient::new(clientid);
 
-        let (vid, rid) = client.resolve_location(vidlochead.clone());
-        let (vid2, rid2) = client.resolve_location(vidlochead2.clone());
+        let (vid, rid) = SecureClient::resolve_location(vidlochead.clone());
+        let (vid2, rid2) = SecureClient::resolve_location(vidlochead2.clone());
 
         client.add_new_vault(vid);
         client.add_new_vault(vid2);
 
-        let (_, rid_head) = client.resolve_location(vidlochead);
-        let (_, rid_head_2) = client.resolve_location(vidlochead2);
+        let (_, rid_head) = SecureClient::resolve_location(vidlochead);
+        let (_, rid_head_2) = SecureClient::resolve_location(vidlochead2);
 
         assert_eq!(rid, rid_head);
         assert_eq!(rid2, rid_head_2);

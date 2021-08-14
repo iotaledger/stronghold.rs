@@ -3,42 +3,15 @@
 
 use std::ops::Deref;
 
-use engine::{
-    runtime::GuardedVec,
-    vault::{RecordHint, RecordId, VaultId},
-};
+use engine::vault::{RecordHint, RecordId, VaultId};
 
-use super::{BuildProcedure, ExecProc, GetSourceVault, GetTargetVault, ProcExecutor, Processor, Sink};
+use super::{BuildProcedure, ExecProc, GetSourceVault, GetTargetVault, ProcExecutor};
 
 // ==========================
 // Combine Trait
 // ==========================
 
 pub trait ProcCombine: ExecProc + Sized {
-    fn then_sink<F, OData1>(self, f: F) -> ProcAndThen<Self, Sink<Self::OutData, OData1>>
-    where
-        Self: GetTargetVault,
-        F: Fn(GuardedVec<u8>, Self::OutData) -> Result<((), OData1), anyhow::Error> + 'static + Send,
-    {
-        let proc_1 = move |v0, r0| Sink::new(f, v0, r0);
-        self.and_then(proc_1)
-    }
-
-    fn then_process<F, OData1>(
-        self,
-        f: F,
-        vault_id_1: VaultId,
-        record_id_1: RecordId,
-        hint: RecordHint,
-    ) -> ProcAndThen<Self, Processor<Self::OutData, OData1>>
-    where
-        Self: GetTargetVault,
-        F: Fn(GuardedVec<u8>, Self::OutData) -> Result<(Vec<u8>, OData1), anyhow::Error> + 'static + Send,
-    {
-        let proc_1 = move |v0, r0| Processor::new(f, v0, r0, vault_id_1, record_id_1, hint);
-        self.and_then(proc_1)
-    }
-
     fn and_then<P1, F, OData1>(self, f: F) -> ProcAndThen<Self, P1>
     where
         Self: GetTargetVault,
@@ -87,7 +60,7 @@ where
     F: Fn(P::OutData) -> OData1,
 {
     pub fn build(self) -> BuildProcedure<Self> {
-        BuildProcedure(self)
+        BuildProcedure { inner: self }
     }
 }
 
@@ -130,7 +103,7 @@ where
     P1: ExecProc<InData = P::OutData>,
 {
     pub fn build(self) -> BuildProcedure<Self> {
-        BuildProcedure(self)
+        BuildProcedure { inner: self }
     }
 }
 
@@ -187,7 +160,7 @@ where
     F: FnOnce(P::OutData, P1::OutData) -> DOut + Send,
 {
     pub fn build(self) -> BuildProcedure<Self> {
-        BuildProcedure(self)
+        BuildProcedure { inner: self }
     }
 }
 

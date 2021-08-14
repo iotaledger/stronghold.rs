@@ -17,7 +17,7 @@ pub use crate::{
 };
 use crate::{
     internals,
-    procedures::{BuildProcedure, ExecProc, ProcExecutor, ProcFn},
+    procedures::{BuildProcedure, ExecProc, ProcExecutor, ProcFn, ProcFnResult},
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
 
@@ -519,7 +519,7 @@ pub mod testing {
     }
 
     impl_handler!(ReadFromVault, Result<Vec<u8>, anyhow::Error>, (self, msg, _ctx), {
-        let (vid, rid) = self.resolve_location(msg.location);
+        let (vid, rid) = Self::resolve_location(msg.location);
 
         if let Some(key) = self.keystore.get_key(vid) {
             let mut data = Vec::new();
@@ -558,14 +558,14 @@ impl_handler!(messages::ClearCache, Result<(), anyhow::Error>, (self, _msg, _ctx
 });
 
 impl_handler!(messages::CreateVault, (), (self, msg, _ctx), {
-    let (vault_id, _) = self.resolve_location(msg.location);
+    let (vault_id, _) = Self::resolve_location(msg.location);
 
     let key = self.keystore.create_key(vault_id);
     self.db.init_vault(&key, vault_id).unwrap(); // potentially produces an error
 });
 
 impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
-    let (vault_id, record_id) = self.resolve_location(msg.location);
+    let (vault_id, record_id) = Self::resolve_location(msg.location);
 
     return match self.keystore.get_key(vault_id) {
         Some(key) => {
@@ -577,7 +577,7 @@ impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
 });
 
 impl_handler!(messages::WriteToVault, Result<(), anyhow::Error>, (self, msg, _ctx), {
-    let (vault_id, record_id) = self.resolve_location(msg.location);
+    let (vault_id, record_id) = Self::resolve_location(msg.location);
 
     return match self.keystore.get_key(vault_id) {
         Some(key) => {
@@ -591,7 +591,7 @@ impl_handler!(messages::WriteToVault, Result<(), anyhow::Error>, (self, msg, _ct
 });
 
 impl_handler!(messages::RevokeData, Result<(), anyhow::Error>, (self, msg, _ctx), {
-    let (vault_id, record_id) = self.resolve_location(msg.location);
+    let (vault_id, record_id) = Self::resolve_location(msg.location);
 
     return match self.keystore.get_key(vault_id) {
         Some(key) => {
@@ -605,7 +605,7 @@ impl_handler!(messages::RevokeData, Result<(), anyhow::Error>, (self, msg, _ctx)
 });
 
 impl_handler!(messages::GarbageCollect, Result<(), anyhow::Error>, (self, msg, _ctx), {
-    let (vault_id, _) = self.resolve_location(msg.location);
+    let (vault_id, _) = Self::resolve_location(msg.location);
 
     return match self.keystore.get_key(vault_id) {
         Some(key) => {
@@ -623,7 +623,7 @@ impl_handler!(
     Result<Vec<(RecordId, RecordHint)>, anyhow::Error>,
     (self, msg, _ctx),
     {
-        let vault_id = self.derive_vault_id(msg.vault_path);
+        let vault_id = Self::derive_vault_id(msg.vault_path);
 
         match self.keystore.get_key(vault_id) {
             Some(key) => {
@@ -644,12 +644,12 @@ impl_handler!(messages::ReloadData, (), (self, msg, _ctx), {
 });
 
 impl_handler!(messages::CheckVault, Result<(), anyhow::Error>, (self, msg, _ctx), {
-    let vid = self.derive_vault_id(msg.vault_path);
+    let vid = Self::derive_vault_id(msg.vault_path);
     self.vault_exist(vid).ok_or(anyhow::anyhow!(VaultError::NotExisting)).map(|_|())
 });
 
 impl_handler!(messages::WriteToStore, Result<(), anyhow::Error>, (self, msg, _ctx), {
-    let (vault_id, _) = self.resolve_location(msg.location);
+    let (vault_id, _) = Self::resolve_location(msg.location);
     self.write_to_store(vault_id.into(), msg.payload, msg.lifetime);
 
     Ok(())
@@ -660,7 +660,7 @@ impl_handler!(
     Result<Vec<u8>, anyhow::Error>,
     (self, msg, _ctx),
     {
-        let (vault_id, _) = self.resolve_location(msg.location);
+        let (vault_id, _) = Self::resolve_location(msg.location);
 
         match self.read_from_store(vault_id.into()) {
             Some(data) => Ok(data),
@@ -670,7 +670,7 @@ impl_handler!(
 );
 
 impl_handler!( messages::DeleteFromStore, Result <(), anyhow::Error>, (self, msg, _ctx), {
-        let (vault_id, _) = self.resolve_location(msg.location);
+        let (vault_id, _) = Self::resolve_location(msg.location);
         self.store_delete_item(vault_id.into());
 
         Ok(())
@@ -707,18 +707,18 @@ where
     type Result = Result<Proc::OutData, anyhow::Error>;
 
     fn handle(&mut self, proc: BuildProcedure<Proc>, _: &mut Self::Context) -> Self::Result {
-        proc.0.exec(self, ())
+        proc.inner.exec(self, ())
     }
 }
 
 impl ProcExecutor for SecureClient {
-    fn exec_on_guarded<DIn, DOut, SOut>(
+    fn exec_on_guarded<DIn, DOut, VOut>(
         &mut self,
         vault_id: VaultId,
         record_id: RecordId,
-        f: &ProcFn<DIn, DOut, engine::runtime::GuardedVec<u8>, SOut>,
+        f: &ProcFn<DIn, DOut, engine::runtime::GuardedVec<u8>, VOut>,
         input: DIn,
-    ) -> Result<(SOut, DOut), anyhow::Error> {
+    ) -> Result<ProcFnResult<DOut, VOut>, anyhow::Error> {
         let key = self.keystore.get_key(vault_id);
         if let Some(pkey) = key.as_ref() {
             self.keystore.insert_key(vault_id, pkey.clone());
@@ -770,7 +770,7 @@ impl Handler<CallProcedure> for SecureClient {
                 hint,
                 size_bytes,
             } => {
-                let (vault_id, record_id) = self.resolve_location(output);
+                let (vault_id, record_id) = Self::resolve_location(output);
 
                 <Self as Handler<SLIP10Generate>>::handle(
                     self,
@@ -790,9 +790,9 @@ impl Handler<CallProcedure> for SecureClient {
                 hint,
             } => match input {
                 SLIP10DeriveInput::Key(parent) => {
-                    let (parent_vault_id, parent_record_id) = self.resolve_location(parent);
+                    let (parent_vault_id, parent_record_id) = Self::resolve_location(parent);
 
-                    let (child_vault_id, child_record_id) = self.resolve_location(output);
+                    let (child_vault_id, child_record_id) = Self::resolve_location(output);
                     if self.vault_exist(child_vault_id).is_none() {
                         self.add_new_vault(child_vault_id);
                     }
@@ -811,9 +811,9 @@ impl Handler<CallProcedure> for SecureClient {
                     )
                 }
                 SLIP10DeriveInput::Seed(seed) => {
-                    let (seed_vault_id, seed_record_id) = self.resolve_location(seed);
+                    let (seed_vault_id, seed_record_id) = Self::resolve_location(seed);
 
-                    let (key_vault_id, key_record_id) = self.resolve_location(output);
+                    let (key_vault_id, key_record_id) = Self::resolve_location(output);
                     if self.vault_exist(key_vault_id).is_none() {
                         self.add_new_vault(key_vault_id);
                     }
@@ -839,7 +839,7 @@ impl Handler<CallProcedure> for SecureClient {
                 output,
                 hint,
             } => {
-                let (vault_id, record_id) = self.resolve_location(output);
+                let (vault_id, record_id) = Self::resolve_location(output);
 
                 <Self as Handler<BIP39Recover>>::handle(
                     self,
@@ -859,7 +859,7 @@ impl Handler<CallProcedure> for SecureClient {
                 output,
                 hint,
             } => {
-                let (vault_id, record_id) = self.resolve_location(output);
+                let (vault_id, record_id) = Self::resolve_location(output);
 
                 <Self as Handler<BIP39Generate>>::handle(
                     self,
@@ -878,12 +878,12 @@ impl Handler<CallProcedure> for SecureClient {
             }
 
             Procedure::Ed25519PublicKey { private_key } => {
-                let (vault_id, record_id) = self.resolve_location(private_key);
+                let (vault_id, record_id) = Self::resolve_location(private_key);
 
                 <Self as Handler<Ed25519PublicKey>>::handle(self, Ed25519PublicKey { vault_id, record_id }, ctx)
             }
             Procedure::Ed25519Sign { private_key, msg } => {
-                let (vault_id, record_id) = self.resolve_location(private_key);
+                let (vault_id, record_id) = Self::resolve_location(private_key);
 
                 <Self as Handler<Ed25519Sign>>::handle(
                     self,
