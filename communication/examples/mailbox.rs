@@ -322,9 +322,9 @@ fn main() {
         task::block_on(run_mailbox())
     }
     if let Some(matches) = matches.subcommand_matches("put-mailbox") {
-        task::block_on(put_record(&matches));
+        task::block_on(put_record(matches));
     }
     if let Some(matches) = matches.subcommand_matches("get-record") {
-        task::block_on(get_record(&matches));
+        task::block_on(get_record(matches));
     }
 }

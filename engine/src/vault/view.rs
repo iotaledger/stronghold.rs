@@ -67,7 +67,7 @@ impl<P: BoxProvider> DbView<P> {
         record_hint: RecordHint,
     ) -> crate::Result<()> {
         if !self.vaults.contains_key(&vid) {
-            self.init_vault(&key, vid)?;
+            self.init_vault(key, vid)?;
         }
 
         self.vaults.entry(vid).and_modify(|vault| {
@@ -82,7 +82,7 @@ impl<P: BoxProvider> DbView<P> {
     /// Lists all of the [`RecordHint`] values and [`RecordId`] values for the given [`Vault`].
     pub fn list_hints_and_ids(&self, key: &Key<P>, vid: VaultId) -> Vec<(RecordId, RecordHint)> {
         let buf: Vec<(RecordId, RecordHint)> = if let Some(vault) = self.vaults.get(&vid) {
-            vault.list_hints_and_ids(&key)
+            vault.list_hints_and_ids(key)
         } else {
             vec![]
         };
@@ -136,10 +136,10 @@ impl<P: BoxProvider> DbView<P> {
             let data = f(guard)?;
 
             if self.vaults.get(&vid1).is_none() {
-                self.init_vault(&key1, vid1)?;
+                self.init_vault(key1, vid1)?;
             }
 
-            self.write(&key1, vid1, rid1, &data, hint)?;
+            self.write(key1, vid1, rid1, &data, hint)?;
         }
 
         Ok(())
@@ -215,7 +215,7 @@ impl<P: BoxProvider> Vault<P> {
                 .entries
                 .values()
                 .into_iter()
-                .filter_map(|entry| entry.get_hint_and_id(&key))
+                .filter_map(|entry| entry.get_hint_and_id(key))
                 .collect();
         }
 

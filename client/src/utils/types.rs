@@ -38,9 +38,20 @@ impl<T> From<Result<T, String>> for ResultMessage<T> {
     }
 }
 
-/// A [`Location`] type used to specify where in the [`Stronghold`] a piece of data should be stored. A generic location
-/// specifies a location while a counter location specifies a versioned location. If a counter [`Location`] is used,
-/// then the implementation must maintain the counters for the versioning.
+impl<T> From<Result<T, anyhow::Error>> for ResultMessage<T> {
+    fn from(result: Result<T, anyhow::Error>) -> Self {
+        match result {
+            Ok(t) => ResultMessage::Ok(t),
+            Err(e) => ResultMessage::Error(format!("{:?}", e)),
+        }
+    }
+}
+
+/// A `Location` type used to specify where in the `Stronghold` a piece of data should be stored. A generic location
+/// specifies a non-versioned location while a counter location specifies a versioned location. The Counter location can
+/// be used to get the head of the version chain by passing in `None` as the counter index. Otherwise, counter records
+/// are referenced through their associated index.  On Read, the `None` location is the latest record in the version
+/// chain while on Write, the `None` location is the next record in the version chain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Location {
     Generic { vault_path: Vec<u8>, record_path: Vec<u8> },
@@ -94,6 +105,9 @@ impl AsRef<Location> for Location {
 }
 
 /// Policy options for modifying an entire Stronghold.  Must be specified on creation.
+///
+/// note:
+/// This is deprecated.
 #[derive(Clone, Debug)]
 pub enum StrongholdFlags {
     IsReadable(bool),

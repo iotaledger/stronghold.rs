@@ -5,7 +5,7 @@
 #![allow(clippy::from_over_into)]
 #![allow(clippy::upper_case_acronyms)]
 
-/// An interface for implementing the stronghold engine. Using the Riker Actor model, this library provides a
+/// An interface for implementing the stronghold engine. Using the Actix Actor model, this library provides a
 /// mechanism to manage secret data between multiple users. Stronghold may be accessed via the `Stronghold`
 /// object. The interface contains methods to access the secure runtime environment and methods to write to the
 /// Stronghold. Each Stronghold contains a collection of versioned records, identified as Vaults. Each Vault
@@ -13,6 +13,7 @@
 /// which can hold multiple vaults (See the `Location` API for more details). The Stronghold interface also
 /// contains a generic insecure key/value store which can be accessed as a `Store`. Each client contains a single
 /// store and the same location may be used across multiple clients.
+// TODO: Adapt Documentation
 // TODO: Synchronization via 4th actor and status type.
 // TODO: Add supervisors
 // TODO: Add documentation
@@ -37,18 +38,12 @@ mod utils;
 mod tests;
 
 pub use crate::{
-    actors::{ProcResult, Procedure, SLIP10DeriveInput},
+    actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput},
     interface::Stronghold,
     internals::Provider,
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
-// pull up dependency on riker actor system, or change api to hide this dependency
-// on lower levels to avoid calling this explicit dependency
-pub use riker::system::ActorSystem;
-
-#[cfg(feature = "communication")]
-pub use crate::actors::SHRequestPermission;
 #[cfg(feature = "communication")]
 pub use communication::{
     actor::RelayDirection,
@@ -85,6 +80,19 @@ pub type Result<T> = anyhow::Result<T, Error>;
 pub enum Error {
     #[error("Id Error")]
     IDError,
+
     #[error("Engine Error: {0}")]
     EngineError(#[from] engine::Error),
+
+    #[error("Id Conversion Error ({0})")]
+    IdConversionError(String),
+
+    #[error("Path Error: ({0})")]
+    PathError(String),
+
+    #[error("Keystore Access Error: ({0})")]
+    KeyStoreError(String),
+
+    #[error("Could not load client by path ({0})")]
+    LoadClientByPathError(String),
 }

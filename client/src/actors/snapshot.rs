@@ -3,149 +3,156 @@
 
 #![allow(clippy::type_complexity)]
 
-use riker::actors::*;
+use actix::{Actor, Handler, Message, Supervised};
 
 use std::path::PathBuf;
 
 use engine::{
     snapshot,
-    vault::{ClientId, DbView, Key, VaultId},
+    vault::{BoxProvider, ClientId, DbView, Key, VaultId},
 };
-
-use stronghold_utils::GuardDebug;
 
 use crate::{
-    actors::{InternalMsg, SHResults},
-    line_error,
+    internals, line_error,
     state::{
-        client::Store,
+        secure::Store,
         snapshot::{Snapshot, SnapshotState},
     },
-    utils::StatusMessage,
     Provider,
 };
-
 use std::collections::HashMap;
+use thiserror::Error as DeriveError;
 
-/// Messages used for the Snapshot Actor.
-#[derive(Clone, GuardDebug)]
-pub enum SMsg {
-    /// Write the snapshot to the file.
-    WriteSnapshot {
-        key: snapshot::Key,
-        filename: Option<String>,
-        path: Option<PathBuf>,
-    },
-    /// Fill the snapshot structure with data.
-    FillSnapshot {
-        data: Box<(HashMap<VaultId, Key<Provider>>, DbView<Provider>, Store)>,
-        id: ClientId,
-    },
-    /// Reead from the snapshot.
-    ReadFromSnapshot {
-        key: snapshot::Key,
-        filename: Option<String>,
-        path: Option<PathBuf>,
-        id: ClientId,
-        fid: Option<ClientId>,
-    },
+/// re-export local modules
+pub use messages::*;
+pub use returntypes::*;
+
+pub mod returntypes {
+
+    use super::*;
+
+    /// Return type for loaded snapshot file
+    pub struct ReturnReadSnapshot<T: BoxProvider + Send + Sync + Clone + 'static + Unpin> {
+        pub id: ClientId,
+
+        // TODO this could be re-worked for generalized synchronisation facilities
+        // see crate::actors::secure::
+        pub data: Box<(HashMap<VaultId, Key<T>>, DbView<T>, Store)>,
+    }
 }
 
-/// Actor Factory for the Snapshot.
-impl ActorFactory for Snapshot {
-    fn create() -> Self {
-        Snapshot::new(SnapshotState::default())
+pub mod messages {
+
+    use super::*;
+
+    pub struct WriteSnapshot {
+        pub key: snapshot::Key,
+        pub filename: Option<String>,
+        pub path: Option<PathBuf>,
+    }
+
+    impl Message for WriteSnapshot {
+        type Result = Result<(), anyhow::Error>;
+    }
+
+    pub struct FillSnapshot {
+        pub data: Box<(HashMap<VaultId, Key<Provider>>, DbView<Provider>, Store)>,
+        pub id: ClientId,
+    }
+
+    impl Message for FillSnapshot {
+        type Result = Result<(), anyhow::Error>;
+    }
+
+    #[derive(Default)]
+    pub struct ReadFromSnapshot<T: BoxProvider + Send + Sync + Clone + 'static + Unpin> {
+        pub key: snapshot::Key,
+        pub filename: Option<String>,
+        pub path: Option<PathBuf>,
+        pub id: ClientId,
+        pub fid: Option<ClientId>,
+
+        // phantom
+        pub p: core::marker::PhantomData<T>,
+    }
+
+    impl<T> Message for ReadFromSnapshot<T>
+    where
+        T: BoxProvider + Send + Sync + Clone + 'static + Unpin,
+    {
+        type Result = Result<returntypes::ReturnReadSnapshot<T>, anyhow::Error>;
     }
 }
 
 impl Actor for Snapshot {
-    type Msg = SMsg;
+    type Context = actix::Context<Self>;
+}
 
-    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        self.receive(ctx, msg, sender);
+#[derive(Debug, DeriveError)]
+pub enum SnapshotError {
+    #[error("Could Not Load Snapshot. Try another password")]
+    LoadFailure,
+}
+
+// actix impl
+impl Supervised for Snapshot {}
+
+impl Handler<messages::FillSnapshot> for Snapshot {
+    type Result = Result<(), anyhow::Error>;
+
+    fn handle(&mut self, msg: messages::FillSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+        self.state.add_data(msg.id, *msg.data);
+
+        Ok(())
     }
 }
 
-impl Receive<SMsg> for Snapshot {
-    type Msg = SMsg;
+impl Handler<messages::ReadFromSnapshot<internals::Provider>> for Snapshot {
+    type Result = Result<returntypes::ReturnReadSnapshot<internals::Provider>, anyhow::Error>;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        match msg {
-            SMsg::FillSnapshot { data, id } => {
-                self.state.add_data(id, *data);
+    /// This will try to read from a snapshot on disk, otherwise load from a local snapshot
+    /// in memory. Returns the loaded snapshot data, that must be loaded inside the client
+    /// for access.
+    fn handle(
+        &mut self,
+        msg: messages::ReadFromSnapshot<internals::Provider>,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        let id = msg.fid.unwrap_or(msg.id);
 
-                sender
-                    .as_ref()
-                    .expect(line_error!())
-                    .try_tell(SHResults::ReturnFillSnap(StatusMessage::OK), None)
-                    .expect(line_error!());
-            }
-            SMsg::ReadFromSnapshot {
-                key,
-                filename,
-                path,
+        if self.has_data(id) {
+            let data = self.get_state(id);
+
+            Ok(ReturnReadSnapshot {
                 id,
-                fid,
-            } => {
-                let id_str: String = id.into();
-                let internal = ctx.select(&format!("/user/internal-{}/", id_str)).expect(line_error!());
-                let cid = if let Some(fid) = fid { fid } else { id };
+                data: Box::new(data),
+            })
+        } else {
+            match Snapshot::read_from_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key) {
+                Ok(mut snapshot) => {
+                    let data = snapshot.get_state(id);
+                    *self = snapshot;
 
-                if self.has_data(cid) {
-                    let data = self.get_state(cid);
-
-                    internal.try_tell(
-                        InternalMsg::ReloadData {
-                            id: cid,
-                            data: Box::new(data),
-                            status: StatusMessage::OK,
-                        },
-                        sender,
-                    );
-                } else {
-                    match Snapshot::read_from_snapshot(filename.as_deref(), path.as_deref(), key) {
-                        Ok(mut snapshot) => {
-                            let data = snapshot.get_state(cid);
-
-                            *self = snapshot;
-
-                            internal.try_tell(
-                                InternalMsg::ReloadData {
-                                    id: cid,
-                                    data: Box::new(data),
-                                    status: StatusMessage::OK,
-                                },
-                                sender,
-                            );
-                        }
-                        Err(e) => {
-                            sender
-                                .as_ref()
-                                .expect(line_error!())
-                                .try_tell(
-                                    SHResults::ReturnReadSnap(StatusMessage::Error(format!(
-                                        "{}, Unable to read snapshot. Please try another password.",
-                                        e
-                                    ))),
-                                    None,
-                                )
-                                .expect(line_error!());
-                        }
-                    }
-                };
-            }
-            SMsg::WriteSnapshot { key, filename, path } => {
-                self.write_to_snapshot(filename.as_deref(), path.as_deref(), key)
-                    .expect(line_error!());
-
-                self.state = SnapshotState::default();
-
-                sender
-                    .as_ref()
-                    .expect(line_error!())
-                    .try_tell(SHResults::ReturnWriteSnap(StatusMessage::OK), None)
-                    .expect(line_error!());
+                    Ok(ReturnReadSnapshot {
+                        id,
+                        data: Box::new(data),
+                    })
+                }
+                Err(_) => Err(anyhow::anyhow!(SnapshotError::LoadFailure)),
             }
         }
+    }
+}
+
+impl Handler<messages::WriteSnapshot> for Snapshot {
+    type Result = Result<(), anyhow::Error>;
+
+    fn handle(&mut self, msg: messages::WriteSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+        self.write_to_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)
+            .expect(line_error!());
+
+        self.state = SnapshotState::default();
+
+        Ok(())
     }
 }

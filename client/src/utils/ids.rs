@@ -18,7 +18,6 @@ impl LoadFromPath for Id {
     fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self> {
         let mut buf = [0; 64];
         HMAC_SHA512(data, path, &mut buf);
-
         let (id, _) = buf.split_at(24);
 
         Ok(id.try_into()?)
@@ -30,7 +29,6 @@ impl LoadFromPath for RecordId {
     fn load_from_path(data: &[u8], path: &[u8]) -> crate::Result<Self> {
         let mut buf = [0; 64];
         HMAC_SHA512(data, path, &mut buf);
-
         let (id, _) = buf.split_at(24);
 
         Ok(id.try_into()?)

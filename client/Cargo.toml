@@ -21,8 +21,8 @@ zeroize = "1.1"
 zeroize_derive = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
-futures = "0.3"
-riker = "0.4"
+# futures = "0.3"
+actix = "0.12"
 
 [dependencies.stronghold_engine]
 path = "../engine"
@@ -54,9 +54,10 @@ communication = [ "stronghold-communication" ]
 
 [dev-dependencies]
 hex = "0.4.2"
-criterion = "0.3.3"
+criterion = { version = "0.3.3", features = ["async_tokio"] }
 clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
 rand = "0.8.3"
+tokio = {version = "1.9", features = ["rt-multi-thread"] }
 
 [[bench]]
 name = "benchmark"

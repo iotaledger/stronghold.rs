@@ -5,10 +5,9 @@ use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, StatusMessage, 
 
 use futures::executor::block_on;
 
-use riker::actors::*;
-
 use clap::{load_yaml, App, ArgMatches};
 
+use core::panic;
 use std::path::{Path, PathBuf};
 
 // create a line error with the file and the line number
@@ -108,7 +107,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
 // Writes the state of the stronghold to a snapshot. Requires a password and an optional snapshot path.
 fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("snapshot") {
-        if let Some(ref pass) = matches.value_of("password") {
+        if let Some(pass) = matches.value_of("password") {
             if let Some(ref path) = matches.value_of("path") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
@@ -148,7 +147,7 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
 // Lists the records in the stronghold. Requires a password to unlock the snapshot.
 fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("list") {
-        if let Some(ref pass) = matches.value_of("password") {
+        if let Some(pass) = matches.value_of("password") {
             if let Some(path) = matches.value_of("rpath") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
@@ -188,7 +187,7 @@ fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongho
 // Reads a record from the unencrypted store.  Requires a snapshot password.
 fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("read") {
-        if let Some(ref pass) = matches.value_of("password") {
+        if let Some(pass) = matches.value_of("password") {
             if let Some(rpath) = matches.value_of("rpath") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
@@ -226,7 +225,7 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
 // that you want to revoke.
 fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("revoke") {
-        if let Some(ref pass) = matches.value_of("password") {
+        if let Some(pass) = matches.value_of("password") {
             if let Some(id) = matches.value_of("rpath") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
@@ -311,7 +310,7 @@ fn garbage_collect_vault_command(
 // id.
 fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
     if let Some(matches) = matches.subcommand_matches("purge") {
-        if let Some(ref pass) = matches.value_of("password") {
+        if let Some(pass) = matches.value_of("password") {
             if let Some(id) = matches.value_of("id") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
@@ -346,12 +345,14 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
     }
 }
 
-fn main() {
+#[actix::main]
+async fn main() {
     let yaml = load_yaml!("cli.yml");
     let matches = App::from(yaml).get_matches();
-    let system = ActorSystem::new().expect(line_error!());
     let client_path = b"actor_path".to_vec();
-    let mut stronghold = Stronghold::init_stronghold_system(system, client_path.clone(), vec![]);
+    let mut stronghold = Stronghold::init_stronghold_system(client_path.clone(), vec![])
+        .await
+        .unwrap_or_else(|e| panic!("Failed to initialize stronghold system: {}", e));
 
     write_to_store_command(&matches, &mut stronghold, client_path.clone());
     encrypt_command(&matches, &mut stronghold, client_path.clone());
