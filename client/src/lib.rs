@@ -1,0 +1,98 @@
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
+#![allow(dead_code)]
+#![allow(clippy::from_over_into)]
+#![allow(clippy::upper_case_acronyms)]
+
+/// An interface for implementing the stronghold engine. Using the Actix Actor model, this library provides a
+/// mechanism to manage secret data between multiple users. Stronghold may be accessed via the `Stronghold`
+/// object. The interface contains methods to access the secure runtime environment and methods to write to the
+/// Stronghold. Each Stronghold contains a collection of versioned records, identified as Vaults. Each Vault
+/// contains a set of versioned records of like data. Multiple clients can be spawned with Stronghold, each of
+/// which can hold multiple vaults (See the `Location` API for more details). The Stronghold interface also
+/// contains a generic insecure key/value store which can be accessed as a `Store`. Each client contains a single
+/// store and the same location may be used across multiple clients.
+// TODO: Adapt Documentation
+// TODO: Synchronization via 4th actor and status type.
+// TODO: Add supervisors
+// TODO: Add documentation
+// TODO: Handshake
+// TODO: ~~O(1) comparison for IDS.~~
+// TODO: ~~Add ability to name snapshots~~
+// TODO: ~~Add ability to read and revoke records not on the head of the chain.~~
+// TODO: Add Reference types for the RecordIds and VaultIds to expose to the External programs.
+// TODO: Add Handshake Messages.
+// TODO: Add Responses for each Message.
+// TODO: Remove #[allow(dead_code)]
+use thiserror::Error as DeriveError;
+
+mod actors;
+mod interface;
+mod internals;
+mod state;
+mod utils;
+
+// Tests exist as a sub-module because they need to be able to test internal concepts without exposing them publicly.
+#[cfg(test)]
+mod tests;
+
+pub use crate::{
+    actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput},
+    interface::Stronghold,
+    internals::Provider,
+    utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+};
+
+#[cfg(feature = "communication")]
+pub use communication::{
+    actor::RelayDirection,
+    libp2p::{Keypair, Multiaddr, PeerId},
+};
+
+pub use engine::{
+    snapshot::{
+        files::{home_dir, snapshot_dir},
+        kdf::naive_kdf,
+        Key,
+    },
+    vault::RecordId,
+};
+
+pub use engine::vault::RecordHint;
+
+/// TODO: Should be replaced with proper errors.
+#[macro_export]
+macro_rules! line_error {
+    () => {
+        concat!("Error at ", file!(), ":", line!())
+    };
+    ($str:expr) => {
+        concat!($str, " @", file!(), ":", line!())
+    };
+}
+
+/// Stronghold Client Result Type.
+pub type Result<T> = anyhow::Result<T, Error>;
+
+/// Stronghold Client error block.
+#[derive(DeriveError, Debug)]
+pub enum Error {
+    #[error("Id Error")]
+    IDError,
+
+    #[error("Engine Error: {0}")]
+    EngineError(#[from] engine::Error),
+
+    #[error("Id Conversion Error ({0})")]
+    IdConversionError(String),
+
+    #[error("Path Error: ({0})")]
+    PathError(String),
+
+    #[error("Keystore Access Error: ({0})")]
+    KeyStoreError(String),
+
+    #[error("Could not load client by path ({0})")]
+    LoadClientByPathError(String),
+}

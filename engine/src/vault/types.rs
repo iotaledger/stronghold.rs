@@ -1,0 +1,52 @@
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
+use std::mem;
+
+pub use transactions::{DataTransaction, SealedBlob, SealedTransaction};
+
+pub mod transactions;
+pub mod utils;
+
+/// A trait that is used to make a view over some raw data.
+pub trait AsView<T: Sized>: AsRef<[u8]> {
+    /// creates a view over `self`.
+    fn view(&self) -> &T {
+        // get the bytes
+        let bytes = self.as_ref();
+        // validate the bytes
+        assert!(mem::size_of::<T>() <= bytes.len(), "Can't create view over this memory");
+        // get the pointer
+        let bytes = bytes.as_ptr();
+        // validate alignment
+        assert_eq!(
+            bytes.align_offset(mem::align_of::<T>()),
+            0,
+            "View's offset is incorrect"
+        );
+        // cast the pointer
+        unsafe { bytes.cast::<T>().as_ref() }.unwrap()
+    }
+}
+
+/// A trait used to make a mutable view over some raw data.
+pub trait AsViewMut<T: Sized>: AsMut<[u8]> {
+    /// creates a mutable view over `self`.
+    fn view_mut(&mut self) -> &mut T {
+        // get bytes
+        let bytes = self.as_mut();
+        // validate bytes
+        assert!(mem::size_of::<T>() <= bytes.len(), "Can't create view over this memory");
+        // get mute pointer
+        let bytes = bytes.as_mut_ptr();
+        // validate alignment
+        assert_eq!(
+            bytes.align_offset(mem::align_of::<T>()),
+            0,
+            "View's offset is incorrect"
+        );
+
+        // cast mutable pointer
+        unsafe { bytes.cast::<T>().as_mut() }.unwrap()
+    }
+}

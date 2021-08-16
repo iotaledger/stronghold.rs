@@ -1,0 +1,23 @@
+# This will only run on the Pull Request and let's you know the status of covector.
+# It will also fail if there is an issue with configuration or a change file that is submitted.
+
+name: status
+on: [pull_request]
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    outputs:
+      change: ${{ steps.covector.outputs.change }}
+      commandRan: ${{ steps.covector.outputs.commandRan }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: covector status
+        uses: jbolda/covector/packages/action@covector-v0
+        id: covector
+        with:
+          command: "status"

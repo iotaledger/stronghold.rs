@@ -1,0 +1,123 @@
+{
+  "gitSiteUrl": "https://www.github.com/iotaledger/stronghold.rs/",
+  "timeout": 3600000,
+  "pkgManagers": {
+    "rust": {
+      "version": true,
+      "getPublishedVersion": "cargo search ${ pkgFile.pkg.package.name } --limit 1 | sed -nE \"s/^[^\\\"]*\\\"//; s/\\\".*//1p\"",
+      "prepublish": [
+        "cargo install cargo-audit --features=fix",
+        {
+          "command": "cargo generate-lockfile",
+          "dryRunCommand": true,
+          "runFromRoot": true,
+          "pipe": true
+        },
+        {
+          "command": "echo \"# Cargo Audit\"",
+          "dryRunCommand": true,
+          "pipe": true
+        },
+        {
+          "command": "echo \"\\`\\`\\`\"",
+          "dryRunCommand": true,
+          "pipe": true
+        },
+        {
+          "command": "cargo audit ${ process.env.CARGO_AUDIT_OPTIONS || '' }",
+          "dryRunCommand": true,
+          "runFromRoot": true,
+          "pipe": true
+        },
+        {
+          "command": "echo \"\\`\\`\\`\"",
+          "dryRunCommand": true,
+          "pipe": true
+        }
+      ],
+      "publish": [
+        "sleep 15s",
+        {
+          "command": "cargo package --allow-dirty",
+          "dryRunCommand": true
+        },
+        {
+          "command": "echo \"# Cargo Publish\"",
+          "dryRunCommand": true,
+          "pipe": true
+        },
+        {
+          "command": "echo \"\\`\\`\\`\"",
+          "dryRunCommand": true,
+          "pipe": true
+        },
+        {
+          "command": "cargo publish --no-verify",
+          "dryRunCommand": "cargo publish --no-verify --dry-run --allow-dirty",
+          "pipe": true
+        },
+        {
+          "command": "echo \"\\`\\`\\`\"",
+          "dryRunCommand": true,
+          "pipe": true
+        }
+      ],
+      "assets": [
+        {
+          "path": "${ pkg.path }/${ pkg.pkg }-${ pkgFile.version }.crate",
+          "name": "${ pkg.pkg }-${ pkgFile.version }.crate"
+        }
+      ]
+    }
+  },
+  "packages": {
+    "stronghold-derive": {
+      "path": "./derive/",
+      "manager": "rust"
+    },
+    "stronghold-runtime": {
+      "path": "./engine/runtime/",
+      "manager": "rust"
+    },
+    "stronghold-utils": {
+      "path": "./utils/",
+      "manager": "rust",
+      "dependencies": [
+        "stronghold-derive"
+      ]
+    },
+    "stronghold-engine": {
+      "path": "./engine/",
+      "manager": "rust",
+      "dependencies": [
+        "stronghold-runtime",
+        "stronghold-utils"
+      ]
+    },
+    "stronghold-communication": {
+      "path": "./communication/",
+      "manager": "rust",
+      "dependencies": [
+        "stronghold-utils"
+      ]
+    },
+    "iota-stronghold": {
+      "path": "./client/",
+      "manager": "rust",
+      "dependencies": [
+        "stronghold-engine",
+        "stronghold-communication",
+        "stronghold-utils",
+        "stronghold-runtime"
+      ]
+    },
+    "commandline": {
+      "path": "./products/commandline/",
+      "manager": "rust",
+      "publish": false,
+      "dependencies": [
+        "iota-stronghold"
+      ]
+    }
+  }
+}

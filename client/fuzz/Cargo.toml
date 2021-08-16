@@ -1,0 +1,59 @@
+[package]
+name = "fuzz"
+version = "0.1.0"
+authors = ["Matthias Kandora <matthias.kandora@iota.org>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.3"
+rand = "0.8.3"
+
+[dependencies.iota_stronghold]
+path = "../"
+version = "0.4"
+features = ["communication"]
+
+[dependencies.redis]
+version = "0.20.1"
+
+[dependencies.tokio]
+version = "1.6"
+features = ["full"]
+
+[dependencies.iota-crypto]
+version = "0.5.0"
+features = [ "random", "chacha" ]
+
+[dependencies.log]
+version = "0.4.0"
+
+[dev-dependencies.uuid]
+version = "0.8"
+
+[profile.release]
+overflow-checks = true
+panic = "abort"
+
+[profile.dev]
+overflow-checks = true
+panic = "abort"
+
+[workspace]
+
+[build-dependencies.iota_stronghold]
+path = "../"
+version = "0.4"
+features = ["communication"]
+
+[[bin]]
+name = "listen"
+path = "src/listen.rs"
+
+[[bin]]
+name = "comms"
+path = "src/comms.rs"

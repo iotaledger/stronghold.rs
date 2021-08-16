@@ -1,0 +1,498 @@
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 100;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-Thin.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-Thin.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: italic;
+  font-weight: 100;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-ThinItalic.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-ThinItalic.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 200;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-ExtraLight.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-ExtraLight.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: italic;
+  font-weight: 200;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-ExtraLightItalic.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-ExtraLightItalic.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-Light.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-Light.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: italic;
+  font-weight: 300;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-LightItalic.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-LightItalic.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-Regular.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-Regular.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-Italic.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-Italic.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-Medium.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-Medium.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-MediumItalic.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-MediumItalic.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-SemiBold.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-SemiBold.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-SemiBoldItalic.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-SemiBoldItalic.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-Bold.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-Bold.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-BoldItalic.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-BoldItalic.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-ExtraBold.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-ExtraBold.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: italic;
+  font-weight: 800;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-ExtraBoldItalic.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-ExtraBoldItalic.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-Black.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-Black.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: italic;
+  font-weight: 900;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/inter/Inter-BlackItalic.woff2?v=3.13) format("woff2"), url(https://webassets.iota.org/fonts/inter/Inter-BlackItalic.woff?v=3.13) format("woff")
+}
+
+@font-face {
+  font-family: Inter var;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  font-named-instance: "Regular";
+  src: url(https://webassets.iota.org/fonts/inter/Inter-roman.var.woff2?v=3.13) format("woff2")
+}
+
+@font-face {
+  font-family: Inter var;
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  font-named-instance: "Italic";
+  src: url(https://webassets.iota.org/fonts/inter/Inter-italic.var.woff2?v=3.13) format("woff2")
+}
+
+@font-face {
+  font-family: Metropolis Regular;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/metropolis/Metropolis-Regular.woff2?v=11) format("woff2"), url(https://webassets.iota.org/fonts/metropolis/Metropolis-Regular.woff?v=11) format("woff")
+}
+
+@font-face {
+  font-family: Metropolis Light;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/metropolis/Metropolis-Light.woff2?v=11) format("woff2"), url(https://webassets.iota.org/fonts/metropolis/Metropolis-Light.woff?v=11) format("woff")
+}
+
+@font-face {
+  font-family: Metropolis Medium;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/metropolis/Metropolis-Medium.woff2?v=11) format("woff2"), url(https://webassets.iota.org/fonts/metropolis/Metropolis-Medium.woff?v=11) format("woff")
+}
+
+@font-face {
+  font-family: Metropolis Semi Bold;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/metropolis/Metropolis-SemiBold.woff2?v=11) format("woff2"), url(https://webassets.iota.org/fonts/metropolis/Metropolis-SemiBold.woff?v=11) format("woff")
+}
+
+@font-face {
+  font-family: Metropolis Bold;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(https://webassets.iota.org/fonts/metropolis/Metropolis-Bold.woff2?v=11) format("woff2"), url(https://webassets.iota.org/fonts/metropolis/Metropolis-Bold.woff?v=11) format("woff")
+}
+
+:root {
+--ifm-color-primary: #00E0CA;
+--ifm-color-success: #0FC1B7;
+--ifm-color-info: #2E8698;
+--ifm-color-warning: #e5a23e;
+--ifm-color-danger: #e53e3e;
+
+--ifm-color-primary-dark: color-mod(
+  var(--ifm-color-primary) shade(var(--ifm-dark-value))
+);
+--ifm-color-primary-darker: color-mod(
+  var(--ifm-color-primary),
+  shade(var(--ifm-darker-value))
+);
+--ifm-color-primary-darkest: color-mod(
+  var(--ifm-color-primary),
+  shade(var(--ifm-darkest-value))
+);
+--ifm-color-primary-light: color-mod(
+  var(--ifm-color-primary),
+  tint(var(--ifm-light-value))
+);
+--ifm-color-primary-lighter: color-mod(
+  var(--ifm-color-primary),
+  tint(var(--ifm-lighter-value))
+);
+--ifm-color-primary-lightest: color-mod(
+  var(--ifm-color-primary),
+  tint(var(--ifm-lightest-value))
+);
+
+--ifm-color-secondary-dark: color-mod(
+  var(--ifm-color-secondary),
+  shade(var(--ifm-dark-value))
+);
+--ifm-color-secondary-darker: color-mod(
+  var(--ifm-color-secondary),
+  shade(var(--ifm-darker-value))
+);
+--ifm-color-secondary-darkest: color-mod(
+  var(--ifm-color-secondary),
+  shade(var(--ifm-darkest-value))
+);
+--ifm-color-secondary-light: color-mod(
+  var(--ifm-color-secondary),
+  tint(var(--ifm-light-value))
+);
+--ifm-color-secondary-lighter: color-mod(
+  var(--ifm-color-secondary),
+  tint(var(--ifm-lighter-value))
+);
+--ifm-color-secondary-lightest: color-mod(
+  var(--ifm-color-secondary),
+  tint(var(--ifm-lightest-value))
+);
+
+--ifm-color-success-dark: color-mod(
+  var(--ifm-color-success),
+  shade(var(--ifm-dark-value))
+);
+--ifm-color-success-darker: color-mod(
+  var(--ifm-color-success),
+  shade(var(--ifm-darker-value))
+);
+--ifm-color-success-darkest: color-mod(
+  var(--ifm-color-success),
+  shade(var(--ifm-darkest-value))
+);
+--ifm-color-success-light: color-mod(
+  var(--ifm-color-success),
+  tint(var(--ifm-light-value))
+);
+--ifm-color-success-lighter: color-mod(
+  var(--ifm-color-success),
+  tint(var(--ifm-lighter-value))
+);
+--ifm-color-success-lightest: color-mod(
+  var(--ifm-color-success),
+  tint(var(--ifm-lightest-value))
+);
+
+--ifm-color-info-dark: color-mod(
+  var(--ifm-color-info),
+  shade(var(--ifm-dark-value))
+);
+--ifm-color-info-darker: color-mod(
+  var(--ifm-color-info),
+  shade(var(--ifm-darker-value))
+);
+--ifm-color-info-darkest: color-mod(
+  var(--ifm-color-info),
+  shade(var(--ifm-darkest-value))
+);
+--ifm-color-info-light: color-mod(
+  var(--ifm-color-info),
+  tint(var(--ifm-light-value))
+);
+--ifm-color-info-lighter: color-mod(
+  var(--ifm-color-info),
+  tint(var(--ifm-lighter-value))
+);
+--ifm-color-info-lightest: color-mod(
+  var(--ifm-color-info),
+  tint(var(--ifm-lightest-value))
+);
+
+--ifm-color-warning-dark: color-mod(
+  var(--ifm-color-warning),
+  shade(var(--ifm-dark-value))
+);
+--ifm-color-warning-darker: color-mod(
+  var(--ifm-color-warning),
+  shade(var(--ifm-darker-value))
+);
+--ifm-color-warning-darkest: color-mod(
+  var(--ifm-color-warning),
+  shade(var(--ifm-darkest-value))
+);
+--ifm-color-warning-light: color-mod(
+  var(--ifm-color-warning),
+  tint(var(--ifm-light-value))
+);
+--ifm-color-warning-lighter: color-mod(
+  var(--ifm-color-warning),
+  tint(var(--ifm-lighter-value))
+);
+--ifm-color-warning-lightest: color-mod(
+  var(--ifm-color-warning),
+  tint(var(--ifm-lightest-value))
+);
+
+--ifm-color-danger-dark: color-mod(
+  var(--ifm-color-danger),
+  shade(var(--ifm-dark-value))
+);
+--ifm-color-danger-darker: color-mod(
+  var(--ifm-color-danger),
+  shade(var(--ifm-darker-value))
+);
+--ifm-color-danger-darkest: color-mod(
+  var(--ifm-color-danger),
+  shade(var(--ifm-darkest-value))
+);
+--ifm-color-danger-light: color-mod(
+  var(--ifm-color-danger),
+  tint(var(--ifm-light-value))
+);
+--ifm-color-danger-lighter: color-mod(
+  var(--ifm-color-danger),
+  tint(var(--ifm-lighter-value))
+);
+--ifm-color-danger-lightest: color-mod(
+  var(--ifm-color-danger),
+  tint(var(--ifm-lightest-value))
+);
+
+--ifm-color-gray-100: #F6F8FC;
+--ifm-color-gray-200: #F2F5FB ;
+--ifm-color-gray-300: #EEF2FA;
+--ifm-color-gray-400: #CBD2E0;
+--ifm-color-gray-500: #A7B3C7;
+--ifm-color-gray-600: #8493AD;
+--ifm-color-gray-700: #485776;
+--ifm-color-gray-800: #131F37;
+--ifm-color-gray-900: #0A101C;
+
+--ifm-hover-overlay: var(--ifm-color-emphasis-200);
+
+--ifm-font-color-base: var(--ifm-color-emphasis-700);
+--ifm-font-family-base: Inter, sans-serif;
+--ifm-line-height-base: 1.5;
+
+--ifm-heading-color: var(--ifm-color-gray-900);
+--ifm-heading-font-family: Metropolis Bold;
+
+--ifm-link-hover-decoration: none;
+
+--ifm-global-border-width: 2px;
+--ifm-global-radius: 0.5rem;
+
+--ifm-navbar-link-color: #485776;
+--ifm-navbar-link-hover-color: var(--ifm-navbar-link-color);
+--ifm-navbar-link-active-color: var(--ifm-navbar-link-color);
+
+--ifm-footer-color: var(--ifm-navbar-link-color);
+--ifm-navbar-padding-horizontal: 25px;
+--ifm-navbar-padding-vertical: 18px;
+--ifm-navbar-height: 68px;
+
+--ifm-menu-color: var(--ifm-color-emphasis-600);
+--ifm-menu-color-active: var(--ifm-color-emphasis-1000);
+--ifm-menu-color-background-active: transparent;
+
+--ifm-button-color: white;
+}
+
+html[data-theme='dark'] {
+--ifm-background-color: var(--ifm-color-emphasis-200);
+--ifm-background-surface-color: var(--ifm-color-emphasis-200);
+
+--ifm-navbar-link-color: #B0BFD9;
+
+--ifm-menu-color-background-hover: var(--ifm-color-emphasis-300);
+
+--ifm-footer-background-color: var(--ifm-color-emphasis-200);
+--ifm-card-background-color:#293858;
+
+--ifm-heading-color: inherit;
+
+--ifm-hover-overlay: var(--ifm-color-emphasis-200);
+}
+
+.alert h1,
+.alert h2,
+.alert h3,
+.alert h4,
+.alert h5,
+.alert h6,
+.hero h1,
+.hero h2,
+.hero h3,
+.hero h4,
+.hero h5,
+.hero h6 {
+  color: inherit;
+}
+
+.navbar {
+  font-family: 'Metropolis Medium';
+  line-height: 1.25rem;
+  font-weight: 400;
+}
+
+.navbar__items--right > * {
+margin-left: 2rem;
+}
+
+.navbar__brand {
+height: 25px;
+}
+
+.navbar__link--active {
+font-weight: bold;
+}
+
+.section-header {
+font-family: 'Metropolis Semi Bold';
+font-size: 1.25em;
+letter-spacing: 0.04em;
+}
+
+.footer {
+font-size: 80%;
+}
+
+.footer__bottom {
+display: flex;
+align-items: flex-end;
+flex-wrap: wrap;
+}
+
+.footer__logo {
+height: 3rem;
+margin-right: 2em;
+margin-bottom: -1em;
+}
+
+.footer__copyright {
+margin-top: 1em;
+}
+
+::selection {
+background-color: #b3d4fc;
+color: #000;
+text-shadow: none;
+}
+
+.grey {
+color: var(--ifm-navbar-link-color);
+}
+
+.headline-stick {
+height: 4px;
+background-color: var(--ifm-color-primary);
+margin-bottom: 1.25rem;
+width: 16px;
+transition: all var(--ifm-transition-fast) var(--ifm-transition-timing-default);
+}
+
+.headline-stick.size-s {
+width: 32px;
+}
+
+.headline-stick.size-m {
+width: 48px;
+}

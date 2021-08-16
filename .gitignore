@@ -1,0 +1,27 @@
+# Cargo specific
+target/
+Cargo.lock
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# various
+/.vs
+.DS_Store
+.Thumbs.db
+*.sublime*
+.idea
+debug.log
+package-lock.json
+.vscode/settings.json
+*/.vscode/
+proptest-regressions/
+TODO.md
+book
+
+# exclude cargo fuzz artifacts
+**/fuzz/corpus/*
+**/fuzz/artifacts/

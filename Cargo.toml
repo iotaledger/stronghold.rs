@@ -1,0 +1,25 @@
+[workspace]
+members = [
+  "engine",
+  "engine/runtime",
+  "client",
+  "communication",
+  "utils",
+  "derive"
+]
+exclude = [
+  "products/commandline",
+  "products/desktop",
+  "products/SHaaS",
+]
+
+[profile.release]
+overflow-checks = true
+panic = "abort"
+
+[profile.dev]
+overflow-checks = true
+panic = "abort"
+
+[profile.bench]
+overflow-checks = true
