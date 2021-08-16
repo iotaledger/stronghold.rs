@@ -8,6 +8,7 @@
 
 #![allow(clippy::type_complexity)]
 
+use crate::internals;
 pub use crate::{
     actors::{GetSnapshot, Registry},
     internals::Provider,
@@ -27,7 +28,7 @@ use crypto::{
 };
 use engine::{
     store::Cache,
-    vault::{BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultId},
+    vault::{ClientId, DbView, Key, RecordHint, RecordId, VaultId},
 };
 use std::{
     cell::Cell,
@@ -77,7 +78,7 @@ pub enum SnapshotError {
 pub mod messages {
 
     use super::*;
-    use crate::Location;
+    use crate::{internals, Location};
     use std::time::Duration;
 
     #[derive(Clone, GuardDebug)]
@@ -88,15 +89,16 @@ pub mod messages {
     }
 
     #[derive(Clone, GuardDebug)]
-    pub struct ReloadData<T: BoxProvider + Send + Sync + Clone + 'static + Unpin> {
+    pub struct ReloadData {
         pub id: ClientId,
-        pub data: Box<(HashMap<VaultId, Key<T>>, DbView<T>, Store)>,
+        pub data: Box<(
+            HashMap<VaultId, Key<internals::Provider>>,
+            DbView<internals::Provider>,
+            Store,
+        )>,
     }
 
-    impl<T> Message for ReloadData<T>
-    where
-        T: BoxProvider + Send + Sync + Clone + 'static + Unpin,
-    {
+    impl Message for ReloadData {
         type Result = ();
     }
 
@@ -202,15 +204,17 @@ pub mod messages {
         type Result = Result<(), anyhow::Error>;
     }
 
-    pub struct GetData<T: BoxProvider + Send + Sync + Clone + 'static + Unpin> {
-        pub _phantom: core::marker::PhantomData<T>,
-    }
+    pub struct GetData {}
 
-    impl<T> Message for GetData<T>
-    where
-        T: BoxProvider + Send + Sync + Clone + 'static + Unpin,
-    {
-        type Result = Result<Box<(HashMap<VaultId, Key<T>>, DbView<T>, Store)>, anyhow::Error>;
+    impl Message for GetData {
+        type Result = Result<
+            Box<(
+                HashMap<VaultId, Key<internals::Provider>>,
+                DbView<internals::Provider>,
+                Store,
+            )>,
+            anyhow::Error,
+        >;
     }
 }
 
@@ -397,9 +401,7 @@ pub mod procedures {
 /// TODO Make receiver type pass as argument.
 macro_rules! impl_handler {
     ($mty:ty, $rty:ty, ($sid:ident,$mid:ident, $ctx:ident), $($body:tt)*) => {
-        impl<T> Handler<$mty> for SecureClient<T>
-        where
-            T : BoxProvider + Send + Sync + Clone + 'static + Unpin /* UNPIN has been added. see Provider for support. */
+        impl Handler<$mty> for SecureClient
         {
             type Result = $rty;
             fn handle(&mut $sid, $mid: $mty, $ctx: &mut Self::Context) -> Self::Result {
@@ -454,14 +456,11 @@ pub mod testing {
     });
 }
 
-impl<P> Actor for SecureClient<P>
-where
-    P: BoxProvider + Send + Sync + Clone + 'static + Unpin,
-{
+impl Actor for SecureClient {
     type Context = Context<Self>;
 }
 
-impl<P> Supervised for SecureClient<P> where P: BoxProvider + Send + Sync + Clone + 'static + Unpin {}
+impl Supervised for SecureClient {}
 
 impl_handler!(messages::Terminate, (), (self, _msg, ctx), {
     ctx.stop();
@@ -551,7 +550,7 @@ impl_handler!(
     }
 );
 
-impl_handler!(messages::ReloadData<T>, (), (self, msg, _ctx), {
+impl_handler!(messages::ReloadData, (), (self, msg, _ctx), {
     let (keystore, state, store) = *msg.data;
     let vids = keystore.keys().copied().collect::<HashSet<VaultId>>();
     self.keystore.rebuild_keystore(keystore);
@@ -593,8 +592,15 @@ impl_handler!( messages::DeleteFromStore, Result <(), anyhow::Error>, (self, msg
 });
 
 impl_handler!(
-    messages::GetData<T>,
-    Result<Box<(HashMap<VaultId, Key<T>>, DbView<T>, Store)>, anyhow::Error>,
+    messages::GetData,
+    Result<
+        Box<(
+            HashMap<VaultId, Key<internals::Provider>>,
+            DbView<internals::Provider>,
+            Store
+        )>,
+        anyhow::Error,
+    >,
     (self, _msg, _ctx),
     {
         let keystore = self.keystore.get_data();
@@ -611,10 +617,7 @@ impl_handler!(
 
 /// Intermediate handler for executing procedures
 /// will be replace by upcoming `procedures api`
-impl<P> Handler<CallProcedure> for SecureClient<P>
-where
-    P: BoxProvider + Send + Sync + Clone + 'static + Unpin,
-{
+impl Handler<CallProcedure> for SecureClient {
     type Result = Result<procedures::ProcResult, anyhow::Error>;
 
     fn handle(&mut self, msg: CallProcedure, ctx: &mut Self::Context) -> Self::Result {
