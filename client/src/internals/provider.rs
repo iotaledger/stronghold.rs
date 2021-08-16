@@ -21,7 +21,6 @@ impl Provider {
     const TAG_LEN: usize = XChaCha20Poly1305::TAG_LENGTH;
 }
 
-/// FIXME: this is a requirement for actix' [`System]
 impl Unpin for Provider {}
 
 impl BoxProvider for Provider {
