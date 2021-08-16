@@ -13,11 +13,11 @@
 /// which can hold multiple vaults (See the `Location` API for more details). The Stronghold interface also
 /// contains a generic insecure key/value store which can be accessed as a `Store`. Each client contains a single
 /// store and the same location may be used across multiple clients.
-// TODO: Adapt Documentation
 // TODO: Synchronization via 4th actor and status type.
-// TODO: Add supervisors
 // TODO: Add documentation
 // TODO: Handshake
+// TODO: ~Adapt Documentation~
+// TODO: ~Add supervisors~
 // TODO: ~~O(1) comparison for IDS.~~
 // TODO: ~~Add ability to name snapshots~~
 // TODO: ~~Add ability to read and revoke records not on the head of the chain.~~
