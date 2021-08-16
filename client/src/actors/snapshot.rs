@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use engine::{
     snapshot,
-    vault::{BoxProvider, ClientId, DbView, Key, VaultId},
+    vault::{ClientId, DbView, Key, VaultId},
 };
 
 use crate::{
@@ -32,12 +32,14 @@ pub mod returntypes {
     use super::*;
 
     /// Return type for loaded snapshot file
-    pub struct ReturnReadSnapshot<T: BoxProvider + Send + Sync + Clone + 'static + Unpin> {
+    pub struct ReturnReadSnapshot {
         pub id: ClientId,
 
-        // TODO this could be re-worked for generalized synchronisation facilities
-        // see crate::actors::secure::
-        pub data: Box<(HashMap<VaultId, Key<T>>, DbView<T>, Store)>,
+        pub data: Box<(
+            HashMap<VaultId, Key<internals::Provider>>,
+            DbView<internals::Provider>,
+            Store,
+        )>,
     }
 }
 
@@ -65,22 +67,16 @@ pub mod messages {
     }
 
     #[derive(Default)]
-    pub struct ReadFromSnapshot<T: BoxProvider + Send + Sync + Clone + 'static + Unpin> {
+    pub struct ReadFromSnapshot {
         pub key: snapshot::Key,
         pub filename: Option<String>,
         pub path: Option<PathBuf>,
         pub id: ClientId,
         pub fid: Option<ClientId>,
-
-        // phantom
-        pub p: core::marker::PhantomData<T>,
     }
 
-    impl<T> Message for ReadFromSnapshot<T>
-    where
-        T: BoxProvider + Send + Sync + Clone + 'static + Unpin,
-    {
-        type Result = Result<returntypes::ReturnReadSnapshot<T>, anyhow::Error>;
+    impl Message for ReadFromSnapshot {
+        type Result = Result<returntypes::ReturnReadSnapshot, anyhow::Error>;
     }
 }
 
@@ -107,17 +103,13 @@ impl Handler<messages::FillSnapshot> for Snapshot {
     }
 }
 
-impl Handler<messages::ReadFromSnapshot<internals::Provider>> for Snapshot {
-    type Result = Result<returntypes::ReturnReadSnapshot<internals::Provider>, anyhow::Error>;
+impl Handler<messages::ReadFromSnapshot> for Snapshot {
+    type Result = Result<returntypes::ReturnReadSnapshot, anyhow::Error>;
 
     /// This will try to read from a snapshot on disk, otherwise load from a local snapshot
     /// in memory. Returns the loaded snapshot data, that must be loaded inside the client
     /// for access.
-    fn handle(
-        &mut self,
-        msg: messages::ReadFromSnapshot<internals::Provider>,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
+    fn handle(&mut self, msg: messages::ReadFromSnapshot, _ctx: &mut Self::Context) -> Self::Result {
         let id = msg.fid.unwrap_or(msg.id);
 
         if self.has_data(id) {

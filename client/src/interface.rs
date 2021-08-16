@@ -423,7 +423,6 @@ impl Stronghold {
                 path,
                 id: client_id,
                 fid: former_client_id,
-                ..Default::default()
             })
             .await
         {
