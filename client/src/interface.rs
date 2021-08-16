@@ -297,7 +297,7 @@ impl Stronghold {
             .send(GarbageCollect {
                 location: Location::Generic {
                     vault_path,
-                    record_path: Vec::new(), // this will be dropped.
+                    record_path: Vec::new(),
                 },
             })
             .await
