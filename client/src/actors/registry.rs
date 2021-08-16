@@ -14,7 +14,7 @@ use engine::vault::ClientId;
 use std::collections::HashMap;
 use thiserror::Error as ErrorType;
 
-use crate::{actors::SecureClient, internals, state::snapshot::Snapshot};
+use crate::{actors::SecureClient, state::snapshot::Snapshot};
 
 #[derive(Debug, ErrorType)]
 pub enum RegistryError {
@@ -34,7 +34,7 @@ pub mod messages {
     }
 
     impl Message for InsertClient {
-        type Result = Result<Addr<SecureClient<internals::Provider>>, RegistryError>;
+        type Result = Result<Addr<SecureClient>, RegistryError>;
     }
 
     pub struct RemoveClient {
@@ -50,7 +50,7 @@ pub mod messages {
     }
 
     impl Message for GetClient {
-        type Result = Option<Addr<SecureClient<internals::Provider>>>;
+        type Result = Option<Addr<SecureClient>>;
     }
 
     pub struct HasClient {
@@ -70,7 +70,7 @@ pub mod messages {
     pub struct GetAllClients;
 
     impl Message for GetAllClients {
-        type Result = Vec<(ClientId, Addr<SecureClient<internals::Provider>>)>;
+        type Result = Vec<(ClientId, Addr<SecureClient>)>;
     }
 }
 
@@ -78,7 +78,7 @@ pub mod messages {
 /// can be modified
 #[derive(Default)]
 pub struct Registry {
-    clients: HashMap<ClientId, Addr<SecureClient<internals::Provider>>>,
+    clients: HashMap<ClientId, Addr<SecureClient>>,
     snapshot: Option<Addr<Snapshot>>,
 }
 
@@ -101,7 +101,7 @@ impl Handler<messages::HasClient> for Registry {
 }
 
 impl Handler<messages::InsertClient> for Registry {
-    type Result = Result<Addr<SecureClient<internals::Provider>>, RegistryError>;
+    type Result = Result<Addr<SecureClient>, RegistryError>;
 
     fn handle(&mut self, msg: messages::InsertClient, _ctx: &mut Self::Context) -> Self::Result {
         if let Some(_) = self.clients.get(&msg.id) {
@@ -115,7 +115,7 @@ impl Handler<messages::InsertClient> for Registry {
 }
 
 impl Handler<messages::GetClient> for Registry {
-    type Result = Option<Addr<SecureClient<internals::Provider>>>;
+    type Result = Option<Addr<SecureClient>>;
 
     fn handle(&mut self, msg: messages::GetClient, _ctx: &mut Self::Context) -> Self::Result {
         if let Some(client) = self.clients.get(&msg.id) {
@@ -145,7 +145,7 @@ impl Handler<messages::GetSnapshot> for Registry {
 }
 
 impl Handler<messages::GetAllClients> for Registry {
-    type Result = Vec<(ClientId, Addr<SecureClient<internals::Provider>>)>;
+    type Result = Vec<(ClientId, Addr<SecureClient>)>;
 
     fn handle(&mut self, _: messages::GetAllClients, _: &mut Self::Context) -> Self::Result {
         let mut result = Vec::new();

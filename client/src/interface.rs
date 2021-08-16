@@ -16,7 +16,7 @@ use crate::{
         secure_procedures::{ProcResult, Procedure},
         GetClient, GetSnapshot, InsertClient, Registry, SecureClient,
     },
-    internals, line_error,
+    line_error,
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -54,7 +54,7 @@ mod comm {
 /// metadata to interpret the data in the vault and store.
 pub struct Stronghold {
     registry: Addr<Registry>,
-    target: Addr<SecureClient<internals::Provider>>,
+    target: Addr<SecureClient>,
 
     #[cfg(feature = "communication")]
     communication_actor: Option<Addr<CommunicationActorProxy>>,
@@ -471,13 +471,12 @@ impl Stronghold {
 
         // this should be delegated to the secure client actor
         // wrapping the interior functionality inside it.
-        let clients: Vec<(ClientId, Addr<SecureClient<internals::Provider>>)> =
-            match self.registry.send(GetAllClients).await {
-                Ok(clients) => clients,
-                Err(_e) => {
-                    return StatusMessage::Error("Error retrieving SecureClientActors".into());
-                }
-            };
+        let clients: Vec<(ClientId, Addr<SecureClient>)> = match self.registry.send(GetAllClients).await {
+            Ok(clients) => clients,
+            Err(_e) => {
+                return StatusMessage::Error("Error retrieving SecureClientActors".into());
+            }
+        };
 
         let mut key: [u8; 32] = [0u8; 32];
         let keydata = keydata.as_ref();
@@ -496,12 +495,7 @@ impl Stronghold {
 
         for (id, client) in clients {
             // get data from secure actor
-            let data = match client
-                .send(GetData::<internals::Provider> {
-                    _phantom: core::marker::PhantomData,
-                })
-                .await
-            {
+            let data = match client.send(GetData {}).await {
                 Ok(success) => match success {
                     Ok(data) => data,
                     Err(_) => {

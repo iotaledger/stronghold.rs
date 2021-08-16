@@ -3,27 +3,24 @@
 
 //! Secure Client Actor State
 
-use crate::line_error;
+use crate::{internals, line_error};
 
 use crate::{state::key_store::KeyStore, utils::LoadFromPath, Location};
 
 use engine::{
     store::Cache,
-    vault::{BoxProvider, ClientId, DbView, RecordId, VaultId},
+    vault::{ClientId, DbView, RecordId, VaultId},
 };
 use std::{collections::HashSet, time::Duration};
 
 /// Cache type definition
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
-pub struct SecureClient<Pr>
-where
-    Pr: BoxProvider + Send + Sync + Clone + 'static + Unpin,
-{
+pub struct SecureClient {
     // A keystore
-    pub(crate) keystore: KeyStore<Pr>,
+    pub(crate) keystore: KeyStore<internals::Provider>,
     // A view on the vault entries
-    pub(crate) db: DbView<Pr>,
+    pub(crate) db: DbView<internals::Provider>,
     // The id of this client
     pub client_id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
@@ -32,10 +29,7 @@ where
     pub store: Store,
 }
 
-impl<Pr> SecureClient<Pr>
-where
-    Pr: BoxProvider + Send + Sync + Clone + 'static + Unpin,
-{
+impl SecureClient {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
     pub fn new(client_id: ClientId) -> Self {
         let vaults = HashSet::new();
@@ -172,8 +166,7 @@ mod tests {
     fn test_add() {
         let vid = VaultId::random::<Provider>().expect(line_error!());
 
-        let mut cache: SecureClient<crate::Provider> =
-            SecureClient::new(ClientId::random::<Provider>().expect(line_error!()));
+        let mut cache: SecureClient = SecureClient::new(ClientId::random::<Provider>().expect(line_error!()));
 
         cache.add_new_vault(vid);
 
@@ -188,7 +181,7 @@ mod tests {
         let vid2 = VaultId::random::<Provider>().expect(line_error!());
         let vault_path = b"some_vault".to_vec();
 
-        let mut client: SecureClient<Provider> = SecureClient::new(clientid);
+        let mut client: SecureClient = SecureClient::new(clientid);
         let mut ctr = 0;
         let mut ctr2 = 0;
 
@@ -223,7 +216,7 @@ mod tests {
         let vidlochead = Location::counter::<_, usize>("some_vault", 0);
         let vidlochead2 = Location::counter::<_, usize>("some_vault 2", 0);
 
-        let mut client: SecureClient<Provider> = SecureClient::new(clientid);
+        let mut client: SecureClient = SecureClient::new(clientid);
 
         let (vid, rid) = client.resolve_location(vidlochead.clone());
         let (vid2, rid2) = client.resolve_location(vidlochead2.clone());
