@@ -679,7 +679,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             let raw = data.borrow();
                             let mut raw = (*raw).to_vec();
 
-                            if raw.len() <= 32 {
+                            if raw.len() < 32 {
                                 client.try_tell(
                                     ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
                                         ProcResult::Ed25519Sign(ResultMessage::Error(
