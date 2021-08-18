@@ -1018,7 +1018,7 @@ impl_handler!(procedures::Ed25519Sign, Result <crate::ProcResult, anyhow::Error>
                     let raw = data.borrow();
                     let mut raw = (*raw).to_vec();
 
-                    if raw.len() <= 32 {
+                    if raw.len() < 32 {
 
                         return Err(engine::Error::CryptoError(
                             crypto::Error::BufferSize {has : raw.len(),needs : 32, name: "data buffer" }));
