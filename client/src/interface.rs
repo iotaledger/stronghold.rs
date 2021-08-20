@@ -65,10 +65,9 @@ pub struct Stronghold {
 }
 
 impl Stronghold {
-    /// Initializes a new instance of the system.  Sets up the first client actor. Accepts an optional [`SystemRunner`],
+    /// Initializes a new instance of the system asynchronously.  Sets up the first client actor. Accepts
     /// the first client_path: `Vec<u8>` and any `StrongholdFlags` which pertain to the first actor.
-    /// - The [`SystemRunner`] is not being used directly by stronghold, but is being initialized on the first run.
-    /// - The initialization function can be made asynchronous as well, getting rid of internal explicit blocking
+    /// The [`actix::SystemRunner`] is not being used directly by stronghold, and must be initialized externally.
     pub async fn init_stronghold_system(
         client_path: Vec<u8>,
         _options: Vec<StrongholdFlags>,
