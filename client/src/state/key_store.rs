@@ -44,7 +44,7 @@ impl<P: BoxProvider + Clone + Send + Sync + 'static> KeyStore<P> {
     }
 
     /// Rebuilds the [`KeyStore`] while throwing out any existing [`VaultId`], [`Key<P>`] pairs.  Accepts a
-    /// [`Vec<Key<P>>`] and returns the a [`Vec<VaultId>`]; primarily used to repopulate the state from a snapshot.
+    /// [`Vec<Key<P>>`] and returns then a [`Vec<VaultId>`]; primarily used to repopulate the state from a snapshot.
     pub fn rebuild_keystore(&mut self, keys: HashMap<VaultId, Key<P>>) {
         self.store = keys;
     }
