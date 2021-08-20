@@ -12,9 +12,13 @@ use zeroize::Zeroize;
 
 use crate::{
     actors::{
-        secure_messages::{CheckRecord, CheckVault, CreateVault, WriteToStore, WriteToVault},
-        secure_procedures::{ProcResult, Procedure},
-        GetClient, GetSnapshot, InsertClient, Registry, SecureClient,
+        secure_messages::{
+            CheckRecord, CheckVault, ClearCache, CreateVault, DeleteFromStore, GarbageCollect, GetData, ListIds,
+            ReadFromStore, ReloadData, RevokeData, WriteToStore, WriteToVault,
+        },
+        secure_procedures::{CallProcedure, ProcResult, Procedure},
+        snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
+        GetAllClients, GetClient, GetSnapshot, InsertClient, Registry, RemoveClient, SecureClient,
     },
     line_error,
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
@@ -209,9 +213,6 @@ impl Stronghold {
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> StatusMessage {
-        // TODO move to top
-        // use crate::actors::secure_messages::WriteToStore;
-
         match self
             .target
             .send(WriteToStore {
@@ -231,9 +232,6 @@ impl Stronghold {
     /// along with an error [`StatusMessage`].  Note: One store is mapped to
     /// one client. Can specify the same location across multiple clients.
     pub async fn read_from_store(&self, location: Location) -> (Vec<u8>, StatusMessage) {
-        // TODO move to top
-        use crate::actors::secure_messages::ReadFromStore;
-
         match self.target.send(ReadFromStore { location }).await {
             Ok(result) => match result {
                 Ok(data) => (data, StatusMessage::OK),
@@ -247,9 +245,6 @@ impl Stronghold {
     /// [`StatusMessage`]. Note: One store is mapped to one client. Can specify the same location across multiple
     /// clients.
     pub async fn delete_from_store(&self, location: Location) -> StatusMessage {
-        // TODO move to top
-        use crate::actors::secure_messages::DeleteFromStore;
-
         match self.target.send(DeleteFromStore { location }).await {
             Ok(result) => match result {
                 Ok(_) => StatusMessage::OK,
@@ -263,9 +258,6 @@ impl Stronghold {
     /// removed from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call
     /// with automatically cleanup the revoke. Otherwise, the data is just marked as revoked.
     pub async fn delete_data(&self, location: Location, should_gc: bool) -> StatusMessage {
-        use crate::actors::secure_messages::{GarbageCollect, RevokeData};
-
-        // new actix impl
         match self
             .target
             .send(RevokeData {
@@ -290,8 +282,6 @@ impl Stronghold {
 
     /// Garbage collects any revokes in a Vault based on the given `vault_path` and the current target actor.
     pub async fn garbage_collect(&self, vault_path: Vec<u8>) -> StatusMessage {
-        use crate::actors::secure_messages::GarbageCollect;
-
         match self
             .target
             .send(GarbageCollect {
@@ -315,8 +305,6 @@ impl Stronghold {
         &self,
         vault_path: V,
     ) -> (Vec<(RecordId, RecordHint)>, StatusMessage) {
-        use crate::actors::secure_messages::ListIds;
-
         match self
             .target
             .send(ListIds {
@@ -338,8 +326,6 @@ impl Stronghold {
     /// Executes a runtime command given a [`Procedure`].  Returns a [`ProcResult`] based off of the control_request
     /// specified.
     pub async fn runtime_exec(&self, control_request: Procedure) -> ProcResult {
-        use crate::actors::secure_procedures::CallProcedure;
-
         match self.target.send(CallProcedure { proc: control_request }).await {
             Ok(success) => match success {
                 Ok(result) => result,
@@ -383,8 +369,6 @@ impl Stronghold {
         filename: Option<String>,
         path: Option<PathBuf>,
     ) -> StatusMessage {
-        use crate::actors::{secure_messages::ReloadData, snapshot_messages::ReadFromSnapshot};
-
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
 
         // this feature resembles the functionality given by the former riker
@@ -456,19 +440,6 @@ impl Stronghold {
         filename: Option<String>,
         path: Option<PathBuf>,
     ) -> StatusMessage {
-        // registry message
-        // TODO move
-        use crate::actors::{
-            secure_messages::GetData,
-            snapshot_messages::{FillSnapshot, WriteSnapshot},
-            GetAllClients,
-        };
-
-        // use snapshot messages
-        // TODO move
-        // use crate::actors::{snapshot_messages::{FillSnapshot, WriteSnapshot},
-        // snapshot_returntypes::ReturnReadSnapshot};
-
         // this should be delegated to the secure client actor
         // wrapping the interior functionality inside it.
         let clients: Vec<(ClientId, Addr<SecureClient>)> = match self.registry.send(GetAllClients).await {
@@ -528,8 +499,6 @@ impl Stronghold {
     /// `kill_actor` is `true`, the actor will be removed from the system.  Otherwise, the cache of the
     /// current target actor will be cleared.
     pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StatusMessage {
-        use crate::actors::{secure_messages::ClearCache, RemoveClient};
-
         let client_id = match ClientId::load_from_path(&client_path.clone(), &client_path)
             .map_err(|_| crate::Error::LoadClientByPathError("Loading client_id by path failed".into()))
         {
