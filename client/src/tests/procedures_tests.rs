@@ -3,16 +3,10 @@
 
 #![allow(non_snake_case)]
 
-// use actix::Actor;
-// use riker::actors::ActorSystem;
-
+use super::fresh;
 use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, Stronghold};
 
-use super::fresh;
-
 async fn setup_stronghold() -> (Vec<u8>, Stronghold) {
-    // let sys = ActorSystem::new().unwrap();
-
     let cp = fresh::bytestring();
 
     let s = Stronghold::init_stronghold_system(cp.clone(), vec![]).await.unwrap();
