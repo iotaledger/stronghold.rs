@@ -101,7 +101,7 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
         let now = SystemTime::now();
 
         self.table
-            .get(&key)
+            .get(key)
             .filter(|value| !value.has_expired(now))
             .map(|value| &value.val)
     }

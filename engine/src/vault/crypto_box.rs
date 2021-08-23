@@ -100,7 +100,7 @@ impl<T: BoxProvider> PartialEq for Key<T> {
 
 impl<T: BoxProvider> PartialOrd for Key<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 

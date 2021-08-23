@@ -1,157 +1,163 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use riker::actors::*;
-
 use crate::{line_error, utils::LoadFromPath, Location, RecordHint, Stronghold};
 use crypto::macs::hmac::HMAC_SHA512;
 
 use engine::vault::{ClientId, VaultId};
 
-fn setup_stronghold() -> Stronghold {
-    let sys = ActorSystem::new().unwrap();
-
+async fn setup_stronghold() -> Stronghold {
     let client_path = b"test".to_vec();
 
-    Stronghold::init_stronghold_system(sys, client_path, vec![])
+    // we skip initializing the actor system, as it will be started externally
+    Stronghold::init_stronghold_system(client_path, vec![]).await.unwrap()
 }
 
 // test basic read and write.
-#[test]
-fn test_read_write() {
-    let stronghold = setup_stronghold();
+#[actix::test]
+async fn test_read_write() {
+    let stronghold = setup_stronghold().await;
+    let client_path = b"test".to_vec();
 
     let loc0 = Location::counter::<_, usize>("path", 0);
 
-    futures::executor::block_on(stronghold.write_to_vault(
-        loc0.clone(),
-        b"test".to_vec(),
-        RecordHint::new(b"first hint").expect(line_error!()),
-        vec![],
-    ));
+    stronghold
+        .write_to_vault(
+            loc0.clone(),
+            b"test".to_vec(),
+            RecordHint::new(b"first hint").expect(line_error!()),
+            vec![],
+        )
+        .await;
 
-    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc0));
+    let (p, _) = stronghold.read_secret(client_path, loc0).await;
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 }
 
-// test read and write with a counter.
-#[test]
-fn test_head_read_write() {
-    let stronghold = setup_stronghold();
+// test read and write with the counter head.
+#[actix::test]
+async fn test_head_read_write() {
+    let stronghold = setup_stronghold().await;
+    let client_path = b"test".to_vec();
 
-    let loc0 = Location::counter::<_, usize>("path", 0);
-    let loc1 = Location::counter::<_, usize>("path", 1);
+    let lochead = Location::counter::<_, usize>("path", 0);
 
-    futures::executor::block_on(stronghold.write_to_vault(
-        loc0,
-        b"test".to_vec(),
-        RecordHint::new(b"first hint").expect(line_error!()),
-        vec![],
-    ));
+    stronghold
+        .write_to_vault(
+            lochead.clone(),
+            b"test".to_vec(),
+            RecordHint::new(b"first hint").expect(line_error!()),
+            vec![],
+        )
+        .await;
 
-    futures::executor::block_on(stronghold.write_to_vault(
-        loc1.clone(),
-        b"another test".to_vec(),
-        RecordHint::new(b"second hint").expect(line_error!()),
-        vec![],
-    ));
+    // update on api: test bogus now?
+    // let lochead = lochead.increment_counter();
 
-    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc1));
+    stronghold
+        .write_to_vault(
+            lochead.clone(),
+            b"another test".to_vec(),
+            RecordHint::new(b"second hint").expect(line_error!()),
+            vec![],
+        )
+        .await;
+
+    let (p, _) = stronghold.read_secret(client_path, lochead).await;
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 }
 
-#[test]
-fn test_multi_write_read_counter_head() {
-    let stronghold = setup_stronghold();
+#[actix::test]
+async fn test_multi_write_read_counter_head() {
+    let stronghold = setup_stronghold().await;
+    let client_path = b"test".to_vec();
 
     let loc5 = Location::counter::<_, usize>("path", 5);
     let loc15 = Location::counter::<_, usize>("path", 15);
     let loc19 = Location::counter::<_, usize>("path", 19);
 
     for i in 0..20 {
-        futures::executor::block_on(async {
-            let lochead = Location::counter::<_, usize>("path", i);
-            let data = format!("test {:?}", i);
-            stronghold
-                .write_to_vault(
-                    lochead.clone(),
-                    data.as_bytes().to_vec(),
-                    RecordHint::new(data).expect(line_error!()),
-                    vec![],
-                )
-                .await;
-        });
+        let lochead = Location::counter::<_, usize>("path", i);
+        let data = format!("test {:?}", i);
+        stronghold
+            .write_to_vault(
+                lochead.clone(),
+                data.as_bytes().to_vec(),
+                RecordHint::new(data).expect(line_error!()),
+                vec![],
+            )
+            .await;
     }
 
-    let (list, _) = futures::executor::block_on(stronghold.list_hints_and_ids("path"));
+    let (list, _) = stronghold.list_hints_and_ids("path").await;
 
     assert_eq!(20, list.len());
 
-    let b = futures::executor::block_on(stronghold.record_exists(loc5.clone()));
+    let b = stronghold.record_exists(loc5.clone()).await;
     assert!(b);
-    let b = futures::executor::block_on(stronghold.record_exists(loc19.clone()));
+    let b = stronghold.record_exists(loc19.clone()).await;
     assert!(b);
-    let b = futures::executor::block_on(stronghold.record_exists(loc15.clone()));
+    let b = stronghold.record_exists(loc15.clone()).await;
     assert!(b);
 
-    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc19));
+    let (p, _) = stronghold.read_secret(client_path.clone(), loc19).await;
     assert_eq!(Some(b"test 19".to_vec()), p);
 
-    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc5));
+    let (p, _) = stronghold.read_secret(client_path.clone(), loc5).await;
 
     assert_eq!(Some(b"test 5".to_vec()), p);
 
-    let (p, _) = futures::executor::block_on(stronghold.read_secret(loc15));
+    let (p, _) = stronghold.read_secret(client_path, loc15).await;
 
     assert_eq!(Some(b"test 15".to_vec()), p);
 }
 
 // test delete_data.
-#[test]
-fn test_revoke_with_gc() {
-    let stronghold = setup_stronghold();
+#[actix::test]
+async fn test_revoke_with_gc() {
+    let stronghold = setup_stronghold().await;
+    let lochead = Location::counter::<_, usize>("path", 0);
+    let client_path = b"test".to_vec();
+
+    for i in 0..10 {
+        let lochead = Location::counter::<_, usize>("path", i);
+
+        // update on api: increment counter
+        // let lochead = lochead.clone().increment_counter();
+        let data = format!("test {:?}", i);
+        stronghold
+            .write_to_vault(
+                lochead.clone(),
+                data.as_bytes().to_vec(),
+                RecordHint::new(data).expect(line_error!()),
+                vec![],
+            )
+            .await;
+    }
 
     for i in 0..10 {
         let loc = Location::counter::<_, usize>("path", i);
-        futures::executor::block_on(async {
-            let data = format!("test {:?}", i);
-            stronghold
-                .write_to_vault(
-                    loc.clone(),
-                    data.as_bytes().to_vec(),
-                    RecordHint::new(data).expect(line_error!()),
-                    vec![],
-                )
-                .await;
-        });
+
+        stronghold.delete_data(loc.clone(), false).await;
+
+        let (p, _) = stronghold.read_secret(client_path.clone(), loc).await;
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
     }
 
-    for i in 0..10 {
-        futures::executor::block_on(async {
-            let loc = Location::counter::<_, usize>("path", i);
+    let (ids, _res) = stronghold.list_hints_and_ids(lochead.vault_path().to_vec()).await;
 
-            stronghold.delete_data(loc.clone(), false).await;
-
-            let (p, _) = stronghold.read_secret(loc).await;
-
-            assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
-        })
-    }
-    let lochead = Location::counter::<_, usize>("path", 0);
-
-    let (ids, _res) = futures::executor::block_on(stronghold.list_hints_and_ids(lochead.vault_path().to_vec()));
-
-    futures::executor::block_on(stronghold.garbage_collect(lochead.vault_path().to_vec()));
+    stronghold.garbage_collect(lochead.vault_path().to_vec()).await;
 
     assert_eq!(ids, vec![]);
 }
 
 /// Test writing to a snapshot and reading back.
-#[test]
-fn test_write_read_snapshot() {
-    let mut stronghold = setup_stronghold();
+#[actix::test]
+async fn test_write_read_snapshot() {
+    let mut stronghold = setup_stronghold().await;
 
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
@@ -160,120 +166,120 @@ fn test_write_read_snapshot() {
     for i in 0..20 {
         let loc = Location::counter::<_, usize>("path", i);
 
-        futures::executor::block_on(async {
-            let data = format!("test {:?}", i);
-            stronghold
-                .write_to_vault(
-                    loc,
-                    data.as_bytes().to_vec(),
-                    RecordHint::new(data).expect(line_error!()),
-                    vec![],
-                )
-                .await;
-        });
+        let data = format!("test {:?}", i);
+        stronghold
+            .write_to_vault(
+                loc,
+                data.as_bytes().to_vec(),
+                RecordHint::new(data).expect(line_error!()),
+                vec![],
+            )
+            .await;
     }
 
-    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, Some("test1".into()), None));
+    stronghold
+        .write_all_to_snapshot(&key_data, Some("test1".into()), None)
+        .await;
 
-    futures::executor::block_on(stronghold.kill_stronghold(client_path.clone(), false));
+    stronghold.kill_stronghold(client_path.clone(), false).await;
 
-    futures::executor::block_on(stronghold.read_snapshot(client_path, None, &key_data, Some("test1".into()), None));
+    // remark: changed former_client_path from 'None' to 'Some(client_path)'
+    stronghold
+        .read_snapshot(client_path.clone(), None, &key_data, Some("test1".into()), None)
+        .await;
 
     for i in 0..20 {
-        futures::executor::block_on(async {
-            let loc = Location::counter::<_, usize>("path", i);
-
-            let (p, _) = stronghold.read_secret(loc).await;
-
-            let res = format!("test {:?}", i);
-
-            assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));
-        });
-    }
-}
-
-/// Makes 11 actors and writes one record into each of the child actors.  Writes the data from all of the actors into a
-/// snapshot. Clears the cache of the actors and then rebuilds them before re-reading the snapshot data back and
-/// checking it for consistency.
-#[test]
-fn test_write_read_multi_snapshot() {
-    let mut stronghold = setup_stronghold();
-
-    let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
-
-    for i in 0..20 {
-        futures::executor::block_on(
-            stronghold.spawn_stronghold_actor(format!("test {:?}", i).as_bytes().to_vec(), vec![]),
-        );
-    }
-
-    for i in 0..20 {
-        futures::executor::block_on(async {
-            let data = format!("test {:?}", i);
-
-            let loc = Location::counter::<_, usize>("path", i);
-
-            stronghold
-                .switch_actor_target(format!("test {:?}", i).as_bytes().to_vec())
-                .await;
-
-            stronghold
-                .write_to_vault(
-                    loc,
-                    data.as_bytes().to_vec(),
-                    RecordHint::new(data).expect(line_error!()),
-                    vec![],
-                )
-                .await;
-        });
-    }
-
-    futures::executor::block_on(stronghold.write_all_to_snapshot(&key_data, Some("test2".into()), None));
-
-    for i in 0..20 {
-        futures::executor::block_on(stronghold.kill_stronghold(format!("test {:?}", i).as_bytes().to_vec(), false));
-    }
-
-    for i in 0..20 {
-        futures::executor::block_on(stronghold.read_snapshot(
-            format!("test {:?}", i).as_bytes().to_vec(),
-            None,
-            &key_data,
-            Some("test2".into()),
-            None,
-        ));
-    }
-
-    for i in 0..10 {
         let loc = Location::counter::<_, usize>("path", i);
-        futures::executor::block_on(async {
-            stronghold
-                .switch_actor_target(format!("test {:?}", i % 10).as_bytes().to_vec())
-                .await;
 
-            let (p, _) = stronghold.read_secret(loc.clone()).await;
+        let (p, err) = stronghold.read_secret(client_path.clone(), loc).await;
 
-            let res = format!("test {:?}", i);
+        if let crate::ResultMessage::Error(e) = err {
+            println!("Error occured: {}", e)
+        }
 
-            assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));
-        });
+        let res = format!("test {:?}", i);
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));
     }
 }
 
-#[test]
-fn test_store() {
-    let sys = ActorSystem::new().unwrap();
+/// Spawn a number of actors and write one record into each of the child actors.  Writes the data from all of the actors
+/// into a snapshot. Clears the cache of the actors and then rebuilds them before re-reading the snapshot data back and
+/// checking it for consistency.
+#[actix::test]
+async fn test_write_read_multi_snapshot() {
+    let mut stronghold = setup_stronghold().await;
+    let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
+    let num_actors = 20;
 
+    // spawn a number of actors
+    for i in 0..num_actors {
+        stronghold
+            .spawn_stronghold_actor(format!("test {:?}", i).as_bytes().to_vec(), vec![])
+            .await;
+    }
+
+    // write into vault
+    for i in 0..num_actors {
+        let data = format!("test {:?}", i);
+        let loc = Location::counter::<_, usize>("path", i);
+
+        stronghold
+            .switch_actor_target(format!("test {:?}", i).as_bytes().to_vec())
+            .await;
+
+        stronghold
+            .write_to_vault(
+                loc,
+                data.as_bytes().to_vec(),
+                RecordHint::new(data).expect(line_error!()),
+                vec![],
+            )
+            .await;
+    }
+
+    stronghold
+        .write_all_to_snapshot(&key_data, Some("test2".into()), None)
+        .await;
+
+    for i in 0..num_actors {
+        stronghold
+            .kill_stronghold(format!("test {:?}", i).as_bytes().to_vec(), false)
+            .await;
+    }
+
+    for i in 0..num_actors {
+        let client_path = format!("test {:?}", i).as_bytes().to_vec();
+        stronghold.switch_actor_target(client_path.clone()).await;
+        stronghold
+            .read_snapshot(client_path, None, &key_data, Some("test2".into()), None)
+            .await;
+    }
+
+    for i in 0..num_actors {
+        let loc = Location::counter::<_, usize>("path", i);
+        let local_client_path = format!("test {:?}", i).as_bytes().to_vec();
+        stronghold.switch_actor_target(local_client_path.clone()).await;
+        let (p, _) = stronghold.read_secret(local_client_path.clone(), loc.clone()).await;
+        let res = format!("test {:?}", i);
+
+        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));
+    }
+}
+
+#[actix::test]
+async fn test_store() {
     let client_path = b"test".to_vec();
     let payload = b"test data";
 
     let location = Location::generic("some_data", "location");
+    let stronghold = Stronghold::init_stronghold_system(client_path, vec![]).await.unwrap();
 
-    let stronghold = Stronghold::init_stronghold_system(sys, client_path, vec![]);
+    stronghold
+        .write_to_store(location.clone(), payload.to_vec(), None)
+        .await;
 
-    futures::executor::block_on(stronghold.write_to_store(location.clone(), payload.to_vec(), None));
-
-    let (res, _) = futures::executor::block_on(stronghold.read_from_store(location));
+    let (res, _) = stronghold.read_from_store(location).await;
 
     assert_eq!(std::str::from_utf8(&res), Ok("test data"));
 }
@@ -297,7 +303,7 @@ fn test_client_id() {
 #[test]
 fn test_vault_id() {
     let path = b"another_path_of_data";
-    let data = b"a long sentance for seeding the id with some data and bytes.  Testing to see how long this can be without breaking the hmac";
+    let data = b"a long sentence for seeding the id with some data and bytes.  Testing to see how long this can be without breaking the hmac";
     let mut buf = [0; 64];
 
     let id = VaultId::load_from_path(data, path).unwrap();
