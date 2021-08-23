@@ -1043,10 +1043,8 @@ impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, anyhow::Er
 
                 if raw.len() < 32 {
 
-                    // the client actor will interupt the control flow
-                    // but could this be an option to return an error
                     return Err(engine::Error::CryptoError(
-                        crypto::Error::BufferSize {has : raw.len(), needs : 32, name: "data buffer" }));
+                        crypto::error::Error::BufferSize{has : raw.len(), needs : 32, name: "data buffer" }));
 
                 }
                 raw.truncate(32);
