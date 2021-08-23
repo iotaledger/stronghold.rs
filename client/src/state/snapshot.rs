@@ -10,13 +10,14 @@ use engine::{
     vault::{ClientId, DbView, Key as PKey, VaultId},
 };
 
-use crate::{line_error, state::client::Store, Provider};
+use crate::{line_error, state::secure::Store, Provider};
 
 use std::path::Path;
 
 use std::collections::HashMap;
 
 /// Wrapper for the [`SnapshotState`] data structure.
+#[derive(Default)]
 pub struct Snapshot {
     pub state: SnapshotState,
 }

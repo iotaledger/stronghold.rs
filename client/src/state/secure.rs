@@ -1,30 +1,27 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    actors::{InternalResults, SHRequest, SHResults},
-    line_error,
-    utils::LoadFromPath,
-    Location,
-};
+//! Secure Client Actor State
+
+use crate::{internals, line_error};
+
+use crate::{state::key_store::KeyStore, utils::LoadFromPath, Location};
 
 use engine::{
     store::Cache,
-    vault::{ClientId, RecordId, VaultId},
+    vault::{ClientId, DbView, RecordId, VaultId},
 };
-
-use riker::actors::*;
-
 use std::{collections::HashSet, time::Duration};
 
-use serde::{Deserialize, Serialize};
-
+/// Cache type definition
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
-/// A [`Client`] Cache Actor which routes external messages to the rest of the Stronghold system.
-#[actor(SHResults, SHRequest, InternalResults)]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Client {
+pub struct SecureClient {
+    // A keystore
+    pub(crate) keystore: KeyStore<internals::Provider>,
+    // A view on the vault entries
+    pub(crate) db: DbView<internals::Provider>,
+    // The id of this client
     pub client_id: ClientId,
     // Contains the vault ids and the record ids with their associated indexes.
     pub vaults: HashSet<VaultId>,
@@ -32,8 +29,8 @@ pub struct Client {
     pub store: Store,
 }
 
-impl Client {
-    /// Creates a new Client given a [`ClientID`]
+impl SecureClient {
+    /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
     pub fn new(client_id: ClientId) -> Self {
         let vaults = HashSet::new();
 
@@ -43,6 +40,8 @@ impl Client {
             client_id,
             vaults,
             store,
+            keystore: KeyStore::new(),
+            db: DbView::new(),
         }
     }
 
@@ -87,11 +86,9 @@ impl Client {
 
     /// Rebuilds the cache using the parameters.
     pub fn rebuild_cache(&mut self, id: ClientId, vaults: HashSet<VaultId>, store: Store) {
-        *self = Self {
-            client_id: id,
-            vaults,
-            store,
-        }
+        self.client_id = id;
+        self.vaults = vaults;
+        self.store = store;
     }
 
     /// Resolves a location to a `VaultId` and a `RecordId`
@@ -107,7 +104,6 @@ impl Client {
             }
             Location::Counter { vault_path, counter } => {
                 let vid = self.derive_vault_id(vault_path);
-
                 let rid = self.derive_record_id(vault_path, *counter);
 
                 (vid, rid)
@@ -161,7 +157,7 @@ impl Client {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     use crate::Provider;
@@ -170,7 +166,7 @@ mod test {
     fn test_add() {
         let vid = VaultId::random::<Provider>().expect(line_error!());
 
-        let mut cache = Client::new(ClientId::random::<Provider>().expect(line_error!()));
+        let mut cache: SecureClient = SecureClient::new(ClientId::random::<Provider>().expect(line_error!()));
 
         cache.add_new_vault(vid);
 
@@ -185,7 +181,7 @@ mod test {
         let vid2 = VaultId::random::<Provider>().expect(line_error!());
         let vault_path = b"some_vault".to_vec();
 
-        let mut client = Client::new(clientid);
+        let mut client: SecureClient = SecureClient::new(clientid);
         let mut ctr = 0;
         let mut ctr2 = 0;
 
@@ -211,5 +207,27 @@ mod test {
 
         assert_eq!(test_rid, rid);
         assert_eq!(2, ctr);
+    }
+
+    #[test]
+    fn test_location_counter_api() {
+        let clientid = ClientId::random::<Provider>().expect(line_error!());
+
+        let vidlochead = Location::counter::<_, usize>("some_vault", 0);
+        let vidlochead2 = Location::counter::<_, usize>("some_vault 2", 0);
+
+        let mut client: SecureClient = SecureClient::new(clientid);
+
+        let (vid, rid) = client.resolve_location(vidlochead.clone());
+        let (vid2, rid2) = client.resolve_location(vidlochead2.clone());
+
+        client.add_new_vault(vid);
+        client.add_new_vault(vid2);
+
+        let (_, rid_head) = client.resolve_location(vidlochead);
+        let (_, rid_head_2) = client.resolve_location(vidlochead2);
+
+        assert_eq!(rid, rid_head);
+        assert_eq!(rid2, rid_head_2);
     }
 }

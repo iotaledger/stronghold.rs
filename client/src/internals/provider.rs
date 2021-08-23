@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// An implementation of the Vault's [`BoxProvider`] type.  Used to encrypt and decrypt the data in this Stronghold.
 #[derive(Ord, PartialEq, Eq, PartialOrd, Clone, Debug, Serialize, Deserialize, Default)]
+
 pub struct Provider;
 impl Provider {
     /// Nonce length.
@@ -19,6 +20,8 @@ impl Provider {
     /// Tag Length.
     const TAG_LEN: usize = XChaCha20Poly1305::TAG_LENGTH;
 }
+
+impl Unpin for Provider {}
 
 impl BoxProvider for Provider {
     /// Key size.
@@ -59,7 +62,7 @@ impl BoxProvider for Provider {
 
         let key = key.bytes();
 
-        XChaCha20Poly1305::try_decrypt(&key, &nonce, &ad, &mut plain, &cipher, &tag)
+        XChaCha20Poly1305::try_decrypt(&key, nonce, ad, &mut plain, cipher, tag)
             .map_err(|_| engine::Error::ProviderError(String::from("Unable to unlock data")))?;
 
         Ok(plain)
