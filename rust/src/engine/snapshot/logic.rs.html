@@ -332,8 +332,6 @@
 <span id="330">330</span>
 <span id="331">331</span>
 <span id="332">332</span>
-<span id="333">333</span>
-<span id="334">334</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -405,9 +403,7 @@
 
     <span class="comment">// creates the ciphertext.</span>
     <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ct</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="number">0</span>; <span class="ident">plain</span>.<span class="ident">len</span>()];
-
-    <span class="comment">// encrypts the data.</span>
-    <span class="ident">XChaCha20Poly1305::try_encrypt</span>(<span class="kw-2">&amp;</span><span class="ident">shared</span>.<span class="ident">to_bytes</span>(), <span class="kw-2">&amp;</span><span class="ident">nonce</span>, <span class="ident">associated_data</span>, <span class="kw-2">&amp;</span><span class="ident">plain</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ct</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">tag</span>)<span class="question-mark">?</span>;
+    <span class="ident">XChaCha20Poly1305::try_encrypt</span>(<span class="kw-2">&amp;</span><span class="ident">shared</span>.<span class="ident">to_bytes</span>(), <span class="kw-2">&amp;</span><span class="ident">nonce</span>, <span class="ident">associated_data</span>, <span class="ident">plain</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ct</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">tag</span>)<span class="question-mark">?</span>;
 
     <span class="comment">// write tag and ciphertext into the output.</span>
     <span class="ident">output</span>.<span class="ident">write_all</span>(<span class="kw-2">&amp;</span><span class="ident">tag</span>)<span class="question-mark">?</span>;

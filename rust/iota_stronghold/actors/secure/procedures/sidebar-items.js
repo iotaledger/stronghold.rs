@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["ProcResult",""],["Procedure","for old client (cryptographic) procedure calling"],["SLIP10DeriveInput",""]],"struct":[["BIP39Generate",""],["BIP39Recover",""],["CallProcedure",""],["Ed25519PublicKey",""],["Ed25519Sign",""],["SLIP10DeriveFromKey",""],["SLIP10DeriveFromSeed",""],["SLIP10Generate",""]]});

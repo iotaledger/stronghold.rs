@@ -1,1 +1,0 @@
-initSidebarItems({"enum":[["ClientMsg",""]],"struct":[["Client","A [`Client`] Cache Actor which routes external messages to the rest of the Stronghold system."]],"type":[["Store",""]]});

@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["client",""],["key_store",""],["snapshot",""]]});
+initSidebarItems({"mod":[["key_store",""],["secure","Secure Client Actor State"],["snapshot",""]]});

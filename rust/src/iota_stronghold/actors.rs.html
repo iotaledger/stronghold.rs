@@ -15,21 +15,39 @@
 <span id="13">13</span>
 <span id="14">14</span>
 <span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
 
-<span class="kw">mod</span> <span class="ident">client</span>;
-<span class="kw">mod</span> <span class="ident">internal</span>;
+<span class="kw">mod</span> <span class="ident">registry</span>;
+<span class="kw">mod</span> <span class="ident">secure</span>;
 <span class="kw">mod</span> <span class="ident">snapshot</span>;
 
 <span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span>::{
-    <span class="ident">client</span>::{<span class="ident">ProcResult</span>, <span class="ident">Procedure</span>, <span class="ident">SHRequest</span>, <span class="ident">SHResults</span>, <span class="ident">SLIP10DeriveInput</span>},
-    <span class="ident">internal</span>::{<span class="ident">InternalActor</span>, <span class="ident">InternalMsg</span>, <span class="ident">InternalResults</span>},
-    <span class="ident">snapshot::SMsg</span>,
+    <span class="ident">registry</span>::{
+        <span class="ident">messages</span>::{<span class="ident">GetAllClients</span>, <span class="ident">GetClient</span>, <span class="ident">GetSnapshot</span>, <span class="ident">HasClient</span>, <span class="ident">InsertClient</span>, <span class="ident">RemoveClient</span>},
+        <span class="ident">Registry</span>, <span class="ident">RegistryError</span>,
+    },
+    <span class="ident">secure</span>::{
+        <span class="ident">messages</span> <span class="kw">as</span> <span class="ident">secure_messages</span>, <span class="ident">procedures</span> <span class="kw">as</span> <span class="ident">secure_procedures</span>,
+        <span class="ident">procedures</span>::{<span class="ident">ProcResult</span>, <span class="ident">SLIP10DeriveInput</span>},
+        <span class="ident">SecureClient</span>,
+    },
+    <span class="ident">snapshot</span>::{<span class="ident">messages</span> <span class="kw">as</span> <span class="ident">snapshot_messages</span>, <span class="ident">returntypes</span> <span class="kw">as</span> <span class="ident">snapshot_returntypes</span>},
 };
 
-<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;communication&quot;</span>)]</span>
-<span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span><span class="ident">::client::SHRequestPermission</span>;
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
+<span class="comment">// this import is intended for testing purposes only, and should not be included</span>
+<span class="comment">// in any production code.</span>
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">secure::testing::ReadFromVault</span>;
 </pre></div>
 </section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="iota_stronghold" data-search-index-js="../../search-index.js" data-search-js="../../search.js"></div><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script></body></html>

@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["iota_stronghold"] = [{"text":"impl SystemService for <a class=\"struct\" href=\"iota_stronghold/actors/registry/struct.Registry.html\" title=\"struct iota_stronghold::actors::registry::Registry\">Registry</a>","synthetic":false,"types":["iota_stronghold::actors::registry::Registry"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["RegistryError",""]],"mod":[["messages",""]],"struct":[["Registry","Registry [`Actor`], that owns [`Client`] actors, and manages them. The registry can be modified"]]});

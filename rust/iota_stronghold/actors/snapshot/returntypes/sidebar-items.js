@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["ReturnReadSnapshot","Return type for loaded snapshot file"]]});

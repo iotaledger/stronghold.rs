@@ -150,14 +150,13 @@
 <span id="148">148</span>
 <span id="149">149</span>
 <span id="150">150</span>
-<span id="151">151</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
 
 <span class="attribute">#![<span class="ident">allow</span>(<span class="ident">clippy::type_complexity</span>)]</span>
 
-<span class="kw">use</span> <span class="ident">riker::actors</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="ident">actix</span>::{<span class="ident">Actor</span>, <span class="ident">Handler</span>, <span class="ident">Message</span>, <span class="ident">Supervised</span>};
 
 <span class="kw">use</span> <span class="ident">std::path::PathBuf</span>;
 
@@ -166,141 +165,140 @@
     <span class="ident">vault</span>::{<span class="ident">ClientId</span>, <span class="ident">DbView</span>, <span class="ident">Key</span>, <span class="ident">VaultId</span>},
 };
 
-<span class="kw">use</span> <span class="ident">stronghold_utils::GuardDebug</span>;
-
 <span class="kw">use</span> <span class="kw">crate</span>::{
-    <span class="ident">actors</span>::{<span class="ident">InternalMsg</span>, <span class="ident">SHResults</span>},
-    <span class="ident">line_error</span>,
+    <span class="ident">internals</span>, <span class="ident">line_error</span>,
     <span class="ident">state</span>::{
-        <span class="ident">client::Store</span>,
+        <span class="ident">secure::Store</span>,
         <span class="ident">snapshot</span>::{<span class="ident">Snapshot</span>, <span class="ident">SnapshotState</span>},
     },
-    <span class="ident">utils::StatusMessage</span>,
     <span class="ident">Provider</span>,
 };
-
 <span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
+<span class="kw">use</span> <span class="ident">thiserror::Error</span> <span class="kw">as</span> <span class="ident">DeriveError</span>;
 
-<span class="doccomment">/// Messages used for the Snapshot Actor.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">GuardDebug</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">SMsg</span> {
-    <span class="doccomment">/// Write the snapshot to the file.</span>
-    <span class="ident">WriteSnapshot</span> {
-        <span class="ident">key</span>: <span class="ident">snapshot::Key</span>,
-        <span class="ident">filename</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
-        <span class="ident">path</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PathBuf</span><span class="op">&gt;</span>,
-    },
-    <span class="doccomment">/// Fill the snapshot structure with data.</span>
-    <span class="ident">FillSnapshot</span> {
-        <span class="ident">data</span>: <span class="ident">Box</span><span class="op">&lt;</span>(<span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">DbView</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="ident">Store</span>)<span class="op">&gt;</span>,
-        <span class="ident">id</span>: <span class="ident">ClientId</span>,
-    },
-    <span class="doccomment">/// Reead from the snapshot.</span>
-    <span class="ident">ReadFromSnapshot</span> {
-        <span class="ident">key</span>: <span class="ident">snapshot::Key</span>,
-        <span class="ident">filename</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
-        <span class="ident">path</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PathBuf</span><span class="op">&gt;</span>,
-        <span class="ident">id</span>: <span class="ident">ClientId</span>,
-        <span class="ident">fid</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">ClientId</span><span class="op">&gt;</span>,
-    },
+<span class="doccomment">/// re-export local modules</span>
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">messages</span>::<span class="kw-2">*</span>;
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">returntypes</span>::<span class="kw-2">*</span>;
+
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">returntypes</span> {
+
+    <span class="kw">use</span> <span class="kw">super</span>::<span class="kw-2">*</span>;
+
+    <span class="doccomment">/// Return type for loaded snapshot file</span>
+    <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">ReturnReadSnapshot</span> {
+        <span class="kw">pub</span> <span class="ident">id</span>: <span class="ident">ClientId</span>,
+
+        <span class="kw">pub</span> <span class="ident">data</span>: <span class="ident">Box</span><span class="op">&lt;</span>(
+            <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">internals::Provider</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+            <span class="ident">DbView</span><span class="op">&lt;</span><span class="ident">internals::Provider</span><span class="op">&gt;</span>,
+            <span class="ident">Store</span>,
+        )<span class="op">&gt;</span>,
+    }
 }
 
-<span class="doccomment">/// Actor Factory for the Snapshot.</span>
-<span class="kw">impl</span> <span class="ident">ActorFactory</span> <span class="kw">for</span> <span class="ident">Snapshot</span> {
-    <span class="kw">fn</span> <span class="ident">create</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="ident">Snapshot::new</span>(<span class="ident">SnapshotState::default</span>())
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">messages</span> {
+
+    <span class="kw">use</span> <span class="kw">super</span>::<span class="kw-2">*</span>;
+
+    <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">WriteSnapshot</span> {
+        <span class="kw">pub</span> <span class="ident">key</span>: <span class="ident">snapshot::Key</span>,
+        <span class="kw">pub</span> <span class="ident">filename</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
+        <span class="kw">pub</span> <span class="ident">path</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PathBuf</span><span class="op">&gt;</span>,
+    }
+
+    <span class="kw">impl</span> <span class="ident">Message</span> <span class="kw">for</span> <span class="ident">WriteSnapshot</span> {
+        <span class="kw">type</span> <span class="prelude-ty">Result</span> <span class="op">=</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">anyhow::Error</span><span class="op">&gt;</span>;
+    }
+
+    <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">FillSnapshot</span> {
+        <span class="kw">pub</span> <span class="ident">data</span>: <span class="ident">Box</span><span class="op">&lt;</span>(<span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">VaultId</span>, <span class="ident">Key</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">DbView</span><span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>, <span class="ident">Store</span>)<span class="op">&gt;</span>,
+        <span class="kw">pub</span> <span class="ident">id</span>: <span class="ident">ClientId</span>,
+    }
+
+    <span class="kw">impl</span> <span class="ident">Message</span> <span class="kw">for</span> <span class="ident">FillSnapshot</span> {
+        <span class="kw">type</span> <span class="prelude-ty">Result</span> <span class="op">=</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">anyhow::Error</span><span class="op">&gt;</span>;
+    }
+
+    <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Default</span>)]</span>
+    <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">ReadFromSnapshot</span> {
+        <span class="kw">pub</span> <span class="ident">key</span>: <span class="ident">snapshot::Key</span>,
+        <span class="kw">pub</span> <span class="ident">filename</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
+        <span class="kw">pub</span> <span class="ident">path</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PathBuf</span><span class="op">&gt;</span>,
+        <span class="kw">pub</span> <span class="ident">id</span>: <span class="ident">ClientId</span>,
+        <span class="kw">pub</span> <span class="ident">fid</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">ClientId</span><span class="op">&gt;</span>,
+    }
+
+    <span class="kw">impl</span> <span class="ident">Message</span> <span class="kw">for</span> <span class="ident">ReadFromSnapshot</span> {
+        <span class="kw">type</span> <span class="prelude-ty">Result</span> <span class="op">=</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">returntypes::ReturnReadSnapshot</span>, <span class="ident">anyhow::Error</span><span class="op">&gt;</span>;
     }
 }
 
 <span class="kw">impl</span> <span class="ident">Actor</span> <span class="kw">for</span> <span class="ident">Snapshot</span> {
-    <span class="kw">type</span> <span class="ident">Msg</span> <span class="op">=</span> <span class="ident">SMsg</span>;
+    <span class="kw">type</span> <span class="ident">Context</span> <span class="op">=</span> <span class="ident">actix::Context</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>;
+}
 
-    <span class="kw">fn</span> <span class="ident">recv</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="ident">Context</span><span class="op">&lt;</span><span class="self">Self</span><span class="ident">::Msg</span><span class="op">&gt;</span>, <span class="ident">msg</span>: <span class="self">Self</span><span class="ident">::Msg</span>, <span class="ident">sender</span>: <span class="ident">Sender</span>) {
-        <span class="self">self</span>.<span class="ident">receive</span>(<span class="ident">ctx</span>, <span class="ident">msg</span>, <span class="ident">sender</span>);
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">DeriveError</span>)]</span>
+<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">SnapshotError</span> {
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Could Not Load Snapshot. Try another password&quot;</span>)]</span>
+    <span class="ident">LoadFailure</span>,
+}
+
+<span class="comment">// actix impl</span>
+<span class="kw">impl</span> <span class="ident">Supervised</span> <span class="kw">for</span> <span class="ident">Snapshot</span> {}
+
+<span class="kw">impl</span> <span class="ident">Handler</span><span class="op">&lt;</span><span class="ident">messages::FillSnapshot</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Snapshot</span> {
+    <span class="kw">type</span> <span class="prelude-ty">Result</span> <span class="op">=</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">anyhow::Error</span><span class="op">&gt;</span>;
+
+    <span class="kw">fn</span> <span class="ident">handle</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">msg</span>: <span class="ident">messages::FillSnapshot</span>, <span class="ident">_ctx</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span><span class="ident">::Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span><span class="ident">::Result</span> {
+        <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">add_data</span>(<span class="ident">msg</span>.<span class="ident">id</span>, <span class="kw-2">*</span><span class="ident">msg</span>.<span class="ident">data</span>);
+
+        <span class="prelude-val">Ok</span>(())
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Receive</span><span class="op">&lt;</span><span class="ident">SMsg</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Snapshot</span> {
-    <span class="kw">type</span> <span class="ident">Msg</span> <span class="op">=</span> <span class="ident">SMsg</span>;
+<span class="kw">impl</span> <span class="ident">Handler</span><span class="op">&lt;</span><span class="ident">messages::ReadFromSnapshot</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Snapshot</span> {
+    <span class="kw">type</span> <span class="prelude-ty">Result</span> <span class="op">=</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">returntypes::ReturnReadSnapshot</span>, <span class="ident">anyhow::Error</span><span class="op">&gt;</span>;
 
-    <span class="kw">fn</span> <span class="ident">receive</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="ident">Context</span><span class="op">&lt;</span><span class="self">Self</span><span class="ident">::Msg</span><span class="op">&gt;</span>, <span class="ident">msg</span>: <span class="self">Self</span><span class="ident">::Msg</span>, <span class="ident">sender</span>: <span class="ident">Sender</span>) {
-        <span class="kw">match</span> <span class="ident">msg</span> {
-            <span class="ident">SMsg::FillSnapshot</span> { <span class="ident">data</span>, <span class="ident">id</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">add_data</span>(<span class="ident">id</span>, <span class="kw-2">*</span><span class="ident">data</span>);
+    <span class="doccomment">/// This will try to read from a snapshot on disk, otherwise load from a local snapshot</span>
+    <span class="doccomment">/// in memory. Returns the loaded snapshot data, that must be loaded inside the client</span>
+    <span class="doccomment">/// for access.</span>
+    <span class="kw">fn</span> <span class="ident">handle</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">msg</span>: <span class="ident">messages::ReadFromSnapshot</span>, <span class="ident">_ctx</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span><span class="ident">::Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span><span class="ident">::Result</span> {
+        <span class="kw">let</span> <span class="ident">id</span> <span class="op">=</span> <span class="ident">msg</span>.<span class="ident">fid</span>.<span class="ident">unwrap_or</span>(<span class="ident">msg</span>.<span class="ident">id</span>);
 
-                <span class="ident">sender</span>
-                    .<span class="ident">as_ref</span>()
-                    .<span class="ident">expect</span>(<span class="macro">line_error!</span>())
-                    .<span class="ident">try_tell</span>(<span class="ident">SHResults::ReturnFillSnap</span>(<span class="ident">StatusMessage::OK</span>), <span class="prelude-val">None</span>)
-                    .<span class="ident">expect</span>(<span class="macro">line_error!</span>());
-            }
-            <span class="ident">SMsg::ReadFromSnapshot</span> {
-                <span class="ident">key</span>,
-                <span class="ident">filename</span>,
-                <span class="ident">path</span>,
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">has_data</span>(<span class="ident">id</span>) {
+            <span class="kw">let</span> <span class="ident">data</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_state</span>(<span class="ident">id</span>);
+
+            <span class="prelude-val">Ok</span>(<span class="ident">ReturnReadSnapshot</span> {
                 <span class="ident">id</span>,
-                <span class="ident">fid</span>,
-            } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">id_str</span>: <span class="ident">String</span> <span class="op">=</span> <span class="ident">id</span>.<span class="ident">into</span>();
-                <span class="kw">let</span> <span class="ident">internal</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">select</span>(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">&quot;/user/internal-{}/&quot;</span>, <span class="ident">id_str</span>)).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
-                <span class="kw">let</span> <span class="ident">cid</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">fid</span>) <span class="op">=</span> <span class="ident">fid</span> { <span class="ident">fid</span> } <span class="kw">else</span> { <span class="ident">id</span> };
+                <span class="ident">data</span>: <span class="ident">Box::new</span>(<span class="ident">data</span>),
+            })
+        } <span class="kw">else</span> {
+            <span class="kw">match</span> <span class="ident">Snapshot::read_from_snapshot</span>(<span class="ident">msg</span>.<span class="ident">filename</span>.<span class="ident">as_deref</span>(), <span class="ident">msg</span>.<span class="ident">path</span>.<span class="ident">as_deref</span>(), <span class="ident">msg</span>.<span class="ident">key</span>) {
+                <span class="prelude-val">Ok</span>(<span class="kw-2">mut</span> <span class="ident">snapshot</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                    <span class="kw">let</span> <span class="ident">data</span> <span class="op">=</span> <span class="ident">snapshot</span>.<span class="ident">get_state</span>(<span class="ident">id</span>);
+                    <span class="kw-2">*</span><span class="self">self</span> <span class="op">=</span> <span class="ident">snapshot</span>;
 
-                <span class="kw">if</span> <span class="self">self</span>.<span class="ident">has_data</span>(<span class="ident">cid</span>) {
-                    <span class="kw">let</span> <span class="ident">data</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_state</span>(<span class="ident">cid</span>);
-
-                    <span class="ident">internal</span>.<span class="ident">try_tell</span>(
-                        <span class="ident">InternalMsg::ReloadData</span> {
-                            <span class="ident">id</span>: <span class="ident">cid</span>,
-                            <span class="ident">data</span>: <span class="ident">Box::new</span>(<span class="ident">data</span>),
-                            <span class="ident">status</span>: <span class="ident">StatusMessage::OK</span>,
-                        },
-                        <span class="ident">sender</span>,
-                    );
-                } <span class="kw">else</span> {
-                    <span class="kw">match</span> <span class="ident">Snapshot::read_from_snapshot</span>(<span class="ident">filename</span>.<span class="ident">as_deref</span>(), <span class="ident">path</span>.<span class="ident">as_deref</span>(), <span class="ident">key</span>) {
-                        <span class="prelude-val">Ok</span>(<span class="kw-2">mut</span> <span class="ident">snapshot</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                            <span class="kw">let</span> <span class="ident">data</span> <span class="op">=</span> <span class="ident">snapshot</span>.<span class="ident">get_state</span>(<span class="ident">cid</span>);
-
-                            <span class="kw-2">*</span><span class="self">self</span> <span class="op">=</span> <span class="ident">snapshot</span>;
-
-                            <span class="ident">internal</span>.<span class="ident">try_tell</span>(
-                                <span class="ident">InternalMsg::ReloadData</span> {
-                                    <span class="ident">id</span>: <span class="ident">cid</span>,
-                                    <span class="ident">data</span>: <span class="ident">Box::new</span>(<span class="ident">data</span>),
-                                    <span class="ident">status</span>: <span class="ident">StatusMessage::OK</span>,
-                                },
-                                <span class="ident">sender</span>,
-                            );
-                        }
-                        <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                            <span class="ident">sender</span>
-                                .<span class="ident">as_ref</span>()
-                                .<span class="ident">expect</span>(<span class="macro">line_error!</span>())
-                                .<span class="ident">try_tell</span>(
-                                    <span class="ident">SHResults::ReturnReadSnap</span>(<span class="ident">StatusMessage::Error</span>(<span class="macro">format!</span>(
-                                        <span class="string">&quot;{}, Unable to read snapshot. Please try another password.&quot;</span>,
-                                        <span class="ident">e</span>
-                                    ))),
-                                    <span class="prelude-val">None</span>,
-                                )
-                                .<span class="ident">expect</span>(<span class="macro">line_error!</span>());
-                        }
-                    }
-                };
-            }
-            <span class="ident">SMsg::WriteSnapshot</span> { <span class="ident">key</span>, <span class="ident">filename</span>, <span class="ident">path</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="self">self</span>.<span class="ident">write_to_snapshot</span>(<span class="ident">filename</span>.<span class="ident">as_deref</span>(), <span class="ident">path</span>.<span class="ident">as_deref</span>(), <span class="ident">key</span>)
-                    .<span class="ident">expect</span>(<span class="macro">line_error!</span>());
-
-                <span class="self">self</span>.<span class="ident">state</span> <span class="op">=</span> <span class="ident">SnapshotState::default</span>();
-
-                <span class="ident">sender</span>
-                    .<span class="ident">as_ref</span>()
-                    .<span class="ident">expect</span>(<span class="macro">line_error!</span>())
-                    .<span class="ident">try_tell</span>(<span class="ident">SHResults::ReturnWriteSnap</span>(<span class="ident">StatusMessage::OK</span>), <span class="prelude-val">None</span>)
-                    .<span class="ident">expect</span>(<span class="macro">line_error!</span>());
+                    <span class="prelude-val">Ok</span>(<span class="ident">ReturnReadSnapshot</span> {
+                        <span class="ident">id</span>,
+                        <span class="ident">data</span>: <span class="ident">Box::new</span>(<span class="ident">data</span>),
+                    })
+                }
+                <span class="prelude-val">Err</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="macro">anyhow::anyhow!</span>(<span class="ident">SnapshotError::LoadFailure</span>)),
             }
         }
+    }
+}
+
+<span class="kw">impl</span> <span class="ident">Handler</span><span class="op">&lt;</span><span class="ident">messages::WriteSnapshot</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Snapshot</span> {
+    <span class="kw">type</span> <span class="prelude-ty">Result</span> <span class="op">=</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">anyhow::Error</span><span class="op">&gt;</span>;
+
+    <span class="kw">fn</span> <span class="ident">handle</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">msg</span>: <span class="ident">messages::WriteSnapshot</span>, <span class="ident">_ctx</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span><span class="ident">::Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span><span class="ident">::Result</span> {
+        <span class="self">self</span>.<span class="ident">write_to_snapshot</span>(<span class="ident">msg</span>.<span class="ident">filename</span>.<span class="ident">as_deref</span>(), <span class="ident">msg</span>.<span class="ident">path</span>.<span class="ident">as_deref</span>(), <span class="ident">msg</span>.<span class="ident">key</span>)
+            .<span class="ident">expect</span>(<span class="macro">line_error!</span>());
+
+        <span class="self">self</span>.<span class="ident">state</span> <span class="op">=</span> <span class="ident">SnapshotState::default</span>();
+
+        <span class="prelude-val">Ok</span>(())
     }
 }
 </pre></div>

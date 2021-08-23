@@ -1,1 +1,0 @@
-initSidebarItems({"enum":[["InternalMsg","Messages used for the Internal Actor."],["InternalResults","Return messages used internally by the client."]],"struct":[["InternalActor","State for the internal actor used as the runtime."]]});

@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["CheckRecord",""],["CheckVault",""],["ClearCache",""],["CreateVault",""],["DeleteFromStore",""],["GarbageCollect",""],["GetData",""],["ListIds",""],["ReadFromStore",""],["ReloadData",""],["RevokeData",""],["Terminate",""],["WriteToStore",""],["WriteToVault",""]]});

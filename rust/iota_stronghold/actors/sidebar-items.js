@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["client",""],["internal",""],["snapshot",""]]});
+initSidebarItems({"mod":[["registry","Registry Actor"],["secure","Secure Actor module"],["snapshot",""]]});
