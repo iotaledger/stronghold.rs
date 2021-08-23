@@ -290,7 +290,7 @@ pub mod procedures {
         /// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.
         BIP39MnemonicSentence(ResultMessage<String>),
         /// Return value for `Ed25519PublicKey`. Returns an Ed25519 public key.
-        Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+        Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::PUBLIC_KEY_LENGTH]>),
         /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
         Ed25519Sign(ResultMessage<[u8; crypto::signatures::ed25519::SIGNATURE_LENGTH]>),
         /// Generic Error return message.
