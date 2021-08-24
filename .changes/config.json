@@ -101,6 +101,17 @@
         "stronghold-utils"
       ]
     },
+    "stronghold-rules": {
+      "path": "./rules/",
+      "manager": "rust",
+      "dependencies": [
+        "rules-macros"
+      ]
+    },
+    "stronghold-rules-macros": {
+      "path": "./rules/macros",
+      "manager": "rust"
+    },
     "iota-stronghold": {
       "path": "./client/",
       "manager": "rust",
