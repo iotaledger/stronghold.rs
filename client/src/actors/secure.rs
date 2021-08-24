@@ -17,7 +17,7 @@ pub use crate::{
 };
 use crate::{
     internals,
-    procedures::{BuildProcedure, ExecProc, ProcExecutor, ProcFn, ProcFnResult},
+    procedures::{BuildProcedure, ExecProc, ProcExecutor, ProcOutput},
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
 
@@ -712,25 +712,73 @@ where
 }
 
 impl ProcExecutor for SecureClient {
-    fn exec_on_guarded<DIn, DOut, VOut>(
+    fn get_guard<F, In, Out>(
         &mut self,
         vault_id: VaultId,
         record_id: RecordId,
-        f: &ProcFn<DIn, DOut, engine::runtime::GuardedVec<u8>, VOut>,
-        input: DIn,
-    ) -> Result<ProcFnResult<DOut, VOut>, anyhow::Error> {
-        let key = self.keystore.get_key(vault_id);
-        if let Some(pkey) = key.as_ref() {
+        f: F,
+        input: In,
+    ) -> Result<Out, anyhow::Error>
+    where
+        F: FnOnce(In, GuardedVec<u8>) -> Result<Out, engine::Error>,
+    {
+        let key0 = self.keystore.get_key(vault_id);
+        if let Some(pkey) = key0.as_ref() {
             self.keystore.insert_key(vault_id, pkey.clone());
         };
-        let key = key.ok_or_else(|| anyhow::anyhow!(VaultError::NotExisting))?;
+        let key0 = key0.ok_or_else(|| anyhow::anyhow!(VaultError::NotExisting))?;
         let mut ret = None;
-        self.db.get_guard(&key, vault_id, record_id, |guard: GuardedVec<u8>| {
-            let r = f(guard, input);
-            ret = Some(r);
-            Ok(())
-        })?;
-        ret.unwrap()
+        self.db
+            .get_guard(&key0, vault_id, record_id, |guard: GuardedVec<u8>| {
+                ret = Some(f(input, guard)?);
+                Ok(())
+            })
+            .map_err(|e| anyhow::anyhow!(e))?;
+        Ok(ret.unwrap())
+    }
+
+    fn exec_proc<F, In, Out>(
+        &mut self,
+        vid0: VaultId,
+        rid0: RecordId,
+        vid1: VaultId,
+        rid1: RecordId,
+        hint: RecordHint,
+        f: F,
+        input: In,
+    ) -> Result<Out, anyhow::Error>
+    where
+        F: FnOnce(In, GuardedVec<u8>) -> Result<ProcOutput<Out>, engine::Error>,
+    {
+        let key0 = self.keystore.get_key(vid0);
+        if let Some(pkey) = key0.as_ref() {
+            self.keystore.insert_key(vid0, pkey.clone());
+        };
+        let key0 = key0.ok_or_else(|| anyhow::anyhow!(VaultError::NotExisting))?;
+
+        let key1 = if !self.keystore.vault_exists(vid1) {
+            let k = self.keystore.create_key(vid1);
+            self.db.init_vault(&k, vid1)?;
+            k
+        } else {
+            self.keystore.get_key(vid1).unwrap()
+        };
+        let mut ret = None;
+        self.db
+            .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, |guard: GuardedVec<u8>| {
+                let ProcOutput {
+                    return_value,
+                    write_vault,
+                } = f(input, guard)?;
+                ret = Some(return_value);
+                Ok(write_vault)
+            })
+            .map_err(|e| anyhow::anyhow!(e))?;
+        Ok(ret.unwrap())
+    }
+
+    fn create_vault(&mut self, vault_id: VaultId) {
+        self.add_new_vault(vault_id)
     }
 
     fn write_to_vault(
@@ -740,7 +788,7 @@ impl ProcExecutor for SecureClient {
         hint: RecordHint,
         value: Vec<u8>,
     ) -> Result<(), anyhow::Error> {
-        let key = if !self.keystore.vault_exists(vault_id) {
+        let key1 = if !self.keystore.vault_exists(vault_id) {
             let k = self.keystore.create_key(vault_id);
             self.db.init_vault(&k, vault_id)?;
             k
@@ -748,7 +796,7 @@ impl ProcExecutor for SecureClient {
             self.keystore.get_key(vault_id).unwrap()
         };
         self.db
-            .write(&key, vault_id, record_id, &value, hint)
+            .write(&key1, vault_id, record_id, &value, hint)
             .map_err(|e| anyhow::anyhow!(e))
     }
 }

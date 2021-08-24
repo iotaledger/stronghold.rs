@@ -5,29 +5,18 @@ use std::ops::Deref;
 
 use engine::vault::{RecordHint, RecordId, VaultId};
 
-use super::{BuildProcedure, ExecProc, GetSourceVault, GetTargetVault, ProcExecutor};
+use super::{BuildProcedure, Data, ExecProc, GetSourceVault, GetTargetVault, ProcExecutor};
 
 // ==========================
 // Combine Trait
 // ==========================
 
 pub trait ProcCombine: ExecProc + Sized {
-    fn and_then<P1, F, OData1>(self, f: F) -> ProcAndThen<Self, P1>
+    fn and_then<P1>(self, proc_1: P1) -> ProcAndThen<Self, P1>
     where
-        Self: GetTargetVault,
-        F: FnOnce(VaultId, RecordId) -> P1,
-        P1: ExecProc<InData = Self::OutData, OutData = OData1>,
+        P1: ExecProc<InData = Self::OutData>,
     {
-        let (vault_id, record_id, _) = self.get_target();
-        let proc_1 = f(vault_id, record_id);
         ProcAndThen { proc_0: self, proc_1 }
-    }
-
-    fn map_output<F, OData1>(self, f: F) -> ProcMap<Self, F>
-    where
-        F: Fn(Self::OutData) -> OData1,
-    {
-        ProcMap { proc: self, f }
     }
 
     fn reduce<P1, F, DOut>(self, other: P1, f: F) -> ProcReduce<Self, P1, F>
@@ -40,6 +29,31 @@ pub trait ProcCombine: ExecProc + Sized {
             proc_0: self,
             proc_1: other,
             f,
+        }
+    }
+
+    fn map_output<F, OData1>(self, f: F) -> ProcMap<Self, F>
+    where
+        F: Fn(Self::OutData) -> OData1,
+    {
+        ProcMap { proc: self, f }
+    }
+
+    fn drop_output(self) -> ProcMap<Self, fn(Self::OutData) -> ()> {
+        ProcMap {
+            proc: self,
+            f: |o| drop(o),
+        }
+    }
+
+    fn with_input(self, input: Self::InData) -> ProcAndThen<Data<Self::InData>, Self>
+    where
+        Self::InData: Send + 'static,
+    {
+        let init_data = Data { data: input };
+        ProcAndThen {
+            proc_0: init_data,
+            proc_1: self,
         }
     }
 }

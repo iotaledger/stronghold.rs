@@ -5,12 +5,15 @@
 #![warn(missing_docs)]
 
 mod comm;
+mod procs;
 use comm::{build_plain, impl_permission, impl_to_permissioned};
 
 use proc_macro::TokenStream;
 
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput};
+use syn::{parse_macro_input, Data, DeriveInput, ItemImpl};
+
+use crate::procs::{derive_source_target, impl_exec_proc};
 
 /// A version of the derive [`Debug`] trait that blocks parsing the data inside of a struct or enum.
 /// Use [`GuardDebug`] to block reading and inspection of a data structure via the [`Debug`] trait.
@@ -70,4 +73,22 @@ pub fn permissions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
     };
     gen.into()
+}
+
+///
+#[proc_macro_derive(ExecProcedure, attributes(source_location, target_location))]
+pub fn derive_exec_proc(input: TokenStream) -> proc_macro::TokenStream {
+    let derive_input = syn::parse_macro_input!(input as DeriveInput);
+    let tokens = derive_source_target(derive_input);
+    tokens.into()
+}
+
+///
+#[proc_macro_attribute]
+pub fn proc_fn(_attr: proc_macro::TokenStream, mut item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let item_clone = item.clone();
+    let item_impl = syn::parse_macro_input!(item_clone as ItemImpl);
+    let gen: proc_macro::TokenStream = impl_exec_proc(item_impl).into();
+    item.extend(gen);
+    item
 }

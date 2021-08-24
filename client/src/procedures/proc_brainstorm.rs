@@ -890,3 +890,314 @@ where
         }
     }
 }
+
+pub type ProcFn<DIn, DOut, GIn, VOut> = Box<dyn Send + FnOnce(GIn, DIn) -> Result<ProcOutput<DOut, VOut>, anyhow::Error>>;
+
+pub struct PrimitiveProc<DIn, DOut, GIn, VOut> {
+    f: ProcFn<DIn, DOut, GIn, VOut>,
+    location_0: Option<(VaultId, RecordId)>,
+    location_1: Option<(VaultId, RecordId, RecordHint)>,
+}
+
+impl<DOut, GIn, VOut> PrimitiveProc<(), DOut, GIn, VOut>
+where
+    Self: ExecProc<InData = ()>,
+{
+    pub fn build(self) -> BuildProcedure<Self> {
+        BuildProcedure { inner: self }
+    }
+}
+
+// ==========================
+// Primitive Proc Types
+// ==========================
+
+// ---------------
+//=== No secret used, create new secret in vault
+// ---------------
+
+pub type Generator<DIn, DOut> = PrimitiveProc<DIn, DOut, (), Vec<u8>>;
+
+impl<DOut> Generator<(), DOut> {
+    pub(crate) fn new<F>(f: F, vault_id_1: VaultId, record_id_1: RecordId, hint: RecordHint) -> Self
+    where
+        F: Fn(()) -> Result<ProcOutput<DOut, Vec<u8>>, anyhow::Error> + 'static + Send + Sync,
+    {
+        let f = move |(), _| f(());
+        Self {
+            f: Box::new(f),
+            location_0: None,
+            location_1: Some((vault_id_1, record_id_1, hint)),
+        }
+    }
+}
+
+impl<DIn, DOut> Generator<DIn, DOut> {
+    pub(crate) fn new_with_input<F>(f: F, vault_id_1: VaultId, record_id_1: RecordId, hint: RecordHint) -> Self
+    where
+        F: Fn((), DIn) -> Result<ProcOutput<DOut, Vec<u8>>, anyhow::Error> + 'static + Send + Sync,
+    {
+        Self {
+            f: Box::new(f),
+            location_0: None,
+            location_1: Some((vault_id_1, record_id_1, hint)),
+        }
+    }
+}
+
+// ---------------
+//=== Existing secret used, new secret created
+// ---------------
+
+pub type Processor<DIn, DOut> = PrimitiveProc<DIn, DOut, GuardedVec<u8>, Vec<u8>>;
+
+impl<DOut> Processor<(), DOut> {
+    pub(crate) fn new<F>(
+        f: F,
+        vault_id_0: VaultId,
+        record_id_0: RecordId,
+        vault_id_1: VaultId,
+        record_id_1: RecordId,
+        hint: RecordHint,
+    ) -> Self
+    where
+        F: Fn(GuardedVec<u8>) -> Result<ProcOutput<DOut, Vec<u8>>, anyhow::Error> + 'static + Send + Sync,
+    {
+        let f = move |guard, _| f(guard);
+        Self {
+            f: Box::new(f),
+            location_0: Some((vault_id_0, record_id_0)),
+            location_1: Some((vault_id_1, record_id_1, hint)),
+        }
+    }
+}
+
+impl<DIn, DOut> Processor<DIn, DOut> {
+    pub(crate) fn new_with_input<F>(
+        f: F,
+        vault_id_0: VaultId,
+        record_id_0: RecordId,
+        vault_id_1: VaultId,
+        record_id_1: RecordId,
+        hint: RecordHint,
+    ) -> Self
+    where
+        F: Fn(GuardedVec<u8>, DIn) -> Result<ProcOutput<DOut, Vec<u8>>, anyhow::Error> + 'static + Send + Sync,
+    {
+        Self {
+            f: Box::new(f),
+            location_0: Some((vault_id_0, record_id_0)),
+            location_1: Some((vault_id_1, record_id_1, hint)),
+        }
+    }
+}
+// ---------------
+//=== Existing secret used, no new secret created
+// ---------------
+
+pub type Sink<DIn, DOut> = PrimitiveProc<DIn, DOut, GuardedVec<u8>, ()>;
+
+impl<DOut> Sink<(), DOut> {
+    pub(crate) fn new<F>(f: F, vault_id_0: VaultId, record_id_0: RecordId) -> Self
+    where
+        F: Fn(GuardedVec<u8>) -> Result<ProcOutput<DOut, ()>, anyhow::Error> + 'static + Send + Sync,
+    {
+        let f = move |guard, _| f(guard);
+        Self {
+            f: Box::new(f),
+            location_0: Some((vault_id_0, record_id_0)),
+            location_1: None,
+        }
+    }
+}
+
+impl<DIn, DOut> Sink<DIn, DOut> {
+    pub(crate) fn new_with_input<F>(f: F, vault_id_0: VaultId, record_id_0: RecordId) -> Self
+    where
+        F: Fn(GuardedVec<u8>, DIn) -> Result<ProcOutput<DOut, ()>, anyhow::Error> + 'static + Send + Sync,
+    {
+        Self {
+            f: Box::new(f),
+            location_0: Some((vault_id_0, record_id_0)),
+            location_1: None,
+        }
+    }
+}
+
+// ==========================
+// Helper Procedures
+// ==========================
+
+pub(crate) type Data<DOut> = PrimitiveProc<(), DOut, (), ()>;
+
+impl<DOut: Send + 'static> Data<DOut> {
+
+    pub fn new(data: DOut) -> Self {
+        let f = |(), ()| Ok(ProcOutput {write_vault: (), return_value: data});
+        Self {
+            f: Box::new(f),
+            location_0: None,
+            location_1: None,
+        }
+    }
+}
+
+pub struct CreateVault {
+    vault_id: VaultId
+}
+
+impl ExecProc for CreateVault {
+    type InData = ();
+    type OutData = ();
+
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, _: Self::InData) -> Result<Self::OutData, anyhow::Error> {
+        executor.create_vault(self.vault_id);
+        Ok(())
+    }
+}
+
+
+// ==========================
+// Trait implementations
+// ==========================
+
+impl<DIn, DOut> ExecProc for Generator<DIn, DOut> {
+    type InData = DIn;
+    type OutData = DOut;
+
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: DIn) -> Result<DOut, anyhow::Error> {
+        let (vault_id_1, record_id_1, hint) = self.get_target();
+        let f = self.f;
+        let ProcOutput {
+            write_vault,
+            return_value,
+        } = f((), input)?;
+        executor.write_to_vault(vault_id_1, record_id_1, hint, write_vault)?;
+        Ok(return_value)
+    }
+}
+
+impl<DIn, DOut> ExecProc for Processor<DIn, DOut> {
+    type InData = DIn;
+    type OutData = DOut;
+
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: DIn) -> Result<DOut, anyhow::Error> {
+        let (vault_id_0, record_id_0) = self.get_source();
+        let (vault_id_1, record_id_1, hint) = self.get_target();
+        let ProcOutput {
+            write_vault,
+            return_value,
+        } = executor.exec_on_guarded(vault_id_0, record_id_0, self.f, input)?;
+        executor.write_to_vault(vault_id_1, record_id_1, hint, write_vault)?;
+        Ok(return_value)
+    }
+}
+
+impl<DIn, DOut> ExecProc for Sink<DIn, DOut> {
+    type InData = DIn;
+    type OutData = DOut;
+
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: DIn) -> Result<DOut, anyhow::Error> {
+        let (vault_id_0, record_id_0) = self.get_source();
+        let ProcOutput {
+            write_vault: (),
+            return_value,
+        } = executor.exec_on_guarded(vault_id_0, record_id_0, self.f, input)?;
+        Ok(return_value)
+    }
+}
+
+// A PrimitiveProc<_, _, _, GuardedVec<u8>, _> can only be created via Processor::new or Sink::new, in both cases there
+// is a location_0 / source-vault.
+impl<DIn, DOut, VOut> GetSourceVault for PrimitiveProc<DIn, DOut, GuardedVec<u8>, VOut> {
+    fn get_source(&self) -> (VaultId, RecordId) {
+        self.location_0.unwrap()
+    }
+}
+
+// A PrimitiveProc<_, _, _, _, Vec<u8>> can only be created via Generator::new or Processor::new, in both cases there is
+// a location_1 / target-vault.
+impl<DIn, DOut, GIn> GetTargetVault for PrimitiveProc<DIn, DOut, GIn, Vec<u8>> {
+    fn get_target(&self) -> (VaultId, RecordId, RecordHint) {
+        self.location_1.unwrap()
+    }
+}
+
+
+
+
+
+impl<P> ExecProc for P
+where
+    P: AsFn<InGuard = (), OutVault = ()>,
+{
+    type InData = P::InData;
+    type OutData = P::OutData;
+
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
+        let f = self.f;
+        let ProcOutput {
+            write_vault: (),
+            return_value,
+        } = f((), input)?;
+        Ok(return_value)
+    }
+}
+
+impl<P> ExecProc for P
+where
+    P: AsFn<InGuard = (), OutVault = Vec<u8>> + GetTargetVault
+{
+    type InData = P::InData;
+    type OutData = P::OutData;
+    
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
+        let (vault_id_1, record_id_1, hint) = self.get_target();
+        let f = self.f;
+        let ProcOutput {
+            write_vault,
+            return_value,
+        } = f((), input)?;
+        executor.write_to_vault(vault_id_1, record_id_1, hint, write_vault)?;
+        Ok(return_value)
+    }
+}
+
+impl<P> ExecProc for P
+where
+    P: AsFn<InGuard = GuardedVec<u8>, OutVault = Vec<u8>> + GetSourceVault +  GetTargetVault
+{
+    type InData = P::InData;
+    type OutData = P::OutData;
+
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
+        let (vault_id_0, record_id_0) = self.get_source();
+        let (vault_id_1, record_id_1, hint) = self.get_target();
+        let ProcOutput {
+            write_vault,
+            return_value,
+        } = executor.exec_on_guarded(vault_id_0, record_id_0, self.f, input)?;
+        executor.write_to_vault(vault_id_1, record_id_1, hint, write_vault)?;
+        Ok(return_value)
+    }
+}
+
+impl<P> ExecProc for P
+where
+    P: AsFn<InGuard = GuardedVec<u8>, OutVault = ()> + GetSourceVault
+{
+    type InData = P::InData;
+    type OutData = P::OutData;
+
+    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
+        let (vault_id_0, record_id_0) = self.get_source();
+        let ProcOutput {
+            write_vault: (),
+            return_value,
+        } = executor.exec_on_guarded(vault_id_0, record_id_0, self.f, input)?;
+        Ok(return_value)
+    }
+}
+
+pub type ProcFn<DIn, DOut, GIn, VOut> =
+    Box<dyn Send + FnOnce(GIn, DIn) -> Result<ProcOutput<DOut>, anyhow::Error>>;

@@ -35,13 +35,31 @@ pub trait ExecProc {
 }
 
 pub trait ProcExecutor {
-    fn exec_on_guarded<DIn, DOut, VOut>(
+    fn get_guard<F, In, Out>(
         &mut self,
         vault_id: VaultId,
         record_id: RecordId,
-        f: &ProcFn<DIn, DOut, GuardedVec<u8>, VOut>,
-        input: DIn,
-    ) -> Result<ProcFnResult<DOut, VOut>, anyhow::Error>;
+        f: F,
+        input: In,
+    ) -> Result<Out, anyhow::Error>
+    where
+        F: FnOnce(In, GuardedVec<u8>) -> Result<Out, engine::Error>;
+
+    fn create_vault(&mut self, vault_id: VaultId);
+
+    #[allow(clippy::too_many_arguments)]
+    fn exec_proc<F, In, Out>(
+        &mut self,
+        vid0: VaultId,
+        rid0: RecordId,
+        vid1: VaultId,
+        rid1: RecordId,
+        hint: RecordHint,
+        f: F,
+        input: In,
+    ) -> Result<Out, anyhow::Error>
+    where
+        F: FnOnce(In, GuardedVec<u8>) -> Result<ProcOutput<Out>, engine::Error>;
 
     fn write_to_vault(
         &mut self,
@@ -85,7 +103,9 @@ where
 // ==========================
 
 mod test {
-    use crate::{Location, Stronghold};
+    use crypto::keys::slip10::Chain;
+
+    use crate::{internals, Stronghold};
 
     use super::*;
 
@@ -93,14 +113,34 @@ mod test {
         let cp = "test client".into();
         let sh = Stronghold::init_stronghold_system(cp, vec![]).await.unwrap();
 
-        let slip10_generate = Slip10Generate {
-            size_bytes: 64,
-            location: Location::generic("v1", "r1"),
-            hint: RecordHint::new("".as_bytes()).unwrap(),
-        }
-        .into_proc()
-        .build();
+        let seed_vault_id = VaultId::random::<internals::Provider>().unwrap();
+        let seed_record_id = RecordId::random::<internals::Provider>().unwrap();
+        let seed_hint = RecordHint::new("seed".as_bytes()).unwrap();
 
-        let _res = sh.runtime_exec(slip10_generate).await;
+        let keypair_vault_id = VaultId::random::<internals::Provider>().unwrap();
+        let keypair_record_id = RecordId::random::<internals::Provider>().unwrap();
+        let keypair_hint = RecordHint::new("key".as_bytes()).unwrap();
+
+        let generate_seed = Slip10Generate {
+            size_bytes: 64,
+            location: (seed_vault_id, seed_record_id, seed_hint),
+        };
+
+        let derive_keypair = SLIP10Derive {
+            chain: Chain::empty(),
+            input: (seed_vault_id, seed_record_id),
+            output: (keypair_vault_id, keypair_record_id, keypair_hint),
+        };
+
+        let encrypt_msg: Vec<u8> = String::from("My secret message").into();
+
+        let _sign_msg = Ed25519Sign {
+            private_key: (keypair_vault_id, keypair_record_id),
+        }
+        .with_input(encrypt_msg);
+
+        let gen_derive_sign = generate_seed.and_then(derive_keypair).build(); // .and_then(_sign_msg).build();
+
+        let _res = sh.runtime_exec(gen_derive_sign).await;
     }
 }
