@@ -13,9 +13,7 @@
 #![allow(clippy::all)]
 #![allow(dead_code, unused_variables)]
 
-pub mod combinators;
-pub mod stm;
-mod types;
+pub mod types;
 
 use core::convert::{TryFrom, TryInto};
 use std::collections::HashMap;
