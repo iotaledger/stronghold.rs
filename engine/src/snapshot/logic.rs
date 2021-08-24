@@ -46,18 +46,30 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
 
     // get public key.
     let ephemeral_pk = ephemeral_key.public_key();
+
+    // from api change crypto.rs 0.5 -> 0.7
+    let ephemeral_pk_bytes = ephemeral_pk.to_bytes();
+
     // write public key into output.
-    output.write_all(ephemeral_pk.as_bytes())?;
+    output.write_all(&ephemeral_pk_bytes)?;
+
+    // from api change crypto.rs 0.5 -> 0.7
+    let mut key_bytes = [0u8; x25519::SECRET_KEY_LENGTH];
+    key_bytes.clone_from_slice(key);
 
     // get `x25519` secret key from public key.
-    let pk = x25519::SecretKey::from_bytes(key)?.public_key();
+    let pk = x25519::SecretKey::from_bytes(key_bytes).public_key();
+
+    // api change crypto.rs 0.5 -> 0.7
+    let pk_bytes = pk.to_bytes();
+
     // do a diffie_hellman exchange to make a shared secret key.
     let shared = ephemeral_key.diffie_hellman(&pk);
 
     // compute the nonce using the ephemeral keys.
     let nonce = {
         let mut i = ephemeral_pk.to_bytes().to_vec();
-        i.extend_from_slice(pk.as_bytes());
+        i.extend_from_slice(&pk_bytes);
         let res = blake2b::Blake2b256::digest(&i).to_vec();
         let v: Nonce = res[0..NONCE_SIZE].try_into().expect("slice with incorrect length");
         v
@@ -84,14 +96,19 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
     check_header(input)?;
 
     // create ephemeral private key.
-    let mut ephemeral_pk = [0; x25519::PUBLIC_KEY_LEN];
+    let mut ephemeral_pk = [0; x25519::PUBLIC_KEY_LENGTH];
     // get ephemeral private key from input.
     input.read_exact(&mut ephemeral_pk)?;
+
+    // api change crypto.rs 0.5 -> 0.7
+    let mut key_bytes = [0u8; x25519::SECRET_KEY_LENGTH];
+    key_bytes.clone_from_slice(key);
+
     // derive public key from ephemeral private key
-    let ephemeral_pk = x25519::PublicKey::from_bytes(&ephemeral_pk)?;
+    let ephemeral_pk = x25519::PublicKey::from_bytes(ephemeral_pk);
 
     // get x25519 key pair from ephemeral private key.
-    let sk = x25519::SecretKey::from_bytes(key)?;
+    let sk = x25519::SecretKey::from_bytes(key_bytes);
     let pk = sk.public_key();
 
     // diffie hellman to create the shared secret.
@@ -100,7 +117,7 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
     // compute the nonce using the ephemeral keys.
     let nonce = {
         let mut i = ephemeral_pk.to_bytes().to_vec();
-        i.extend_from_slice(pk.as_bytes());
+        i.extend_from_slice(&pk.to_bytes());
         let res = blake2b::Blake2b256::digest(&i).to_vec();
         let v: Nonce = res[0..NONCE_SIZE].try_into().expect("slice with incorrect length");
         v
@@ -160,7 +177,7 @@ pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> crate::Resul
 }
 
 fn check_min_file_len(input: &mut File) -> crate::Result<()> {
-    let min = MAGIC.len() + VERSION.len() + x25519::PUBLIC_KEY_LEN + XChaCha20Poly1305::TAG_LENGTH;
+    let min = MAGIC.len() + VERSION.len() + x25519::PUBLIC_KEY_LENGTH + XChaCha20Poly1305::TAG_LENGTH;
     if input.metadata()?.len() >= min as u64 {
         Ok(())
     } else {

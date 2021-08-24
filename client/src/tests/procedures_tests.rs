@@ -92,7 +92,9 @@ async fn usecase_ed25519() {
 
     {
         use crypto::signatures::ed25519::{PublicKey, Signature};
-        let pk = PublicKey::from_compressed_bytes(pk).unwrap();
+
+        // api change crypto.rs 0.5 -> 0.7
+        let pk = PublicKey::try_from_bytes(pk).unwrap();
         let sig = Signature::from_bytes(sig);
         assert!(pk.verify(&sig, &msg));
     }

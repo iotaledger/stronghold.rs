@@ -1051,16 +1051,15 @@ impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, anyhow::Er
                 let mut bs = [0; 32];
                 bs.copy_from_slice(&raw);
 
-                let sk = match ed25519::SecretKey::from_le_bytes(bs) {
-                    Ok(result) => result,
-                    Err(_e) => {return Err(engine::Error::CryptoError(
-                        crypto::Error::ConvertError { from : "Slice of Bytes", to : "ed25519 SecretKey From LE bytes"}
-                    ));}
-                };
+
+                // api change crypto.rs 0.5 -> 0.7
+                // was reading from little endian ordered bytes
+                let sk = ed25519::SecretKey::from_bytes(bs);
                 let pk = sk.public_key();
 
                 // send to client this result
-                result.set(pk.to_compressed_bytes());
+                // api change crypto.rs 0.5 -> 0.7
+                result.set(pk.to_bytes());
 
                 Ok(())
             }) {
@@ -1100,12 +1099,9 @@ impl_handler!(procedures::Ed25519Sign, Result <crate::ProcResult, anyhow::Error>
                     raw.truncate(32);
                     let mut bs = [0; 32];
                     bs.copy_from_slice(&raw);
-                    let sk = match ed25519::SecretKey::from_le_bytes(bs) {
-                        Ok(result) => result,
-                        Err(_e) => {return Err(engine::Error::CryptoError(
-                            crypto::Error::ConvertError { from : "Slice of Bytes", to : "ed25519 SecretKey From LE bytes"}
-                        ));}
-                    };
+
+                    // api change crypto.rs 0.5 -> 0.7
+                    let sk =  ed25519::SecretKey::from_bytes(bs);
 
                     let sig = sk.sign(&msg.msg);
                     result.set(sig.to_bytes());
