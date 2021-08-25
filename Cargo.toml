@@ -3,7 +3,6 @@ members = [
   "engine",
   "engine/runtime",
   "client",
-  "p2p",
   "utils",
   "derive"
 ]
@@ -11,6 +10,7 @@ exclude = [
   "products/commandline",
   "products/desktop",
   "products/SHaaS",
+  "communication"
 ]
 
 [profile.release]

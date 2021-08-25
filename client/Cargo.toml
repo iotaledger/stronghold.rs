@@ -40,19 +40,17 @@ features = [
 "chacha"
 ]
 
-
-[dependencies.stronghold-p2p]
-path = "../p2p"
-version = "0.3"
-optional = true
+# [dependencies.stronghold-communication]
+# path = "../communication"
+# optional = true
+# version = "0.4.1"
 
 [dependencies.stronghold-utils]
 path = "../utils"
 version = "0.3"
 
-[features]
-p2p = ["stronghold-p2p", "futures"]
-
+# [features]
+# communication = [ "stronghold-communication" ]
 
 [dev-dependencies]
 hex = "0.4.2"
