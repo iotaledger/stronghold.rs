@@ -101,13 +101,6 @@
         "stronghold-utils"
       ]
     },
-    "stronghold-communication": {
-      "path": "./communication/",
-      "manager": "rust",
-      "dependencies": [
-        "stronghold-utils"
-      ]
-    },
     "iota-stronghold": {
       "path": "./client/",
       "manager": "rust",
