@@ -231,15 +231,9 @@ where
 #[cfg(test)]
 mod tests {
 
+    // TODO: you see this, you remove this
+    #[allow(unused_imports)]
     use super::*;
-
-    #[test]
-    #[ignore]
-    fn test_tuple_count() {
-        assert_eq!((1, 2, 3, 4).count(), 4);
-        assert_eq!((1, 2, 3, 4, "string").count(), 5);
-        assert_eq!((1, 2, 3, 4, 232.32, 34, 'a', "other string").count(), 8);
-    }
 
     #[test]
     #[ignore]
