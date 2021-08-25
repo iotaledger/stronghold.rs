@@ -1,6 +1,6 @@
 ## Stronghold Client
 
-This is the official client layer of Stronghold. It uses the Riker actor model and provides an easy interface which acts as a functional passthrough to Stronghold's internal actor system. 
+This is the official client layer of Stronghold. It provides an [Actix](https://actix.rs) actor model system for easy Interface as well as functional passthrough to Stronghold's internal actor system.
 
 **Stronghold Interface**: 
 - `init_stronghold_system`: Initializes a new instance of the Stronghold system.  Sets up the first client actor. Accepts a `ActorSystem`, the first `client_path`: `Vec<u8>` and any `StrongholdFlags` which pertain to the first actor.
@@ -42,3 +42,6 @@ Also requires keydata to unlock the snapshot and the keydata must implement and 
 - `BIP39MnemonicSentence`: Returns the mnemonic sentence for the corresponding seed.
 - `Ed25519PublicKey`: Returns an Ed25519 public key inside of a `ResultMessage`.
 - `Ed25519Sign`: Returns an Ed25519 signature inside of a `ResultMessage`.
+
+
+

@@ -28,108 +28,90 @@
 /// ```
 mod arguments;
 
-use arguments::*;
-use clap::Clap;
-
-use futures::executor::block_on;
-use iota_stronghold::{ResultMessage, Stronghold};
+#[cfg(feature = "communication")]
+use inner::*;
 
 #[cfg(feature = "communication")]
-use iota_stronghold::Multiaddr;
+mod inner {
 
-use riker::actors::*;
-use std::error::Error;
+    pub use super::arguments::*;
+    pub use clap::Clap;
+    pub use iota_stronghold::{Multiaddr, ResultMessage, Stronghold};
+    pub use std::error::Error;
 
-/// Callback type for blocking stronghold instance
-type Callback = fn() -> Result<(), Box<dyn Error>>;
+    /// Returns a list of all available peers
 
-/// create a line error with the file and the line number
-#[macro_export]
-macro_rules! line_error {
-    () => {
-        concat!("Error at ", file!(), ":", line!())
-    };
-    ($str:expr) => {
-        concat!($str, " @", file!(), ":", line!())
-    };
-}
-
-/// Returns a list of all available peers
-#[cfg(feature = "communication")]
-fn list_peers_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
-    match block_on(stronghold.get_swarm_info()) {
-        ResultMessage::Ok((_, _, peers)) => {
-            let info = format!(
-                r#"
+    pub async fn list_peers_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
+        match stronghold.get_swarm_info().await {
+            ResultMessage::Ok((_, _, peers)) => {
+                let info = format!(
+                    r#"
             Peers
             ===
             {:?}
             "#,
-                peers
-            );
-            println!("{}", info)
+                    peers
+                );
+                println!("{}", info)
+            }
+            ResultMessage::Error(e) => return Err(Box::from(format!("{:?}", e))),
         }
-        ResultMessage::Error(e) => return Err(Box::from(format!("{:?}", e))),
+
+        Ok(())
     }
 
-    Ok(())
-}
+    /// Displays the swarm info of this stronghold instance
+    pub async fn show_swarm_info_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
+        stronghold.spawn_communication();
 
-/// Displays the swarm info of this stronghold instance
-#[cfg(feature = "communication")]
-fn show_swarm_info_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
-    stronghold.spawn_communication();
+        match stronghold.get_swarm_info().await {
+            ResultMessage::Ok((peer_id, addresses, peers)) => {
+                let info = format!(
+                    "-----------\nSwarm Info:\n-----------\nPeer Id : {},\nAddresses: {:?},\nPeers: {:?}\n",
+                    peer_id, addresses, peers
+                );
 
-    match block_on(stronghold.get_swarm_info()) {
-        ResultMessage::Ok((peer_id, addresses, peers)) => {
-            let info = format!(
-                "-----------\nSwarm Info:\n-----------\nPeer Id : {},\nAddresses: {:?},\nPeers: {:?}\n",
-                peer_id, addresses, peers
-            );
-
-            println!("{}", info)
+                println!("{}", info)
+            }
+            ResultMessage::Error(e) => return Err(Box::from(format!("{:?}", e))),
         }
-        ResultMessage::Error(e) => return Err(Box::from(format!("{:?}", e))),
+
+        Ok(())
     }
 
-    Ok(())
-}
+    pub async fn start_listening_command(
+        multiaddr: &str,
+        stronghold: &mut iota_stronghold::Stronghold,
+    ) -> Result<(), Box<dyn Error>> {
+        let multiaddress: Multiaddr = multiaddr.parse()?;
 
-#[cfg(feature = "communication")]
-fn start_listening_command(
-    multiaddr: &str,
-    stronghold: &mut iota_stronghold::Stronghold,
-) -> Result<(), Box<dyn Error>> {
-    let multiaddress: Multiaddr = multiaddr.parse()?;
+        // spawn communication actor
+        let comm = stronghold.spawn_communication();
+        println!("Communication actor spawned: {:?}", comm);
 
-    // spawn communication actor
-    let comm = stronghold.spawn_communication();
-    println!("Communication actor spawned: {:?}", comm);
+        // start listening
+        let result = stronghold.start_listening(Some(multiaddress)).await;
+        println!("Listening on addr: {:?}", result);
 
-    // start listening
-    let result = block_on(stronghold.start_listening(Some(multiaddress)));
-    println!("Listening on addr: {:?}", result);
-
-    // blocks
-    stronghold.keep_alive(None::<Callback>);
-
-    Ok(())
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    let app = ExampleApp::parse();
-    let system = ActorSystem::new().expect(line_error!());
-    let client_path = app.actor_path.as_bytes().to_vec();
-    let mut stronghold = Stronghold::init_stronghold_system(system, client_path, vec![]);
-
-    match app.cmds {
-        #[cfg(feature = "communication")]
-        Commands::Peers {} => list_peers_command(&mut stronghold),
-
-        #[cfg(feature = "communication")]
-        Commands::SwarmInfo {} => show_swarm_info_command(&mut stronghold),
-
-        #[cfg(feature = "communication")]
-        Commands::Listen { multiaddr } => start_listening_command(multiaddr.as_str(), &mut stronghold),
+        Ok(())
     }
+}
+#[actix::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "communication")]
+    {
+        let app = ExampleApp::parse();
+        let client_path = app.actor_path.as_bytes().to_vec();
+
+        let mut stronghold = Stronghold::init_stronghold_system(client_path, vec![]).await?;
+
+        return match app.cmds {
+            Commands::Peers {} => list_peers_command(&mut stronghold).await,
+            Commands::SwarmInfo {} => show_swarm_info_command(&mut stronghold).await,
+            Commands::Listen { multiaddr } => start_listening_command(multiaddr.as_str(), &mut stronghold).await,
+        };
+    }
+
+    #[cfg(not(feature = "communication"))]
+    Ok(())
 }

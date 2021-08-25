@@ -49,7 +49,7 @@ impl BoxProvider for Provider {
 
         let key = key.bytes();
 
-        XChaCha20Poly1305::try_decrypt(&key, &nonce, &ad, &mut plain, &cipher, &tag)
+        XChaCha20Poly1305::try_decrypt(&key, nonce, ad, &mut plain, cipher, tag)
             .map_err(|_| engine::Error::ProviderError(String::from("Unable to unlock data")))?;
 
         Ok(plain)

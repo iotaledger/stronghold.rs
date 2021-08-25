@@ -19,7 +19,7 @@ There are four main components of Stronghold:
 3. **P2P**: Enables Strongholds in different processes or on different devices to communicate with each other securely.
 
 ## 3rd Party Independent Security Audit
-In April of 2021, F-Secure performed a security assessment of the core crates of IOTA Stronghold and found nothing of concern. This is not an explicit declaration of fitness or freedom of error, but it is an indicator of the high quality of the code. You may review [the audit here](https://github.com/iotaledger/stronghold.rs/blob/dev/docs/meta/Audit.pdf).
+In April of 2021, F-Secure performed a security assessment of the core crates of IOTA Stronghold and found nothing of concern. This is not an explicit declaration of fitness or freedom of error, but it is an indicator of the high quality of the code. You may review [the audit here](https://github.com/iotaledger/stronghold.rs/blob/dev/documentation/docs/meta/Audit.pdf).
 
 ## Roadmap
 Here are some of the features and tasks that we are working on.

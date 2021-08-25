@@ -227,8 +227,8 @@ where
 
         if is_eligible_to_try_relayed {
             let dialing_relays = self.dialing_relays.clone();
-            let try_relayed = dialing_relays.iter().find_map(|&relay| {
-                let addr = self.relay_addr.get(&relay)?;
+            let try_relayed = dialing_relays.iter().find_map(|relay| {
+                let addr = self.relay_addr.get(relay)?;
                 let relayed_addr = addr
                     .clone()
                     .with(Protocol::P2p(relay.to_owned().into()))
@@ -347,7 +347,7 @@ where
         let default = self.firewall.get_default(direction);
         let (have_rule, no_rule) = peers
             .into_iter()
-            .partition::<Vec<PeerId>, _>(|p| self.firewall.has_rule(&p, direction));
+            .partition::<Vec<PeerId>, _>(|p| self.firewall.has_rule(p, direction));
 
         if !no_rule.is_empty() || is_change_default {
             let updated_default = is_add
@@ -356,7 +356,7 @@ where
             no_rule
                 .into_iter()
                 .for_each(|peer| self.firewall.set_rule(peer, direction, updated_default));
-            is_change_default.then(|| self.firewall.set_default(&direction, updated_default));
+            is_change_default.then(|| self.firewall.set_default(direction, updated_default));
         }
 
         have_rule.into_iter().for_each(|peer| {
@@ -506,10 +506,10 @@ where
 
     // Handle incoming enveloped from either a peer directly or via the relay peer.
     fn handle_incoming_request(&mut self, peer_id: &PeerId, request_id: &RequestId, request: Req) {
-        let is_permitted = self.firewall.is_permitted(&request, &peer_id, RequestDirection::In);
+        let is_permitted = self.firewall.is_permitted(&request, peer_id, RequestDirection::In);
         if is_permitted {
             if let Some(res) = self.ask_client(request) {
-                let _ = self.swarm.behaviour_mut().send_response(&request_id, res);
+                let _ = self.swarm.behaviour_mut().send_response(request_id, res);
             }
         }
     }
