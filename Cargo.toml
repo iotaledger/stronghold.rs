@@ -5,13 +5,13 @@ members = [
   "client",
 #  "communication",
   "utils",
-  "derive"
+  "derive",
+  "communication"
 ]
 exclude = [
   "products/commandline",
   "products/desktop",
   "products/SHaaS",
-  "communication"
 ]
 
 [profile.release]
