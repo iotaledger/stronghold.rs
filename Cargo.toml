@@ -3,6 +3,7 @@ members = [
   "engine",
   "engine/runtime",
   "client",
+#  "communication",
   "utils",
   "derive"
 ]
