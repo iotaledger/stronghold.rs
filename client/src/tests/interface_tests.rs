@@ -435,8 +435,8 @@ async fn test_stronghold_p2p() {
         };
 
         match local_stronghold.remote_runtime_exec(peer_id, procedure).await {
-            ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => {}
-            ProcResult::Error(err) => panic!("Procedure failed: {:?}", err),
+            ResultMessage::Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(_))) => {}
+            ResultMessage::Error(err) => panic!("Procedure failed: {:?}", err),
             r => panic!("unexpected result: {:?}", r),
         };
         res_tx.send(()).await.unwrap();

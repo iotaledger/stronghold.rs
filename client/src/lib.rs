@@ -72,6 +72,35 @@ macro_rules! line_error {
     };
 }
 
+#[macro_export]
+macro_rules! unwrap_or_err (
+    ($expression:expr) => {
+        match $expression {
+            Ok(ok) => ok,
+            Err(err) => return ResultMessage::Error(err.to_string())
+        }
+    };
+    ($expression:expr, $error:literal) => {
+        match $expression {
+            Ok(ok) => ok,
+            Err(_) => return ResultMessage::Error($error.to_string()),
+        }
+    };
+    (Option, $expression:expr, $error:literal) => {
+        match $expression.as_ref() {
+            Some(item) => item,
+            None => return ResultMessage::Error($error.to_string())
+        }
+    };
+);
+
+#[macro_export]
+macro_rules! unwrap_result_msg (
+    ($expr:expr) => {
+        unwrap_or_err!(unwrap_or_err!($expr))
+    };
+);
+
 /// Stronghold Client Result Type.
 pub type Result<T> = anyhow::Result<T, Error>;
 

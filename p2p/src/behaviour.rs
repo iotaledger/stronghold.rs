@@ -316,36 +316,6 @@ where
         self.addresses.remove_address(peer, address);
     }
 
-    #[cfg(feature = "relay")]
-    /// Add a relay to the list of relays that may be tried to use if a remote peer can not be reached directly.
-    pub fn add_dialing_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
-        self.addresses.add_relay(peer, address)
-    }
-
-    #[cfg(feature = "relay")]
-    /// Remove a relay from the list of dialing relays.
-    pub fn remove_dialing_relay(&mut self, peer: &PeerId) {
-        self.addresses.remove_relay(peer);
-    }
-
-    #[cfg(feature = "relay")]
-    /// Configure whether it should be attempted to reach the remote via known relays, if it can not be reached via
-    /// known addresses.
-    pub fn set_relay_fallback(&mut self, peer: PeerId, use_relay_fallback: bool) {
-        self.addresses.set_relay_fallback(peer, use_relay_fallback);
-    }
-
-    #[cfg(feature = "relay")]
-    /// Dial the target via the specified relay.
-    /// The `is_exclusive` paramter specifies whether other known relays should be used if using the set relay is not
-    /// successful.
-    ///
-    /// Returns the relayed address of the local peer (`<relay-addr>/<relay-id>/p2p-circuit/<local-id>),
-    /// if an address for the relay is known.
-    pub fn use_specific_relay(&mut self, target: PeerId, relay: PeerId, is_exclusive: bool) -> Option<Multiaddr> {
-        self.addresses.use_relay(target, relay, is_exclusive)
-    }
-
     // Get currently established connections.
     pub fn get_established_connections(&self) -> Vec<(PeerId, EstablishedConnections)> {
         self.request_manager.get_established_connections()
@@ -378,7 +348,7 @@ where
             }
             Some(Rule::Ask) => {
                 // Query for individual approval for the requests.
-                self.query_rq_approval(peer, request_id, request.clone(), direction);
+                self.query_request_approval(peer, request_id, request.clone(), direction);
                 ApprovalStatus::MissingApproval
             }
             Some(Rule::AllowAll) => ApprovalStatus::Approved,
@@ -455,7 +425,7 @@ where
 
     // Query for individual approval of a requests.
     // This is necessary if the firewall is configured with [`Rule::Ask`].
-    fn query_rq_approval(&mut self, peer: PeerId, request_id: RequestId, rq: TRq, direction: RequestDirection) {
+    fn query_request_approval(&mut self, peer: PeerId, request_id: RequestId, rq: TRq, direction: RequestDirection) {
         let (approval_tx, approval_rx) = oneshot::channel();
         let firewall_req = FirewallRequest::RequestApproval {
             peer,
@@ -490,9 +460,43 @@ where
         // Query for individual request approval due to [`Rule::Ask`].
         if let Some(ask_reqs) = self.request_manager.on_peer_rule(peer, rules, direction) {
             ask_reqs.into_iter().for_each(|(id, rq, dir)| {
-                self.query_rq_approval(peer, id, rq, dir);
+                self.query_request_approval(peer, id, rq, dir);
             })
         }
+    }
+}
+
+#[cfg(feature = "relay")]
+impl<Rq, Rs, TRq> NetBehaviour<Rq, Rs, TRq>
+where
+    Rq: RqRsMessage + Borrow<TRq>,
+    Rs: RqRsMessage,
+    TRq: Clone + Send + 'static,
+{
+    /// Add a relay to the list of relays that may be tried to use if a remote peer can not be reached directly.
+    pub fn add_dialing_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
+        self.addresses.add_relay(peer, address)
+    }
+
+    /// Remove a relay from the list of dialing relays.
+    pub fn remove_dialing_relay(&mut self, peer: &PeerId) {
+        self.addresses.remove_relay(peer);
+    }
+
+    /// Configure whether it should be attempted to reach the remote via known relays, if it can not be reached via
+    /// known addresses.
+    pub fn set_relay_fallback(&mut self, peer: PeerId, use_relay_fallback: bool) {
+        self.addresses.set_relay_fallback(peer, use_relay_fallback);
+    }
+
+    /// Dial the target via the specified relay.
+    /// The `is_exclusive` paramter specifies whether other known relays should be used if using the set relay is not
+    /// successful.
+    ///
+    /// Returns the relayed address of the local peer (`<relay-addr>/<relay-id>/p2p-circuit/<local-id>),
+    /// if an address for the relay is known.
+    pub fn use_specific_relay(&mut self, target: PeerId, relay: PeerId, is_exclusive: bool) -> Option<Multiaddr> {
+        self.addresses.use_relay(target, relay, is_exclusive)
     }
 }
 

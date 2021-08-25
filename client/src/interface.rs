@@ -20,7 +20,7 @@ use crate::{
         snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, InsertClient, Registry, RemoveClient, SecureClient,
     },
-    line_error,
+    line_error, unwrap_or_err, unwrap_result_msg,
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -560,29 +560,6 @@ impl Stronghold {
     }
 }
 
-#[macro_export]
-macro_rules! unwrap_or_err (
-    ($expression:expr) => {
-        match $expression {
-            Ok(ok) => ok,
-            Err(err) => return ResultMessage::Error(err.to_string())
-        }
-    };
-    ($expression:expr, $error:literal) => {
-        match $expression {
-            Some(item) => item,
-            None => return ResultMessage::Error($error.to_string())
-        }
-    };
-);
-
-#[macro_export]
-macro_rules! unwrap_result_msg (
-    ($expr:expr) => {
-        unwrap_or_err!(unwrap_or_err!($expr))
-    };
-);
-
 #[cfg(feature = "p2p")]
 impl Stronghold {
     /// Spawn the p2p-network actor and swarm.
@@ -604,7 +581,7 @@ impl Stronghold {
 
     /// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.
     pub async fn start_listening(&self, address: Option<Multiaddr>) -> ResultMessage<Multiaddr> {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
         let res = actor.send(network_msg::StartListening { address }).await;
         let addr = unwrap_result_msg!(res);
         ResultMessage::Ok(addr)
@@ -612,7 +589,7 @@ impl Stronghold {
 
     /// Stop listening on the swarm.
     pub async fn stop_listening(&self) -> StatusMessage {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
         let res = actor.send(network_msg::StopListening).await;
         unwrap_or_err!(res);
         ResultMessage::OK
@@ -620,7 +597,7 @@ impl Stronghold {
 
     ///  Get the peer id, listening addresses and connection info of the local peer
     pub async fn get_swarm_info(&self) -> ResultMessage<SwarmInfo> {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
         let res = actor.send(network_msg::GetSwarmInfo).await;
         let info = unwrap_or_err!(res);
         ResultMessage::Ok(info)
@@ -641,7 +618,7 @@ impl Stronghold {
         is_listening_relay: bool,
         is_dialing_relay: bool,
     ) -> StatusMessage {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
 
         if is_listening_relay {
             let res = actor
@@ -671,7 +648,7 @@ impl Stronghold {
 
     /// Remove a peer from the list of peers used for dialing, and / or stop listening with the relay.
     pub async fn remove_relay(&self, relay: PeerId, rm_listening_relay: bool, rm_dialing_relay: bool) -> StatusMessage {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
 
         if rm_listening_relay {
             let res = actor.send(network_msg::StopListeningRelay { relay }).await;
@@ -694,7 +671,7 @@ impl Stronghold {
         peers: Vec<PeerId>,
         set_default: bool,
     ) -> StatusMessage {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
 
         for peer in peers {
             let res = actor
@@ -720,7 +697,7 @@ impl Stronghold {
 
     /// Remove peer specific rules from the firewall configuration.
     pub async fn remove_firewall_rules(&self, peers: Vec<PeerId>) -> StatusMessage {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
         for peer in peers {
             let res = actor
                 .send(network_msg::RemoveFirewallRule {
@@ -743,7 +720,7 @@ impl Stronghold {
         hint: RecordHint,
         _options: Vec<VaultFlags>,
     ) -> StatusMessage {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
 
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
@@ -792,7 +769,7 @@ impl Stronghold {
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> StatusMessage {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
         let send_request = network_msg::SendRequest {
             peer,
             request: WriteToStore {
@@ -810,7 +787,7 @@ impl Stronghold {
     /// Read from the store of a remote Stronghold.
     /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn read_from_remote_store(&self, peer: PeerId, location: Location) -> ResultMessage<Vec<u8>> {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
         let send_request = network_msg::SendRequest {
             peer,
             request: ReadFromStore { location },
@@ -828,7 +805,7 @@ impl Stronghold {
         peer: PeerId,
         vault_path: V,
     ) -> ResultMessage<Vec<(RecordId, RecordHint)>> {
-        let actor = unwrap_or_err!(self.network_actor.as_ref(), "No network actor spawned.");
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
         let send_request = network_msg::SendRequest {
             peer,
             request: ListIds {
@@ -843,20 +820,17 @@ impl Stronghold {
 
     /// Executes a runtime command at a remote Stronghold.
     /// It is required that the peer has successfully been added with the `add_peer` method.
-    pub async fn remote_runtime_exec(&self, peer: PeerId, control_request: Procedure) -> ProcResult {
-        let actor = match self.network_actor.as_ref() {
-            Some(a) => a,
-            None => return ProcResult::Error("No network actor spawned.".to_string()),
-        };
+    pub async fn remote_runtime_exec(&self, peer: PeerId, control_request: Procedure) -> ResultMessage<ProcResult> {
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
         let send_request = network_msg::SendRequest {
             peer,
             request: CallProcedure { proc: control_request },
         };
-        match actor.send(send_request).await {
-            Ok(Ok(Ok(res))) => res,
-            Ok(Ok(Err(e))) => ProcResult::Error(e.to_string()),
-            Ok(Err(e)) => ProcResult::Error(e.to_string()),
-            Err(e) => ProcResult::Error(e.to_string()),
+        let receive_response = unwrap_or_err!(actor.send(send_request).await);
+        let result = unwrap_or_err!(receive_response);
+        match result {
+            Ok(ok) => ResultMessage::Ok(ok),
+            Err(err) => ResultMessage::Error(err.to_string()),
         }
     }
 }
