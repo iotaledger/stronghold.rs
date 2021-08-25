@@ -47,20 +47,18 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     // get public key.
     let ephemeral_pk = ephemeral_key.public_key();
 
-    // from api change crypto.rs 0.5 -> 0.7
     let ephemeral_pk_bytes = ephemeral_pk.to_bytes();
 
     // write public key into output.
     output.write_all(&ephemeral_pk_bytes)?;
 
-    // from api change crypto.rs 0.5 -> 0.7
+    // secret key now expects an array
     let mut key_bytes = [0u8; x25519::SECRET_KEY_LENGTH];
     key_bytes.clone_from_slice(key);
 
     // get `x25519` secret key from public key.
     let pk = x25519::SecretKey::from_bytes(key_bytes).public_key();
 
-    // api change crypto.rs 0.5 -> 0.7
     let pk_bytes = pk.to_bytes();
 
     // do a diffie_hellman exchange to make a shared secret key.
@@ -100,7 +98,7 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
     // get ephemeral private key from input.
     input.read_exact(&mut ephemeral_pk)?;
 
-    // api change crypto.rs 0.5 -> 0.7
+    // creating the secret key now expects an array
     let mut key_bytes = [0u8; x25519::SECRET_KEY_LENGTH];
     key_bytes.clone_from_slice(key);
 
