@@ -142,7 +142,7 @@ A new Client was defined which uses the Riker Actor model - though it should be 
 
 Snapshot was only slightly modified, in that it was given a compression engine; LZ4, and it now uses ephemeral keys rather than direct passwords for the encryption.  A user puts in their password, a key is derived from that password, a shared key is derived from this new key and then it is used to encrypt the data into the snapshot file format. Outside of those changes, the snapshot format is roughly the same as it was before except it now also uses crypto.rs for its encryption algorithms.
 
-The final major crate that was added to stronghold is the communications crate.  The communications crate uses libp2p to set up the noise protocol and it mirrors the client interface.  This system allows users to trigger procedures on remote strongholds and synchronize their snapshots between these remote systems.  Eventually, they will also offer a borrowing mechanism that uses references to allow remote users to “use” secrets without having them on their local system. 
+The final major crate that was added to stronghold is the p2p-communications crate.  The p2p crate uses libp2p to set up the noise protocol and it mirrors the client interface.  This system allows users to trigger procedures on remote strongholds and synchronize their snapshots between these remote systems.  Eventually, they will also offer a borrowing mechanism that uses references to allow remote users to “use” secrets without having them on their local system. 
 
 ***Future Development Options***
     
@@ -151,7 +151,7 @@ Going forward, the team on stronghold has discussed a couple features which can 
 - A DSL for allowing users to define their own procedures using a set of given cryptographic primitives.  This would effectively allow outside users to define their own procedures without exposing the secrets to malicious actors. 
 - A set of macros to easily allow devs to add new procedures to the system.  The object of this system would be to make it easier for developers to plug in new procedures without having to create large sweeping changes.  For example, a developer could simply annotate a function and on compilation, the system would generate the appropriate code and boilerplate. 
 - Migration from Riker to Actix.  Unfortunately, the Riker actor model library has been left stranded by its contributors. Rather than taking ownership of the library and working to maintain it in the IOTA foundation, a decision was made to move forward with using Actix inside of the stronghold client. 
-- Continued development on the communication crate. 
+- Continued development on the p2p crate. 
 
 **Addendum Concluding Thoughts**
 

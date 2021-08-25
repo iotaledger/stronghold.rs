@@ -12,6 +12,6 @@ In this section we describe the individual crates and components of Stronghold:
     - [Vault](./structure/vault.md)
     - [Store](./structure/store.md)
     - [Runtime](./structure/runtime.md)
-- [Communication](./structure/communication.md)
+- [P2P-Communication](./structure/p2p.md)
 - [Derive](./structure/derive.md)
 - [Utils](./structure/utils.md)
