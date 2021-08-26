@@ -12,6 +12,7 @@ exclude = [
   "products/commandline",
   "products/desktop",
   "products/SHaaS",
+  "communication",
 ]
 
 [profile.release]

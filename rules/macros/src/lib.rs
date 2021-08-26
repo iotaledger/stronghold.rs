@@ -6,6 +6,21 @@
 use proc_macro::*;
 use quote::quote;
 use std::str::FromStr;
+// use syn::parse_macro_input;
+
+/// Creates a Hashmap
+///
+/// Convenience macro like vec![] to create a hashmap.
+///
+/// example
+/// ```no_run
+/// let entries = map![{"key_1": "value_1"}, {"key_2": "value_2"}];
+/// ```
+#[proc_macro]
+pub fn map(_input: TokenStream) -> TokenStream {
+    let result = quote! {};
+    result.into()
+}
 
 #[proc_macro]
 /// Interceptor macro

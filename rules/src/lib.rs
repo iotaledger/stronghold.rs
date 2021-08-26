@@ -9,29 +9,22 @@
 //! - configuring diverse type of snapshot synchronization (local full/partial, remote)
 //! - setting firewall rules ( this peer with this address allow procs x y z)
 //! - creating actors according to remote peer addresses, and their set conditions
+//!
+//! TODO: Focus implementation of rule engine for one type
 
 #![allow(clippy::all)]
 #![allow(dead_code, unused_variables)]
 
 pub mod types;
 
-use core::convert::{TryFrom, TryInto};
-use std::collections::HashMap;
+use std::{any::TypeId, collections::HashMap};
 use thiserror::Error as DeriveError;
 use types::Count;
 
+// use macros::map;
+
 // impl tuple count fn
 macros::impl_count_tuples!(26);
-
-pub enum Cmp {
-    Equal,
-    NotEqual,
-    Greater,
-    Less,
-    GreaterEquals,
-    LessEquals,
-    Any,
-}
 
 #[derive(Debug, DeriveError)]
 pub enum CmpError {
@@ -39,82 +32,30 @@ pub enum CmpError {
     UnknownToken(String),
 }
 
-impl TryFrom<&str> for Cmp {
-    type Error = CmpError;
-
-    fn try_from(s: &str) -> Result<Cmp, Self::Error> {
-        let c = match s {
-            "=" => Cmp::Equal,
-            "!=" => Cmp::NotEqual,
-            ">" => Cmp::Greater,
-            ">=" => Cmp::GreaterEquals,
-            "<" => Cmp::Less,
-            "<=" => Cmp::LessEquals,
-            "*" => Cmp::Any,
-            _ => return Err(CmpError::UnknownToken(s.to_string())),
-        };
-        Ok(c)
-    }
-}
-
-pub trait Conditional {
+/// Describes a condition bound to a specific type `T`
+/// A `Conditional` can be composed of multiple
+/// other `Conditionals` bound to the same type `T`.
+pub trait Conditional<T>: Default {
     type Item: PartialEq + PartialOrd;
     type Error: Default; // default error?
 
-    /// Constructs a new condition with a lazy function
-    fn with_function<F>(func: F) -> Self
+    fn eval<F>(&self, func: F) -> bool
     where
-        F: Fn(Self::Item) -> Result<bool, Self::Error>;
-
-    /// Constructs a new condition with an item
-    fn with_item(item: Self::Item) -> Self;
-
-    fn function<F>(&self) -> Result<F, Self::Error>
-    where
-        F: Fn(Self::Item);
-
-    /// returns the working item of the condition
-    fn item(&self) -> Result<Self::Item, Self::Error>;
-
-    /// Evaluates a fact
-    fn test<C>(&self, other: &Self::Item, cmp: C) -> Result<bool, Self::Error>
-    where
-        C: TryInto<Cmp>,
-    {
-        if let Ok(cmp) = cmp.try_into() {
-            let result = match cmp {
-                Cmp::Equal => self.item()?.eq(other),
-                Cmp::NotEqual => self.item()?.ne(other),
-                Cmp::Greater => self.item()?.gt(other),
-                Cmp::Less => self.item()?.lt(other),
-                Cmp::GreaterEquals => self.item()?.ge(other),
-                Cmp::LessEquals => self.item()?.le(other),
-                Cmp::Any => true,
-            };
-
-            return Ok(result);
-        }
-
-        return Err(Self::Error::default());
-    }
+        F: Fn(&T) -> bool;
 }
 
-pub struct Rule<'a, C, P, T>
+pub struct Rule<T>
 where
-    C: Fn(&T) -> bool,
-    P: Fn(),
     T: PartialEq + PartialEq,
 {
-    conditions: Vec<&'a C>,
-    actions: Vec<&'a P>,
+    conditions: Vec<fn(T) -> bool>,
+    actions: Vec<fn()>,
     memory: Vec<T>,
     item: Option<T>,
 }
 
-impl<'a, C, A, T> Rule<'a, C, A, T>
+impl<T> Rule<T>
 where
-    C: Fn(&T) -> bool,
-    A: Fn(),
     T: PartialEq + PartialOrd,
 {
     pub fn new(item: Option<T>) -> Self {
@@ -126,67 +67,53 @@ where
         }
     }
 
-    pub fn insert(mut self, condition: &'a C, action: &'a A) -> Self {
+    pub fn with_condition(mut self, condition: fn(T) -> bool) -> Self {
         self.conditions.push(condition);
+
+        self
+    }
+
+    pub fn with_action(mut self, action: fn()) -> Self {
         self.actions.push(action);
 
         self
     }
-}
 
-impl<'a, C, A, T> Conditional for Rule<'a, C, A, T>
-where
-    C: Fn(&T) -> bool,
-    A: Fn(),
-    T: PartialEq + PartialOrd,
-{
-    type Item = T;
-    type Error = String; // rework this
-
-    fn with_function<F>(func: F) -> Self
-    where
-        F: Fn(Self::Item) -> Result<bool, Self::Error>,
-    {
-        todo!()
-    }
-
-    fn with_item(item: Self::Item) -> Self {
-        todo!()
-    }
-
-    fn function<F>(&self) -> Result<F, Self::Error>
-    where
-        F: Fn(Self::Item),
-    {
-        todo!()
-    }
-
-    fn item(&self) -> Result<Self::Item, Self::Error> {
-        todo!()
+    /// match phase for the rule engine
+    /// if a rule is matched, it will be added to a list
+    /// that gets executed according to a priority
+    pub fn matches(&self, item: T) -> Result<Vec<Self>, String> {
+        Ok(Vec::new())
     }
 }
 
 #[derive(Default)]
-pub struct RuleEngine<'a, C, P, T>
+pub struct RuleEngine<T>
 where
-    C: Fn(&T) -> bool,
-    P: Fn(),
     T: PartialOrd + PartialOrd,
 {
+    // alpha nodes inside the rete network. they
+    // contain working memory of matched facts
+    // against stored condtions. Each alpha node
+    // has one input and one output
+    alpha: HashMap<usize, usize>,
+
+    // beta nodes group alpha nodes together to form
+    // a memory efficient representation of rules
+    beta: HashMap<usize, usize>,
+
     graph: HashMap<usize, usize>,
 
-    rules: HashMap<usize, Rule<'a, C, P, T>>,
+    // later this should be the kind nodes, if
+    // there shall be a different type being used
+    rules: HashMap<usize, Rule<TypeId>>,
 
     // used later
-    conditions: HashMap<usize, C>,
-    productions: HashMap<usize, P>,
     memory: Vec<T>,
 }
 
-impl<'a, C, P, T> RuleEngine<'a, C, P, T>
+impl<T> RuleEngine<T>
 where
-    C: Fn(&T) -> bool,
-    P: Fn(),
     T: PartialEq + PartialOrd,
 {
     /// This inserts a rule into the rete. A rule consists of multiple
@@ -197,7 +124,7 @@ where
     ///
     /// future optimization might involve, that the rule might trigger dependening
     /// on a certain threshold.
-    pub fn insert_rule(mut self, rule: Rule<'a, C, P, T>, name: Option<String>) -> Self {
+    pub fn insert_rule(self, rule: Rule<T>, name: Option<String>) -> Self {
         let name = name.unwrap_or_else(|| {
             let size = core::mem::size_of_val(&rule);
             String::new()
@@ -207,24 +134,24 @@ where
         //     .pool
         //     .pop()
         //     .or_else(|| Some(self.next.fetch_add(1, Ordering::Acquire)))
-        //     .unwrap();
-        let next = 0;
-        let rules = &mut self.rules;
-        rules.insert(next, rule);
+        // //     .unwrap();
+        // let next = 0;
+        // let rules = &mut self.rules;
+        // rules.insert(next, rule);
 
         self
     }
 
     /// Evaluates, if there is a production for given item of type `T`
     /// Returns an Error, if not rule is matching
-    pub fn eval(&self, item: &T) -> Result<Vec<&P>, Box<dyn std::error::Error>> {
-        for (_, c) in &self.conditions {
-            if !c(item) {
-                return Err("".into());
-            }
-        }
+    pub fn eval(&self, item: &T) -> Result<Vec<()>, Box<dyn std::error::Error>> {
+        // for (_, c) in &self. {
+        //     if !c(item) {
+        //         return Err("".into());
+        //     }
+        // }
 
-        Ok(self.productions.values().collect())
+        Ok(Vec::new())
     }
 }
 
@@ -235,7 +162,30 @@ mod tests {
     #[allow(unused_imports)]
     use super::*;
 
+    #[derive(Default)]
+    struct SnapshotHandler;
+
     #[test]
     #[ignore]
-    fn test_match_rules() {}
+    fn test_match_rules() {
+        // Ideas
+        //
+        // functions can be decorated by a proc_macro_attribute
+        // that accepts a function to intercept the execution of the function.
+
+        let snapshot_handler = SnapshotHandler::default();
+
+        // let mut rule = RuleEngine::default();
+
+        // rule.insert(rule! {
+        //     snapshot_handler
+        // });
+
+        let source = b"/source/path";
+        let destination = b"/destination/path";
+
+        // let client_paths = map![ {b"" : b""}, {b"", b""}];
+
+        // snapshot_handler.synchronize();
+    }
 }
