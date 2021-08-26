@@ -3,9 +3,11 @@
 
 use std::ops::Deref;
 
-use engine::vault::{RecordHint, RecordId, VaultId};
+use engine::vault::RecordHint;
 
-use super::{BuildProcedure, Data, ExecProc, GetSourceVault, GetTargetVault, ProcExecutor};
+use crate::Location;
+
+use super::{BuildProcedure, ExecProc, GetSourceVault, GetTargetVault, ProcExecutor};
 
 // ==========================
 // Combine Trait
@@ -14,7 +16,8 @@ use super::{BuildProcedure, Data, ExecProc, GetSourceVault, GetTargetVault, Proc
 pub trait ProcCombine: ExecProc + Sized {
     fn and_then<P1>(self, proc_1: P1) -> ProcAndThen<Self, P1>
     where
-        P1: ExecProc<InData = Self::OutData>,
+        P1: ExecProc,
+        P1::InData: From<Self::OutData>,
     {
         ProcAndThen { proc_0: self, proc_1 }
     }
@@ -43,17 +46,6 @@ pub trait ProcCombine: ExecProc + Sized {
         ProcMap {
             proc: self,
             f: |o| drop(o),
-        }
-    }
-
-    fn with_input(self, input: Self::InData) -> ProcAndThen<Data<Self::InData>, Self>
-    where
-        Self::InData: Send + 'static,
-    {
-        let init_data = Data { data: input };
-        ProcAndThen {
-            proc_0: init_data,
-            proc_1: self,
         }
     }
 }
@@ -114,7 +106,8 @@ pub struct ProcAndThen<P, P1> {
 impl<P, P1> ProcAndThen<P, P1>
 where
     P: ExecProc<InData = ()>,
-    P1: ExecProc<InData = P::OutData>,
+    P1: ExecProc,
+    P1::InData: From<P::OutData>,
 {
     pub fn build(self) -> BuildProcedure<Self> {
         BuildProcedure { inner: self }
@@ -125,7 +118,7 @@ impl<P, P1> GetSourceVault for ProcAndThen<P, P1>
 where
     P: GetSourceVault,
 {
-    fn get_source(&self) -> (VaultId, RecordId) {
+    fn get_source(&self) -> Location {
         self.proc_0.get_source()
     }
 }
@@ -134,7 +127,7 @@ impl<P, P1> GetTargetVault for ProcAndThen<P, P1>
 where
     P1: GetTargetVault,
 {
-    fn get_target(&self) -> (VaultId, RecordId, RecordHint) {
+    fn get_target(&self) -> (Location, RecordHint) {
         self.proc_1.get_target()
     }
 }
@@ -142,7 +135,8 @@ where
 impl<P, P1> ExecProc for ProcAndThen<P, P1>
 where
     P: ExecProc,
-    P1: ExecProc<InData = P::OutData>,
+    P1: ExecProc,
+    P1::InData: From<P::OutData>,
 {
     type InData = P::InData;
     type OutData = P1::OutData;
@@ -153,7 +147,7 @@ where
         input: Self::InData,
     ) -> Result<Self::OutData, anyhow::Error> {
         let out = self.proc_0.exec(executor, input)?;
-        self.proc_1.exec(executor, out)
+        self.proc_1.exec(executor, out.into())
     }
 }
 

@@ -3,32 +3,33 @@
 
 use quote::{quote, ToTokens};
 use syn::{
-    AngleBracketedGenericArguments, Data, DataStruct, DeriveInput, Field, Fields, ImplGenerics, ItemImpl,
-    PathArguments, PathSegment,
+    punctuated::Punctuated, token::Comma, AngleBracketedGenericArguments, Data, DataStruct, DeriveInput, Field, Fields,
+    ImplGenerics, ItemImpl, PathArguments, PathSegment,
 };
 
 pub fn derive_source_target(derive_input: DeriveInput) -> proc_macro2::TokenStream {
-    let proc_ident = derive_input.ident;
+    let proc_ident = derive_input.ident.clone();
     let (impl_generics, ty_generics, where_clause) = derive_input.generics.split_for_impl();
     let mut impls = Vec::new();
 
     let for_self = quote! {#proc_ident #ty_generics #where_clause};
 
-    let fields = match derive_input.data {
+    let fields = match derive_input.data.clone() {
         Data::Struct(DataStruct {
             fields: Fields::Named(f),
             ..
         }) => Some(f.named),
-        Data::Struct(DataStruct {
-            fields: Fields::Unnamed(f),
-            ..
-        }) => Some(f.unnamed),
         _ => None,
     };
 
     if let Some(fields) = fields.as_ref() {
+        let for_other = impl_no_input(&derive_input, fields).map(|(impl_, other_ident)| {
+            impls.push(impl_);
+            quote! {#other_ident #ty_generics #where_clause}
+        });
+
         for field in fields {
-            if let Some(impl_) = impl_by_field(field, &impl_generics, &for_self) {
+            if let Some(impl_) = impl_by_field(field, &impl_generics, &for_self, &for_other) {
                 impls.push(impl_)
             }
         }
@@ -36,36 +37,117 @@ pub fn derive_source_target(derive_input: DeriveInput) -> proc_macro2::TokenStre
     impls.into_iter().collect()
 }
 
+pub fn impl_no_input(
+    derive_input: &DeriveInput,
+    fields: &Punctuated<Field, Comma>,
+) -> Option<(proc_macro2::TokenStream, syn::Ident)> {
+    let mut input_field = None;
+    let other_fields: Punctuated<Field, Comma> = fields
+        .clone()
+        .into_iter()
+        .filter_map(|mut f| {
+            let is_no_input = !f.attrs.iter().any(|a| match a.path.segments.last() {
+                Some(seg) if seg.ident == "input" => {
+                    input_field = Some(f.clone());
+                    true
+                }
+                _ => false,
+            });
+            f.attrs = Vec::new();
+            // panic!("{}, {:?}", is_no_input, f);
+            is_no_input.then(|| f)
+        })
+        .collect();
+
+    input_field.map(|field|  {
+        // panic!("{:?}, \n\n{:?}", fields, other_fields);
+        let mut other = derive_input.clone();
+        let (impl_generics, _, where_clause) = other.generics.split_for_impl();
+        let other_name = format!("{}Dyn", derive_input.ident);
+        let other_ident = syn::Ident::new(&other_name, derive_input.ident.span());
+        other.ident = other_ident.clone();
+        other.attrs = Vec::new();
+        if let Data::Struct(DataStruct {fields: Fields::Named(ref mut fields), ..}) = other.data {
+            fields.named = other_fields.clone()
+        }
+
+        let in_type = field.ty;
+        let assign_fields = other_fields.into_iter().map(|field| {
+            let fi = field.ident.unwrap();
+            quote! {#fi: self.#fi,}
+        }).collect::<proc_macro2::TokenStream>();
+
+        let proc_ident = derive_input.ident.clone();
+        let field_ident = field.ident.unwrap();
+        let gen = quote! {
+            #other
+
+            impl #impl_generics ExecProc for #other_ident #where_clause {
+                type InData = #in_type;
+                type OutData = <#proc_ident as ExecProc>::OutData;
+
+                fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
+                    let proc = #proc_ident {#assign_fields #field_ident: input};
+                    proc.exec(executor, ())
+                }
+            }
+
+        };
+        // panic!("{}", gen);
+        (gen, other_ident)
+    })
+}
+
 fn impl_by_field(
     field: &Field,
     impl_generics: &ImplGenerics,
     for_self: &proc_macro2::TokenStream,
+    for_other: &Option<proc_macro2::TokenStream>,
 ) -> Option<proc_macro2::TokenStream> {
-    // panic!("field: {:?}", field);
     let field_ident = field.ident.clone();
     if field
         .attrs
         .iter()
         .any(|attr| attr.path.segments.last().unwrap().ident == "source_location")
     {
-        Some(quote! {
-            impl #impl_generics GetSourceVault for #for_self {
-                fn get_source(&self) -> (VaultId, RecordId) {
-                    self.#field_ident
+        let impl_for_other = for_other.as_ref().map(|for_other| {
+            quote! {
+                impl #impl_generics GetSourceVault for #for_other {
+                    fn get_source(&self) -> Location {
+                        self.#field_ident.clone()
+                    }
                 }
             }
+        });
+        Some(quote! {
+            impl #impl_generics GetSourceVault for #for_self {
+                fn get_source(&self) -> Location {
+                    self.#field_ident.clone()
+                }
+            }
+            #impl_for_other
         })
     } else if field
         .attrs
         .iter()
         .any(|attr| attr.path.segments.last().unwrap().ident == "target_location")
     {
-        Some(quote! {
-            impl #impl_generics GetTargetVault for #for_self {
-                fn get_target(&self) -> (VaultId, RecordId, RecordHint) {
-                    self.#field_ident
+        let impl_for_other = for_other.as_ref().map(|for_other| {
+            quote! {
+                impl #impl_generics GetTargetVault for #for_other {
+                    fn get_target(&self) -> (Location, RecordHint) {
+                        self.#field_ident.clone()
+                    }
                 }
             }
+        });
+        Some(quote! {
+            impl #impl_generics GetTargetVault for #for_self {
+                fn get_target(&self) -> (Location, RecordHint) {
+                    self.#field_ident.clone()
+                }
+            }
+            #impl_for_other
         })
     } else {
         None
@@ -78,7 +160,6 @@ pub fn impl_exec_proc(item_impl: ItemImpl) -> proc_macro2::TokenStream {
     let self_type = item_impl.self_ty;
     let (impl_generics, _ty_generics, where_clause) = item_impl.generics.split_for_impl();
 
-    let in_type: proc_macro2::TokenStream;
     let out_type: proc_macro2::TokenStream;
 
     let segment = item_impl
@@ -89,79 +170,59 @@ pub fn impl_exec_proc(item_impl: ItemImpl) -> proc_macro2::TokenStream {
         PathArguments::AngleBracketed(AngleBracketedGenericArguments { ref args, .. }) => args,
         _ => unreachable!(),
     };
-    in_type = generics[0].to_token_stream();
-    out_type = generics[1].to_token_stream();
+    out_type = generics.first().to_token_stream();
 
-    let gen_exec_fn = generate_fn_body(&segment, &in_type, &out_type);
-    let impl_build;
-    if format!("{}", in_type) == "()" {
-        impl_build = quote! {
-            impl #impl_generics #self_type #where_clause {
-                pub fn build(self) -> BuildProcedure<Self> {
-                    BuildProcedure {inner: self}
-                }
-            }
-        }
-    } else {
-        impl_build = proc_macro2::TokenStream::new();
-    }
+    let gen_exec_fn = generate_fn_body(&segment, &out_type);
     quote! {
         impl #impl_generics ExecProc for #self_type #where_clause {
-            type InData = #in_type;
+            type InData = ();
             type OutData = #out_type;
 
-            fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
+            fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, _: Self::InData) -> Result<Self::OutData, anyhow::Error> {
                 #gen_exec_fn
             }
         }
-        #impl_build
+        impl #impl_generics #self_type #where_clause {
+            pub fn build(self) -> BuildProcedure<Self> {
+                BuildProcedure {inner: self}
+            }
+        }
     }
 }
 
-fn generate_fn_body(
-    segment: &PathSegment,
-    in_type: &proc_macro2::TokenStream,
-    out_type: &proc_macro2::TokenStream,
-) -> proc_macro2::TokenStream {
+fn generate_fn_body(segment: &PathSegment, out_type: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     match format!("{}", segment.ident).as_str() {
-        "Parser" => {
-            quote! {
-                <Self as Parser<#in_type, #out_type>>::parse(self, input).map_err(|e| anyhow::anyhow!(e))
-            }
-        }
         "Generate" => {
             quote! {
-                let (vault_id_1, record_id_1, hint) = self.get_target();
+                let (location_1, hint) = self.get_target();
                 let ProcOutput {
                     write_vault,
                     return_value,
-                } = <Self as Generate<#in_type, #out_type>>::generate(self, input)?;
+                } = <Self as Generate<#out_type>>::generate(self)?;
 
-                executor.write_to_vault(vault_id_1, record_id_1, hint, write_vault)?;
+                executor.write_to_vault(location_1, hint, write_vault)?;
                 Ok(return_value)
             }
         }
         "Process" => {
             quote! {
-                let (vault_id_0, record_id_0) = self.get_source();
-                let (vault_id_1, record_id_1, hint) = self.get_target();
-                let f = move |input, guard| <Self as Process<#in_type, #out_type>>::process(self, input, guard);
+                let location_0 = self.get_source();
+                let (location_1, hint) = self.get_target();
+                let f = move |(), guard| <Self as Process<#out_type>>::process(self, guard);
                 executor.exec_proc(
-                    vault_id_0,
-                    record_id_0,
-                    vault_id_1,
-                    record_id_1,
+                    location_0,
+                    location_1,
                     hint,
                     f,
-                    input
+                    ()
                 )
             }
         }
         "Sink" => {
             quote! {
-                let (vault_id_0, record_id_0) = self.get_source();
-                let f = move |input, guard| <Self as Sink<#in_type, #out_type>>::sink(self, input, guard);
-                executor.get_guard(vault_id_0, record_id_0, f, input)
+                let location_0 = self.get_source();
+                let f = move |(), guard| <Self as Sink<#out_type>>::sink(self, guard);
+                executor.get_guard(location_0, f, ())
             }
         }
         _ => panic!(),

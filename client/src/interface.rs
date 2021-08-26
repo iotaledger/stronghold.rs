@@ -21,7 +21,6 @@ use crate::{
     },
     line_error,
     procedures::{BuildProcedure, ExecProc},
-    unwrap_or_err, unwrap_result_msg,
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -34,7 +33,7 @@ use crate::{
         messages::{ShRequest, SwarmInfo},
         NetworkActor, NetworkConfig,
     },
-    ResultMessage,
+    unwrap_or_err, unwrap_result_msg, ResultMessage,
 };
 #[cfg(feature = "p2p")]
 use p2p::{

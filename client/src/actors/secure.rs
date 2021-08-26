@@ -18,6 +18,7 @@ pub use crate::{
 use crate::{
     internals,
     procedures::{BuildProcedure, ExecProc, ProcExecutor, ProcOutput},
+    Location,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
 
@@ -712,16 +713,11 @@ where
 }
 
 impl ProcExecutor for SecureClient {
-    fn get_guard<F, In, Out>(
-        &mut self,
-        vault_id: VaultId,
-        record_id: RecordId,
-        f: F,
-        input: In,
-    ) -> Result<Out, anyhow::Error>
+    fn get_guard<F, In, Out>(&mut self, location0: Location, f: F, input: In) -> Result<Out, anyhow::Error>
     where
         F: FnOnce(In, GuardedVec<u8>) -> Result<Out, engine::Error>,
     {
+        let (vault_id, record_id) = Self::resolve_location(location0);
         let key0 = self.keystore.get_key(vault_id);
         if let Some(pkey) = key0.as_ref() {
             self.keystore.insert_key(vault_id, pkey.clone());
@@ -739,10 +735,8 @@ impl ProcExecutor for SecureClient {
 
     fn exec_proc<F, In, Out>(
         &mut self,
-        vid0: VaultId,
-        rid0: RecordId,
-        vid1: VaultId,
-        rid1: RecordId,
+        location0: Location,
+        location1: Location,
         hint: RecordHint,
         f: F,
         input: In,
@@ -750,6 +744,9 @@ impl ProcExecutor for SecureClient {
     where
         F: FnOnce(In, GuardedVec<u8>) -> Result<ProcOutput<Out>, engine::Error>,
     {
+        let (vid0, rid0) = Self::resolve_location(location0);
+        let (vid1, rid1) = Self::resolve_location(location1);
+
         let key0 = self.keystore.get_key(vid0);
         if let Some(pkey) = key0.as_ref() {
             self.keystore.insert_key(vid0, pkey.clone());
@@ -781,13 +778,8 @@ impl ProcExecutor for SecureClient {
         self.add_new_vault(vault_id)
     }
 
-    fn write_to_vault(
-        &mut self,
-        vault_id: VaultId,
-        record_id: RecordId,
-        hint: RecordHint,
-        value: Vec<u8>,
-    ) -> Result<(), anyhow::Error> {
+    fn write_to_vault(&mut self, location1: Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error> {
+        let (vault_id, record_id) = Self::resolve_location(location1);
         let key1 = if !self.keystore.vault_exists(vault_id) {
             let k = self.keystore.create_key(vault_id);
             self.db.init_vault(&k, vault_id)?;
