@@ -25,7 +25,7 @@ type TestPeer = StrongholdP2p<Request, Response, RequestPermission>;
 
 macro_rules! expect_ok (
      ($expression:expr, $config:expr) => {
-        $expression.await.expect(&format!("Unexpected Error on unwrap; config: {}", $config));
+        $expression.await.expect(&format!("Unexpected Error on unwrap; config: {}", $config))
     };
 );
 

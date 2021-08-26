@@ -21,7 +21,7 @@ serde = { version = "1.0", default-features = false, features = [ "alloc", "deri
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 smallvec = "1.6.1"
 stronghold-derive = { path = "../derive", version = "0.2.0" }
-tokio = { version = "1.7", default-features = false, features = ["rt", "sync"] }
+tokio = { version = "1.10", default-features = false, features = ["rt", "sync"] }
 wasm-timer = "0.2.5"
 
 [features]
@@ -32,5 +32,5 @@ tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
 
 [dev-dependencies]
 rand = "0.8.3"
-tokio = {version = "1.7", features = ["time", "macros"]}
+tokio = {version = "1.10", features = ["time", "macros"]}
 libp2p = { version = "0.39", default-features = false, features = ["tcp-tokio"] }
