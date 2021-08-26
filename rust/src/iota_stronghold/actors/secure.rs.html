@@ -1112,6 +1112,12 @@
 <span id="1110">1110</span>
 <span id="1111">1111</span>
 <span id="1112">1112</span>
+<span id="1113">1113</span>
+<span id="1114">1114</span>
+<span id="1115">1115</span>
+<span id="1116">1116</span>
+<span id="1117">1117</span>
+<span id="1118">1118</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -1178,6 +1184,12 @@
 
     <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Failed to access Vault&quot;</span>)]</span>
     <span class="ident">AccessError</span>,
+}
+
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">DeriveError</span>, <span class="ident">Debug</span>)]</span>
+<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">StoreError</span> {
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Unable to read from store&quot;</span>)]</span>
+    <span class="ident">NotExisting</span>,
 }
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">DeriveError</span>, <span class="ident">Debug</span>)]</span>
@@ -1769,7 +1781,7 @@
 
         <span class="kw">match</span> <span class="self">self</span>.<span class="ident">read_from_store</span>(<span class="ident">vault_id</span>.<span class="ident">into</span>()) {
             <span class="prelude-val">Some</span>(<span class="ident">data</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">data</span>),
-            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="macro">anyhow::anyhow!</span>(<span class="ident">VaultError::NotExisting</span>)), <span class="comment">// semantically wrong, use store error</span>
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="macro">anyhow::anyhow!</span>(<span class="ident">StoreError::NotExisting</span>)),
         }
     }
 );
