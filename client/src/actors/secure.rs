@@ -308,8 +308,7 @@ pub mod procedures {
                 SerdeProcResult::BIP39Generate(msg) => Ok(ProcResult::BIP39Generate(msg)),
                 SerdeProcResult::BIP39MnemonicSentence(msg) => Ok(ProcResult::BIP39MnemonicSentence(msg)),
                 SerdeProcResult::Ed25519PublicKey(msg) => {
-                    let msg: ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> = match msg
-                    {
+                    let msg: ResultMessage<[u8; crypto::signatures::ed25519::PUBLIC_KEY_LENGTH]> = match msg {
                         ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
                         ResultMessage::Error(e) => ResultMessage::Error(e),
                     };

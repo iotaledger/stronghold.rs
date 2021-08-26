@@ -3,10 +3,9 @@ members = [
   "engine",
   "engine/runtime",
   "client",
-#  "communication",
   "utils",
   "derive",
-  "communication"
+  "p2p"
 ]
 exclude = [
   "products/commandline",
