@@ -1,1 +1,1 @@
-window.ALL_CRATES = ["communication","engine","iota_stronghold","runtime","stronghold_derive","stronghold_utils"];
+window.ALL_CRATES = ["engine","iota_stronghold","p2p","runtime","stronghold_derive","stronghold_utils"];

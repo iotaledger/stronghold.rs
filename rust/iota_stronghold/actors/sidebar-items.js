@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["registry","Registry Actor"],["secure","Secure Actor module"],["snapshot",""]]});
+initSidebarItems({"mod":[["p2p",""],["registry","Registry Actor"],["secure","Secure Actor module"],["snapshot",""]]});

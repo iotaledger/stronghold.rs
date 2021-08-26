@@ -5,9 +5,10 @@
 <table><tr class="module-item"><td><a class="fn" href="fn.ask.html" title="stronghold_utils::ask fn">ask</a></td><td class="docblock-short"></td></tr></table><h2 id="derives" class="section-header"><a href="#derives">Derive Macros</a></h2>
 <table><tr class="module-item"><td><a class="derive" href="derive.GuardDebug.html" title="stronghold_utils::GuardDebug derive">GuardDebug</a></td><td class="docblock-short"><p>A version of the derive <a href="https://doc.rust-lang.org/1.54.0/core/fmt/macros/derive.Debug.html" title="Debug"><code>Debug</code></a> trait that blocks parsing the data inside of a struct or enum.
 Use <a href="derive.GuardDebug.html" title="GuardDebug"><code>GuardDebug</code></a> to block reading and inspection of a data structure via the <a href="https://doc.rust-lang.org/1.54.0/core/fmt/macros/derive.Debug.html" title="Debug"><code>Debug</code></a> trait.</p>
-</td></tr><tr class="module-item"><td><a class="derive" href="derive.RequestPermissions.html" title="stronghold_utils::RequestPermissions derive">RequestPermissions</a></td><td class="docblock-short"><p>Implements the [<code>VariantPermission</code>] for struct/ unions with PermissionValue(1).
-For enums, it implements [<code>ToPermissionVariants</code>], which creates an according new enum <Ident>Permission with Unit
-variants, and implements [<code>VariantPermission</code>] by assigning different [<code>PermissionValue</code>] for each variant.
-The permission value is the “index” in the enum as exponent for the power of 2, thus from top to bottom 1, 2, 4,
-8…</p>
+</td></tr><tr class="module-item"><td><a class="derive" href="derive.RequestPermissions.html" title="stronghold_utils::RequestPermissions derive">RequestPermissions</a></td><td class="docblock-short"><p>Implements the <code>VariantPermission</code> for struct/ unions with PermissionValue(1).
+For enums, it creates an analogous new enum <Ident>Permission with Unit variants, and implements <code>VariantPermission</code>
+by assigning different <code>PermissionValue</code> for each variant. The permission value is the “index” in the enum as
+exponent for the power of 2, thus from top to bottom 1, 2, 4, 8…
+Additionally, it implements <code>Borrow</code> from the new original enum to the new enum, to satisfy the trait bounds of
+<code>StrongholdP2p</code>.</p>
 </td></tr></table></section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../" data-current-crate="stronghold_utils" data-search-index-js="../search-index.js" data-search-js="../search.js"></div><script src="../main.js"></script></body></html>

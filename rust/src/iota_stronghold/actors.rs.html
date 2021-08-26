@@ -24,14 +24,22 @@
 <span id="22">22</span>
 <span id="23">23</span>
 <span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
 
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;p2p&quot;</span>)]</span>
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">p2p</span>;
 <span class="kw">mod</span> <span class="ident">registry</span>;
 <span class="kw">mod</span> <span class="ident">secure</span>;
 <span class="kw">mod</span> <span class="ident">snapshot</span>;
 
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
+<span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span><span class="ident">::secure::testing</span> <span class="kw">as</span> <span class="ident">secure_testing</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span>::{
     <span class="ident">registry</span>::{
         <span class="ident">messages</span>::{<span class="ident">GetAllClients</span>, <span class="ident">GetClient</span>, <span class="ident">GetSnapshot</span>, <span class="ident">HasClient</span>, <span class="ident">InsertClient</span>, <span class="ident">RemoveClient</span>},

@@ -1,1 +1,0 @@
-initSidebarItems({"mod":[["actor","Actor"],["behaviour","P2PNetworkBehaviour"],["libp2p","Re-export [`libp2p`] types."]]});

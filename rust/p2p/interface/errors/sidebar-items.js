@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["ConnectionErr","Error on establishing a connection."],["DialErr","Error on dialing a peer and establishing a connection."],["ListenErr","Error on listening on an address."],["ListenRelayErr","Error on listening on a relayed address."],["TransportErr","Error on the [Transport][libp2p::Transport]."]]});

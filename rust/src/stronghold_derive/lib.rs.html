@@ -72,6 +72,7 @@
 <span id="70">70</span>
 <span id="71">71</span>
 <span id="72">72</span>
+<span id="73">73</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -108,11 +109,12 @@
     <span class="ident">generated</span>.<span class="ident">into</span>()
 }
 
-<span class="doccomment">/// Implements the [`VariantPermission`] for struct/ unions with PermissionValue(1).</span>
-<span class="doccomment">/// For enums, it implements [`ToPermissionVariants`], which creates an according new enum &lt;Ident&gt;Permission with Unit</span>
-<span class="doccomment">/// variants, and implements [`VariantPermission`] by assigning different [`PermissionValue`] for each variant.</span>
-<span class="doccomment">/// The permission value is the &quot;index&quot; in the enum as exponent for the power of 2, thus from top to bottom 1, 2, 4,</span>
-<span class="doccomment">/// 8...</span>
+<span class="doccomment">/// Implements the `VariantPermission` for struct/ unions with PermissionValue(1).</span>
+<span class="doccomment">/// For enums, it creates an analogous new enum &lt;Ident&gt;Permission with Unit variants, and implements `VariantPermission`</span>
+<span class="doccomment">/// by assigning different `PermissionValue` for each variant. The permission value is the &quot;index&quot; in the enum as</span>
+<span class="doccomment">/// exponent for the power of 2, thus from top to bottom 1, 2, 4, 8...</span>
+<span class="doccomment">/// Additionally, it implements `Borrow` from the new original enum to the new enum, to satisfy the trait bounds of</span>
+<span class="doccomment">/// `StrongholdP2p`.</span>
 <span class="attribute">#[<span class="ident">proc_macro_derive</span>(<span class="ident">RequestPermissions</span>)]</span>
 <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">permissions</span>(<span class="ident">input</span>: <span class="ident">proc_macro::TokenStream</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">proc_macro::TokenStream</span> {
     <span class="kw">let</span> <span class="ident">derive_input</span> <span class="op">=</span> <span class="macro">syn::parse_macro_input!</span>(<span class="ident">input</span> <span class="kw">as</span> <span class="ident">DeriveInput</span>);

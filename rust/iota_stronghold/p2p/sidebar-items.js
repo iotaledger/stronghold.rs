@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Rule","Rules for requests in a specific [`RequestDirection`]."]],"struct":[["Multiaddr","Representation of a Multiaddr."],["NetworkConfig","Default behaviour:"],["PeerId","Identifier of a peer of the network."],["SwarmInfo",""]]});

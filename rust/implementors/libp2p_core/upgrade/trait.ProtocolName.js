@@ -1,3 +1,3 @@
 (function() {var implementors = {};
-implementors["communication"] = [{"text":"impl ProtocolName for <a class=\"struct\" href=\"communication/behaviour/protocol/struct.MessageProtocol.html\" title=\"struct communication::behaviour::protocol::MessageProtocol\">MessageProtocol</a>","synthetic":false,"types":["communication::behaviour::protocol::MessageProtocol"]}];
+implementors["p2p"] = [{"text":"impl ProtocolName for <a class=\"struct\" href=\"p2p/struct.MessageProtocol.html\" title=\"struct p2p::MessageProtocol\">MessageProtocol</a>","synthetic":false,"types":["p2p::behaviour::handler::protocol::MessageProtocol"]}];
 if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
