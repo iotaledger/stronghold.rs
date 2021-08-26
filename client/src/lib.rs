@@ -44,11 +44,11 @@ pub use crate::{
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
-#[cfg(feature = "communication")]
-pub use communication::{
-    actor::RelayDirection,
-    libp2p::{Keypair, Multiaddr, PeerId},
-};
+#[cfg(feature = "p2p")]
+pub mod p2p {
+    pub use crate::actors::p2p::{NetworkConfig, SwarmInfo};
+    pub use p2p::{firewall::Rule, Multiaddr, PeerId};
+}
 
 pub use engine::{
     snapshot::{
@@ -71,6 +71,35 @@ macro_rules! line_error {
         concat!($str, " @", file!(), ":", line!())
     };
 }
+
+#[macro_export]
+macro_rules! unwrap_or_err (
+    ($expression:expr) => {
+        match $expression {
+            Ok(ok) => ok,
+            Err(err) => return ResultMessage::Error(err.to_string())
+        }
+    };
+    ($expression:expr, $error:literal) => {
+        match $expression {
+            Ok(ok) => ok,
+            Err(_) => return ResultMessage::Error($error.to_string()),
+        }
+    };
+    (Option, $expression:expr, $error:literal) => {
+        match $expression.as_ref() {
+            Some(item) => item,
+            None => return ResultMessage::Error($error.to_string())
+        }
+    };
+);
+
+#[macro_export]
+macro_rules! unwrap_result_msg (
+    ($expr:expr) => {
+        unwrap_or_err!(unwrap_or_err!($expr))
+    };
+);
 
 /// Stronghold Client Result Type.
 pub type Result<T> = anyhow::Result<T, Error>;

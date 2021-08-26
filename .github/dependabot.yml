@@ -7,7 +7,7 @@ updates:
     open-pull-requests-limit: 3
 
   - package-ecosystem: "cargo"
-    directory: "/communication"
+    directory: "/p2p"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 3

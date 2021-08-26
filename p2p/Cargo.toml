@@ -1,0 +1,36 @@
+[package]
+name = "stronghold-p2p"
+version = "0.3.0"
+authors = [
+  "IOTA Stiftung",
+  "Elena Frank <elena.frank@iota.org"
+]
+edition = "2018"
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/iotaledger/stronghold.rs"
+homepage = "https://stronghold.docs.iota.org"
+
+[lib]
+name = "p2p"
+
+[dependencies]
+futures = "0.3"
+libp2p = { version = "0.39", default-features = false, features = ["noise", "yamux"] }
+serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
+serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
+smallvec = "1.6.1"
+stronghold-derive = { path = "../derive", version = "0.2.0" }
+tokio = { version = "1.7", default-features = false, features = ["rt", "sync"] }
+wasm-timer = "0.2.5"
+
+[features]
+default = [ "mdns", "relay", "tcp-transport"]
+mdns = ["libp2p/mdns"]
+relay = ["libp2p/relay"]
+tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
+
+[dev-dependencies]
+rand = "0.8.3"
+tokio = {version = "1.7", features = ["time", "macros"]}
+libp2p = { version = "0.39", default-features = false, features = ["tcp-tokio"] }

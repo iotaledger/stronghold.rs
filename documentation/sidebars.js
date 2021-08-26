@@ -70,8 +70,8 @@ module.exports = {
         },
         {
           type: 'doc',
-          id: 'structure/communication',
-          label: 'Communication'
+          id: 'structure/p2p',
+          label: 'P2P Communication'
         },
         {
           type: 'doc',

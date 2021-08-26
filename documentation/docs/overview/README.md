@@ -11,7 +11,7 @@ There are four main components of Stronghold:
 1. [**Client**](./structure/client.md): The high-level interface to Stronghold (prefers Riker, functional integration also available)
 2. [**Engine**](./structure/engine.md): Combines a persistence store (Snapshot) with an in-memory state interface (Vault) and a key:value read/write (Store).
 3. [**Runtime**](./structure/runtime.md): Is a process fork with limited permissions within which cryptographic operations take place.
-4. [**Communication**](./structure/communication.md): Enables Strongholds in different processes or on different devices to communicate with each other securely.
+4. [**P2P Communication**](./structure/p2p.md): Enables Strongholds in different processes or on different devices to communicate with each other securely.
 
 Read more about the [Alpha Release](https://blog.iota.org/stronghold-alpha-release/).
 

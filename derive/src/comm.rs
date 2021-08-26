@@ -40,13 +40,13 @@ pub fn impl_to_permissioned(input: &Ident, name: &Ident, data_enum: &DataEnum) -
             let ident = variant.ident.clone();
             let fields = match_fields(&variant.fields);
             quote! {
-                #input::#ident#fields => #name::#ident,
+                #input::#ident#fields => &#name::#ident,
             }
         })
         .collect::<TokenStream>();
     quote! {
-        impl ToPermissionVariants<#name> for #input {
-            fn to_permissioned(&self) -> #name {
+        impl Borrow<#name> for #input {
+            fn borrow(&self) -> &#name {
                 match self {
                     #match_variants
                 }

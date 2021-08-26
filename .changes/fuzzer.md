@@ -1,5 +1,4 @@
 ---
-"stronghold-communication": minor
 "stronghold-engine": patch
 ---
 
