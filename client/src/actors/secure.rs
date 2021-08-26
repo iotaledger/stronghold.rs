@@ -66,6 +66,12 @@ pub enum VaultError {
 }
 
 #[derive(DeriveError, Debug)]
+pub enum StoreError {
+    #[error("Unable to read from store")]
+    NotExisting,
+}
+
+#[derive(DeriveError, Debug)]
 pub enum SnapshotError {
     #[error("No snapshot present for client id ({0})")]
     NoSnapshotPresent(String),
@@ -654,7 +660,7 @@ impl_handler!(
 
         match self.read_from_store(vault_id.into()) {
             Some(data) => Ok(data),
-            None => Err(anyhow::anyhow!(VaultError::NotExisting)), // semantically wrong, use store error
+            None => Err(anyhow::anyhow!(StoreError::NotExisting)),
         }
     }
 );
