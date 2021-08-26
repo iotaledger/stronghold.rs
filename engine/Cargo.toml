@@ -36,7 +36,7 @@ optional = true
 default-features = false
 
 [dependencies.iota-crypto]
-version = "0.5.0"
+version = "0.7.0"
 features = [ "random", "chacha", "hmac", "sha", "x25519", "blake2b" ]
 
 [dev-dependencies]

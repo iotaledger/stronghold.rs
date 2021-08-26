@@ -290,7 +290,7 @@ pub mod procedures {
         /// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.
         BIP39MnemonicSentence(ResultMessage<String>),
         /// Return value for `Ed25519PublicKey`. Returns an Ed25519 public key.
-        Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+        Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::PUBLIC_KEY_LENGTH]>),
         /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
         Ed25519Sign(ResultMessage<[u8; crypto::signatures::ed25519::SIGNATURE_LENGTH]>),
         /// Generic Error return message.
@@ -308,8 +308,7 @@ pub mod procedures {
                 SerdeProcResult::BIP39Generate(msg) => Ok(ProcResult::BIP39Generate(msg)),
                 SerdeProcResult::BIP39MnemonicSentence(msg) => Ok(ProcResult::BIP39MnemonicSentence(msg)),
                 SerdeProcResult::Ed25519PublicKey(msg) => {
-                    let msg: ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> = match msg
-                    {
+                    let msg: ResultMessage<[u8; crypto::signatures::ed25519::PUBLIC_KEY_LENGTH]> = match msg {
                         ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
                         ResultMessage::Error(e) => ResultMessage::Error(e),
                     };
@@ -1043,26 +1042,19 @@ impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, anyhow::Er
 
                 if raw.len() < 32 {
 
-                    // the client actor will interupt the control flow
-                    // but could this be an option to return an error
                     return Err(engine::Error::CryptoError(
-                        crypto::Error::BufferSize {has : raw.len(), needs : 32, name: "data buffer" }));
+                        crypto::error::Error::BufferSize{has : raw.len(), needs : 32, name: "data buffer" }));
 
                 }
                 raw.truncate(32);
                 let mut bs = [0; 32];
                 bs.copy_from_slice(&raw);
 
-                let sk = match ed25519::SecretKey::from_le_bytes(bs) {
-                    Ok(result) => result,
-                    Err(_e) => {return Err(engine::Error::CryptoError(
-                        crypto::Error::ConvertError { from : "Slice of Bytes", to : "ed25519 SecretKey From LE bytes"}
-                    ));}
-                };
+                let sk = ed25519::SecretKey::from_bytes(bs);
                 let pk = sk.public_key();
 
                 // send to client this result
-                result.set(pk.to_compressed_bytes());
+                result.set(pk.to_bytes());
 
                 Ok(())
             }) {
@@ -1081,9 +1073,6 @@ impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, anyhow::Er
 });
 
 impl_handler!(procedures::Ed25519Sign, Result <crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
-    // TODO move
-    use std::{rc::Rc, cell::Cell};
-
     if let Some(pkey) = self.keystore.get_key(msg.vault_id) {
             self.keystore.insert_key(msg.vault_id, pkey.clone());
 
@@ -1102,12 +1091,8 @@ impl_handler!(procedures::Ed25519Sign, Result <crate::ProcResult, anyhow::Error>
                     raw.truncate(32);
                     let mut bs = [0; 32];
                     bs.copy_from_slice(&raw);
-                    let sk = match ed25519::SecretKey::from_le_bytes(bs) {
-                        Ok(result) => result,
-                        Err(_e) => {return Err(engine::Error::CryptoError(
-                            crypto::Error::ConvertError { from : "Slice of Bytes", to : "ed25519 SecretKey From LE bytes"}
-                        ));}
-                    };
+
+                    let sk =  ed25519::SecretKey::from_bytes(bs);
 
                     let sig = sk.sign(&msg.msg);
                     result.set(sig.to_bytes());
