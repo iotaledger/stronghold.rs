@@ -87,6 +87,13 @@
         "stronghold-utils"
       ]
     },
+    "stronghold-utils": {
+      "path": "./utils/",
+      "manager": "rust",
+      "dependencies": [
+        "stronghold-derive"
+      ]
+    },
     "stronghold-p2p": {
       "path": "./p2p/",
       "manager": "rust",
