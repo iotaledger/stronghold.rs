@@ -12,9 +12,7 @@ homepage = "https://stronghold.docs.iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
 
 [dependencies]
-futures = "0.3"
 rand = "0.8.3"
-riker = "0.4"
 
   [dependencies.stronghold-derive]
   path = "../derive"
