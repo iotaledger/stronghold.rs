@@ -4,5 +4,5 @@ sourcesIndex["iota_stronghold"] = {"name":"","dirs":[{"name":"actors","files":["
 sourcesIndex["p2p"] = {"name":"","dirs":[{"name":"behaviour","dirs":[{"name":"firewall","files":["permissions.rs"]},{"name":"handler","files":["protocol.rs"]},{"name":"request_manager","files":["connections.rs"]}],"files":["addresses.rs","firewall.rs","handler.rs","request_manager.rs"]},{"name":"interface","files":["errors.rs","msg_channel.rs","swarm_task.rs","types.rs"]}],"files":["behaviour.rs","interface.rs","lib.rs"]};
 sourcesIndex["runtime"] = {"name":"","dirs":[{"name":"types","files":["bytes.rs","const_eq.rs","rand.rs","zero.rs"]}],"files":["allocator.rs","boxed.rs","guarded.rs","guarded_vec.rs","lib.rs","secret.rs","sodium.rs","types.rs"]};
 sourcesIndex["stronghold_derive"] = {"name":"","files":["comm.rs","lib.rs"]};
-sourcesIndex["stronghold_utils"] = {"name":"","dirs":[{"name":"test_utils","files":["fresh.rs","mod.rs"]}],"files":["ask.rs","lib.rs"]};
+sourcesIndex["stronghold_utils"] = {"name":"","dirs":[{"name":"test_utils","files":["fresh.rs","mod.rs"]}],"files":["lib.rs"]};
 createSourceSidebar();

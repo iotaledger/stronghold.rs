@@ -1,3 +1,0 @@
-(function() {var implementors = {};
-implementors["stronghold_utils"] = [{"text":"impl&lt;Msg:&nbsp;Message&gt; Actor for <a class=\"struct\" href=\"stronghold_utils/ask/struct.AskActor.html\" title=\"struct stronghold_utils::ask::AskActor\">AskActor</a>&lt;Msg&gt;","synthetic":false,"types":["stronghold_utils::ask::AskActor"]}];
-if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
