@@ -57,12 +57,17 @@ pub trait ProcExecutor {
     fn write_to_vault(&mut self, location1: Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error>;
 }
 
-trait GetSourceVault {
+pub trait GetSourceVault {
     fn get_source(&self) -> Location;
 }
 
 pub trait GetTargetVault {
     fn get_target(&self) -> (Location, RecordHint);
+
+    fn get_target_location(&self) -> Location {
+        let (location, _) = self.get_target();
+        location
+    }
 }
 
 impl<T, U> GetSourceVault for T
@@ -92,7 +97,7 @@ where
 mod test {
     use crypto::keys::slip10::Chain;
 
-    use crate::Stronghold;
+    use crate::{SLIP10DeriveInput, Stronghold};
 
     use super::*;
 
@@ -100,30 +105,24 @@ mod test {
         let cp = "test client".into();
         let sh = Stronghold::init_stronghold_system(cp, vec![]).await.unwrap();
 
-        let seed_location = Location::generic("0", "0");
-        let seed_hint = RecordHint::new("seed".as_bytes()).unwrap();
-
-        let keypair_location = Location::generic("1", "1");
-        let keypair_hint = RecordHint::new("key".as_bytes()).unwrap();
-
         let generate_seed = Slip10Generate {
-            size_bytes: 64,
-            location: (seed_location.clone(), seed_hint),
+            size_bytes: None,
+            output: (Location::generic("0", "0"), RecordHint::new("seed".as_bytes()).unwrap()),
         };
 
         let derive_keypair = SLIP10Derive {
             chain: Chain::empty(),
-            input: seed_location,
-            output: (keypair_location.clone(), keypair_hint),
+            input: SLIP10DeriveInput::Seed(generate_seed.get_target_location()),
+            output: (Location::generic("1", "1"), RecordHint::new("key".as_bytes()).unwrap()),
         };
 
         let sign_fixed_msg = Ed25519Sign {
-            private_key: keypair_location.clone(),
+            private_key: derive_keypair.get_target_location(),
             msg: String::from("My secret message").into(),
         };
 
         let sign_dynamic_msg = Ed25519SignDyn {
-            private_key: keypair_location,
+            private_key: derive_keypair.get_target_location(),
         };
 
         let gen_derive_sign = generate_seed

@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::Location;
+use crate::{Location, SLIP10DeriveInput};
 
 use super::{BuildProcedure, ExecProc, GetSourceVault, GetTargetVault, ProcExecutor};
 use crypto::{
@@ -64,16 +64,17 @@ impl ExecProc for CreateVault {
 
 #[derive(ExecProcedure)]
 pub struct Slip10Generate {
-    pub size_bytes: usize,
+    pub size_bytes: Option<usize>,
 
     #[target_location]
-    pub location: (Location, RecordHint),
+    pub output: (Location, RecordHint),
 }
 
 #[proc_fn]
 impl Generate<()> for Slip10Generate {
     fn generate(self) -> Result<ProcOutput<()>, engine::Error> {
-        let mut seed = vec![0u8; self.size_bytes];
+        let size_bytes = self.size_bytes.unwrap_or(64);
+        let mut seed = vec![0u8; size_bytes];
         fill(&mut seed)?;
         Ok(ProcOutput {
             write_vault: seed,
@@ -84,13 +85,22 @@ impl Generate<()> for Slip10Generate {
 
 #[derive(ExecProcedure)]
 pub struct SLIP10Derive {
+    #[input]
     pub chain: Chain,
 
-    #[source_location]
-    pub input: Location,
+    pub input: SLIP10DeriveInput,
 
     #[target_location]
     pub output: (Location, RecordHint),
+}
+
+impl GetSourceVault for SLIP10Derive {
+    fn get_source(&self) -> Location {
+        match self.input.clone() {
+            SLIP10DeriveInput::Key(parent) => parent,
+            SLIP10DeriveInput::Seed(seed) => seed,
+        }
+    }
 }
 
 #[proc_fn]
@@ -108,7 +118,7 @@ impl Process<ChainCode> for SLIP10Derive {
 
 #[derive(ExecProcedure)]
 pub struct BIP39Generate {
-    pub passphrase: String,
+    pub passphrase: Option<String>,
 
     #[target_location]
     pub output: (Location, RecordHint),
@@ -127,7 +137,8 @@ impl Generate<()> for BIP39Generate {
         .unwrap();
 
         let mut seed = [0u8; 64];
-        bip39::mnemonic_to_seed(&mnemonic, &self.passphrase, &mut seed);
+        let passphrase = self.passphrase.unwrap_or_else(|| "".into());
+        bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
 
         Ok(ProcOutput {
             write_vault: seed.to_vec(),
@@ -138,7 +149,7 @@ impl Generate<()> for BIP39Generate {
 
 #[derive(ExecProcedure)]
 pub struct BIP39Recover {
-    pub passphrase: String,
+    pub passphrase: Option<String>,
 
     #[input]
     pub mnemonic: String,
@@ -151,7 +162,8 @@ pub struct BIP39Recover {
 impl Generate<()> for BIP39Recover {
     fn generate(self) -> Result<ProcOutput<()>, engine::Error> {
         let mut seed = [0u8; 64];
-        bip39::mnemonic_to_seed(&self.mnemonic, &self.passphrase, &mut seed);
+        let passphrase = self.passphrase.unwrap_or_else(|| "".into());
+        bip39::mnemonic_to_seed(&self.mnemonic, &passphrase, &mut seed);
         Ok(ProcOutput {
             write_vault: seed.to_vec(),
             return_value: (),

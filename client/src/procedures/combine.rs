@@ -37,7 +37,7 @@ pub trait ProcCombine: ExecProc + Sized {
 
     fn map_output<F, OData1>(self, f: F) -> ProcMap<Self, F>
     where
-        F: Fn(Self::OutData) -> OData1,
+        F: FnOnce(Self::OutData) -> OData1,
     {
         ProcMap { proc: self, f }
     }
@@ -63,7 +63,7 @@ pub struct ProcMap<P, F> {
 impl<P, F, OData1> ProcMap<P, F>
 where
     P: ExecProc<InData = ()>,
-    F: Fn(P::OutData) -> OData1,
+    F: FnOnce(P::OutData) -> OData1,
 {
     pub fn build(self) -> BuildProcedure<Self> {
         BuildProcedure { inner: self }
@@ -80,7 +80,7 @@ impl<P, F> Deref for ProcMap<P, F> {
 impl<P, F, OData1> ExecProc for ProcMap<P, F>
 where
     P: ExecProc,
-    F: Fn(P::OutData) -> OData1,
+    F: FnOnce(P::OutData) -> OData1,
 {
     type InData = P::InData;
     type OutData = OData1;
