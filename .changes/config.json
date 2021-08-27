@@ -79,19 +79,19 @@
       "path": "./engine/runtime/",
       "manager": "rust"
     },
-    "stronghold-utils": {
-      "path": "./utils/",
-      "manager": "rust",
-      "dependencies": [
-        "stronghold-derive"
-      ]
-    },
     "stronghold-engine": {
       "path": "./engine/",
       "manager": "rust",
       "dependencies": [
         "stronghold-runtime",
         "stronghold-utils"
+      ]
+    },
+    "stronghold-utils": {
+      "path": "./utils/",
+      "manager": "rust",
+      "dependencies": [
+        "stronghold-derive"
       ]
     },
     "stronghold-p2p": {
