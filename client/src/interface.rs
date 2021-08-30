@@ -166,13 +166,10 @@ impl Stronghold {
                         })
                         .await
                     {
-                        Ok(result) => {
-                            return if result.is_ok() {
-                                StatusMessage::OK
-                            } else {
-                                StatusMessage::Error(result.err().unwrap().to_string())
-                            }
-                        }
+                        Ok(result) => match result {
+                            Ok(_) => StatusMessage::OK,
+                            Err(e) => StatusMessage::Error(e.to_string()),
+                        },
                         Err(e) => return StatusMessage::Error(e.to_string()),
                     };
                 }
