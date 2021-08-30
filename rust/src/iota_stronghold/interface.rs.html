@@ -836,6 +836,18 @@
 <span id="834">834</span>
 <span id="835">835</span>
 <span id="836">836</span>
+<span id="837">837</span>
+<span id="838">838</span>
+<span id="839">839</span>
+<span id="840">840</span>
+<span id="841">841</span>
+<span id="842">842</span>
+<span id="843">843</span>
+<span id="844">844</span>
+<span id="845">845</span>
+<span id="846">846</span>
+<span id="847">847</span>
+<span id="848">848</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -996,14 +1008,21 @@
             <span class="kw">match</span> <span class="ident">result</span> {
                 <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
                     <span class="comment">// exists</span>
-                    <span class="kw">let</span> <span class="ident">_result</span> <span class="op">=</span> <span class="self">self</span>
+                    <span class="kw">return</span> <span class="kw">match</span> <span class="self">self</span>
                         .<span class="ident">target</span>
                         .<span class="ident">send</span>(<span class="ident">WriteToVault</span> {
                             <span class="ident">location</span>,
                             <span class="ident">payload</span>,
                             <span class="ident">hint</span>,
                         })
-                        .<span class="kw">await</span>;
+                        .<span class="kw">await</span>
+                    {
+                        <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">result</span> {
+                            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
+                            <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">e</span>.<span class="ident">to_string</span>()),
+                        },
+                        <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">e</span>.<span class="ident">to_string</span>()),
+                    };
                 }
                 <span class="prelude-val">Err</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
                     <span class="comment">// does not exist</span>
@@ -1016,7 +1035,7 @@
                     {
                         <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
                             <span class="comment">// write to vault</span>
-                            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">_result</span>) <span class="op">=</span> <span class="self">self</span>
+                            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span> <span class="self">self</span>
                                 .<span class="ident">target</span>
                                 .<span class="ident">send</span>(<span class="ident">WriteToVault</span> {
                                     <span class="ident">location</span>,
@@ -1025,6 +1044,11 @@
                                 })
                                 .<span class="kw">await</span>
                             {
+                                <span class="kw">if</span> <span class="ident">result</span>.<span class="ident">is_ok</span>() {
+                                    <span class="kw">return</span> <span class="ident">StatusMessage::OK</span>;
+                                } <span class="kw">else</span> {
+                                    <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">result</span>.<span class="ident">err</span>().<span class="ident">unwrap</span>().<span class="ident">to_string</span>());
+                                }
                             } <span class="kw">else</span> {
                                 <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Error Writing data&quot;</span>.<span class="ident">into</span>());
                             }
