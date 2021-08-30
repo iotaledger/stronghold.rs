@@ -157,7 +157,7 @@ impl Stronghold {
             match result {
                 Ok(_) => {
                     // exists
-                    match self
+                    return match self
                         .target
                         .send(WriteToVault {
                             location,
@@ -170,7 +170,7 @@ impl Stronghold {
                             Ok(_) => StatusMessage::OK,
                             Err(e) => StatusMessage::Error(e.to_string()),
                         },
-                        Err(e) => return StatusMessage::Error(e.to_string()),
+                        Err(e) => StatusMessage::Error(e.to_string()),
                     };
                 }
                 Err(_) => {
