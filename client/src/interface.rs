@@ -157,14 +157,24 @@ impl Stronghold {
             match result {
                 Ok(_) => {
                     // exists
-                    let _result = self
+                    match self
                         .target
                         .send(WriteToVault {
                             location,
                             payload,
                             hint,
                         })
-                        .await;
+                        .await
+                    {
+                        Ok(result) => {
+                            return if result.is_ok() {
+                                StatusMessage::OK
+                            } else {
+                                StatusMessage::Error(result.err().unwrap().to_string())
+                            }
+                        }
+                        Err(e) => return StatusMessage::Error(e.to_string()),
+                    };
                 }
                 Err(_) => {
                     // does not exist
@@ -177,7 +187,7 @@ impl Stronghold {
                     {
                         Ok(_) => {
                             // write to vault
-                            if let Ok(_result) = self
+                            if let Ok(result) = self
                                 .target
                                 .send(WriteToVault {
                                     location,
@@ -186,6 +196,11 @@ impl Stronghold {
                                 })
                                 .await
                             {
+                                if result.is_ok() {
+                                    return StatusMessage::OK;
+                                } else {
+                                    return StatusMessage::Error(result.err().unwrap().to_string());
+                                }
                             } else {
                                 return StatusMessage::Error("Error Writing data".into());
                             }
