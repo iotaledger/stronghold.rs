@@ -31,14 +31,15 @@ async fn test_stronghold() {
         .unwrap();
 
     // Write at the first record of the vault using Some(0).  Also creates the new vault.
-    stronghold
+    assert!(stronghold
         .write_to_vault(
             loc0.clone(),
             b"test".to_vec(),
             RecordHint::new(b"first hint").expect(line_error!()),
             vec![],
         )
-        .await;
+        .await
+        .is_ok());
 
     // read head.
     let (p, _) = stronghold.read_secret(client_path.clone(), loc0.clone()).await;
@@ -46,28 +47,30 @@ async fn test_stronghold() {
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
     // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
-    stronghold
+    assert!(stronghold
         .write_to_vault(
             loc1.clone(),
             b"another test".to_vec(),
             RecordHint::new(b"another hint").expect(line_error!()),
             vec![],
         )
-        .await;
+        .await
+        .is_ok());
 
     // read head.
     let (p, _) = stronghold.read_secret(client_path.clone(), loc1.clone()).await;
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
-    stronghold
+    assert!(stronghold
         .write_to_vault(
             loc2.clone(),
             b"yet another test".to_vec(),
             RecordHint::new(b"yet another hint").expect(line_error!()),
             vec![],
         )
-        .await;
+        .await
+        .is_ok());
 
     // read head.
     let (p, _) = stronghold.read_secret(client_path.clone(), loc2.clone()).await;
@@ -174,14 +177,15 @@ async fn run_stronghold_multi_actors() {
 
     stronghold.switch_actor_target(client_path0.clone()).await;
 
-    stronghold
+    assert!(stronghold
         .write_to_vault(
             loc0.clone(),
             b"test".to_vec(),
             RecordHint::new(b"0").expect(line_error!()),
             vec![],
         )
-        .await;
+        .await
+        .is_ok());
 
     // read head.
     let (p, _) = stronghold.read_secret(client_path0.clone(), loc0.clone()).await;
@@ -191,14 +195,15 @@ async fn run_stronghold_multi_actors() {
     stronghold.switch_actor_target(client_path1.clone()).await;
 
     // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
-    stronghold
+    assert!(stronghold
         .write_to_vault(
             loc0.clone(),
             b"another test".to_vec(),
             RecordHint::new(b"1").expect(line_error!()),
             vec![],
         )
-        .await;
+        .await
+        .is_ok());
 
     // read head.
     let (p, _) = stronghold.read_secret(client_path1.clone(), loc0.clone()).await;
@@ -207,14 +212,15 @@ async fn run_stronghold_multi_actors() {
 
     stronghold.switch_actor_target(client_path0.clone()).await;
 
-    stronghold
+    assert!(stronghold
         .write_to_vault(
             loc0.clone(),
             b"yet another test".to_vec(),
             RecordHint::new(b"2").expect(line_error!()),
             vec![],
         )
-        .await;
+        .await
+        .is_ok());
 
     let (p, _) = stronghold.read_secret(client_path0.clone(), loc0.clone()).await;
 
@@ -249,27 +255,29 @@ async fn run_stronghold_multi_actors() {
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
-    stronghold
+    assert!(stronghold
         .write_to_vault(
             loc3.clone(),
             b"a new actor test".to_vec(),
             RecordHint::new(b"2").expect(line_error!()),
             vec![],
         )
-        .await;
+        .await
+        .is_ok());
 
     let (p, _) = stronghold.read_secret(client_path2.clone(), loc3).await;
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test"));
 
-    stronghold
+    assert!(stronghold
         .write_to_vault(
             loc4.clone(),
             b"a new actor test again".to_vec(),
             RecordHint::new(b"3").expect(line_error!()),
             vec![],
         )
-        .await;
+        .await
+        .is_ok());
 
     let (p, _) = stronghold.read_secret(client_path2, loc4.clone()).await;
 
@@ -329,14 +337,15 @@ async fn test_stronghold_generics() {
         .await
         .unwrap();
 
-    stronghold
+    assert!(stronghold
         .write_to_vault(
             slip10_seed.clone(),
             b"AAAAAA".to_vec(),
             RecordHint::new(b"first hint").expect(line_error!()),
             vec![],
         )
-        .await;
+        .await
+        .is_ok());
     let (p, _) = stronghold.read_secret(client_path, slip10_seed).await;
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
