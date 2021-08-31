@@ -1,58 +1,67 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::ops::Deref;
-
 use actix::Message;
-use engine::{
-    runtime::GuardedVec,
-    vault::{RecordHint, VaultId},
-};
+use engine::{runtime::GuardedVec, vault::RecordHint};
+use std::ops::Deref;
 mod combine;
 pub use combine::*;
 mod primitives;
+use crate::Location;
 pub use primitives::*;
 use stronghold_utils::GuardDebug;
-
-use crate::Location;
 
 // ==========================
 // Traits
 // ==========================
 
 #[derive(GuardDebug)]
-pub struct BuildProcedure<P: ExecProc<InData = ()>> {
-    pub(crate) inner: P,
+pub struct ComplexProc<P> {
+    inner: P,
 }
 
-impl<P: ExecProc<InData = ()> + 'static> Message for BuildProcedure<P> {
+impl<P> ComplexProc<P>
+where
+    P: ExecProc<InData = ()>,
+{
+    pub fn run<X: ProcExecutor>(self, executor: &mut X) -> Result<P::OutData, anyhow::Error> {
+        self.inner.exec(executor, ())
+    }
+}
+
+impl<P> Message for ComplexProc<P>
+where
+    P: ExecProc<InData = ()> + 'static,
+{
     type Result = Result<P::OutData, anyhow::Error>;
 }
 
-pub trait ExecProc {
+pub trait BuildProc<P> {
+    fn build(self) -> ComplexProc<P>;
+}
+
+pub trait ExecProc: BuildProc<Self> + Sized {
     type InData;
     type OutData;
-    fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: Self::InData)
-        -> Result<Self::OutData, anyhow::Error>;
+
+    fn exec<X: ProcExecutor>(self, executor: &mut X, input: Self::InData) -> Result<Self::OutData, anyhow::Error>;
 }
 
 pub trait ProcExecutor {
-    fn get_guard<F, In, Out>(&mut self, location0: Location, f: F, input: In) -> Result<Out, anyhow::Error>
+    fn get_guard<F, I, O>(&mut self, location0: Location, f: F, input: I) -> Result<O, anyhow::Error>
     where
-        F: FnOnce(In, GuardedVec<u8>) -> Result<Out, engine::Error>;
+        F: FnOnce(I, GuardedVec<u8>) -> Result<O, engine::Error>;
 
-    fn create_vault(&mut self, vault_id: VaultId);
-
-    fn exec_proc<F, In, Out>(
+    fn exec_proc<F, I, O>(
         &mut self,
         location0: Location,
         location1: Location,
         hint: RecordHint,
         f: F,
-        input: In,
-    ) -> Result<Out, anyhow::Error>
+        input: I,
+    ) -> Result<O, anyhow::Error>
     where
-        F: FnOnce(In, GuardedVec<u8>) -> Result<ProcOutput<Out>, engine::Error>;
+        F: FnOnce(I, GuardedVec<u8>) -> Result<ProcOutput<O>, engine::Error>;
 
     fn write_to_vault(&mut self, location1: Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error>;
 }
@@ -87,51 +96,5 @@ where
 {
     fn get_target(&self) -> (Location, RecordHint) {
         self.deref().get_target()
-    }
-}
-
-// ==========================
-// Example Application
-// ==========================
-
-mod test {
-    use crypto::keys::slip10::Chain;
-
-    use crate::{SLIP10DeriveInput, Stronghold};
-
-    use super::*;
-
-    async fn main() {
-        let cp = "test client".into();
-        let sh = Stronghold::init_stronghold_system(cp, vec![]).await.unwrap();
-
-        let generate_seed = Slip10Generate {
-            size_bytes: None,
-            output: (Location::generic("0", "0"), RecordHint::new("seed".as_bytes()).unwrap()),
-        };
-
-        let derive_keypair = SLIP10Derive {
-            chain: Chain::empty(),
-            input: SLIP10DeriveInput::Seed(generate_seed.get_target_location()),
-            output: (Location::generic("1", "1"), RecordHint::new("key".as_bytes()).unwrap()),
-        };
-
-        let sign_fixed_msg = Ed25519Sign {
-            private_key: derive_keypair.get_target_location(),
-            msg: String::from("My secret message").into(),
-        };
-
-        let sign_dynamic_msg = Ed25519SignDyn {
-            private_key: derive_keypair.get_target_location(),
-        };
-
-        let gen_derive_sign = generate_seed
-            .and_then(derive_keypair)
-            .drop_output()
-            .and_then(sign_fixed_msg)
-            .and_then(sign_dynamic_msg)
-            .build();
-
-        let _res = sh.runtime_exec(gen_derive_sign).await;
     }
 }

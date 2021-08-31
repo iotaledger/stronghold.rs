@@ -3,13 +3,10 @@
 
 //! Secure Client Actor State
 
-use crate::{internals, line_error};
-
-use crate::{state::key_store::KeyStore, utils::LoadFromPath, Location};
-
+use crate::{actors::VaultError, internals, line_error, state::key_store::KeyStore, utils::LoadFromPath, Location};
 use engine::{
     store::Cache,
-    vault::{ClientId, DbView, RecordId, VaultId},
+    vault::{ClientId, DbView, Key, RecordId, VaultId},
 };
 use std::{collections::HashSet, time::Duration};
 
@@ -153,6 +150,29 @@ impl SecureClient {
         }
 
         ctr
+    }
+
+    pub fn get_key(&mut self, vault_id: VaultId) -> Result<Key<internals::Provider>, anyhow::Error> {
+        let key = self
+            .keystore
+            .get_key(vault_id)
+            .ok_or_else(|| anyhow::anyhow!(VaultError::NotExisting))?;
+        self.keystore.insert_key(vault_id, key.clone());
+        Ok(key)
+    }
+
+    pub fn get_or_create_key(&mut self, vault_id: VaultId) -> Result<Key<internals::Provider>, anyhow::Error> {
+        let key = if !self.keystore.vault_exists(vault_id) {
+            let k = self.keystore.create_key(vault_id);
+            self.db.init_vault(&k, vault_id)?;
+            k
+        } else {
+            self.keystore
+                .get_key(vault_id)
+                .ok_or_else(|| anyhow::anyhow!(crate::Error::KeyStoreError("".into())))?
+        };
+        self.keystore.insert_key(vault_id, key.clone());
+        Ok(key)
     }
 }
 

@@ -1,10 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use quote::{quote, ToTokens};
+use quote::quote;
 use syn::{
-    punctuated::Punctuated, token::Comma, AngleBracketedGenericArguments, Data, DataStruct, DeriveInput, Field, Fields,
-    ImplGenerics, ItemImpl, PathArguments, PathSegment,
+    punctuated::Punctuated, token::Comma, Data, DataStruct, DeriveInput, Field, Fields, ImplGenerics, ImplItem,
+    ImplItemType, ItemImpl, PathSegment,
 };
 
 pub fn derive_source_target(derive_input: DeriveInput) -> proc_macro2::TokenStream {
@@ -80,15 +80,22 @@ pub fn impl_no_input(
         let proc_ident = derive_input.ident.clone();
         let field_ident = field.ident.unwrap();
         let gen = quote! {
+            #[derive(Clone)]
             #other
 
             impl #impl_generics ExecProc for #other_ident #where_clause {
                 type InData = #in_type;
                 type OutData = <#proc_ident as ExecProc>::OutData;
 
-                fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
+                fn exec<X: ProcExecutor>(self, executor: &mut X, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
                     let proc = #proc_ident {#assign_fields #field_ident: input};
                     proc.exec(executor, ())
+                }
+            }
+
+            impl #impl_generics BuildProc<Self> for #other_ident #where_clause {
+                fn build(self) -> ComplexProc<Self> {
+                    ComplexProc {inner: self}
                 }
             }
 
@@ -160,37 +167,39 @@ pub fn impl_exec_proc(item_impl: ItemImpl) -> proc_macro2::TokenStream {
     let self_type = item_impl.self_ty;
     let (impl_generics, _ty_generics, where_clause) = item_impl.generics.split_for_impl();
 
-    let out_type: proc_macro2::TokenStream;
-
     let segment = item_impl
         .trait_
         .and_then(|t| t.1.segments.last().cloned())
         .expect(panic_msg);
-    let generics = match segment.arguments {
-        PathArguments::AngleBracketed(AngleBracketedGenericArguments { ref args, .. }) => args,
-        _ => unreachable!(),
-    };
-    out_type = generics.first().to_token_stream();
 
-    let gen_exec_fn = generate_fn_body(&segment, &out_type);
+    let out_type = item_impl
+        .items
+        .iter()
+        .find_map(|i| match i {
+            ImplItem::Type(ImplItemType { ident, ty, .. }) if ident == "OutData" => Some(ty),
+            _ => None,
+        })
+        .expect("Missing associated type OutData");
+
+    let gen_exec_fn = generate_fn_body(&segment);
     quote! {
         impl #impl_generics ExecProc for #self_type #where_clause {
             type InData = ();
             type OutData = #out_type;
 
-            fn exec<PExe: ProcExecutor>(self, executor: &mut PExe, _: Self::InData) -> Result<Self::OutData, anyhow::Error> {
+            fn exec<X: ProcExecutor>(self, executor: &mut X, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
                 #gen_exec_fn
             }
         }
-        impl #impl_generics #self_type #where_clause {
-            pub fn build(self) -> BuildProcedure<Self> {
-                BuildProcedure {inner: self}
+        impl #impl_generics BuildProc<Self> for #self_type #where_clause {
+            fn build(self) -> ComplexProc<Self> {
+                ComplexProc {inner: self}
             }
         }
     }
 }
 
-fn generate_fn_body(segment: &PathSegment, out_type: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+fn generate_fn_body(segment: &PathSegment) -> proc_macro2::TokenStream {
     match format!("{}", segment.ident).as_str() {
         "Generate" => {
             quote! {
@@ -198,8 +207,7 @@ fn generate_fn_body(segment: &PathSegment, out_type: &proc_macro2::TokenStream) 
                 let ProcOutput {
                     write_vault,
                     return_value,
-                } = <Self as Generate<#out_type>>::generate(self)?;
-
+                } = <Self as Generate>::generate(self)?;
                 executor.write_to_vault(location_1, hint, write_vault)?;
                 Ok(return_value)
             }
@@ -208,21 +216,24 @@ fn generate_fn_body(segment: &PathSegment, out_type: &proc_macro2::TokenStream) 
             quote! {
                 let location_0 = self.get_source();
                 let (location_1, hint) = self.get_target();
-                let f = move |(), guard| <Self as Process<#out_type>>::process(self, guard);
-                executor.exec_proc(
+                let f = move |(), guard| <Self as Process>::process(self, guard);
+                let res = executor.exec_proc(
                     location_0,
                     location_1,
                     hint,
                     f,
                     ()
-                )
+                );
+
+                res
             }
         }
         "Sink" => {
             quote! {
                 let location_0 = self.get_source();
-                let f = move |(), guard| <Self as Sink<#out_type>>::sink(self, guard);
-                executor.get_guard(location_0, f, ())
+                let f = move |(), guard| <Self as Sink>::sink(self, guard);
+                let res = executor.get_guard(location_0, f, ());
+                res
             }
         }
         _ => panic!(),

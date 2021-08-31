@@ -20,7 +20,7 @@ use crate::{
         GetAllClients, GetClient, GetSnapshot, InsertClient, Registry, RemoveClient, SecureClient,
     },
     line_error,
-    procedures::{BuildProcedure, ExecProc},
+    procedures::{ComplexProc, ExecProc},
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -335,7 +335,7 @@ impl Stronghold {
 
     /// Executes a runtime command given a [`Procedure`].  Returns a [`ProcResult`] based off of the control_request
     /// specified.
-    pub async fn runtime_exec<P>(&self, control_request: BuildProcedure<P>) -> Result<P::OutData, anyhow::Error>
+    pub async fn runtime_exec<P>(&self, control_request: ComplexProc<P>) -> Result<P::OutData, anyhow::Error>
     where
         P: ExecProc<InData = ()> + Send + 'static,
         P::OutData: Send,
@@ -837,7 +837,7 @@ impl Stronghold {
     //     let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
     //     let send_request = network_msg::SendRequest {
     //         peer,
-    //         request: BuildProcedure { proc: control_request },
+    //         request: ComplexProc { proc: control_request },
     //     };
     //     let receive_response = unwrap_or_err!(actor.send(send_request).await);
     //     let result = unwrap_or_err!(receive_response);
@@ -850,7 +850,7 @@ impl Stronghold {
     pub async fn remote_runtime_exec<P>(
         &self,
         peer: PeerId,
-        control_request: BuildProcedure<P>,
+        control_request: ComplexProc<P>,
     ) -> ResultMessage<P::OutData>
     where
         P: ExecProc<InData = ()> + Send + 'static,

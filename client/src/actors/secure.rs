@@ -17,7 +17,7 @@ pub use crate::{
 };
 use crate::{
     internals,
-    procedures::{BuildProcedure, ExecProc, ProcExecutor, ProcOutput},
+    procedures::{ComplexProc, ExecProc, ProcExecutor, ProcOutput},
     Location,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
@@ -701,65 +701,50 @@ impl_handler!(
 // impl for procedures
 // ---
 
-impl<Proc> Handler<BuildProcedure<Proc>> for SecureClient
+impl<Proc> Handler<ComplexProc<Proc>> for SecureClient
 where
     Proc: ExecProc<InData = ()> + 'static,
 {
     type Result = Result<Proc::OutData, anyhow::Error>;
 
-    fn handle(&mut self, proc: BuildProcedure<Proc>, _: &mut Self::Context) -> Self::Result {
-        proc.inner.exec(self, ())
+    fn handle(&mut self, proc: ComplexProc<Proc>, _: &mut Self::Context) -> Self::Result {
+        proc.run(self)
     }
 }
 
 impl ProcExecutor for SecureClient {
-    fn get_guard<F, In, Out>(&mut self, location0: Location, f: F, input: In) -> Result<Out, anyhow::Error>
+    fn get_guard<F, I, O>(&mut self, location: Location, f: F, input: I) -> Result<O, anyhow::Error>
     where
-        F: FnOnce(In, GuardedVec<u8>) -> Result<Out, engine::Error>,
+        F: FnOnce(I, GuardedVec<u8>) -> Result<O, engine::Error>,
     {
-        let (vault_id, record_id) = Self::resolve_location(location0);
-        let key0 = self.keystore.get_key(vault_id);
-        if let Some(pkey) = key0.as_ref() {
-            self.keystore.insert_key(vault_id, pkey.clone());
-        };
-        let key0 = key0.ok_or_else(|| anyhow::anyhow!(VaultError::NotExisting))?;
+        let (vault_id, record_id) = Self::resolve_location(location);
+        let key = self.get_key(vault_id)?;
+
         let mut ret = None;
-        self.db
-            .get_guard(&key0, vault_id, record_id, |guard: GuardedVec<u8>| {
-                ret = Some(f(input, guard)?);
-                Ok(())
-            })
-            .map_err(|e| anyhow::anyhow!(e))?;
+        self.db.get_guard(&key, vault_id, record_id, |guard: GuardedVec<u8>| {
+            ret = Some(f(input, guard)?);
+            Ok(())
+        })?;
         Ok(ret.unwrap())
     }
 
-    fn exec_proc<F, In, Out>(
+    fn exec_proc<F, I, O>(
         &mut self,
         location0: Location,
         location1: Location,
         hint: RecordHint,
         f: F,
-        input: In,
-    ) -> Result<Out, anyhow::Error>
+        input: I,
+    ) -> Result<O, anyhow::Error>
     where
-        F: FnOnce(In, GuardedVec<u8>) -> Result<ProcOutput<Out>, engine::Error>,
+        F: FnOnce(I, GuardedVec<u8>) -> Result<ProcOutput<O>, engine::Error>,
     {
         let (vid0, rid0) = Self::resolve_location(location0);
+        let key0 = self.get_key(vid0)?;
+
         let (vid1, rid1) = Self::resolve_location(location1);
+        let key1 = self.get_or_create_key(vid1)?;
 
-        let key0 = self.keystore.get_key(vid0);
-        if let Some(pkey) = key0.as_ref() {
-            self.keystore.insert_key(vid0, pkey.clone());
-        };
-        let key0 = key0.ok_or_else(|| anyhow::anyhow!(VaultError::NotExisting))?;
-
-        let key1 = if !self.keystore.vault_exists(vid1) {
-            let k = self.keystore.create_key(vid1);
-            self.db.init_vault(&k, vid1)?;
-            k
-        } else {
-            self.keystore.get_key(vid1).unwrap()
-        };
         let mut ret = None;
         self.db
             .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, |guard: GuardedVec<u8>| {
@@ -774,21 +759,12 @@ impl ProcExecutor for SecureClient {
         Ok(ret.unwrap())
     }
 
-    fn create_vault(&mut self, vault_id: VaultId) {
-        self.add_new_vault(vault_id)
-    }
+    fn write_to_vault(&mut self, location: Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error> {
+        let (vault_id, record_id) = Self::resolve_location(location);
+        let key = self.get_or_create_key(vault_id)?;
 
-    fn write_to_vault(&mut self, location1: Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error> {
-        let (vault_id, record_id) = Self::resolve_location(location1);
-        let key1 = if !self.keystore.vault_exists(vault_id) {
-            let k = self.keystore.create_key(vault_id);
-            self.db.init_vault(&k, vault_id)?;
-            k
-        } else {
-            self.keystore.get_key(vault_id).unwrap()
-        };
         self.db
-            .write(&key1, vault_id, record_id, &value, hint)
+            .write(&key, vault_id, record_id, &value, hint)
             .map_err(|e| anyhow::anyhow!(e))
     }
 }
