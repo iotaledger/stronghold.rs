@@ -3,7 +3,6 @@
 
 use actix::Message;
 use engine::{runtime::GuardedVec, vault::RecordHint};
-use std::ops::Deref;
 mod combine;
 pub use combine::*;
 mod primitives;
@@ -79,22 +78,14 @@ pub trait GetTargetVault {
     }
 }
 
-impl<T, U> GetSourceVault for T
-where
-    U: GetSourceVault,
-    T: Deref<Target = U>,
-{
+impl GetSourceVault for Location {
     fn get_source(&self) -> Location {
-        self.deref().get_source()
+        self.clone()
     }
 }
 
-impl<T, U> GetTargetVault for T
-where
-    U: GetTargetVault,
-    T: Deref<Target = U>,
-{
+impl GetTargetVault for (Location, RecordHint) {
     fn get_target(&self) -> (Location, RecordHint) {
-        self.deref().get_target()
+        self.clone()
     }
 }

@@ -4,7 +4,7 @@
 use super::*;
 use crate::Location;
 use engine::vault::RecordHint;
-use std::ops::Deref;
+use stronghold_derive::Procedure;
 
 // ==========================
 // Combine Trait
@@ -84,15 +84,11 @@ impl<P: ExecProc + Sized> ProcCombine for P {}
 // === Perform Procedure on multiple input values
 // ---------------
 
-#[derive(Clone)]
+#[derive(Clone, Procedure)]
 pub struct ProcIter<P> {
+    #[source_location]
+    #[target_location]
     proc: P,
-}
-
-impl<P> BuildProc<Self> for ProcIter<P> {
-    fn build(self) -> ComplexProc<Self> {
-        ComplexProc { inner: self }
-    }
 }
 
 impl<P> ExecProc for ProcIter<P>
@@ -110,17 +106,12 @@ where
 // ---------------
 // === Map ExecProc::OutData into a new type
 // ---------------
-#[derive(Clone)]
+#[derive(Clone, Procedure)]
 pub struct ProcMap<P, F> {
+    #[source_location]
+    #[target_location]
     proc: P,
     f: F,
-}
-
-impl<P, F> Deref for ProcMap<P, F> {
-    type Target = P;
-    fn deref(&self) -> &Self::Target {
-        &self.proc
-    }
 }
 
 impl<P, F, T> ExecProc for ProcMap<P, F>
@@ -136,38 +127,17 @@ where
     }
 }
 
-impl<P, F> BuildProc<Self> for ProcMap<P, F> {
-    fn build(self) -> ComplexProc<Self> {
-        ComplexProc { inner: self }
-    }
-}
-
 // ---------------
 // === Chain a next procedure P1 that takes Self::OutData as P1::InData
 // ---------------
 
-#[derive(Clone)]
+#[derive(Clone, Procedure)]
 pub struct ProcAndThen<P0, P1> {
+    #[source_location]
     proc_0: P0,
+
+    #[target_location]
     proc_1: P1,
-}
-
-impl<P0, P1> GetSourceVault for ProcAndThen<P0, P1>
-where
-    P0: GetSourceVault,
-{
-    fn get_source(&self) -> Location {
-        self.proc_0.get_source()
-    }
-}
-
-impl<P0, P1> GetTargetVault for ProcAndThen<P0, P1>
-where
-    P1: GetTargetVault,
-{
-    fn get_target(&self) -> (Location, RecordHint) {
-        self.proc_1.get_target()
-    }
 }
 
 impl<P0, P1> ExecProc for ProcAndThen<P0, P1>
@@ -185,17 +155,11 @@ where
     }
 }
 
-impl<P0, P1> BuildProc<Self> for ProcAndThen<P0, P1> {
-    fn build(self) -> ComplexProc<Self> {
-        ComplexProc { inner: self }
-    }
-}
-
 // ---------------
 // === Reduce the Result of two Procedures to one
 // ---------------
 
-#[derive(Clone)]
+#[derive(Clone, Procedure)]
 pub struct ProcReduce<P0, P1, F> {
     proc_0: P0,
     proc_1: P1,
@@ -219,20 +183,17 @@ where
     }
 }
 
-impl<P0, P1, F> BuildProc<Self> for ProcReduce<P0, P1, F> {
-    fn build(self) -> ComplexProc<Self> {
-        ComplexProc { inner: self }
-    }
-}
-
 // ---------------
 // === Write bytes to vault
 // ---------------
 
+#[derive(Clone, Procedure)]
 pub struct ProcWriteVault<P> {
+    #[source_location]
     proc: P,
-    location: Location,
-    hint: RecordHint,
+
+    #[target_location]
+    output: (Location, RecordHint),
 }
 
 impl<P> ExecProc for ProcWriteVault<P>
@@ -245,13 +206,8 @@ where
 
     fn exec<X: ProcExecutor>(self, executor: &mut X, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
         let data = self.proc.exec(executor, input)?;
-        executor.write_to_vault(self.location, self.hint, data.into())?;
+        let (location, hint) = self.output;
+        executor.write_to_vault(location, hint, data.into())?;
         Ok(())
-    }
-}
-
-impl<P> BuildProc<Self> for ProcWriteVault<P> {
-    fn build(self) -> ComplexProc<Self> {
-        ComplexProc { inner: self }
     }
 }

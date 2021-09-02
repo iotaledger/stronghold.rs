@@ -15,7 +15,7 @@ use crypto::{
 use engine::{runtime::GuardedVec, vault::RecordHint};
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
-use stronghold_derive::{proc_fn, ExecProcedure};
+use stronghold_derive::{proc_fn, Procedure};
 
 // ==========================
 // Primitive Proc
@@ -45,14 +45,9 @@ pub trait Sink {
 // Helper Procs
 // ==========================
 
+#[derive(Clone, Procedure)]
 pub struct Input<T> {
     pub data: T,
-}
-
-impl<T> BuildProc<Self> for Input<T> {
-    fn build(self) -> ComplexProc<Self> {
-        ComplexProc { inner: self }
-    }
 }
 
 impl<T> ExecProc for Input<T> {
@@ -70,7 +65,7 @@ impl<T> From<T> for Input<T> {
     }
 }
 
-#[derive(Clone, ExecProcedure, Serialize, Deserialize)]
+#[derive(Procedure, Serialize, Deserialize)]
 pub struct WriteVault {
     #[input]
     pub data: Vec<u8>,
@@ -94,7 +89,7 @@ impl Generate for WriteVault {
 // Old Procs
 // ==========================
 
-#[derive(Clone, ExecProcedure, Serialize, Deserialize)]
+#[derive(Procedure, Serialize, Deserialize)]
 pub struct Slip10Generate {
     pub size_bytes: Option<usize>,
 
@@ -117,7 +112,7 @@ impl Generate for Slip10Generate {
     }
 }
 
-#[derive(ExecProcedure, Serialize, Deserialize)]
+#[derive(Procedure, Serialize, Deserialize)]
 pub struct SLIP10Derive {
     #[input]
     pub chain: Chain,
@@ -155,7 +150,7 @@ impl Process for SLIP10Derive {
     }
 }
 
-#[derive(Clone, ExecProcedure, Serialize, Deserialize)]
+#[derive(Procedure, Serialize, Deserialize)]
 pub struct BIP39Generate {
     pub passphrase: Option<String>,
 
@@ -188,7 +183,7 @@ impl Generate for BIP39Generate {
     }
 }
 
-#[derive(ExecProcedure, Serialize, Deserialize)]
+#[derive(Procedure, Serialize, Deserialize)]
 pub struct BIP39Recover {
     pub passphrase: Option<String>,
 
@@ -214,7 +209,7 @@ impl Generate for BIP39Recover {
     }
 }
 
-#[derive(Clone, ExecProcedure, Serialize, Deserialize)]
+#[derive(Clone, Procedure, Serialize, Deserialize)]
 pub struct Ed25519PublicKey {
     #[source_location]
     pub private_key: Location,
@@ -248,7 +243,7 @@ impl Sink for Ed25519PublicKey {
     }
 }
 
-#[derive(ExecProcedure, Serialize, Deserialize)]
+#[derive(Procedure, Serialize, Deserialize)]
 pub struct Ed25519Sign {
     #[input]
     pub msg: Vec<u8>,
