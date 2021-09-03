@@ -30,12 +30,7 @@ use engine::{
     store::Cache,
     vault::{ClientId, DbView, Key, RecordHint, RecordId, VaultId},
 };
-use std::{
-    cell::Cell,
-    collections::{HashMap, HashSet},
-    convert::TryFrom,
-    rc::Rc,
-};
+use std::{cell::Cell, collections::HashMap, convert::TryFrom, rc::Rc};
 
 use self::procedures::CallProcedure;
 // sub-modules re-exports
@@ -176,7 +171,7 @@ pub mod messages {
     }
 
     impl Message for CheckVault {
-        type Result = Result<(), anyhow::Error>;
+        type Result = bool;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -548,7 +543,6 @@ impl_handler!(messages::Terminate, (), (self, _msg, ctx), {
 });
 
 impl_handler!(messages::ClearCache, Result<(), anyhow::Error>, (self, _msg, _ctx), {
-    self.clear_cache();
     self.keystore.clear_keys();
     self.db.clear().map_err(|e| anyhow::anyhow!(e))
 });
@@ -631,15 +625,14 @@ impl_handler!(
 
 impl_handler!(messages::ReloadData, (), (self, msg, _ctx), {
     let (keystore, state, store) = *msg.data;
-    let vids = keystore.keys().copied().collect::<HashSet<VaultId>>();
     self.keystore.rebuild_keystore(keystore);
     self.db = state;
-    self.rebuild_cache(self.client_id, vids, store);
+    self.rebuild_cache(self.client_id, store);
 });
 
-impl_handler!(messages::CheckVault, Result<(), anyhow::Error>, (self, msg, _ctx), {
+impl_handler!(messages::CheckVault, bool, (self, msg, _ctx), {
     let vid = self.derive_vault_id(msg.vault_path);
-    self.vault_exist(vid).ok_or(anyhow::anyhow!(VaultError::NotExisting)).map(|_|())
+    self.keystore.vault_exists(vid)
 });
 
 impl_handler!(messages::WriteToStore, Result<(), anyhow::Error>, (self, msg, _ctx), {
@@ -734,9 +727,6 @@ impl Handler<CallProcedure> for SecureClient {
                     let (parent_vault_id, parent_record_id) = self.resolve_location(parent);
 
                     let (child_vault_id, child_record_id) = self.resolve_location(output);
-                    if self.vault_exist(child_vault_id).is_none() {
-                        self.add_new_vault(child_vault_id);
-                    }
 
                     <Self as Handler<SLIP10DeriveFromKey>>::handle(
                         self,
@@ -755,9 +745,6 @@ impl Handler<CallProcedure> for SecureClient {
                     let (seed_vault_id, seed_record_id) = self.resolve_location(seed);
 
                     let (key_vault_id, key_record_id) = self.resolve_location(output);
-                    if self.vault_exist(key_vault_id).is_none() {
-                        self.add_new_vault(key_vault_id);
-                    }
 
                     <Self as Handler<SLIP10DeriveFromSeed>>::handle(
                         self,
