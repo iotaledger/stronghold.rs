@@ -835,7 +835,13 @@ impl_handler!(procedures::SLIP10Generate, Result<crate::ProcResult, anyhow::Erro
     let key = self.keystore.take_key(msg.vault_id).unwrap();
 
     let mut seed = vec![0u8; msg.size_bytes];
-    fill(&mut seed).map_err(|e| anyhow::anyhow!(e))?;
+    match fill(&mut seed) {
+        Ok(_) => {},
+        Err(e) => {
+            self.keystore.insert_key(msg.vault_id, key);
+            return Err(anyhow::anyhow!(e))
+        }
+    }
 
     let res = self.db.write(&key, msg.vault_id, msg.record_id, &seed, msg.hint);
 
@@ -855,7 +861,13 @@ impl_handler!(procedures::SLIP10DeriveFromSeed, Result<crate::ProcResult, anyhow
 
     if !self.keystore.vault_exists(msg.key_vault_id) {
         let key = self.keystore.create_key(msg.key_vault_id);
-        self.db.init_vault(key, msg.key_vault_id)?;
+        match self.db.init_vault(key, msg.key_vault_id) {
+            Ok(_) => {},
+            Err(e) => {
+                self.keystore.insert_key(msg.seed_vault_id, seed_key);
+                return Err(anyhow::anyhow!(e))
+            }
+        }
     }
     let dk_key = self.keystore.take_key(msg.key_vault_id).unwrap();
 
@@ -903,7 +915,13 @@ impl_handler!( procedures::SLIP10DeriveFromKey,Result<crate::ProcResult, anyhow:
 
     if !self.keystore.vault_exists(msg.child_vault_id) {
         let key = self.keystore.create_key(msg.child_vault_id);
-        self.db.init_vault(key, msg.child_vault_id)?;
+        match self.db.init_vault(key, msg.child_vault_id) {
+            Ok(_) => {},
+            Err(e) => {
+                self.keystore.insert_key(msg.parent_vault_id, parent_key);
+                return Err(anyhow::anyhow!(e))
+            }
+        }
     }
     let child_key = self.keystore.take_key(msg.child_vault_id).unwrap();
 
