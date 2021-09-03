@@ -18,7 +18,7 @@ pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
 pub struct SecureClient {
     // A keystore
-    pub(crate) keystore: KeyStore<internals::Provider>,
+    pub(crate) keystore: KeyStore,
     // A view on the vault entries
     pub(crate) db: DbView<internals::Provider>,
     // The id of this client

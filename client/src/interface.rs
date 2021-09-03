@@ -20,7 +20,7 @@ use crate::{
         snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, InsertClient, Registry, RemoveClient, SecureClient,
     },
-    line_error, unwrap_or_err, unwrap_result_msg,
+    line_error,
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -33,7 +33,7 @@ use crate::{
         messages::{ShRequest, SwarmInfo},
         NetworkActor, NetworkConfig,
     },
-    ResultMessage,
+    unwrap_or_err, unwrap_result_msg, ResultMessage,
 };
 #[cfg(feature = "p2p")]
 use p2p::{
