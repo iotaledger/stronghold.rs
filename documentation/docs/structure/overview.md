@@ -1,7 +1,3 @@
----
-slug: /structure/overview
----
-
 # IOTA Stronghold Structure
 
 In this section we describe the individual crates and components of Stronghold:

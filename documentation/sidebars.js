@@ -16,7 +16,7 @@ module.exports = {
       label: 'Welcome'
     }, {
       type: 'doc',
-      id: 'overview/README',
+      id: 'overview',
       label: 'Overview'
     },
     {
@@ -24,7 +24,7 @@ module.exports = {
       label: 'Structure',
       items: [{
           type: 'doc',
-          id: 'structure/README',
+          id: 'structure/overview',
           label: 'Overview'
         }, {
           type: 'doc',
@@ -87,7 +87,7 @@ module.exports = {
     },
     {
       type: 'doc',
-      id: 'products/README',
+      id: 'products',
       label: 'Products'
     },
     {
@@ -95,7 +95,7 @@ module.exports = {
       label: 'Specification',
       items: [{
         type: 'doc',
-        id: 'specs/README',
+        id: 'specs/overview',
         label: 'Overview'
       }, {
         type: 'doc',
@@ -109,7 +109,7 @@ module.exports = {
     },
     {
       type: 'doc',
-      id: 'retrospective/README',
+      id: 'retrospective',
       label: 'Retrospective'
     },
     {

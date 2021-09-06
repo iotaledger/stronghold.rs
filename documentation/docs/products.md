@@ -1,7 +1,3 @@
----
-slug: /products
----
-
 # Products
 
 The Stronghold team endeavors to ship several production ready applications, which are more than classical "examples":
