@@ -238,14 +238,14 @@ mod tests {
 
         let mut client: SecureClient = SecureClient::new(clientid);
 
-        let (vid, rid) = SecureClient::resolve_location(vidlochead.clone());
-        let (vid2, rid2) = SecureClient::resolve_location(vidlochead2.clone());
+        let (vid, rid) = SecureClient::resolve_location(&vidlochead);
+        let (vid2, rid2) = SecureClient::resolve_location(&vidlochead2);
 
         client.add_new_vault(vid);
         client.add_new_vault(vid2);
 
-        let (_, rid_head) = SecureClient::resolve_location(vidlochead);
-        let (_, rid_head_2) = SecureClient::resolve_location(vidlochead2);
+        let (_, rid_head) = SecureClient::resolve_location(&vidlochead);
+        let (_, rid_head_2) = SecureClient::resolve_location(&vidlochead2);
 
         assert_eq!(rid, rid_head);
         assert_eq!(rid2, rid_head_2);

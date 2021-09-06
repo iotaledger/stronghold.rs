@@ -20,7 +20,7 @@ use crate::{
         GetAllClients, GetClient, GetSnapshot, InsertClient, Registry, RemoveClient, SecureClient,
     },
     line_error,
-    procedures::{ComplexProc, ExecProc},
+    procedures::{CollectedOutput, ComplexProc, ExecProc},
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -335,10 +335,9 @@ impl Stronghold {
 
     /// Executes a runtime command given a [`Procedure`].  Returns a [`ProcResult`] based off of the control_request
     /// specified.
-    pub async fn runtime_exec<P>(&self, control_request: ComplexProc<P>) -> Result<P::OutData, anyhow::Error>
+    pub async fn runtime_exec<P>(&self, control_request: ComplexProc<P>) -> Result<CollectedOutput, anyhow::Error>
     where
-        P: ExecProc<InData = ()> + Send + 'static,
-        P::OutData: Send,
+        P: ExecProc + Send + 'static,
     {
         match self.target.send(control_request).await {
             Ok(result) => result,
@@ -851,10 +850,9 @@ impl Stronghold {
         &self,
         peer: PeerId,
         control_request: ComplexProc<P>,
-    ) -> ResultMessage<P::OutData>
+    ) -> ResultMessage<CollectedOutput>
     where
-        P: ExecProc<InData = ()> + Send + 'static,
-        P::OutData: Send,
+        P: ExecProc + Send + 'static,
     {
         let _actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
         let _send_request = network_msg::SendRequest {

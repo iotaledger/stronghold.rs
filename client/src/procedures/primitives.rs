@@ -3,8 +3,12 @@
 
 use crate::{Location, SLIP10DeriveInput};
 
-use super::{BuildProc, ComplexProc, ExecProc, GetSourceVault, GetTargetVault, ProcExecutor};
+use super::{
+    BuildProc, ComplexProc, DataKey, ExecProc, InputDataInfo, OutputDataInfo, ProcExecutor, ProcState, SourceVaultInfo,
+    TargetVaultInfo,
+};
 use crypto::{
+    hashes::sha::{SHA256, SHA256_LEN},
     keys::{
         bip39,
         slip10::{self, Chain, ChainCode, Curve, Seed},
@@ -13,9 +17,9 @@ use crypto::{
     utils::rand::fill,
 };
 use engine::{runtime::GuardedVec, vault::RecordHint};
-use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use stronghold_derive::{proc_fn, Procedure};
+use stronghold_utils::test_utils::fresh::{bytestring, string};
 
 // ==========================
 // Primitive Proc
@@ -26,60 +30,73 @@ pub struct ProcOutput<T> {
     pub return_value: T,
 }
 
-pub trait Generate {
+trait Parse {
+    type InData;
     type OutData;
-    fn generate(self) -> Result<ProcOutput<Self::OutData>, engine::Error>;
+
+    fn parse(self, input: Self::InData) -> Result<Self::OutData, engine::Error>;
 }
 
-pub trait Process {
+trait Generate {
+    type InData;
     type OutData;
-    fn process(self, guard: GuardedVec<u8>) -> Result<ProcOutput<Self::OutData>, engine::Error>;
+
+    fn generate(self, input: Self::InData) -> Result<ProcOutput<Self::OutData>, engine::Error>;
 }
 
-pub trait Sink {
+trait Process {
+    type InData;
     type OutData;
-    fn sink(self, guard: GuardedVec<u8>) -> Result<Self::OutData, engine::Error>;
+
+    fn process(self, input: Self::InData, guard: GuardedVec<u8>) -> Result<ProcOutput<Self::OutData>, engine::Error>;
+}
+
+trait Sink {
+    type InData;
+    type OutData;
+
+    fn sink(self, input: Self::InData, guard: GuardedVec<u8>) -> Result<Self::OutData, engine::Error>;
 }
 
 // ==========================
 // Helper Procs
 // ==========================
 
-#[derive(Clone, Procedure)]
-pub struct Input<T> {
-    pub data: T,
-}
-
-impl<T> ExecProc for Input<T> {
-    type InData = ();
-    type OutData = T;
-
-    fn exec<X: ProcExecutor>(self, _: &mut X, _: Self::InData) -> Result<Self::OutData, anyhow::Error> {
-        Ok(self.data)
-    }
-}
-
-impl<T> From<T> for Input<T> {
-    fn from(data: T) -> Self {
-        Input { data }
-    }
-}
-
-#[derive(Procedure, Serialize, Deserialize)]
+#[derive(Procedure)]
 pub struct WriteVault {
-    #[input]
-    pub data: Vec<u8>,
+    #[input_data]
+    data: InputData<Vec<u8>>,
     #[target_location]
-    pub output: (Location, RecordHint),
+    output: (Location, RecordHint, bool),
+}
+
+impl WriteVault {
+    pub fn new(data: Vec<u8>, target: Location, hint: RecordHint) -> Self {
+        WriteVault {
+            data: InputData::Value(data),
+            output: (target, hint, false),
+        }
+    }
+    pub fn new_dyn(data_key: DataKey, target: Location, hint: RecordHint) -> Self {
+        let input = InputData::Key {
+            key: data_key,
+            convert: |v| Ok(v),
+        };
+        WriteVault {
+            data: input,
+            output: (target, hint, false),
+        }
+    }
 }
 
 #[proc_fn]
 impl Generate for WriteVault {
+    type InData = Vec<u8>;
     type OutData = ();
 
-    fn generate(self) -> Result<ProcOutput<Self::OutData>, engine::Error> {
+    fn generate(self, input: Self::InData) -> Result<ProcOutput<Self::OutData>, engine::Error> {
         Ok(ProcOutput {
-            write_vault: self.data,
+            write_vault: input,
             return_value: (),
         })
     }
@@ -89,19 +106,40 @@ impl Generate for WriteVault {
 // Old Procs
 // ==========================
 
-#[derive(Procedure, Serialize, Deserialize)]
+#[derive(Clone)]
+pub enum InputData<T> {
+    Key {
+        key: DataKey,
+        convert: fn(Vec<u8>) -> Result<T, anyhow::Error>,
+    },
+    Value(T),
+}
+
+#[derive(Procedure)]
 pub struct Slip10Generate {
-    pub size_bytes: Option<usize>,
+    size_bytes: Option<usize>,
 
     #[target_location]
-    pub output: (Location, RecordHint),
+    output: (Location, RecordHint, bool),
+}
+
+impl Slip10Generate {
+    pub fn new(size_bytes: Option<usize>) -> Self {
+        let location = Location::generic(bytestring(), bytestring());
+        let hint = RecordHint::new("").unwrap();
+        Slip10Generate {
+            size_bytes,
+            output: (location, hint, true),
+        }
+    }
 }
 
 #[proc_fn]
 impl Generate for Slip10Generate {
+    type InData = ();
     type OutData = ();
 
-    fn generate(self) -> Result<ProcOutput<Self::OutData>, engine::Error> {
+    fn generate(self, _: Self::InData) -> Result<ProcOutput<Self::OutData>, engine::Error> {
         let size_bytes = self.size_bytes.unwrap_or(64);
         let mut seed = vec![0u8; size_bytes];
         fill(&mut seed)?;
@@ -112,36 +150,53 @@ impl Generate for Slip10Generate {
     }
 }
 
-#[derive(Procedure, Serialize, Deserialize)]
+#[derive(Procedure)]
 pub struct SLIP10Derive {
-    #[input]
-    pub chain: Chain,
+    #[input_data]
+    chain: InputData<Chain>,
 
-    pub input: SLIP10DeriveInput,
+    #[output_key]
+    output_key: (DataKey, bool),
+
+    #[source_location]
+    input: SLIP10DeriveInput,
 
     #[target_location]
-    pub output: (Location, RecordHint),
+    output: (Location, RecordHint, bool),
 }
 
-impl GetSourceVault for SLIP10Derive {
-    fn get_source(&self) -> Location {
-        match self.input.clone() {
-            SLIP10DeriveInput::Key(parent) => parent,
-            SLIP10DeriveInput::Seed(seed) => seed,
+impl SLIP10Derive {
+    pub fn new_from_seed(seed: Location, chain: Chain) -> Self {
+        Self::new(chain, SLIP10DeriveInput::Seed(seed))
+    }
+
+    pub fn new_from_key(parent: Location, chain: Chain) -> Self {
+        Self::new(chain, SLIP10DeriveInput::Key(parent))
+    }
+
+    fn new(chain: Chain, source: SLIP10DeriveInput) -> Self {
+        let location = Location::generic(bytestring(), bytestring());
+        let hint = RecordHint::new("").unwrap();
+        SLIP10Derive {
+            chain: InputData::Value(chain),
+            input: source,
+            output: (location, hint, true),
+            output_key: (DataKey::new(string()), true),
         }
     }
 }
 
 #[proc_fn]
 impl Process for SLIP10Derive {
+    type InData = Chain;
     type OutData = ChainCode;
 
-    fn process(self, guard: GuardedVec<u8>) -> Result<ProcOutput<ChainCode>, engine::Error> {
+    fn process(self, chain: Self::InData, guard: GuardedVec<u8>) -> Result<ProcOutput<ChainCode>, engine::Error> {
         let dk = match self.input {
             SLIP10DeriveInput::Key(_) => {
-                slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&self.chain))
+                slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&chain))
             }
-            SLIP10DeriveInput::Seed(_) => Seed::from_bytes(&guard.borrow()).derive(Curve::Ed25519, &self.chain),
+            SLIP10DeriveInput::Seed(_) => Seed::from_bytes(&guard.borrow()).derive(Curve::Ed25519, &chain),
         }?;
         Ok(ProcOutput {
             write_vault: dk.into(),
@@ -150,19 +205,31 @@ impl Process for SLIP10Derive {
     }
 }
 
-#[derive(Procedure, Serialize, Deserialize)]
+#[derive(Procedure)]
 pub struct BIP39Generate {
-    pub passphrase: Option<String>,
+    passphrase: Option<String>,
 
     #[target_location]
-    pub output: (Location, RecordHint),
+    output: (Location, RecordHint, bool),
+}
+
+impl BIP39Generate {
+    pub fn new(passphrase: Option<String>) -> Self {
+        let location = Location::generic(bytestring(), bytestring());
+        let hint = RecordHint::new("").unwrap();
+        BIP39Generate {
+            passphrase,
+            output: (location, hint, true),
+        }
+    }
 }
 
 #[proc_fn]
 impl Generate for BIP39Generate {
+    type InData = ();
     type OutData = ();
 
-    fn generate(self) -> Result<ProcOutput<Self::OutData>, engine::Error> {
+    fn generate(self, _: Self::InData) -> Result<ProcOutput<Self::OutData>, engine::Error> {
         let mut entropy = [0u8; 32];
         fill(&mut entropy)?;
 
@@ -183,25 +250,53 @@ impl Generate for BIP39Generate {
     }
 }
 
-#[derive(Procedure, Serialize, Deserialize)]
+#[derive(Procedure)]
 pub struct BIP39Recover {
-    pub passphrase: Option<String>,
+    passphrase: Option<String>,
 
-    #[input]
-    pub mnemonic: String,
+    #[input_data]
+    mnemonic: InputData<String>,
 
     #[target_location]
-    pub output: (Location, RecordHint),
+    output: (Location, RecordHint, bool),
+}
+
+impl BIP39Recover {
+    pub fn new(passphrase: Option<String>, mnemonic: String) -> Self {
+        let location = Location::generic(bytestring(), bytestring());
+        let hint = RecordHint::new("").unwrap();
+        BIP39Recover {
+            passphrase,
+            mnemonic: InputData::Value(mnemonic),
+            output: (location, hint, true),
+        }
+    }
+
+    pub fn new_dyn(passphrase: Option<String>, mnemonic_key: DataKey) -> Self {
+        let location = Location::generic(bytestring(), bytestring());
+        let hint = RecordHint::new("").unwrap();
+        let convert = |k: Vec<u8>| String::from_utf8(k).map_err(|e| anyhow::anyhow!("Invalid input: {}", e));
+        let input = InputData::Key {
+            key: mnemonic_key,
+            convert,
+        };
+        BIP39Recover {
+            passphrase,
+            mnemonic: input,
+            output: (location, hint, true),
+        }
+    }
 }
 
 #[proc_fn]
 impl Generate for BIP39Recover {
+    type InData = String;
     type OutData = ();
 
-    fn generate(self) -> Result<ProcOutput<Self::OutData>, engine::Error> {
+    fn generate(self, mnemonic: Self::InData) -> Result<ProcOutput<Self::OutData>, engine::Error> {
         let mut seed = [0u8; 64];
         let passphrase = self.passphrase.unwrap_or_else(|| "".into());
-        bip39::mnemonic_to_seed(&self.mnemonic, &passphrase, &mut seed);
+        bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
         Ok(ProcOutput {
             write_vault: seed.to_vec(),
             return_value: (),
@@ -209,17 +304,30 @@ impl Generate for BIP39Recover {
     }
 }
 
-#[derive(Clone, Procedure, Serialize, Deserialize)]
+#[derive(Clone, Procedure)]
 pub struct Ed25519PublicKey {
     #[source_location]
-    pub private_key: Location,
+    private_key: Location,
+
+    #[output_key]
+    output_key: (DataKey, bool),
+}
+
+impl Ed25519PublicKey {
+    pub fn new(private_key: Location) -> Self {
+        Ed25519PublicKey {
+            private_key,
+            output_key: (DataKey::new(string()), true),
+        }
+    }
 }
 
 #[proc_fn]
 impl Sink for Ed25519PublicKey {
+    type InData = ();
     type OutData = [u8; PUBLIC_KEY_LENGTH];
 
-    fn sink(self, guard: GuardedVec<u8>) -> Result<Self::OutData, engine::Error> {
+    fn sink(self, _: Self::InData, guard: GuardedVec<u8>) -> Result<Self::OutData, engine::Error> {
         let raw = guard.borrow();
         let mut raw = (*raw).to_vec();
         if raw.len() < 32 {
@@ -243,20 +351,45 @@ impl Sink for Ed25519PublicKey {
     }
 }
 
-#[derive(Procedure, Serialize, Deserialize)]
+#[derive(Procedure)]
 pub struct Ed25519Sign {
-    #[input]
-    pub msg: Vec<u8>,
+    #[input_data]
+    msg: InputData<Vec<u8>>,
 
     #[source_location]
-    pub private_key: Location,
+    private_key: Location,
+
+    #[output_key]
+    output_key: (DataKey, bool),
+}
+
+impl Ed25519Sign {
+    pub fn new(private_key: Location, msg: Vec<u8>) -> Self {
+        Ed25519Sign {
+            msg: InputData::Value(msg),
+            private_key,
+            output_key: (DataKey::new(string()), true),
+        }
+    }
+    pub fn new_dyn(private_key: Location, msg_key: DataKey) -> Self {
+        let input = InputData::Key {
+            key: msg_key,
+            convert: |v| Ok(v),
+        };
+        Ed25519Sign {
+            msg: input,
+            private_key,
+            output_key: (DataKey::new(string()), true),
+        }
+    }
 }
 
 #[proc_fn]
 impl Sink for Ed25519Sign {
+    type InData = Vec<u8>;
     type OutData = [u8; SIGNATURE_LENGTH];
 
-    fn sink(self, guard: GuardedVec<u8>) -> Result<Self::OutData, engine::Error> {
+    fn sink(self, msg: Self::InData, guard: GuardedVec<u8>) -> Result<Self::OutData, engine::Error> {
         let raw = guard.borrow();
         let mut raw = (*raw).to_vec();
 
@@ -274,7 +407,47 @@ impl Sink for Ed25519Sign {
 
         let sk = ed25519::SecretKey::from_bytes(bs);
 
-        let sig = sk.sign(&self.msg);
+        let sig = sk.sign(&msg);
         Ok(sig.to_bytes())
+    }
+}
+
+#[derive(Procedure)]
+pub struct SHA256Digest {
+    #[input_data]
+    msg: InputData<Vec<u8>>,
+
+    #[output_key]
+    output_key: (DataKey, bool),
+}
+
+impl SHA256Digest {
+    pub fn new(msg: Vec<u8>) -> Self {
+        SHA256Digest {
+            msg: InputData::Value(msg),
+            output_key: (DataKey::new(string()), true),
+        }
+    }
+
+    pub fn new_dyn(msg_key: DataKey) -> Self {
+        let input = InputData::Key {
+            key: msg_key,
+            convert: |v| Ok(v),
+        };
+        SHA256Digest {
+            msg: input,
+            output_key: (DataKey::new(string()), true),
+        }
+    }
+}
+
+impl Parse for SHA256Digest {
+    type InData = Vec<u8>;
+    type OutData = [u8; SHA256_LEN];
+
+    fn parse(self, input: Self::InData) -> Result<Self::OutData, engine::Error> {
+        let mut digest = [0; SHA256_LEN];
+        SHA256(&input, &mut digest);
+        Ok(digest)
     }
 }

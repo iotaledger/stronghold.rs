@@ -4,8 +4,8 @@
 use proc_macro2::Ident;
 use quote::quote;
 use syn::{
-    punctuated::Punctuated, token::Comma, Data, DataStruct, DeriveInput, Field, Fields, GenericParam, Generics,
-    ImplItem, ImplItemType, ItemImpl, Path, PathSegment, Type, TypePath,
+    Data, DataStruct, DeriveInput, Field, Fields, GenericParam, Generics, ImplItem, ImplItemType, ItemImpl, Path,
+    PathSegment, Type, TypePath, TypeTuple,
 };
 
 pub fn impl_proc_traits(derive_input: DeriveInput) -> proc_macro2::TokenStream {
@@ -20,90 +20,14 @@ pub fn impl_proc_traits(derive_input: DeriveInput) -> proc_macro2::TokenStream {
     let proc_ident = derive_input.ident.clone();
     let mut impls = Vec::new();
 
-    let dyn_proc_ident = gen_dyn_input_proc(&mut impls, &derive_input, &fields);
-
     for field in fields {
-        impl_source_target(&mut impls, &field, &derive_input.generics, &proc_ident, &dyn_proc_ident)
+        impl_source_target(&mut impls, &field, &derive_input.generics, &proc_ident)
     }
 
     // implement BuildProc trait
-    impl_build_proc(&mut impls, &proc_ident, derive_input.generics.clone());
-    if let Some(dyn_proc_ident) = dyn_proc_ident {
-        impl_build_proc(&mut impls, &dyn_proc_ident, derive_input.generics);
-    }
+    impl_build_proc(&mut impls, &proc_ident, derive_input.generics);
 
     impls.into_iter().collect()
-}
-
-pub fn gen_dyn_input_proc(
-    impls: &mut Vec<proc_macro2::TokenStream>,
-    derive_input: &DeriveInput,
-    fields: &Punctuated<Field, Comma>,
-) -> Option<syn::Ident> {
-    // Extract the "input"-field from the other fields
-    let mut input_field = None;
-    let other_fields: Punctuated<Field, Comma> = fields
-        .into_iter()
-        .filter_map(|f| {
-            if f.attrs.iter().any(|a| a.path.segments.last().unwrap().ident == "input") {
-                input_field = Some(f.clone());
-                None
-            } else {
-                let mut f = f.clone();
-                f.attrs = Vec::new();
-                Some(f)
-            }
-        })
-        .collect();
-    let input_field = input_field?;
-
-    // Generate the code for creating the original proc from the dyn proc
-    let assign_fields = other_fields
-        .iter()
-        .map(|field| {
-            let fi = field.ident.as_ref().unwrap();
-            quote! {#fi: self.#fi,}
-        })
-        .collect::<proc_macro2::TokenStream>();
-
-    // Create a clone of the procedure with ident <Proc-Name>Dyn.
-    // The clone copies all fields from the original one apart from the input one.
-    let mut dyn_proc = derive_input.clone();
-    let dyn_proc_ident = syn::Ident::new(&format!("{}Dyn", derive_input.ident), derive_input.ident.span());
-    dyn_proc.ident = dyn_proc_ident.clone();
-
-    // Assign only the non-input fields.
-    let fields = match dyn_proc.data {
-        Data::Struct(DataStruct {
-            fields: Fields::Named(ref mut fields),
-            ..
-        }) => fields,
-        _ => return None,
-    };
-    fields.named = other_fields;
-
-    let original_proc_ident = derive_input.ident.clone();
-    let input_field_ident = input_field.ident.unwrap();
-    let in_type = input_field.ty;
-    let (impl_generics, ty_generics, where_clause) = dyn_proc.generics.split_for_impl();
-
-    let gen = quote! {
-
-        #[derive(Clone)]
-        #dyn_proc
-
-        impl #impl_generics ExecProc for #dyn_proc_ident #ty_generics #where_clause {
-            type InData = #in_type;
-            type OutData = <#original_proc_ident as ExecProc>::OutData;
-
-            fn exec<X: ProcExecutor>(self, executor: &mut X, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
-                let proc = #original_proc_ident {#assign_fields #input_field_ident: input};
-                proc.exec(executor, ())
-            }
-        }
-    };
-    impls.push(gen);
-    Some(dyn_proc_ident)
 }
 
 fn impl_build_proc(impls: &mut Vec<proc_macro2::TokenStream>, ident: &Ident, generics: Generics) {
@@ -123,7 +47,6 @@ fn impl_source_target(
     field: &Field,
     generics: &Generics,
     proc_ident: &Ident,
-    dyn_proc_ident: &Option<Ident>,
 ) {
     let field_ident = match field.ident {
         Some(ref i) => i,
@@ -137,9 +60,8 @@ fn impl_source_target(
     {
         impl_get_location(
             impls,
-            Location::Source,
+            IOTrait::SourceVault,
             proc_ident,
-            dyn_proc_ident,
             field_ident,
             field_type,
             generics.clone(),
@@ -152,9 +74,36 @@ fn impl_source_target(
     {
         impl_get_location(
             impls,
-            Location::Target,
+            IOTrait::TargetVault,
             proc_ident,
-            dyn_proc_ident,
+            field_ident,
+            field_type,
+            generics.clone(),
+        );
+    }
+    if field
+        .attrs
+        .iter()
+        .any(|attr| attr.path.segments.last().unwrap().ident == "input_data")
+    {
+        impl_get_location(
+            impls,
+            IOTrait::InputData(&field.ty),
+            proc_ident,
+            field_ident,
+            field_type,
+            generics.clone(),
+        );
+    }
+    if field
+        .attrs
+        .iter()
+        .any(|attr| attr.path.segments.last().unwrap().ident == "output_key")
+    {
+        impl_get_location(
+            impls,
+            IOTrait::OutputKey,
+            proc_ident,
             field_ident,
             field_type,
             generics.clone(),
@@ -162,30 +111,51 @@ fn impl_source_target(
     }
 }
 
-enum Location {
-    Source,
-    Target,
+enum IOTrait<'a> {
+    SourceVault,
+    TargetVault,
+    InputData(&'a Type),
+    OutputKey,
 }
 
 fn impl_get_location(
     impls: &mut Vec<proc_macro2::TokenStream>,
-    loc: Location,
+    io_trait: IOTrait,
     proc_ident: &Ident,
-    dyn_proc_ident: &Option<Ident>,
     field_ident: &Ident,
     field_type: &Type,
     generics: Generics,
 ) {
-    let (trait_name, fn_name, return_type) = match loc {
-        Location::Source => (quote! {GetSourceVault}, quote! {get_source}, quote! {Location}),
-        Location::Target => (
-            quote! {GetTargetVault},
-            quote! {get_target},
-            quote! {(Location, RecordHint)},
+    let (trait_name, at, fn_name, fn_name_mut, return_type) = match io_trait {
+        IOTrait::SourceVault => (
+            quote! {SourceVaultInfo},
+            None,
+            quote! {source_location},
+            quote! {source_location_mut},
+            quote! {Location},
+        ),
+        IOTrait::TargetVault => (
+            quote! {TargetVaultInfo},
+            None,
+            quote! {target_info},
+            quote! {target_info_mut},
+            quote! {(Location, RecordHint, bool)},
+        ),
+        IOTrait::InputData(ty) => (
+            quote! {InputDataInfo},
+            Some(quote! {type InData = <#ty as InputDataInfo>::InData; }),
+            quote! {input_info},
+            quote! {input_info_mut},
+            quote! {InputData<Self::InData>},
+        ),
+        IOTrait::OutputKey => (
+            quote! {OutputDataInfo},
+            None,
+            quote! {output_info},
+            quote! {output_info_mut},
+            quote! {(DataKey, bool)},
         ),
     };
-
-    let location = quote! {self.#field_ident.#fn_name()};
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let mut gen_where_clause = quote! {#where_clause};
@@ -208,22 +178,17 @@ fn impl_get_location(
             }
         }
     }
-
-    let mut idents = vec![proc_ident];
-
-    if let Some(dyn_proc) = dyn_proc_ident {
-        idents.push(dyn_proc);
-    }
-
-    for ident in idents {
-        impls.push(quote! {
-            impl #impl_generics #trait_name for #ident #ty_generics #gen_where_clause {
-                fn #fn_name(&self) -> #return_type {
-                    #location
-                }
+    impls.push(quote! {
+        impl #impl_generics #trait_name for #proc_ident #ty_generics #gen_where_clause {
+            #at
+            fn #fn_name(&self) -> &#return_type {
+                self.#field_ident.#fn_name()
             }
-        })
-    }
+            fn #fn_name_mut(&mut self) -> &mut #return_type {
+                self.#field_ident.#fn_name_mut()
+            }
+        }
+    })
 }
 
 // `proc_fn` macro logic
@@ -237,67 +202,106 @@ pub fn impl_exec_proc(item_impl: ItemImpl) -> proc_macro2::TokenStream {
         .and_then(|t| t.1.segments.last().cloned())
         .expect(panic_msg);
 
-    let gen_exec_fn = generate_fn_body(&segment);
-    let out_type = item_impl
-        .items
-        .iter()
-        .find_map(|i| match i {
-            ImplItem::Type(ImplItemType { ident, ty, .. }) if ident == "OutData" => Some(ty),
-            _ => None,
-        })
-        .expect("Missing associated type OutData");
+    let mut has_input = false;
+    let mut returns_data = false;
+    for item in item_impl.items {
+        if let ImplItem::Type(ImplItemType { ident, ty, .. }) = item {
+            let is_empty_tuple = matches!(ty, Type::Tuple(TypeTuple{elems, ..}) if elems.is_empty());
+            if ident == "InData" && !is_empty_tuple {
+                has_input = true;
+            } else if ident == "OutData" && !is_empty_tuple {
+                returns_data = true;
+            }
+        }
+    }
+    let gen_exec_fn = generate_fn_body(&segment, has_input, returns_data);
     let self_type = item_impl.self_ty;
     let (impl_generics, ty_generics, where_clause) = item_impl.generics.split_for_impl();
 
     quote! {
         impl #impl_generics ExecProc for #self_type #ty_generics #where_clause {
-            type InData = ();
-            type OutData = #out_type;
-
-            fn exec<X: ProcExecutor>(self, executor: &mut X, input: Self::InData) -> Result<Self::OutData, anyhow::Error> {
+            fn exec<X: ProcExecutor>(self, executor: &mut X, state: &mut ProcState) -> Result<(), anyhow::Error> {
                 #gen_exec_fn
             }
         }
     }
 }
 
-fn generate_fn_body(segment: &PathSegment) -> proc_macro2::TokenStream {
-    match format!("{}", segment.ident).as_str() {
-        "Generate" => {
-            quote! {
-                let (location_1, hint) = self.get_target();
+fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) -> proc_macro2::TokenStream {
+    let gen_input = if has_input {
+        quote! {
+            let input_data = self.input_info();
+            let input = match input_data {
+                InputData::Value(v) => v.clone(),
+                InputData::Key {key, convert} => {
+                    let data = state.get_data(&key)?;
+                    convert(data)?
+                }
+            };
+        }
+    } else {
+        quote! {let input = (); }
+    };
+    let gen_output_key;
+    let gen_insert_data;
+    if returns_data {
+        gen_output_key = quote! {
+            let (key, is_out_data_temp) = self.output_info().clone();
+        };
+        gen_insert_data = quote! {
+           state.insert_data(key, return_value.into(), is_out_data_temp);
+        }
+    } else {
+        gen_output_key = quote! {};
+        gen_insert_data = quote! {};
+    };
+    match segment.ident.to_string().as_str() {
+        "Parse" => quote! {
+                #gen_input
+                #gen_output_key
+                let return_value = <Self as Parse>::parse(self, input)?;
+                #gen_insert_data
+                Ok(())
+        },
+        "Generate" => quote! {
+                let (location_1, hint, is_secret_temp) = self.target_info().clone();
+                #gen_input
+                #gen_output_key
                 let ProcOutput {
                     write_vault,
                     return_value,
-                } = <Self as Generate>::generate(self)?;
-                executor.write_to_vault(location_1, hint, write_vault)?;
-                Ok(return_value)
-            }
-        }
-        "Process" => {
-            quote! {
-                let location_0 = self.get_source();
-                let (location_1, hint) = self.get_target();
-                let f = move |(), guard| <Self as Process>::process(self, guard);
-                let res = executor.exec_proc(
-                    location_0,
-                    location_1,
+                } = <Self as Generate>::generate(self, input)?;
+                executor.write_to_vault(&location_1, hint, write_vault)?;
+                state.add_log(location_1, is_secret_temp);
+                #gen_insert_data
+                Ok(())
+        },
+        "Process" => quote! {
+                let location_0 = self.source_location().clone();
+                let (location_1, hint, is_secret_temp) = self.target_info().clone();
+                #gen_input
+                #gen_output_key
+                let f = move |input, guard| <Self as Process>::process(self, input, guard);
+                let return_value = executor.exec_proc(
+                    &location_0,
+                    &location_1,
                     hint,
                     f,
-                    ()
-                );
-
-                res
-            }
-        }
-        "Sink" => {
-            quote! {
-                let location_0 = self.get_source();
-                let f = move |(), guard| <Self as Sink>::sink(self, guard);
-                let res = executor.get_guard(location_0, f, ());
-                res
-            }
-        }
+                    input
+                )?;
+                state.add_log(location_1, is_secret_temp);
+                #gen_insert_data
+                Ok(())
+        },
+        "Sink" => quote! {
+            let location_0 = self.source_location().clone();
+            #gen_output_key
+            #gen_input
+            let f = move |input, guard| <Self as Sink>::sink(self, input, guard);
+            let return_value = executor.get_guard(&location_0, f, input)?;
+            #gen_insert_data
+            Ok(())
+        },
         _ => panic!(),
     }
 }

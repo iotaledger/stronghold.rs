@@ -17,7 +17,7 @@ pub use crate::{
 };
 use crate::{
     internals,
-    procedures::{ComplexProc, ExecProc, ProcExecutor, ProcOutput},
+    procedures::{CollectedOutput, ComplexProc, ExecProc, ProcExecutor, ProcOutput},
     Location,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
@@ -703,9 +703,9 @@ impl_handler!(
 
 impl<Proc> Handler<ComplexProc<Proc>> for SecureClient
 where
-    Proc: ExecProc<InData = ()> + 'static,
+    Proc: ExecProc + 'static,
 {
-    type Result = Result<Proc::OutData, anyhow::Error>;
+    type Result = Result<CollectedOutput, anyhow::Error>;
 
     fn handle(&mut self, proc: ComplexProc<Proc>, _: &mut Self::Context) -> Self::Result {
         proc.run(self)
@@ -713,7 +713,7 @@ where
 }
 
 impl ProcExecutor for SecureClient {
-    fn get_guard<F, I, O>(&mut self, location: Location, f: F, input: I) -> Result<O, anyhow::Error>
+    fn get_guard<F, I, O>(&mut self, location: &Location, f: F, input: I) -> Result<O, anyhow::Error>
     where
         F: FnOnce(I, GuardedVec<u8>) -> Result<O, engine::Error>,
     {
@@ -721,17 +721,18 @@ impl ProcExecutor for SecureClient {
         let key = self.get_key(vault_id)?;
 
         let mut ret = None;
-        self.db.get_guard(&key, vault_id, record_id, |guard: GuardedVec<u8>| {
+        let proc_fn = |guard: GuardedVec<u8>| {
             ret = Some(f(input, guard)?);
             Ok(())
-        })?;
+        };
+        self.db.get_guard(&key, vault_id, record_id, proc_fn)?;
         Ok(ret.unwrap())
     }
 
     fn exec_proc<F, I, O>(
         &mut self,
-        location0: Location,
-        location1: Location,
+        location0: &Location,
+        location1: &Location,
         hint: RecordHint,
         f: F,
         input: I,
@@ -746,25 +747,49 @@ impl ProcExecutor for SecureClient {
         let key1 = self.get_or_create_key(vid1)?;
 
         let mut ret = None;
+        let proc_fn = |guard: GuardedVec<u8>| {
+            let ProcOutput {
+                return_value,
+                write_vault,
+            } = f(input, guard)?;
+            ret = Some(return_value);
+            Ok(write_vault)
+        };
         self.db
-            .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, |guard: GuardedVec<u8>| {
-                let ProcOutput {
-                    return_value,
-                    write_vault,
-                } = f(input, guard)?;
-                ret = Some(return_value);
-                Ok(write_vault)
-            })
+            .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, proc_fn)
             .map_err(|e| anyhow::anyhow!(e))?;
         Ok(ret.unwrap())
     }
 
-    fn write_to_vault(&mut self, location: Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error> {
+    fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error> {
         let (vault_id, record_id) = Self::resolve_location(location);
         let key = self.get_or_create_key(vault_id)?;
 
         self.db
             .write(&key, vault_id, record_id, &value, hint)
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+
+    fn revoke_data(&mut self, location: &Location) -> Result<(), anyhow::Error> {
+        let (vault_id, record_id) = Self::resolve_location(location);
+        let key = self
+            .keystore
+            .get_key(vault_id)
+            .ok_or(anyhow::anyhow!(VaultError::RevokationError))?;
+        self.keystore.insert_key(vault_id, key.clone());
+        self.db
+            .revoke_record(&key, vault_id, record_id)
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+
+    fn garbage_collect(&mut self, vault_id: VaultId) -> Result<(), anyhow::Error> {
+        let key = self
+            .keystore
+            .get_key(vault_id)
+            .ok_or(anyhow::anyhow!(VaultError::GargabeCollectError))?;
+        self.keystore.insert_key(vault_id, key.clone());
+        self.db
+            .garbage_collect_vault(&key, vault_id)
             .map_err(|e| anyhow::anyhow!(e))
     }
 }

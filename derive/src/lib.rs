@@ -76,7 +76,7 @@ pub fn permissions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 ///
-#[proc_macro_derive(Procedure, attributes(source_location, target_location, input))]
+#[proc_macro_derive(Procedure, attributes(source_location, target_location, input_data, output_key))]
 pub fn derive_exec_proc(input: TokenStream) -> proc_macro::TokenStream {
     let derive_input = syn::parse_macro_input!(input as DeriveInput);
     let tokens = impl_proc_traits(derive_input);
