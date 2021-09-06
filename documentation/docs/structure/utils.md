@@ -1,3 +1,11 @@
+---
+description: The Structure:utils crate contains common utilities for the stronghold libraries.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- rust
+- crate
+- common
+---
 # Structure: Utils
 
 | | | |

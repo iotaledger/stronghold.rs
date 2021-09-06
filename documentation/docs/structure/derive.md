@@ -1,3 +1,13 @@
+---
+description: The Structure:Derive crate contains procedural macros for Stronghold.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- rust
+- crate
+- GuardDebug
+- VariantPermission
+---
+
 # Structure: Derive
 
 | | | |

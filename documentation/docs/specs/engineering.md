@@ -1,10 +1,16 @@
-# Specification: ENGINEERING
+---
+description: This document introduces the High-Level Specification of the Stronghold.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- rust
+- high level 
+- low level
+- library
+---
+# Stronghold Engineering Specification {#engineering-spec}
 
-# Stronghold Engineering Specification
-[engineering-spec]: #engineering-spec
+## Frontmatter {#frontmatter}
 
-## Frontmatter
-[frontmatter]: #frontmatter
 ```yaml
 title: Stronghold
 stub: stronghold
@@ -17,11 +23,9 @@ licenses: ["CC-BY-INTL-3.0"]
 updated: 2021-Apr-27
 ```
 
-## Summary
-[summary]: #summary
+## Summary {#summary}
 This document introduces the High-Level Specification of the Stronghold.
-## Logical System Design
-[system-design]: #system-design
+## Logical System Design {#system-design}
 
 ### Low Level
 A Stronghold is composed of several interacting systems at a low level:

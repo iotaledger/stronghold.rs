@@ -39,31 +39,31 @@ module.exports = {
 
             {
               type: 'doc',
-              id: 'structure/engine',
+              id: 'structure/engine/overview',
               label: 'Overview'
             },
 
             {
               type: 'doc',
-              id: 'structure/snapshot',
+              id: 'structure/engine/snapshot',
               label: 'Snapshot'
             },
 
             {
               type: 'doc',
-              id: 'structure/vault',
+              id: 'structure/engine/vault',
               label: 'Vault'
             },
 
             {
               type: 'doc',
-              id: 'structure/store',
+              id: 'structure/engine/store',
               label: 'Store'
             },
 
             {
               type: 'doc',
-              id: 'structure/runtime',
+              id: 'structure/engine/runtime',
               label: 'Runtime'
             },
           ],

@@ -1,3 +1,12 @@
+---
+description: This section contains a description of the scope of the project, and working documents that detail the engineering and requirements specifications.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- documents
+- requirements
+- engineering
+- specifications
+---
 # Specifications
 
 This section contains a description of the scope of the project, as well as the working documents that detail the engineering and requirements specifications.

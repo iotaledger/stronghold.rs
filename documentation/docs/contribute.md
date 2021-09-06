@@ -1,3 +1,14 @@
+---
+description: Contribute to Stronghold by joining the IOTA Stronghold Initiative, contributing to the GitHub repository and documentation, or sharing your knowledge on Discord.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- contribute
+- IOTA Stronghold initiative
+- github
+- documentation
+- discord
+- x-teams
+---
 # Contribute to the project
 
 **Thanks for thinking about contributing to the project! We have the following ways that you can contribute.**
