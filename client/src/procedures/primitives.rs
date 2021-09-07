@@ -3,10 +3,7 @@
 
 use crate::{Location, SLIP10DeriveInput};
 
-use super::{
-    BuildProc, ComplexProc, DataKey, ExecProc, InputDataInfo, OutputDataInfo, ProcExecutor, ProcState, SourceVaultInfo,
-    TargetVaultInfo,
-};
+use super::*;
 use crypto::{
     hashes::sha::{SHA256, SHA256_LEN},
     keys::{
@@ -18,134 +15,93 @@ use crypto::{
 };
 use engine::{runtime::GuardedVec, vault::RecordHint};
 use std::convert::TryFrom;
-use stronghold_derive::{proc_fn, Procedure};
-use stronghold_utils::test_utils::fresh::{bytestring, string};
+use stronghold_derive::{execute_procedure, Procedure};
 
 // ==========================
-// Primitive Proc
-// ==========================
-
-pub struct ProcOutput<T> {
-    pub write_vault: Vec<u8>,
-    pub return_value: T,
-}
-
-trait Parse {
-    type InData;
-    type OutData;
-
-    fn parse(self, input: Self::InData) -> Result<Self::OutData, engine::Error>;
-}
-
-trait Generate {
-    type InData;
-    type OutData;
-
-    fn generate(self, input: Self::InData) -> Result<ProcOutput<Self::OutData>, engine::Error>;
-}
-
-trait Process {
-    type InData;
-    type OutData;
-
-    fn process(self, input: Self::InData, guard: GuardedVec<u8>) -> Result<ProcOutput<Self::OutData>, engine::Error>;
-}
-
-trait Sink {
-    type InData;
-    type OutData;
-
-    fn sink(self, input: Self::InData, guard: GuardedVec<u8>) -> Result<Self::OutData, engine::Error>;
-}
-
-// ==========================
-// Helper Procs
+// Helper Procedures
 // ==========================
 
 #[derive(Procedure)]
 pub struct WriteVault {
     #[input_data]
     data: InputData<Vec<u8>>,
-    #[target_location]
-    output: (Location, RecordHint, bool),
+    #[target]
+    target: InterimProduct<Target>,
 }
 
 impl WriteVault {
-    pub fn new(data: Vec<u8>, target: Location, hint: RecordHint) -> Self {
+    pub fn new(data: Vec<u8>, location: Location, hint: RecordHint) -> Self {
         WriteVault {
             data: InputData::Value(data),
-            output: (target, hint, false),
+            target: InterimProduct {
+                target: Target { location, hint },
+                is_temp: false,
+            },
         }
     }
-    pub fn new_dyn(data_key: DataKey, target: Location, hint: RecordHint) -> Self {
-        let input = InputData::Key {
-            key: data_key,
-            convert: |v| Ok(v),
-        };
+    pub fn new_dyn(data_key: OutputKey, target: Location, hint: RecordHint) -> Self {
         WriteVault {
-            data: input,
-            output: (target, hint, false),
+            data: InputData::Key {
+                key: data_key,
+                convert: |v| Ok(v),
+            },
+            target: InterimProduct {
+                target: Target { location: target, hint },
+                is_temp: false,
+            },
         }
     }
 }
 
-#[proc_fn]
+#[execute_procedure]
 impl Generate for WriteVault {
-    type InData = Vec<u8>;
-    type OutData = ();
+    type Input = Vec<u8>;
+    type Output = ();
 
-    fn generate(self, input: Self::InData) -> Result<ProcOutput<Self::OutData>, engine::Error> {
-        Ok(ProcOutput {
-            write_vault: input,
-            return_value: (),
+    fn generate(self, input: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
+        Ok(Products {
+            secret: input,
+            output: (),
         })
     }
 }
 
 // ==========================
-// Old Procs
+// Procedures for Cryptographic Primitives
 // ==========================
-
-#[derive(Clone)]
-pub enum InputData<T> {
-    Key {
-        key: DataKey,
-        convert: fn(Vec<u8>) -> Result<T, anyhow::Error>,
-    },
-    Value(T),
-}
 
 #[derive(Procedure)]
 pub struct Slip10Generate {
     size_bytes: Option<usize>,
 
-    #[target_location]
-    output: (Location, RecordHint, bool),
+    #[target]
+    target: InterimProduct<Target>,
 }
 
 impl Slip10Generate {
     pub fn new(size_bytes: Option<usize>) -> Self {
-        let location = Location::generic(bytestring(), bytestring());
-        let hint = RecordHint::new("").unwrap();
         Slip10Generate {
             size_bytes,
-            output: (location, hint, true),
+            target: InterimProduct {
+                target: Target::random(),
+                is_temp: true,
+            },
         }
     }
 }
 
-#[proc_fn]
+#[execute_procedure]
 impl Generate for Slip10Generate {
-    type InData = ();
-    type OutData = ();
+    type Input = ();
+    type Output = ();
 
-    fn generate(self, _: Self::InData) -> Result<ProcOutput<Self::OutData>, engine::Error> {
+    fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
         let size_bytes = self.size_bytes.unwrap_or(64);
         let mut seed = vec![0u8; size_bytes];
         fill(&mut seed)?;
-        Ok(ProcOutput {
-            write_vault: seed,
-            return_value: (),
+        Ok(Products {
+            secret: seed,
+            output: (),
         })
     }
 }
@@ -156,13 +112,13 @@ pub struct SLIP10Derive {
     chain: InputData<Chain>,
 
     #[output_key]
-    output_key: (DataKey, bool),
+    output_key: InterimProduct<OutputKey>,
 
-    #[source_location]
-    input: SLIP10DeriveInput,
+    #[source]
+    source: SLIP10DeriveInput,
 
-    #[target_location]
-    output: (Location, RecordHint, bool),
+    #[target]
+    target: InterimProduct<Target>,
 }
 
 impl SLIP10Derive {
@@ -175,32 +131,36 @@ impl SLIP10Derive {
     }
 
     fn new(chain: Chain, source: SLIP10DeriveInput) -> Self {
-        let location = Location::generic(bytestring(), bytestring());
-        let hint = RecordHint::new("").unwrap();
         SLIP10Derive {
             chain: InputData::Value(chain),
-            input: source,
-            output: (location, hint, true),
-            output_key: (DataKey::new(string()), true),
+            source,
+            target: InterimProduct {
+                target: Target::random(),
+                is_temp: true,
+            },
+            output_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
         }
     }
 }
 
-#[proc_fn]
+#[execute_procedure]
 impl Process for SLIP10Derive {
-    type InData = Chain;
-    type OutData = ChainCode;
+    type Input = Chain;
+    type Output = ChainCode;
 
-    fn process(self, chain: Self::InData, guard: GuardedVec<u8>) -> Result<ProcOutput<ChainCode>, engine::Error> {
-        let dk = match self.input {
+    fn process(self, chain: Self::Input, guard: GuardedVec<u8>) -> Result<Products<ChainCode>, engine::Error> {
+        let dk = match self.source {
             SLIP10DeriveInput::Key(_) => {
                 slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&chain))
             }
             SLIP10DeriveInput::Seed(_) => Seed::from_bytes(&guard.borrow()).derive(Curve::Ed25519, &chain),
         }?;
-        Ok(ProcOutput {
-            write_vault: dk.into(),
-            return_value: dk.chain_code(),
+        Ok(Products {
+            secret: dk.into(),
+            output: dk.chain_code(),
         })
     }
 }
@@ -209,27 +169,28 @@ impl Process for SLIP10Derive {
 pub struct BIP39Generate {
     passphrase: Option<String>,
 
-    #[target_location]
-    output: (Location, RecordHint, bool),
+    #[target]
+    target: InterimProduct<Target>,
 }
 
 impl BIP39Generate {
     pub fn new(passphrase: Option<String>) -> Self {
-        let location = Location::generic(bytestring(), bytestring());
-        let hint = RecordHint::new("").unwrap();
         BIP39Generate {
             passphrase,
-            output: (location, hint, true),
+            target: InterimProduct {
+                target: Target::random(),
+                is_temp: true,
+            },
         }
     }
 }
 
-#[proc_fn]
+#[execute_procedure]
 impl Generate for BIP39Generate {
-    type InData = ();
-    type OutData = ();
+    type Input = ();
+    type Output = ();
 
-    fn generate(self, _: Self::InData) -> Result<ProcOutput<Self::OutData>, engine::Error> {
+    fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
         let mut entropy = [0u8; 32];
         fill(&mut entropy)?;
 
@@ -243,9 +204,9 @@ impl Generate for BIP39Generate {
         let passphrase = self.passphrase.unwrap_or_else(|| "".into());
         bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
 
-        Ok(ProcOutput {
-            write_vault: seed.to_vec(),
-            return_value: (),
+        Ok(Products {
+            secret: seed.to_vec(),
+            output: (),
         })
     }
 }
@@ -257,81 +218,85 @@ pub struct BIP39Recover {
     #[input_data]
     mnemonic: InputData<String>,
 
-    #[target_location]
-    output: (Location, RecordHint, bool),
+    #[target]
+    target: InterimProduct<Target>,
 }
 
 impl BIP39Recover {
     pub fn new(passphrase: Option<String>, mnemonic: String) -> Self {
-        let location = Location::generic(bytestring(), bytestring());
-        let hint = RecordHint::new("").unwrap();
         BIP39Recover {
             passphrase,
             mnemonic: InputData::Value(mnemonic),
-            output: (location, hint, true),
+            target: InterimProduct {
+                target: Target::random(),
+                is_temp: true,
+            },
         }
     }
 
-    pub fn new_dyn(passphrase: Option<String>, mnemonic_key: DataKey) -> Self {
-        let location = Location::generic(bytestring(), bytestring());
-        let hint = RecordHint::new("").unwrap();
+    pub fn new_dyn(passphrase: Option<String>, mnemonic_key: OutputKey) -> Self {
         let convert = |k: Vec<u8>| String::from_utf8(k).map_err(|e| anyhow::anyhow!("Invalid input: {}", e));
-        let input = InputData::Key {
-            key: mnemonic_key,
-            convert,
-        };
         BIP39Recover {
             passphrase,
-            mnemonic: input,
-            output: (location, hint, true),
+            mnemonic: InputData::Key {
+                key: mnemonic_key,
+                convert,
+            },
+            target: InterimProduct {
+                target: Target::random(),
+                is_temp: true,
+            },
         }
     }
 }
 
-#[proc_fn]
+#[execute_procedure]
 impl Generate for BIP39Recover {
-    type InData = String;
-    type OutData = ();
+    type Input = String;
+    type Output = ();
 
-    fn generate(self, mnemonic: Self::InData) -> Result<ProcOutput<Self::OutData>, engine::Error> {
+    fn generate(self, mnemonic: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
         let mut seed = [0u8; 64];
         let passphrase = self.passphrase.unwrap_or_else(|| "".into());
         bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
-        Ok(ProcOutput {
-            write_vault: seed.to_vec(),
-            return_value: (),
+        Ok(Products {
+            secret: seed.to_vec(),
+            output: (),
         })
     }
 }
 
 #[derive(Clone, Procedure)]
 pub struct Ed25519PublicKey {
-    #[source_location]
+    #[source]
     private_key: Location,
 
     #[output_key]
-    output_key: (DataKey, bool),
+    output_key: InterimProduct<OutputKey>,
 }
 
 impl Ed25519PublicKey {
     pub fn new(private_key: Location) -> Self {
         Ed25519PublicKey {
             private_key,
-            output_key: (DataKey::new(string()), true),
+            output_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
         }
     }
 }
 
-#[proc_fn]
-impl Sink for Ed25519PublicKey {
-    type InData = ();
-    type OutData = [u8; PUBLIC_KEY_LENGTH];
+#[execute_procedure]
+impl Utilize for Ed25519PublicKey {
+    type Input = ();
+    type Output = [u8; PUBLIC_KEY_LENGTH];
 
-    fn sink(self, _: Self::InData, guard: GuardedVec<u8>) -> Result<Self::OutData, engine::Error> {
+    fn utilize(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
         let raw = guard.borrow();
         let mut raw = (*raw).to_vec();
         if raw.len() < 32 {
-            // the client actor will interupt the control flow
+            // the client actor will interrupt the control flow
             // but could this be an option to return an error
             let e = engine::Error::CryptoError(crypto::Error::BufferSize {
                 has: raw.len(),
@@ -356,11 +321,11 @@ pub struct Ed25519Sign {
     #[input_data]
     msg: InputData<Vec<u8>>,
 
-    #[source_location]
+    #[source]
     private_key: Location,
 
     #[output_key]
-    output_key: (DataKey, bool),
+    output_key: InterimProduct<OutputKey>,
 }
 
 impl Ed25519Sign {
@@ -368,10 +333,13 @@ impl Ed25519Sign {
         Ed25519Sign {
             msg: InputData::Value(msg),
             private_key,
-            output_key: (DataKey::new(string()), true),
+            output_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
         }
     }
-    pub fn new_dyn(private_key: Location, msg_key: DataKey) -> Self {
+    pub fn new_dyn(private_key: Location, msg_key: OutputKey) -> Self {
         let input = InputData::Key {
             key: msg_key,
             convert: |v| Ok(v),
@@ -379,17 +347,20 @@ impl Ed25519Sign {
         Ed25519Sign {
             msg: input,
             private_key,
-            output_key: (DataKey::new(string()), true),
+            output_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
         }
     }
 }
 
-#[proc_fn]
-impl Sink for Ed25519Sign {
-    type InData = Vec<u8>;
-    type OutData = [u8; SIGNATURE_LENGTH];
+#[execute_procedure]
+impl Utilize for Ed25519Sign {
+    type Input = Vec<u8>;
+    type Output = [u8; SIGNATURE_LENGTH];
 
-    fn sink(self, msg: Self::InData, guard: GuardedVec<u8>) -> Result<Self::OutData, engine::Error> {
+    fn utilize(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
         let raw = guard.borrow();
         let mut raw = (*raw).to_vec();
 
@@ -418,34 +389,40 @@ pub struct SHA256Digest {
     msg: InputData<Vec<u8>>,
 
     #[output_key]
-    output_key: (DataKey, bool),
+    output_key: InterimProduct<OutputKey>,
 }
 
 impl SHA256Digest {
     pub fn new(msg: Vec<u8>) -> Self {
         SHA256Digest {
             msg: InputData::Value(msg),
-            output_key: (DataKey::new(string()), true),
+            output_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
         }
     }
 
-    pub fn new_dyn(msg_key: DataKey) -> Self {
+    pub fn new_dyn(msg_key: OutputKey) -> Self {
         let input = InputData::Key {
             key: msg_key,
             convert: |v| Ok(v),
         };
         SHA256Digest {
             msg: input,
-            output_key: (DataKey::new(string()), true),
+            output_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
         }
     }
 }
 
 impl Parse for SHA256Digest {
-    type InData = Vec<u8>;
-    type OutData = [u8; SHA256_LEN];
+    type Input = Vec<u8>;
+    type Output = [u8; SHA256_LEN];
 
-    fn parse(self, input: Self::InData) -> Result<Self::OutData, engine::Error> {
+    fn parse(self, input: Self::Input) -> Result<Self::Output, engine::Error> {
         let mut digest = [0; SHA256_LEN];
         SHA256(&input, &mut digest);
         Ok(digest)

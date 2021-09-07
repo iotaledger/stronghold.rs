@@ -17,7 +17,7 @@ pub use crate::{
 };
 use crate::{
     internals,
-    procedures::{CollectedOutput, ComplexProc, ExecProc, ProcExecutor, ProcOutput},
+    procedures::{CollectedOutput, Procedure, ProcedureStep, Products, Runner},
     Location,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
@@ -701,18 +701,18 @@ impl_handler!(
 // impl for procedures
 // ---
 
-impl<Proc> Handler<ComplexProc<Proc>> for SecureClient
+impl<Proc> Handler<Procedure<Proc>> for SecureClient
 where
-    Proc: ExecProc + 'static,
+    Proc: ProcedureStep + 'static,
 {
     type Result = Result<CollectedOutput, anyhow::Error>;
 
-    fn handle(&mut self, proc: ComplexProc<Proc>, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, proc: Procedure<Proc>, _: &mut Self::Context) -> Self::Result {
         proc.run(self)
     }
 }
 
-impl ProcExecutor for SecureClient {
+impl Runner for SecureClient {
     fn get_guard<F, I, O>(&mut self, location: &Location, f: F, input: I) -> Result<O, anyhow::Error>
     where
         F: FnOnce(I, GuardedVec<u8>) -> Result<O, engine::Error>,
@@ -721,11 +721,11 @@ impl ProcExecutor for SecureClient {
         let key = self.get_key(vault_id)?;
 
         let mut ret = None;
-        let proc_fn = |guard: GuardedVec<u8>| {
+        let execute_procedure = |guard: GuardedVec<u8>| {
             ret = Some(f(input, guard)?);
             Ok(())
         };
-        self.db.get_guard(&key, vault_id, record_id, proc_fn)?;
+        self.db.get_guard(&key, vault_id, record_id, execute_procedure)?;
         Ok(ret.unwrap())
     }
 
@@ -738,7 +738,7 @@ impl ProcExecutor for SecureClient {
         input: I,
     ) -> Result<O, anyhow::Error>
     where
-        F: FnOnce(I, GuardedVec<u8>) -> Result<ProcOutput<O>, engine::Error>,
+        F: FnOnce(I, GuardedVec<u8>) -> Result<Products<O>, engine::Error>,
     {
         let (vid0, rid0) = Self::resolve_location(location0);
         let key0 = self.get_key(vid0)?;
@@ -747,16 +747,13 @@ impl ProcExecutor for SecureClient {
         let key1 = self.get_or_create_key(vid1)?;
 
         let mut ret = None;
-        let proc_fn = |guard: GuardedVec<u8>| {
-            let ProcOutput {
-                return_value,
-                write_vault,
-            } = f(input, guard)?;
-            ret = Some(return_value);
-            Ok(write_vault)
+        let execute_procedure = |guard: GuardedVec<u8>| {
+            let Products { output: plain, secret } = f(input, guard)?;
+            ret = Some(plain);
+            Ok(secret)
         };
         self.db
-            .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, proc_fn)
+            .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, execute_procedure)
             .map_err(|e| anyhow::anyhow!(e))?;
         Ok(ret.unwrap())
     }

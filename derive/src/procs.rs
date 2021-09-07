@@ -24,22 +24,7 @@ pub fn impl_proc_traits(derive_input: DeriveInput) -> proc_macro2::TokenStream {
         impl_source_target(&mut impls, &field, &derive_input.generics, &proc_ident)
     }
 
-    // implement BuildProc trait
-    impl_build_proc(&mut impls, &proc_ident, derive_input.generics);
-
     impls.into_iter().collect()
-}
-
-fn impl_build_proc(impls: &mut Vec<proc_macro2::TokenStream>, ident: &Ident, generics: Generics) {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    impls.push(
-        quote! {impl #impl_generics BuildProc<Self> for #ident #ty_generics #where_clause {
-            fn build(self) -> ComplexProc<Self> {
-                ComplexProc {inner: self}
-            }
-        }},
-    )
 }
 
 fn impl_source_target(
@@ -56,7 +41,7 @@ fn impl_source_target(
     if field
         .attrs
         .iter()
-        .any(|attr| attr.path.segments.last().unwrap().ident == "source_location")
+        .any(|attr| attr.path.segments.last().unwrap().ident == "source")
     {
         impl_get_location(
             impls,
@@ -70,7 +55,7 @@ fn impl_source_target(
     if field
         .attrs
         .iter()
-        .any(|attr| attr.path.segments.last().unwrap().ident == "target_location")
+        .any(|attr| attr.path.segments.last().unwrap().ident == "target")
     {
         impl_get_location(
             impls,
@@ -128,32 +113,32 @@ fn impl_get_location(
 ) {
     let (trait_name, at, fn_name, fn_name_mut, return_type) = match io_trait {
         IOTrait::SourceVault => (
-            quote! {SourceVaultInfo},
+            quote! {SourceInfo},
             None,
-            quote! {source_location},
+            quote! {source},
             quote! {source_location_mut},
             quote! {Location},
         ),
         IOTrait::TargetVault => (
-            quote! {TargetVaultInfo},
+            quote! {TargetInfo},
             None,
             quote! {target_info},
             quote! {target_info_mut},
-            quote! {(Location, RecordHint, bool)},
+            quote! {InterimProduct<Target>},
         ),
         IOTrait::InputData(ty) => (
-            quote! {InputDataInfo},
-            Some(quote! {type InData = <#ty as InputDataInfo>::InData; }),
+            quote! {InputInfo},
+            Some(quote! {type Input = <#ty as InputInfo>::Input; }),
             quote! {input_info},
             quote! {input_info_mut},
-            quote! {InputData<Self::InData>},
+            quote! {InputData<Self::Input>},
         ),
         IOTrait::OutputKey => (
-            quote! {OutputDataInfo},
+            quote! {OutputInfo},
             None,
             quote! {output_info},
             quote! {output_info_mut},
-            quote! {(DataKey, bool)},
+            quote! {InterimProduct<OutputKey>},
         ),
     };
 
@@ -191,11 +176,11 @@ fn impl_get_location(
     })
 }
 
-// `proc_fn` macro logic
+// `execute_procedure` macro logic
 
 pub fn impl_exec_proc(item_impl: ItemImpl) -> proc_macro2::TokenStream {
     let panic_msg =
-        "The proc_fn macro can only applied for implementation blocks of the traits `Generate`, `Process` or `Sink`.";
+        "The execute_procedure macro can only applied for implementation blocks of the traits `Generate`, `Process` or `Utilize`.";
 
     let segment = item_impl
         .trait_
@@ -207,9 +192,9 @@ pub fn impl_exec_proc(item_impl: ItemImpl) -> proc_macro2::TokenStream {
     for item in item_impl.items {
         if let ImplItem::Type(ImplItemType { ident, ty, .. }) = item {
             let is_empty_tuple = matches!(ty, Type::Tuple(TypeTuple{elems, ..}) if elems.is_empty());
-            if ident == "InData" && !is_empty_tuple {
+            if ident == "Input" && !is_empty_tuple {
                 has_input = true;
-            } else if ident == "OutData" && !is_empty_tuple {
+            } else if ident == "Output" && !is_empty_tuple {
                 returns_data = true;
             }
         }
@@ -219,9 +204,13 @@ pub fn impl_exec_proc(item_impl: ItemImpl) -> proc_macro2::TokenStream {
     let (impl_generics, ty_generics, where_clause) = item_impl.generics.split_for_impl();
 
     quote! {
-        impl #impl_generics ExecProc for #self_type #ty_generics #where_clause {
-            fn exec<X: ProcExecutor>(self, executor: &mut X, state: &mut ProcState) -> Result<(), anyhow::Error> {
+        impl #impl_generics ProcedureStep for #self_type #ty_generics #where_clause {
+            fn execute<X: Runner>(self, runner: &mut X, state: &mut State) -> Result<(), anyhow::Error> {
                 #gen_exec_fn
+            }
+
+            fn build(self) -> Procedure<Self> {
+                Procedure {inner: self}
             }
         }
     }
@@ -246,10 +235,13 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
     let gen_insert_data;
     if returns_data {
         gen_output_key = quote! {
-            let (key, is_out_data_temp) = self.output_info().clone();
+            let InterimProduct {
+                target: key,
+                is_temp: is_out_data_temp
+            } = self.output_info().clone();
         };
         gen_insert_data = quote! {
-           state.insert_data(key, return_value.into(), is_out_data_temp);
+           state.insert_data(key, output.into(), is_out_data_temp);
         }
     } else {
         gen_output_key = quote! {};
@@ -259,30 +251,36 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
         "Parse" => quote! {
                 #gen_input
                 #gen_output_key
-                let return_value = <Self as Parse>::parse(self, input)?;
+                let output = <Self as Parse>::parse(self, input)?;
                 #gen_insert_data
                 Ok(())
         },
         "Generate" => quote! {
-                let (location_1, hint, is_secret_temp) = self.target_info().clone();
+                let InterimProduct  {
+                    target: Target { location: location_1, hint },
+                    is_temp: is_secret_temp
+                } = self.target_info().clone();
                 #gen_input
                 #gen_output_key
-                let ProcOutput {
-                    write_vault,
-                    return_value,
+                let Products {
+                    secret,
+                    output,
                 } = <Self as Generate>::generate(self, input)?;
-                executor.write_to_vault(&location_1, hint, write_vault)?;
+                runner.write_to_vault(&location_1, hint, secret)?;
                 state.add_log(location_1, is_secret_temp);
                 #gen_insert_data
                 Ok(())
         },
         "Process" => quote! {
-                let location_0 = self.source_location().clone();
-                let (location_1, hint, is_secret_temp) = self.target_info().clone();
+                let location_0 = self.source().clone();
+                let InterimProduct  {
+                    target: Target { location: location_1, hint },
+                    is_temp: is_secret_temp
+                } = self.target_info().clone();
                 #gen_input
                 #gen_output_key
                 let f = move |input, guard| <Self as Process>::process(self, input, guard);
-                let return_value = executor.exec_proc(
+                let output = runner.exec_proc(
                     &location_0,
                     &location_1,
                     hint,
@@ -293,12 +291,12 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 #gen_insert_data
                 Ok(())
         },
-        "Sink" => quote! {
-            let location_0 = self.source_location().clone();
+        "Utilize" => quote! {
+            let location_0 = self.source().clone();
             #gen_output_key
             #gen_input
-            let f = move |input, guard| <Self as Sink>::sink(self, input, guard);
-            let return_value = executor.get_guard(&location_0, f, input)?;
+            let f = move |input, guard| <Self as Utilize>::utilize(self, input, guard);
+            let output = runner.get_guard(&location_0, f, input)?;
             #gen_insert_data
             Ok(())
         },

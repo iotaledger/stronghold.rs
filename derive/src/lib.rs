@@ -76,7 +76,7 @@ pub fn permissions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 ///
-#[proc_macro_derive(Procedure, attributes(source_location, target_location, input_data, output_key))]
+#[proc_macro_derive(Procedure, attributes(source, target, input_data, output_key))]
 pub fn derive_exec_proc(input: TokenStream) -> proc_macro::TokenStream {
     let derive_input = syn::parse_macro_input!(input as DeriveInput);
     let tokens = impl_proc_traits(derive_input);
@@ -85,7 +85,7 @@ pub fn derive_exec_proc(input: TokenStream) -> proc_macro::TokenStream {
 
 ///
 #[proc_macro_attribute]
-pub fn proc_fn(_attr: proc_macro::TokenStream, mut item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn execute_procedure(_attr: proc_macro::TokenStream, mut item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let item_clone = item.clone();
     let item_impl = syn::parse_macro_input!(item_clone as ItemImpl);
     let gen: proc_macro::TokenStream = impl_exec_proc(item_impl).into();

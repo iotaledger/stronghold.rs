@@ -56,7 +56,7 @@ async fn usecase_ed25519() {
         Err(err) => panic!("unexpected error: {:?}", err),
     };
 
-    let k = DataKey::new("key1");
+    let k = OutputKey::new("key1");
     let ed25519_pk = Ed25519PublicKey::new(key.clone()).store_output(k.clone());
     let pk = match sh.runtime_exec(ed25519_pk.build()).await {
         Ok(data) => data.get(&k).cloned().unwrap(),
@@ -65,7 +65,7 @@ async fn usecase_ed25519() {
 
     let msg = fresh::bytestring();
 
-    let k = DataKey::new("key2");
+    let k = OutputKey::new("key2");
     let ed25519_sign = Ed25519Sign::new(key, msg.clone()).store_output(k.clone());
     let sig = match sh.runtime_exec(ed25519_sign.build()).await {
         Ok(data) => data.get(&k).cloned().unwrap(),
@@ -99,7 +99,7 @@ async fn usecase_SLIP10Derive_intermediate_keys() {
     let (_path, chain1) = fresh::hd_path();
 
     let cc0 = {
-        let k = DataKey::new("key3");
+        let k = OutputKey::new("key3");
         let slip10_derive = SLIP10Derive::new_from_seed(seed.clone(), chain0.join(&chain1)).store_output(k.clone());
 
         match sh.runtime_exec(slip10_derive.build()).await {
@@ -119,7 +119,7 @@ async fn usecase_SLIP10Derive_intermediate_keys() {
             Err(e) => panic!("unexpected error: {:?}", e),
         };
 
-        let k = DataKey::new("key4");
+        let k = OutputKey::new("key4");
         let slip10_derive_child = SLIP10Derive::new_from_key(intermediate, chain1).store_output(k.clone());
 
         match sh.runtime_exec(slip10_derive_child.build()).await {
@@ -136,13 +136,13 @@ async fn usecase_ed25519_as_complex() {
     let (_cp, sh) = setup_stronghold().await;
 
     let msg = fresh::bytestring();
-    let pk_result = DataKey::new("pub-key");
-    let sign_result = DataKey::new("signed");
+    let pk_result = OutputKey::new("pub-key");
+    let sign_result = OutputKey::new("signed");
 
     let generate = Slip10Generate::new(fresh::coinflip().then(|| fresh::usize(1024)));
-    let derive = SLIP10Derive::new_from_seed(generate.target_location(), fresh::hd_path().1);
-    let get_pk = Ed25519PublicKey::new(derive.target_location()).store_output(pk_result.clone());
-    let sign = Ed25519Sign::new(derive.target_location(), msg.clone()).store_output(sign_result.clone());
+    let derive = SLIP10Derive::new_from_seed(generate.target(), fresh::hd_path().1);
+    let get_pk = Ed25519PublicKey::new(derive.target()).store_output(pk_result.clone());
+    let sign = Ed25519Sign::new(derive.target(), msg.clone()).store_output(sign_result.clone());
 
     let combined_proc = generate.then(derive).then(get_pk).then(sign).build();
     let mut output = sh.runtime_exec(combined_proc).await.unwrap();
