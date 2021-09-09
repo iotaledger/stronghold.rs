@@ -190,49 +190,6 @@
 <span id="188">188</span>
 <span id="189">189</span>
 <span id="190">190</span>
-<span id="191">191</span>
-<span id="192">192</span>
-<span id="193">193</span>
-<span id="194">194</span>
-<span id="195">195</span>
-<span id="196">196</span>
-<span id="197">197</span>
-<span id="198">198</span>
-<span id="199">199</span>
-<span id="200">200</span>
-<span id="201">201</span>
-<span id="202">202</span>
-<span id="203">203</span>
-<span id="204">204</span>
-<span id="205">205</span>
-<span id="206">206</span>
-<span id="207">207</span>
-<span id="208">208</span>
-<span id="209">209</span>
-<span id="210">210</span>
-<span id="211">211</span>
-<span id="212">212</span>
-<span id="213">213</span>
-<span id="214">214</span>
-<span id="215">215</span>
-<span id="216">216</span>
-<span id="217">217</span>
-<span id="218">218</span>
-<span id="219">219</span>
-<span id="220">220</span>
-<span id="221">221</span>
-<span id="222">222</span>
-<span id="223">223</span>
-<span id="224">224</span>
-<span id="225">225</span>
-<span id="226">226</span>
-<span id="227">227</span>
-<span id="228">228</span>
-<span id="229">229</span>
-<span id="230">230</span>
-<span id="231">231</span>
-<span id="232">232</span>
-<span id="233">233</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -247,20 +204,18 @@
     <span class="ident">store::Cache</span>,
     <span class="ident">vault</span>::{<span class="ident">ClientId</span>, <span class="ident">DbView</span>, <span class="ident">RecordId</span>, <span class="ident">VaultId</span>},
 };
-<span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">collections::HashSet</span>, <span class="ident">time::Duration</span>};
+<span class="kw">use</span> <span class="ident">std::time::Duration</span>;
 
 <span class="doccomment">/// Cache type definition</span>
 <span class="kw">pub</span> <span class="kw">type</span> <span class="ident">Store</span> <span class="op">=</span> <span class="ident">Cache</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">SecureClient</span> {
     <span class="comment">// A keystore</span>
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">keystore</span>: <span class="ident">KeyStore</span><span class="op">&lt;</span><span class="ident">internals::Provider</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">keystore</span>: <span class="ident">KeyStore</span>,
     <span class="comment">// A view on the vault entries</span>
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">db</span>: <span class="ident">DbView</span><span class="op">&lt;</span><span class="ident">internals::Provider</span><span class="op">&gt;</span>,
     <span class="comment">// The id of this client</span>
     <span class="kw">pub</span> <span class="ident">client_id</span>: <span class="ident">ClientId</span>,
-    <span class="comment">// Contains the vault ids and the record ids with their associated indexes.</span>
-    <span class="kw">pub</span> <span class="ident">vaults</span>: <span class="ident">HashSet</span><span class="op">&lt;</span><span class="ident">VaultId</span><span class="op">&gt;</span>,
     <span class="comment">// Contains the Record Ids for the most recent Record in each vault.</span>
     <span class="kw">pub</span> <span class="ident">store</span>: <span class="ident">Store</span>,
 }
@@ -268,13 +223,10 @@
 <span class="kw">impl</span> <span class="ident">SecureClient</span> {
     <span class="doccomment">/// Creates a new Client given a `ClientID` and `ChannelRef&lt;SHResults&gt;`</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">client_id</span>: <span class="ident">ClientId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="kw">let</span> <span class="ident">vaults</span> <span class="op">=</span> <span class="ident">HashSet::new</span>();
-
         <span class="kw">let</span> <span class="ident">store</span> <span class="op">=</span> <span class="ident">Cache::new</span>();
 
         <span class="self">Self</span> {
             <span class="ident">client_id</span>,
-            <span class="ident">vaults</span>,
             <span class="ident">store</span>,
             <span class="ident">keystore</span>: <span class="ident">KeyStore::new</span>(),
             <span class="ident">db</span>: <span class="ident">DbView::new</span>(),
@@ -308,22 +260,9 @@
         <span class="self">self</span>.<span class="ident">client_id</span> <span class="op">=</span> <span class="ident">client_id</span>
     }
 
-    <span class="doccomment">/// Adds a new vault to the client.  If the [`VaultId`] already exists, will just use that existing Vault.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">add_new_vault</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">vid</span>: <span class="ident">VaultId</span>) {
-        <span class="self">self</span>.<span class="ident">vaults</span>.<span class="ident">insert</span>(<span class="ident">vid</span>);
-    }
-
-    <span class="doccomment">/// Empty the Client Cache.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">clear_cache</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">vaults</span> <span class="op">=</span> <span class="ident">HashSet::default</span>();
-
-        <span class="prelude-val">Some</span>(())
-    }
-
     <span class="doccomment">/// Rebuilds the cache using the parameters.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">rebuild_cache</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">id</span>: <span class="ident">ClientId</span>, <span class="ident">vaults</span>: <span class="ident">HashSet</span><span class="op">&lt;</span><span class="ident">VaultId</span><span class="op">&gt;</span>, <span class="ident">store</span>: <span class="ident">Store</span>) {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">rebuild_cache</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">id</span>: <span class="ident">ClientId</span>, <span class="ident">store</span>: <span class="ident">Store</span>) {
         <span class="self">self</span>.<span class="ident">client_id</span> <span class="op">=</span> <span class="ident">id</span>;
-        <span class="self">self</span>.<span class="ident">vaults</span> <span class="op">=</span> <span class="ident">vaults</span>;
         <span class="self">self</span>.<span class="ident">store</span> <span class="op">=</span> <span class="ident">store</span>;
     }
 
@@ -370,11 +309,6 @@
         <span class="self">self</span>.<span class="ident">client_id</span>.<span class="ident">into</span>()
     }
 
-    <span class="doccomment">/// Checks to see if the vault exists in the client.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">vault_exist</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">vid</span>: <span class="ident">VaultId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">VaultId</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">vaults</span>.<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">vid</span>)
-    }
-
     <span class="doccomment">/// Gets the current index of a record if its a counter.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_index_from_record_id</span><span class="op">&lt;</span><span class="ident">P</span>: <span class="ident">AsRef</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">vault_path</span>: <span class="ident">P</span>, <span class="ident">record_id</span>: <span class="ident">RecordId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">usize</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ctr</span> <span class="op">=</span> <span class="number">0</span>;
@@ -399,34 +333,17 @@
     <span class="kw">use</span> <span class="kw">crate</span><span class="ident">::Provider</span>;
 
     <span class="attribute">#[<span class="ident">test</span>]</span>
-    <span class="kw">fn</span> <span class="ident">test_add</span>() {
-        <span class="kw">let</span> <span class="ident">vid</span> <span class="op">=</span> <span class="ident">VaultId::random</span>::<span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>().<span class="ident">expect</span>(<span class="macro">line_error!</span>());
-
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">cache</span>: <span class="ident">SecureClient</span> <span class="op">=</span> <span class="ident">SecureClient::new</span>(<span class="ident">ClientId::random</span>::<span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>().<span class="ident">expect</span>(<span class="macro">line_error!</span>()));
-
-        <span class="ident">cache</span>.<span class="ident">add_new_vault</span>(<span class="ident">vid</span>);
-
-        <span class="macro">assert_eq!</span>(<span class="ident">cache</span>.<span class="ident">vaults</span>.<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">vid</span>), <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="ident">vid</span>));
-    }
-
-    <span class="attribute">#[<span class="ident">test</span>]</span>
     <span class="kw">fn</span> <span class="ident">test_rid_internals</span>() {
         <span class="kw">let</span> <span class="ident">clientid</span> <span class="op">=</span> <span class="ident">ClientId::random</span>::<span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>().<span class="ident">expect</span>(<span class="macro">line_error!</span>());
 
-        <span class="kw">let</span> <span class="ident">vid</span> <span class="op">=</span> <span class="ident">VaultId::random</span>::<span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>().<span class="ident">expect</span>(<span class="macro">line_error!</span>());
-        <span class="kw">let</span> <span class="ident">vid2</span> <span class="op">=</span> <span class="ident">VaultId::random</span>::<span class="op">&lt;</span><span class="ident">Provider</span><span class="op">&gt;</span>().<span class="ident">expect</span>(<span class="macro">line_error!</span>());
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="string">b&quot;some_vault&quot;</span>.<span class="ident">to_vec</span>();
 
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">client</span>: <span class="ident">SecureClient</span> <span class="op">=</span> <span class="ident">SecureClient::new</span>(<span class="ident">clientid</span>);
+        <span class="kw">let</span> <span class="ident">client</span>: <span class="ident">SecureClient</span> <span class="op">=</span> <span class="ident">SecureClient::new</span>(<span class="ident">clientid</span>);
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ctr</span> <span class="op">=</span> <span class="number">0</span>;
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ctr2</span> <span class="op">=</span> <span class="number">0</span>;
 
         <span class="kw">let</span> <span class="ident">_rid</span> <span class="op">=</span> <span class="ident">client</span>.<span class="ident">derive_record_id</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>(), <span class="ident">ctr</span>);
         <span class="kw">let</span> <span class="ident">_rid2</span> <span class="op">=</span> <span class="ident">client</span>.<span class="ident">derive_record_id</span>(<span class="ident">vault_path</span>.<span class="ident">clone</span>(), <span class="ident">ctr2</span>);
-
-        <span class="ident">client</span>.<span class="ident">add_new_vault</span>(<span class="ident">vid</span>);
-
-        <span class="ident">client</span>.<span class="ident">add_new_vault</span>(<span class="ident">vid2</span>);
 
         <span class="ident">ctr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
         <span class="ident">ctr2</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
@@ -452,13 +369,10 @@
         <span class="kw">let</span> <span class="ident">vidlochead</span> <span class="op">=</span> <span class="ident">Location::counter</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">usize</span><span class="op">&gt;</span>(<span class="string">&quot;some_vault&quot;</span>, <span class="number">0</span>);
         <span class="kw">let</span> <span class="ident">vidlochead2</span> <span class="op">=</span> <span class="ident">Location::counter</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">usize</span><span class="op">&gt;</span>(<span class="string">&quot;some_vault 2&quot;</span>, <span class="number">0</span>);
 
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">client</span>: <span class="ident">SecureClient</span> <span class="op">=</span> <span class="ident">SecureClient::new</span>(<span class="ident">clientid</span>);
+        <span class="kw">let</span> <span class="ident">client</span>: <span class="ident">SecureClient</span> <span class="op">=</span> <span class="ident">SecureClient::new</span>(<span class="ident">clientid</span>);
 
-        <span class="kw">let</span> (<span class="ident">vid</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="ident">client</span>.<span class="ident">resolve_location</span>(<span class="ident">vidlochead</span>.<span class="ident">clone</span>());
-        <span class="kw">let</span> (<span class="ident">vid2</span>, <span class="ident">rid2</span>) <span class="op">=</span> <span class="ident">client</span>.<span class="ident">resolve_location</span>(<span class="ident">vidlochead2</span>.<span class="ident">clone</span>());
-
-        <span class="ident">client</span>.<span class="ident">add_new_vault</span>(<span class="ident">vid</span>);
-        <span class="ident">client</span>.<span class="ident">add_new_vault</span>(<span class="ident">vid2</span>);
+        <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">rid</span>) <span class="op">=</span> <span class="ident">client</span>.<span class="ident">resolve_location</span>(<span class="ident">vidlochead</span>.<span class="ident">clone</span>());
+        <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">rid2</span>) <span class="op">=</span> <span class="ident">client</span>.<span class="ident">resolve_location</span>(<span class="ident">vidlochead2</span>.<span class="ident">clone</span>());
 
         <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">rid_head</span>) <span class="op">=</span> <span class="ident">client</span>.<span class="ident">resolve_location</span>(<span class="ident">vidlochead</span>);
         <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">rid_head_2</span>) <span class="op">=</span> <span class="ident">client</span>.<span class="ident">resolve_location</span>(<span class="ident">vidlochead2</span>);

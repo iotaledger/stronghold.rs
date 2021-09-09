@@ -839,15 +839,6 @@
 <span id="837">837</span>
 <span id="838">838</span>
 <span id="839">839</span>
-<span id="840">840</span>
-<span id="841">841</span>
-<span id="842">842</span>
-<span id="843">843</span>
-<span id="844">844</span>
-<span id="845">845</span>
-<span id="846">846</span>
-<span id="847">847</span>
-<span id="848">848</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -871,7 +862,7 @@
         <span class="ident">snapshot_messages</span>::{<span class="ident">FillSnapshot</span>, <span class="ident">ReadFromSnapshot</span>, <span class="ident">WriteSnapshot</span>},
         <span class="ident">GetAllClients</span>, <span class="ident">GetClient</span>, <span class="ident">GetSnapshot</span>, <span class="ident">InsertClient</span>, <span class="ident">Registry</span>, <span class="ident">RemoveClient</span>, <span class="ident">SecureClient</span>,
     },
-    <span class="ident">line_error</span>, <span class="ident">unwrap_or_err</span>, <span class="ident">unwrap_result_msg</span>,
+    <span class="ident">line_error</span>,
     <span class="ident">utils</span>::{<span class="ident">LoadFromPath</span>, <span class="ident">StatusMessage</span>, <span class="ident">StrongholdFlags</span>, <span class="ident">VaultFlags</span>},
     <span class="ident">Location</span>,
 };
@@ -884,7 +875,7 @@
         <span class="ident">messages</span>::{<span class="ident">ShRequest</span>, <span class="ident">SwarmInfo</span>},
         <span class="ident">NetworkActor</span>, <span class="ident">NetworkConfig</span>,
     },
-    <span class="ident">ResultMessage</span>,
+    <span class="ident">unwrap_or_err</span>, <span class="ident">unwrap_result_msg</span>, <span class="ident">ResultMessage</span>,
 };
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;p2p&quot;</span>)]</span>
 <span class="kw">use</span> <span class="ident">p2p</span>::{
@@ -1004,58 +995,55 @@
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">location</span>.<span class="ident">vault_path</span>();
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">vault_path</span>.<span class="ident">to_vec</span>();
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CheckVault</span> { <span class="ident">vault_path</span> }).<span class="kw">await</span> {
-            <span class="kw">match</span> <span class="ident">result</span> {
-                <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="comment">// exists</span>
-                    <span class="kw">return</span> <span class="kw">match</span> <span class="self">self</span>
-                        .<span class="ident">target</span>
-                        .<span class="ident">send</span>(<span class="ident">WriteToVault</span> {
-                            <span class="ident">location</span>,
-                            <span class="ident">payload</span>,
-                            <span class="ident">hint</span>,
-                        })
-                        .<span class="kw">await</span>
-                    {
-                        <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">result</span> {
-                            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
-                            <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">e</span>.<span class="ident">to_string</span>()),
-                        },
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">vault_exists</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CheckVault</span> { <span class="ident">vault_path</span> }).<span class="kw">await</span> {
+            <span class="kw">if</span> <span class="ident">vault_exists</span> {
+                <span class="comment">// exists</span>
+                <span class="kw">return</span> <span class="kw">match</span> <span class="self">self</span>
+                    .<span class="ident">target</span>
+                    .<span class="ident">send</span>(<span class="ident">WriteToVault</span> {
+                        <span class="ident">location</span>,
+                        <span class="ident">payload</span>,
+                        <span class="ident">hint</span>,
+                    })
+                    .<span class="kw">await</span>
+                {
+                    <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">result</span> {
+                        <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
                         <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">e</span>.<span class="ident">to_string</span>()),
-                    };
-                }
-                <span class="prelude-val">Err</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="comment">// does not exist</span>
-                    <span class="kw">match</span> <span class="self">self</span>
-                        .<span class="ident">target</span>
-                        .<span class="ident">send</span>(<span class="ident">CreateVault</span> {
-                            <span class="ident">location</span>: <span class="ident">location</span>.<span class="ident">clone</span>(),
-                        })
-                        .<span class="kw">await</span>
-                    {
-                        <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                            <span class="comment">// write to vault</span>
-                            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span> <span class="self">self</span>
-                                .<span class="ident">target</span>
-                                .<span class="ident">send</span>(<span class="ident">WriteToVault</span> {
-                                    <span class="ident">location</span>,
-                                    <span class="ident">payload</span>,
-                                    <span class="ident">hint</span>,
-                                })
-                                .<span class="kw">await</span>
-                            {
-                                <span class="kw">if</span> <span class="ident">result</span>.<span class="ident">is_ok</span>() {
-                                    <span class="kw">return</span> <span class="ident">StatusMessage::OK</span>;
-                                } <span class="kw">else</span> {
-                                    <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">result</span>.<span class="ident">err</span>().<span class="ident">unwrap</span>().<span class="ident">to_string</span>());
-                                }
+                    },
+                    <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">e</span>.<span class="ident">to_string</span>()),
+                };
+            } <span class="kw">else</span> {
+                <span class="comment">// does not exist</span>
+                <span class="kw">match</span> <span class="self">self</span>
+                    .<span class="ident">target</span>
+                    .<span class="ident">send</span>(<span class="ident">CreateVault</span> {
+                        <span class="ident">location</span>: <span class="ident">location</span>.<span class="ident">clone</span>(),
+                    })
+                    .<span class="kw">await</span>
+                {
+                    <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                        <span class="comment">// write to vault</span>
+                        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span> <span class="self">self</span>
+                            .<span class="ident">target</span>
+                            .<span class="ident">send</span>(<span class="ident">WriteToVault</span> {
+                                <span class="ident">location</span>,
+                                <span class="ident">payload</span>,
+                                <span class="ident">hint</span>,
+                            })
+                            .<span class="kw">await</span>
+                        {
+                            <span class="kw">if</span> <span class="ident">result</span>.<span class="ident">is_ok</span>() {
+                                <span class="kw">return</span> <span class="ident">StatusMessage::OK</span>;
                             } <span class="kw">else</span> {
-                                <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Error Writing data&quot;</span>.<span class="ident">into</span>());
+                                <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">result</span>.<span class="ident">err</span>().<span class="ident">unwrap</span>().<span class="ident">to_string</span>());
                             }
+                        } <span class="kw">else</span> {
+                            <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Error Writing data&quot;</span>.<span class="ident">into</span>());
                         }
-                        <span class="prelude-val">Err</span>(<span class="ident">_e</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                            <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Cannot create new vault&quot;</span>.<span class="ident">into</span>());
-                        }
+                    }
+                    <span class="prelude-val">Err</span>(<span class="ident">_e</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                        <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Cannot create new vault&quot;</span>.<span class="ident">into</span>());
                     }
                 }
             }
@@ -1209,13 +1197,7 @@
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">location</span>.<span class="ident">vault_path</span>();
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">vault_path</span>.<span class="ident">to_vec</span>();
 
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CheckVault</span> { <span class="ident">vault_path</span> }).<span class="kw">await</span> {
-            <span class="prelude-val">Ok</span>(<span class="ident">success</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">success</span> {
-                <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="bool-val">true</span>,
-                <span class="prelude-val">Err</span>(<span class="ident">_e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="bool-val">false</span>,
-            },
-            <span class="prelude-val">Err</span>(<span class="ident">_e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="bool-val">false</span>,
-        }
+        <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CheckVault</span> { <span class="ident">vault_path</span> }).<span class="kw">await</span>.<span class="ident">unwrap_or</span>(<span class="bool-val">false</span>)
     }
 
     <span class="doccomment">/// Reads data from a given snapshot file.  Can only read the data for a single `client_path` at a time. If the new</span>
@@ -1597,7 +1579,7 @@
         <span class="kw">let</span> <span class="ident">vault_exists</span> <span class="op">=</span> <span class="macro">unwrap_result_msg!</span>(<span class="ident">actor</span>.<span class="ident">send</span>(<span class="ident">send_request</span>).<span class="kw">await</span>);
 
         <span class="comment">// no vault so create new one before writing.</span>
-        <span class="kw">if</span> <span class="ident">vault_exists</span>.<span class="ident">is_err</span>() {
+        <span class="kw">if</span> <span class="op">!</span><span class="ident">vault_exists</span> {
             <span class="kw">let</span> <span class="ident">send_request</span> <span class="op">=</span> <span class="ident">network_msg::SendRequest</span> {
                 <span class="ident">peer</span>,
                 <span class="ident">request</span>: <span class="ident">CreateVault</span> {
