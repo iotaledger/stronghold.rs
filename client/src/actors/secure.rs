@@ -512,10 +512,7 @@ pub mod testing {
     impl_handler!(ReadFromVault, Result<Vec<u8>, anyhow::Error>, (self, msg, _ctx), {
         let (vid, rid) = self.resolve_location(msg.location);
 
-        let key = self
-            .keystore
-            .take_key(vid)
-            .ok_or(anyhow::anyhow!(VaultError::NotExisting))?;
+        let key = self.keystore.take_key(vid)?;
 
         let mut data = Vec::new();
         let res = self.db.get_guard(&key, vid, rid, |guarded_data| {
@@ -558,12 +555,12 @@ impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
     let (vault_id, record_id) = self.resolve_location(msg.location);
 
     return match self.keystore.take_key(vault_id) {
-        Some(key) => {
+        Ok(key) => {
             let res = self.db.contains_record(&key, vault_id, record_id);
             self.keystore.insert_key(vault_id, key);
             res
         }
-        None => false,
+        Err(_) => false,
     };
 });
 
@@ -572,8 +569,7 @@ impl_handler!(messages::WriteToVault, Result<(), anyhow::Error>, (self, msg, _ct
 
     let key = self
         .keystore
-        .take_key(vault_id)
-        .ok_or(anyhow::anyhow!(VaultError::NotExisting))?;
+        .take_key(vault_id)?;
 
     let res = self.db.write(&key, vault_id, record_id, &msg.payload, msg.hint);
     self.keystore.insert_key(vault_id, key);
@@ -585,8 +581,7 @@ impl_handler!(messages::RevokeData, Result<(), anyhow::Error>, (self, msg, _ctx)
 
     let key = self
         .keystore
-        .take_key(vault_id)
-        .ok_or(anyhow::anyhow!(VaultError::NotExisting))?;
+        .take_key(vault_id)?;
 
     let res = self.db.revoke_record(&key, vault_id, record_id);
     self.keystore.insert_key(vault_id, key);
@@ -598,8 +593,7 @@ impl_handler!(messages::GarbageCollect, Result<(), anyhow::Error>, (self, msg, _
 
     let key = self
         .keystore
-        .take_key(vault_id)
-        .ok_or(anyhow::anyhow!(VaultError::NotExisting))?;
+        .take_key(vault_id)?;
 
     let res = self.db.garbage_collect_vault(&key, vault_id);
     self.keystore.insert_key(vault_id, key);
@@ -612,10 +606,7 @@ impl_handler!(
     (self, msg, _ctx),
     {
         let vault_id = self.derive_vault_id(msg.vault_path);
-        let key = self
-            .keystore
-            .take_key(vault_id)
-            .ok_or(anyhow::anyhow!(VaultError::NotExisting))?;
+        let key = self.keystore.take_key(vault_id)?;
 
         let list = self.db.list_hints_and_ids(&key, vault_id);
         self.keystore.insert_key(vault_id, key);
@@ -856,8 +847,7 @@ impl_handler!(procedures::SLIP10Generate, Result<crate::ProcResult, anyhow::Erro
 impl_handler!(procedures::SLIP10DeriveFromSeed, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
     let seed_key = self
         .keystore
-        .take_key(msg.seed_vault_id)
-        .ok_or(anyhow::anyhow!(VaultError::NotExisting))?;
+        .take_key(msg.seed_vault_id)?;
 
     if !self.keystore.vault_exists(msg.key_vault_id) {
         let key = self.keystore.create_key(msg.key_vault_id);
@@ -910,8 +900,7 @@ impl_handler!(procedures::SLIP10DeriveFromSeed, Result<crate::ProcResult, anyhow
 impl_handler!( procedures::SLIP10DeriveFromKey,Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx),{
     let parent_key = self
         .keystore
-        .take_key(msg.parent_vault_id)
-        .ok_or(anyhow::anyhow!(VaultError::NotExisting))?;
+        .take_key(msg.parent_vault_id)?;
 
     if !self.keystore.vault_exists(msg.child_vault_id) {
         let key = self.keystore.create_key(msg.child_vault_id);
@@ -1009,8 +998,7 @@ impl_handler!(procedures::BIP39Recover, Result<crate::ProcResult, anyhow::Error>
 impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
     let key = self
         .keystore
-        .take_key(msg.vault_id)
-        .ok_or(anyhow::anyhow!(VaultError::NotExisting))?;
+        .take_key(msg.vault_id)?;
 
     let result = Rc::new(Cell::default());
 
@@ -1048,8 +1036,7 @@ impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, anyhow::Er
 impl_handler!(procedures::Ed25519Sign, Result <crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
     let pkey = self
         .keystore
-        .take_key(msg.vault_id)
-        .ok_or(anyhow::anyhow!(VaultError::NotExisting))?;
+        .take_key(msg.vault_id)?;
 
     let result = Rc::new(Cell::new([0u8; 64]));
 
