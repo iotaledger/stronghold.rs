@@ -11,20 +11,18 @@ use engine::{
     store::Cache,
     vault::{ClientId, DbView, RecordId, VaultId},
 };
-use std::{collections::HashSet, time::Duration};
+use std::time::Duration;
 
 /// Cache type definition
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
 pub struct SecureClient {
     // A keystore
-    pub(crate) keystore: KeyStore<internals::Provider>,
+    pub(crate) keystore: KeyStore,
     // A view on the vault entries
     pub(crate) db: DbView<internals::Provider>,
     // The id of this client
     pub client_id: ClientId,
-    // Contains the vault ids and the record ids with their associated indexes.
-    pub vaults: HashSet<VaultId>,
     // Contains the Record Ids for the most recent Record in each vault.
     pub store: Store,
 }
@@ -32,13 +30,10 @@ pub struct SecureClient {
 impl SecureClient {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
     pub fn new(client_id: ClientId) -> Self {
-        let vaults = HashSet::new();
-
         let store = Cache::new();
 
         Self {
             client_id,
-            vaults,
             store,
             keystore: KeyStore::new(),
             db: DbView::new(),
@@ -72,22 +67,9 @@ impl SecureClient {
         self.client_id = client_id
     }
 
-    /// Adds a new vault to the client.  If the [`VaultId`] already exists, will just use that existing Vault.
-    pub fn add_new_vault(&mut self, vid: VaultId) {
-        self.vaults.insert(vid);
-    }
-
-    /// Empty the Client Cache.
-    pub fn clear_cache(&mut self) -> Option<()> {
-        self.vaults = HashSet::default();
-
-        Some(())
-    }
-
     /// Rebuilds the cache using the parameters.
-    pub fn rebuild_cache(&mut self, id: ClientId, vaults: HashSet<VaultId>, store: Store) {
+    pub fn rebuild_cache(&mut self, id: ClientId, store: Store) {
         self.client_id = id;
-        self.vaults = vaults;
         self.store = store;
     }
 
@@ -134,11 +116,6 @@ impl SecureClient {
         self.client_id.into()
     }
 
-    /// Checks to see if the vault exists in the client.
-    pub fn vault_exist(&self, vid: VaultId) -> Option<&VaultId> {
-        self.vaults.get(&vid)
-    }
-
     /// Gets the current index of a record if its a counter.
     pub fn get_index_from_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, record_id: RecordId) -> usize {
         let mut ctr = 0;
@@ -163,34 +140,17 @@ mod tests {
     use crate::Provider;
 
     #[test]
-    fn test_add() {
-        let vid = VaultId::random::<Provider>().expect(line_error!());
-
-        let mut cache: SecureClient = SecureClient::new(ClientId::random::<Provider>().expect(line_error!()));
-
-        cache.add_new_vault(vid);
-
-        assert_eq!(cache.vaults.get(&vid), Some(&vid));
-    }
-
-    #[test]
     fn test_rid_internals() {
         let clientid = ClientId::random::<Provider>().expect(line_error!());
 
-        let vid = VaultId::random::<Provider>().expect(line_error!());
-        let vid2 = VaultId::random::<Provider>().expect(line_error!());
         let vault_path = b"some_vault".to_vec();
 
-        let mut client: SecureClient = SecureClient::new(clientid);
+        let client: SecureClient = SecureClient::new(clientid);
         let mut ctr = 0;
         let mut ctr2 = 0;
 
         let _rid = client.derive_record_id(vault_path.clone(), ctr);
         let _rid2 = client.derive_record_id(vault_path.clone(), ctr2);
-
-        client.add_new_vault(vid);
-
-        client.add_new_vault(vid2);
 
         ctr += 1;
         ctr2 += 1;
@@ -216,13 +176,10 @@ mod tests {
         let vidlochead = Location::counter::<_, usize>("some_vault", 0);
         let vidlochead2 = Location::counter::<_, usize>("some_vault 2", 0);
 
-        let mut client: SecureClient = SecureClient::new(clientid);
+        let client: SecureClient = SecureClient::new(clientid);
 
-        let (vid, rid) = client.resolve_location(vidlochead.clone());
-        let (vid2, rid2) = client.resolve_location(vidlochead2.clone());
-
-        client.add_new_vault(vid);
-        client.add_new_vault(vid2);
+        let (_, rid) = client.resolve_location(vidlochead.clone());
+        let (_, rid2) = client.resolve_location(vidlochead2.clone());
 
         let (_, rid_head) = client.resolve_location(vidlochead);
         let (_, rid_head_2) = client.resolve_location(vidlochead2);
