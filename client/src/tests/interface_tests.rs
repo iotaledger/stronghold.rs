@@ -30,8 +30,11 @@ async fn test_stronghold() {
         .await
         .unwrap();
 
+    // clone it, and check for consistency
+    let stronghold2 = stronghold.clone();
+
     // Write at the first record of the vault using Some(0).  Also creates the new vault.
-    assert!(stronghold
+    assert!(stronghold2
         .write_to_vault(
             loc0.clone(),
             b"test".to_vec(),
@@ -42,6 +45,11 @@ async fn test_stronghold() {
         .is_ok());
 
     // read head.
+    let (p, _) = stronghold2.read_secret(client_path.clone(), loc0.clone()).await;
+
+    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
+
+    // read head from first reference
     let (p, _) = stronghold.read_secret(client_path.clone(), loc0.clone()).await;
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
