@@ -41,6 +41,7 @@ use p2p::{
     Multiaddr, PeerId,
 };
 
+#[derive(Clone)]
 /// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of
 /// metadata to interpret the data in the vault and store.
 pub struct Stronghold {
