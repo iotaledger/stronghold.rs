@@ -102,6 +102,26 @@ macro_rules! unwrap_result_msg (
     };
 );
 
+#[macro_export]
+macro_rules! enum_from_inner {
+    ($($Enum:ident::$T:ident),+ from $CEnum:ident) => {
+        $(
+            impl From<$CEnum> for $Enum {
+                fn from(t: $CEnum) -> Self {
+                    $Enum::$T(t.into())
+                }
+            }
+        )*
+    };
+    ($Enum:ident from $TInner:ident) => {
+        impl From<$TInner> for $Enum {
+            fn from(t: $TInner) -> Self {
+                $Enum::$TInner(t)
+            }
+        }
+    };
+}
+
 /// Stronghold Client Result Type.
 pub type Result<T> = anyhow::Result<T, Error>;
 

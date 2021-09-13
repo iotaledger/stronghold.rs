@@ -3,16 +3,15 @@
 
 #![allow(non_snake_case)]
 
-use crypto::signatures::ed25519::{PublicKey, Signature, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
+use crypto::{
+    hashes::sha::{SHA256, SHA256_LEN},
+    keys::slip10::{ChainCode, Curve, Seed},
+    signatures::ed25519::{PublicKey, SecretKey, Signature, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH},
+    utils::rand::fill,
+};
 
 use super::fresh;
-use crate::{procedures::*, Stronghold};
-// use crypto::{
-//     hashes::sha::{SHA256, SHA256_LEN},
-//     signatures::ed25519::{self, PublicKey, Signature},
-// };
-use std::convert::TryInto;
-// use engine::runtime::GuardedVec;
+use crate::{procedures::*, ResultMessage, Stronghold};
 
 async fn setup_stronghold() -> (Vec<u8>, Stronghold) {
     let cp = fresh::bytestring();
@@ -35,96 +34,90 @@ async fn usecase_ed25519() {
         };
         let slip10_generate = Slip10Generate::new(size_bytes).write_secret(seed.clone(), fresh::record_hint());
 
-        match sh.runtime_exec(slip10_generate.build()).await {
-            Ok(_) => (),
-            Err(e) => panic!("unexpected error: {:?}", e),
+        match sh.runtime_exec(slip10_generate).await {
+            ResultMessage::Ok(_) => (),
+            ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
         }
     } else {
         let bip32_gen = BIP39Generate::new(fresh::passphrase()).write_secret(seed.clone(), fresh::record_hint());
-        match sh.runtime_exec(bip32_gen.build()).await {
-            Ok(_) => (),
-            Err(err) => panic!("unexpected error: {:?}", err),
+        match sh.runtime_exec(bip32_gen).await {
+            ResultMessage::Ok(_) => (),
+            ResultMessage::Error(err) => panic!("unexpected error: {:?}", err),
         }
     }
 
     let (_path, chain) = fresh::hd_path();
     let key = fresh::location();
 
-    let slip10_derive = SLIP10Derive::new_from_seed(seed, chain).write_secret(key.clone(), fresh::record_hint());
-    match sh.runtime_exec(slip10_derive.build()).await {
-        Ok(_) => (),
-        Err(err) => panic!("unexpected error: {:?}", err),
+    let slip10_derive = Slip10Derive::new_from_seed(seed, chain).write_secret(key.clone(), fresh::record_hint());
+    match sh.runtime_exec(slip10_derive).await {
+        ResultMessage::Ok(_) => (),
+        ResultMessage::Error(err) => panic!("unexpected error: {:?}", err),
     };
 
     let k = OutputKey::new("key1");
     let ed25519_pk = Ed25519PublicKey::new(key.clone()).store_output(k.clone());
-    let pk = match sh.runtime_exec(ed25519_pk.build()).await {
-        Ok(data) => data.get(&k).cloned().unwrap(),
-        Err(e) => panic!("unexpected error: {:?}", e),
+    let pk: [u8; PUBLIC_KEY_LENGTH] = match sh.runtime_exec(ed25519_pk).await {
+        ResultMessage::Ok(mut data) => data.try_take(&k).unwrap().unwrap(),
+        ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
     };
 
     let msg = fresh::bytestring();
 
     let k = OutputKey::new("key2");
     let ed25519_sign = Ed25519Sign::new(key, msg.clone()).store_output(k.clone());
-    let sig = match sh.runtime_exec(ed25519_sign.build()).await {
-        Ok(data) => data.get(&k).cloned().unwrap(),
-        Err(e) => panic!("unexpected error: {:?}", e),
+    let sig: [u8; SIGNATURE_LENGTH] = match sh.runtime_exec(ed25519_sign).await {
+        ResultMessage::Ok(mut data) => data.try_take(&k).unwrap().unwrap(),
+        ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
     };
 
-    {
-        use crypto::signatures::ed25519::{PublicKey, Signature};
-
-        let pk_bytes: [u8; PUBLIC_KEY_LENGTH] = pk.try_into().unwrap();
-        let pk = PublicKey::try_from_bytes(pk_bytes).unwrap();
-        let sig_bytes: [u8; SIGNATURE_LENGTH] = sig.try_into().unwrap();
-        let sig = Signature::from_bytes(sig_bytes);
-        assert!(pk.verify(&sig, &msg));
-    }
+    let pk = PublicKey::try_from_bytes(pk).unwrap();
+    let sig = Signature::from_bytes(sig);
+    assert!(pk.verify(&sig, &msg));
 }
 
 #[actix::test]
-async fn usecase_SLIP10Derive_intermediate_keys() {
+async fn usecase_Slip10Derive_intermediate_keys() {
     let (_cp, sh) = setup_stronghold().await;
 
     let seed = fresh::location();
 
     let slip10_generate = Slip10Generate::new(None).write_secret(seed.clone(), fresh::record_hint());
-    match sh.runtime_exec(slip10_generate.build()).await {
-        Ok(_) => (),
-        Err(e) => panic!("unexpected error: {:?}", e),
+    match sh.runtime_exec(slip10_generate).await {
+        ResultMessage::Ok(_) => (),
+        ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
     };
 
     let (_path, chain0) = fresh::hd_path();
     let (_path, chain1) = fresh::hd_path();
 
-    let cc0 = {
+    let cc0: ChainCode = {
         let k = OutputKey::new("key3");
-        let slip10_derive = SLIP10Derive::new_from_seed(seed.clone(), chain0.join(&chain1)).store_output(k.clone());
+        let slip10_derive = Slip10Derive::new_from_seed(seed.clone(), chain0.join(&chain1)).store_output(k.clone());
 
-        match sh.runtime_exec(slip10_derive.build()).await {
-            Ok(data) => data.get(&k).cloned().unwrap(),
-            Err(e) => panic!("unexpected error: {:?}", e),
+        match sh.runtime_exec(slip10_derive).await {
+            ResultMessage::Ok(mut data) => data.try_take(&k).unwrap().unwrap(),
+            ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
         }
     };
 
-    let cc1 = {
+    let cc1: ChainCode = {
         let intermediate = fresh::location();
 
         let slip10_derive_intermediate =
-            SLIP10Derive::new_from_seed(seed, chain0).write_secret(intermediate.clone(), fresh::record_hint());
+            Slip10Derive::new_from_seed(seed, chain0).write_secret(intermediate.clone(), fresh::record_hint());
 
-        match sh.runtime_exec(slip10_derive_intermediate.build()).await {
-            Ok(_) => (),
-            Err(e) => panic!("unexpected error: {:?}", e),
+        match sh.runtime_exec(slip10_derive_intermediate).await {
+            ResultMessage::Ok(_) => (),
+            ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
         };
 
         let k = OutputKey::new("key4");
-        let slip10_derive_child = SLIP10Derive::new_from_key(intermediate, chain1).store_output(k.clone());
+        let slip10_derive_child = Slip10Derive::new_from_key(intermediate, chain1).store_output(k.clone());
 
-        match sh.runtime_exec(slip10_derive_child.build()).await {
-            Ok(data) => data.get(&k).cloned().unwrap(),
-            Err(e) => panic!("unexpected error: {:?}", e),
+        match sh.runtime_exec(slip10_derive_child).await {
+            ResultMessage::Ok(mut data) => data.try_take(&k).unwrap().unwrap(),
+            ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
         }
     };
 
@@ -136,20 +129,99 @@ async fn usecase_ed25519_as_complex() {
     let (_cp, sh) = setup_stronghold().await;
 
     let msg = fresh::bytestring();
+
     let pk_result = OutputKey::new("pub-key");
     let sign_result = OutputKey::new("signed");
 
-    let generate = Slip10Generate::new(fresh::coinflip().then(|| fresh::usize(1024)));
-    let derive = SLIP10Derive::new_from_seed(generate.target(), fresh::hd_path().1);
+    let generate = Slip10Generate::new(None);
+    let derive = Slip10Derive::new_from_seed(generate.target(), fresh::hd_path().1);
     let get_pk = Ed25519PublicKey::new(derive.target()).store_output(pk_result.clone());
     let sign = Ed25519Sign::new(derive.target(), msg.clone()).store_output(sign_result.clone());
 
-    let combined_proc = generate.then(derive).then(get_pk).then(sign).build();
-    let mut output = sh.runtime_exec(combined_proc).await.unwrap();
+    let combined_proc = generate.then(derive).then(get_pk).then(sign);
+    let mut output = match sh.runtime_exec(combined_proc).await {
+        ResultMessage::Ok(o) => o,
+        ResultMessage::Error(e) => panic!("Unexpected error: {}", e),
+    };
 
-    let pub_key_vec = output.remove(&pk_result).unwrap();
-    let pk = PublicKey::try_from_bytes(pub_key_vec.try_into().unwrap()).unwrap();
-    let sig_vec = output.remove(&sign_result).unwrap();
-    let sig = Signature::from_bytes(sig_vec.try_into().unwrap());
+    let pub_key_vec: [u8; PUBLIC_KEY_LENGTH] = output.try_take(&pk_result).unwrap().unwrap();
+    let pk = PublicKey::try_from_bytes(pub_key_vec).unwrap();
+    let sig_vec: [u8; SIGNATURE_LENGTH] = output.try_take(&sign_result).unwrap().unwrap();
+    let sig = Signature::from_bytes(sig_vec);
     assert!(pk.verify(&sig, &msg));
+}
+
+#[actix::test]
+async fn usecase_collection_of_data() {
+    let (_cp, sh) = setup_stronghold().await;
+
+    let key: Vec<u8> = {
+        let size_bytes = fresh::coinflip().then(|| fresh::usize(1024)).unwrap_or(64);
+        let mut seed = vec![0u8; size_bytes];
+        fill(&mut seed).unwrap();
+        let dk = Seed::from_bytes(&seed)
+            .derive(Curve::Ed25519, &fresh::hd_path().1)
+            .unwrap();
+        dk.into()
+    };
+
+    // write seed to vault
+    let key_location = fresh::location();
+    let write_vault_proc = WriteVault::new(key.clone(), key_location.clone(), fresh::record_hint());
+    match sh.runtime_exec(write_vault_proc).await {
+        ResultMessage::Ok(data) => assert!(data.into_iter().next().is_none()),
+        ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
+    }
+
+    // test sign and hash
+
+    let messages = vec![Vec::from("msg1"), Vec::from("msg2"), Vec::from("msg3")];
+
+    let expected = messages
+        .clone()
+        .into_iter()
+        .map(|msg| {
+            // Sign message
+            let mut raw = key.clone();
+            raw.truncate(32);
+            let mut bs = [0; 32];
+            bs.copy_from_slice(&raw);
+            let sk = SecretKey::from_bytes(bs);
+            let sig = sk.sign(&msg).to_bytes();
+
+            // SHA-256 hash the signed message
+            let mut digest = [0; SHA256_LEN];
+            SHA256(&sig, &mut digest);
+            digest
+        })
+        .filter(|bytes| bytes.iter().any(|b| b <= &10u8))
+        .fold(Vec::new(), |mut acc, curr| {
+            acc.extend_from_slice(&curr);
+            acc
+        });
+
+    // test procedure
+    let proc = messages
+        .into_iter()
+        .enumerate()
+        .map(|(i, msg)| {
+            let sign = Ed25519Sign::new(key_location.clone(), msg);
+            let digest = SHA256Digest::new_dyn(sign.output_key()).store_output(OutputKey::new(format!("{}", i)));
+            sign.then(digest)
+        })
+        .reduce(|acc, curr| acc.then(curr))
+        .unwrap();
+    let output = match sh.runtime_exec(proc).await {
+        ResultMessage::Ok(o) => o,
+        ResultMessage::Error(e) => panic!("Unexpected error: {}", e),
+    };
+    let res = output
+        .into_iter()
+        .map(|(_, v)| v)
+        .filter(|bytes| bytes.iter().any(|b| b <= &10u8))
+        .fold(Vec::new(), |mut acc, curr| {
+            acc.extend_from_slice(&curr);
+            acc
+        });
+    assert_eq!(res, expected);
 }

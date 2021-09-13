@@ -3,18 +3,6 @@
 
 use crate::{line_error, Location, RecordHint, Stronghold};
 
-#[cfg(feature = "p2p")]
-use p2p::firewall::Rule;
-
-#[cfg(feature = "p2p")]
-use crate::{
-    actors::p2p::{messages::SwarmInfo, NetworkConfig},
-    // tests::fresh,
-    // ProcResult, Procedure, ResultMessage, SLIP10DeriveInput,
-    ResultMessage,
-    StatusMessage,
-};
-
 #[actix::test]
 async fn test_stronghold() {
     let vault_path = b"path".to_vec();
@@ -360,6 +348,13 @@ async fn test_stronghold_generics() {
 #[cfg(feature = "p2p")]
 #[actix::test]
 async fn test_stronghold_p2p() {
+    use crate::{
+        actors::p2p::{messages::SwarmInfo, NetworkConfig},
+        procedures::{Slip10Derive, Slip10Generate, TargetInfo},
+        tests::fresh,
+        ResultMessage, StatusMessage,
+    };
+    use p2p::firewall::Rule;
     use tokio::sync::{mpsc, oneshot};
 
     let system = actix::System::current();
@@ -382,8 +377,8 @@ async fn test_stronghold_p2p() {
     let loc2_clone = loc2.clone();
     let data2_clone = data2.clone();
 
-    // let seed1 = fresh::location();
-    // let seed1_clone = seed1.clone();
+    let seed1 = fresh::location();
+    let seed1_clone = seed1.clone();
 
     let (res_tx, mut res_rx) = mpsc::channel(1);
     let res_tx_clone = res_tx.clone();
@@ -435,21 +430,17 @@ async fn test_stronghold_p2p() {
         };
         assert_eq!(payload, original_data3);
 
-        // remote_ready_rx.recv().await.unwrap();
+        remote_ready_rx.recv().await.unwrap();
 
-        // let (_path, chain) = fresh::hd_path();
-        // let procedure = Procedure::SLIP10Derive {
-        //     chain,
-        //     input: SLIP10DeriveInput::Seed(seed1),
-        //     output: fresh::location(),
-        //     hint: fresh::record_hint(),
-        // };
+        let (_path, chain) = fresh::hd_path();
 
-        // match local_stronghold.remote_runtime_exec(peer_id, procedure).await {
-        //     ResultMessage::Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(_))) => {}
-        //     ResultMessage::Error(err) => panic!("Procedure failed: {:?}", err),
-        //     r => panic!("unexpected result: {:?}", r),
-        // };
+        match local_stronghold
+            .remote_runtime_exec(peer_id, Slip10Derive::new_from_seed(seed1, chain))
+            .await
+        {
+            ResultMessage::Ok(out) => assert!(out.into_iter().next().is_none()),
+            ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
+        };
         res_tx.send(()).await.unwrap();
     });
     assert!(spawned_local);
@@ -496,20 +487,16 @@ async fn test_stronghold_p2p() {
         };
         assert_eq!(payload, data2_clone);
 
-        // // test procedure execution
-        // match remote_stronghold
-        //     .runtime_exec(Procedure::SLIP10Generate {
-        //         size_bytes: None,
-        //         output: seed1_clone,
-        //         hint: fresh::record_hint(),
-        //     })
-        //     .await
-        // {
-        //     ProcResult::SLIP10Generate(ResultMessage::OK) => (),
-        //     r => panic!("unexpected result: {:?}", r),
-        // };
+        // test procedure execution
+        match remote_stronghold
+            .runtime_exec(Slip10Generate::new(None).write_secret(seed1_clone, fresh::record_hint()))
+            .await
+        {
+            ResultMessage::Ok(out) => assert!(out.into_iter().next().is_none()),
+            ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
+        };
 
-        // remote_ready_tx.send(()).await.unwrap();
+        remote_ready_tx.send(()).await.unwrap();
         res_tx_clone.send(()).await.unwrap();
     });
     assert!(spawned_remote);

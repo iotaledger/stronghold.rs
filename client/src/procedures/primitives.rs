@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{Location, SLIP10DeriveInput};
+use crate::{enum_from_inner, Location, SLIP10DeriveInput};
 
 use super::*;
 use crypto::{
@@ -16,12 +16,79 @@ use crypto::{
 use engine::{runtime::GuardedVec, vault::RecordHint};
 use std::convert::TryFrom;
 use stronghold_derive::{execute_procedure, Procedure};
+// use serde::{Serialize, Deserialize};
 
 // ==========================
 // Helper Procedures
 // ==========================
 
-#[derive(Procedure)]
+#[derive(Clone, GuardDebug, Serialize, Deserialize)]
+pub enum PrimitiveProcedure {
+    Helper(HelperProcedure),
+    Crypto(CryptoProcedure),
+}
+
+impl ProcedureStep for PrimitiveProcedure {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+        match self {
+            PrimitiveProcedure::Helper(proc) => proc.execute(runner, state),
+            PrimitiveProcedure::Crypto(proc) => proc.execute(runner, state),
+        }
+    }
+}
+
+enum_from_inner!(PrimitiveProcedure::Helper from HelperProcedure);
+enum_from_inner!(PrimitiveProcedure::Crypto  from CryptoProcedure);
+
+#[derive(Clone, GuardDebug, Serialize, Deserialize)]
+pub enum HelperProcedure {
+    WriteVault(WriteVault),
+}
+
+impl ProcedureStep for HelperProcedure {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+        match self {
+            HelperProcedure::WriteVault(proc) => proc.execute(runner, state),
+        }
+    }
+}
+
+enum_from_inner!(PrimitiveProcedure::Helper, HelperProcedure::WriteVault from WriteVault);
+
+#[derive(Clone, GuardDebug, Serialize, Deserialize)]
+pub enum CryptoProcedure {
+    Slip10Generate(Slip10Generate),
+    Slip10Derive(Slip10Derive),
+    BIP39Generate(BIP39Generate),
+    BIP39Recover(BIP39Recover),
+    Ed25519PublicKey(Ed25519PublicKey),
+    Ed25519Sign(Ed25519Sign),
+    SHA256Digest(SHA256Digest),
+}
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Generate from Slip10Generate);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Derive from Slip10Derive);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Generate from BIP39Generate);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Recover from BIP39Recover);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519PublicKey from Ed25519PublicKey);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519Sign from Ed25519Sign);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::SHA256Digest from SHA256Digest);
+
+impl ProcedureStep for CryptoProcedure {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+        use CryptoProcedure::*;
+        match self {
+            Slip10Generate(proc) => proc.execute(runner, state),
+            Slip10Derive(proc) => proc.execute(runner, state),
+            BIP39Generate(proc) => proc.execute(runner, state),
+            BIP39Recover(proc) => proc.execute(runner, state),
+            Ed25519PublicKey(proc) => proc.execute(runner, state),
+            Ed25519Sign(proc) => proc.execute(runner, state),
+            SHA256Digest(proc) => proc.execute(runner, state),
+        }
+    }
+}
+
+#[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct WriteVault {
     #[input_data]
     data: InputData<Vec<u8>>,
@@ -41,10 +108,7 @@ impl WriteVault {
     }
     pub fn new_dyn(data_key: OutputKey, target: Location, hint: RecordHint) -> Self {
         WriteVault {
-            data: InputData::Key {
-                key: data_key,
-                convert: |v| Ok(v),
-            },
+            data: InputData::Key(data_key),
             target: InterimProduct {
                 target: Target { location: target, hint },
                 is_temp: false,
@@ -70,7 +134,7 @@ impl Generate for WriteVault {
 // Procedures for Cryptographic Primitives
 // ==========================
 
-#[derive(Procedure)]
+#[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct Slip10Generate {
     size_bytes: Option<usize>,
 
@@ -106,10 +170,9 @@ impl Generate for Slip10Generate {
     }
 }
 
-#[derive(Procedure)]
-pub struct SLIP10Derive {
-    #[input_data]
-    chain: InputData<Chain>,
+#[derive(Procedure, Clone, Serialize, Deserialize)]
+pub struct Slip10Derive {
+    chain: Chain,
 
     #[output_key]
     output_key: InterimProduct<OutputKey>,
@@ -121,7 +184,7 @@ pub struct SLIP10Derive {
     target: InterimProduct<Target>,
 }
 
-impl SLIP10Derive {
+impl Slip10Derive {
     pub fn new_from_seed(seed: Location, chain: Chain) -> Self {
         Self::new(chain, SLIP10DeriveInput::Seed(seed))
     }
@@ -131,8 +194,8 @@ impl SLIP10Derive {
     }
 
     fn new(chain: Chain, source: SLIP10DeriveInput) -> Self {
-        SLIP10Derive {
-            chain: InputData::Value(chain),
+        Slip10Derive {
+            chain,
             source,
             target: InterimProduct {
                 target: Target::random(),
@@ -147,16 +210,16 @@ impl SLIP10Derive {
 }
 
 #[execute_procedure]
-impl Process for SLIP10Derive {
-    type Input = Chain;
+impl Process for Slip10Derive {
+    type Input = ();
     type Output = ChainCode;
 
-    fn process(self, chain: Self::Input, guard: GuardedVec<u8>) -> Result<Products<ChainCode>, engine::Error> {
+    fn process(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<ChainCode>, engine::Error> {
         let dk = match self.source {
             SLIP10DeriveInput::Key(_) => {
-                slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&chain))
+                slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&self.chain))
             }
-            SLIP10DeriveInput::Seed(_) => Seed::from_bytes(&guard.borrow()).derive(Curve::Ed25519, &chain),
+            SLIP10DeriveInput::Seed(_) => Seed::from_bytes(&guard.borrow()).derive(Curve::Ed25519, &self.chain),
         }?;
         Ok(Products {
             secret: dk.into(),
@@ -165,7 +228,7 @@ impl Process for SLIP10Derive {
     }
 }
 
-#[derive(Procedure)]
+#[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct BIP39Generate {
     passphrase: Option<String>,
 
@@ -211,7 +274,7 @@ impl Generate for BIP39Generate {
     }
 }
 
-#[derive(Procedure)]
+#[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct BIP39Recover {
     passphrase: Option<String>,
 
@@ -235,13 +298,9 @@ impl BIP39Recover {
     }
 
     pub fn new_dyn(passphrase: Option<String>, mnemonic_key: OutputKey) -> Self {
-        let convert = |k: Vec<u8>| String::from_utf8(k).map_err(|e| anyhow::anyhow!("Invalid input: {}", e));
         BIP39Recover {
             passphrase,
-            mnemonic: InputData::Key {
-                key: mnemonic_key,
-                convert,
-            },
+            mnemonic: InputData::Key(mnemonic_key),
             target: InterimProduct {
                 target: Target::random(),
                 is_temp: true,
@@ -266,7 +325,7 @@ impl Generate for BIP39Recover {
     }
 }
 
-#[derive(Clone, Procedure)]
+#[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct Ed25519PublicKey {
     #[source]
     private_key: Location,
@@ -316,7 +375,7 @@ impl Utilize for Ed25519PublicKey {
     }
 }
 
-#[derive(Procedure)]
+#[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct Ed25519Sign {
     #[input_data]
     msg: InputData<Vec<u8>>,
@@ -326,33 +385,6 @@ pub struct Ed25519Sign {
 
     #[output_key]
     output_key: InterimProduct<OutputKey>,
-}
-
-impl Ed25519Sign {
-    pub fn new(private_key: Location, msg: Vec<u8>) -> Self {
-        Ed25519Sign {
-            msg: InputData::Value(msg),
-            private_key,
-            output_key: InterimProduct {
-                target: OutputKey::random(),
-                is_temp: true,
-            },
-        }
-    }
-    pub fn new_dyn(private_key: Location, msg_key: OutputKey) -> Self {
-        let input = InputData::Key {
-            key: msg_key,
-            convert: |v| Ok(v),
-        };
-        Ed25519Sign {
-            msg: input,
-            private_key,
-            output_key: InterimProduct {
-                target: OutputKey::random(),
-                is_temp: true,
-            },
-        }
-    }
 }
 
 #[execute_procedure]
@@ -383,7 +415,30 @@ impl Utilize for Ed25519Sign {
     }
 }
 
-#[derive(Procedure)]
+impl Ed25519Sign {
+    pub fn new(private_key: Location, msg: Vec<u8>) -> Self {
+        Ed25519Sign {
+            msg: InputData::Value(msg),
+            private_key,
+            output_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
+        }
+    }
+    pub fn new_dyn(private_key: Location, msg_key: OutputKey) -> Self {
+        Ed25519Sign {
+            msg: InputData::Key(msg_key),
+            private_key,
+            output_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
+        }
+    }
+}
+
+#[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct SHA256Digest {
     #[input_data]
     msg: InputData<Vec<u8>>,
@@ -404,10 +459,7 @@ impl SHA256Digest {
     }
 
     pub fn new_dyn(msg_key: OutputKey) -> Self {
-        let input = InputData::Key {
-            key: msg_key,
-            convert: |v| Ok(v),
-        };
+        let input = InputData::Key(msg_key);
         SHA256Digest {
             msg: input,
             output_key: InterimProduct {
@@ -418,6 +470,7 @@ impl SHA256Digest {
     }
 }
 
+#[execute_procedure]
 impl Parse for SHA256Digest {
     type Input = Vec<u8>;
     type Output = [u8; SHA256_LEN];

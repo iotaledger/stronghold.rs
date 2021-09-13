@@ -1,7 +1,11 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::actors::SecureClient;
+use crate::{
+    actors::SecureClient,
+    enum_from_inner,
+    procedures::{CollectedOutput, Procedure},
+};
 use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
 pub use messages::SwarmInfo;
@@ -44,35 +48,25 @@ macro_rules! sh_request_dispatch {
             ShRequest::GarbageCollect($inner) => $body
             ShRequest::ListIds($inner) => $body
             ShRequest::ClearCache($inner) => $body
-            ShRequest::CallProcedure($inner) => $body
+            ShRequest::Procedure($inner) => $body
         }
     }
 }
 
-macro_rules! sh_request_from {
-    ($T:ident) => {
-        impl From<$T> for ShRequest {
-            fn from(t: $T) -> Self {
-                ShRequest::$T(t)
-            }
-        }
-    };
-}
-
 macro_rules! sh_result_mapping {
-    ($enum:ident::$variant:ident, Result<$ok:ty, anyhow::Error>) => {
-        sh_result_mapping!($enum::$variant, Result<$ok, anyhow::Error>,
+    ($enum:ident::$variant:ident => Result<$ok:ty, anyhow::Error>) => {
+        sh_result_mapping!($enum::$variant => Result<$ok, anyhow::Error>,
             |i| $enum::$variant(i.map_err(|e| e.to_string())),
             |v| v.map_err(anyhow::Error::msg)
         );
     };
-    ($enum:ident::$variant:ident, $inner:ty) => {
-        sh_result_mapping!($enum::$variant, $inner,
+    ($enum:ident::$variant:ident => $inner:ty) => {
+        sh_result_mapping!($enum::$variant => $inner,
             |t| $enum::$variant(t),
             |t| t
         );
     };
-    ($enum:ident::$variant:ident, $inner:ty,
+    ($enum:ident::$variant:ident => $inner:ty,
         |$i:ident| $map_from_inner:expr,
         |$v:ident| $map_try_from_enum:expr
     ) => {
@@ -318,19 +312,16 @@ impl Default for NetworkConfig {
 
 pub mod messages {
     use super::*;
-    use crate::{ProcResult, RecordHint, RecordId};
+    use crate::{RecordHint, RecordId};
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
+    use crate::actors::secure_messages::{
+        CheckRecord, CheckVault, ClearCache, CreateVault, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore,
+        WriteToStore, WriteToVault,
+    };
     #[cfg(test)]
     use crate::actors::secure_testing::ReadFromVault;
-    use crate::actors::{
-        secure_messages::{
-            CheckRecord, CheckVault, ClearCache, CreateVault, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore,
-            WriteToStore, WriteToVault,
-        },
-        secure_procedures::CallProcedure,
-    };
 
     #[derive(Message)]
     #[rtype(result = "()")]
@@ -482,22 +473,21 @@ pub mod messages {
         DeleteFromStore(DeleteFromStore),
         GarbageCollect(GarbageCollect),
         ClearCache(ClearCache),
-        CallProcedure(CallProcedure),
+        Procedure(Procedure),
     }
 
-    sh_request_from!(CheckVault);
-    sh_request_from!(CheckRecord);
-    sh_request_from!(ListIds);
-    sh_request_from!(CreateVault);
+    enum_from_inner!(ShRequest from CheckVault);
+    enum_from_inner!(ShRequest from ListIds);
+    enum_from_inner!(ShRequest from CreateVault);
     #[cfg(test)]
-    sh_request_from!(ReadFromVault);
-    sh_request_from!(WriteToVault);
-    sh_request_from!(ReadFromStore);
-    sh_request_from!(WriteToStore);
-    sh_request_from!(DeleteFromStore);
-    sh_request_from!(GarbageCollect);
-    sh_request_from!(ClearCache);
-    sh_request_from!(CallProcedure);
+    enum_from_inner!(ShRequest from ReadFromVault);
+    enum_from_inner!(ShRequest from WriteToVault);
+    enum_from_inner!(ShRequest from ReadFromStore);
+    enum_from_inner!(ShRequest from WriteToStore);
+    enum_from_inner!(ShRequest from DeleteFromStore);
+    enum_from_inner!(ShRequest from GarbageCollect);
+    enum_from_inner!(ShRequest from ClearCache);
+    enum_from_inner!(ShRequest from Procedure);
 
     #[derive(Clone, Serialize, Deserialize)]
     pub enum ShResult {
@@ -506,13 +496,13 @@ pub mod messages {
         Status(Result<(), String>),
         Vector(Result<Vec<u8>, String>),
         List(Result<Vec<(RecordId, RecordHint)>, String>),
-        Proc(Result<ProcResult, String>),
+        Proc(Result<CollectedOutput, String>),
     }
 
-    sh_result_mapping!(ShResult::Empty, ());
-    sh_result_mapping!(ShResult::Bool, bool);
-    sh_result_mapping!(ShResult::Status, Result<(), anyhow::Error>);
-    sh_result_mapping!(ShResult::Vector, Result<Vec<u8>, anyhow::Error>);
-    sh_result_mapping!(ShResult::List, Result<Vec<(RecordId, RecordHint)>, anyhow::Error>);
-    sh_result_mapping!(ShResult::Proc, Result<ProcResult, anyhow::Error>);
+    sh_result_mapping!(ShResult::Empty => ());
+    sh_result_mapping!(ShResult::Bool => bool);
+    sh_result_mapping!(ShResult::Status => Result<(), anyhow::Error>);
+    sh_result_mapping!(ShResult::Vector => Result<Vec<u8>, anyhow::Error>);
+    sh_result_mapping!(ShResult::List => Result<Vec<(RecordId, RecordHint)>, anyhow::Error>);
+    sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, anyhow::Error>);
 }

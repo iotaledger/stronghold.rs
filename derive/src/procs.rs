@@ -178,7 +178,7 @@ fn impl_get_location(
 
 // `execute_procedure` macro logic
 
-pub fn impl_exec_proc(item_impl: ItemImpl) -> proc_macro2::TokenStream {
+pub fn impl_procedure_step(item_impl: ItemImpl) -> proc_macro2::TokenStream {
     let panic_msg =
         "The execute_procedure macro can only applied for implementation blocks of the traits `Generate`, `Process` or `Utilize`.";
 
@@ -209,9 +209,9 @@ pub fn impl_exec_proc(item_impl: ItemImpl) -> proc_macro2::TokenStream {
                 #gen_exec_fn
             }
 
-            fn build(self) -> Procedure<Self> {
-                Procedure {inner: self}
-            }
+            // fn build(self) -> Procedure<Self> {
+            //     Procedure {inner: self}
+            // }
         }
     }
 }
@@ -222,9 +222,9 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
             let input_data = self.input_info();
             let input = match input_data {
                 InputData::Value(v) => v.clone(),
-                InputData::Key {key, convert} => {
+                InputData::Key(key) => {
                     let data = state.get_data(&key)?;
-                    convert(data)?
+                    data.try_into().map_err(|e| anyhow::anyhow!("Invalid Input Data: {}", e))?
                 }
             };
         }
@@ -279,13 +279,12 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 } = self.target_info().clone();
                 #gen_input
                 #gen_output_key
-                let f = move |input, guard| <Self as Process>::process(self, input, guard);
+                let f = move |guard| <Self as Process>::process(self, input, guard);
                 let output = runner.exec_proc(
                     &location_0,
                     &location_1,
                     hint,
                     f,
-                    input
                 )?;
                 state.add_log(location_1, is_secret_temp);
                 #gen_insert_data
@@ -295,8 +294,8 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
             let location_0 = self.source().clone();
             #gen_output_key
             #gen_input
-            let f = move |input, guard| <Self as Utilize>::utilize(self, input, guard);
-            let output = runner.get_guard(&location_0, f, input)?;
+            let f = move |guard| <Self as Utilize>::utilize(self, input, guard);
+            let output = runner.get_guard(&location_0, f)?;
             #gen_insert_data
             Ok(())
         },

@@ -1,7 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::{TryFrom, TryInto},
+    ops::Deref,
+    string::FromUtf8Error,
+};
 
 use actix::Message;
 use engine::{
@@ -11,28 +16,25 @@ use engine::{
 mod primitives;
 use crate::{actors::SecureClient, Location, SLIP10DeriveInput};
 pub use primitives::*;
-use stronghold_derive::Procedure;
+use serde::{Deserialize, Serialize};
 use stronghold_utils::{test_utils::fresh, GuardDebug};
 
 // ==========================
 // Types
 // ==========================
 
-#[derive(GuardDebug)]
-pub struct Procedure<P> {
-    inner: P,
+#[derive(Clone, GuardDebug, Serialize, Deserialize)]
+pub struct Procedure {
+    inner: Vec<PrimitiveProcedure>,
 }
 
-impl<P> Procedure<P>
-where
-    P: ProcedureStep,
-{
+impl Procedure {
     pub fn run<R: Runner>(self, runner: &mut R) -> Result<CollectedOutput, anyhow::Error> {
         let mut state = State {
             aggregated_output: HashMap::new(),
             change_log: Vec::new(),
         };
-        match self.inner.execute(runner, &mut state) {
+        match self.execute(runner, &mut state) {
             Ok(()) => {
                 // Delete temporary records
                 Self::revoke_records(runner, state.change_log, true);
@@ -42,7 +44,7 @@ where
                         output.insert(k, data);
                     }
                 }
-                Ok(output)
+                Ok(CollectedOutput { output })
             }
             Err(e) => {
                 // Rollback written data
@@ -67,24 +69,37 @@ where
     }
 }
 
-impl<P> Message for Procedure<P>
-where
-    P: ProcedureStep + 'static,
-{
+impl ProcedureStep for Procedure {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+        self.inner.into_iter().try_for_each(|p| p.execute(runner, state))
+    }
+}
+
+impl Message for Procedure {
     type Result = Result<CollectedOutput, anyhow::Error>;
 }
 
+impl<P> From<P> for Procedure
+where
+    P: Into<PrimitiveProcedure>,
+{
+    fn from(p: P) -> Self {
+        Self { inner: vec![p.into()] }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct State {
-    aggregated_output: HashMap<OutputKey, (Vec<u8>, bool)>,
+    aggregated_output: HashMap<OutputKey, (ProcedureIo, bool)>,
     change_log: Vec<ChangeLog>,
 }
 
 impl State {
-    pub fn insert_data(&mut self, key: OutputKey, value: Vec<u8>, is_temp: bool) {
+    pub fn insert_data(&mut self, key: OutputKey, value: ProcedureIo, is_temp: bool) {
         self.aggregated_output.insert(key, (value, is_temp));
     }
 
-    pub fn get_data(&mut self, key: &OutputKey) -> Result<Vec<u8>, anyhow::Error> {
+    pub fn get_data(&mut self, key: &OutputKey) -> Result<ProcedureIo, anyhow::Error> {
         self.aggregated_output
             .get(key)
             .map(|(data, _)| data.clone())
@@ -97,15 +112,92 @@ impl State {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ChangeLog {
     location: Location,
     is_temp: bool,
 }
 
-pub type CollectedOutput = HashMap<OutputKey, Vec<u8>>;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcedureIo(Vec<u8>);
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+impl Deref for ProcedureIo {
+    type Target = Vec<u8>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Vec<u8>> for ProcedureIo {
+    fn from(v: Vec<u8>) -> Self {
+        ProcedureIo(v)
+    }
+}
+
+impl From<ProcedureIo> for Vec<u8> {
+    fn from(p: ProcedureIo) -> Self {
+        p.0
+    }
+}
+
+impl From<String> for ProcedureIo {
+    fn from(s: String) -> Self {
+        ProcedureIo(s.into_bytes())
+    }
+}
+
+impl TryFrom<ProcedureIo> for String {
+    type Error = FromUtf8Error;
+    fn try_from(value: ProcedureIo) -> Result<Self, Self::Error> {
+        String::from_utf8(value.0)
+    }
+}
+
+impl<const N: usize> From<[u8; N]> for ProcedureIo {
+    fn from(a: [u8; N]) -> Self {
+        ProcedureIo(a.into())
+    }
+}
+
+impl<const N: usize> TryFrom<ProcedureIo> for [u8; N] {
+    type Error = <[u8; N] as TryFrom<Vec<u8>>>::Error;
+
+    fn try_from(value: ProcedureIo) -> Result<Self, Self::Error> {
+        value.0.try_into()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CollectedOutput {
+    output: HashMap<OutputKey, ProcedureIo>,
+}
+
+impl CollectedOutput {
+    pub fn take<T>(&mut self, key: &OutputKey) -> Option<T>
+    where
+        ProcedureIo: Into<T>,
+    {
+        self.output.remove(key).map(|v| v.into())
+    }
+
+    pub fn try_take<T>(&mut self, key: &OutputKey) -> Option<Result<T, anyhow::Error>>
+    where
+        ProcedureIo: TryInto<T>,
+    {
+        let o = self.output.remove(key)?;
+        Some(o.try_into().map_err(|_| anyhow::anyhow!("Invalid format.")))
+    }
+}
+
+impl IntoIterator for CollectedOutput {
+    type IntoIter = <HashMap<OutputKey, ProcedureIo> as IntoIterator>::IntoIter;
+    type Item = <HashMap<OutputKey, ProcedureIo> as IntoIterator>::Item;
+    fn into_iter(self) -> Self::IntoIter {
+        self.output.into_iter()
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputKey(String);
 
 impl OutputKey {
@@ -125,58 +217,31 @@ impl OutputKey {
 pub trait ProcedureStep {
     fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error>;
 
-    fn build(self) -> Procedure<Self>
+    fn then<P>(self, next: P) -> Procedure
     where
-        Self: Sized;
-
-    fn then<P>(self, proc_1: P) -> FusedProcedure<Self, P>
-    where
-        Self: Sized,
-        P: ProcedureStep,
+        Self: Into<Procedure>,
+        P: Into<Procedure>,
     {
-        FusedProcedure { proc_0: self, proc_1 }
-    }
-}
-
-#[derive(Clone, Procedure)]
-pub struct FusedProcedure<P0, P1> {
-    #[source]
-    proc_0: P0,
-
-    #[target]
-    proc_1: P1,
-}
-
-impl<P0, P1> ProcedureStep for FusedProcedure<P0, P1>
-where
-    P0: ProcedureStep,
-    P1: ProcedureStep,
-{
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
-        self.proc_0.execute(runner, state)?;
-        self.proc_1.execute(runner, state)
-    }
-
-    fn build(self) -> Procedure<Self> {
-        Procedure { inner: self }
+        let mut procedure = self.into();
+        procedure.inner.extend(next.into().inner);
+        procedure
     }
 }
 
 pub trait Runner {
-    fn get_guard<F, I, O>(&mut self, location0: &Location, f: F, input: I) -> Result<O, anyhow::Error>
+    fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, anyhow::Error>
     where
-        F: FnOnce(I, GuardedVec<u8>) -> Result<O, engine::Error>;
+        F: FnOnce(GuardedVec<u8>) -> Result<T, engine::Error>;
 
-    fn exec_proc<F, I, O>(
+    fn exec_proc<F, T>(
         &mut self,
         location0: &Location,
         location1: &Location,
         hint: RecordHint,
         f: F,
-        input: I,
-    ) -> Result<O, anyhow::Error>
+    ) -> Result<T, anyhow::Error>
     where
-        F: FnOnce(I, GuardedVec<u8>) -> Result<Products<O>, engine::Error>;
+        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, engine::Error>;
 
     fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error>;
 
@@ -222,16 +287,16 @@ trait Utilize {
 //  Input /  Output info
 // ==========================
 
-#[derive(Clone)]
-pub enum InputData<T> {
-    Key {
-        key: OutputKey,
-        convert: fn(Vec<u8>) -> Result<T, anyhow::Error>,
-    },
+#[derive(Clone, Serialize, Deserialize)]
+pub enum InputData<T>
+where
+    T: TryFrom<ProcedureIo>,
+{
+    Key(OutputKey),
     Value(T),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct InterimProduct<T> {
     pub target: T,
     pub is_temp: bool,
@@ -286,7 +351,7 @@ pub trait TargetInfo {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Target {
     pub location: Location,
     pub hint: RecordHint,
@@ -310,14 +375,16 @@ impl TargetInfo for InterimProduct<Target> {
 }
 
 pub trait InputInfo {
-    type Input;
+    type Input: TryFrom<ProcedureIo>;
+
     fn input_info(&self) -> &InputData<Self::Input>;
     fn input_info_mut(&mut self) -> &mut InputData<Self::Input>;
 }
 
 impl<T> InputInfo for InputData<T>
 where
-    T: Clone,
+    T: TryFrom<ProcedureIo>,
+    // ProcedureIo: TryInto<T>
 {
     type Input = T;
     fn input_info(&self) -> &InputData<Self::Input> {

@@ -20,8 +20,8 @@ use crate::{
         GetAllClients, GetClient, GetSnapshot, InsertClient, Registry, RemoveClient, SecureClient,
     },
     line_error,
-    procedures::{CollectedOutput, Procedure, ProcedureStep},
-    utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
+    procedures::{CollectedOutput, Procedure},
+    utils::{LoadFromPath, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
 use engine::vault::{ClientId, RecordHint, RecordId};
@@ -33,7 +33,7 @@ use crate::{
         messages::{ShRequest, SwarmInfo},
         NetworkActor, NetworkConfig,
     },
-    unwrap_or_err, unwrap_result_msg, ResultMessage,
+    unwrap_or_err, unwrap_result_msg,
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -335,13 +335,14 @@ impl Stronghold {
 
     /// Executes a runtime command given a [`Procedure`].  Returns a [`ProcResult`] based off of the control_request
     /// specified.
-    pub async fn runtime_exec<P>(&self, control_request: Procedure<P>) -> Result<CollectedOutput, anyhow::Error>
+    pub async fn runtime_exec<P>(&self, control_request: P) -> ResultMessage<CollectedOutput>
     where
-        P: ProcedureStep + Send + 'static,
+        P: Into<Procedure>,
     {
-        match self.target.send(control_request).await {
-            Ok(result) => result,
-            Err(e) => Err(anyhow::anyhow!(e)),
+        match self.target.send(control_request.into()).await {
+            Ok(Ok(result)) => ResultMessage::Ok(result),
+            Ok(Err(e)) => ResultMessage::Error(e.to_string()),
+            Err(e) => ResultMessage::Error(e.to_string()),
         }
     }
 
@@ -830,39 +831,18 @@ impl Stronghold {
         }
     }
 
-    /// Executes a runtime command at a remote Stronghold.
-    /// It is required that the peer has successfully been added with the `add_peer` method.
-    // pub async fn remote_runtime_exec(&self, peer: PeerId, control_request: Procedure) -> ResultMessage<ProcResult> {
-    //     let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
-    //     let send_request = network_msg::SendRequest {
-    //         peer,
-    //         request: Procedure { proc: control_request },
-    //     };
-    //     let receive_response = unwrap_or_err!(actor.send(send_request).await);
-    //     let result = unwrap_or_err!(receive_response);
-    //     match result {
-    //         Ok(ok) => ResultMessage::Ok(ok),
-    //         Err(err) => ResultMessage::Error(err.to_string()),
-    //     }
-    // }
-
-    pub async fn remote_runtime_exec<P>(
-        &self,
-        peer: PeerId,
-        control_request: Procedure<P>,
-    ) -> ResultMessage<CollectedOutput>
+    pub async fn remote_runtime_exec<P>(&self, peer: PeerId, control_request: P) -> ResultMessage<CollectedOutput>
     where
-        P: ProcedureStep + Send + 'static,
+        P: Into<Procedure>,
     {
-        let _actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
-        let _send_request = network_msg::SendRequest {
+        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let send_request = network_msg::SendRequest {
             peer,
-            request: control_request,
+            request: control_request.into(),
         };
-        todo!()
-        // match actor.send(control_request).await {
-        //     Ok(result) => result,
-        //     Err(e) => Err(anyhow::anyhow!(e)),
-        // }
+        match unwrap_result_msg!(actor.send(send_request).await) {
+            Ok(res) => ResultMessage::Ok(res),
+            Err(e) => ResultMessage::Error(e.to_string()),
+        }
     }
 }

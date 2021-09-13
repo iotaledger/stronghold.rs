@@ -17,7 +17,7 @@ pub use crate::{
 };
 use crate::{
     internals,
-    procedures::{CollectedOutput, Procedure, ProcedureStep, Products, Runner},
+    procedures::{CollectedOutput, Procedure, Products, Runner},
     Location,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
@@ -701,44 +701,40 @@ impl_handler!(
 // impl for procedures
 // ---
 
-impl<Proc> Handler<Procedure<Proc>> for SecureClient
-where
-    Proc: ProcedureStep + 'static,
-{
+impl Handler<Procedure> for SecureClient {
     type Result = Result<CollectedOutput, anyhow::Error>;
 
-    fn handle(&mut self, proc: Procedure<Proc>, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, proc: Procedure, _: &mut Self::Context) -> Self::Result {
         proc.run(self)
     }
 }
 
 impl Runner for SecureClient {
-    fn get_guard<F, I, O>(&mut self, location: &Location, f: F, input: I) -> Result<O, anyhow::Error>
+    fn get_guard<F, T>(&mut self, location: &Location, f: F) -> Result<T, anyhow::Error>
     where
-        F: FnOnce(I, GuardedVec<u8>) -> Result<O, engine::Error>,
+        F: FnOnce(GuardedVec<u8>) -> Result<T, engine::Error>,
     {
         let (vault_id, record_id) = Self::resolve_location(location);
         let key = self.get_key(vault_id)?;
 
         let mut ret = None;
         let execute_procedure = |guard: GuardedVec<u8>| {
-            ret = Some(f(input, guard)?);
+            ret = Some(f(guard)?);
             Ok(())
         };
         self.db.get_guard(&key, vault_id, record_id, execute_procedure)?;
         Ok(ret.unwrap())
     }
 
-    fn exec_proc<F, I, O>(
+    fn exec_proc<F, T>(
         &mut self,
         location0: &Location,
         location1: &Location,
         hint: RecordHint,
         f: F,
-        input: I,
-    ) -> Result<O, anyhow::Error>
+    ) -> Result<T, anyhow::Error>
     where
-        F: FnOnce(I, GuardedVec<u8>) -> Result<Products<O>, engine::Error>,
+        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, engine::Error>,
     {
         let (vid0, rid0) = Self::resolve_location(location0);
         let key0 = self.get_key(vid0)?;
@@ -748,7 +744,7 @@ impl Runner for SecureClient {
 
         let mut ret = None;
         let execute_procedure = |guard: GuardedVec<u8>| {
-            let Products { output: plain, secret } = f(input, guard)?;
+            let Products { output: plain, secret } = f(guard)?;
             ret = Some(plain);
             Ok(secret)
         };
