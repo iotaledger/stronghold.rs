@@ -839,6 +839,7 @@
 <span id="837">837</span>
 <span id="838">838</span>
 <span id="839">839</span>
+<span id="840">840</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -883,6 +884,7 @@
     <span class="ident">Multiaddr</span>, <span class="ident">PeerId</span>,
 };
 
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>)]</span>
 <span class="doccomment">/// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of</span>
 <span class="doccomment">/// metadata to interpret the data in the vault and store.</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Stronghold</span> {
