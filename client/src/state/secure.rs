@@ -3,25 +3,31 @@
 
 //! Secure Client Actor State
 
-use crate::{actors::VaultError, internals, line_error, state::key_store::KeyStore, utils::LoadFromPath, Location};
-use engine::{
-    store::Cache,
-    vault::{ClientId, DbView, Key, RecordId, VaultId},
+use crate::{
+    actors::VaultError,
+    internals, line_error,
+    procedures::{Products, Runner},
+    state::key_store::KeyStore,
+    utils::LoadFromPath,
+    Location,
 };
-use std::{collections::HashSet, time::Duration};
+use engine::{
+    runtime::GuardedVec,
+    store::Cache,
+    vault::{ClientId, DbView, RecordHint, RecordId, VaultId},
+};
+use std::time::Duration;
 
 /// Cache type definition
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
 pub struct SecureClient {
     // A keystore
-    pub(crate) keystore: KeyStore<internals::Provider>,
+    pub(crate) keystore: KeyStore,
     // A view on the vault entries
     pub(crate) db: DbView<internals::Provider>,
     // The id of this client
     pub client_id: ClientId,
-    // Contains the vault ids and the record ids with their associated indexes.
-    pub vaults: HashSet<VaultId>,
     // Contains the Record Ids for the most recent Record in each vault.
     pub store: Store,
 }
@@ -29,13 +35,10 @@ pub struct SecureClient {
 impl SecureClient {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
     pub fn new(client_id: ClientId) -> Self {
-        let vaults = HashSet::new();
-
         let store = Cache::new();
 
         Self {
             client_id,
-            vaults,
             store,
             keystore: KeyStore::new(),
             db: DbView::new(),
@@ -69,22 +72,9 @@ impl SecureClient {
         self.client_id = client_id
     }
 
-    /// Adds a new vault to the client.  If the [`VaultId`] already exists, will just use that existing Vault.
-    pub fn add_new_vault(&mut self, vid: VaultId) {
-        self.vaults.insert(vid);
-    }
-
-    /// Empty the Client Cache.
-    pub fn clear_cache(&mut self) -> Option<()> {
-        self.vaults = HashSet::default();
-
-        Some(())
-    }
-
     /// Rebuilds the cache using the parameters.
-    pub fn rebuild_cache(&mut self, id: ClientId, vaults: HashSet<VaultId>, store: Store) {
+    pub fn rebuild_cache(&mut self, id: ClientId, store: Store) {
         self.client_id = id;
-        self.vaults = vaults;
         self.store = store;
     }
 
@@ -131,11 +121,6 @@ impl SecureClient {
         self.client_id.into()
     }
 
-    /// Checks to see if the vault exists in the client.
-    pub fn vault_exist(&self, vid: VaultId) -> Option<&VaultId> {
-        self.vaults.get(&vid)
-    }
-
     /// Gets the current index of a record if its a counter.
     pub fn get_index_from_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, record_id: RecordId) -> usize {
         let mut ctr = 0;
@@ -151,28 +136,118 @@ impl SecureClient {
 
         ctr
     }
+}
 
-    pub fn get_key(&mut self, vault_id: VaultId) -> Result<Key<internals::Provider>, anyhow::Error> {
-        let key = self
-            .keystore
-            .get_key(vault_id)
-            .ok_or_else(|| anyhow::anyhow!(VaultError::NotExisting))?;
-        self.keystore.insert_key(vault_id, key.clone());
-        Ok(key)
+impl Runner for SecureClient {
+    fn get_guard<F, T>(&mut self, location: &Location, f: F) -> Result<T, anyhow::Error>
+    where
+        F: FnOnce(GuardedVec<u8>) -> Result<T, engine::Error>,
+    {
+        let (vault_id, record_id) = Self::resolve_location(location);
+        let key = self.keystore.take_key(vault_id)?;
+
+        let mut ret = None;
+        let execute_procedure = |guard: GuardedVec<u8>| {
+            ret = Some(f(guard)?);
+            Ok(())
+        };
+        let res = self.db.get_guard(&key, vault_id, record_id, execute_procedure);
+        self.keystore.insert_key(vault_id, key);
+
+        match res {
+            Ok(()) => Ok(ret.unwrap()),
+            Err(e) => Err(anyhow::anyhow!(e)),
+        }
     }
 
-    pub fn get_or_create_key(&mut self, vault_id: VaultId) -> Result<Key<internals::Provider>, anyhow::Error> {
-        let key = if !self.keystore.vault_exists(vault_id) {
-            let k = self.keystore.create_key(vault_id);
-            self.db.init_vault(&k, vault_id)?;
-            k
-        } else {
-            self.keystore
-                .get_key(vault_id)
-                .ok_or_else(|| anyhow::anyhow!(crate::Error::KeyStoreError("".into())))?
+    fn exec_proc<F, T>(
+        &mut self,
+        location0: &Location,
+        location1: &Location,
+        hint: RecordHint,
+        f: F,
+    ) -> Result<T, anyhow::Error>
+    where
+        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, engine::Error>,
+    {
+        let (vid0, rid0) = Self::resolve_location(location0);
+        let (vid1, rid1) = Self::resolve_location(location1);
+
+        let key0 = self.keystore.take_key(vid0)?;
+
+        if !self.keystore.vault_exists(vid1) {
+            let key1 = self.keystore.create_key(vid1);
+            match self.db.init_vault(key1, vid1) {
+                Ok(_) => {}
+                Err(e) => {
+                    self.keystore.insert_key(vid0, key0);
+                    return Err(anyhow::anyhow!(e));
+                }
+            }
+        }
+        let key1 = self.keystore.take_key(vid1).unwrap();
+
+        let mut ret = None;
+        let execute_procedure = |guard: GuardedVec<u8>| {
+            let Products { output: plain, secret } = f(guard)?;
+            ret = Some(plain);
+            Ok(secret)
         };
-        self.keystore.insert_key(vault_id, key.clone());
-        Ok(key)
+        let res = self
+            .db
+            .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, execute_procedure);
+
+        self.keystore.insert_key(vid0, key0);
+        self.keystore.insert_key(vid1, key1);
+
+        match res {
+            Ok(()) => Ok(ret.unwrap()),
+            Err(e) => Err(anyhow::anyhow!(e)),
+        }
+    }
+
+    fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error> {
+        let (vault_id, record_id) = Self::resolve_location(location);
+
+        if !self.keystore.vault_exists(vault_id) {
+            let key = self.keystore.create_key(vault_id);
+            self.db.init_vault(key, vault_id).map_err(|e| anyhow::anyhow!(e))?;
+        }
+        let key = self.keystore.take_key(vault_id)?;
+
+        let res = self.db.write(&key, vault_id, record_id, &value, hint);
+
+        self.keystore.insert_key(vault_id, key);
+
+        match res {
+            Ok(()) => Ok(()),
+            Err(e) => Err(anyhow::anyhow!(e)),
+        }
+    }
+
+    fn revoke_data(&mut self, location: &Location) -> Result<(), anyhow::Error> {
+        let (vault_id, record_id) = Self::resolve_location(location);
+        let key = self.keystore.take_key(vault_id)?;
+
+        let res = self.db.revoke_record(&key, vault_id, record_id);
+        self.keystore.insert_key(vault_id, key);
+
+        match res {
+            Ok(()) => Ok(()),
+            Err(_) => Err(anyhow::anyhow!(VaultError::RevocationError)),
+        }
+    }
+
+    fn garbage_collect(&mut self, vault_id: VaultId) -> Result<(), anyhow::Error> {
+        let key = self.keystore.take_key(vault_id)?;
+
+        let res = self.db.garbage_collect_vault(&key, vault_id);
+        self.keystore.insert_key(vault_id, key);
+
+        match res {
+            Ok(()) => Ok(()),
+            Err(_) => Err(anyhow::anyhow!(VaultError::GarbageCollectError)),
+        }
     }
 }
 
@@ -183,34 +258,17 @@ mod tests {
     use crate::Provider;
 
     #[test]
-    fn test_add() {
-        let vid = VaultId::random::<Provider>().expect(line_error!());
-
-        let mut cache: SecureClient = SecureClient::new(ClientId::random::<Provider>().expect(line_error!()));
-
-        cache.add_new_vault(vid);
-
-        assert_eq!(cache.vaults.get(&vid), Some(&vid));
-    }
-
-    #[test]
     fn test_rid_internals() {
         let clientid = ClientId::random::<Provider>().expect(line_error!());
 
-        let vid = VaultId::random::<Provider>().expect(line_error!());
-        let vid2 = VaultId::random::<Provider>().expect(line_error!());
         let vault_path = b"some_vault".to_vec();
 
-        let mut client: SecureClient = SecureClient::new(clientid);
+        let client: SecureClient = SecureClient::new(clientid);
         let mut ctr = 0;
         let mut ctr2 = 0;
 
         let _rid = SecureClient::derive_record_id(vault_path.clone(), ctr);
         let _rid2 = SecureClient::derive_record_id(vault_path.clone(), ctr2);
-
-        client.add_new_vault(vid);
-
-        client.add_new_vault(vid2);
 
         ctr += 1;
         ctr2 += 1;
@@ -231,18 +289,11 @@ mod tests {
 
     #[test]
     fn test_location_counter_api() {
-        let clientid = ClientId::random::<Provider>().expect(line_error!());
-
         let vidlochead = Location::counter::<_, usize>("some_vault", 0);
         let vidlochead2 = Location::counter::<_, usize>("some_vault 2", 0);
 
-        let mut client: SecureClient = SecureClient::new(clientid);
-
-        let (vid, rid) = SecureClient::resolve_location(&vidlochead);
-        let (vid2, rid2) = SecureClient::resolve_location(&vidlochead2);
-
-        client.add_new_vault(vid);
-        client.add_new_vault(vid2);
+        let (_, rid) = SecureClient::resolve_location(&vidlochead);
+        let (_, rid2) = SecureClient::resolve_location(&vidlochead2);
 
         let (_, rid_head) = SecureClient::resolve_location(&vidlochead);
         let (_, rid_head_2) = SecureClient::resolve_location(&vidlochead2);

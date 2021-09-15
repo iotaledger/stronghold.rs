@@ -17,8 +17,7 @@ pub use crate::{
 };
 use crate::{
     internals,
-    procedures::{CollectedOutput, Procedure, Products, Runner},
-    Location,
+    procedures::{CollectedOutput, Procedure, Runner},
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
 
@@ -31,16 +30,10 @@ use crypto::{
     utils::rand::fill,
 };
 use engine::{
-    runtime::GuardedVec,
     store::Cache,
     vault::{ClientId, DbView, Key, RecordHint, RecordId, VaultId},
 };
-use std::{
-    cell::Cell,
-    collections::{HashMap, HashSet},
-    convert::TryFrom,
-    rc::Rc,
-};
+use std::{cell::Cell, collections::HashMap, convert::TryFrom, rc::Rc};
 
 use self::procedures::CallProcedure;
 // sub-modules re-exports
@@ -58,10 +51,10 @@ pub enum VaultError {
     NotExisting,
 
     #[error("Failed to revoke record, vault does not exist")]
-    RevokationError,
+    RevocationError,
 
     #[error("Failed to collect gargabe, vault does not exist")]
-    GargabeCollectError,
+    GarbageCollectError,
 
     #[error("Failed to get list, vault does not exist")]
     ListError,
@@ -181,7 +174,7 @@ pub mod messages {
     }
 
     impl Message for CheckVault {
-        type Result = Result<(), anyhow::Error>;
+        type Result = bool;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -522,23 +515,20 @@ pub mod testing {
     impl_handler!(ReadFromVault, Result<Vec<u8>, anyhow::Error>, (self, msg, _ctx), {
         let (vid, rid) = Self::resolve_location(msg.location);
 
-        if let Some(key) = self.keystore.get_key(vid) {
-            let mut data = Vec::new();
+        let key = self.keystore.take_key(vid)?;
 
-            self.db
-                .get_guard(&key, vid, rid, |guarded_data| {
-                    let guarded_data = guarded_data.borrow();
-                    data.extend_from_slice(&*guarded_data);
+        let mut data = Vec::new();
+        let res = self.db.get_guard(&key, vid, rid, |guarded_data| {
+            let guarded_data = guarded_data.borrow();
+            data.extend_from_slice(&*guarded_data);
+            Ok(())
+        });
+        self.keystore.insert_key(vid, key);
 
-                    Ok(())
-                })
-                .map_err(|e| anyhow::anyhow!(e))?;
-            self.keystore.insert_key(vid, key);
-
-            return Ok(data);
+        match res {
+            Ok(_) => Ok(data),
+            Err(e) => Err(anyhow::anyhow!(e)),
         }
-
-        Err(anyhow::anyhow!(VaultError::AccessError))
     });
 }
 
@@ -553,7 +543,6 @@ impl_handler!(messages::Terminate, (), (self, _msg, ctx), {
 });
 
 impl_handler!(messages::ClearCache, Result<(), anyhow::Error>, (self, _msg, _ctx), {
-    self.clear_cache();
     self.keystore.clear_keys();
     self.db.clear().map_err(|e| anyhow::anyhow!(e))
 });
@@ -562,61 +551,41 @@ impl_handler!(messages::CreateVault, (), (self, msg, _ctx), {
     let (vault_id, _) = Self::resolve_location(msg.location);
 
     let key = self.keystore.create_key(vault_id);
-    self.db.init_vault(&key, vault_id).unwrap(); // potentially produces an error
+    self.db.init_vault(key, vault_id).unwrap(); // potentially produces an error
 });
 
 impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
     let (vault_id, record_id) = Self::resolve_location(msg.location);
 
-    return match self.keystore.get_key(vault_id) {
-        Some(key) => {
-            self.keystore.insert_key(vault_id, key.clone());
-            self.db.contains_record(&key, vault_id, record_id)
+    return match self.keystore.take_key(vault_id) {
+        Ok(key) => {
+            let res = self.db.contains_record(&key, vault_id, record_id);
+            self.keystore.insert_key(vault_id, key);
+            res
         }
-        None => false,
+        Err(_) => false,
     };
 });
 
 impl_handler!(messages::WriteToVault, Result<(), anyhow::Error>, (self, msg, _ctx), {
     let (vault_id, record_id) = Self::resolve_location(msg.location);
 
-    return match self.keystore.get_key(vault_id) {
-        Some(key) => {
-            self.keystore.insert_key(vault_id, key.clone());
-            self.db.write(&key, vault_id, record_id, &msg.payload, msg.hint).map_err(|e| anyhow::anyhow!(e))
-        }
-        None => {
-            Err(anyhow::anyhow!(VaultError::NotExisting))
-        }
-    }
+    let key = self
+        .keystore
+        .take_key(vault_id)?;
+
+    let res = self.db.write(&key, vault_id, record_id, &msg.payload, msg.hint);
+    self.keystore.insert_key(vault_id, key);
+    res.map_err(|e| anyhow::anyhow!(e))
 });
 
 impl_handler!(messages::RevokeData, Result<(), anyhow::Error>, (self, msg, _ctx), {
-    let (vault_id, record_id) = Self::resolve_location(msg.location);
-
-    return match self.keystore.get_key(vault_id) {
-        Some(key) => {
-            self.keystore.insert_key(vault_id, key.clone());
-            self.db.revoke_record(&key, vault_id, record_id).map_err(|e| anyhow::anyhow!(e))
-        }
-        None => {
-            Err(anyhow::anyhow!(VaultError::RevokationError))
-        }
-    }
+    self.revoke_data(&msg.location)
 });
 
 impl_handler!(messages::GarbageCollect, Result<(), anyhow::Error>, (self, msg, _ctx), {
     let (vault_id, _) = Self::resolve_location(msg.location);
-
-    return match self.keystore.get_key(vault_id) {
-        Some(key) => {
-            self.keystore.insert_key(vault_id, key.clone());
-            self.db.garbage_collect_vault(&key, vault_id).map_err(|e| anyhow::anyhow!(e))
-        }
-        None => {
-            Err(anyhow::anyhow!(VaultError::GargabeCollectError))
-        }
-    }
+    self.garbage_collect(vault_id)
 });
 
 impl_handler!(
@@ -625,28 +594,24 @@ impl_handler!(
     (self, msg, _ctx),
     {
         let vault_id = Self::derive_vault_id(msg.vault_path);
+        let key = self.keystore.take_key(vault_id)?;
 
-        match self.keystore.get_key(vault_id) {
-            Some(key) => {
-                self.keystore.insert_key(vault_id, key.clone());
-                Ok(self.db.list_hints_and_ids(&key, vault_id))
-            }
-            None => Err(anyhow::anyhow!(VaultError::ListError)),
-        }
+        let list = self.db.list_hints_and_ids(&key, vault_id);
+        self.keystore.insert_key(vault_id, key);
+        Ok(list)
     }
 );
 
 impl_handler!(messages::ReloadData, (), (self, msg, _ctx), {
     let (keystore, state, store) = *msg.data;
-    let vids = keystore.keys().copied().collect::<HashSet<VaultId>>();
     self.keystore.rebuild_keystore(keystore);
     self.db = state;
-    self.rebuild_cache(self.client_id, vids, store);
+    self.rebuild_cache(self.client_id, store);
 });
 
-impl_handler!(messages::CheckVault, Result<(), anyhow::Error>, (self, msg, _ctx), {
+impl_handler!(messages::CheckVault, bool, (self, msg, _ctx), {
     let vid = Self::derive_vault_id(msg.vault_path);
-    self.vault_exist(vid).ok_or(anyhow::anyhow!(VaultError::NotExisting)).map(|_|())
+    self.keystore.vault_exists(vid)
 });
 
 impl_handler!(messages::WriteToStore, Result<(), anyhow::Error>, (self, msg, _ctx), {
@@ -671,10 +636,10 @@ impl_handler!(
 );
 
 impl_handler!( messages::DeleteFromStore, Result <(), anyhow::Error>, (self, msg, _ctx), {
-        let (vault_id, _) = Self::resolve_location(msg.location);
-        self.store_delete_item(vault_id.into());
+    let (vault_id, _) = Self::resolve_location(msg.location);
+    self.store_delete_item(vault_id.into());
 
-        Ok(())
+    Ok(())
 });
 
 impl_handler!(
@@ -706,84 +671,6 @@ impl Handler<Procedure> for SecureClient {
 
     fn handle(&mut self, proc: Procedure, _: &mut Self::Context) -> Self::Result {
         proc.run(self)
-    }
-}
-
-impl Runner for SecureClient {
-    fn get_guard<F, T>(&mut self, location: &Location, f: F) -> Result<T, anyhow::Error>
-    where
-        F: FnOnce(GuardedVec<u8>) -> Result<T, engine::Error>,
-    {
-        let (vault_id, record_id) = Self::resolve_location(location);
-        let key = self.get_key(vault_id)?;
-
-        let mut ret = None;
-        let execute_procedure = |guard: GuardedVec<u8>| {
-            ret = Some(f(guard)?);
-            Ok(())
-        };
-        self.db.get_guard(&key, vault_id, record_id, execute_procedure)?;
-        Ok(ret.unwrap())
-    }
-
-    fn exec_proc<F, T>(
-        &mut self,
-        location0: &Location,
-        location1: &Location,
-        hint: RecordHint,
-        f: F,
-    ) -> Result<T, anyhow::Error>
-    where
-        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, engine::Error>,
-    {
-        let (vid0, rid0) = Self::resolve_location(location0);
-        let key0 = self.get_key(vid0)?;
-
-        let (vid1, rid1) = Self::resolve_location(location1);
-        let key1 = self.get_or_create_key(vid1)?;
-
-        let mut ret = None;
-        let execute_procedure = |guard: GuardedVec<u8>| {
-            let Products { output: plain, secret } = f(guard)?;
-            ret = Some(plain);
-            Ok(secret)
-        };
-        self.db
-            .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, execute_procedure)
-            .map_err(|e| anyhow::anyhow!(e))?;
-        Ok(ret.unwrap())
-    }
-
-    fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error> {
-        let (vault_id, record_id) = Self::resolve_location(location);
-        let key = self.get_or_create_key(vault_id)?;
-
-        self.db
-            .write(&key, vault_id, record_id, &value, hint)
-            .map_err(|e| anyhow::anyhow!(e))
-    }
-
-    fn revoke_data(&mut self, location: &Location) -> Result<(), anyhow::Error> {
-        let (vault_id, record_id) = Self::resolve_location(location);
-        let key = self
-            .keystore
-            .get_key(vault_id)
-            .ok_or(anyhow::anyhow!(VaultError::RevokationError))?;
-        self.keystore.insert_key(vault_id, key.clone());
-        self.db
-            .revoke_record(&key, vault_id, record_id)
-            .map_err(|e| anyhow::anyhow!(e))
-    }
-
-    fn garbage_collect(&mut self, vault_id: VaultId) -> Result<(), anyhow::Error> {
-        let key = self
-            .keystore
-            .get_key(vault_id)
-            .ok_or(anyhow::anyhow!(VaultError::GargabeCollectError))?;
-        self.keystore.insert_key(vault_id, key.clone());
-        self.db
-            .garbage_collect_vault(&key, vault_id)
-            .map_err(|e| anyhow::anyhow!(e))
     }
 }
 
@@ -827,9 +714,6 @@ impl Handler<CallProcedure> for SecureClient {
                     let (parent_vault_id, parent_record_id) = Self::resolve_location(parent);
 
                     let (child_vault_id, child_record_id) = Self::resolve_location(output);
-                    if self.vault_exist(child_vault_id).is_none() {
-                        self.add_new_vault(child_vault_id);
-                    }
 
                     <Self as Handler<SLIP10DeriveFromKey>>::handle(
                         self,
@@ -848,9 +732,6 @@ impl Handler<CallProcedure> for SecureClient {
                     let (seed_vault_id, seed_record_id) = Self::resolve_location(seed);
 
                     let (key_vault_id, key_record_id) = Self::resolve_location(output);
-                    if self.vault_exist(key_vault_id).is_none() {
-                        self.add_new_vault(key_vault_id);
-                    }
 
                     <Self as Handler<SLIP10DeriveFromSeed>>::handle(
                         self,
@@ -933,277 +814,256 @@ impl Handler<CallProcedure> for SecureClient {
     }
 }
 
-impl_handler!(
-procedures::SLIP10Generate, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
-
-    let key = if !self.keystore.vault_exists(msg.vault_id) {
+impl_handler!(procedures::SLIP10Generate, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
+    if !self.keystore.vault_exists(msg.vault_id) {
         let key = self.keystore.create_key(msg.vault_id);
-        self.db.init_vault(&key, msg.vault_id)?;
-        key
-    } else {
-        self.keystore.get_key(msg.vault_id).unwrap()
-    };
-
-    self.keystore.insert_key(msg.vault_id, key.clone());
+        self.db.init_vault(key, msg.vault_id)?;
+    }
+    let key = self.keystore.take_key(msg.vault_id).unwrap();
 
     let mut seed = vec![0u8; msg.size_bytes];
-    fill(&mut seed).map_err(|e| anyhow::anyhow!(e))?;
+    match fill(&mut seed) {
+        Ok(_) => {},
+        Err(e) => {
+            self.keystore.insert_key(msg.vault_id, key);
+            return Err(anyhow::anyhow!(e))
+        }
+    }
 
-    match self.db.write(&key, msg.vault_id, msg.record_id,&seed, msg.hint).map_err(|e| anyhow::anyhow!(e)) {
-        Ok(_) => {
-            Ok(crate::ProcResult::SLIP10Generate(StatusMessage::OK))
-        },
-        Err(e) => Err(anyhow::anyhow!(e))
+    let res = self.db.write(&key, msg.vault_id, msg.record_id, &seed, msg.hint);
+
+    self.keystore.insert_key(msg.vault_id, key);
+
+    match res {
+        Ok(_) => Ok(ProcResult::SLIP10Generate(StatusMessage::OK)),
+        Err(e) => Err(anyhow::anyhow!(e)),
     }
 });
 
 impl_handler!(procedures::SLIP10DeriveFromSeed, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
-    match self.keystore.get_key(msg.seed_vault_id) {
-        Some(seed_key) => {
-            self.keystore.insert_key(msg.seed_vault_id, seed_key.clone());
-            let dk_key = if !self.keystore.vault_exists(msg.key_vault_id) {
-                let key = self.keystore.create_key(msg.key_vault_id);
-                self.db.init_vault(&key, msg.key_vault_id).map_err(|e| anyhow::anyhow!(e))?;
-                key
+    let seed_key = self
+        .keystore
+        .take_key(msg.seed_vault_id)?;
 
-            } else {
-                self.keystore.get_key(msg.key_vault_id).ok_or_else(||
-                    Err::<crate::ProcResult, anyhow::Error>(anyhow::anyhow!(crate::Error::KeyStoreError("".into())))
-                ).unwrap()
-            };
-
-            self.keystore.insert_key(msg.key_vault_id, dk_key.clone());
-
-            // FIXME if you see this fix here, that a single-threaded mutable reference
-            // is being passed into the closure to obtain the result of the pro-
-            // cedure calculation, you should consider rethinking this approach.
-
-            let result = Rc::new(Cell::default());
-
-            match self.db.exec_proc(&seed_key, msg.seed_vault_id, msg.seed_record_id, &dk_key, msg.key_vault_id, msg.key_record_id, msg.hint, |gdata| {
-                let dk = Seed::from_bytes(&gdata.borrow())
-                    .derive(Curve::Ed25519, &msg.chain).map_err(|e| anyhow::anyhow!(e)).unwrap();
-                let data : Vec<u8> = dk.into();
-
-                // was formerly sent to the client
-                result.set(dk.chain_code());
-
-                Ok(data)
-            }) {
-                Ok(_) => {
-                    let result = result.get();
-                    Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(result)))
-                }
-                Err(e) => {
-                    Err(anyhow::anyhow!(e))
-                }
+    if !self.keystore.vault_exists(msg.key_vault_id) {
+        let key = self.keystore.create_key(msg.key_vault_id);
+        match self.db.init_vault(key, msg.key_vault_id) {
+            Ok(_) => {},
+            Err(e) => {
+                self.keystore.insert_key(msg.seed_vault_id, seed_key);
+                return Err(anyhow::anyhow!(e))
             }
         }
+    }
+    let dk_key = self.keystore.take_key(msg.key_vault_id).unwrap();
 
-        None => {
-            Err(anyhow::anyhow!(VaultError::NotExisting))
-        }
+    // FIXME if you see this fix here, that a single-threaded mutable reference
+    // is being passed into the closure to obtain the result of the pro-
+    // cedure calculation, you should consider rethinking this approach.
+
+    let result = Rc::new(Cell::default());
+
+    let res = self.db.exec_proc(
+        &seed_key,
+        msg.seed_vault_id,
+        msg.seed_record_id,
+        &dk_key,
+        msg.key_vault_id,
+        msg.key_record_id,
+        msg.hint,
+        |gdata| {
+            let dk = Seed::from_bytes(&gdata.borrow())
+                .derive(Curve::Ed25519, &msg.chain)
+                .map_err(|e| anyhow::anyhow!(e))
+                .unwrap();
+            let data: Vec<u8> = dk.into();
+
+            result.set(dk.chain_code());
+
+            Ok(data)
+        },
+    );
+
+    self.keystore.insert_key(msg.seed_vault_id, seed_key);
+    self.keystore.insert_key(msg.key_vault_id, dk_key);
+
+    match res {
+        Ok(_) => Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(result.get()))),
+        Err(e) => Err(anyhow::anyhow!(e)),
     }
 });
 
 impl_handler!( procedures::SLIP10DeriveFromKey,Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx),{
-    use std::{rc::Rc, cell::Cell};
+    let parent_key = self
+        .keystore
+        .take_key(msg.parent_vault_id)?;
 
-    match self.keystore.get_key(msg.parent_vault_id) {
-        Some(parent_key) => {
-            self.keystore.insert_key(msg.parent_vault_id, parent_key.clone());
-            let child_key = if !self.keystore.vault_exists(msg.child_vault_id) {
-                let key = self.keystore.create_key(msg.child_vault_id);
-                self.db.init_vault(&key, msg.child_vault_id).unwrap();
-
-                key
-            } else {
-                self.keystore.get_key(msg.child_vault_id).unwrap()
-            };
-
-            self.keystore.insert_key(msg.child_vault_id, child_key.clone());
-
-            let result = Rc::new(Cell::default());
-
-            match self.db.exec_proc(&parent_key, msg.parent_vault_id, msg.parent_record_id, &child_key, msg.child_vault_id, msg.child_record_id, msg.hint, |parent | {
-                        let parent = slip10::Key::try_from(&*parent.borrow()).unwrap();
-                        let dk = parent.derive(&msg.chain).unwrap();
-
-                        let data: Vec<u8> = dk.into();
-
-                        result.set(dk.chain_code());
-
-                    Ok(data)
-            }) {
-                Ok(_) => {
-                    let result = result.get();
-                    Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(result)))
-                },
-                Err(e) => {
-                    Err(anyhow::anyhow!(e))
-                }
+    if !self.keystore.vault_exists(msg.child_vault_id) {
+        let key = self.keystore.create_key(msg.child_vault_id);
+        match self.db.init_vault(key, msg.child_vault_id) {
+            Ok(_) => {},
+            Err(e) => {
+                self.keystore.insert_key(msg.parent_vault_id, parent_key);
+                return Err(anyhow::anyhow!(e))
             }
         }
-        None => {
-            Err(anyhow::anyhow!(VaultError::AccessError))
-        }
     }
+    let child_key = self.keystore.take_key(msg.child_vault_id).unwrap();
 
+    let result = Rc::new(Cell::default());
+
+    let res = self.db.exec_proc(
+        &parent_key,
+        msg.parent_vault_id,
+        msg.parent_record_id,
+        &child_key,
+        msg.child_vault_id,
+        msg.child_record_id,
+        msg.hint,
+        |parent| {
+            let parent = slip10::Key::try_from(&*parent.borrow()).unwrap();
+            let dk = parent.derive(&msg.chain).unwrap();
+
+            let data: Vec<u8> = dk.into();
+
+            result.set(dk.chain_code());
+
+            Ok(data)
+        },
+    );
+
+    self.keystore.insert_key(msg.parent_vault_id, parent_key);
+    self.keystore.insert_key(msg.child_vault_id, child_key);
+
+    match res {
+        Ok(_) => Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(result.get()))),
+        Err(e) => Err(anyhow::anyhow!(e)),
+    }
 });
 
 impl_handler!(procedures::BIP39Generate, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
-            let mut entropy = [0u8; 32];
-            if let Err(e) =  fill(&mut entropy) {
-                return Err(anyhow::anyhow!(e))
-            }
+    let mut entropy = [0u8; 32];
+    fill(&mut entropy).map_err(|e| anyhow::anyhow!(e))?;
+    let mnemonic = bip39::wordlist::encode(
+        &entropy,
+        &bip39::wordlist::ENGLISH, // TODO: make this user configurable
+    ).map_err(|e| anyhow::anyhow!(format!("{:?}", e)))?;
 
-            let mnemonic = match bip39::wordlist::encode(
-                &entropy,
-                &bip39::wordlist::ENGLISH, // TODO: make this user configurable
-            ) {
-                Ok(encoded) => encoded,
-                Err(e) => { return Err(anyhow::anyhow!(format!("{:?}", e))); }
-            };
+    let mut seed = [0u8; 64];
+    bip39::mnemonic_to_seed(&mnemonic, &msg.passphrase, &mut seed);
 
-            let mut seed = [0u8; 64];
-            bip39::mnemonic_to_seed(&mnemonic, &msg.passphrase, &mut seed);
+    if !self.keystore.vault_exists(msg.vault_id) {
+        let key = self.keystore.create_key(msg.vault_id);
+        self.db.init_vault(key, msg.vault_id)?;
+    }
+    let key = self.keystore.take_key(msg.vault_id).unwrap();
 
-            let key = if !self.keystore.vault_exists(msg.vault_id) {
-                let k = self.keystore.create_key(msg.vault_id);
+    let res = self.db.write(&key, msg.vault_id, msg.record_id, &seed, msg.hint);
 
-                if let Err(e) = self.db.init_vault(&k, msg.vault_id) {
-                    return Err(anyhow::anyhow!(e))
-                };
+    self.keystore.insert_key(msg.vault_id, key);
 
-                k
-            } else {
-
-                match self.keystore.get_key(msg.vault_id) {
-                    Some(k) => k,
-                    None => { return Err(anyhow::anyhow!(VaultError::NotExisting)); }
-                }
-            };
-
-            self.keystore.insert_key(msg.vault_id, key.clone());
-
-            // TODO: also store the mnemonic to be able to export it in the
-            // BIP39MnemonicSentence message
-            match self.db.write(&key, msg.vault_id, msg.record_id, &seed, msg.hint) {
-                    Ok(_) => Ok(ProcResult::BIP39Generate(ResultMessage::OK)),
-                    Err(e) => Err(anyhow::anyhow!(e))
-            }
-
-
+    // TODO: also store the mnemonic to be able to export it in the
+    // BIP39MnemonicSentence message
+    match res {
+        Ok(_) => Ok(ProcResult::BIP39Generate(ResultMessage::OK)),
+        Err(e) => Err(anyhow::anyhow!(e)),
+    }
 });
 
 impl_handler!(procedures::BIP39Recover, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
+    if !self.keystore.vault_exists(msg.vault_id) {
+        let key = self.keystore.create_key(msg.vault_id);
+        self.db.init_vault(key, msg.vault_id)?;
+    }
+    let key = self.keystore.take_key(msg.vault_id).unwrap();
 
-        let key = if !self.keystore.vault_exists(msg.vault_id) {
-            let k = self.keystore.create_key(msg.vault_id);
-            if let Err(e) = self.db.init_vault(&k, msg.vault_id) {
-               return Err(anyhow::anyhow!(e))
-            };
+    let mut seed = [0u8; 64];
+    bip39::mnemonic_to_seed(&msg.mnemonic, &msg.passphrase, &mut seed);
 
-            k
-        } else {
-            match self.keystore.get_key(msg.vault_id) {
-                Some(key) => key,
-                None => { return Err(anyhow::anyhow!(VaultError::NotExisting)); }
-            }
-        };
-            self.keystore.insert_key(msg.vault_id, key.clone());
+    let res = self.db.write(&key, msg.vault_id, msg.record_id, &seed, msg.hint);
+    self.keystore.insert_key(msg.vault_id, key);
 
-            let mut seed = [0u8; 64];
-            bip39::mnemonic_to_seed(&msg.mnemonic, &msg.passphrase, &mut seed);
-
-            // TODO: also store the mnemonic to be able to export it in the
-            // BIP39MnemonicSentence message
-            if let Err(e) = self.db.write(&key, msg.vault_id, msg.record_id, &seed, msg.hint) {
-                return Err(anyhow::anyhow!(e))
-            };
-
-
-    Ok(ProcResult::BIP39Recover(ResultMessage::OK))
+    // TODO: also store the mnemonic to be able to export it in the
+    // BIP39MnemonicSentence message
+    match res {
+        Ok(_) => Ok(ProcResult::BIP39Recover(ResultMessage::OK)),
+        Err(e) => Err(anyhow::anyhow!(e)),
+    }
 });
 
 impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
-    use std::{rc::Rc, cell::Cell};
-    if let Some(key) = self.keystore.get_key(msg.vault_id) {
-        self.keystore.insert_key(msg.vault_id, key.clone());
-        let result = Rc::new(Cell::default());
+    let key = self
+        .keystore
+        .take_key(msg.vault_id)?;
 
-        match self.db
-            .get_guard(&key, msg.vault_id, msg.record_id, |data| {
-                let raw = data.borrow();
-                let mut raw = (*raw).to_vec();
+    let result = Rc::new(Cell::default());
 
-                if raw.len() < 32 {
+    let res = self.db.get_guard(&key, msg.vault_id, msg.record_id, |data| {
+        let raw = data.borrow();
+        let mut raw = (*raw).to_vec();
 
-                    return Err(engine::Error::CryptoError(
-                        crypto::error::Error::BufferSize{has : raw.len(), needs : 32, name: "data buffer" }));
+        if raw.len() < 32 {
+            return Err(engine::Error::CryptoError(crypto::error::Error::BufferSize {
+                has: raw.len(),
+                needs: 32,
+                name: "data buffer",
+            }));
+        }
+        raw.truncate(32);
+        let mut bs = [0; 32];
+        bs.copy_from_slice(&raw);
 
-                }
-                raw.truncate(32);
-                let mut bs = [0; 32];
-                bs.copy_from_slice(&raw);
+        let sk = ed25519::SecretKey::from_bytes(bs);
+        let pk = sk.public_key();
 
-                let sk = ed25519::SecretKey::from_bytes(bs);
-                let pk = sk.public_key();
+        // send to client this result
+        result.set(pk.to_bytes());
 
-                // send to client this result
-                result.set(pk.to_bytes());
+        Ok(())
+    });
+    self.keystore.insert_key(msg.vault_id, key);
 
-                Ok(())
-            }) {
-                Ok(_) => {},
-                Err(e) => {return Err(anyhow::anyhow!(e));}
-            }
-
-            let result = result.get();
-
-            Ok(ProcResult::Ed25519PublicKey(ResultMessage::Ok(result)))
-
-    } else {
-        Err(anyhow::anyhow!(VaultError::AccessError))
+    match res {
+        Ok(_) => Ok(ProcResult::Ed25519PublicKey(ResultMessage::Ok(result.get()))),
+        Err(e) => Err(anyhow::anyhow!(e)),
     }
-
 });
 
 impl_handler!(procedures::Ed25519Sign, Result <crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
-    if let Some(pkey) = self.keystore.get_key(msg.vault_id) {
-            self.keystore.insert_key(msg.vault_id, pkey.clone());
+    let pkey = self
+        .keystore
+        .take_key(msg.vault_id)?;
 
-            let result = Rc::new(Cell::new([0u8; 64]));
+    let result = Rc::new(Cell::new([0u8; 64]));
 
-            match self.db
-                .get_guard(&pkey, msg.vault_id, msg.record_id, |data| {
-                    let raw = data.borrow();
-                    let mut raw = (*raw).to_vec();
+    let res = self.db.get_guard(&pkey, msg.vault_id, msg.record_id, |data| {
+        let raw = data.borrow();
+        let mut raw = (*raw).to_vec();
 
-                    if raw.len() < 32 {
-
-                        return Err(engine::Error::CryptoError(
-                            crypto::Error::BufferSize {has : raw.len(),needs : 32, name: "data buffer" }));
-                    }
-                    raw.truncate(32);
-                    let mut bs = [0; 32];
-                    bs.copy_from_slice(&raw);
-
-                    let sk =  ed25519::SecretKey::from_bytes(bs);
-
-                    let sig = sk.sign(&msg.msg);
-                    result.set(sig.to_bytes());
-
-                    Ok(())
-                }) {
-                    Ok(_) => {},
-                    Err(e) => {return Err(anyhow::anyhow!(e))}
-                };
-
-                let result = result.get();
-                Ok(ProcResult::Ed25519Sign(ResultMessage::Ok(result)))
-        } else {
-            Err(anyhow::anyhow!(VaultError::AccessError))
+        if raw.len() < 32 {
+            return Err(engine::Error::CryptoError(crypto::Error::BufferSize {
+                has: raw.len(),
+                needs: 32,
+                name: "data buffer",
+            }));
         }
+        raw.truncate(32);
+        let mut bs = [0; 32];
+        bs.copy_from_slice(&raw);
+
+        let sk = ed25519::SecretKey::from_bytes(bs);
+
+        let sig = sk.sign(&msg.msg);
+        result.set(sig.to_bytes());
+
+        Ok(())
+    });
+
+    self.keystore.insert_key(msg.vault_id, pkey);
+
+    match res {
+        Ok(_) => Ok(ProcResult::Ed25519Sign(ResultMessage::Ok(result.get()))),
+        Err(e) => Err(anyhow::anyhow!(e)),
+    }
 
 });

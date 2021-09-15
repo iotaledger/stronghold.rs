@@ -41,6 +41,7 @@ use p2p::{
     Multiaddr, PeerId,
 };
 
+#[derive(Clone)]
 /// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of
 /// metadata to interpret the data in the vault and store.
 pub struct Stronghold {
@@ -153,58 +154,55 @@ impl Stronghold {
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
 
-        if let Ok(result) = self.target.send(CheckVault { vault_path }).await {
-            match result {
-                Ok(_) => {
-                    // exists
-                    return match self
-                        .target
-                        .send(WriteToVault {
-                            location,
-                            payload,
-                            hint,
-                        })
-                        .await
-                    {
-                        Ok(result) => match result {
-                            Ok(_) => StatusMessage::OK,
-                            Err(e) => StatusMessage::Error(e.to_string()),
-                        },
+        if let Ok(vault_exists) = self.target.send(CheckVault { vault_path }).await {
+            if vault_exists {
+                // exists
+                return match self
+                    .target
+                    .send(WriteToVault {
+                        location,
+                        payload,
+                        hint,
+                    })
+                    .await
+                {
+                    Ok(result) => match result {
+                        Ok(_) => StatusMessage::OK,
                         Err(e) => StatusMessage::Error(e.to_string()),
-                    };
-                }
-                Err(_) => {
-                    // does not exist
-                    match self
-                        .target
-                        .send(CreateVault {
-                            location: location.clone(),
-                        })
-                        .await
-                    {
-                        Ok(_) => {
-                            // write to vault
-                            if let Ok(result) = self
-                                .target
-                                .send(WriteToVault {
-                                    location,
-                                    payload,
-                                    hint,
-                                })
-                                .await
-                            {
-                                if result.is_ok() {
-                                    return StatusMessage::OK;
-                                } else {
-                                    return StatusMessage::Error(result.err().unwrap().to_string());
-                                }
+                    },
+                    Err(e) => StatusMessage::Error(e.to_string()),
+                };
+            } else {
+                // does not exist
+                match self
+                    .target
+                    .send(CreateVault {
+                        location: location.clone(),
+                    })
+                    .await
+                {
+                    Ok(_) => {
+                        // write to vault
+                        if let Ok(result) = self
+                            .target
+                            .send(WriteToVault {
+                                location,
+                                payload,
+                                hint,
+                            })
+                            .await
+                        {
+                            if result.is_ok() {
+                                return StatusMessage::OK;
                             } else {
-                                return StatusMessage::Error("Error Writing data".into());
+                                return StatusMessage::Error(result.err().unwrap().to_string());
                             }
+                        } else {
+                            return StatusMessage::Error("Error Writing data".into());
                         }
-                        Err(_e) => {
-                            return StatusMessage::Error("Cannot create new vault".into());
-                        }
+                    }
+                    Err(_e) => {
+                        return StatusMessage::Error("Cannot create new vault".into());
                     }
                 }
             }
@@ -359,13 +357,7 @@ impl Stronghold {
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
 
-        match self.target.send(CheckVault { vault_path }).await {
-            Ok(success) => match success {
-                Ok(_) => true,
-                Err(_e) => false,
-            },
-            Err(_e) => false,
-        }
+        self.target.send(CheckVault { vault_path }).await.unwrap_or(false)
     }
 
     /// Reads data from a given snapshot file.  Can only read the data for a single `client_path` at a time. If the new
@@ -747,7 +739,7 @@ impl Stronghold {
         let vault_exists = unwrap_result_msg!(actor.send(send_request).await);
 
         // no vault so create new one before writing.
-        if vault_exists.is_err() {
+        if !vault_exists {
             let send_request = network_msg::SendRequest {
                 peer,
                 request: CreateVault {
