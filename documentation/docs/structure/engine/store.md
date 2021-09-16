@@ -1,5 +1,5 @@
 ---
-description: Store contains a key:value cache for the Stronghold Engine.
+description: Store contains a key-value cache for the Stronghold Engine.
 image: /img/logo/Stronghold_icon.png
 keywords:
 - rust
