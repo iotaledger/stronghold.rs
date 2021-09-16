@@ -1,7 +1,9 @@
 ---
-description: This document will detail the development of the Stronghold Engine library for IOTA's Stronghold project, touching upon different revisions and the lessons that were learnt from them.
+description: History behind the development of the Stronghold Engine library that reflects upon previous revisions and the lessons learnt.
 image: /img/logo/Stronghold_icon.png
 keywords:
+- development
+- history
 - crate
 - snapshot
 - transaction

@@ -1,5 +1,5 @@
 ---
-description: In this section we describe the individual crates and components of Stronghold
+description: In this section we describe individual crates and components of Stronghold.
 image: /img/logo/Stronghold_icon.png
 keywords:
 - ToC

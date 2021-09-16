@@ -1,5 +1,5 @@
 ---
-description: This document introduces the High-Level Specification of the Stronghold.
+description: This document introduces the high-level specification of Stronghold.
 image: /img/logo/Stronghold_icon.png
 keywords:
 - rust
