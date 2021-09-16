@@ -55,7 +55,7 @@ async fn usecase_ed25519() {
         ResultMessage::Error(err) => panic!("unexpected error: {:?}", err),
     };
 
-    let k = OutputKey::new("key1");
+    let k = OutputKey::random();
     let ed25519_pk = Ed25519PublicKey::new(key.clone()).store_output(k.clone());
     let pk: [u8; PUBLIC_KEY_LENGTH] = match sh.runtime_exec(ed25519_pk).await {
         ResultMessage::Ok(mut data) => data.try_take(&k).unwrap().unwrap(),
@@ -64,8 +64,8 @@ async fn usecase_ed25519() {
 
     let msg = fresh::bytestring();
 
-    let k = OutputKey::new("key2");
-    let ed25519_sign = Ed25519Sign::new(key, msg.clone()).store_output(k.clone());
+    let k = OutputKey::random();
+    let ed25519_sign = Ed25519Sign::new(msg.clone(), key).store_output(k.clone());
     let sig: [u8; SIGNATURE_LENGTH] = match sh.runtime_exec(ed25519_sign).await {
         ResultMessage::Ok(mut data) => data.try_take(&k).unwrap().unwrap(),
         ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
@@ -92,7 +92,7 @@ async fn usecase_Slip10Derive_intermediate_keys() {
     let (_path, chain1) = fresh::hd_path();
 
     let cc0: ChainCode = {
-        let k = OutputKey::new("key3");
+        let k = OutputKey::random();
         let slip10_derive = Slip10Derive::new_from_seed(seed.clone(), chain0.join(&chain1)).store_output(k.clone());
 
         match sh.runtime_exec(slip10_derive).await {
@@ -112,7 +112,7 @@ async fn usecase_Slip10Derive_intermediate_keys() {
             ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
         };
 
-        let k = OutputKey::new("key4");
+        let k = OutputKey::random();
         let slip10_derive_child = Slip10Derive::new_from_key(intermediate, chain1).store_output(k.clone());
 
         match sh.runtime_exec(slip10_derive_child).await {
@@ -130,13 +130,13 @@ async fn usecase_ed25519_as_complex() {
 
     let msg = fresh::bytestring();
 
-    let pk_result = OutputKey::new("pub-key");
-    let sign_result = OutputKey::new("signed");
+    let pk_result = OutputKey::random();
+    let sign_result = OutputKey::random();
 
     let generate = Slip10Generate::new(None);
     let derive = Slip10Derive::new_from_seed(generate.target(), fresh::hd_path().1);
     let get_pk = Ed25519PublicKey::new(derive.target()).store_output(pk_result.clone());
-    let sign = Ed25519Sign::new(derive.target(), msg.clone()).store_output(sign_result.clone());
+    let sign = Ed25519Sign::new(msg.clone(), derive.target()).store_output(sign_result.clone());
 
     let combined_proc = generate.then(derive).then(get_pk).then(sign);
     let mut output = match sh.runtime_exec(combined_proc).await {
@@ -205,16 +205,17 @@ async fn usecase_collection_of_data() {
         .into_iter()
         .enumerate()
         .map(|(i, msg)| {
-            let sign = Ed25519Sign::new(key_location.clone(), msg);
-            let digest = SHA256Digest::new_dyn(sign.output_key()).store_output(OutputKey::new(format!("{}", i)));
+            let sign = Ed25519Sign::new(msg, key_location.clone());
+            let digest = SHA256Digest::dynamic(sign.output_key()).store_output(OutputKey::new(format!("{}", i)));
             sign.then(digest)
         })
         .reduce(|acc, curr| acc.then(curr))
         .unwrap();
-    let output = match sh.runtime_exec(proc).await {
-        ResultMessage::Ok(o) => o,
+    let mut output = match sh.runtime_exec(proc).await {
+        ResultMessage::Ok(o) => o.into_iter().collect::<Vec<(OutputKey, ProcedureIo)>>(),
         ResultMessage::Error(e) => panic!("Unexpected error: {}", e),
     };
+    output.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
     let res = output
         .into_iter()
         .map(|(_, v)| v)

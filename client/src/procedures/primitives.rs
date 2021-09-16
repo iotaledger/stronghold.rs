@@ -37,9 +37,6 @@ impl ProcedureStep for PrimitiveProcedure {
     }
 }
 
-enum_from_inner!(PrimitiveProcedure::Helper from HelperProcedure);
-enum_from_inner!(PrimitiveProcedure::Crypto  from CryptoProcedure);
-
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub enum HelperProcedure {
     WriteVault(WriteVault),
@@ -53,8 +50,6 @@ impl ProcedureStep for HelperProcedure {
     }
 }
 
-enum_from_inner!(PrimitiveProcedure::Helper, HelperProcedure::WriteVault from WriteVault);
-
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub enum CryptoProcedure {
     Slip10Generate(Slip10Generate),
@@ -65,13 +60,6 @@ pub enum CryptoProcedure {
     Ed25519Sign(Ed25519Sign),
     SHA256Digest(SHA256Digest),
 }
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Generate from Slip10Generate);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Derive from Slip10Derive);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Generate from BIP39Generate);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Recover from BIP39Recover);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519PublicKey from Ed25519PublicKey);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519Sign from Ed25519Sign);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::SHA256Digest from SHA256Digest);
 
 impl ProcedureStep for CryptoProcedure {
     fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
@@ -106,7 +94,7 @@ impl WriteVault {
             },
         }
     }
-    pub fn new_dyn(data_key: OutputKey, target: Location, hint: RecordHint) -> Self {
+    pub fn dynamic(data_key: OutputKey, target: Location, hint: RecordHint) -> Self {
         WriteVault {
             data: InputData::Key(data_key),
             target: InterimProduct {
@@ -129,6 +117,21 @@ impl Generate for WriteVault {
         })
     }
 }
+
+// === implement From Traits from inner types to wrapper enums
+
+enum_from_inner!(PrimitiveProcedure::Helper from HelperProcedure);
+enum_from_inner!(PrimitiveProcedure::Crypto  from CryptoProcedure);
+
+enum_from_inner!(PrimitiveProcedure::Helper, HelperProcedure::WriteVault from WriteVault);
+
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Generate from Slip10Generate);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Derive from Slip10Derive);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Generate from BIP39Generate);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Recover from BIP39Recover);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519PublicKey from Ed25519PublicKey);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519Sign from Ed25519Sign);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::SHA256Digest from SHA256Digest);
 
 // ==========================
 // Procedures for Cryptographic Primitives
@@ -297,7 +300,7 @@ impl BIP39Recover {
         }
     }
 
-    pub fn new_dyn(passphrase: Option<String>, mnemonic_key: OutputKey) -> Self {
+    pub fn dynamic(passphrase: Option<String>, mnemonic_key: OutputKey) -> Self {
         BIP39Recover {
             passphrase,
             mnemonic: InputData::Key(mnemonic_key),
@@ -416,7 +419,7 @@ impl Utilize for Ed25519Sign {
 }
 
 impl Ed25519Sign {
-    pub fn new(private_key: Location, msg: Vec<u8>) -> Self {
+    pub fn new(msg: Vec<u8>, private_key: Location) -> Self {
         Ed25519Sign {
             msg: InputData::Value(msg),
             private_key,
@@ -426,7 +429,7 @@ impl Ed25519Sign {
             },
         }
     }
-    pub fn new_dyn(private_key: Location, msg_key: OutputKey) -> Self {
+    pub fn dynamic(msg_key: OutputKey, private_key: Location) -> Self {
         Ed25519Sign {
             msg: InputData::Key(msg_key),
             private_key,
@@ -458,7 +461,7 @@ impl SHA256Digest {
         }
     }
 
-    pub fn new_dyn(msg_key: OutputKey) -> Self {
+    pub fn dynamic(msg_key: OutputKey) -> Self {
         let input = InputData::Key(msg_key);
         SHA256Digest {
             msg: input,

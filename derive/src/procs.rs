@@ -208,10 +208,6 @@ pub fn impl_procedure_step(item_impl: ItemImpl) -> proc_macro2::TokenStream {
             fn execute<X: Runner>(self, runner: &mut X, state: &mut State) -> Result<(), anyhow::Error> {
                 #gen_exec_fn
             }
-
-            // fn build(self) -> Procedure<Self> {
-            //     Procedure {inner: self}
-            // }
         }
     }
 }

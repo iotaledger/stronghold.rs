@@ -15,7 +15,7 @@ pub fn record_hint() -> RecordHint {
 
 /// Generates a random [`Location`].
 pub fn location() -> Location {
-    Location::generic(bytestring(), bytestring())
+    Location::generic(non_empty_bytestring(), non_empty_bytestring())
 }
 
 /// generates a random string based on a coinflip.

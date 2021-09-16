@@ -17,7 +17,7 @@ mod primitives;
 use crate::{actors::SecureClient, Location, SLIP10DeriveInput};
 pub use primitives::*;
 use serde::{Deserialize, Serialize};
-use stronghold_utils::{test_utils::fresh, GuardDebug};
+use stronghold_utils::GuardDebug;
 
 // ==========================
 // Types
@@ -197,7 +197,7 @@ impl IntoIterator for CollectedOutput {
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct OutputKey(String);
 
 impl OutputKey {
@@ -206,7 +206,7 @@ impl OutputKey {
     }
 
     pub fn random() -> Self {
-        OutputKey(fresh::string())
+        OutputKey(rand::random::<char>().into())
     }
 }
 
@@ -359,9 +359,18 @@ pub struct Target {
 
 impl Target {
     pub fn random() -> Self {
-        let location = Location::generic(fresh::bytestring(), fresh::bytestring());
+        let location = Location::generic(Self::random_path(), Self::random_path());
         let hint = RecordHint::new("".to_string()).unwrap();
         Target { location, hint }
+    }
+
+    fn random_path() -> impl Into<Vec<u8>> {
+        let l = (rand::random::<u8>() % (u8::MAX - 1)) + 1;
+        let mut v = Vec::with_capacity(l.into());
+        for _ in 0..l + 1 {
+            v.push(rand::random::<u8>())
+        }
+        v
     }
 }
 
