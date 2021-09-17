@@ -5,18 +5,24 @@ use crate::{enum_from_inner, Location};
 
 use super::*;
 use crypto::{
-    hashes::sha::{SHA256, SHA256_LEN},
+    ciphers::traits::consts::Unsigned,
+    hashes::{
+        blake2b::Blake2b256,
+        sha::{Sha256, Sha384, Sha512},
+        Digest,
+    },
     keys::{
         bip39,
         slip10::{self, Chain, ChainCode, Curve, Seed},
     },
+    macs::hmac::{HMAC_SHA256, HMAC_SHA384, HMAC_SHA512},
     signatures::ed25519::{self, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH},
     utils::rand::fill,
 };
 use engine::{runtime::GuardedVec, vault::RecordHint};
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use stronghold_derive::{execute_procedure, Procedure};
-// use serde::{Serialize, Deserialize};
 
 // ==========================
 // Helper Procedures
@@ -58,7 +64,8 @@ pub enum CryptoProcedure {
     BIP39Recover(BIP39Recover),
     Ed25519PublicKey(Ed25519PublicKey),
     Ed25519Sign(Ed25519Sign),
-    SHA256Digest(SHA256Digest),
+    Hash(Hash),
+    Hmac(Hmac),
 }
 
 impl ProcedureStep for CryptoProcedure {
@@ -71,7 +78,8 @@ impl ProcedureStep for CryptoProcedure {
             BIP39Recover(proc) => proc.execute(runner, state),
             Ed25519PublicKey(proc) => proc.execute(runner, state),
             Ed25519Sign(proc) => proc.execute(runner, state),
-            SHA256Digest(proc) => proc.execute(runner, state),
+            Hash(proc) => proc.execute(runner, state),
+            Hmac(proc) => proc.execute(runner, state),
         }
     }
 }
@@ -130,7 +138,8 @@ enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Generate from
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Recover from BIP39Recover);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519PublicKey from Ed25519PublicKey);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519Sign from Ed25519Sign);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::SHA256Digest from SHA256Digest);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash from Hash);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac from Hmac);
 
 // ==========================
 // Procedures for Cryptographic Primitives
@@ -464,19 +473,30 @@ impl Ed25519Sign {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub enum HashType {
+    Sha2_256,
+    Sha2_384,
+    Sha2_512,
+    Blake2b256,
+}
+
 #[derive(Procedure, Clone, Serialize, Deserialize)]
-pub struct SHA256Digest {
+pub struct Hash {
     #[input_data]
     msg: InputData<Vec<u8>>,
 
     #[output_key]
     output_key: InterimProduct<OutputKey>,
+
+    ty: HashType,
 }
 
-impl SHA256Digest {
-    pub fn new(msg: Vec<u8>) -> Self {
-        SHA256Digest {
+impl Hash {
+    pub fn new(msg: Vec<u8>, ty: HashType) -> Self {
+        Hash {
             msg: InputData::Value(msg),
+            ty,
             output_key: InterimProduct {
                 target: OutputKey::random(),
                 is_temp: true,
@@ -484,10 +504,11 @@ impl SHA256Digest {
         }
     }
 
-    pub fn dynamic(msg_key: OutputKey) -> Self {
+    pub fn dynamic(msg_key: OutputKey, ty: HashType) -> Self {
         let input = InputData::Key(msg_key);
-        SHA256Digest {
+        Hash {
             msg: input,
+            ty,
             output_key: InterimProduct {
                 target: OutputKey::random(),
                 is_temp: true,
@@ -497,13 +518,94 @@ impl SHA256Digest {
 }
 
 #[execute_procedure]
-impl Parse for SHA256Digest {
+impl Parse for Hash {
     type Input = Vec<u8>;
-    type Output = [u8; SHA256_LEN];
+    type Output = Vec<u8>;
 
     fn parse(self, input: Self::Input) -> Result<Self::Output, engine::Error> {
-        let mut digest = [0; SHA256_LEN];
-        SHA256(&input, &mut digest);
-        Ok(digest)
+        fn digest<T: Digest>(msg: &[u8]) -> Vec<u8> {
+            let mut digest = Vec::with_capacity(T::OutputSize::USIZE);
+            for _ in 0..digest.capacity() {
+                digest.push(0);
+            }
+            digest.copy_from_slice(&T::digest(msg));
+            digest
+        }
+
+        let res = match self.ty {
+            HashType::Sha2_256 => digest::<Sha256>(&input),
+            HashType::Sha2_384 => digest::<Sha384>(&input),
+            HashType::Sha2_512 => digest::<Sha512>(&input),
+            HashType::Blake2b256 => digest::<Blake2b256>(&input),
+        };
+        Ok(res)
+    }
+}
+
+#[derive(Procedure, Clone, Serialize, Deserialize)]
+pub struct Hmac {
+    #[input_data]
+    msg: InputData<Vec<u8>>,
+
+    #[output_key]
+    output_key: InterimProduct<OutputKey>,
+
+    #[source]
+    key: Location,
+
+    ty: HashType,
+}
+
+impl Hmac {
+    pub fn new(msg: Vec<u8>, key: Location, ty: HashType) -> Self {
+        Hmac {
+            msg: InputData::Value(msg),
+            key,
+            ty,
+            output_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
+        }
+    }
+
+    pub fn dynamic(msg_key: OutputKey, key: Location, ty: HashType) -> Self {
+        let input = InputData::Key(msg_key);
+        Hmac {
+            msg: input,
+            key,
+            ty,
+            output_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
+        }
+    }
+}
+
+#[execute_procedure]
+impl Utilize for Hmac {
+    type Input = Vec<u8>;
+    type Output = Vec<u8>;
+
+    fn utilize(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
+        match self.ty {
+            HashType::Sha2_256 => {
+                let mut mac = [0; 32];
+                HMAC_SHA256(&msg, &*guard.borrow(), &mut mac);
+                Ok(mac.into())
+            }
+            HashType::Sha2_384 => {
+                let mut mac = [0; 48];
+                HMAC_SHA384(&msg, &*guard.borrow(), &mut mac);
+                Ok(mac.into())
+            }
+            HashType::Sha2_512 => {
+                let mut mac = [0; 64];
+                HMAC_SHA512(&msg, &*guard.borrow(), &mut mac);
+                Ok(mac.into())
+            }
+            _ => unimplemented!("Blake2b HMACs are not supported"),
+        }
     }
 }

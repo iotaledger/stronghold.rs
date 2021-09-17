@@ -201,10 +201,10 @@ pub fn impl_procedure_step(item_impl: ItemImpl) -> proc_macro2::TokenStream {
     }
     let gen_exec_fn = generate_fn_body(&segment, has_input, returns_data);
     let self_type = item_impl.self_ty;
-    let (impl_generics, ty_generics, where_clause) = item_impl.generics.split_for_impl();
+    let (impl_generics, _, where_clause) = item_impl.generics.split_for_impl();
 
     quote! {
-        impl #impl_generics ProcedureStep for #self_type #ty_generics #where_clause {
+        impl #impl_generics ProcedureStep for #self_type #where_clause {
             fn execute<X: Runner>(self, runner: &mut X, state: &mut State) -> Result<(), anyhow::Error> {
                 #gen_exec_fn
             }
