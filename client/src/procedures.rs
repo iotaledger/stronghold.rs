@@ -14,7 +14,7 @@ use engine::{
     vault::{RecordHint, VaultId},
 };
 mod primitives;
-use crate::{actors::SecureClient, Location, SLIP10DeriveInput};
+use crate::{actors::SecureClient, Location};
 pub use primitives::*;
 use serde::{Deserialize, Serialize};
 use stronghold_utils::GuardDebug;
@@ -284,7 +284,7 @@ trait Utilize {
 }
 
 // ==========================
-//  Input /  Output info
+//  Input /  Output Info
 // ==========================
 
 #[derive(Clone, Serialize, Deserialize)]

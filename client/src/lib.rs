@@ -39,9 +39,9 @@ mod utils;
 mod tests;
 
 pub use crate::{
-    actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput},
     interface::Stronghold,
     internals::Provider,
+    procedures::*,
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 

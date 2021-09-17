@@ -14,11 +14,7 @@ pub use self::{
         messages::{GetAllClients, GetClient, GetSnapshot, HasClient, InsertClient, RemoveClient},
         Registry, RegistryError,
     },
-    secure::{
-        messages as secure_messages, procedures as secure_procedures,
-        procedures::{ProcResult, SLIP10DeriveInput},
-        SecureClient, VaultError,
-    },
+    secure::{messages as secure_messages, SecureClient, VaultError},
     snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes},
 };
 

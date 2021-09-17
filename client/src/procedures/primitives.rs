@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{enum_from_inner, Location, SLIP10DeriveInput};
+use crate::{enum_from_inner, Location};
 
 use super::*;
 use crypto::{
@@ -121,10 +121,9 @@ impl Generate for WriteVault {
 // === implement From Traits from inner types to wrapper enums
 
 enum_from_inner!(PrimitiveProcedure::Helper from HelperProcedure);
-enum_from_inner!(PrimitiveProcedure::Crypto  from CryptoProcedure);
-
 enum_from_inner!(PrimitiveProcedure::Helper, HelperProcedure::WriteVault from WriteVault);
 
+enum_from_inner!(PrimitiveProcedure::Crypto  from CryptoProcedure);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Generate from Slip10Generate);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Derive from Slip10Derive);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Generate from BIP39Generate);
@@ -137,6 +136,11 @@ enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::SHA256Digest from 
 // Procedures for Cryptographic Primitives
 // ==========================
 
+/// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in
+/// the `output` location
+///
+/// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
+/// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
 #[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct Slip10Generate {
     size_bytes: Option<usize>,
@@ -173,6 +177,15 @@ impl Generate for Slip10Generate {
     }
 }
 
+#[derive(GuardDebug, Clone, Serialize, Deserialize)]
+pub enum SLIP10DeriveInput {
+    /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
+    Seed(Location),
+    Key(Location),
+}
+
+/// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
+/// return the corresponding chain code
 #[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct Slip10Derive {
     chain: Chain,
@@ -231,6 +244,8 @@ impl Process for Slip10Derive {
     }
 }
 
+/// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
+/// passphrase) and store them in the `output` location
 #[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct BIP39Generate {
     passphrase: Option<String>,
@@ -277,6 +292,8 @@ impl Generate for BIP39Generate {
     }
 }
 
+/// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
+/// a BIP39 seed and store it in the `output` location
 #[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct BIP39Recover {
     passphrase: Option<String>,
@@ -328,6 +345,8 @@ impl Generate for BIP39Recover {
     }
 }
 
+/// Derive an Ed25519 public key from the corresponding private key stored at the specified
+/// location
 #[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct Ed25519PublicKey {
     #[source]
@@ -378,6 +397,10 @@ impl Utilize for Ed25519PublicKey {
     }
 }
 
+/// Use the specified Ed25519 compatible key to sign the given message
+///
+/// Compatible keys are any record that contain the desired key material in the first 32 bytes,
+/// in particular SLIP10 keys are compatible.
 #[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct Ed25519Sign {
     #[input_data]
