@@ -72,6 +72,12 @@ pub mod messages {
     impl Message for GetAllClients {
         type Result = Vec<(ClientId, Addr<SecureClient>)>;
     }
+
+    pub struct Initialize;
+
+    impl Message for Initialize {
+        type Result = ();
+    }
 }
 
 /// Registry [`Actor`], that owns [`Client`] actors, and manages them. The registry
@@ -91,6 +97,14 @@ impl Actor for Registry {
 /// For synchronized access across multiple clients, the [`Registry`]
 /// will run as a service.
 impl SystemService for Registry {}
+
+impl Handler<messages::Initialize> for Registry {
+    type Result = ();
+
+    fn handle(&mut self, _msg: messages::Initialize, _ctx: &mut Self::Context) -> Self::Result {
+        self.clients.clear();
+    }
+}
 
 impl Handler<messages::HasClient> for Registry {
     type Result = bool;

@@ -167,7 +167,146 @@ async fn test_fully_synchronize_snapshot() {}
 
 #[actix::test]
 async fn test_partially_synchronize_snapshot() {
-    let _stronghold = Stronghold::init_stronghold_system(b"client_path0".to_vec(), vec![]);
+    // __setup
+
+    // A
+    let client_path0 = b"client_path0".to_vec();
+    let client_path1 = b"client_path1".to_vec();
+    let client_path2 = b"client_path2".to_vec();
+    let client_path3 = b"client_path3".to_vec();
+
+    // B
+    let client_path4 = b"client_path4".to_vec();
+    let client_path5 = b"client_path5".to_vec();
+
+    // locations A
+    let loc_a0 = Location::Generic {
+        record_path: b"loc_a0".to_vec(),
+        vault_path: b"vault_a0".to_vec(),
+    };
+    let loc_a1 = Location::Generic {
+        record_path: b"loc_a1".to_vec(),
+        vault_path: b"vault_a1".to_vec(),
+    };
+    let loc_a2 = Location::Generic {
+        record_path: b"loc_a2".to_vec(),
+        vault_path: b"vault_a2".to_vec(),
+    };
+    let loc_a3 = Location::Generic {
+        record_path: b"loc_a3".to_vec(),
+        vault_path: b"vault_a3".to_vec(),
+    };
+
+    // locations B
+    let loc_b0 = Location::Generic {
+        record_path: b"loc_b0".to_vec(),
+        vault_path: b"vault_b0".to_vec(),
+    };
+    let loc_b1 = Location::Generic {
+        record_path: b"loc_b1".to_vec(),
+        vault_path: b"vault_b1".to_vec(),
+    };
+
+    // allowed entries from B
+    let _allowed = vec![client_path5.clone()];
+
+    // path A
+    let mut tf = std::env::temp_dir();
+    tf.push("path_a.snapshot");
+    let storage_path_a = tf.to_str().unwrap();
+
+    // path B
+    let mut tf = std::env::temp_dir();
+    tf.push("path_b.snapshot");
+    let storage_path_b = tf.to_str().unwrap();
+
+    // __execution
+    {
+        // A
+        let mut stronghold = Stronghold::init_stronghold_system(client_path0, vec![]).await.unwrap();
+
+        // write into vault for a
+        stronghold
+            .write_to_vault(
+                loc_a0.clone(),
+                b"payload_a0".to_vec(),
+                RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
+                vec![],
+            )
+            .await;
+
+        stronghold.switch_actor_target(client_path1).await;
+        stronghold
+            .write_to_vault(
+                loc_a1.clone(),
+                b"payload_a1".to_vec(),
+                RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
+                vec![],
+            )
+            .await;
+
+        stronghold.switch_actor_target(client_path2).await;
+        stronghold
+            .write_to_vault(
+                loc_a2.clone(),
+                b"payload_a2".to_vec(),
+                RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
+                vec![],
+            )
+            .await;
+
+        stronghold.switch_actor_target(client_path3).await;
+        stronghold
+            .write_to_vault(
+                loc_a3.clone(),
+                b"payload_a3".to_vec(),
+                RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
+                vec![],
+            )
+            .await;
+
+        // key for snapshot a
+        let key_a = b"aaaBBcDDDDcccbbbBBDDD11223344556".to_vec();
+
+        // write local snapshot
+        stronghold
+            .write_all_to_snapshot(&key_a, None, Some(storage_path_a.into()))
+            .await;
+    }
+
+    {
+        // B
+
+        // write snapshot b
+        let mut stronghold = Stronghold::init_stronghold_system(client_path4, vec![]).await.unwrap();
+
+        stronghold
+            .write_to_vault(
+                loc_b0.clone(),
+                b"payload_a0".to_vec(),
+                RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
+                vec![],
+            )
+            .await;
+
+        stronghold.switch_actor_target(client_path5).await;
+        stronghold
+            .write_to_vault(
+                loc_b1.clone(),
+                b"payload_a0".to_vec(),
+                RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
+                vec![],
+            )
+            .await;
+
+        let key_b = b"lkjhbhnushfzghfjdkslaksjdnfjs2ks".to_vec();
+
+        stronghold
+            .write_all_to_snapshot(&key_b, None, Some(storage_path_b.into()))
+            .await;
+    }
+
+    // load A, partially synchronize with B, test partial entries from A and B
 }
 
 #[actix::test]
