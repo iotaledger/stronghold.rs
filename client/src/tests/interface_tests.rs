@@ -163,6 +163,14 @@ async fn test_stronghold() {
 }
 
 #[actix::test]
+async fn test_fully_synchronize_snapshot() {}
+
+#[actix::test]
+async fn test_partially_synchronize_snapshot() {
+    let _stronghold = Stronghold::init_stronghold_system(b"client_path0".to_vec(), vec![]);
+}
+
+#[actix::test]
 async fn run_stronghold_multi_actors() {
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 

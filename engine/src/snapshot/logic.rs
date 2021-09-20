@@ -102,7 +102,8 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
     let mut key_bytes = [0u8; x25519::SECRET_KEY_LENGTH];
     key_bytes.clone_from_slice(key);
 
-    // derive public key from ephemeral private key
+    // derive public key from ephemeral public key
+    // TODO: according to #write this should be the ephemeral public key
     let ephemeral_pk = x25519::PublicKey::from_bytes(ephemeral_pk);
 
     // get x25519 key pair from ephemeral private key.

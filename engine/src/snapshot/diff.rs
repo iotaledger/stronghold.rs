@@ -31,7 +31,7 @@ pub enum DiffError {
 pub trait Diff<T: PartialEq + Clone>: Sized {
     type Error;
 
-    /// Returns the applyable difference from source to destination
+    /// Returns the appliable difference from source to destination
     fn diff(src: Vec<T>, dst: Vec<T>) -> Self;
 
     /// Applies the calculated edit difference, and returns the result

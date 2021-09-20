@@ -48,14 +48,25 @@ impl Snapshot {
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
     pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<Self> {
-        let state = match path {
-            Some(p) => read_from(p, &key, &[])?,
-            None => read_from(&snapshot::files::get_path(name)?, &key, &[])?,
-        };
+        // let state = match path {
+        //     Some(p) => read_from(p, &key, &[])?,
+        //     None => read_from(&snapshot::files::get_path(name)?, &key, &[])?,
+        // };
+
+        let state = Self::read_from_name_or_path(name, path, key)?;
 
         let data = SnapshotState::deserialize(state);
 
         Ok(Self::new(data))
+    }
+
+    /// Reads bytes from the specified name snapshot or the specified path
+    /// TODO: Add associated data
+    pub fn read_from_name_or_path(name: Option<&str>, path: Option<&Path>, key: Key) -> engine::Result<Vec<u8>> {
+        match path {
+            Some(p) => read_from(p, &key, &[]),
+            None => read_from(&snapshot::files::get_path(name)?, &key, &[]),
+        }
     }
 
     /// Writes state to the specified named snapshot or the specified path

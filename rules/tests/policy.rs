@@ -1,7 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-#[allow(unused_imports)]
-use rulesengine::*;
+
+// use macros::policy;
+// use rulesengine::*;
+
+pub struct TestSnapshot {}
 
 #[test]
 fn test_execute_sequential_rule() {}

@@ -24,9 +24,9 @@
 //! similar using per chunk derived ephemeral keys.
 
 mod compression;
+pub mod diff;
 pub mod files;
 pub mod kdf;
-
 mod logic;
 pub use compression::{compress, decompress};
 pub use logic::*;

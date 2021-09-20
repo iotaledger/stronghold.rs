@@ -13,7 +13,13 @@ name = "macros"
 proc-macro = true
 path = "src/lib.rs"
 
-[dependencies]
-quote       = "1.0.9"
-syn         = "1.0.73"
-proc-macro2 = "1.0.27"
+[dependencies.syn]
+version = "1.0"
+features = ["full"]
+
+[dependencies.quote]
+version = "1.0"
+
+[dependencies.proc-macro2]
+version = "1.0"
+

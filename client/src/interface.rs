@@ -18,11 +18,11 @@ use crate::{
         },
         secure_procedures::{CallProcedure, ProcResult, Procedure},
         snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
-        GetAllClients, GetClient, GetSnapshot, InsertClient, Registry, RemoveClient, SecureClient,
+        GetAllClients, GetClient, GetSnapshot, InsertClient, Registry, RemoveClient, SecureClient, SnapshotConfig,
     },
     line_error,
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
-    Location,
+    Location, ResultMessage,
 };
 use engine::vault::{ClientId, RecordHint, RecordId};
 
@@ -33,7 +33,7 @@ use crate::{
         messages::{ShRequest, SwarmInfo},
         NetworkActor, NetworkConfig,
     },
-    unwrap_or_err, unwrap_result_msg, ResultMessage,
+    unwrap_or_err, unwrap_result_msg,
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -139,6 +139,43 @@ impl Stronghold {
         }
 
         StatusMessage::OK
+    }
+
+    /// Partially synchronizes this stronghold instance snapshot with another, eventually writes the synchronized
+    /// snapshot to disk. After the operation, the current state will be optionally resumed.
+    ///
+    /// TODO
+    /// we need to handle four cases here:
+    /// 1. local full synchronization
+    /// 2. local partial synchronization
+    /// 3. remote full synchronization
+    /// 4. remote partial sychronization
+    ///
+    /// 1 + 2 are a trivial implementation of comparing two snapshots according to their client paths ( extension to
+    /// fine-grained control over records is possible). while 3 + 4 need some extra layer of security to not expose
+    /// secrets, even though they might be encrypted.
+    pub async fn synchronize_partial<F>(&self, _configuration: F) -> ResultMessage<Option<Vec<u8>>>
+    where
+        F: Fn() -> Vec<SnapshotConfig>,
+    {
+        let _snapshot_actor = match self.registry.send(GetSnapshot {}).await {
+            Ok(actor_option) => match actor_option {
+                Some(actor) => actor,
+                None => return ResultMessage::Error("No snapshot actor present in registry".to_string()),
+            },
+            Err(error) => return ResultMessage::Error(error.to_string()),
+        };
+
+        todo!()
+    }
+
+    /// Fully synchronizes the current snapshot state with another snapshot, write the result eventually to disk.
+    /// expects a closure that returns a
+    pub async fn synchronize_full<F>(&self, _configuration: F) -> ResultMessage<Option<Vec<u8>>>
+    where
+        F: Fn() -> Vec<SnapshotConfig>,
+    {
+        todo!()
     }
 
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified

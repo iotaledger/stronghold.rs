@@ -19,7 +19,7 @@ pub use self::{
         procedures::{ProcResult, SLIP10DeriveInput},
         SecureClient, VaultError,
     },
-    snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes},
+    snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes, SnapshotConfig},
 };
 
 #[cfg(test)]

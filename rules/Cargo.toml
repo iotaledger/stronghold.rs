@@ -12,9 +12,29 @@ repository = "https://github.com/iotaledger/stronghold.rs"
 [lib]
 name = "rulesengine"
 
-[dependencies]
-thiserror = { version = "1.0.25" }
-stronghold-rules-macros = { path = "macros", version = "0.1.0" }
+[dependencies.stronghold-rules-macros]
+path    = "macros"
+version = "0.1"
+
+[dependencies.thiserror]
+version = "1.0"
+
+[dependencies.serde]
+version = "1.0"
+
+[dependencies.serde_json]
+version = "1.0"
 
 [dev-dependencies]
 criterion = "0.3.4"
+
+
+# Tests Config
+
+[[test]]
+name = "macros_tests"
+path = "tests/macros.rs"
+
+[[test]]
+name = "policy_tests"
+path = "tests/policy.rs"

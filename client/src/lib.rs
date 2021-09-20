@@ -33,6 +33,9 @@ mod internals;
 mod state;
 mod utils;
 
+// remove after testing
+mod builder;
+
 // Tests exist as a sub-module because they need to be able to test internal concepts without exposing them publicly.
 #[cfg(test)]
 mod tests;

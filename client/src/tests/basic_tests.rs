@@ -267,6 +267,67 @@ async fn test_write_read_multi_snapshot() {
     }
 }
 
+#[test]
+fn test_pub_private_field_serialization() {
+    use serde::{Deserialize, Serialize};
+    use std::collections::BTreeMap;
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+    struct Private {
+        a: u64,
+        b: String,
+        m: BTreeMap<String, u64>,
+    }
+
+    impl Private {
+        pub fn m(&self) -> &BTreeMap<String, u64> {
+            &self.m
+        }
+    }
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+    struct Public {
+        pub a: u64,
+        pub b: String,
+        pub m: BTreeMap<String, u64>,
+    }
+
+    impl Public {
+        pub fn m(&self) -> &BTreeMap<String, u64> {
+            &self.m
+        }
+    }
+
+    let mut am = BTreeMap::new();
+    am.insert("key0".to_string(), 1);
+    am.insert("key1".to_string(), 3);
+    am.insert("key2".to_string(), 2);
+    let a = Private {
+        a: 1234,
+        b: "hello".to_string(),
+        m: am,
+    };
+
+    let mut bm = BTreeMap::new();
+    bm.insert("key0".to_string(), 1);
+    bm.insert("key1".to_string(), 3);
+    bm.insert("key2".to_string(), 2);
+    let b = Public {
+        a: 1234,
+        b: "hello".to_string(),
+        m: bm,
+    };
+
+    let a_ser = bincode::serialize(&a).unwrap();
+    let b_ser = bincode::serialize(&b).unwrap();
+
+    assert_eq!(a_ser, b_ser);
+
+    let a_to_b_deser = bincode::deserialize::<Public>(&a_ser).expect("Failed to deserialize");
+
+    assert_eq!(b, a_to_b_deser);
+}
+
 #[actix::test]
 async fn test_store() {
     let client_path = b"test".to_vec();
