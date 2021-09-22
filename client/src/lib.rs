@@ -104,18 +104,33 @@ macro_rules! unwrap_result_msg (
 
 #[macro_export]
 macro_rules! enum_from_inner {
-    ($($Enum:ident::$T:ident),+ from $CEnum:ident) => {
+    ($($Enum:ident$(::<$G:ident>)?::$T:ident),+ $MEnum:ident$(::<$H:ident>)?::$MT:ident from $CEnum:ty) => {
+        impl$(<H>)? From<$CEnum> for $MEnum$(<H>)? {
+            fn from(t: $CEnum) -> Self {
+                $MEnum::$MT(t.into())
+            }
+        }
         $(
-            impl From<$CEnum> for $Enum {
+            impl$(<$G>)? From<$CEnum> for $Enum$(<$G>)? {
+                fn from(t: $CEnum) -> Self {
+                    let m: $MEnum$(<H>)? = t.into()
+                    $Enum::$T(m.into())
+                }
+            }
+        )*
+    };
+    ($($Enum:ident$(::<$G:ident>)?::$T:ident),+ from $CEnum:ty) => {
+        $(
+            impl$(<$G>)? From<$CEnum> for $Enum$(<$G>)? {
                 fn from(t: $CEnum) -> Self {
                     $Enum::$T(t.into())
                 }
             }
         )*
     };
-    ($Enum:ident from $TInner:ident) => {
-        impl From<$TInner> for $Enum {
-            fn from(t: $TInner) -> Self {
+    ($Enum:ident$(<$G:ident>)? from $TInner:ident$(<$H:ident>)?) => {
+        impl$(<$G>)? From<$TInner$(<$H>)?> for $Enum$(<$G>)? {
+            fn from(t: $TInner$(<$H>)?) -> Self {
                 $Enum::$TInner(t)
             }
         }

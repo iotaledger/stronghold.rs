@@ -115,7 +115,7 @@ fn impl_get_location(
         IOTrait::SourceVault => (
             quote! {SourceInfo},
             None,
-            quote! {source},
+            quote! {source_location},
             quote! {source_location_mut},
             quote! {Location},
         ),
@@ -219,7 +219,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
             let input = match input_data {
                 InputData::Value(v) => v.clone(),
                 InputData::Key(key) => {
-                    let data = state.get_data(&key)?;
+                    let data = state.get_data(&key)?.clone();
                     data.try_into().map_err(|e| anyhow::anyhow!("Invalid Input Data: {}", e))?
                 }
             };
@@ -268,7 +268,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 Ok(())
         },
         "Process" => quote! {
-                let location_0 = self.source().clone();
+                let location_0 = self.source_location().clone();
                 let InterimProduct  {
                     target: Target { location: location_1, hint },
                     is_temp: is_secret_temp
@@ -287,7 +287,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 Ok(())
         },
         "Utilize" => quote! {
-            let location_0 = self.source().clone();
+            let location_0 = self.source_location().clone();
             #gen_output_key
             #gen_input
             let f = move |guard| <Self as Utilize>::utilize(self, input, guard);

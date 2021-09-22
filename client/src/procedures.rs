@@ -99,10 +99,10 @@ impl State {
         self.aggregated_output.insert(key, (value, is_temp));
     }
 
-    pub fn get_data(&mut self, key: &OutputKey) -> Result<ProcedureIo, anyhow::Error> {
+    pub fn get_data(&self, key: &OutputKey) -> Result<&ProcedureIo, anyhow::Error> {
         self.aggregated_output
             .get(key)
-            .map(|(data, _)| data.clone())
+            .map(|(data, _)| data)
             .ok_or_else(|| anyhow::anyhow!("Missing Data"))
     }
 
@@ -137,6 +137,12 @@ impl From<Vec<u8>> for ProcedureIo {
 impl From<ProcedureIo> for Vec<u8> {
     fn from(p: ProcedureIo) -> Self {
         p.0
+    }
+}
+
+impl AsRef<Vec<u8>> for ProcedureIo {
+    fn as_ref(&self) -> &Vec<u8> {
+        &self.0
     }
 }
 
@@ -303,12 +309,12 @@ pub struct InterimProduct<T> {
 }
 
 pub trait SourceInfo {
-    fn source(&self) -> &Location;
+    fn source_location(&self) -> &Location;
     fn source_location_mut(&mut self) -> &mut Location;
 }
 
 impl SourceInfo for Location {
-    fn source(&self) -> &Location {
+    fn source_location(&self) -> &Location {
         self
     }
     fn source_location_mut(&mut self) -> &mut Location {
@@ -317,7 +323,7 @@ impl SourceInfo for Location {
 }
 
 impl SourceInfo for SLIP10DeriveInput {
-    fn source(&self) -> &Location {
+    fn source_location(&self) -> &Location {
         match self {
             SLIP10DeriveInput::Seed(l) => l,
             SLIP10DeriveInput::Key(l) => l,
@@ -393,7 +399,6 @@ pub trait InputInfo {
 impl<T> InputInfo for InputData<T>
 where
     T: TryFrom<ProcedureIo>,
-    // ProcedureIo: TryInto<T>
 {
     type Input = T;
     fn input_info(&self) -> &InputData<Self::Input> {

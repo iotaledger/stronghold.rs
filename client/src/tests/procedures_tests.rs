@@ -9,6 +9,7 @@ use crypto::{
     signatures::ed25519::{PublicKey, SecretKey, Signature, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH},
     utils::rand::fill,
 };
+use sha2::Sha256;
 
 use super::fresh;
 use crate::{procedures::*, ResultMessage, Stronghold};
@@ -206,8 +207,7 @@ async fn usecase_collection_of_data() {
         .enumerate()
         .map(|(i, msg)| {
             let sign = Ed25519Sign::new(msg, key_location.clone());
-            let digest =
-                Hash::dynamic(sign.output_key(), HashType::Sha2_256).store_output(OutputKey::new(format!("{}", i)));
+            let digest = Hash::<Sha256>::dynamic(sign.output_key()).store_output(OutputKey::new(format!("{}", i)));
             sign.then(digest)
         })
         .reduce(|acc, curr| acc.then(curr))
