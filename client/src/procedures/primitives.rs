@@ -18,13 +18,14 @@ use crypto::{
     keys::{
         bip39,
         slip10::{self, Chain, ChainCode, Curve, Seed},
+        x25519,
     },
-    signatures::ed25519::{self, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH},
+    signatures::ed25519,
     utils::rand::fill,
 };
 use engine::{runtime::GuardedVec, vault::RecordHint};
 use hmac::{
-    digest::{BlockInput, FixedOutputDirty, Reset, Update},
+    digest::{BlockInput, FixedOutput, Reset, Update},
     Mac, NewMac,
 };
 use serde::{Deserialize, Serialize};
@@ -63,16 +64,25 @@ impl ProcedureStep for HelperProcedure {
     }
 }
 
+// TODO: remove notes, add proper docs.
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub enum CryptoProcedure {
+    // Generate Random array with length 64
     Slip10Generate(Slip10Generate),
+    // for seg: u32 = [u8;4] in chain:
+    //   child = HMAC_SH512(data: 0 ++ parent.privatekey ++ seg, key: parent.chaincode)
+    //   child: privatekey: [u8;32] ++ chaincode: [u8;32] = [u8;64]
     Slip10Derive(Slip10Derive),
     BIP39Generate(BIP39Generate),
+
+    // bip39::mnemonic_to_seed(mnemonic, passphrase):
+    // PBKDF2_HMAC_SHA512(password: mnemonic, salt: "mnemonic" ++ passphrase, count: 2048)
     BIP39Recover(BIP39Recover),
     Ed25519PublicKey(Ed25519PublicKey),
     Ed25519Sign(Ed25519Sign),
     Hash(Hashes),
     Hmac(Hmacs),
+    Aead(Aeads),
 }
 
 impl ProcedureStep for CryptoProcedure {
@@ -87,6 +97,7 @@ impl ProcedureStep for CryptoProcedure {
             Ed25519Sign(proc) => proc.execute(runner, state),
             Hash(proc) => proc.execute(runner, state),
             Hmac(proc) => proc.execute(runner, state),
+            Aead(proc) => proc.execute(runner, state),
         }
     }
 }
@@ -152,44 +163,133 @@ enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash, Hashes::Blak
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac, Hmacs::Sha2_256 from Hmac<Sha256>);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac, Hmacs::Sha2_384 from Hmac<Sha384>);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac, Hmacs::Sha2_512 from Hmac<Sha512>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::Aes256GcmEncrypt from AeadEncrypt<Aes256Gcm>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::Aes256GcmDecrypt from AeadDecrypt<Aes256Gcm>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::XChaCha20Poly1305Encrypt from AeadEncrypt<XChaCha20Poly1305>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::XChaCha20Poly1305Decrypt from AeadDecrypt<XChaCha20Poly1305>);
 
 // ==========================
 // Procedures for Cryptographic Primitives
 // ==========================
 
-/// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in
-/// the `output` location
-///
-/// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
-/// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
-#[derive(Procedure, Clone, Serialize, Deserialize)]
-pub struct Slip10Generate {
-    size_bytes: Option<usize>,
-
-    #[target]
-    target: InterimProduct<Target>,
+pub trait SecretKey {
+    type Key;
+    fn key_length() -> usize;
+    fn from_bytes(bs: &[u8]) -> Result<Self::Key, crypto::Error>;
+    fn generate() -> Result<Vec<u8>, crypto::Error> {
+        let mut k = vec![0u8; Self::key_length()];
+        fill(&mut k)?;
+        Ok(k)
+    }
 }
 
-impl Slip10Generate {
-    pub fn new(size_bytes: Option<usize>) -> Self {
-        Slip10Generate {
-            size_bytes,
+pub trait Signature: SecretKey {
+    fn signature_length() -> usize;
+    fn pub_key_length() -> usize;
+
+    fn sign(key: &Self::Key, bs: &[u8]) -> Vec<u8>;
+    fn pub_key(key: &Self::Key) -> Vec<u8>;
+}
+
+#[derive(GuardDebug, Clone, Serialize, Deserialize)]
+pub struct Slip10;
+impl SecretKey for Slip10 {
+    type Key = slip10::Seed;
+
+    fn key_length() -> usize {
+        // TODO: make this configurable
+        64
+    }
+
+    fn from_bytes(bs: &[u8]) -> Result<Self::Key, crypto::Error> {
+        Ok(slip10::Seed::from_bytes(bs))
+    }
+}
+
+#[derive(GuardDebug, Clone, Serialize, Deserialize)]
+pub struct Ed25519;
+impl SecretKey for Ed25519 {
+    type Key = ed25519::SecretKey;
+    fn key_length() -> usize {
+        ed25519::SECRET_KEY_LENGTH
+    }
+    fn from_bytes(bs: &[u8]) -> Result<Self::Key, crypto::Error> {
+        let bytes = bs.try_into().map_err(|_| crypto::Error::ConvertError {
+            from: "bytes",
+            to: "Ed25519 Public Key",
+        })?;
+        Ok(ed25519::SecretKey::from_bytes(bytes))
+    }
+}
+impl Signature for Ed25519 {
+    fn signature_length() -> usize {
+        ed25519::SIGNATURE_LENGTH
+    }
+    fn pub_key_length() -> usize {
+        ed25519::PUBLIC_KEY_LENGTH
+    }
+    fn sign(key: &Self::Key, bs: &[u8]) -> Vec<u8> {
+        key.sign(bs).to_bytes().to_vec()
+    }
+    fn pub_key(key: &Self::Key) -> Vec<u8> {
+        key.public_key().as_slice().to_vec()
+    }
+}
+
+#[derive(GuardDebug, Clone, Serialize, Deserialize)]
+pub struct X25519;
+impl SecretKey for X25519 {
+    type Key = x25519::SecretKey;
+    fn key_length() -> usize {
+        x25519::SECRET_KEY_LENGTH
+    }
+    fn from_bytes(bs: &[u8]) -> Result<Self::Key, crypto::Error> {
+        let bytes = bs.try_into().map_err(|_| crypto::Error::ConvertError {
+            from: "bytes",
+            to: "X25519 Public Key",
+        })?;
+        Ok(x25519::SecretKey::from_bytes(bytes))
+    }
+}
+
+#[derive(Procedure, Clone, Serialize, Deserialize)]
+pub struct GenerateKey<T> {
+    #[target]
+    target: InterimProduct<Target>,
+    _marker: PhantomData<T>,
+}
+
+impl<T> Default for GenerateKey<T> {
+    fn default() -> Self {
+        GenerateKey {
             target: InterimProduct {
                 target: Target::random(),
                 is_temp: true,
             },
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T> GenerateKey<T> {
+    pub fn new() -> Self {
+        GenerateKey {
+            target: InterimProduct {
+                target: Target::random(),
+                is_temp: true,
+            },
+            _marker: PhantomData,
         }
     }
 }
 
 #[execute_procedure]
-impl Generate for Slip10Generate {
+impl<T: SecretKey> Generate for GenerateKey<T> {
     type Input = ();
     type Output = ();
 
     fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
-        let size_bytes = self.size_bytes.unwrap_or(64);
-        let mut seed = vec![0u8; size_bytes];
+        let mut seed = vec![0u8; T::key_length()];
         fill(&mut seed)?;
         Ok(Products {
             secret: seed,
@@ -197,6 +297,14 @@ impl Generate for Slip10Generate {
         })
     }
 }
+
+/// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in
+/// the `output` location
+///
+/// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
+/// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
+// TODO: fix size_bytes
+pub type Slip10Generate = GenerateKey<Slip10>;
 
 #[derive(GuardDebug, Clone, Serialize, Deserialize)]
 pub enum SLIP10DeriveInput {
@@ -366,64 +474,67 @@ impl Generate for BIP39Recover {
     }
 }
 
-/// Derive an Ed25519 public key from the corresponding private key stored at the specified
-/// location
 #[derive(Procedure, Clone, Serialize, Deserialize)]
-pub struct Ed25519PublicKey {
+pub struct GetPublicKey<T> {
     #[source]
     private_key: Location,
 
     #[output_key]
     output_key: InterimProduct<OutputKey>,
+
+    _marker: PhantomData<T>,
 }
 
-impl Ed25519PublicKey {
+impl<T> GetPublicKey<T> {
     pub fn new(private_key: Location) -> Self {
-        Ed25519PublicKey {
+        GetPublicKey {
             private_key,
             output_key: InterimProduct {
                 target: OutputKey::random(),
                 is_temp: true,
             },
+            _marker: PhantomData,
         }
     }
 }
 
 #[execute_procedure]
-impl Utilize for Ed25519PublicKey {
+impl<T: Signature> Utilize for GetPublicKey<T> {
     type Input = ();
-    type Output = [u8; PUBLIC_KEY_LENGTH];
+    type Output = Vec<u8>;
 
+    // TODO: this logic is most likely not the same for all signatures
     fn utilize(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
         let raw = guard.borrow();
         let mut raw = (*raw).to_vec();
-        if raw.len() < 32 {
+        let l = T::key_length();
+        if raw.len() < l {
             // the client actor will interrupt the control flow
             // but could this be an option to return an error
             let e = engine::Error::CryptoError(crypto::Error::BufferSize {
                 has: raw.len(),
-                needs: 32,
+                needs: l,
                 name: "data buffer",
             });
             return Err(e);
         }
-        raw.truncate(32);
-        let mut bs = [0; 32];
+        raw.truncate(l);
+        let mut bs = vec![0; l];
         bs.copy_from_slice(&raw);
 
-        let sk = ed25519::SecretKey::from_bytes(bs);
-        let pk = sk.public_key();
+        let sk = T::from_bytes(&bs)?;
+        let pk = T::pub_key(&sk);
 
-        Ok(pk.to_bytes())
+        Ok(pk.to_vec())
     }
 }
 
-/// Use the specified Ed25519 compatible key to sign the given message
-///
-/// Compatible keys are any record that contain the desired key material in the first 32 bytes,
-/// in particular SLIP10 keys are compatible.
+/// Derive an Ed25519 public key from the corresponding private key stored at the specified
+/// location
+pub type Ed25519PublicKey = GetPublicKey<Ed25519>;
+
 #[derive(Procedure, Clone, Serialize, Deserialize)]
-pub struct Ed25519Sign {
+pub struct Sign<T> {
     #[input_data]
     msg: InputData<Vec<u8>>,
 
@@ -432,58 +543,70 @@ pub struct Ed25519Sign {
 
     #[output_key]
     output_key: InterimProduct<OutputKey>,
+
+    _marker: PhantomData<T>,
 }
 
-#[execute_procedure]
-impl Utilize for Ed25519Sign {
-    type Input = Vec<u8>;
-    type Output = [u8; SIGNATURE_LENGTH];
-
-    fn utilize(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
-        let raw = guard.borrow();
-        let mut raw = (*raw).to_vec();
-
-        if raw.len() < 32 {
-            let e = engine::Error::CryptoError(crypto::Error::BufferSize {
-                has: raw.len(),
-                needs: 32,
-                name: "data buffer",
-            });
-            return Err(e);
-        }
-        raw.truncate(32);
-        let mut bs = [0; 32];
-        bs.copy_from_slice(&raw);
-
-        let sk = ed25519::SecretKey::from_bytes(bs);
-
-        let sig = sk.sign(&msg);
-        Ok(sig.to_bytes())
-    }
-}
-
-impl Ed25519Sign {
+impl<T> Sign<T> {
     pub fn new(msg: Vec<u8>, private_key: Location) -> Self {
-        Ed25519Sign {
+        Sign {
             msg: InputData::Value(msg),
             private_key,
             output_key: InterimProduct {
                 target: OutputKey::random(),
                 is_temp: true,
             },
+            _marker: PhantomData,
         }
     }
     pub fn dynamic(msg_key: OutputKey, private_key: Location) -> Self {
-        Ed25519Sign {
+        Sign {
             msg: InputData::Key(msg_key),
             private_key,
             output_key: InterimProduct {
                 target: OutputKey::random(),
                 is_temp: true,
             },
+            _marker: PhantomData,
         }
     }
 }
+
+#[execute_procedure]
+impl<T: Signature> Utilize for Sign<T> {
+    type Input = Vec<u8>;
+    type Output = Vec<u8>;
+
+    // TODO: this logic is most likely not the same for all signatures
+    fn utilize(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
+        let raw = guard.borrow();
+        let mut raw = (*raw).to_vec();
+
+        let l = T::pub_key_length();
+        if raw.len() < l {
+            let e = engine::Error::CryptoError(crypto::Error::BufferSize {
+                has: raw.len(),
+                needs: l,
+                name: "data buffer",
+            });
+            return Err(e);
+        }
+        raw.truncate(l);
+        let mut bs = vec![0; l];
+        bs.copy_from_slice(&raw);
+
+        let sk = T::from_bytes(&bs)?;
+
+        let sig = T::sign(&sk, &msg);
+        Ok(sig.to_vec())
+    }
+}
+
+/// Use the specified Ed25519 compatible key to sign the given message
+///
+/// Compatible keys are any record that contain the desired key material in the first 32 bytes,
+/// in particular SLIP10 keys are compatible.
+pub type Ed25519Sign = Sign<Ed25519>;
 
 #[derive(Procedure, Clone, Serialize, Deserialize)]
 pub enum Hashes {
@@ -613,7 +736,7 @@ impl<T> Hmac<T> {
 #[execute_procedure]
 impl<T> Utilize for Hmac<T>
 where
-    T: Digest + Update + BlockInput + Reset + Default + Clone + FixedOutputDirty,
+    T: Update + BlockInput + FixedOutput + Reset + Default + Clone,
 {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
@@ -627,19 +750,26 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum Aeads {
-    Aes256Gcm(AeadProc<Aes256Gcm>),
-    XChaCha20Poly1305(AeadProc<XChaCha20Poly1305>),
+    Aes256GcmEncrypt(AeadEncrypt<Aes256Gcm>),
+    Aes256GcmDecrypt(AeadDecrypt<Aes256Gcm>),
+    XChaCha20Poly1305Encrypt(AeadEncrypt<XChaCha20Poly1305>),
+    XChaCha20Poly1305Decrypt(AeadDecrypt<XChaCha20Poly1305>),
 }
 
-#[derive(Clone)]
-pub enum AeadProc<T> {
-    Encrypt(AeadEncrypt<T>),
-    Decrypt(AeadDecrypt<T>),
+impl ProcedureStep for Aeads {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+        match self {
+            Aeads::Aes256GcmEncrypt(proc) => proc.execute(runner, state),
+            Aeads::Aes256GcmDecrypt(proc) => proc.execute(runner, state),
+            Aeads::XChaCha20Poly1305Encrypt(proc) => proc.execute(runner, state),
+            Aeads::XChaCha20Poly1305Decrypt(proc) => proc.execute(runner, state),
+        }
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AeadEncrypt<T> {
     associated_data: InputData<Vec<u8>>,
     plaintext: InputData<Vec<u8>>,
@@ -751,7 +881,7 @@ impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AeadDecrypt<T> {
     associated_data: InputData<Vec<u8>>,
     ciphertext: InputData<Vec<u8>>,
@@ -856,16 +986,23 @@ impl<T: Aead> ProcedureStep for AeadDecrypt<T> {
     }
 }
 
+// TODO: Add PBKDF
+
+// TODO: Remove notes
+
 // K: Key, P: Plaintext, C: Ciphertext, M:Message (=Plaintext, but not intended to be encrypted)
 
 // Cipher: Encrypt/Decrypt Stuff based on a key
-// Block Cipher: C = E(K, P); E: Encryption-Alg
-// Stream Cipher: C = P ⊕ KS where KS = SC(K, N); SC: Stream-Cipher Alg., N: Nonce, KS: Keystream
+// // Block Cipher: C = E(K, P); E: Encryption-Alg
+// // Stream Cipher: C = P ⊕ KS where KS = SC(K, N); SC: Stream-Cipher Alg., N: Nonce, KS: Keystream
 // MAC: Keyed hashing: T= MAC(K, M); T: Tag
 // HMAC: Hash-based MAC aka the MAC is build from a Hash function
 // Authenticated Encryption (AE): (& Authenticated Decryption (AD))
-// Cipher & MAC: Cipher+MAC=C,T || MAC*Cipher = C || Cipher*MAC=C,T
-// Authenticated Cipher: AE(K, P) = (C, T)
+// // Cipher & MAC: Cipher+MAC=C,T || MAC*Cipher = C || Cipher*MAC=C,T
+// // Authenticated Cipher: AE(K, P) = (C, T)
 // Authenticated Encryption with associated Data (AEAD)
-// AEAD(K, P, A) = (C, A, T); A: Associated Data that should not be encrypted, but authenticated
-// ADAD(K, C, A, T) = (P, A): Decryption
+// // AEAD(K, P, A) = (C, A, T); A: Associated Data that should not be encrypted, but authenticated
+// // ADAD(K, C, A, T) = (P, A): Decryption
+// Key Wrapping:
+// // C = (KD, KEK) where KD: Key-data (= key to be wrapped),  KEK: Key-encryption-key (= often a Password)
+// // -> Technically just normal cipher

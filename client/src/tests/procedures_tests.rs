@@ -28,12 +28,12 @@ async fn usecase_ed25519() {
     let seed = fresh::location();
 
     if fresh::coinflip() {
-        let size_bytes = if fresh::coinflip() {
+        let _size_bytes = if fresh::coinflip() {
             Some(fresh::usize(1024))
         } else {
             None
         };
-        let slip10_generate = Slip10Generate::new(size_bytes).write_secret(seed.clone(), fresh::record_hint());
+        let slip10_generate = Slip10Generate::new().write_secret(seed.clone(), fresh::record_hint());
 
         match sh.runtime_exec(slip10_generate).await {
             ResultMessage::Ok(_) => (),
@@ -83,7 +83,7 @@ async fn usecase_Slip10Derive_intermediate_keys() {
 
     let seed = fresh::location();
 
-    let slip10_generate = Slip10Generate::new(None).write_secret(seed.clone(), fresh::record_hint());
+    let slip10_generate = Slip10Generate::new().write_secret(seed.clone(), fresh::record_hint());
     match sh.runtime_exec(slip10_generate).await {
         ResultMessage::Ok(_) => (),
         ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
@@ -134,7 +134,7 @@ async fn usecase_ed25519_as_complex() {
     let pk_result = OutputKey::random();
     let sign_result = OutputKey::random();
 
-    let generate = Slip10Generate::new(None);
+    let generate = Slip10Generate::new();
     let derive = Slip10Derive::new_from_seed(generate.target(), fresh::hd_path().1);
     let get_pk = Ed25519PublicKey::new(derive.target()).store_output(pk_result.clone());
     let sign = Ed25519Sign::new(msg.clone(), derive.target()).store_output(sign_result.clone());
