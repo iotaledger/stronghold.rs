@@ -1,6 +1,13 @@
-# Specification: ENGINEERING
-
-# Stronghold Engineering Specification
+---
+description: This document introduces the high-level specification of Stronghold.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- rust
+- high level 
+- low level
+- library
+---
+# Stronghold Engineering Specification {#engineering-spec}
 [engineering-spec]: #engineering-spec
 
 ## Frontmatter
@@ -17,10 +24,12 @@ licenses: ["CC-BY-INTL-3.0"]
 updated: 2021-Apr-27
 ```
 
-## Summary
+## Summary {#summary}
 [summary]: #summary
+
 This document introduces the High-Level Specification of the Stronghold.
-## Logical System Design
+
+## Logical System Design {#system-design}
 [system-design]: #system-design
 
 ### Low Level

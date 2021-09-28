@@ -1,3 +1,15 @@
+---
+description: Vault is an implementation of a secure database for secrets, each database view is a vault which is a collection of records which are all encrypted using the same key.A collection of vaults is called a Stronghold.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- rust
+- crate
+- vault
+- records
+- GuardedVec
+- DbView
+---
+
 # Structure: Engine::Vault
 
 | | | |
@@ -6,4 +18,4 @@
 
 
 
-{@import ../../../engine/src/vault/README.md}
+{@import ../../../../engine/src/vault/README.md}

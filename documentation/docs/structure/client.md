@@ -1,3 +1,15 @@
+---
+description: The official client layer of Stronghold provides an Actix actor model system for easy Interface as well as functional pass-through to Stronghold's internal actor system.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- rust
+- interface
+- procedures
+- requests
+- responses
+---
+
+
 # Structure: Client
 
 | | | |
