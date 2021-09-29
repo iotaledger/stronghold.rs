@@ -17,8 +17,11 @@ use crate::{
             ReadFromStore, ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
         secure_procedures::{CallProcedure, ProcResult, Procedure},
-        snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
-        GetAllClients, GetClient, GetSnapshot, InsertClient, Registry, RemoveClient, SecureClient, SnapshotConfig,
+        snapshot_messages::{
+            FillSnapshot, FullSynchronization, PartialSynchronization, ReadFromSnapshot, WriteSnapshot,
+        },
+        GetAllClients, GetClient, GetSnapshot, Initialize, InsertClient, Registry, RemoveClient, SecureClient,
+        SnapshotConfig,
     },
     line_error,
     utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
@@ -66,6 +69,12 @@ impl Stronghold {
 
         // the registry will be run as a system service
         let registry = Registry::from_registry();
+
+        // clear registry
+        registry
+            .send(Initialize {})
+            .await
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
         // we need to block for the target client actor
         let target = match registry.send(InsertClient { id: client_id }).await? {
@@ -154,11 +163,15 @@ impl Stronghold {
     /// 1 + 2 are a trivial implementation of comparing two snapshots according to their client paths ( extension to
     /// fine-grained control over records is possible). while 3 + 4 need some extra layer of security to not expose
     /// secrets, even though they might be encrypted.
-    pub async fn synchronize_partial<F>(&self, _configuration: F) -> ResultMessage<Option<Vec<u8>>>
-    where
-        F: Fn() -> Vec<SnapshotConfig>,
-    {
-        let _snapshot_actor = match self.registry.send(GetSnapshot {}).await {
+    pub async fn synchronize_partial(
+        &self,
+        id: ClientId,
+        source: SnapshotConfig,
+        sync_with: SnapshotConfig,
+        destination: SnapshotConfig,
+        allowed: Vec<ClientId>,
+    ) -> ResultMessage<()> {
+        let snapshot_actor = match self.registry.send(GetSnapshot {}).await {
             Ok(actor_option) => match actor_option {
                 Some(actor) => actor,
                 None => return ResultMessage::Error("No snapshot actor present in registry".to_string()),
@@ -166,16 +179,78 @@ impl Stronghold {
             Err(error) => return ResultMessage::Error(error.to_string()),
         };
 
-        todo!()
+        let result = match snapshot_actor
+            .send(PartialSynchronization {
+                allowed,
+                source,
+                compare: sync_with,
+                destination,
+                id,
+            })
+            .await
+            .unwrap()
+        {
+            Ok(result) => result,
+            Err(e) => return ResultMessage::Error(e.to_string()),
+        };
+
+        // send data to secure actor and reload
+        match self
+            .target
+            .send(ReloadData {
+                data: result.data,
+                id: result.id,
+            })
+            .await
+        {
+            Ok(_) => ResultMessage::Ok(()),
+            Err(e) => ResultMessage::Error(e.to_string()),
+        }
     }
 
     /// Fully synchronizes the current snapshot state with another snapshot, write the result eventually to disk.
     /// expects a closure that returns a
-    pub async fn synchronize_full<F>(&self, _configuration: F) -> ResultMessage<Option<Vec<u8>>>
-    where
-        F: Fn() -> Vec<SnapshotConfig>,
-    {
-        todo!()
+    pub async fn synchronize_full(
+        &self,
+        id: ClientId,
+        source: SnapshotConfig,
+        sync_with: SnapshotConfig,
+        destination: SnapshotConfig,
+    ) -> ResultMessage<()> {
+        let snapshot_actor = match self.registry.send(GetSnapshot {}).await {
+            Ok(actor_option) => match actor_option {
+                Some(actor) => actor,
+                None => return ResultMessage::Error("No snapshot actor present in registry".to_string()),
+            },
+            Err(error) => return ResultMessage::Error(error.to_string()),
+        };
+
+        let result = match snapshot_actor
+            .send(FullSynchronization {
+                source,
+                merge: sync_with,
+                destination,
+                id,
+            })
+            .await
+            .unwrap()
+        {
+            Ok(result) => result,
+            Err(error) => return ResultMessage::Error(error.to_string()),
+        };
+
+        // send data to secure actor and reload
+        match self
+            .target
+            .send(ReloadData {
+                data: result.data,
+                id: result.id,
+            })
+            .await
+        {
+            Ok(_) => ResultMessage::Ok(()),
+            Err(e) => ResultMessage::Error(e.to_string()),
+        }
     }
 
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified

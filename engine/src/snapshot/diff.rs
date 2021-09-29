@@ -6,12 +6,7 @@
 //! This module provides the ability to synchronized local snapshots, and
 //! remote snapshots. While synchronizing local snapshots is trivial,
 //! synchronizing remote snapshots must involve a more elaborated set of
-//! permissions. Care must also be taken, if the data to be synchronized
-//! needs
-//!
-//! Synchronizing two snapshots can be done easily
-//! ``` no_run
-//! ```
+//! permissions.
 
 use thiserror::Error as DeriveError;
 
@@ -58,7 +53,7 @@ mod lcs {
 
     /// Implementation for  Longest Common Subsequence (LCS)
     ///
-    /// You can obtain a reference to [`Lcs`] via [`Self::sync()`],
+    /// You can obtain a reference to [`Lcs`] via [`Self::diff()`],
     /// calling [`Self::apply()`] to apply the difference to destination.
     pub struct Lcs {
         edit: Vec<DiffOperation>,

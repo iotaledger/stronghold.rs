@@ -41,6 +41,11 @@ pub mod returntypes {
             Store,
         )>,
     }
+
+    /// Return type for snapshot data exports
+    pub struct ReturnExport {
+        pub entries: Vec<u8>,
+    }
 }
 
 pub mod messages {
@@ -83,6 +88,7 @@ pub mod messages {
     /// A partially synchronized snapshot contains only the associated data like
     /// vaults and their records, that is related to specified [`ClientId`]s
     /// and their associated keys.
+    #[derive(Clone)]
     pub struct PartialSynchronization {
         // this passes a list of all allowed client_ids
         // to be synchronized
@@ -98,13 +104,14 @@ pub mod messages {
         // this is the destination snapshot to written out
         pub destination: SnapshotConfig,
 
-        // the currently used client id
+        // the id of the client
         pub id: ClientId,
     }
 
     /// Message for [`Snapshot`] to create a fully synchronized snapshot.
     /// A fully synchronized snapshot contains all [`ClientId`]s, and
     /// all associated data like vaults and their records.
+    #[derive(Clone)]
     pub struct FullSynchronization {
         // this snapshot file will be used as base snapshot
         pub source: SnapshotConfig,
@@ -112,19 +119,43 @@ pub mod messages {
         // this is the snapshot to synchronized with the current state
         pub merge: SnapshotConfig,
 
-        // this is the destination snapshot to written out
+        // this is the destination snapshot
         pub destination: SnapshotConfig,
 
-        // the current [`ClientId`]
+        // the id of the client
         pub id: ClientId,
     }
 
+    /// Use [`Export`] to export single entries
+    /// to a remote instance
+    #[derive(Clone)]
+    pub struct Export {
+        /// The entries to be exported
+        pub entries: Vec<u8>,
+    }
+
+    /// Use [`Import`] to import entries into
+    /// the current state
+    #[derive(Clone)]
+    pub struct Import {
+        pub id: ClientId,
+        pub entries: Vec<u8>,
+    }
+
+    impl Message for Import {
+        type Result = Result<(), SnapshotError>;
+    }
+
+    impl Message for Export {
+        type Result = Result<returntypes::ReturnExport, SnapshotError>;
+    }
+
     impl Message for FullSynchronization {
-        type Result = Result<Option<Vec<u8>>, SnapshotError>;
+        type Result = Result<returntypes::ReturnReadSnapshot, SnapshotError>;
     }
 
     impl Message for PartialSynchronization {
-        type Result = Result<Option<Vec<u8>>, SnapshotError>;
+        type Result = Result<returntypes::ReturnReadSnapshot, SnapshotError>;
     }
 }
 
@@ -172,8 +203,34 @@ pub enum SnapshotError {
 // actix impl
 impl Supervised for Snapshot {}
 
+impl Handler<Import> for Snapshot {
+    type Result = Result<(), SnapshotError>;
+
+    fn handle(&mut self, _msg: Import, _ctx: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
+}
+
+impl Handler<messages::Export> for Snapshot {
+    type Result = Result<ReturnExport, SnapshotError>;
+
+    fn handle(&mut self, _msg: messages::Export, _ctx: &mut Self::Context) -> Self::Result {
+        // This gets a list of entries, that are to be selected from
+        // the vault
+        // locally import necessary modules
+        use engine::vault::Key as PKey;
+        use serde::{Deserialize, Serialize};
+
+        // define local snapshot data structure to access the private fields
+        #[derive(Deserialize, Serialize, Default)]
+        struct SnapshotStateLocal(pub HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
+
+        todo!()
+    }
+}
+
 impl Handler<messages::FullSynchronization> for Snapshot {
-    type Result = Result<Option<Vec<u8>>, SnapshotError>;
+    type Result = Result<ReturnReadSnapshot, SnapshotError>;
 
     fn handle(&mut self, msg: messages::FullSynchronization, ctx: &mut Self::Context) -> Self::Result {
         // locally import necessary modules
@@ -209,21 +266,41 @@ impl Handler<messages::FullSynchronization> for Snapshot {
         let snapshot_merge = bincode::deserialize::<SnapshotStateLocal>(&snapshot_data_merge)
             .map_err(|error| SnapshotError::SynchronizeSnapshot(error.to_string()))?;
 
+        // this is the actual output of the handler
+        let mut output_map: HashMap<VaultId, PKey<Provider>> = HashMap::new();
+        let mut output_view: DbView<Provider> = DbView::new();
+        let mut output_store: Store = Store::new();
+
         let mut output_state = SnapshotState::default();
 
+        // let message_merge = msg.clone();
+
         // copy all merge
-        snapshot_merge.0.keys().for_each(|id| {
-            if let Some(data) = snapshot_merge.0.get(id) {
+        for id in snapshot_merge.0.keys() {
+            if let Some(data) = snapshot_merge.0.get(&id.clone()) {
                 output_state.add_data(*id, data.clone());
+
+                // todo fill outputs: map, view, store
+                let (map, view, store) = data;
+                output_map.extend((map.clone()).into_iter());
+                output_view.vaults.extend(view.vaults.clone().into_iter());
+                output_store = output_store.merge(store.clone());
             }
-        });
+        }
 
         // copy all local
-        snapshot_local.0.keys().for_each(|id| {
-            if let Some(data) = snapshot_local.0.get(id) {
+        for id in snapshot_local.0.keys() {
+            if let Some(data) = snapshot_local.0.get(&id.clone()) {
                 output_state.add_data(*id, data.clone());
+
+                // todo fill outputs: map, view, store
+                let (map, view, store) = data;
+                output_map.extend((map.clone()).into_iter());
+                output_view.vaults.extend(view.vaults.clone().into_iter());
+
+                output_store = output_store.merge(store.clone());
             }
-        });
+        }
 
         self.state = output_state;
 
@@ -236,13 +313,16 @@ impl Handler<messages::FullSynchronization> for Snapshot {
         // write the new state to disk
         <Self as Handler<WriteSnapshot>>::handle(self, write_msg, ctx)?;
 
-        // return serialized state
-        Ok(Some(self.state.serialize()))
+        // return read state to reload on current actor
+        Ok(ReturnReadSnapshot {
+            id: msg.id,
+            data: Box::new((output_map, output_view, output_store)),
+        })
     }
 }
 
 impl Handler<messages::PartialSynchronization> for Snapshot {
-    type Result = Result<Option<Vec<u8>>, SnapshotError>;
+    type Result = Result<ReturnReadSnapshot, SnapshotError>;
 
     fn handle(&mut self, msg: messages::PartialSynchronization, ctx: &mut Self::Context) -> Self::Result {
         // locally import necessary modules
@@ -266,7 +346,7 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
         .map_err(|err| SnapshotError::SynchronizeSnapshot(err.to_string()))?;
 
         // load snapshot file for comparison
-        // FIXME: this should be the current state of the secureactor
+        // FIXME: this should be the current state of the secure actor
         let cmp_config = msg.compare;
         let snapshot_data_compare = Snapshot::read_from_name_or_path(
             cmp_config.filename.as_deref(),
@@ -285,6 +365,11 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
         // load comparison snapshot and handle partial synchronization
         match bincode::deserialize::<SnapshotStateLocal>(&snapshot_data_compare) {
             Ok(compare_state) => {
+                // this is the handlers output
+                let mut output_map: HashMap<VaultId, PKey<Provider>> = HashMap::new();
+                let mut output_view: DbView<Provider> = DbView::new();
+                let mut output_store: Store = Store::new();
+
                 // create new snapshot to write
                 let mut output_state = SnapshotState::default();
 
@@ -294,17 +379,28 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
                 let compare = compare_state.0;
 
                 // add all allowed entries to the output
-                msg.allowed
-                    .iter()
-                    .filter(|id| compare.get(id).is_some())
-                    .for_each(|id| {
-                        output_data.insert(*id, compare.get(id).unwrap().clone());
-                    });
+                for id in msg.allowed {
+                    if let Some(data) = compare.get(&id) {
+                        output_data.insert(id, data.clone());
+
+                        let (map, view, store) = data;
+                        output_map.extend((map.clone()).into_iter());
+                        output_view.vaults.extend(view.vaults.clone().into_iter());
+                        output_store = output_store.merge(store.clone());
+                    }
+                }
 
                 // add all local state to the output
-                output_data.keys().for_each(|id| {
-                    output_state.add_data(*id, compare.get(id).unwrap().clone());
-                });
+                for id in output_data.keys() {
+                    if let Some(data) = compare.get(id) {
+                        output_state.add_data(*id, data.clone());
+
+                        let (map, view, store) = data;
+                        output_map.extend((map.clone()).into_iter());
+                        output_view.vaults.extend(view.vaults.clone().into_iter());
+                        output_store = output_store.merge(store.clone());
+                    }
+                }
 
                 // set current state
                 self.state = output_state;
@@ -318,11 +414,11 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
                 // write the new state to disk
                 <Self as Handler<WriteSnapshot>>::handle(self, write_msg, ctx)?;
 
-                if dst_config.generates_output {
-                    return Ok(Some(self.state.serialize()));
-                }
-
-                Ok(None)
+                // return Ok(self.state.serialize());
+                Ok(ReturnReadSnapshot {
+                    data: Box::new((output_map, output_view, output_store)),
+                    id: msg.id,
+                })
             }
             Err(e) => Err(SnapshotError::SynchronizeSnapshot(e.to_string())),
         }

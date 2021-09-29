@@ -54,6 +54,38 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
         }
     }
 
+    /// merges this store with another. This operation consumes the
+    /// the [`Cache`]
+    /// #Example
+    /// ```
+    /// use engine::store::Cache;
+    /// use std::time::Duration;
+    ///
+    /// let mut a = Cache::new();
+    /// let mut b = Cache::new();
+    /// let (key_a, value_a): (Vec<u8>, Vec<u8>) = (b"key_a".to_vec(), b"value_a".to_vec());
+    /// let (key_b, value_b): (Vec<u8>, Vec<u8>) = (b"key_b".to_vec(), b"value_b".to_vec());
+    ///
+    /// a.insert(key_a.clone(), value_a.clone(), None);
+    /// b.insert(key_b.clone(), value_b.clone(), None);
+    ///
+    /// let merged = a.merge(b);
+    ///
+    /// assert_eq!(merged.get(&key_a), Some(&value_a));
+    /// assert_eq!(merged.get(&key_b), Some(&value_b));
+    /// ```
+    pub fn merge(self, other: Self) -> Self {
+        let mut output = Self::new();
+
+        output.scan_freq = self.scan_freq;
+        output.last_scan_at = self.last_scan_at;
+        output.created_at = self.created_at;
+        output.table.extend((self.table).into_iter());
+        output.table.extend(other.table.into_iter());
+
+        output
+    }
+
     /// creates an empty [`Cache`] with a periodic scanner which identifies expired entries.
     ///
     /// # Example

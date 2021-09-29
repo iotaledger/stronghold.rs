@@ -11,7 +11,7 @@ mod snapshot;
 pub use self::secure::testing as secure_testing;
 pub use self::{
     registry::{
-        messages::{GetAllClients, GetClient, GetSnapshot, HasClient, InsertClient, RemoveClient},
+        messages::{GetAllClients, GetClient, GetSnapshot, HasClient, Initialize, InsertClient, RemoveClient},
         Registry, RegistryError,
     },
     secure::{

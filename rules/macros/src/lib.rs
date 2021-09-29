@@ -13,22 +13,17 @@
 use proc_macro::*;
 use quote::quote;
 use std::{collections::HashMap, str::FromStr};
-use syn::{spanned::Spanned, AttributeArgs, Item, ItemEnum, ItemFn, ItemStruct, Meta};
+use syn::{spanned::Spanned, ItemEnum, ItemFn, ItemStruct, Meta};
 
 #[proc_macro_attribute]
 /// Policy decorator attribute macro
 ///
-/// This macro enables policy checking for types, or functions. (Behavioral) Types can be
+/// This macro enables policy checking for functions. (Behavioral) Types can be
 /// annotated with this macro to control their behavior, allowing or denying
-/// certain types of behavior (eg. execution of functions on certain type specic states).
+/// certain types of behavior (eg. execution of functions on certain type specific states).
 ///
 /// How to use:
 /// ```no_run
-/// // deny cloning on a specific type
-/// #[policy(allow = ["*"], deny = ["Clone::clone"])]
-/// #[derive(Clone)]
-/// struct Snapshot {}
-///
 /// impl Snapshot {
 ///     #[policy(name="partial_synchronize", allow=["c0", "c1", "c2"])]
 ///     pub fn synchronize(&self) -> Result<()> {}
@@ -36,11 +31,11 @@ use syn::{spanned::Spanned, AttributeArgs, Item, ItemEnum, ItemFn, ItemStruct, M
 /// ```
 pub fn policy(attributes: proc_macro::TokenStream, input: proc_macro::TokenStream) -> TokenStream {
     // macro attributes can be "allow", or "deny"
-    let nested_attr = syn::parse_macro_input!(attributes as AttributeArgs);
+    let nested_attr = syn::parse_str(attributes.to_string().as_str());
 
     let mut _attr: HashMap<String, Vec<String>> = HashMap::new();
 
-    for nested_meta in nested_attr {
+    if let Ok(ref nested_meta) = nested_attr {
         match nested_meta {
             syn::NestedMeta::Meta(meta) => match meta {
                 Meta::NameValue(_nv) => {
@@ -70,14 +65,16 @@ pub fn policy(attributes: proc_macro::TokenStream, input: proc_macro::TokenStrea
 
     // the decorated type
     // could be a function `fn`, or a specific type `struct`, `enum`
-    let item = syn::parse_macro_input!(input as Item);
+    // let item = syn::parse_macro_input!(input as Item);
 
-    match item {
-        syn::Item::Struct(item) => item.handle(_attr),
-        syn::Item::Enum(item) => item.handle(_attr),
-        syn::Item::Fn(item) => item.handle(_attr),
-        _ => syn::Error::new(item.span(), "No valid type").to_compile_error().into(),
-    }
+    // match item {
+    //     syn::Item::Struct(item) => item.handle(_attr),
+    //     syn::Item::Enum(item) => item.handle(_attr),
+    //     syn::Item::Fn(item) => item.handle(_attr),
+    //     _ => syn::Error::new(item.span(), "No valid type").to_compile_error().into(),
+    // };
+
+    input
 }
 
 trait PolicyHandler {
@@ -105,11 +102,6 @@ impl PolicyHandler for ItemFn {
 /// Creates a Hashmap
 ///
 /// Convenience macro like vec![] to create a hashmap.
-///
-/// example
-/// ```no_run
-/// let entries = map!["key_1": "value_1", "key_2": "value_2"];
-/// ```
 #[proc_macro]
 pub fn map(input: TokenStream) -> TokenStream {
     let tokens = input.to_string();
@@ -131,14 +123,6 @@ pub fn map(input: TokenStream) -> TokenStream {
 /// a rules basically consists of two parts
 /// - a condition that matches on some input
 /// - an action, that will be executed if the condition has been triggered.
-///
-/// Creating a rule is straightforward:
-/// ```no_run
-/// use stronghold_rules as rules;
-///
-/// let mut engine = rules::engine::RulesEngine::default();
-/// engine.insert(rule!("allow incoming requests",));
-/// ```
 pub fn rule(_input: proc_macro::TokenStream) -> TokenStream {
     todo!()
 }
