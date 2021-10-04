@@ -132,7 +132,7 @@ impl WriteVault {
 }
 
 #[execute_procedure]
-impl Generate for WriteVault {
+impl GenerateSecret for WriteVault {
     type Input = Vec<u8>;
     type Output = ();
 
@@ -284,7 +284,7 @@ impl<T> GenerateKey<T> {
 }
 
 #[execute_procedure]
-impl<T: SecretKey> Generate for GenerateKey<T> {
+impl<T: SecretKey> GenerateSecret for GenerateKey<T> {
     type Input = ();
     type Output = ();
 
@@ -355,11 +355,11 @@ impl Slip10Derive {
 }
 
 #[execute_procedure]
-impl Process for Slip10Derive {
+impl DeriveSecret for Slip10Derive {
     type Input = ();
     type Output = ChainCode;
 
-    fn process(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<ChainCode>, engine::Error> {
+    fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<ChainCode>, engine::Error> {
         let dk = match self.source {
             SLIP10DeriveInput::Key(_) => {
                 slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&self.chain))
@@ -396,7 +396,7 @@ impl BIP39Generate {
 }
 
 #[execute_procedure]
-impl Generate for BIP39Generate {
+impl GenerateSecret for BIP39Generate {
     type Input = ();
     type Output = ();
 
@@ -459,7 +459,7 @@ impl BIP39Recover {
 }
 
 #[execute_procedure]
-impl Generate for BIP39Recover {
+impl GenerateSecret for BIP39Recover {
     type Input = String;
     type Output = ();
 
@@ -499,12 +499,12 @@ impl<T> GetPublicKey<T> {
 }
 
 #[execute_procedure]
-impl<T: Signature> Utilize for GetPublicKey<T> {
+impl<T: Signature> UseSecret for GetPublicKey<T> {
     type Input = ();
     type Output = Vec<u8>;
 
     // TODO: this logic is most likely not the same for all signatures
-    fn utilize(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
+    fn use_secret(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
         let raw = guard.borrow();
         let mut raw = (*raw).to_vec();
         let l = T::key_length();
@@ -573,12 +573,12 @@ impl<T> Sign<T> {
 }
 
 #[execute_procedure]
-impl<T: Signature> Utilize for Sign<T> {
+impl<T: Signature> UseSecret for Sign<T> {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
 
     // TODO: this logic is most likely not the same for all signatures
-    fn utilize(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
+    fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
         let raw = guard.borrow();
         let mut raw = (*raw).to_vec();
 
@@ -664,11 +664,11 @@ impl<T> Hash<T> {
 }
 
 #[execute_procedure]
-impl<T: Digest> Parse for Hash<T> {
+impl<T: Digest> ProcessOutput for Hash<T> {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
 
-    fn parse(self, input: Self::Input) -> Result<Self::Output, engine::Error> {
+    fn process(self, input: Self::Input) -> Result<Self::Output, engine::Error> {
         let mut digest = vec![0; T::OutputSize::USIZE];
         digest.copy_from_slice(&T::digest(&input));
         Ok(digest)
@@ -734,14 +734,14 @@ impl<T> Hmac<T> {
 }
 
 #[execute_procedure]
-impl<T> Utilize for Hmac<T>
+impl<T> UseSecret for Hmac<T>
 where
     T: Update + BlockInput + FixedOutput + Reset + Default + Clone,
 {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
 
-    fn utilize(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
+    fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
         let mut mac = vec![0; <T as Digest>::OutputSize::USIZE];
         let mut m = hmac::Hmac::<T>::new_from_slice(&*guard.borrow()).unwrap();
         m.update(&msg);

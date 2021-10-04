@@ -180,7 +180,7 @@ fn impl_get_location(
 
 pub fn impl_procedure_step(item_impl: ItemImpl) -> proc_macro2::TokenStream {
     let panic_msg =
-        "The execute_procedure macro can only applied for implementation blocks of the traits `Generate`, `Process` or `Utilize`.";
+        "The execute_procedure macro can only applied for implementation blocks of the traits `GenerateSecret`, `ProcessOutput` or `UseSecret`.";
 
     let segment = item_impl
         .trait_
@@ -244,14 +244,14 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
         gen_insert_data = quote! {};
     };
     match segment.ident.to_string().as_str() {
-        "Parse" => quote! {
+        "ProcessOutput" => quote! {
                 #gen_input
                 #gen_output_key
-                let output = <Self as Parse>::parse(self, input)?;
+                let output = <Self as ProcessOutput>::process(self, input)?;
                 #gen_insert_data
                 Ok(())
         },
-        "Generate" => quote! {
+        "GenerateSecret" => quote! {
                 let InterimProduct  {
                     target: Target { location: location_1, hint },
                     is_temp: is_secret_temp
@@ -261,13 +261,13 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 let Products {
                     secret,
                     output,
-                } = <Self as Generate>::generate(self, input)?;
+                } = <Self as GenerateSecret>::generate(self, input)?;
                 runner.write_to_vault(&location_1, hint, secret)?;
                 state.add_log(location_1, is_secret_temp);
                 #gen_insert_data
                 Ok(())
         },
-        "Process" => quote! {
+        "DeriveSecret" => quote! {
                 let location_0 = self.source_location().clone();
                 let InterimProduct  {
                     target: Target { location: location_1, hint },
@@ -275,7 +275,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 } = self.target_info().clone();
                 #gen_input
                 #gen_output_key
-                let f = move |guard| <Self as Process>::process(self, input, guard);
+                let f = move |guard| <Self as DeriveSecret>::derive(self, input, guard);
                 let output = runner.exec_proc(
                     &location_0,
                     &location_1,
@@ -286,11 +286,11 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 #gen_insert_data
                 Ok(())
         },
-        "Utilize" => quote! {
+        "UseSecret" => quote! {
             let location_0 = self.source_location().clone();
             #gen_output_key
             #gen_input
-            let f = move |guard| <Self as Utilize>::utilize(self, input, guard);
+            let f = move |guard| <Self as UseSecret>::use_secret(self, input, guard);
             let output = runner.get_guard(&location_0, f)?;
             #gen_insert_data
             Ok(())

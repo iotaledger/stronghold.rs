@@ -6,10 +6,9 @@
 
 mod comm;
 mod procs;
+
 use comm::{build_plain, impl_permission, impl_to_permissioned};
-
 use proc_macro::TokenStream;
-
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, ItemImpl};
 

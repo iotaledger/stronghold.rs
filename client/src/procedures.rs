@@ -265,28 +265,28 @@ pub struct Products<T> {
     pub output: T,
 }
 
-trait Parse {
+trait ProcessOutput {
     type Input;
     type Output;
-    fn parse(self, input: Self::Input) -> Result<Self::Output, engine::Error>;
+    fn process(self, input: Self::Input) -> Result<Self::Output, engine::Error>;
 }
 
-trait Generate {
+trait GenerateSecret {
     type Input;
     type Output;
     fn generate(self, input: Self::Input) -> Result<Products<Self::Output>, engine::Error>;
 }
 
-trait Process {
+trait DeriveSecret {
     type Input;
     type Output;
-    fn process(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, engine::Error>;
+    fn derive(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, engine::Error>;
 }
 
-trait Utilize {
+trait UseSecret {
     type Input;
     type Output;
-    fn utilize(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error>;
+    fn use_secret(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error>;
 }
 
 // ==========================
