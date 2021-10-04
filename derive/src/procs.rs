@@ -205,7 +205,7 @@ pub fn impl_procedure_step(item_impl: ItemImpl) -> proc_macro2::TokenStream {
 
     quote! {
         impl #impl_generics ProcedureStep for #self_type #where_clause {
-            fn execute<X: Runner>(self, runner: &mut X, state: &mut State) -> Result<(), anyhow::Error> {
+            fn execute<X: Runner>(self, runner: &mut X, state: &mut State) -> Result<(), ProcedureError> {
                 #gen_exec_fn
             }
         }
@@ -219,8 +219,8 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
             let input = match input_data {
                 InputData::Value(v) => v.clone(),
                 InputData::Key(key) => {
-                    let data = state.get_data(&key)?.clone();
-                    data.try_into().map_err(|e| anyhow::anyhow!("Invalid Input Data: {}", e))?
+                    let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?.clone();
+                    data.try_into().map_err(|_| ProcedureError::InvalidInput)?
                 }
             };
         }
@@ -247,7 +247,8 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
         "ProcessOutput" => quote! {
                 #gen_input
                 #gen_output_key
-                let output = <Self as ProcessOutput>::process(self, input)?;
+                let output = <Self as ProcessOutput>::process(self, input)
+                    .map_err(|e| ProcedureError::VaultError(VaultError::EngineError(e)))?;
                 #gen_insert_data
                 Ok(())
         },
@@ -261,8 +262,10 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 let Products {
                     secret,
                     output,
-                } = <Self as GenerateSecret>::generate(self, input)?;
-                runner.write_to_vault(&location_1, hint, secret)?;
+                } = <Self as GenerateSecret>::generate(self, input)
+                    .map_err(|e| ProcedureError::VaultError(VaultError::EngineError(e)))?;
+                runner.write_to_vault(&location_1, hint, secret)
+                    .map_err(ProcedureError::VaultError)?;
                 state.add_log(location_1, is_secret_temp);
                 #gen_insert_data
                 Ok(())
@@ -281,7 +284,8 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                     &location_1,
                     hint,
                     f,
-                )?;
+                )
+                    .map_err(ProcedureError::VaultError)?;
                 state.add_log(location_1, is_secret_temp);
                 #gen_insert_data
                 Ok(())
@@ -291,7 +295,8 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
             #gen_output_key
             #gen_input
             let f = move |guard| <Self as UseSecret>::use_secret(self, input, guard);
-            let output = runner.get_guard(&location_0, f)?;
+            let output = runner.get_guard(&location_0, f)
+                    .map_err(ProcedureError::VaultError)?;
             #gen_insert_data
             Ok(())
         },

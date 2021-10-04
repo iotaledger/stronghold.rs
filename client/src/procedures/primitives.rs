@@ -44,7 +44,7 @@ pub enum PrimitiveProcedure {
 }
 
 impl ProcedureStep for PrimitiveProcedure {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         match self {
             PrimitiveProcedure::Helper(proc) => proc.execute(runner, state),
             PrimitiveProcedure::Crypto(proc) => proc.execute(runner, state),
@@ -59,7 +59,7 @@ pub enum HelperProcedure {
 }
 
 impl ProcedureStep for HelperProcedure {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         match self {
             HelperProcedure::WriteVault(proc) => proc.execute(runner, state),
         }
@@ -89,7 +89,7 @@ pub enum CryptoProcedure {
 }
 
 impl ProcedureStep for CryptoProcedure {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         use CryptoProcedure::*;
         match self {
             Slip10Generate(proc) => proc.execute(runner, state),
@@ -638,7 +638,7 @@ pub enum Hashes {
 }
 
 impl ProcedureStep for Hashes {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         match self {
             Hashes::Sha2_256(proc) => proc.execute(runner, state),
             Hashes::Sha2_384(proc) => proc.execute(runner, state),
@@ -704,7 +704,7 @@ pub enum Hmacs {
 }
 
 impl ProcedureStep for Hmacs {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         match self {
             Hmacs::Sha2_256(proc) => proc.execute(runner, state),
             Hmacs::Sha2_384(proc) => proc.execute(runner, state),
@@ -780,7 +780,7 @@ pub enum Aeads {
 }
 
 impl ProcedureStep for Aeads {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         match self {
             Aeads::Aes256GcmEncrypt(proc) => proc.execute(runner, state),
             Aeads::Aes256GcmDecrypt(proc) => proc.execute(runner, state),
@@ -855,7 +855,7 @@ impl<T> SourceInfo for AeadEncrypt<T> {
 }
 
 impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         let AeadEncrypt {
             associated_data,
             plaintext,
@@ -868,21 +868,21 @@ impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
         let plaintext = match plaintext {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key)?;
+                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
         let nonce = match nonce {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key)?;
+                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
         let ad = match associated_data {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key)?;
+                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
@@ -895,7 +895,7 @@ impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
                 .map_err(engine::Error::CryptoError)
         };
 
-        runner.get_guard(&key, f).map_err(|e| anyhow::anyhow!(e))?;
+        runner.get_guard(&key, f).map_err(ProcedureError::VaultError)?;
         state.insert_data(ciphertext.target, digested.into(), ciphertext.is_temp);
         state.insert_data(tag.target, Vec::from(&*t).into(), tag.is_temp);
         Ok(())
@@ -956,7 +956,7 @@ impl<T> SourceInfo for AeadDecrypt<T> {
 }
 
 impl<T: Aead> ProcedureStep for AeadDecrypt<T> {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         let AeadDecrypt {
             associated_data,
             ciphertext,
@@ -969,28 +969,28 @@ impl<T: Aead> ProcedureStep for AeadDecrypt<T> {
         let ciphertext = match ciphertext {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key)?;
+                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
         let tag = match tag {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key)?;
+                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
         let nonce = match nonce {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key)?;
+                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
         let ad = match associated_data {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key)?;
+                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
@@ -1001,7 +1001,7 @@ impl<T: Aead> ProcedureStep for AeadDecrypt<T> {
             T::try_decrypt(&*key.borrow(), nonce, ad, &mut output, ciphertext, tag).map_err(engine::Error::CryptoError)
         };
 
-        runner.get_guard(&key, f).map_err(|e| anyhow::anyhow!(e))?;
+        runner.get_guard(&key, f).map_err(ProcedureError::VaultError)?;
         state.insert_data(plaintext.target, output.into(), plaintext.is_temp);
         Ok(())
     }

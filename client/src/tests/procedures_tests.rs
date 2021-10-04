@@ -60,7 +60,7 @@ async fn usecase_ed25519() {
     let k = OutputKey::random();
     let ed25519_pk = Ed25519PublicKey::new(key.clone()).store_output(k.clone());
     let pk: [u8; PUBLIC_KEY_LENGTH] = match sh.runtime_exec(ed25519_pk).await {
-        ResultMessage::Ok(mut data) => data.try_take(&k).unwrap().unwrap(),
+        ResultMessage::Ok(mut data) => data.take(&k).unwrap(),
         ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
     };
 
@@ -69,7 +69,7 @@ async fn usecase_ed25519() {
     let k = OutputKey::random();
     let ed25519_sign = Ed25519Sign::new(msg.clone(), key).store_output(k.clone());
     let sig: [u8; SIGNATURE_LENGTH] = match sh.runtime_exec(ed25519_sign).await {
-        ResultMessage::Ok(mut data) => data.try_take(&k).unwrap().unwrap(),
+        ResultMessage::Ok(mut data) => data.take(&k).unwrap(),
         ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
     };
 
@@ -98,7 +98,7 @@ async fn usecase_Slip10Derive_intermediate_keys() {
         let slip10_derive = Slip10Derive::new_from_seed(seed.clone(), chain0.join(&chain1)).store_output(k.clone());
 
         match sh.runtime_exec(slip10_derive).await {
-            ResultMessage::Ok(mut data) => data.try_take(&k).unwrap().unwrap(),
+            ResultMessage::Ok(mut data) => data.take(&k).unwrap(),
             ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
         }
     };
@@ -118,7 +118,7 @@ async fn usecase_Slip10Derive_intermediate_keys() {
         let slip10_derive_child = Slip10Derive::new_from_key(intermediate, chain1).store_output(k.clone());
 
         match sh.runtime_exec(slip10_derive_child).await {
-            ResultMessage::Ok(mut data) => data.try_take(&k).unwrap().unwrap(),
+            ResultMessage::Ok(mut data) => data.take(&k).unwrap(),
             ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
         }
     };
@@ -146,9 +146,9 @@ async fn usecase_ed25519_as_complex() {
         ResultMessage::Error(e) => panic!("Unexpected error: {}", e),
     };
 
-    let pub_key_vec: [u8; PUBLIC_KEY_LENGTH] = output.try_take(&pk_result).unwrap().unwrap();
+    let pub_key_vec: [u8; PUBLIC_KEY_LENGTH] = output.take(&pk_result).unwrap();
     let pk = PublicKey::try_from_bytes(pub_key_vec).unwrap();
-    let sig_vec: [u8; SIGNATURE_LENGTH] = output.try_take(&sign_result).unwrap().unwrap();
+    let sig_vec: [u8; SIGNATURE_LENGTH] = output.take(&sign_result).unwrap();
     let sig = Signature::from_bytes(sig_vec);
     assert!(pk.verify(&sig, &msg));
 }

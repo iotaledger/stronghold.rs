@@ -18,10 +18,10 @@ impl KeyStore {
     }
 
     /// Gets the key from the [`KeyStore`] and removes it.  Returns an [`Option<Key<Provider>>`]
-    pub fn take_key(&mut self, id: VaultId) -> Result<Key<Provider>, anyhow::Error> {
+    pub fn take_key(&mut self, id: VaultId) -> Result<Key<Provider>, VaultError> {
         match self.store.remove(&id) {
             Some(key) => Ok(key),
-            None => Err(anyhow::anyhow!(VaultError::NotExisting)),
+            None => Err(VaultError::NotExisting),
         }
     }
 

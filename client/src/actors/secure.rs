@@ -49,6 +49,9 @@ pub enum VaultError {
 
     #[error("Failed to access Vault")]
     AccessError,
+
+    #[error("Engine Error {0}")]
+    EngineError(engine::Error),
 }
 
 #[derive(DeriveError, Debug)]
@@ -315,12 +318,12 @@ impl_handler!(messages::WriteToVault, Result<(), anyhow::Error>, (self, msg, _ct
 });
 
 impl_handler!(messages::RevokeData, Result<(), anyhow::Error>, (self, msg, _ctx), {
-    self.revoke_data(&msg.location)
+    self.revoke_data(&msg.location).map_err(|e| anyhow::anyhow!(e))
 });
 
 impl_handler!(messages::GarbageCollect, Result<(), anyhow::Error>, (self, msg, _ctx), {
     let (vault_id, _) = Self::resolve_location(msg.location);
-    self.garbage_collect(vault_id)
+    self.garbage_collect(vault_id).map_err(|e| anyhow::anyhow!(e))
 });
 
 impl_handler!(
@@ -405,6 +408,6 @@ impl Handler<Procedure> for SecureClient {
     type Result = Result<CollectedOutput, anyhow::Error>;
 
     fn handle(&mut self, proc: Procedure, _: &mut Self::Context) -> Self::Result {
-        proc.run(self)
+        proc.run(self).map_err(|e| anyhow::anyhow!(e))
     }
 }

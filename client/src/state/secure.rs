@@ -139,7 +139,7 @@ impl SecureClient {
 }
 
 impl Runner for SecureClient {
-    fn get_guard<F, T>(&mut self, location: &Location, f: F) -> Result<T, anyhow::Error>
+    fn get_guard<F, T>(&mut self, location: &Location, f: F) -> Result<T, VaultError>
     where
         F: FnOnce(GuardedVec<u8>) -> Result<T, engine::Error>,
     {
@@ -156,7 +156,7 @@ impl Runner for SecureClient {
 
         match res {
             Ok(()) => Ok(ret.unwrap()),
-            Err(e) => Err(anyhow::anyhow!(e)),
+            Err(e) => Err(VaultError::EngineError(e)),
         }
     }
 
@@ -166,7 +166,7 @@ impl Runner for SecureClient {
         location1: &Location,
         hint: RecordHint,
         f: F,
-    ) -> Result<T, anyhow::Error>
+    ) -> Result<T, VaultError>
     where
         F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, engine::Error>,
     {
@@ -181,7 +181,7 @@ impl Runner for SecureClient {
                 Ok(_) => {}
                 Err(e) => {
                     self.keystore.insert_key(vid0, key0);
-                    return Err(anyhow::anyhow!(e));
+                    return Err(VaultError::EngineError(e));
                 }
             }
         }
@@ -202,16 +202,16 @@ impl Runner for SecureClient {
 
         match res {
             Ok(()) => Ok(ret.unwrap()),
-            Err(e) => Err(anyhow::anyhow!(e)),
+            Err(e) => Err(VaultError::EngineError(e)),
         }
     }
 
-    fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error> {
+    fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), VaultError> {
         let (vault_id, record_id) = Self::resolve_location(location);
 
         if !self.keystore.vault_exists(vault_id) {
             let key = self.keystore.create_key(vault_id);
-            self.db.init_vault(key, vault_id).map_err(|e| anyhow::anyhow!(e))?;
+            self.db.init_vault(key, vault_id).map_err(VaultError::EngineError)?;
         }
         let key = self.keystore.take_key(vault_id)?;
 
@@ -221,11 +221,11 @@ impl Runner for SecureClient {
 
         match res {
             Ok(()) => Ok(()),
-            Err(e) => Err(anyhow::anyhow!(e)),
+            Err(e) => Err(VaultError::EngineError(e)),
         }
     }
 
-    fn revoke_data(&mut self, location: &Location) -> Result<(), anyhow::Error> {
+    fn revoke_data(&mut self, location: &Location) -> Result<(), VaultError> {
         let (vault_id, record_id) = Self::resolve_location(location);
         let key = self.keystore.take_key(vault_id)?;
 
@@ -234,11 +234,11 @@ impl Runner for SecureClient {
 
         match res {
             Ok(()) => Ok(()),
-            Err(_) => Err(anyhow::anyhow!(VaultError::RevocationError)),
+            Err(e) => Err(VaultError::EngineError(e)),
         }
     }
 
-    fn garbage_collect(&mut self, vault_id: VaultId) -> Result<(), anyhow::Error> {
+    fn garbage_collect(&mut self, vault_id: VaultId) -> Result<(), VaultError> {
         let key = self.keystore.take_key(vault_id)?;
 
         let res = self.db.garbage_collect_vault(&key, vault_id);
@@ -246,7 +246,7 @@ impl Runner for SecureClient {
 
         match res {
             Ok(()) => Ok(()),
-            Err(_) => Err(anyhow::anyhow!(VaultError::GarbageCollectError)),
+            Err(e) => Err(VaultError::EngineError(e)),
         }
     }
 }

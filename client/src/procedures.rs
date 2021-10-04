@@ -1,20 +1,23 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use actix::Message;
+use engine::{
+    runtime::GuardedVec,
+    vault::{RecordHint, VaultId},
+};
 use std::{
     collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
     ops::Deref,
     string::FromUtf8Error,
 };
-
-use actix::Message;
-use engine::{
-    runtime::GuardedVec,
-    vault::{RecordHint, VaultId},
-};
+use thiserror::Error as DeriveError;
 mod primitives;
-use crate::{actors::SecureClient, Location};
+use crate::{
+    actors::{SecureClient, VaultError},
+    Location,
+};
 pub use primitives::*;
 use serde::{Deserialize, Serialize};
 use stronghold_utils::{test_utils::fresh::non_empty_bytestring, GuardDebug};
@@ -29,7 +32,7 @@ pub struct Procedure {
 }
 
 impl Procedure {
-    pub fn run<R: Runner>(self, runner: &mut R) -> Result<CollectedOutput, anyhow::Error> {
+    pub fn run<R: Runner>(self, runner: &mut R) -> Result<CollectedOutput, ProcedureError> {
         let mut state = State {
             aggregated_output: HashMap::new(),
             change_log: Vec::new(),
@@ -70,7 +73,7 @@ impl Procedure {
 }
 
 impl ProcedureStep for Procedure {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error> {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         self.inner.into_iter().try_for_each(|p| p.execute(runner, state))
     }
 }
@@ -88,6 +91,18 @@ where
     }
 }
 
+#[derive(DeriveError, Debug)]
+pub enum ProcedureError {
+    #[error("Invalid Input Type")]
+    InvalidInput,
+
+    #[error("Missing Input")]
+    MissingInput,
+
+    #[error("Vault Error {0}")]
+    VaultError(VaultError),
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct State {
     aggregated_output: HashMap<OutputKey, (ProcedureIo, bool)>,
@@ -99,11 +114,8 @@ impl State {
         self.aggregated_output.insert(key, (value, is_temp));
     }
 
-    pub fn get_data(&self, key: &OutputKey) -> Result<&ProcedureIo, anyhow::Error> {
-        self.aggregated_output
-            .get(key)
-            .map(|(data, _)| data)
-            .ok_or_else(|| anyhow::anyhow!("Missing Data"))
+    pub fn get_data(&self, key: &OutputKey) -> Option<&ProcedureIo> {
+        self.aggregated_output.get(key).map(|(data, _)| data)
     }
 
     pub fn add_log(&mut self, location: Location, is_temp: bool) {
@@ -181,17 +193,9 @@ pub struct CollectedOutput {
 impl CollectedOutput {
     pub fn take<T>(&mut self, key: &OutputKey) -> Option<T>
     where
-        ProcedureIo: Into<T>,
-    {
-        self.output.remove(key).map(|v| v.into())
-    }
-
-    pub fn try_take<T>(&mut self, key: &OutputKey) -> Option<Result<T, anyhow::Error>>
-    where
         ProcedureIo: TryInto<T>,
     {
-        let o = self.output.remove(key)?;
-        Some(o.try_into().map_err(|_| anyhow::anyhow!("Invalid format.")))
+        self.output.remove(key).and_then(|v| v.try_into().ok())
     }
 }
 
@@ -221,7 +225,7 @@ impl OutputKey {
 // ==========================
 
 pub trait ProcedureStep {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), anyhow::Error>;
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError>;
 
     fn then<P>(self, next: P) -> Procedure
     where
@@ -235,7 +239,7 @@ pub trait ProcedureStep {
 }
 
 pub trait Runner {
-    fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, anyhow::Error>
+    fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, VaultError>
     where
         F: FnOnce(GuardedVec<u8>) -> Result<T, engine::Error>;
 
@@ -245,15 +249,15 @@ pub trait Runner {
         location1: &Location,
         hint: RecordHint,
         f: F,
-    ) -> Result<T, anyhow::Error>
+    ) -> Result<T, VaultError>
     where
         F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, engine::Error>;
 
-    fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), anyhow::Error>;
+    fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), VaultError>;
 
-    fn revoke_data(&mut self, location: &Location) -> Result<(), anyhow::Error>;
+    fn revoke_data(&mut self, location: &Location) -> Result<(), VaultError>;
 
-    fn garbage_collect(&mut self, vault_id: VaultId) -> Result<(), anyhow::Error>;
+    fn garbage_collect(&mut self, vault_id: VaultId) -> Result<(), VaultError>;
 }
 
 // ==========================
