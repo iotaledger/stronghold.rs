@@ -40,7 +40,8 @@ async fn usecase_ed25519() {
             ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
         }
     } else {
-        let bip32_gen = BIP39Generate::new(fresh::passphrase()).write_secret(seed.clone(), fresh::record_hint());
+        let bip32_gen = BIP39Generate::new(MnemonicLanguage::English, fresh::passphrase())
+            .write_secret(seed.clone(), fresh::record_hint());
         match sh.runtime_exec(bip32_gen).await {
             ResultMessage::Ok(_) => (),
             ResultMessage::Error(err) => panic!("unexpected error: {:?}", err),

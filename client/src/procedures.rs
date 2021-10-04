@@ -17,7 +17,7 @@ mod primitives;
 use crate::{actors::SecureClient, Location};
 pub use primitives::*;
 use serde::{Deserialize, Serialize};
-use stronghold_utils::GuardDebug;
+use stronghold_utils::{test_utils::fresh::non_empty_bytestring, GuardDebug};
 
 // ==========================
 // Types
@@ -365,18 +365,9 @@ pub struct Target {
 
 impl Target {
     pub fn random() -> Self {
-        let location = Location::generic(Self::random_path(), Self::random_path());
+        let location = Location::generic(non_empty_bytestring(), non_empty_bytestring());
         let hint = RecordHint::new("".to_string()).unwrap();
         Target { location, hint }
-    }
-
-    fn random_path() -> impl Into<Vec<u8>> {
-        let l = (rand::random::<u8>() % (u8::MAX - 1)) + 1;
-        let mut v = Vec::with_capacity(l.into());
-        for _ in 0..l + 1 {
-            v.push(rand::random::<u8>())
-        }
-        v
     }
 }
 

@@ -37,6 +37,7 @@ use stronghold_derive::{execute_procedure, Procedure};
 // ==========================
 
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum PrimitiveProcedure {
     Helper(HelperProcedure),
     Crypto(CryptoProcedure),
@@ -52,6 +53,7 @@ impl ProcedureStep for PrimitiveProcedure {
 }
 
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum HelperProcedure {
     WriteVault(WriteVault),
 }
@@ -66,6 +68,7 @@ impl ProcedureStep for HelperProcedure {
 
 // TODO: remove notes, add proper docs.
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum CryptoProcedure {
     // Generate Random array with length 64
     Slip10Generate(Slip10Generate),
@@ -373,20 +376,37 @@ impl DeriveSecret for Slip10Derive {
     }
 }
 
+#[derive(Procedure, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum MnemonicLanguage {
+    English,
+    Japanese,
+}
+
 /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
 /// passphrase) and store them in the `output` location
 #[derive(Procedure, Clone, Serialize, Deserialize)]
 pub struct BIP39Generate {
     passphrase: Option<String>,
 
+    language: MnemonicLanguage,
+
+    #[output_key]
+    mnemonic_key: InterimProduct<OutputKey>,
+
     #[target]
     target: InterimProduct<Target>,
 }
 
 impl BIP39Generate {
-    pub fn new(passphrase: Option<String>) -> Self {
+    pub fn new(language: MnemonicLanguage, passphrase: Option<String>) -> Self {
         BIP39Generate {
             passphrase,
+            language,
+            mnemonic_key: InterimProduct {
+                target: OutputKey::random(),
+                is_temp: true,
+            },
             target: InterimProduct {
                 target: Target::random(),
                 is_temp: true,
@@ -398,17 +418,18 @@ impl BIP39Generate {
 #[execute_procedure]
 impl GenerateSecret for BIP39Generate {
     type Input = ();
-    type Output = ();
+    type Output = String;
 
     fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
         let mut entropy = [0u8; 32];
         fill(&mut entropy)?;
 
-        let mnemonic = bip39::wordlist::encode(
-            &entropy,
-            &bip39::wordlist::ENGLISH, // TODO: make this user configurable
-        )
-        .unwrap();
+        let wordlist = match self.language {
+            MnemonicLanguage::English => bip39::wordlist::ENGLISH,
+            MnemonicLanguage::Japanese => bip39::wordlist::JAPANESE,
+        };
+
+        let mnemonic = bip39::wordlist::encode(&entropy, &wordlist).unwrap();
 
         let mut seed = [0u8; 64];
         let passphrase = self.passphrase.unwrap_or_else(|| "".into());
@@ -416,7 +437,7 @@ impl GenerateSecret for BIP39Generate {
 
         Ok(Products {
             secret: seed.to_vec(),
-            output: (),
+            output: mnemonic,
         })
     }
 }

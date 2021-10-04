@@ -40,6 +40,7 @@ features = [
 "sha",
 "hmac",
 "bip39-en",
+"bip39-jp",
 "slip10",
 "chacha"
 ]
