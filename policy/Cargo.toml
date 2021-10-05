@@ -1,18 +1,18 @@
 [package]
-name = "stronghold-rules"
+name = "stronghold-policy"
 version = "0.1.0"
 edition = "2018"
 authors = ["IOTA Stiftung"]
 license = "Apache-2.0"
 readme = "README.md"
-description = "Common Rules Manager for Stronghold"
+description = "Common Policy Manager for Stronghold"
 homepage = "https://stronghold.docs.iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
 
 [lib]
-name = "rulesengine"
+name = "policyengine"
 
-[dependencies.stronghold-rules-macros]
+[dependencies.stronghold-policy-macros]
 path    = "macros"
 version = "0.1"
 

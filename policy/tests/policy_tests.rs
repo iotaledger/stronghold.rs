@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::panic;
-use rulesengine::types::AnyMap;
+use policyengine::types::AnyMap;
 
 #[derive(Default, PartialEq, Clone)]
 pub struct Entity {

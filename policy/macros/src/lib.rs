@@ -112,15 +112,6 @@ pub fn map(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-/// Creates a rule to be used for the rules engine.
-/// a rules basically consists of two parts
-/// - a condition that matches on some input
-/// - an action, that will be executed if the condition has been triggered.
-pub fn rule(_input: proc_macro::TokenStream) -> TokenStream {
-    todo!()
-}
-
-#[proc_macro]
 pub fn impl_count_tuples(input: proc_macro::TokenStream) -> TokenStream {
     let count = input.to_string().parse().unwrap();
 

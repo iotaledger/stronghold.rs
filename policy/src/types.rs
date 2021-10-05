@@ -20,11 +20,13 @@ pub trait Count {
 /// this feature is realized with the [`Any`] type. Retrieval
 /// of any data of any type requires to use a reference of the given type,
 /// otherwise the retrieval will fail. Values to be inserted must be wrapped
-/// inside a [`Box`]. This type is **not thread-safe**!
+/// inside a [`Box`]. This offers a more flexible way to store multi types
+/// in a single [`HashMap`] with little overhead, but incurs some performance
+/// issues. This type is **not thread-safe**!
 ///
 /// # Example
 /// ```
-/// use rulesengine::types::AnyMap;
+/// use policyengine::types::AnyMap;
 ///
 /// let mut map = AnyMap::default();
 /// map.insert("key0", Box::new(0usize));
@@ -47,6 +49,7 @@ pub struct AnyMap<K>
 where
     K: Eq + Hash,
 {
+    /// Data storage for any type, that will be evaluated at runtime.
     data: HashMap<K, Box<dyn Any>>,
 }
 
