@@ -10,11 +10,20 @@ use engine::{
     vault::{ClientId, DbView, Key as PKey, VaultId},
 };
 
-use crate::{line_error, state::secure::Store, Provider};
+use crate::{line_error, state::secure::Store, Location, Provider};
 
 use std::path::Path;
 
 use std::collections::HashMap;
+
+/// Difference state for snapshots send across the wire
+pub struct DiffState {
+    // the location of the difference
+    pub location: Location,
+
+    // the hash of the record
+    pub record_hash: Vec<u8>,
+}
 
 /// Wrapper for the [`SnapshotState`] data structure.
 #[derive(Default)]
@@ -23,8 +32,9 @@ pub struct Snapshot {
 }
 
 /// Data structure that is written to the snapshot.
+/// accessing state fields is now allowed inside the crate
 #[derive(Deserialize, Serialize, Default)]
-pub struct SnapshotState(HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
+pub struct SnapshotState(pub(crate) HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
 
 impl Snapshot {
     /// Creates a new [`Snapshot`] from a buffer of [`SnapshotState`] state.
@@ -48,11 +58,6 @@ impl Snapshot {
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
     pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<Self> {
-        // let state = match path {
-        //     Some(p) => read_from(p, &key, &[])?,
-        //     None => read_from(&snapshot::files::get_path(name)?, &key, &[])?,
-        // };
-
         let state = Self::read_from_name_or_path(name, path, key)?;
 
         let data = SnapshotState::deserialize(state);
@@ -111,5 +116,14 @@ impl SnapshotState {
     /// Deserializes the snapshot state from bytes.
     pub fn deserialize(data: Vec<u8>) -> Self {
         bincode::deserialize(&data).expect(line_error!())
+    }
+}
+
+/// unsafe implementations
+impl SnapshotState {
+    /// this function transitively converts into another
+    /// type. this function is deemed **unsafe**!
+    pub unsafe fn convert<T>(&self) -> &'static T {
+        &*(self as *const _ as *const T)
     }
 }

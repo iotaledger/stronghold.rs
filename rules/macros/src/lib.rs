@@ -21,14 +21,7 @@ use syn::{spanned::Spanned, ItemEnum, ItemFn, ItemStruct, Meta};
 /// This macro enables policy checking for functions. (Behavioral) Types can be
 /// annotated with this macro to control their behavior, allowing or denying
 /// certain types of behavior (eg. execution of functions on certain type specific states).
-///
-/// How to use:
-/// ```no_run
-/// impl Snapshot {
-///     #[policy(name="partial_synchronize", allow=["c0", "c1", "c2"])]
-///     pub fn synchronize(&self) -> Result<()> {}
-/// }
-/// ```
+/// TODO: put example
 pub fn policy(attributes: proc_macro::TokenStream, input: proc_macro::TokenStream) -> TokenStream {
     // macro attributes can be "allow", or "deny"
     let nested_attr = syn::parse_str(attributes.to_string().as_str());

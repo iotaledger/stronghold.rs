@@ -1,7 +1,13 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use std::{any::Any, convert::TryInto};
+
+use engine::vault::VaultId;
 use serde::{Deserialize, Serialize};
+use thiserror::Error as DeriveError;
+
+use super::LoadFromPath;
 
 /// A type alias for the empty `ResultMessage<()>` type.
 pub type StatusMessage = ResultMessage<()>;
@@ -47,6 +53,12 @@ impl<T> From<Result<T, anyhow::Error>> for ResultMessage<T> {
     }
 }
 
+#[derive(DeriveError, Debug)]
+pub enum LocationError {
+    #[error("Cannot convert Location: ({0})")]
+    ConversionError(String),
+}
+
 /// A `Location` type used to specify where in the `Stronghold` a piece of data should be stored. A generic location
 /// specifies a non-versioned location while a counter location specifies a versioned location. The Counter location can
 /// be used to get the head of the version chain by passing in `None` as the counter index. Otherwise, counter records
@@ -56,6 +68,47 @@ impl<T> From<Result<T, anyhow::Error>> for ResultMessage<T> {
 pub enum Location {
     Generic { vault_path: Vec<u8>, record_path: Vec<u8> },
     Counter { vault_path: Vec<u8>, counter: usize },
+}
+
+impl PartialEq for Location {
+    fn eq(&self, other: &Self) -> bool {
+        if self.type_id() != other.type_id() {
+            return false;
+        }
+
+        match (&self, &other) {
+            (
+                &Self::Generic {
+                    vault_path: vp0,
+                    record_path: rp0,
+                },
+                &Self::Generic {
+                    vault_path: vp1,
+                    record_path: rp1,
+                },
+            ) => (vp0 == vp1) && (rp0 == rp1),
+            (
+                &Self::Counter {
+                    vault_path: vp0,
+                    counter: c0,
+                },
+                &Self::Counter {
+                    vault_path: vp1,
+                    counter: c1,
+                },
+            ) => (vp0 == vp1) && (c0 == c1),
+            _ => false,
+        }
+    }
+}
+
+impl TryInto<VaultId> for &Location {
+    type Error = LocationError;
+
+    fn try_into(self) -> Result<VaultId, Self::Error> {
+        VaultId::load_from_path(self.vault_path(), self.vault_path())
+            .map_err(|error| LocationError::ConversionError(error.to_string()))
+    }
 }
 
 impl Location {

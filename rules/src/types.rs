@@ -20,7 +20,7 @@ pub trait Count {
 /// this feature is realized with the [`Any`] type. Retrieval
 /// of any data of any type requires to use a reference of the given type,
 /// otherwise the retrieval will fail. Values to be inserted must be wrapped
-/// inside a [`Box`]
+/// inside a [`Box`]. This type is **not thread-safe**!
 ///
 /// # Example
 /// ```
@@ -77,5 +77,10 @@ where
             }
         }
         None
+    }
+
+    /// Clears all data inside the map
+    pub fn clear(&mut self) {
+        self.data.clear()
     }
 }

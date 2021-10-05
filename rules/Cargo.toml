@@ -25,16 +25,17 @@ version = "1.0"
 [dependencies.serde_json]
 version = "1.0"
 
+[dependencies.once_cell]
+version = "1.8.0"
+
 [dev-dependencies]
 criterion = "0.3.4"
 
-
 # Tests Config
-
 [[test]]
 name = "macros_tests"
-path = "tests/macros.rs"
+path = "tests/macro_tests.rs"
 
 [[test]]
 name = "policy_tests"
-path = "tests/policy.rs"
+path = "tests/policy_tests.rs"

@@ -675,6 +675,17 @@ async fn test_partially_synchronize_snapshot() {
 }
 
 #[actix::test]
+async fn test_snapshot_synchronization_protocol() {
+
+    // here we gonna test the snapshot synchronization protocol
+    // the protocol is defined as follows:
+    //
+    // - create a diff with remote site, send package not containing any data
+    // - read response
+    // - send a package with encrypted data
+}
+
+#[actix::test]
 async fn run_stronghold_multi_actors() {
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 

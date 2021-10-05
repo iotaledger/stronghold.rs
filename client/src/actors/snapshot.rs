@@ -5,10 +5,10 @@
 
 use actix::{Actor, Handler, Message, Supervised};
 
-use std::path::PathBuf;
+use std::{convert::TryInto, path::PathBuf};
 
 use engine::{
-    snapshot,
+    snapshot::{self},
     vault::{ClientId, DbView, Key, VaultId},
 };
 
@@ -16,7 +16,7 @@ use crate::{
     internals, line_error,
     state::{
         secure::Store,
-        snapshot::{Snapshot, SnapshotState},
+        snapshot::{DiffState, Snapshot, SnapshotState},
     },
     Provider,
 };
@@ -49,6 +49,8 @@ pub mod returntypes {
 }
 
 pub mod messages {
+
+    use crate::Location;
 
     use super::*;
 
@@ -130,8 +132,10 @@ pub mod messages {
     /// to a remote instance
     #[derive(Clone)]
     pub struct Export {
+        /// The local snapshot configuration
+        pub local: SnapshotConfig,
         /// The entries to be exported
-        pub entries: Vec<u8>,
+        pub entries: Vec<Location>,
     }
 
     /// Use [`Import`] to import entries into
@@ -203,6 +207,19 @@ pub enum SnapshotError {
 // actix impl
 impl Supervised for Snapshot {}
 
+/// snapshot protocol
+fn synchronize_remote() -> Vec<DiffState> {
+    vec![]
+}
+
+fn synchronize_check(_diff: Vec<DiffState>) -> Vec<DiffState> {
+    vec![]
+}
+
+fn synchronize_with(_result: Vec<DiffState>) -> HashMap<VaultId, Vec<u8>> {
+    HashMap::new()
+}
+
 impl Handler<Import> for Snapshot {
     type Result = Result<(), SnapshotError>;
 
@@ -211,19 +228,45 @@ impl Handler<Import> for Snapshot {
     }
 }
 
-impl Handler<messages::Export> for Snapshot {
+impl Handler<Export> for Snapshot {
     type Result = Result<ReturnExport, SnapshotError>;
 
-    fn handle(&mut self, _msg: messages::Export, _ctx: &mut Self::Context) -> Self::Result {
-        // This gets a list of entries, that are to be selected from
-        // the vault
-        // locally import necessary modules
-        use engine::vault::Key as PKey;
-        use serde::{Deserialize, Serialize};
+    fn handle(&mut self, msg: Export, _ctx: &mut Self::Context) -> Self::Result {
+        // This handler exports the provided entry locations
+        // from the vault and returns them to the caller.
+        // The caller would ideally import the entries into the same client_id
 
-        // define local snapshot data structure to access the private fields
-        #[derive(Deserialize, Serialize, Default)]
-        struct SnapshotStateLocal(pub HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
+        // use diff here locally
+        // use engine::snapshot::diff::Lcs;
+
+        use crate::utils::LocationError;
+
+        // FIXME: this is O(n^2)
+        // iterate over entries to be exported
+        for location in &msg.entries {
+            let state = &self.state.0;
+
+            for id in state.keys() {
+                if let Some((vaults, view, _store)) = state.get(id) {
+                    // calculate the vault_id from location
+                    let vault_id = match location
+                        .try_into()
+                        .map_err(|error: LocationError| SnapshotError::SynchronizeSnapshot(error.to_string()))
+                    {
+                        Ok(vault_id) => vault_id,
+                        Err(error) => return Err(error),
+                    };
+
+                    // FIXME: is this UNSAFE?
+                    if let Some(_key) = vaults.get(&vault_id) {
+                        let _vault = view.vaults.get(&vault_id).unwrap();
+
+                        // TODO: copy entries and return them
+                        // let mmap = &vault.entries;
+                    }
+                }
+            }
+        }
 
         todo!()
     }
@@ -272,8 +315,6 @@ impl Handler<messages::FullSynchronization> for Snapshot {
         let mut output_store: Store = Store::new();
 
         let mut output_state = SnapshotState::default();
-
-        // let message_merge = msg.clone();
 
         // copy all merge
         for id in snapshot_merge.0.keys() {
