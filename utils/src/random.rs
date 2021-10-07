@@ -1,7 +1,7 @@
 // Copyright 2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use rand::distributions::{Standard, Distribution};
+use rand::distributions::{Distribution, Standard};
 
 // Random value for `T`.
 pub fn random<T>() -> T
