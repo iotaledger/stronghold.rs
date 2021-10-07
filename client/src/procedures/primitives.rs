@@ -685,7 +685,7 @@ impl<T> Hash<T> {
 }
 
 #[execute_procedure]
-impl<T: Digest> ProcessOutput for Hash<T> {
+impl<T: Digest> ProcessData for Hash<T> {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
 

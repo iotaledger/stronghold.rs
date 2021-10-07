@@ -269,7 +269,7 @@ pub struct Products<T> {
     pub output: T,
 }
 
-trait ProcessOutput {
+trait ProcessData {
     type Input;
     type Output;
     fn process(self, input: Self::Input) -> Result<Self::Output, engine::Error>;

@@ -180,7 +180,7 @@ fn impl_get_location(
 
 pub fn impl_procedure_step(item_impl: ItemImpl) -> proc_macro2::TokenStream {
     let panic_msg =
-        "The execute_procedure macro can only applied for implementation blocks of the traits `GenerateSecret`, `ProcessOutput` or `UseSecret`.";
+        "The execute_procedure macro can only applied for implementation blocks of the traits `GenerateSecret`, `ProcessData` or `UseSecret`.";
 
     let segment = item_impl
         .trait_
@@ -244,10 +244,10 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
         gen_insert_data = quote! {};
     };
     match segment.ident.to_string().as_str() {
-        "ProcessOutput" => quote! {
+        "ProcessData" => quote! {
                 #gen_input
                 #gen_output_key
-                let output = <Self as ProcessOutput>::process(self, input)
+                let output = <Self as ProcessData>::process(self, input)
                     .map_err(|e| ProcedureError::VaultError(VaultError::EngineError(e)))?;
                 #gen_insert_data
                 Ok(())
