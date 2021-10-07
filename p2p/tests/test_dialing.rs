@@ -16,6 +16,7 @@ use p2p::{
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use stronghold_utils::random::random;
 use tokio::runtime::Builder;
 
 type TestPeer = StrongholdP2p<Request, Response>;
@@ -46,7 +47,7 @@ async fn init_peer() -> (mpsc::Receiver<NetworkEvent>, TestPeer) {
 }
 
 fn rand_bool(n: u8) -> bool {
-    rand::random::<u8>() % n > 0
+    random::<u8>() % n > 0
 }
 
 #[derive(Debug)]
@@ -82,7 +83,7 @@ struct TestSourceConfig {
 
 impl TestSourceConfig {
     fn random() -> Self {
-        let set_relay = match rand::random::<u8>() % 10 {
+        let set_relay = match random::<u8>() % 10 {
             0 | 1 | 2 | 3 => UseRelay::Default,
             4 | 5 | 6 => UseRelay::UseSpecificRelay,
             7 | 8 | 9 => UseRelay::NoRelay,

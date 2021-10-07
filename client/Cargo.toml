@@ -56,7 +56,6 @@ p2p = ["stronghold-p2p", "futures"]
 hex = "0.4.2"
 criterion = { version = "0.3.3", features = ["async_tokio"] }
 clap = { version = "3.0.0-beta.1", features = [ "yaml" ] }
-rand = "0.8.3"
 tokio = {version = "1.9", features = ["rt-multi-thread"] }
 
 [[example]]

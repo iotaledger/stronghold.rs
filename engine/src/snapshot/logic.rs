@@ -208,7 +208,10 @@ fn check_header<I: Read>(input: &mut I) -> crate::Result<()> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use stronghold_utils::test_utils::{corrupt, corrupt_file_at, fresh};
+    use stronghold_utils::{
+        random,
+        test_utils::{corrupt, corrupt_file_at},
+    };
 
     fn random_key() -> Key {
         let mut key: Key = [0u8; KEY_SIZE];
@@ -221,8 +224,8 @@ mod test {
     #[test]
     fn test_write_read() -> crate::Result<()> {
         let key: Key = random_key();
-        let bs0 = fresh::bytestring();
-        let ad = fresh::bytestring();
+        let bs0 = random::bytestring();
+        let ad = random::bytestring();
 
         let mut buf = Vec::new();
         write(&bs0, &mut buf, &key, &ad)?;
@@ -234,8 +237,8 @@ mod test {
     #[should_panic]
     fn test_corrupted_read_write() {
         let key: Key = random_key();
-        let bs0 = fresh::bytestring();
-        let ad = fresh::bytestring();
+        let bs0 = random::bytestring();
+        let ad = random::bytestring();
 
         let mut buf = Vec::new();
         write(&bs0, &mut buf, &key, &ad).unwrap();
@@ -250,8 +253,8 @@ mod test {
         pb.push("snapshot");
 
         let key: Key = random_key();
-        let bs0 = fresh::bytestring();
-        let ad = fresh::bytestring();
+        let bs0 = random::bytestring();
+        let ad = random::bytestring();
 
         write_to(&bs0, &pb, &key, &ad)?;
         let bs1 = read_from(&pb, &key, &ad)?;
@@ -268,8 +271,8 @@ mod test {
         pb.push("snapshot");
 
         let key: Key = random_key();
-        let bs0 = fresh::bytestring();
-        let ad = fresh::bytestring();
+        let bs0 = random::bytestring();
+        let ad = random::bytestring();
 
         write_to(&bs0, &pb, &key, &ad).unwrap();
         corrupt_file_at(&pb);
@@ -282,11 +285,11 @@ mod test {
         let mut pb = f.into_path();
         pb.push("snapshot");
 
-        write_to(&fresh::bytestring(), &pb, &random_key(), &fresh::bytestring())?;
+        write_to(&random::bytestring(), &pb, &random_key(), &random::bytestring())?;
 
         let key: Key = random_key();
-        let bs0 = fresh::bytestring();
-        let ad = fresh::bytestring();
+        let bs0 = random::bytestring();
+        let ad = random::bytestring();
         write_to(&bs0, &pb, &key, &ad).unwrap();
         let bs1 = read_from(&pb, &key, &ad)?;
         assert_eq!(bs0, bs1);

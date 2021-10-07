@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crypto::{keys::slip10::Chain, utils::rand::fill};
-pub use stronghold_utils::test_utils::{self, fresh::*};
+pub use stronghold_utils::{random::*, test_utils};
 
 use crate::{Location, RecordHint};
 
@@ -32,7 +32,7 @@ pub fn hd_path() -> (String, Chain) {
     let mut s = "m".to_string();
     let mut is = vec![];
     while coinflip() {
-        let i = rand::random::<u32>() & 0x7fffff;
+        let i = random::<u32>() & 0x7fffff;
         s.push_str(&format!("/{}'", i.to_string()));
         is.push(i);
     }
