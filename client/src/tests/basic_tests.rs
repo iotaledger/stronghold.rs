@@ -1,7 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{line_error, utils::LoadFromPath, Location, RecordHint, Stronghold};
+use crate::{
+    line_error,
+    utils::{into_map, LoadFromPath},
+    Location, RecordHint, Stronghold,
+};
+
 use crypto::macs::hmac::HMAC_SHA512;
 
 use engine::vault::{ClientId, VaultId};
@@ -374,4 +379,15 @@ fn test_vault_id() {
     let (test, _) = buf.split_at(24);
 
     assert_eq!(VaultId::load(test).unwrap(), id);
+}
+
+#[test]
+fn test_into_map() {
+    let v = vec![(1, 2), (3, 4), (5, 6)];
+    let m = into_map(v);
+
+    assert_eq!(m.len(), 3);
+    assert!(m.contains_key(&1));
+    assert!(m.contains_key(&3));
+    assert!(m.contains_key(&5));
 }

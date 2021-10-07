@@ -8,12 +8,9 @@ use crate::vault::{
         utils::{BlobId, ChainId, RecordHint, RecordId, VaultId},
     },
 };
-
-use serde::{Deserialize, Serialize};
-
-use std::collections::HashMap;
-
 use runtime::GuardedVec;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// A view over the data inside of a collection of [`Vault`] types.
 #[derive(Deserialize, Serialize, Clone, Default)]

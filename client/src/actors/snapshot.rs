@@ -8,17 +8,17 @@ use actix::{Actor, Handler, Message, Supervised};
 use std::{convert::TryInto, path::PathBuf};
 
 use engine::{
-    snapshot::{self},
-    vault::{ClientId, DbView, Key, VaultId},
+    snapshot,
+    vault::{ClientId, DbView, Key as PKey, RecordId, VaultId},
 };
 
 use crate::{
     internals, line_error,
     state::{
         secure::Store,
-        snapshot::{DiffState, Snapshot, SnapshotState},
+        snapshot::{Snapshot, SnapshotState},
     },
-    Provider,
+    Location, Provider,
 };
 use std::collections::HashMap;
 use thiserror::Error as DeriveError;
@@ -28,6 +28,8 @@ pub use messages::*;
 pub use returntypes::*;
 
 pub mod returntypes {
+
+    use engine::vault::Key;
 
     use super::*;
 
@@ -65,7 +67,7 @@ pub mod messages {
     }
 
     pub struct FillSnapshot {
-        pub data: Box<(HashMap<VaultId, Key<Provider>>, DbView<Provider>, Store)>,
+        pub data: Box<(HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>,
         pub id: ClientId,
     }
 
@@ -202,82 +204,90 @@ pub enum SnapshotError {
 
     #[error("Could Not Write Snapshot to File: ({0})")]
     WriteSnapshotFailure(String),
+
+    #[error("Could Not Export Entries ({0})")]
+    ExportError(String),
 }
 
 // actix impl
 impl Supervised for Snapshot {}
 
-/// snapshot protocol
-fn synchronize_remote() -> Vec<DiffState> {
-    vec![]
-}
+pub struct KeyConfig {}
 
-fn synchronize_check(_diff: Vec<DiffState>) -> Vec<DiffState> {
-    vec![]
-}
+/// TODO: move this to state(ful) implementation of Snapshot
+impl Snapshot {
+    /// This function exports the configured entries from the vault. The export
+    /// re-encrypts each entry with the newly provided keys.
+    fn export(
+        &mut self,
+        entries: HashMap<Location, PKey<Provider>>,
+    ) -> Result<(HashMap<VaultId, PKey<Provider>>, DbView<Provider>), SnapshotError> {
+        let mut result_view: DbView<Provider> = DbView::new();
+        let mut result_map = HashMap::new();
 
-fn synchronize_with(_result: Vec<DiffState>) -> HashMap<VaultId, Vec<u8>> {
-    HashMap::new()
-}
+        // access inner
+        let inner = &mut self.state.0;
 
-impl Handler<Import> for Snapshot {
-    type Result = Result<(), SnapshotError>;
+        // iterate over all client ids, and select entries
+        for (_id, data) in inner.iter_mut() {
+            let view = &mut data.1;
 
-    fn handle(&mut self, _msg: Import, _ctx: &mut Self::Context) -> Self::Result {
-        todo!()
-    }
-}
+            for (location, key) in entries.iter() {
+                let vid: VaultId = location.try_into().unwrap();
+                let rid: RecordId = location.try_into().unwrap();
 
-impl Handler<Export> for Snapshot {
-    type Result = Result<ReturnExport, SnapshotError>;
-
-    fn handle(&mut self, msg: Export, _ctx: &mut Self::Context) -> Self::Result {
-        // This handler exports the provided entry locations
-        // from the vault and returns them to the caller.
-        // The caller would ideally import the entries into the same client_id
-
-        // use diff here locally
-        // use engine::snapshot::diff::Lcs;
-
-        use crate::utils::LocationError;
-
-        // FIXME: this is O(n^2)
-        // iterate over entries to be exported
-        for location in &msg.entries {
-            let state = &self.state.0;
-
-            for id in state.keys() {
-                if let Some((vaults, view, _store)) = state.get(id) {
-                    // calculate the vault_id from location
-                    let vault_id = match location
-                        .try_into()
-                        .map_err(|error: LocationError| SnapshotError::SynchronizeSnapshot(error.to_string()))
-                    {
-                        Ok(vault_id) => vault_id,
-                        Err(error) => return Err(error),
-                    };
-
-                    // FIXME: is this UNSAFE?
-                    if let Some(_key) = vaults.get(&vault_id) {
-                        let _vault = view.vaults.get(&vault_id).unwrap();
-
-                        // TODO: copy entries and return them
-                        // let mmap = &vault.entries;
-                    }
+                // this check wouldn't be necessary, but could be an indicator that
+                // an assumed location is not correct.
+                if !view.contains_record(key, vid, rid) {
+                    continue;
                 }
+
+                let id_hint = crate::utils::into_map(view.list_hints_and_ids(key, vid));
+
+                // decrypt entry and re-encrypt with new kew inside guard
+                view.get_guard(key, vid, rid, |guarded_data| {
+                    let record_hint = id_hint
+                        .get(&rid)
+                        .ok_or_else(|| engine::Error::ValueError("No RecordHint Present".to_string()))?;
+
+                    result_view.write(key, vid, rid, &guarded_data.borrow(), *record_hint)?;
+                    result_map.insert(vid, key.clone());
+
+                    Ok(())
+                })
+                .map_err(|error| SnapshotError::ExportError(error.to_string()))?;
             }
         }
 
-        todo!()
+        Ok((result_map, result_view))
     }
 }
+
+// impl Handler<Import> for Snapshot {
+//     type Result = Result<(), SnapshotError>;
+
+//     fn handle(&mut self, _msg: Import, _ctx: &mut Self::Context) -> Self::Result {
+//         todo!()
+//     }
+// }
+
+// impl Handler<Export> for Snapshot {
+//     type Result = Result<ReturnExport, SnapshotError>;
+
+//     fn handle(&mut self, msg: Export, _ctx: &mut Self::Context) -> Self::Result {
+//         // This handler exports the provided entry locations
+//         // from the vault and returns them to the caller.
+//         // The caller would ideally import the entries into the same client_id
+
+//         todo!()
+//     }
+// }
 
 impl Handler<messages::FullSynchronization> for Snapshot {
     type Result = Result<ReturnReadSnapshot, SnapshotError>;
 
     fn handle(&mut self, msg: messages::FullSynchronization, ctx: &mut Self::Context) -> Self::Result {
         // locally import necessary modules
-        use engine::vault::Key as PKey;
         use serde::{Deserialize, Serialize};
 
         // define local snapshot data structure to access the private fields
@@ -321,7 +331,6 @@ impl Handler<messages::FullSynchronization> for Snapshot {
             if let Some(data) = snapshot_merge.0.get(&id.clone()) {
                 output_state.add_data(*id, data.clone());
 
-                // todo fill outputs: map, view, store
                 let (map, view, store) = data;
                 output_map.extend((map.clone()).into_iter());
                 output_view.vaults.extend(view.vaults.clone().into_iter());
@@ -334,7 +343,6 @@ impl Handler<messages::FullSynchronization> for Snapshot {
             if let Some(data) = snapshot_local.0.get(&id.clone()) {
                 output_state.add_data(*id, data.clone());
 
-                // todo fill outputs: map, view, store
                 let (map, view, store) = data;
                 output_map.extend((map.clone()).into_iter());
                 output_view.vaults.extend(view.vaults.clone().into_iter());
@@ -367,7 +375,6 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
 
     fn handle(&mut self, msg: messages::PartialSynchronization, ctx: &mut Self::Context) -> Self::Result {
         // locally import necessary modules
-        use engine::vault::Key as PKey;
         use serde::{Deserialize, Serialize};
 
         // define local snapshot data structure to access the private fields

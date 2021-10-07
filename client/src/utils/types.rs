@@ -3,7 +3,7 @@
 
 use std::{any::Any, convert::TryInto};
 
-use engine::vault::VaultId;
+use engine::vault::{RecordId, VaultId};
 use serde::{Deserialize, Serialize};
 use thiserror::Error as DeriveError;
 
@@ -108,6 +108,37 @@ impl TryInto<VaultId> for &Location {
     fn try_into(self) -> Result<VaultId, Self::Error> {
         VaultId::load_from_path(self.vault_path(), self.vault_path())
             .map_err(|error| LocationError::ConversionError(error.to_string()))
+    }
+}
+
+impl TryInto<RecordId> for &Location {
+    type Error = LocationError;
+
+    fn try_into(self) -> Result<RecordId, Self::Error> {
+        match self {
+            Location::Generic {
+                vault_path,
+                record_path,
+            } => {
+                let vid = VaultId::load_from_path(vault_path, vault_path)
+                    .map_err(|error| LocationError::ConversionError(error.to_string()))?;
+
+                RecordId::load_from_path(vid.as_ref(), record_path)
+                    .map_err(|error| LocationError::ConversionError(error.to_string()))
+            }
+
+            Location::Counter { vault_path, counter } => {
+                let vault_path = vault_path;
+
+                let path = match counter {
+                    0 => format!("{:?}{}", vault_path, "first_record"),
+                    _ => format!("{:?}{}", vault_path, counter),
+                };
+
+                RecordId::load_from_path(path.as_bytes(), path.as_bytes())
+                    .map_err(|error| LocationError::ConversionError(error.to_string()))
+            }
+        }
     }
 }
 

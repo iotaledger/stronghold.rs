@@ -32,7 +32,7 @@ pub struct Snapshot {
 }
 
 /// Data structure that is written to the snapshot.
-/// accessing state fields is now allowed inside the crate
+/// CHANGED: accessing state fields is now allowed inside the crate
 #[derive(Deserialize, Serialize, Default)]
 pub struct SnapshotState(pub(crate) HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
 
