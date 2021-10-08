@@ -15,13 +15,13 @@ pub fn record_hint() -> RecordHint {
 
 /// Generates a random [`Location`].
 pub fn location() -> Location {
-    Location::generic(bytestring(), bytestring())
+    Location::generic(bytestring(4096), bytestring(4096))
 }
 
 /// generates a random string based on a coinflip.
 pub fn passphrase() -> Option<String> {
     if coinflip() {
-        Some(string())
+        Some(string(4096))
     } else {
         None
     }

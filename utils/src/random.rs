@@ -11,9 +11,9 @@ where
     rand::random()
 }
 
-// Random Bytestring with random length in range 1..4096.
-pub fn bytestring() -> Vec<u8> {
-    let s = (random::<usize>() % 4095) + 1;
+// Random Bytestring with random length in range 1..max_len.
+pub fn bytestring(max_len: usize) -> Vec<u8> {
+    let s = (random::<usize>() % (max_len - 1)) + 1;
     let mut bs = Vec::with_capacity(s);
     for _ in 1..s {
         bs.push(random());
@@ -21,9 +21,9 @@ pub fn bytestring() -> Vec<u8> {
     bs
 }
 
-// Random string with random length in range 1..4096.
-pub fn string() -> String {
-    let l = (random::<usize>() % 4095) + 1;
+// Random string with random length in range 1..max_len.
+pub fn string(max_len: usize) -> String {
+    let l = (random::<usize>() % (max_len - 1)) + 1;
 
     let mut s = String::with_capacity(l);
     for _ in 0..l {

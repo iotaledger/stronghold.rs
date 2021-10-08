@@ -7,7 +7,7 @@ use super::fresh;
 use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, Stronghold};
 
 async fn setup_stronghold() -> (Vec<u8>, Stronghold) {
-    let cp = fresh::bytestring();
+    let cp = fresh::bytestring(u8::MAX.into());
 
     let s = Stronghold::init_stronghold_system(cp.clone(), vec![]).await.unwrap();
     (cp, s)
@@ -77,7 +77,7 @@ async fn usecase_ed25519() {
         r => panic!("unexpected result: {:?}", r),
     };
 
-    let msg = fresh::bytestring();
+    let msg = fresh::bytestring(4096);
 
     let sig = match sh
         .runtime_exec(Procedure::Ed25519Sign {
