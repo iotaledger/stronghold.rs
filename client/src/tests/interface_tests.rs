@@ -497,7 +497,7 @@ async fn test_stronghold_p2p() {
 
         // test procedure execution
         match remote_stronghold
-            .runtime_exec(Slip10Generate::new().write_secret(seed1_clone, fresh::record_hint()))
+            .runtime_exec(Slip10Generate::default().write_secret(seed1_clone, fresh::record_hint()))
             .await
         {
             ResultMessage::Ok(out) => assert!(out.into_iter().next().is_none()),

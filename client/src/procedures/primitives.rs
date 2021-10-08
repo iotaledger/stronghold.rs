@@ -1,36 +1,43 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{enum_from_inner, Location};
-
-use super::*;
+use super::types::*;
+use crate::{actors::VaultError, enum_from_inner, Location};
 use crypto::{
-    ciphers::{
-        aes::Aes256Gcm,
-        chacha::XChaCha20Poly1305,
-        traits::{consts::Unsigned, Aead, Tag},
-    },
-    hashes::{
-        blake2b::Blake2b256,
-        sha::{Sha256, Sha384, Sha512},
-        Digest,
-    },
-    keys::{
-        bip39,
-        slip10::{self, Chain, ChainCode, Curve, Seed},
-        x25519,
-    },
+    ciphers::traits::consts::Unsigned,
+    keys::{bip39, slip10},
     signatures::ed25519,
     utils::rand::fill,
 };
+
+pub mod crypto_reexport {
+    pub use crypto::{
+        ciphers::{
+            aes::Aes256Gcm,
+            chacha::XChaCha20Poly1305,
+            traits::{Aead, Tag},
+        },
+        hashes::{
+            blake2b::Blake2b256,
+            sha::{Sha256, Sha384, Sha512},
+            Digest,
+        },
+        keys::slip10::{Chain, ChainCode},
+    };
+}
+use crypto_reexport::*;
 use engine::{runtime::GuardedVec, vault::RecordHint};
 use hmac::{
     digest::{BlockInput, FixedOutput, Reset, Update},
     Mac, NewMac,
 };
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, marker::PhantomData};
+use std::{
+    convert::{From, Into, TryFrom},
+    marker::PhantomData,
+};
 use stronghold_derive::{execute_procedure, Procedure};
+use stronghold_utils::GuardDebug;
 
 // ==========================
 // Helper Procedures
@@ -110,24 +117,23 @@ pub struct WriteVault {
     #[input_data]
     data: InputData<Vec<u8>>,
     #[target]
-    target: InterimProduct<Target>,
+    target: TempTarget,
 }
 
 impl WriteVault {
-    pub fn new(data: Vec<u8>, location: Location, hint: RecordHint) -> Self {
+    pub fn new<I, T>(data: I, location: Location, hint: RecordHint) -> Self
+    where
+        I: IntoInput<T>,
+        T: Into<Vec<u8>>,
+    {
+        let data = match data.into_input() {
+            InputData::Key(k) => InputData::Key(k),
+            InputData::Value(v) => InputData::Value(v.into()),
+        };
         WriteVault {
-            data: InputData::Value(data),
-            target: InterimProduct {
-                target: Target { location, hint },
-                is_temp: false,
-            },
-        }
-    }
-    pub fn dynamic(data_key: OutputKey, target: Location, hint: RecordHint) -> Self {
-        WriteVault {
-            data: InputData::Key(data_key),
-            target: InterimProduct {
-                target: Target { location: target, hint },
+            data,
+            target: TempTarget {
+                write_to: Target { location, hint },
                 is_temp: false,
             },
         }
@@ -175,124 +181,50 @@ enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::XChaC
 // Procedures for Cryptographic Primitives
 // ==========================
 
-pub trait SecretKey {
-    type Key;
-    fn key_length() -> usize;
-    fn from_bytes(bs: &[u8]) -> Result<Self::Key, crypto::Error>;
-    fn generate() -> Result<Vec<u8>, crypto::Error> {
-        let mut k = vec![0u8; Self::key_length()];
-        fill(&mut k)?;
-        Ok(k)
-    }
-}
-
-pub trait Signature: SecretKey {
-    fn signature_length() -> usize;
-    fn pub_key_length() -> usize;
-
-    fn sign(key: &Self::Key, bs: &[u8]) -> Vec<u8>;
-    fn pub_key(key: &Self::Key) -> Vec<u8>;
-}
-
-#[derive(GuardDebug, Clone, Serialize, Deserialize)]
-pub struct Slip10;
-impl SecretKey for Slip10 {
-    type Key = slip10::Seed;
-
-    fn key_length() -> usize {
-        // TODO: make this configurable
-        64
-    }
-
-    fn from_bytes(bs: &[u8]) -> Result<Self::Key, crypto::Error> {
-        Ok(slip10::Seed::from_bytes(bs))
-    }
-}
-
-#[derive(GuardDebug, Clone, Serialize, Deserialize)]
-pub struct Ed25519;
-impl SecretKey for Ed25519 {
-    type Key = ed25519::SecretKey;
-    fn key_length() -> usize {
-        ed25519::SECRET_KEY_LENGTH
-    }
-    fn from_bytes(bs: &[u8]) -> Result<Self::Key, crypto::Error> {
-        let bytes = bs.try_into().map_err(|_| crypto::Error::ConvertError {
-            from: "bytes",
-            to: "Ed25519 Public Key",
-        })?;
-        Ok(ed25519::SecretKey::from_bytes(bytes))
-    }
-}
-impl Signature for Ed25519 {
-    fn signature_length() -> usize {
-        ed25519::SIGNATURE_LENGTH
-    }
-    fn pub_key_length() -> usize {
-        ed25519::PUBLIC_KEY_LENGTH
-    }
-    fn sign(key: &Self::Key, bs: &[u8]) -> Vec<u8> {
-        key.sign(bs).to_bytes().to_vec()
-    }
-    fn pub_key(key: &Self::Key) -> Vec<u8> {
-        key.public_key().as_slice().to_vec()
-    }
-}
-
-#[derive(GuardDebug, Clone, Serialize, Deserialize)]
-pub struct X25519;
-impl SecretKey for X25519 {
-    type Key = x25519::SecretKey;
-    fn key_length() -> usize {
-        x25519::SECRET_KEY_LENGTH
-    }
-    fn from_bytes(bs: &[u8]) -> Result<Self::Key, crypto::Error> {
-        let bytes = bs.try_into().map_err(|_| crypto::Error::ConvertError {
-            from: "bytes",
-            to: "X25519 Public Key",
-        })?;
-        Ok(x25519::SecretKey::from_bytes(bytes))
-    }
-}
-
+/// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in
+/// the `output` location
+///
+/// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
+/// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
 #[derive(Procedure, Clone, Serialize, Deserialize)]
-pub struct GenerateKey<T> {
+pub struct Slip10Generate {
+    size_bytes: usize,
+
     #[target]
-    target: InterimProduct<Target>,
-    _marker: PhantomData<T>,
+    target: TempTarget,
 }
 
-impl<T> Default for GenerateKey<T> {
+impl Default for Slip10Generate {
     fn default() -> Self {
-        GenerateKey {
-            target: InterimProduct {
-                target: Target::random(),
+        Slip10Generate {
+            target: TempTarget {
+                write_to: Target::random(),
                 is_temp: true,
             },
-            _marker: PhantomData,
+            size_bytes: 64,
         }
     }
 }
 
-impl<T> GenerateKey<T> {
-    pub fn new() -> Self {
-        GenerateKey {
-            target: InterimProduct {
-                target: Target::random(),
+impl Slip10Generate {
+    pub fn new(size_bytes: usize) -> Self {
+        Slip10Generate {
+            target: TempTarget {
+                write_to: Target::random(),
                 is_temp: true,
             },
-            _marker: PhantomData,
+            size_bytes,
         }
     }
 }
 
 #[execute_procedure]
-impl<T: SecretKey> GenerateSecret for GenerateKey<T> {
+impl GenerateSecret for Slip10Generate {
     type Input = ();
     type Output = ();
 
     fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
-        let mut seed = vec![0u8; T::key_length()];
+        let mut seed = vec![0u8; self.size_bytes];
         fill(&mut seed)?;
         Ok(Products {
             secret: seed,
@@ -301,19 +233,27 @@ impl<T: SecretKey> GenerateSecret for GenerateKey<T> {
     }
 }
 
-/// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in
-/// the `output` location
-///
-/// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
-/// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
-// TODO: fix size_bytes
-pub type Slip10Generate = GenerateKey<Slip10>;
-
 #[derive(GuardDebug, Clone, Serialize, Deserialize)]
 pub enum SLIP10DeriveInput {
     /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
     Seed(Location),
     Key(Location),
+}
+
+impl SourceInfo for SLIP10DeriveInput {
+    fn source_location(&self) -> &Location {
+        match self {
+            SLIP10DeriveInput::Seed(l) => l,
+            SLIP10DeriveInput::Key(l) => l,
+        }
+    }
+
+    fn source_location_mut(&mut self) -> &mut Location {
+        match self {
+            SLIP10DeriveInput::Seed(l) => l,
+            SLIP10DeriveInput::Key(l) => l,
+        }
+    }
 }
 
 /// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
@@ -323,13 +263,13 @@ pub struct Slip10Derive {
     chain: Chain,
 
     #[output_key]
-    output_key: InterimProduct<OutputKey>,
+    output_key: TempOutput,
 
     #[source]
     source: SLIP10DeriveInput,
 
     #[target]
-    target: InterimProduct<Target>,
+    target: TempTarget,
 }
 
 impl Slip10Derive {
@@ -345,12 +285,12 @@ impl Slip10Derive {
         Slip10Derive {
             chain,
             source,
-            target: InterimProduct {
-                target: Target::random(),
+            target: TempTarget {
+                write_to: Target::random(),
                 is_temp: true,
             },
-            output_key: InterimProduct {
-                target: OutputKey::random(),
+            output_key: TempOutput {
+                write_to: OutputKey::random(),
                 is_temp: true,
             },
         }
@@ -367,7 +307,9 @@ impl DeriveSecret for Slip10Derive {
             SLIP10DeriveInput::Key(_) => {
                 slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&self.chain))
             }
-            SLIP10DeriveInput::Seed(_) => Seed::from_bytes(&guard.borrow()).derive(Curve::Ed25519, &self.chain),
+            SLIP10DeriveInput::Seed(_) => {
+                slip10::Seed::from_bytes(&guard.borrow()).derive(slip10::Curve::Ed25519, &self.chain)
+            }
         }?;
         Ok(Products {
             secret: dk.into(),
@@ -392,10 +334,10 @@ pub struct BIP39Generate {
     language: MnemonicLanguage,
 
     #[output_key]
-    mnemonic_key: InterimProduct<OutputKey>,
+    mnemonic_key: TempOutput,
 
     #[target]
-    target: InterimProduct<Target>,
+    target: TempTarget,
 }
 
 impl BIP39Generate {
@@ -403,12 +345,12 @@ impl BIP39Generate {
         BIP39Generate {
             passphrase,
             language,
-            mnemonic_key: InterimProduct {
-                target: OutputKey::random(),
+            mnemonic_key: TempOutput {
+                write_to: OutputKey::random(),
                 is_temp: true,
             },
-            target: InterimProduct {
-                target: Target::random(),
+            target: TempTarget {
+                write_to: Target::random(),
                 is_temp: true,
             },
         }
@@ -452,27 +394,19 @@ pub struct BIP39Recover {
     mnemonic: InputData<String>,
 
     #[target]
-    target: InterimProduct<Target>,
+    target: TempTarget,
 }
 
 impl BIP39Recover {
-    pub fn new(passphrase: Option<String>, mnemonic: String) -> Self {
+    pub fn new<I>(mnemonic: I, passphrase: Option<String>) -> Self
+    where
+        I: IntoInput<<Self as InputInfo>::Input>,
+    {
         BIP39Recover {
             passphrase,
-            mnemonic: InputData::Value(mnemonic),
-            target: InterimProduct {
-                target: Target::random(),
-                is_temp: true,
-            },
-        }
-    }
-
-    pub fn dynamic(passphrase: Option<String>, mnemonic_key: OutputKey) -> Self {
-        BIP39Recover {
-            passphrase,
-            mnemonic: InputData::Key(mnemonic_key),
-            target: InterimProduct {
-                target: Target::random(),
+            mnemonic: mnemonic.into_input(),
+            target: TempTarget {
+                write_to: Target::random(),
                 is_temp: true,
             },
         }
@@ -495,131 +429,58 @@ impl GenerateSecret for BIP39Recover {
     }
 }
 
-#[derive(Procedure, Clone, Serialize, Deserialize)]
-pub struct GetPublicKey<T> {
-    #[source]
-    private_key: Location,
-
-    #[output_key]
-    output_key: InterimProduct<OutputKey>,
-
-    _marker: PhantomData<T>,
-}
-
-impl<T> GetPublicKey<T> {
-    pub fn new(private_key: Location) -> Self {
-        GetPublicKey {
-            private_key,
-            output_key: InterimProduct {
-                target: OutputKey::random(),
-                is_temp: true,
-            },
-            _marker: PhantomData,
-        }
-    }
-}
-
-#[execute_procedure]
-impl<T: Signature> UseSecret for GetPublicKey<T> {
-    type Input = ();
-    type Output = Vec<u8>;
-
-    // TODO: this logic is most likely not the same for all signatures
-    fn use_secret(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
-        let raw = guard.borrow();
-        let mut raw = (*raw).to_vec();
-        let l = T::key_length();
-        if raw.len() < l {
-            // the client actor will interrupt the control flow
-            // but could this be an option to return an error
-            let e = engine::Error::CryptoError(crypto::Error::BufferSize {
-                has: raw.len(),
-                needs: l,
-                name: "data buffer",
-            });
-            return Err(e);
-        }
-        raw.truncate(l);
-        let mut bs = vec![0; l];
-        bs.copy_from_slice(&raw);
-
-        let sk = T::from_bytes(&bs)?;
-        let pk = T::pub_key(&sk);
-
-        Ok(pk.to_vec())
-    }
-}
-
 /// Derive an Ed25519 public key from the corresponding private key stored at the specified
 /// location
-pub type Ed25519PublicKey = GetPublicKey<Ed25519>;
-
 #[derive(Procedure, Clone, Serialize, Deserialize)]
-pub struct Sign<T> {
-    #[input_data]
-    msg: InputData<Vec<u8>>,
-
+pub struct Ed25519PublicKey {
     #[source]
     private_key: Location,
 
     #[output_key]
-    output_key: InterimProduct<OutputKey>,
-
-    _marker: PhantomData<T>,
+    output_key: TempOutput,
 }
 
-impl<T> Sign<T> {
-    pub fn new(msg: Vec<u8>, private_key: Location) -> Self {
-        Sign {
-            msg: InputData::Value(msg),
+impl Ed25519PublicKey {
+    pub fn new(private_key: Location) -> Self {
+        Self {
             private_key,
-            output_key: InterimProduct {
-                target: OutputKey::random(),
+            output_key: TempOutput {
+                write_to: OutputKey::random(),
                 is_temp: true,
             },
-            _marker: PhantomData,
         }
     }
-    pub fn dynamic(msg_key: OutputKey, private_key: Location) -> Self {
-        Sign {
-            msg: InputData::Key(msg_key),
-            private_key,
-            output_key: InterimProduct {
-                target: OutputKey::random(),
-                is_temp: true,
-            },
-            _marker: PhantomData,
-        }
+}
+
+fn ed25519_secret_key(guard: GuardedVec<u8>) -> Result<ed25519::SecretKey, engine::Error> {
+    let raw = guard.borrow();
+    let mut raw = (*raw).to_vec();
+    if raw.len() < 32 {
+        // the client actor will interrupt the control flow
+        // but could this be an option to return an error
+        let e = engine::Error::CryptoError(crypto::Error::BufferSize {
+            has: raw.len(),
+            needs: 32,
+            name: "data buffer",
+        });
+        return Err(e);
     }
+    raw.truncate(32);
+    let mut bs = [0; 32];
+    bs.copy_from_slice(&raw);
+
+    Ok(ed25519::SecretKey::from_bytes(bs))
 }
 
 #[execute_procedure]
-impl<T: Signature> UseSecret for Sign<T> {
-    type Input = Vec<u8>;
-    type Output = Vec<u8>;
+impl UseSecret for Ed25519PublicKey {
+    type Input = ();
+    type Output = [u8; ed25519::PUBLIC_KEY_LENGTH];
 
-    // TODO: this logic is most likely not the same for all signatures
-    fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
-        let raw = guard.borrow();
-        let mut raw = (*raw).to_vec();
-
-        let l = T::pub_key_length();
-        if raw.len() < l {
-            let e = engine::Error::CryptoError(crypto::Error::BufferSize {
-                has: raw.len(),
-                needs: l,
-                name: "data buffer",
-            });
-            return Err(e);
-        }
-        raw.truncate(l);
-        let mut bs = vec![0; l];
-        bs.copy_from_slice(&raw);
-
-        let sk = T::from_bytes(&bs)?;
-
-        let sig = T::sign(&sk, &msg);
-        Ok(sig.to_vec())
+    fn use_secret(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
+        let sk = ed25519_secret_key(guard)?;
+        let pk = sk.public_key();
+        Ok(pk.to_bytes())
     }
 }
 
@@ -627,7 +488,45 @@ impl<T: Signature> UseSecret for Sign<T> {
 ///
 /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
 /// in particular SLIP10 keys are compatible.
-pub type Ed25519Sign = Sign<Ed25519>;
+#[derive(Procedure, Clone, Serialize, Deserialize)]
+pub struct Ed25519Sign {
+    #[input_data]
+    msg: InputData<Vec<u8>>,
+
+    #[source]
+    private_key: Location,
+
+    #[output_key]
+    output_key: TempOutput,
+}
+
+impl Ed25519Sign {
+    pub fn new<I>(msg: I, private_key: Location) -> Self
+    where
+        I: IntoInput<<Self as InputInfo>::Input>,
+    {
+        Self {
+            msg: msg.into_input(),
+            private_key,
+            output_key: TempOutput {
+                write_to: OutputKey::random(),
+                is_temp: true,
+            },
+        }
+    }
+}
+
+#[execute_procedure]
+impl UseSecret for Ed25519Sign {
+    type Input = Vec<u8>;
+    type Output = [u8; ed25519::SIGNATURE_LENGTH];
+
+    fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
+        let sk = ed25519_secret_key(guard)?;
+        let sig = sk.sign(&msg);
+        Ok(sig.to_bytes())
+    }
+}
 
 #[derive(Procedure, Clone, Serialize, Deserialize)]
 pub enum Hashes {
@@ -654,29 +553,20 @@ pub struct Hash<T> {
     msg: InputData<Vec<u8>>,
 
     #[output_key]
-    output_key: InterimProduct<OutputKey>,
+    output_key: TempOutput,
 
     _marker: PhantomData<T>,
 }
 
 impl<T> Hash<T> {
-    pub fn new(msg: Vec<u8>) -> Self {
+    pub fn new<I>(msg: I) -> Self
+    where
+        I: IntoInput<<Self as InputInfo>::Input>,
+    {
         Hash {
-            msg: InputData::Value(msg),
-            output_key: InterimProduct {
-                target: OutputKey::random(),
-                is_temp: true,
-            },
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn dynamic(msg_key: OutputKey) -> Self {
-        let input = InputData::Key(msg_key);
-        Hash {
-            msg: input,
-            output_key: InterimProduct {
-                target: OutputKey::random(),
+            msg: msg.into_input(),
+            output_key: TempOutput {
+                write_to: OutputKey::random(),
                 is_temp: true,
             },
             _marker: PhantomData,
@@ -719,7 +609,7 @@ pub struct Hmac<T> {
     msg: InputData<Vec<u8>>,
 
     #[output_key]
-    output_key: InterimProduct<OutputKey>,
+    output_key: TempOutput,
 
     #[source]
     key: Location,
@@ -728,25 +618,15 @@ pub struct Hmac<T> {
 }
 
 impl<T> Hmac<T> {
-    pub fn new(msg: Vec<u8>, key: Location) -> Self {
+    pub fn new<I>(msg: I, key: Location) -> Self
+    where
+        I: IntoInput<<Self as InputInfo>::Input>,
+    {
         Hmac {
-            msg: InputData::Value(msg),
+            msg: msg.into_input(),
             key,
-            output_key: InterimProduct {
-                target: OutputKey::random(),
-                is_temp: true,
-            },
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn dynamic(msg_key: OutputKey, key: Location) -> Self {
-        let input = InputData::Key(msg_key);
-        Hmac {
-            msg: input,
-            key,
-            output_key: InterimProduct {
-                target: OutputKey::random(),
+            output_key: TempOutput {
+                write_to: OutputKey::random(),
                 is_temp: true,
             },
             _marker: PhantomData,
@@ -797,30 +677,30 @@ pub struct AeadEncrypt<T> {
     nonce: InputData<Vec<u8>>,
     key: Location,
 
-    ciphertext: InterimProduct<OutputKey>,
-    tag: InterimProduct<OutputKey>,
+    ciphertext: TempOutput,
+    tag: TempOutput,
     _marker: PhantomData<T>,
 }
 
 impl<T> AeadEncrypt<T> {
     pub fn new(
         key: Location,
-        plaintext: InputData<Vec<u8>>,
-        associated_data: InputData<Vec<u8>>,
-        nonce: InputData<Vec<u8>>,
+        plaintext: impl IntoInput<Vec<u8>>,
+        associated_data: impl IntoInput<Vec<u8>>,
+        nonce: impl IntoInput<Vec<u8>>,
     ) -> Self {
-        let ciphertext = InterimProduct {
-            target: OutputKey::random(),
+        let ciphertext = TempOutput {
+            write_to: OutputKey::random(),
             is_temp: true,
         };
-        let tag = InterimProduct {
-            target: OutputKey::random(),
+        let tag = TempOutput {
+            write_to: OutputKey::random(),
             is_temp: true,
         };
         AeadEncrypt {
-            associated_data,
-            plaintext,
-            nonce,
+            associated_data: associated_data.into_input(),
+            plaintext: plaintext.into_input(),
+            nonce: nonce.into_input(),
             key,
             ciphertext,
             tag,
@@ -829,16 +709,16 @@ impl<T> AeadEncrypt<T> {
     }
 
     pub fn store_ciphertext(mut self, key: OutputKey) -> Self {
-        self.ciphertext = InterimProduct {
-            target: key,
+        self.ciphertext = TempOutput {
+            write_to: key,
             is_temp: false,
         };
         self
     }
 
     pub fn store_tag(mut self, key: OutputKey) -> Self {
-        self.tag = InterimProduct {
-            target: key,
+        self.tag = TempOutput {
+            write_to: key,
             is_temp: false,
         };
         self
@@ -868,21 +748,21 @@ impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
         let plaintext = match plaintext {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
+                let data = state.get_output(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
         let nonce = match nonce {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
+                let data = state.get_output(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
         let ad = match associated_data {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
+                let data = state.get_output(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
@@ -896,8 +776,8 @@ impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
         };
 
         runner.get_guard(&key, f).map_err(ProcedureError::VaultError)?;
-        state.insert_data(ciphertext.target, digested.into(), ciphertext.is_temp);
-        state.insert_data(tag.target, Vec::from(&*t).into(), tag.is_temp);
+        state.insert_output(ciphertext.write_to, digested.into_procedure_io(), ciphertext.is_temp);
+        state.insert_output(tag.write_to, Vec::from(&*t).into_procedure_io(), tag.is_temp);
         Ok(())
     }
 }
@@ -909,40 +789,39 @@ pub struct AeadDecrypt<T> {
     tag: InputData<Vec<u8>>,
     nonce: InputData<Vec<u8>>,
     key: Location,
-    plaintext: InterimProduct<OutputKey>,
+    plaintext: TempOutput,
     _marker: PhantomData<T>,
 }
 
 impl<T> AeadDecrypt<T> {
     pub fn new(
         key: Location,
-        ciphertext: InputData<Vec<u8>>,
-        associated_data: InputData<Vec<u8>>,
-        tag: InputData<Vec<u8>>,
-        nonce: InputData<Vec<u8>>,
+        ciphertext: impl IntoInput<Vec<u8>>,
+        associated_data: impl IntoInput<Vec<u8>>,
+        tag: impl IntoInput<Vec<u8>>,
+        nonce: impl IntoInput<Vec<u8>>,
     ) -> Self {
-        let plaintext = InterimProduct {
-            target: OutputKey::random(),
+        let plaintext = TempOutput {
+            write_to: OutputKey::random(),
             is_temp: true,
         };
         AeadDecrypt {
-            associated_data,
-            ciphertext,
-            tag,
-            nonce,
+            associated_data: associated_data.into_input(),
+            ciphertext: ciphertext.into_input(),
+            tag: tag.into_input(),
+            nonce: nonce.into_input(),
             key,
             plaintext,
             _marker: PhantomData,
         }
     }
-}
 
-impl<T> OutputInfo for AeadDecrypt<T> {
-    fn output_info(&self) -> &InterimProduct<OutputKey> {
-        &self.plaintext
-    }
-    fn output_info_mut(&mut self) -> &mut InterimProduct<OutputKey> {
-        &mut self.plaintext
+    pub fn store_plaintext(mut self, key: OutputKey) -> Self {
+        self.plaintext = TempOutput {
+            write_to: key,
+            is_temp: false,
+        };
+        self
     }
 }
 
@@ -969,28 +848,28 @@ impl<T: Aead> ProcedureStep for AeadDecrypt<T> {
         let ciphertext = match ciphertext {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
+                let data = state.get_output(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
         let tag = match tag {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
+                let data = state.get_output(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
         let nonce = match nonce {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
+                let data = state.get_output(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
         let ad = match associated_data {
             InputData::Value(ref v) => v,
             InputData::Key(key) => {
-                let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?;
+                let data = state.get_output(&key).ok_or(ProcedureError::MissingInput)?;
                 data.as_ref()
             }
         };
@@ -1002,28 +881,7 @@ impl<T: Aead> ProcedureStep for AeadDecrypt<T> {
         };
 
         runner.get_guard(&key, f).map_err(ProcedureError::VaultError)?;
-        state.insert_data(plaintext.target, output.into(), plaintext.is_temp);
+        state.insert_output(plaintext.write_to, output.into_procedure_io(), plaintext.is_temp);
         Ok(())
     }
 }
-
-// TODO: Add PBKDF
-
-// TODO: Remove notes
-
-// K: Key, P: Plaintext, C: Ciphertext, M:Message (=Plaintext, but not intended to be encrypted)
-
-// Cipher: Encrypt/Decrypt Stuff based on a key
-// // Block Cipher: C = E(K, P); E: Encryption-Alg
-// // Stream Cipher: C = P ⊕ KS where KS = SC(K, N); SC: Stream-Cipher Alg., N: Nonce, KS: Keystream
-// MAC: Keyed hashing: T= MAC(K, M); T: Tag
-// HMAC: Hash-based MAC aka the MAC is build from a Hash function
-// Authenticated Encryption (AE): (& Authenticated Decryption (AD))
-// // Cipher & MAC: Cipher+MAC=C,T || MAC*Cipher = C || Cipher*MAC=C,T
-// // Authenticated Cipher: AE(K, P) = (C, T)
-// Authenticated Encryption with associated Data (AEAD)
-// // AEAD(K, P, A) = (C, A, T); A: Associated Data that should not be encrypted, but authenticated
-// // ADAD(K, C, A, T) = (P, A): Decryption
-// Key Wrapping:
-// // C = (KD, KEK) where KD: Key-data (= key to be wrapped),  KEK: Key-encryption-key (= often a Password)
-// // -> Technically just normal cipher

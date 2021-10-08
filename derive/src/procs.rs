@@ -124,7 +124,7 @@ fn impl_get_location(
             None,
             quote! {target_info},
             quote! {target_info_mut},
-            quote! {InterimProduct<Target>},
+            quote! {TempTarget},
         ),
         IOTrait::InputData(ty) => (
             quote! {InputInfo},
@@ -138,7 +138,7 @@ fn impl_get_location(
             None,
             quote! {output_info},
             quote! {output_info_mut},
-            quote! {InterimProduct<OutputKey>},
+            quote! {TempOutput},
         ),
     };
 
@@ -219,8 +219,8 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
             let input = match input_data {
                 InputData::Value(v) => v.clone(),
                 InputData::Key(key) => {
-                    let data = state.get_data(&key).ok_or(ProcedureError::MissingInput)?.clone();
-                    data.try_into().map_err(|_| ProcedureError::InvalidInput)?
+                    let data = state.get_output(&key).ok_or(ProcedureError::MissingInput)?.clone();
+                    <Self as InputInfo>::Input::try_from_procedure_io(data).map_err(|_| ProcedureError::InvalidInput)?
                 }
             };
         }
@@ -231,13 +231,13 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
     let gen_insert_data;
     if returns_data {
         gen_output_key = quote! {
-            let InterimProduct {
-                target: key,
+            let TempOutput {
+                write_to: key,
                 is_temp: is_out_data_temp
             } = self.output_info().clone();
         };
         gen_insert_data = quote! {
-           state.insert_data(key, output.into(), is_out_data_temp);
+           state.insert_output(key, output.into_procedure_io(), is_out_data_temp);
         }
     } else {
         gen_output_key = quote! {};
@@ -253,8 +253,8 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 Ok(())
         },
         "GenerateSecret" => quote! {
-                let InterimProduct  {
-                    target: Target { location: location_1, hint },
+                let TempTarget  {
+                    write_to: Target { location: location_1, hint },
                     is_temp: is_secret_temp
                 } = self.target_info().clone();
                 #gen_input
@@ -272,8 +272,8 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
         },
         "DeriveSecret" => quote! {
                 let location_0 = self.source_location().clone();
-                let InterimProduct  {
-                    target: Target { location: location_1, hint },
+                let TempTarget  {
+                    write_to: Target { location: location_1, hint },
                     is_temp: is_secret_temp
                 } = self.target_info().clone();
                 #gen_input

@@ -5,14 +5,20 @@
 
 use crypto::{
     hashes::sha::{SHA256, SHA256_LEN},
-    keys::slip10::{ChainCode, Curve, Seed},
+    keys::slip10,
     signatures::ed25519::{PublicKey, SecretKey, Signature, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH},
     utils::rand::fill,
 };
-use sha2::Sha256;
 
 use super::fresh;
-use crate::{procedures::*, ResultMessage, Stronghold};
+use crate::{
+    procedures::{
+        crypto::{ChainCode, Sha256},
+        BIP39Generate, Ed25519PublicKey, Ed25519Sign, Hash, MnemonicLanguage, OutputInfo, OutputKey, ProcedureIo,
+        ProcedureStep, Slip10Derive, Slip10Generate, TargetInfo, WriteVault,
+    },
+    ResultMessage, Stronghold,
+};
 
 async fn setup_stronghold() -> (Vec<u8>, Stronghold) {
     let cp = fresh::bytestring();
@@ -33,7 +39,7 @@ async fn usecase_ed25519() {
         } else {
             None
         };
-        let slip10_generate = Slip10Generate::new().write_secret(seed.clone(), fresh::record_hint());
+        let slip10_generate = Slip10Generate::default().write_secret(seed.clone(), fresh::record_hint());
 
         match sh.runtime_exec(slip10_generate).await {
             ResultMessage::Ok(_) => (),
@@ -84,7 +90,7 @@ async fn usecase_Slip10Derive_intermediate_keys() {
 
     let seed = fresh::location();
 
-    let slip10_generate = Slip10Generate::new().write_secret(seed.clone(), fresh::record_hint());
+    let slip10_generate = Slip10Generate::default().write_secret(seed.clone(), fresh::record_hint());
     match sh.runtime_exec(slip10_generate).await {
         ResultMessage::Ok(_) => (),
         ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
@@ -135,7 +141,7 @@ async fn usecase_ed25519_as_complex() {
     let pk_result = OutputKey::random();
     let sign_result = OutputKey::random();
 
-    let generate = Slip10Generate::new();
+    let generate = Slip10Generate::default();
     let derive = Slip10Derive::new_from_seed(generate.target(), fresh::hd_path().1);
     let get_pk = Ed25519PublicKey::new(derive.target()).store_output(pk_result.clone());
     let sign = Ed25519Sign::new(msg.clone(), derive.target()).store_output(sign_result.clone());
@@ -161,8 +167,8 @@ async fn usecase_collection_of_data() {
         let size_bytes = fresh::coinflip().then(|| fresh::usize(1024)).unwrap_or(64);
         let mut seed = vec![0u8; size_bytes];
         fill(&mut seed).unwrap();
-        let dk = Seed::from_bytes(&seed)
-            .derive(Curve::Ed25519, &fresh::hd_path().1)
+        let dk = slip10::Seed::from_bytes(&seed)
+            .derive(slip10::Curve::Ed25519, &fresh::hd_path().1)
             .unwrap();
         dk.into()
     };
@@ -208,7 +214,7 @@ async fn usecase_collection_of_data() {
         .enumerate()
         .map(|(i, msg)| {
             let sign = Ed25519Sign::new(msg, key_location.clone());
-            let digest = Hash::<Sha256>::dynamic(sign.output_key()).store_output(OutputKey::new(format!("{}", i)));
+            let digest = Hash::<Sha256>::new(sign.output_key()).store_output(OutputKey::new(format!("{}", i)));
             sign.then(digest)
         })
         .reduce(|acc, curr| acc.then(curr))

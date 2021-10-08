@@ -30,7 +30,7 @@ use thiserror::Error as DeriveError;
 mod actors;
 mod interface;
 mod internals;
-mod procedures;
+pub mod procedures;
 mod state;
 mod utils;
 
@@ -41,7 +41,6 @@ mod tests;
 pub use crate::{
     interface::Stronghold,
     internals::Provider,
-    procedures::*,
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
