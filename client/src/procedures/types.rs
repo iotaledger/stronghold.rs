@@ -26,33 +26,39 @@ use thiserror::Error as DeriveError;
 // Types
 // ==========================
 
+/// Complex Procedure that chains multiple primitive procedures.
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub struct Procedure {
     inner: Vec<PrimitiveProcedure>,
 }
 
 impl Procedure {
+    /// Execute the procedure on a runner, e.g. the `SecureClient`
     pub fn run<R: Runner>(self, runner: &mut R) -> Result<CollectedOutput, ProcedureError> {
+        // State that is passed to each procedure for writing their output into it.
         let mut state = State {
             aggregated: TempCollectedOutput {
                 temp_output: HashMap::default(),
             },
             change_log: Vec::default(),
         };
+        // Execute procedures.
         match self.execute(runner, &mut state) {
             Ok(()) => {
-                // Delete temporary records
+                // Delete temporary records.
                 Self::revoke_records(runner, state.change_log, true);
+                // Convert TempCollectedOutput into CollectedOutput by filtering temporary outputs.
                 Ok(state.aggregated.into())
             }
             Err(e) => {
-                // Rollback written data
+                // Rollback written data.
                 Self::revoke_records(runner, state.change_log, false);
                 Err(e)
             }
         }
     }
 
+    // Revoke all / temporary records from vault, and garbage collect.
     fn revoke_records<R: Runner>(runner: &mut R, logs: Vec<ChangeLog>, remove_only_temp: bool) {
         let mut vaults = HashSet::new();
         for entry in logs {
@@ -70,6 +76,7 @@ impl Procedure {
 
 impl ProcedureStep for Procedure {
     fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
+        // Execute the primitive procedures sequentially.
         self.inner.into_iter().try_for_each(|p| p.execute(runner, state))
     }
 }
@@ -87,20 +94,33 @@ where
     }
 }
 
+/// Collected permanent non-secret output of procedures.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CollectedOutput {
     output: HashMap<OutputKey, ProcedureIo>,
 }
 
 impl CollectedOutput {
+    /// Take the output associated with the key from the output, convert it to the required type and return it.
+    ///
+    /// If the output can not be converted into `T`, it is inserted back and `None` is returned.
+    /// Converting into `T = Vec<u8>` can not fail.
     pub fn take<T>(&mut self, key: &OutputKey) -> Option<T>
     where
         T: TryFromProcedureIo,
     {
-        self.output.remove(key).and_then(|v| T::try_from_procedure_io(v).ok())
+        let value = self.output.remove(key)?;
+        match T::try_from_procedure_io(value.clone()) {
+            Ok(v) => Some(v),
+            Err(_) => {
+                self.output.insert(key.clone(), value);
+                None
+            }
+        }
     }
 }
 
+/// Returns an iterator over all (OutputKey, ProcedureIo) pairs in the collected output.
 impl IntoIterator for CollectedOutput {
     type IntoIter = <HashMap<OutputKey, ProcedureIo> as IntoIterator>::IntoIter;
     type Item = <HashMap<OutputKey, ProcedureIo> as IntoIterator>::Item;
@@ -109,6 +129,7 @@ impl IntoIterator for CollectedOutput {
     }
 }
 
+/// Convert from [`TempCollectedOutput`] by removing all temporary records.
 impl From<TempCollectedOutput> for CollectedOutput {
     fn from(temp: TempCollectedOutput) -> Self {
         let output = temp
@@ -123,6 +144,7 @@ impl From<TempCollectedOutput> for CollectedOutput {
     }
 }
 
+/// Identifier for output in the `CollectedOutput`.
 #[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct OutputKey(String);
 
@@ -136,6 +158,7 @@ impl OutputKey {
     }
 }
 
+/// Output of a primitive procedure, that is stored in the [`CollectedOutput`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcedureIo(Vec<u8>);
 
@@ -146,47 +169,61 @@ impl Deref for ProcedureIo {
     }
 }
 
+/// Error on procedure execution.
 #[derive(DeriveError, Debug)]
 pub enum ProcedureError {
+    /// The input fetched from the collected output can not be converted to the required type.
     #[error("Invalid Input Type")]
     InvalidInput,
 
+    /// No input for the specified key in the collected output.
     #[error("Missing Input")]
     MissingInput,
 
+    /// Operation on the vault failed.
     #[error("Vault Error {0}")]
     VaultError(VaultError),
 }
 
+/// State that is passed to the each procedure on execution.
 #[derive(Serialize, Deserialize)]
 pub struct State {
+    /// Collected output from each primitive procedure in the chain.
     aggregated: TempCollectedOutput,
+    /// Log of newly created records in the vault.
     change_log: Vec<ChangeLog>,
 }
 
 impl State {
+    /// Add a procedure output to the collected output.
     pub fn insert_output(&mut self, key: OutputKey, value: ProcedureIo, is_temp: bool) {
         self.aggregated.temp_output.insert(key, (value, is_temp));
     }
 
+    /// Get the output from a previously executed procedure.
     pub fn get_output(&self, key: &OutputKey) -> Option<&ProcedureIo> {
         self.aggregated.temp_output.get(key).map(|(data, _)| data)
     }
 
+    /// Log a newly created record.
+    /// If `is_temp` is true, the record will be removed after the execution of all procedures in the chain finished.
     pub fn add_log(&mut self, location: Location, is_temp: bool) {
         let log = ChangeLog { location, is_temp };
         self.change_log.push(log)
     }
 }
 
+/// Log a newly created record.
 #[derive(Debug, Serialize, Deserialize)]
 struct ChangeLog {
     location: Location,
+    /// If `is_temp` is true, the record will be removed after the execution of all procedures in the chain finished.
     is_temp: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 struct TempCollectedOutput {
+    // Collected ProcedureIo during execution, and whether it is temporary or not.
     temp_output: HashMap<OutputKey, (ProcedureIo, bool)>,
 }
 
@@ -194,9 +231,13 @@ struct TempCollectedOutput {
 // Traits
 // ==========================
 
+/// Central trait that implements a procedures logic.
 pub trait ProcedureStep {
+    /// Execute the procedure on a runner.
+    /// The state collects the output from each procedure and writes a log of newly created records.
     fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError>;
 
+    /// Chain a next procedure to the current one.
     fn then<P>(self, next: P) -> Procedure
     where
         Self: Into<Procedure>,
@@ -208,6 +249,7 @@ pub trait ProcedureStep {
     }
 }
 
+/// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
 pub trait Runner {
     fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, VaultError>
     where
@@ -230,8 +272,11 @@ pub trait Runner {
     fn garbage_collect(&mut self, vault_id: VaultId) -> Result<(), VaultError>;
 }
 
+/// Products of a procedure.
 pub struct Products<T> {
+    /// New secret.
     pub secret: Vec<u8>,
+    /// Non-secret Output.
     pub output: T,
 }
 
@@ -239,26 +284,38 @@ pub struct Products<T> {
 //  Traits for the `Procedure` derive-macro
 // ==========================
 
+/// No secret is used, no new secret is created.
 pub trait ProcessData {
+    // Non-secret input type.
     type Input;
+    // Non-secret output type.
     type Output;
     fn process(self, input: Self::Input) -> Result<Self::Output, engine::Error>;
 }
 
+/// No secret is used, a new secret is created.
 pub trait GenerateSecret {
+    // Non-secret input type.
     type Input;
+    // Non-secret output type.
     type Output;
     fn generate(self, input: Self::Input) -> Result<Products<Self::Output>, engine::Error>;
 }
 
+/// Existing secret is used, a new secret is created.
 pub trait DeriveSecret {
+    // Non-secret input type.
     type Input;
+    // Non-secret output type.
     type Output;
     fn derive(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, engine::Error>;
 }
 
+/// Existing secret is used, no new secret is created.
 pub trait UseSecret {
+    // Non-secret input type.
     type Input;
+    // Non-secret output type.
     type Output;
     fn use_secret(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error>;
 }
@@ -267,9 +324,13 @@ pub trait UseSecret {
 //  Input /  Output Info
 // ==========================
 
+/// Non-secret input for a procedure
 #[derive(Clone, Serialize, Deserialize)]
 pub enum InputData<T> {
+    /// Take input dynamically from the `CollectedOutput`,
+    /// i.g. use the output of a previously executed procedure as input.
     Key(OutputKey),
+    /// Fixed input.
     Value(T),
 }
 
@@ -292,15 +353,24 @@ impl<T> IntoInput<T> for OutputKey {
     }
 }
 
+/// Location of a Secret / Non-secret Product of a primitive procedure.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TempProduct<T> {
+    /// Location / Key into which the output is written.
+    ///
+    /// In case of a secret, this is a `Target {Location, RecordHing`,
+    /// in case of a non-secret output, this is a `OutputKey`.
     pub write_to: T,
+    /// Whether the product is revoked/ dropped after the execution finished.
     pub is_temp: bool,
 }
 
+/// New Secret.
 pub type TempTarget = TempProduct<Target>;
+/// Non-Secret Output.
 pub type TempOutput = TempProduct<OutputKey>;
 
+/// Location of an existing secret.
 pub trait SourceInfo {
     fn source_location(&self) -> &Location;
     fn source_location_mut(&mut self) -> &mut Location;
@@ -315,6 +385,7 @@ impl SourceInfo for Location {
     }
 }
 
+/// Location into which a new secret should be written.
 pub trait TargetInfo {
     fn target(&self) -> Location {
         self.target_info().write_to.location.clone()
@@ -357,6 +428,7 @@ impl TargetInfo for TempTarget {
     }
 }
 
+/// Non-secret input for a procedure.
 pub trait InputInfo {
     type Input;
 
@@ -375,6 +447,7 @@ impl<T> InputInfo for InputData<T> {
     }
 }
 
+/// Specify where non-secret output should be written to.
 pub trait OutputInfo {
     fn output_key(&self) -> OutputKey {
         let o = self.output_info();
