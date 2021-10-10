@@ -215,7 +215,7 @@ pub fn impl_procedure_step(item_impl: ItemImpl) -> proc_macro2::TokenStream {
 fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) -> proc_macro2::TokenStream {
     let gen_input = if has_input {
         quote! {
-            let input_data = self.input_info();
+            let input_data = <Self as InputInfo>::input_info(&self);
             let input = match input_data {
                 InputData::Value(v) => v.clone(),
                 InputData::Key(key) => {
@@ -234,7 +234,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
             let TempOutput {
                 write_to: key,
                 is_temp: is_out_data_temp
-            } = self.output_info().clone();
+            } = <Self as OutputInfo>::output_info(&self).clone();
         };
         gen_insert_data = quote! {
            state.insert_output(key, output.into_procedure_io(), is_out_data_temp);
@@ -256,7 +256,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 let TempTarget  {
                     write_to: Target { location: location_1, hint },
                     is_temp: is_secret_temp
-                } = self.target_info().clone();
+                } = <Self as TargetInfo>::target_info(&self).clone();
                 #gen_input
                 #gen_output_key
                 let Products {
@@ -271,11 +271,11 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 Ok(())
         },
         "DeriveSecret" => quote! {
-                let location_0 = self.source_location().clone();
+                let location_0 = <Self as SourceInfo>::source_location(&self).clone();
                 let TempTarget  {
                     write_to: Target { location: location_1, hint },
                     is_temp: is_secret_temp
-                } = self.target_info().clone();
+                } = <Self as TargetInfo>::target_info(&self).clone();
                 #gen_input
                 #gen_output_key
                 let f = move |guard| <Self as DeriveSecret>::derive(self, input, guard);
@@ -291,7 +291,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 Ok(())
         },
         "UseSecret" => quote! {
-            let location_0 = self.source_location().clone();
+            let location_0 = <Self as SourceInfo>::source_location(&self).clone();
             #gen_output_key
             #gen_input
             let f = move |guard| <Self as UseSecret>::use_secret(self, input, guard);
