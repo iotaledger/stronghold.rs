@@ -5,25 +5,12 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::{line_error, state::secure::Store, Provider};
 use engine::{
     snapshot::{self, read_from, write_to, Key},
     vault::{ClientId, DbView, Key as PKey, VaultId},
 };
-
-use crate::{line_error, state::secure::Store, Location, Provider};
-
-use std::path::Path;
-
-use std::collections::HashMap;
-
-/// Difference state for snapshots send across the wire
-pub struct DiffState {
-    // the location of the difference
-    pub location: Location,
-
-    // the hash of the record
-    pub record_hash: Vec<u8>,
-}
+use std::{collections::HashMap, path::Path};
 
 /// Wrapper for the [`SnapshotState`] data structure.
 #[derive(Default)]

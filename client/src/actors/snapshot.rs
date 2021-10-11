@@ -137,7 +137,7 @@ pub mod messages {
         /// The local snapshot configuration
         pub local: SnapshotConfig,
         /// The entries to be exported
-        pub entries: Vec<Location>,
+        pub entries: HashMap<Location, (PKey<Provider>, PKey<Provider>)>,
     }
 
     /// Use [`Import`] to import entries into
@@ -212,15 +212,13 @@ pub enum SnapshotError {
 // actix impl
 impl Supervised for Snapshot {}
 
-pub struct KeyConfig {}
-
 /// TODO: move this to state(ful) implementation of Snapshot
 impl Snapshot {
     /// This function exports the configured entries from the vault. The export
     /// re-encrypts each entry with the newly provided keys.
-    fn export(
+    pub(crate) fn export(
         &mut self,
-        entries: HashMap<Location, PKey<Provider>>,
+        entries: HashMap<Location, (PKey<Provider>, PKey<Provider>)>,
     ) -> Result<(HashMap<VaultId, PKey<Provider>>, DbView<Provider>), SnapshotError> {
         let mut result_view: DbView<Provider> = DbView::new();
         let mut result_map = HashMap::new();
@@ -232,26 +230,26 @@ impl Snapshot {
         for (_id, data) in inner.iter_mut() {
             let view = &mut data.1;
 
-            for (location, key) in entries.iter() {
+            for (location, (key_old, key_new)) in entries.iter() {
                 let vid: VaultId = location.try_into().unwrap();
                 let rid: RecordId = location.try_into().unwrap();
 
                 // this check wouldn't be necessary, but could be an indicator that
                 // an assumed location is not correct.
-                if !view.contains_record(key, vid, rid) {
+                if !view.contains_record(key_old, vid, rid) {
                     continue;
                 }
 
-                let id_hint = crate::utils::into_map(view.list_hints_and_ids(key, vid));
+                let id_hint = crate::utils::into_map(view.list_hints_and_ids(key_old, vid));
 
                 // decrypt entry and re-encrypt with new kew inside guard
-                view.get_guard(key, vid, rid, |guarded_data| {
+                view.get_guard(key_old, vid, rid, |guarded_data| {
                     let record_hint = id_hint
                         .get(&rid)
                         .ok_or_else(|| engine::Error::ValueError("No RecordHint Present".to_string()))?;
 
-                    result_view.write(key, vid, rid, &guarded_data.borrow(), *record_hint)?;
-                    result_map.insert(vid, key.clone());
+                    result_view.write(key_new, vid, rid, &guarded_data.borrow(), *record_hint)?;
+                    result_map.insert(vid, key_new.clone());
 
                     Ok(())
                 })
@@ -271,17 +269,25 @@ impl Snapshot {
 //     }
 // }
 
-// impl Handler<Export> for Snapshot {
-//     type Result = Result<ReturnExport, SnapshotError>;
+impl Handler<Export> for Snapshot {
+    type Result = Result<ReturnExport, SnapshotError>;
 
-//     fn handle(&mut self, msg: Export, _ctx: &mut Self::Context) -> Self::Result {
-//         // This handler exports the provided entry locations
-//         // from the vault and returns them to the caller.
-//         // The caller would ideally import the entries into the same client_id
+    #[allow(unused)]
+    fn handle(&mut self, msg: Export, _ctx: &mut Self::Context) -> Self::Result {
+        // This handler exports the provided entry locations
+        // from the vault and returns them to the caller.
+        // The caller would ideally import the entries into the same client_id
 
-//         todo!()
-//     }
-// }
+        // store exported entries
+        let (exported, secrets) = self.export(msg.entries)?;
+
+        todo!()
+    }
+}
+
+/// more messages
+/// check_entries_and_calculate-diff
+/// send diff
 
 impl Handler<messages::FullSynchronization> for Snapshot {
     type Result = Result<ReturnReadSnapshot, SnapshotError>;

@@ -28,6 +28,9 @@ version = "1.0"
 [dependencies.once_cell]
 version = "1.8.0"
 
+[dependencies.rand]
+version = "0.8"
+
 [dev-dependencies]
 criterion = "0.3.4"
 

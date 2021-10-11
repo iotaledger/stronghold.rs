@@ -1,7 +1,11 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{any::Any, convert::TryInto};
+use std::{
+    any::Any,
+    convert::TryInto,
+    hash::{Hash, Hasher},
+};
 
 use engine::vault::{RecordId, VaultId};
 use serde::{Deserialize, Serialize};
@@ -64,10 +68,19 @@ pub enum LocationError {
 /// be used to get the head of the version chain by passing in `None` as the counter index. Otherwise, counter records
 /// are referenced through their associated index.  On Read, the `None` location is the latest record in the version
 /// chain while on Write, the `None` location is the next record in the version chain.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 pub enum Location {
     Generic { vault_path: Vec<u8>, record_path: Vec<u8> },
     Counter { vault_path: Vec<u8>, counter: usize },
+}
+
+impl Hash for Location {
+    fn hash<H>(&self, _hasher: &mut H)
+    where
+        H: Hasher,
+    {
+        todo!()
+    }
 }
 
 impl PartialEq for Location {
@@ -197,6 +210,54 @@ pub enum StrongholdFlags {
     IsReadable(bool),
 }
 
-/// Policy options for for a specific vault.  Must be specified on creation.
+/// Policy options for a specific vault.  Must be specified on creation.
 #[derive(Clone, Debug)]
 pub enum VaultFlags {}
+
+/// Utility type to enable more flexibility
+#[derive(PartialEq)]
+pub enum EntryShapeHash<H: Hasher> {
+    // use HashMaps std::collections::hash_map::DefaultHasher
+    Default,
+
+    // provide a custom hasher
+    Custom(H),
+}
+
+impl<H> Default for EntryShapeHash<H>
+where
+    H: Hasher,
+{
+    fn default() -> Self {
+        EntryShapeHash::Default
+    }
+}
+
+/// Shape of an entry inside the vault. This type's sole purpose
+/// is to enable calculating differences between two Stronghold instances.
+#[derive(PartialEq)]
+pub struct EntryShape<H>
+where
+    H: Hasher,
+{
+    // the location of the difference
+    pub location: Location,
+
+    // the hash of the record
+    pub record_hash: EntryShapeHash<H>,
+
+    // the size of the record in bytes
+    pub record_size: usize,
+}
+
+// impl<H> EntryShape<H>
+// where
+//     H: Hasher,
+// {
+//     pub(crate) fn create(location: &Location) -> Self {
+//         let vault_id: VaultId = location.try_into().unwrap();
+//         let record_id: RecordId = location.try_into().unwrap();
+
+//         todo!()
+//     }
+// }
