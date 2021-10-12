@@ -27,7 +27,7 @@ pub trait Diff<T: PartialEq + Clone>: Sized {
     type Error;
 
     /// Returns the appliable difference from source to destination
-    fn diff(src: Vec<T>, dst: Vec<T>) -> Self;
+    fn diff(src: &[T], dst: &[T]) -> Self;
 
     /// Applies the calculated edit difference, and returns the result
     fn apply(&mut self, source: Vec<T>, destination: Vec<T>) -> Result<Vec<T>, Self::Error>;
@@ -65,7 +65,10 @@ mod lcs {
     {
         type Error = DiffError;
 
-        fn diff(src: Vec<T>, dst: Vec<T>) -> Self {
+        fn diff(src: &[T], dst: &[T]) -> Self {
+            let src = src.to_vec();
+            let dst = dst.to_vec();
+
             let mut edit = vec![];
             let src_length = src.len();
             let dst_length = dst.len();
@@ -269,7 +272,7 @@ mod tests {
         let matrix = create_test_table();
 
         for entry in matrix {
-            let mut edit = Lcs::diff(entry.0.clone(), entry.1.clone());
+            let mut edit = Lcs::diff(&entry.0, &entry.1);
             let result = edit.apply(entry.0, entry.1)?;
             let actual = String::from_utf8(result)?;
             let expected = String::from_utf8(entry.2.to_vec())?;

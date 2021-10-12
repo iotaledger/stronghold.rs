@@ -74,12 +74,27 @@ pub enum Location {
     Counter { vault_path: Vec<u8>, counter: usize },
 }
 
+/// Explicit implementation of [`Hash`], since [`PartialEq`] is implemented
+/// explicitly. See https://rust-lang.github.io/rust-clippy/master/index.html#derive_hash_xor_eq
+/// for more details.
 impl Hash for Location {
-    fn hash<H>(&self, _hasher: &mut H)
+    fn hash<H>(&self, hasher: &mut H)
     where
         H: Hasher,
     {
-        todo!()
+        match self {
+            Location::Generic {
+                vault_path,
+                record_path,
+            } => {
+                vault_path.hash(hasher);
+                record_path.hash(hasher);
+            }
+            Location::Counter { vault_path, counter } => {
+                vault_path.hash(hasher);
+                counter.hash(hasher);
+            }
+        };
     }
 }
 
@@ -214,50 +229,18 @@ pub enum StrongholdFlags {
 #[derive(Clone, Debug)]
 pub enum VaultFlags {}
 
-/// Utility type to enable more flexibility
-#[derive(PartialEq)]
-pub enum EntryShapeHash<H: Hasher> {
-    // use HashMaps std::collections::hash_map::DefaultHasher
-    Default,
-
-    // provide a custom hasher
-    Custom(H),
-}
-
-impl<H> Default for EntryShapeHash<H>
-where
-    H: Hasher,
-{
-    fn default() -> Self {
-        EntryShapeHash::Default
-    }
-}
+// -- Following types are relevant for snapshot synchronization protocol
 
 /// Shape of an entry inside the vault. This type's sole purpose
 /// is to enable calculating differences between two Stronghold instances.
 #[derive(PartialEq)]
-pub struct EntryShape<H>
-where
-    H: Hasher,
-{
+pub struct EntryShape {
     // the location of the difference
     pub location: Location,
 
     // the hash of the record
-    pub record_hash: EntryShapeHash<H>,
+    pub record_hash: u64,
 
     // the size of the record in bytes
     pub record_size: usize,
 }
-
-// impl<H> EntryShape<H>
-// where
-//     H: Hasher,
-// {
-//     pub(crate) fn create(location: &Location) -> Self {
-//         let vault_id: VaultId = location.try_into().unwrap();
-//         let record_id: RecordId = location.try_into().unwrap();
-
-//         todo!()
-//     }
-// }

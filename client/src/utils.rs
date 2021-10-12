@@ -8,7 +8,7 @@ use std::{collections::HashMap, hash::Hash};
 
 pub use self::{
     ids::LoadFromPath,
-    types::{Location, LocationError, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+    types::{EntryShape, Location, LocationError, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
 /// Gets the index of a slice.

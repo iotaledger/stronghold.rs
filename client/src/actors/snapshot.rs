@@ -5,10 +5,14 @@
 
 use actix::{Actor, Handler, Message, Supervised};
 
-use std::{convert::TryInto, path::PathBuf};
+use std::{
+    convert::TryInto,
+    hash::{Hash, Hasher},
+    path::PathBuf,
+};
 
 use engine::{
-    snapshot,
+    snapshot::{self, diff},
     vault::{ClientId, DbView, Key as PKey, RecordId, VaultId},
 };
 
@@ -18,6 +22,7 @@ use crate::{
         secure::Store,
         snapshot::{Snapshot, SnapshotState},
     },
+    utils::EntryShape,
     Location, Provider,
 };
 use std::collections::HashMap;
@@ -242,7 +247,7 @@ impl Snapshot {
 
                 let id_hint = crate::utils::into_map(view.list_hints_and_ids(key_old, vid));
 
-                // decrypt entry and re-encrypt with new kew inside guard
+                // decrypt entry and re-encrypt with new key inside guard
                 view.get_guard(key_old, vid, rid, |guarded_data| {
                     let record_hint = id_hint
                         .get(&rid)
@@ -258,6 +263,66 @@ impl Snapshot {
         }
 
         Ok((result_map, result_view))
+    }
+
+    /// Returns an [`EntryShape`]s for each entry. The [`EntryShape`] should be used
+    /// to calculate a safe difference between entries without exposing any secrets.
+    /// This function expects a [`Hasher`] to be used for hasing the Records.
+    pub(crate) fn shape<H>(
+        &mut self,
+        entries: HashMap<Location, PKey<Provider>>,
+        hasher: &mut H,
+    ) -> HashMap<Location, EntryShape>
+    where
+        H: Hasher,
+    {
+        let inner = &mut self.state.0;
+        let mut output = HashMap::new();
+
+        inner.iter_mut().for_each(|(_, (_, view, _))| {
+            entries.iter().for_each(|(location, key)| {
+                let vid: VaultId = location.try_into().unwrap();
+                let rid: RecordId = location.try_into().unwrap();
+
+                view.get_guard(key, vid, rid, |guard| {
+                    let data = guard.borrow();
+
+                    data.hash(hasher);
+
+                    // create EntryShape
+                    let entry_shape = EntryShape {
+                        location: location.clone(),
+                        record_hash: hasher.finish(),
+                        record_size: data.len(),
+                    };
+
+                    // and store it in output
+                    output.insert(location.clone(), entry_shape);
+
+                    Ok(())
+                })
+                .unwrap();
+            });
+        });
+
+        output
+    }
+
+    /// calculate the difference between two sets of entry shapes
+    pub(crate) fn difference(
+        &self,
+        a: HashMap<Location, EntryShape>,
+        b: HashMap<Location, EntryShape>,
+    ) -> Result<Vec<Location>, diff::DiffError> {
+        use diff::{Diff, Lcs};
+
+        let src: Vec<(&Location, &EntryShape)> = a.iter().collect();
+        let dst: Vec<(&Location, &EntryShape)> = b.iter().collect();
+
+        // calculate difference
+        let mut lcs = Lcs::diff(&src, &dst);
+
+        Ok(lcs.apply(src, dst)?.into_iter().map(|(a, _)| a.clone()).collect())
     }
 }
 

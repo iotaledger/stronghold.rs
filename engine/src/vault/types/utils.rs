@@ -6,7 +6,7 @@ use std::{
     cmp::Ordering,
     convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
-    hash::Hash,
+    hash::{Hash, Hasher},
     ops::{Add, AddAssign},
 };
 
@@ -107,6 +107,17 @@ impl RecordId {
     /// load [`RecordId`] from a buffer of bytes.
     pub fn load(data: &[u8]) -> crate::Result<Self> {
         Ok(RecordId(ChainId::load(data)?))
+    }
+
+    /// Returns a 64bit hash value for a [`RecordId`]
+    pub fn hash<H>(&self, hasher: Option<H>) -> u64
+    where
+        H: Hasher + Default,
+    {
+        let mut hasher = hasher.unwrap_or_default();
+        self.0.hash(&mut hasher);
+
+        hasher.finish()
     }
 }
 
