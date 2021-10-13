@@ -131,3 +131,8 @@ fn test_snapshot_export() {
 
     let _exported = snapshot.export(entries);
 }
+
+#[test]
+fn test_snapshot_difference_shape() {
+    // test create the shape of vault entries
+}

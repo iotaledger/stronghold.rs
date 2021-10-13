@@ -35,7 +35,7 @@ pub trait Diff<T: PartialEq + Clone>: Sized {
     /// Applies the calculated edit difference with a custom function and returns the result
     fn apply_fn<F, V>(&mut self, source: V, destination: V, func: F) -> Result<Vec<T>, Self::Error>
     where
-        F: Fn(&DiffOperation, &Vec<T>, &Vec<T>) -> T,
+        F: Fn(&DiffOperation, Vec<T>, Vec<T>) -> Option<T>,
         V: AsRef<Vec<T>>;
 }
 
@@ -57,6 +57,32 @@ mod lcs {
     /// calling [`Self::apply()`] to apply the difference to destination.
     pub struct Lcs {
         edit: Vec<DiffOperation>,
+    }
+
+    impl Lcs {
+        /// This difference behavior function retains the source elements, and adds new elements from destination
+        pub fn retain<T>(op: &DiffOperation, source: Vec<T>, destination: Vec<T>) -> Option<T>
+        where
+            T: PartialEq + Clone,
+        {
+            match op {
+                DiffOperation::Delete { src } => Some(source[src.unwrap()].clone()),
+                DiffOperation::Equal { src, .. } => Some(source[src.unwrap()].clone()),
+                DiffOperation::Insert { dst, .. } => Some(destination[dst.unwrap()].clone()),
+            }
+        }
+
+        /// This difference behavior function transforms the source into destination
+        pub fn transform<T>(op: &DiffOperation, source: Vec<T>, destination: Vec<T>) -> Option<T>
+        where
+            T: PartialEq + Clone,
+        {
+            match op {
+                DiffOperation::Delete { .. } => None,
+                DiffOperation::Equal { src, .. } => Some(source[src.unwrap()].clone()),
+                DiffOperation::Insert { dst, .. } => Some(destination[dst.unwrap()].clone()),
+            }
+        }
     }
 
     impl<T> Diff<T> for Lcs
@@ -222,13 +248,13 @@ mod lcs {
 
         fn apply_fn<F, V>(&mut self, source: V, destination: V, func: F) -> Result<Vec<T>, Self::Error>
         where
-            F: Fn(&DiffOperation, &Vec<T>, &Vec<T>) -> T,
+            F: Fn(&DiffOperation, Vec<T>, Vec<T>) -> Option<T>,
             V: AsRef<Vec<T>>,
         {
             Ok(self
                 .edit
                 .iter()
-                .map(|op| func(op, source.as_ref(), destination.as_ref()))
+                .filter_map(|op| func(op, source.as_ref().to_vec(), destination.as_ref().to_vec()))
                 .collect())
         }
     }
@@ -237,12 +263,49 @@ mod lcs {
 mod tests {
 
     use super::*;
-    use std::error::Error;
 
-    type Data = (Vec<u8>, Vec<u8>, Vec<u8>);
+    #[test]
+    fn test_retain() {
+        let matrix = vec![
+            (
+                b"helkao, world new".to_vec(),
+                b"hello, new world".to_vec(),
+                b"hellkao, new worldd ne".to_vec(),
+            ),
+            (
+                b"feature #4 flag 43: has been disabled".to_vec(),
+                b"feuture #3 flag 42: has been enabled".to_vec(),
+                b"feuature #34 flag 423: has been en diabled".to_vec(),
+            ),
+            (
+                "ääs76%4..-MNbchsdcsuh..cldc::..975§$5456576c".as_bytes().to_vec(),
+                b"".to_vec(),
+                "ääs76%4..-MNbchsdcsuh..cldc::..975§$5456576c".as_bytes().to_vec(),
+            ),
+            (
+                "".as_bytes().to_vec(),
+                "ääs76%4..-MNbchsdcsuh..cldc::..975§$5456576c".as_bytes().to_vec(),
+                "ääs76%4..-MNbchsdcsuh..cldc::..975§$5456576c".as_bytes().to_vec(),
+            ),
+            ("".as_bytes().to_vec(), "".as_bytes().to_vec(), "".as_bytes().to_vec()),
+        ];
 
-    fn create_test_table() -> Vec<Data> {
-        vec![
+        for entry in matrix {
+            let mut edit = Lcs::diff(&entry.0, &entry.1);
+
+            let result = edit
+                .apply_fn(entry.0, entry.1, Lcs::retain)
+                .expect("Failed to apply difference function");
+            let actual = String::from_utf8(result);
+            let expected = String::from_utf8(entry.2.to_vec());
+
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn test_transform() {
+        let matrix = vec![
             (
                 b"helkao, world new".to_vec(),
                 b"hello, new world".to_vec(),
@@ -264,22 +327,18 @@ mod tests {
                 "ääs76%4..-MNbchsdcsuh..cldc::..975§$5456576c".as_bytes().to_vec(),
             ),
             ("".as_bytes().to_vec(), "".as_bytes().to_vec(), "".as_bytes().to_vec()),
-        ]
-    }
-
-    #[test]
-    fn test_sync() -> Result<(), Box<dyn Error>> {
-        let matrix = create_test_table();
+        ];
 
         for entry in matrix {
             let mut edit = Lcs::diff(&entry.0, &entry.1);
-            let result = edit.apply(entry.0, entry.1)?;
-            let actual = String::from_utf8(result)?;
-            let expected = String::from_utf8(entry.2.to_vec())?;
+
+            let result = edit
+                .apply_fn(entry.0, entry.1, Lcs::transform)
+                .expect("Failed to apply difference function");
+            let actual = String::from_utf8(result);
+            let expected = String::from_utf8(entry.2.to_vec());
 
             assert_eq!(actual, expected);
         }
-
-        Ok(())
     }
 }

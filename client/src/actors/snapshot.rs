@@ -12,7 +12,10 @@ use std::{
 };
 
 use engine::{
-    snapshot::{self, diff},
+    snapshot::{
+        diff::{Diff, DiffError, Lcs},
+        Key,
+    },
     vault::{ClientId, DbView, Key as PKey, RecordId, VaultId},
 };
 
@@ -62,7 +65,7 @@ pub mod messages {
     use super::*;
 
     pub struct WriteSnapshot {
-        pub key: snapshot::Key,
+        pub key: Key,
         pub filename: Option<String>,
         pub path: Option<PathBuf>,
     }
@@ -82,7 +85,7 @@ pub mod messages {
 
     #[derive(Default)]
     pub struct ReadFromSnapshot {
-        pub key: snapshot::Key,
+        pub key: Key,
         pub filename: Option<String>,
         pub path: Option<PathBuf>,
         pub id: ClientId,
@@ -183,7 +186,7 @@ pub struct SnapshotConfig {
     pub path: Option<PathBuf>,
 
     // the key to encrypt / decrypt the snapshot file
-    pub key: snapshot::Key,
+    pub key: Key,
 
     // set this to `true` will generate the written output as slice of bytes
     pub generates_output: bool,
@@ -309,13 +312,12 @@ impl Snapshot {
     }
 
     /// calculate the difference between two sets of entry shapes
+    /// and return the locations, that shall be exported
     pub(crate) fn difference(
         &self,
         a: HashMap<Location, EntryShape>,
         b: HashMap<Location, EntryShape>,
-    ) -> Result<Vec<Location>, diff::DiffError> {
-        use diff::{Diff, Lcs};
-
+    ) -> Result<Vec<Location>, DiffError> {
         let src: Vec<(&Location, &EntryShape)> = a.iter().collect();
         let dst: Vec<(&Location, &EntryShape)> = b.iter().collect();
 
@@ -323,6 +325,12 @@ impl Snapshot {
         let mut lcs = Lcs::diff(&src, &dst);
 
         Ok(lcs.apply(src, dst)?.into_iter().map(|(a, _)| a.clone()).collect())
+    }
+
+    /// Merges the entries difference with local state
+    pub(crate) fn merge_difference(&mut self, _d: Vec<Location>) -> Result<(), SnapshotError> {
+        // todo
+        Ok(())
     }
 }
 
