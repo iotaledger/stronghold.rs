@@ -28,6 +28,7 @@ use engine::{
     store::Cache,
     vault::{ClientId, DbView, Key, RecordError, RecordHint, RecordId, VaultId},
 };
+use serde::{Deserialize, Serialize};
 use std::{cell::Cell, collections::HashMap, convert::TryFrom, rc::Rc};
 
 use self::procedures::CallProcedure;
@@ -40,7 +41,7 @@ pub type Store = Cache<Vec<u8>, Vec<u8>>;
 use stronghold_utils::GuardDebug;
 use thiserror::Error as DeriveError;
 
-#[derive(DeriveError, Debug)]
+#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
 #[error("Vault does not exist")]
 pub struct VaultDoesNotExist;
 
@@ -51,8 +52,6 @@ pub enum VaultError {
 
     #[error("Internal engine error: {0}")]
     Engine(#[from] RecordError<Provider>),
-    /* #[error("Procedure error: {0}")]
-     * ProcedureError(#[from] ProcedureError<Provider, crypto::Error>), */
 }
 
 #[derive(DeriveError, Debug)]
@@ -359,7 +358,7 @@ pub mod procedures {
     }
 
     impl Message for CallProcedure {
-        type Result = Result<ProcResult, anyhow::Error>;
+        type Result = Result<ProcResult, String>;
     }
 
     #[derive(Clone, GuardDebug)]
@@ -371,7 +370,7 @@ pub mod procedures {
     }
 
     impl Message for SLIP10Generate {
-        type Result = Result<crate::ProcResult, anyhow::Error>;
+        type Result = Result<crate::ProcResult, String>;
     }
 
     #[derive(Clone, GuardDebug)]
@@ -385,7 +384,7 @@ pub mod procedures {
     }
 
     impl Message for SLIP10DeriveFromSeed {
-        type Result = Result<crate::ProcResult, anyhow::Error>;
+        type Result = Result<crate::ProcResult, String>;
     }
 
     #[derive(Clone, GuardDebug)]
@@ -399,7 +398,7 @@ pub mod procedures {
     }
 
     impl Message for SLIP10DeriveFromKey {
-        type Result = Result<crate::ProcResult, anyhow::Error>;
+        type Result = Result<crate::ProcResult, String>;
     }
 
     #[derive(Clone, GuardDebug)]
@@ -411,7 +410,7 @@ pub mod procedures {
     }
 
     impl Message for BIP39Generate {
-        type Result = Result<crate::ProcResult, anyhow::Error>;
+        type Result = Result<crate::ProcResult, String>;
     }
 
     #[derive(Clone, GuardDebug)]
@@ -424,7 +423,7 @@ pub mod procedures {
     }
 
     impl Message for BIP39Recover {
-        type Result = Result<crate::ProcResult, anyhow::Error>;
+        type Result = Result<crate::ProcResult, String>;
     }
 
     #[derive(Clone, GuardDebug)]
@@ -434,7 +433,7 @@ pub mod procedures {
     }
 
     impl Message for Ed25519PublicKey {
-        type Result = Result<crate::ProcResult, anyhow::Error>;
+        type Result = Result<crate::ProcResult, String>;
     }
 
     #[derive(Clone, GuardDebug)]
@@ -445,7 +444,7 @@ pub mod procedures {
     }
 
     impl Message for Ed25519Sign {
-        type Result = Result<crate::ProcResult, anyhow::Error>;
+        type Result = Result<crate::ProcResult, String>;
     }
 
     #[derive(GuardDebug, Clone, Serialize, Deserialize)]
@@ -645,7 +644,7 @@ impl_handler!(
 /// Intermediate handler for executing procedures
 /// will be replace by upcoming `procedures api`
 impl Handler<CallProcedure> for SecureClient {
-    type Result = Result<procedures::ProcResult, anyhow::Error>;
+    type Result = Result<procedures::ProcResult, String>;
 
     fn handle(&mut self, msg: CallProcedure, ctx: &mut Self::Context) -> Self::Result {
         // // TODO move
@@ -782,7 +781,7 @@ impl Handler<CallProcedure> for SecureClient {
     }
 }
 
-impl_handler!(procedures::SLIP10Generate, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
+impl_handler!(procedures::SLIP10Generate, Result<crate::ProcResult, String>, (self, msg, _ctx), {
     if !self.keystore.vault_exists(msg.vault_id) {
         let key = self.keystore.create_key(msg.vault_id);
         self.db.init_vault(key, msg.vault_id);
@@ -794,7 +793,7 @@ impl_handler!(procedures::SLIP10Generate, Result<crate::ProcResult, anyhow::Erro
         Ok(_) => {},
         Err(e) => {
             self.keystore.insert_key(msg.vault_id, key);
-            return Err(anyhow::anyhow!(e))
+            return Err(e.to_string())
         }
     }
 
@@ -804,14 +803,14 @@ impl_handler!(procedures::SLIP10Generate, Result<crate::ProcResult, anyhow::Erro
 
     match res {
         Ok(_) => Ok(ProcResult::SLIP10Generate(StatusMessage::OK)),
-        Err(e) => Err(anyhow::anyhow!(e)),
+        Err(e) => Err(e.to_string()),
     }
 });
 
-impl_handler!(procedures::SLIP10DeriveFromSeed, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
+impl_handler!(procedures::SLIP10DeriveFromSeed, Result<crate::ProcResult, String>, (self, msg, _ctx), {
     let seed_key = self
         .keystore
-        .take_key(msg.seed_vault_id)?;
+        .take_key(msg.seed_vault_id).map_err(|e| e.to_string())?;
 
     if !self.keystore.vault_exists(msg.key_vault_id) {
         let key = self.keystore.create_key(msg.key_vault_id);
@@ -836,7 +835,7 @@ impl_handler!(procedures::SLIP10DeriveFromSeed, Result<crate::ProcResult, anyhow
         |gdata| {
             let dk = Seed::from_bytes(&gdata.borrow())
                 .derive(Curve::Ed25519, &msg.chain)
-                .map_err(|e| anyhow::anyhow!(e))
+                .map_err(|e| e.to_string())
                 .unwrap();
             let data: Vec<u8> = dk.into();
 
@@ -851,14 +850,14 @@ impl_handler!(procedures::SLIP10DeriveFromSeed, Result<crate::ProcResult, anyhow
 
     match res {
         Ok(_) => Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(result.get()))),
-        Err(e) => Err(anyhow::anyhow!(e)),
+        Err(e) => Err(e.to_string()),
     }
 });
 
-impl_handler!( procedures::SLIP10DeriveFromKey,Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx),{
+impl_handler!( procedures::SLIP10DeriveFromKey,Result<crate::ProcResult, String>, (self, msg, _ctx),{
     let parent_key = self
         .keystore
-        .take_key(msg.parent_vault_id)?;
+        .take_key(msg.parent_vault_id).map_err(|e| e.to_string())?;
 
     if !self.keystore.vault_exists(msg.child_vault_id) {
         let key = self.keystore.create_key(msg.child_vault_id);
@@ -893,17 +892,17 @@ impl_handler!( procedures::SLIP10DeriveFromKey,Result<crate::ProcResult, anyhow:
 
     match res {
         Ok(_) => Ok(ProcResult::SLIP10Derive(ResultMessage::Ok(result.get()))),
-        Err(e) => Err(anyhow::anyhow!(e)),
+        Err(e) => Err(e.to_string()),
     }
 });
 
-impl_handler!(procedures::BIP39Generate, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
+impl_handler!(procedures::BIP39Generate, Result<crate::ProcResult, String>, (self, msg, _ctx), {
     let mut entropy = [0u8; 32];
-    fill(&mut entropy).map_err(|e| anyhow::anyhow!(e))?;
+    fill(&mut entropy).map_err(|e| e.to_string())?;
     let mnemonic = bip39::wordlist::encode(
         &entropy,
         &bip39::wordlist::ENGLISH, // TODO: make this user configurable
-    ).map_err(|e| anyhow::anyhow!(format!("{:?}", e)))?;
+    ).map_err(|e| format!("{:?}", e))?;
 
     let mut seed = [0u8; 64];
     bip39::mnemonic_to_seed(&mnemonic, &msg.passphrase, &mut seed);
@@ -922,11 +921,11 @@ impl_handler!(procedures::BIP39Generate, Result<crate::ProcResult, anyhow::Error
     // BIP39MnemonicSentence message
     match res {
         Ok(_) => Ok(ProcResult::BIP39Generate(ResultMessage::OK)),
-        Err(e) => Err(anyhow::anyhow!(e)),
+        Err(e) => Err(e.to_string()),
     }
 });
 
-impl_handler!(procedures::BIP39Recover, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
+impl_handler!(procedures::BIP39Recover, Result<crate::ProcResult, String>, (self, msg, _ctx), {
     if !self.keystore.vault_exists(msg.vault_id) {
         let key = self.keystore.create_key(msg.vault_id);
         self.db.init_vault(key, msg.vault_id);
@@ -943,14 +942,14 @@ impl_handler!(procedures::BIP39Recover, Result<crate::ProcResult, anyhow::Error>
     // BIP39MnemonicSentence message
     match res {
         Ok(_) => Ok(ProcResult::BIP39Recover(ResultMessage::OK)),
-        Err(e) => Err(anyhow::anyhow!(e)),
+        Err(e) => Err(e.to_string()),
     }
 });
 
-impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
+impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, String>, (self, msg, _ctx), {
     let key = self
         .keystore
-        .take_key(msg.vault_id)?;
+        .take_key(msg.vault_id).map_err(|e| e.to_string())?;
 
     let result = Rc::new(Cell::default());
 
@@ -981,14 +980,14 @@ impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, anyhow::Er
 
     match res {
         Ok(_) => Ok(ProcResult::Ed25519PublicKey(ResultMessage::Ok(result.get()))),
-        Err(e) => Err(anyhow::anyhow!(e)),
+        Err(e) => Err(e.to_string()),
     }
 });
 
-impl_handler!(procedures::Ed25519Sign, Result <crate::ProcResult, anyhow::Error>, (self, msg, _ctx), {
+impl_handler!(procedures::Ed25519Sign, Result <crate::ProcResult, String>, (self, msg, _ctx), {
     let pkey = self
         .keystore
-        .take_key(msg.vault_id)?;
+        .take_key(msg.vault_id).map_err(|e| e.to_string())?;
 
     let result = Rc::new(Cell::new([0u8; 64]));
 
@@ -1019,7 +1018,7 @@ impl_handler!(procedures::Ed25519Sign, Result <crate::ProcResult, anyhow::Error>
 
     match res {
         Ok(_) => Ok(ProcResult::Ed25519Sign(ResultMessage::Ok(result.get()))),
-        Err(e) => Err(anyhow::anyhow!(e)),
+        Err(e) => Err(e.to_string()),
     }
 
 });

@@ -1,8 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-// #[cfg(feature = "p2p")]
-// pub mod p2p;
+#[cfg(feature = "p2p")]
+pub mod p2p;
 mod registry;
 mod secure;
 mod snapshot;

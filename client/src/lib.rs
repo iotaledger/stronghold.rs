@@ -42,11 +42,11 @@ pub use crate::{
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
-// #[cfg(feature = "p2p")]
-// pub mod p2p {
-//     pub use crate::actors::p2p::{NetworkConfig, SwarmInfo};
-//     pub use p2p::{firewall::Rule, Multiaddr, PeerId};
-// }
+#[cfg(feature = "p2p")]
+pub mod p2p {
+    pub use crate::actors::p2p::{NetworkConfig, SwarmInfo};
+    pub use p2p::{firewall::Rule, Multiaddr, PeerId};
+}
 
 pub use engine::{
     snapshot::{
