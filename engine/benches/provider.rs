@@ -15,6 +15,10 @@ impl Provider {
 }
 
 impl BoxProvider for Provider {
+    type SealError = String;
+    type OpenError = String;
+    type RandomnessError = String;
+
     fn box_key_len() -> usize {
         32
     }
@@ -23,7 +27,7 @@ impl BoxProvider for Provider {
         Self::NONCE_LEN + Self::TAG_LEN
     }
 
-    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> engine::Result<Vec<u8>> {
+    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::SealError> {
         let mut cipher = vec![0u8; data.len()];
 
         let mut tag = vec![0u8; 16];
@@ -34,14 +38,14 @@ impl BoxProvider for Provider {
         let key = key.bytes();
 
         XChaCha20Poly1305::try_encrypt(&key, &nonce, ad, data, &mut cipher, &mut tag)
-            .map_err(|_| engine::Error::ProviderError(String::from("Unable to seal data")))?;
+            .map_err(|_| String::from("Unable to seal data"))?;
 
         let r#box = [tag.to_vec(), nonce.to_vec(), cipher].concat();
 
         Ok(r#box)
     }
 
-    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> engine::Result<Vec<u8>> {
+    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::SealError> {
         let (tag, ct) = data.split_at(Self::TAG_LEN);
         let (nonce, cipher) = ct.split_at(Self::NONCE_LEN);
 
@@ -50,12 +54,12 @@ impl BoxProvider for Provider {
         let key = key.bytes();
 
         XChaCha20Poly1305::try_decrypt(&key, nonce, ad, &mut plain, cipher, tag)
-            .map_err(|_| engine::Error::ProviderError(String::from("Unable to unlock data")))?;
+            .map_err(|_| String::from("Unable to unlock data"))?;
 
         Ok(plain)
     }
 
-    fn random_buf(buf: &mut [u8]) -> engine::Result<()> {
-        fill(buf).map_err(|_| engine::Error::ProviderError(String::from("Can't generate random Bytes")))
+    fn random_buf(buf: &mut [u8]) -> Result<(), Self::RandomnessError> {
+        fill(buf).map_err(|_| String::from("Can't generate random Bytes"))
     }
 }
