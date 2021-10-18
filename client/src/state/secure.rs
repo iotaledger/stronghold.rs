@@ -3,9 +3,7 @@
 
 //! Secure Client Actor State
 
-use crate::{internals, line_error};
-
-use crate::{state::key_store::KeyStore, utils::LoadFromPath, Location};
+use crate::{internals, state::key_store::KeyStore, utils::LoadFromPath, Location};
 
 use engine::{
     store::Cache,
@@ -81,7 +79,7 @@ impl SecureClient {
                 record_path,
             } => {
                 let vid = self.derive_vault_id(vault_path);
-                let rid = RecordId::load_from_path(vid.as_ref(), record_path).expect(line_error!(""));
+                let rid = RecordId::load_from_path(vid.as_ref(), record_path);
                 (vid, rid)
             }
             Location::Counter { vault_path, counter } => {
@@ -95,7 +93,7 @@ impl SecureClient {
 
     /// Gets the [`VaultId`] from a specified path.
     pub fn derive_vault_id<P: AsRef<Vec<u8>>>(&self, path: P) -> VaultId {
-        VaultId::load_from_path(path.as_ref(), path.as_ref()).expect(line_error!(""))
+        VaultId::load_from_path(path.as_ref(), path.as_ref())
     }
 
     /// Derives the counter [`RecordId`] from the given vault path and the counter value.
@@ -108,7 +106,7 @@ impl SecureClient {
             format!("{:?}{}", vault_path, ctr)
         };
 
-        RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
+        RecordId::load_from_path(path.as_bytes(), path.as_bytes())
     }
 
     /// Gets the client string.
@@ -137,7 +135,7 @@ impl SecureClient {
 mod tests {
     use super::*;
 
-    use crate::Provider;
+    use crate::{line_error, Provider};
 
     #[test]
     fn test_rid_internals() {

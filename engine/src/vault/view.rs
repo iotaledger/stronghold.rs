@@ -43,19 +43,19 @@ pub enum RecordError<P: BoxProvider> {
     #[error("Decryption Failed: `{0:?}`")]
     Decryption(#[from] DecryptError<P::OpenError>),
 
-    #[error("Base 64 Error")]
+    #[error("Found Invalid Transaction")]
     InvalidTransaction,
 
-    #[error("Decryption Failed: `{0:?}`")]
+    #[error("Encryption Failed: `{0:?}`")]
     Encryption(P::SealError),
 
-    #[error("Base 64 Error")]
+    #[error("Invalid Key provided")]
     InvalidKey,
 
-    #[error("Base 64 Error")]
+    #[error("Not record with `{0:?}`")]
     MissingRecord(ChainId),
 
-    #[error("Failed to create random Id: `{0:?}`")]
+    #[error("Failed to generate random Id: `{0:?}`")]
     IdError(P::RandomnessError),
 }
 

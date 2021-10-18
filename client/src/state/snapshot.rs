@@ -3,18 +3,39 @@
 
 #![allow(clippy::type_complexity)]
 
-use serde::{Deserialize, Serialize};
+use crate::{state::secure::Store, Provider};
 
 use engine::{
-    snapshot::{self, read_from, write_to, Key},
+    snapshot::{self, read_from, write_to, Key, ReadError, WriteError},
     vault::{ClientId, DbView, Key as PKey, VaultId},
 };
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, io, path::Path};
+use thiserror::Error as DeriveError;
 
-use crate::{line_error, state::secure::Store, Provider};
+#[derive(Debug, DeriveError)]
+pub enum ReadSnapshotError {
+    #[error("Read Snapshot Error: `{0}`")]
+    Read(#[from] ReadError),
 
-use std::path::Path;
+    #[error("Deserialize Snapshot Error: `{0}`")]
+    Deserialize(#[from] bincode::Error),
 
-use std::collections::HashMap;
+    #[error("I/O Error: `{0}`")]
+    Io(#[from] io::Error),
+}
+
+#[derive(Debug, DeriveError)]
+pub enum WriteSnapshotError {
+    #[error("Write Snapshot Error: `{0}`")]
+    Write(#[from] WriteError),
+
+    #[error("Serialize Snapshot Error: `{0}`")]
+    Serialize(#[from] bincode::Error),
+
+    #[error("I/O Error: `{0}`")]
+    Io(#[from] io::Error),
+}
 
 /// Wrapper for the [`SnapshotState`] data structure.
 #[derive(Default)]
@@ -47,33 +68,36 @@ impl Snapshot {
 
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<Self> {
+    pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> Result<Self, ReadSnapshotError> {
         let state = match path {
             Some(p) => read_from(p, &key, &[])?,
             None => read_from(&snapshot::files::get_path(name)?, &key, &[])?,
         };
 
-        let data = SnapshotState::deserialize(state);
+        let data = SnapshotState::deserialize(state)?;
 
         Ok(Self::new(data))
     }
 
     /// Writes state to the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn write_to_snapshot(&self, name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<()> {
-        let data = self.state.serialize();
+    pub fn write_to_snapshot(
+        &self,
+        name: Option<&str>,
+        path: Option<&Path>,
+        key: Key,
+    ) -> Result<(), WriteSnapshotError> {
+        let data = self.state.serialize()?;
 
         // TODO: This is a hack and probably should be removed when we add proper error handling.
-        let f = move || {
-            match path {
-                Some(p) => write_to(&data, p, &key, &[])?,
-                None => write_to(&data, &snapshot::files::get_path(name)?, &key, &[])?,
-            }
-            Ok(())
+        let f = move || match path {
+            Some(p) => write_to(&data, p, &key, &[]),
+            None => write_to(&data, &snapshot::files::get_path(name)?, &key, &[]),
         };
+
         match f() {
             Ok(()) => Ok(()),
-            Err(_) => f(),
+            Err(_) => f().map_err(|e| e.into()),
         }
     }
 }
@@ -93,12 +117,12 @@ impl SnapshotState {
     }
 
     /// Serializes the snapshot state into bytes.
-    pub fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(&self).expect(line_error!())
+    pub fn serialize(&self) -> bincode::Result<Vec<u8>> {
+        bincode::serialize(&self)
     }
 
     /// Deserializes the snapshot state from bytes.
-    pub fn deserialize(data: Vec<u8>) -> Self {
-        bincode::deserialize(&data).expect(line_error!())
+    pub fn deserialize(data: Vec<u8>) -> bincode::Result<Self> {
+        bincode::deserialize(&data)
     }
 }

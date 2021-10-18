@@ -25,8 +25,6 @@
 // TODO: Add Handshake Messages.
 // TODO: Add Responses for each Message.
 // TODO: Remove #[allow(dead_code)]
-use thiserror::Error as DeriveError;
-
 mod actors;
 mod interface;
 mod internals;
@@ -38,17 +36,17 @@ mod utils;
 mod tests;
 
 pub use crate::{
-    actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput},
+    actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput, VaultError},
     interface::Stronghold,
     internals::Provider,
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
-#[cfg(feature = "p2p")]
-pub mod p2p {
-    pub use crate::actors::p2p::{NetworkConfig, SwarmInfo};
-    pub use p2p::{firewall::Rule, Multiaddr, PeerId};
-}
+// #[cfg(feature = "p2p")]
+// pub mod p2p {
+//     pub use crate::actors::p2p::{NetworkConfig, SwarmInfo};
+//     pub use p2p::{firewall::Rule, Multiaddr, PeerId};
+// }
 
 pub use engine::{
     snapshot::{
@@ -56,12 +54,11 @@ pub use engine::{
         kdf::naive_kdf,
         Key,
     },
-    vault::RecordId,
+    vault::{RecordHint, RecordId},
 };
 
-pub use engine::vault::RecordHint;
-
 /// TODO: Should be replaced with proper errors.
+#[cfg(test)]
 #[macro_export]
 macro_rules! line_error {
     () => {
@@ -70,58 +67,4 @@ macro_rules! line_error {
     ($str:expr) => {
         concat!($str, " @", file!(), ":", line!())
     };
-}
-
-#[macro_export]
-macro_rules! unwrap_or_err (
-    ($expression:expr) => {
-        match $expression {
-            Ok(ok) => ok,
-            Err(err) => return ResultMessage::Error(err.to_string())
-        }
-    };
-    ($expression:expr, $error:literal) => {
-        match $expression {
-            Ok(ok) => ok,
-            Err(_) => return ResultMessage::Error($error.to_string()),
-        }
-    };
-    (Option, $expression:expr, $error:literal) => {
-        match $expression.as_ref() {
-            Some(item) => item,
-            None => return ResultMessage::Error($error.to_string())
-        }
-    };
-);
-
-#[macro_export]
-macro_rules! unwrap_result_msg (
-    ($expr:expr) => {
-        unwrap_or_err!(unwrap_or_err!($expr))
-    };
-);
-
-/// Stronghold Client Result Type.
-pub type Result<T> = anyhow::Result<T, Error>;
-
-/// Stronghold Client error block.
-#[derive(DeriveError, Debug)]
-pub enum Error {
-    #[error("Id Error")]
-    IDError,
-
-    #[error("Engine Error: {0}")]
-    EngineError(#[from] engine::Error),
-
-    #[error("Id Conversion Error ({0})")]
-    IdConversionError(String),
-
-    #[error("Path Error: ({0})")]
-    PathError(String),
-
-    #[error("Keystore Access Error: ({0})")]
-    KeyStoreError(String),
-
-    #[error("Could not load client by path ({0})")]
-    LoadClientByPathError(String),
 }

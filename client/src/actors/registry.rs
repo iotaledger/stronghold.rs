@@ -12,18 +12,8 @@
 use actix::{Actor, Addr, Context, Handler, Message, Supervised, SystemService};
 use engine::vault::ClientId;
 use std::collections::HashMap;
-use thiserror::Error as ErrorType;
 
 use crate::{actors::SecureClient, state::snapshot::Snapshot};
-
-#[derive(Debug, ErrorType)]
-pub enum RegistryError {
-    #[error("No Client Present By Id ({0})")]
-    NoClientPresentById(String),
-
-    #[error("Client Already Present By Id ({0})")]
-    ClientAlreadyPresentById(String),
-}
 
 pub mod messages {
 
@@ -34,7 +24,7 @@ pub mod messages {
     }
 
     impl Message for InsertClient {
-        type Result = Result<Addr<SecureClient>, RegistryError>;
+        type Result = Addr<SecureClient>;
     }
 
     pub struct RemoveClient {
@@ -42,7 +32,7 @@ pub mod messages {
     }
 
     impl Message for RemoveClient {
-        type Result = Result<(), RegistryError>;
+        type Result = Option<Addr<SecureClient>>;
     }
 
     pub struct GetClient {
@@ -64,7 +54,7 @@ pub mod messages {
     pub struct GetSnapshot;
 
     impl Message for GetSnapshot {
-        type Result = Option<Addr<Snapshot>>;
+        type Result = Addr<Snapshot>;
     }
 
     pub struct GetAllClients;
@@ -101,16 +91,16 @@ impl Handler<messages::HasClient> for Registry {
 }
 
 impl Handler<messages::InsertClient> for Registry {
-    type Result = Result<Addr<SecureClient>, RegistryError>;
+    type Result = Addr<SecureClient>;
 
     fn handle(&mut self, msg: messages::InsertClient, _ctx: &mut Self::Context) -> Self::Result {
-        if let Some(_) = self.clients.get(&msg.id) {
-            return Err(RegistryError::ClientAlreadyPresentById(msg.id.into()));
+        if let Some(addr) = self.clients.get(&msg.id) {
+            return addr.clone();
         }
 
         let addr = SecureClient::new(msg.id).start();
         self.clients.insert(msg.id, addr.clone());
-        Ok(addr)
+        addr
     }
 }
 
@@ -126,21 +116,18 @@ impl Handler<messages::GetClient> for Registry {
 }
 
 impl Handler<messages::RemoveClient> for Registry {
-    type Result = Result<(), RegistryError>;
+    type Result = Option<Addr<SecureClient>>;
 
     fn handle(&mut self, msg: messages::RemoveClient, _ctx: &mut Self::Context) -> Self::Result {
-        match self.clients.remove(&msg.id) {
-            Some(_) => Ok(()),
-            None => Err(RegistryError::NoClientPresentById(msg.id.into())),
-        }
+        self.clients.remove(&msg.id)
     }
 }
 
 impl Handler<messages::GetSnapshot> for Registry {
-    type Result = Option<Addr<Snapshot>>;
+    type Result = Addr<Snapshot>;
 
     fn handle(&mut self, _: messages::GetSnapshot, _: &mut Self::Context) -> Self::Result {
-        Some(self.snapshot.get_or_insert(Snapshot::default().start()).clone())
+        self.snapshot.get_or_insert(Snapshot::default().start()).clone()
     }
 }
 

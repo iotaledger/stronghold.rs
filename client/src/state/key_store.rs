@@ -5,7 +5,7 @@ use engine::vault::{Key, VaultId};
 
 use std::collections::HashMap;
 
-use crate::{actors::VaultError, line_error, Provider};
+use crate::{actors::VaultDoesNotExist, Provider};
 
 pub struct KeyStore {
     store: HashMap<VaultId, Key<Provider>>,
@@ -17,11 +17,11 @@ impl KeyStore {
         Self { store: HashMap::new() }
     }
 
-    /// Gets the key from the [`KeyStore`] and removes it.  Returns an [`Option<Key<Provider>>`]
-    pub fn take_key(&mut self, id: VaultId) -> Result<Key<Provider>, anyhow::Error> {
+    /// Gets the key from the [`KeyStore`] and removes it. Returns an [`Option<Key<Provider>>`]
+    pub fn take_key(&mut self, id: VaultId) -> Result<Key<Provider>, VaultDoesNotExist> {
         match self.store.remove(&id) {
             Some(key) => Ok(key),
-            None => Err(anyhow::anyhow!(VaultError::NotExisting)),
+            None => Err(VaultDoesNotExist),
         }
     }
 
@@ -32,9 +32,7 @@ impl KeyStore {
 
     /// Returns an existing key for the `id` or creates one.
     pub fn create_key(&mut self, id: VaultId) -> &Key<Provider> {
-        self.store
-            .entry(id)
-            .or_insert_with(|| Key::random().expect(line_error!()))
+        self.store.entry(id).or_insert_with(Key::random)
     }
 
     /// Inserts a key into the [`KeyStore`] by [`VaultId`].  If the [`VaultId`] already exists, it just returns the
