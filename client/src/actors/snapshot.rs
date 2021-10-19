@@ -327,11 +327,93 @@ impl Snapshot {
         Ok(lcs.apply(src, dst)?.into_iter().map(|(a, _)| a.clone()).collect())
     }
 
-    /// Merges the entries difference with local state
-    pub(crate) fn merge_difference(&mut self, _d: Vec<Location>) -> Result<(), SnapshotError> {
-        // todo
-        Ok(())
+    /// Exports the entries, that differ from a remote instance.
+    /// Returns the serialized snapshot
+    pub(crate) fn export_difference(
+        &mut self,
+        input: Vec<(Location, PKey<Provider>)>,
+        client_id: ClientId,
+        _public_key: Vec<u8>,
+    ) -> Result<Vec<u8>, SnapshotError> {
+        // (1) create empty map, view, and store
+        // (2) export the given locations
+        // (3) write the given locations into empty containers
+        // (4) embed containers into snapshot, serialize it and return the bytes
+
+        // internal result
+        let mut result_view = DbView::new();
+        let mut result_maps = HashMap::new();
+
+        // access inner
+        let inner = &mut self.state.0;
+
+        // queue
+        let mut queue = Vec::new();
+        queue.clone_from(&input);
+
+        // iterate over all client ids, and select entries
+        'entries: for (_id, data) in inner.iter_mut() {
+            let vault = &mut data.1;
+
+            'comparison: loop {
+                if let Some((ref location, ref key)) = queue.pop() {
+                    let vid: VaultId = location.try_into().unwrap();
+                    let rid: RecordId = location.try_into().unwrap();
+
+                    if vault.contains_record(key, vid, rid) {
+                        let id_hint = crate::utils::into_map(vault.list_hints_and_ids(key, vid));
+
+                        vault
+                            .get_guard(key, vid, rid, |guarded_data| {
+                                let record_hint = id_hint
+                                    .get(&rid)
+                                    .ok_or_else(|| engine::Error::ValueError("No RecordHint Present".to_string()))?;
+
+                                // this will reuse the old key
+                                result_view.write(key, vid, rid, &guarded_data.borrow(), *record_hint)?;
+                                result_maps.insert(vid, key.clone());
+
+                                Ok(())
+                            })
+                            .map_err(|error| SnapshotError::ExportError(error.to_string()))?;
+
+                        continue;
+                    }
+
+                    break 'comparison;
+                }
+
+                // nothing more to process, skip outer loop
+                break 'entries;
+            }
+        }
+
+        // create new snapshot by serializing the state
+        let state = SnapshotState::new(client_id, (result_maps, result_view, Store::default()));
+
+        // serialize and return
+        Ok(state.serialize())
     }
+}
+
+mod export_machine {
+
+    pub trait StateHandler {
+        type Error;
+        type Item;
+
+        fn run(&mut self) -> Result<Self::Item, Self::Error>;
+    }
+
+    pub struct Export;
+
+    pub struct CalculateShape;
+
+    pub struct ExportSnapshot;
+
+    pub struct CalculateDifference;
+
+    pub struct ImportSnapshot;
 }
 
 // impl Handler<Import> for Snapshot {
