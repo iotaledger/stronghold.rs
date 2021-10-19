@@ -27,7 +27,7 @@
 mod arguments;
 use arguments::*;
 
-pub use clap::Clap;
+use clap::Parser;
 use iota_stronghold::p2p::{Multiaddr, NetworkConfig, SwarmInfo};
 pub use iota_stronghold::{ResultMessage, Stronghold};
 use p2p::firewall::Rule;
