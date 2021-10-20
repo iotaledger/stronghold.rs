@@ -19,6 +19,7 @@ use p2p::{
 };
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, fmt, future, marker::PhantomData, task::Poll, time::Duration};
+use stronghold_utils::random::random;
 use tokio::time::sleep;
 
 type TestPeer = StrongholdP2p<Request, Response, RequestPermission>;
@@ -79,7 +80,7 @@ enum TestPermission {
 
 impl TestPermission {
     fn random() -> Self {
-        match rand::random::<u8>() % 4 {
+        match random::<u8>() % 4 {
             0 => TestPermission::AllowAll,
             1 => TestPermission::RejectAll,
             2 => TestPermission::PingOnly,
@@ -145,9 +146,9 @@ impl<'a> RulesTestConfig<'a> {
         b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ) -> Self {
-        let a_rule = (rand::random::<u8>() % 2 > 0).then(TestPermission::random);
-        let b_rule = (rand::random::<u8>() % 2 > 0).then(TestPermission::random);
-        let req = (rand::random::<u8>() % 2 > 0)
+        let a_rule = (random::<u8>() % 2 > 0).then(TestPermission::random);
+        let b_rule = (random::<u8>() % 2 > 0).then(TestPermission::random);
+        let req = (random::<u8>() % 2 > 0)
             .then(|| Request::Ping)
             .unwrap_or(Request::Other);
         RulesTestConfig {
@@ -310,7 +311,7 @@ enum FwRuleRes {
 
 impl FwRuleRes {
     fn random() -> Self {
-        match rand::random::<u8>() % 6 {
+        match random::<u8>() % 6 {
             0 | 1 => FwRuleRes::AllowAll,
             2 => FwRuleRes::RejectAll,
             3 | 4 => FwRuleRes::Ask,
@@ -329,7 +330,7 @@ enum FwApprovalRes {
 
 impl FwApprovalRes {
     fn random() -> Self {
-        match rand::random::<u8>() % 4 {
+        match random::<u8>() % 4 {
             0 | 1 => FwApprovalRes::Allow,
             2 => FwApprovalRes::Reject,
             3 => FwApprovalRes::Drop,

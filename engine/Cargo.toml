@@ -41,7 +41,6 @@ features = [ "random", "chacha", "hmac", "sha", "x25519", "blake2b" ]
 
 [dev-dependencies]
 tempfile = "3.1.0"
-rand = "0.8.3"
 proptest = "1.0.0"
 criterion = "0.3.3"
 json = "0.12"

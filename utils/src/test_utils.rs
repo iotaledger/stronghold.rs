@@ -1,23 +1,22 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::random;
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
 };
 
-pub mod fresh;
-
 pub fn corrupt(bs: &mut [u8]) {
     if bs.is_empty() {
         return;
     }
     loop {
-        let i = rand::random::<usize>() % bs.len();
+        let i = random::usize(bs.len());
         let b = bs[i];
-        bs[i] = rand::random();
-        if b != bs[i] && rand::random() {
+        bs[i] = random::random();
+        if b != bs[i] && random::coinflip() {
             break;
         }
     }
