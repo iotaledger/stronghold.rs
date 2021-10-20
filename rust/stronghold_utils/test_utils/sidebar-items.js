@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["corrupt",""],["corrupt_file",""],["corrupt_file_at",""],["seek_to_beginning",""]],"mod":[["fresh",""]]});
+initSidebarItems({"fn":[["corrupt",""],["corrupt_file",""],["corrupt_file_at",""],["seek_to_beginning",""]]});
