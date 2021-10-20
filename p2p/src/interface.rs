@@ -455,7 +455,7 @@ where
         let (keypair, id) = match keys {
             InitKeypair::IdKeys(keypair) => {
                 let noise_keypair = NoiseKeypair::<X25519Spec>::new().into_authentic(&keypair).unwrap();
-                let id = keypair.public().into_peer_id();
+                let id = keypair.public().to_peer_id();
                 (noise_keypair, id)
             }
             InitKeypair::Authenticated { peer_id, noise_keypair } => (noise_keypair, peer_id),
@@ -533,8 +533,9 @@ where
         // Use the configured keypair or create a new one.
         let (noise_keypair, peer_id) = self.ident.unwrap_or_else(|| {
             let keypair = Keypair::generate_ed25519();
+            // Can never fail for `identity::Keypair::Ed25519` and `X25519Spec` protocol.
             let noise_keypair = NoiseKeypair::<X25519Spec>::new().into_authentic(&keypair).unwrap();
-            let peer_id = keypair.public().into_peer_id();
+            let peer_id = keypair.public().to_peer_id();
             (noise_keypair, peer_id)
         });
         #[cfg(feature = "relay")]

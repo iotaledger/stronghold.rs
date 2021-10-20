@@ -299,25 +299,15 @@ where
                     let _ = result_tx.send(Ok(endpoint.get_remote_address().clone()));
                 }
             }
-            SwarmEvent::UnreachableAddr {
-                peer_id,
-                attempts_remaining: 0,
-                ..
-            } => {
-                if let Some(result_tx) = self.await_connection.remove(&peer_id) {
-                    let _ = result_tx.send(Err(DialErr::UnreachableAddrs));
+            SwarmEvent::OutgoingConnectionError { ref peer_id, error } => {
+                if let Some(peer) = peer_id {
+                    if let Ok(err) = DialErr::try_from(error) {
+                        if let Some(result_tx) = self.await_connection.remove(peer) {
+                            let _ = result_tx.send(Err(err));
+                        }
+                    }
                 }
-                #[cfg(feature = "relay")]
-                if let Some(listener_id) = self
-                    .await_relayed_listen
-                    .iter()
-                    .find(|(_, (relay, _))| relay == &peer_id)
-                    .map(|(listener_id, _)| *listener_id)
-                {
-                    let (_, result_tx) = self.await_relayed_listen.remove(&listener_id).unwrap();
-                    self.listeners.remove(&listener_id);
-                    let _ = result_tx.send(Err(ListenRelayErr::DialRelay(DialErr::UnreachableAddrs)));
-                }
+                return;
             }
             SwarmEvent::NewListenAddr {
                 ref address,
@@ -337,6 +327,9 @@ where
             SwarmEvent::ListenerClosed { ref listener_id, .. } => {
                 self.listeners.remove(listener_id);
             }
+            SwarmEvent::ListenerError { ref listener_id, .. } => {
+                self.listeners.remove(listener_id);
+            }
             SwarmEvent::ExpiredListenAddr {
                 ref listener_id,
                 ref address,
@@ -345,10 +338,19 @@ where
                     listener.addrs.retain(|a| a != address);
                 }
             }
-            _ => {}
+            SwarmEvent::BannedPeer { peer_id, .. } => {
+                if let Some(result_tx) = self.await_connection.remove(&peer_id) {
+                    let _ = result_tx.send(Err(DialErr::Banned));
+                }
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::InboundFailure { .. })
+            | SwarmEvent::Dialing(..)
+            | SwarmEvent::ConnectionClosed { .. }
+            | SwarmEvent::IncomingConnection { .. }
+            | SwarmEvent::IncomingConnectionError { .. } => {}
         }
-        if let Ok(ev) = NetworkEvent::try_from(event) {
-            if let Some(event_tx) = self.event_channel.as_mut() {
+        if let Some(event_tx) = self.event_channel.as_mut() {
+            if let Ok(ev) = NetworkEvent::try_from(event) {
                 let _ = event_tx.send(ev).await;
             }
         }
@@ -373,7 +375,10 @@ where
                     self.await_connection.insert(peer, tx_yield);
                 }
                 Err(e) => {
-                    let _ = tx_yield.send(Err(DialErr::from(e)));
+                    // Conversion only fails on variant `DialError::DialPeerConditionFalse`,
+                    // which is never returned by `Swarm::dial`.
+                    let err = DialErr::try_from(e).expect("Conversion can not fail.");
+                    let _ = tx_yield.send(Err(err));
                 }
             },
             SwarmOperation::GetIsConnected { peer, tx_yield } => {

@@ -15,7 +15,10 @@
 
 mod protocol;
 use super::EMPTY_QUEUE_SHRINK_THRESHOLD;
-use crate::{firewall::Rule, RequestId, RqRsMessage};
+use crate::{
+    firewall::{FirewallRules, Rule},
+    RequestId, RqRsMessage,
+};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},
@@ -71,9 +74,17 @@ impl Default for ProtocolSupport {
 impl ProtocolSupport {
     // Derive the supported protocols from the firewall rules.
     // A direction will only be not supported if the firewall is configured to reject all request in that direction.
-    pub fn from_rules<TRq>(inbound: Option<&Rule<TRq>>, outbound: Option<&Rule<TRq>>) -> Self {
-        let allow_inbound = inbound.map(|r| !matches!(r, Rule::RejectAll)).unwrap_or(true);
-        let allow_outbound = outbound.map(|r| !matches!(r, Rule::RejectAll)).unwrap_or(true);
+    pub fn from_rules<TRq: Clone>(rules: &FirewallRules<TRq>) -> Self {
+        let allow_inbound = rules
+            .inbound
+            .as_ref()
+            .map(|r| !matches!(r, Rule::RejectAll))
+            .unwrap_or(true);
+        let allow_outbound = rules
+            .outbound
+            .as_ref()
+            .map(|r| !matches!(r, Rule::RejectAll))
+            .unwrap_or(true);
         match allow_inbound && allow_outbound {
             true => ProtocolSupport::Full,
             _ if allow_inbound => ProtocolSupport::Inbound,
