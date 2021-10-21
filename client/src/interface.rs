@@ -18,7 +18,8 @@ use crate::{
         },
         secure_procedures::{CallProcedure, ProcResult, Procedure},
         snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
-        GetAllClients, GetClient, GetSnapshot, Registry, RemoveClient, SecureClient, SpawnClient, SwitchClient,
+        GetAllClients, GetClient, GetSnapshot, GetTarget, Registry, RemoveClient, SecureClient, SpawnClient,
+        SwitchTarget,
     },
     line_error,
     utils::{LoadFromPath, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
@@ -105,7 +106,7 @@ impl Stronghold {
     }
 
     async fn switch_client(&mut self, client_id: ClientId) -> ResultMessage<Addr<SecureClient>> {
-        match self.registry.send(SwitchClient { id: client_id }).await {
+        match self.registry.send(SwitchTarget { id: client_id }).await {
             Ok(Ok(addr)) => ResultMessage::Ok(addr),
             Ok(Err(e)) => ResultMessage::Error(format!("Could not switch target for network actor: {:?}", e)),
             Err(e) => ResultMessage::Error(format!("Could not switch target for network actor: {:?}", e)),
@@ -125,7 +126,10 @@ impl Stronghold {
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
 
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return ResultMessage::Error("No active client.".into()),
+        };
 
         if let Ok(vault_exists) = target.send(CheckVault { vault_path }).await {
             if vault_exists {
@@ -191,7 +195,10 @@ impl Stronghold {
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> StatusMessage {
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return ResultMessage::Error("No active client.".into()),
+        };
         match target
             .send(WriteToStore {
                 location,
@@ -210,7 +217,10 @@ impl Stronghold {
     /// along with an error [`StatusMessage`].  Note: One store is mapped to
     /// one client. Can specify the same location across multiple clients.
     pub async fn read_from_store(&self, location: Location) -> (Vec<u8>, StatusMessage) {
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return (Vec::new(), ResultMessage::Error("No active client.".into())),
+        };
         match target.send(ReadFromStore { location }).await {
             Ok(result) => match result {
                 Ok(data) => (data, StatusMessage::OK),
@@ -224,7 +234,10 @@ impl Stronghold {
     /// [`StatusMessage`]. Note: One store is mapped to one client. Can specify the same location across multiple
     /// clients.
     pub async fn delete_from_store(&self, location: Location) -> StatusMessage {
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return ResultMessage::Error("No active client.".into()),
+        };
         match target.send(DeleteFromStore { location }).await {
             Ok(result) => match result {
                 Ok(_) => StatusMessage::OK,
@@ -238,7 +251,10 @@ impl Stronghold {
     /// removed from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call
     /// with automatically cleanup the revoke. Otherwise, the data is just marked as revoked.
     pub async fn delete_data(&self, location: Location, should_gc: bool) -> StatusMessage {
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return ResultMessage::Error("No active client.".into()),
+        };
         match target
             .send(RevokeData {
                 location: location.clone(),
@@ -262,7 +278,10 @@ impl Stronghold {
 
     /// Garbage collects any revokes in a Vault based on the given `vault_path` and the current target actor.
     pub async fn garbage_collect(&self, vault_path: Vec<u8>) -> StatusMessage {
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return ResultMessage::Error("No active client.".into()),
+        };
         match target
             .send(GarbageCollect {
                 location: Location::Generic {
@@ -285,7 +304,10 @@ impl Stronghold {
         &self,
         vault_path: V,
     ) -> (Vec<(RecordId, RecordHint)>, StatusMessage) {
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return (Vec::new(), ResultMessage::Error("No active client.".into())),
+        };
         match target
             .send(ListIds {
                 vault_path: vault_path.into(),
@@ -306,7 +328,10 @@ impl Stronghold {
     /// Executes a runtime command given a [`Procedure`].  Returns a [`ProcResult`] based off of the control_request
     /// specified.
     pub async fn runtime_exec(&self, control_request: Procedure) -> ProcResult {
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return ProcResult::Error("No active client.".into()),
+        };
         match target.send(CallProcedure { proc: control_request }).await {
             Ok(success) => match success {
                 Ok(result) => result,
@@ -318,7 +343,10 @@ impl Stronghold {
 
     /// Checks whether a record exists in the client based off of the given [`Location`].
     pub async fn record_exists(&self, location: Location) -> bool {
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return false,
+        };
         match target.send(CheckRecord { location }).await {
             Ok(result) => result,
             Err(_e) => false,
@@ -330,7 +358,10 @@ impl Stronghold {
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
 
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return false,
+        };
         target.send(CheckVault { vault_path }).await.unwrap_or(false)
     }
 
@@ -347,7 +378,10 @@ impl Stronghold {
         path: Option<PathBuf>,
     ) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
-        let target = self.registry.send(GetClient).await.unwrap();
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return ResultMessage::Error("No active client.".into()),
+        };
 
         // this feature resembles the functionality given by the former riker
         // system dependence. if there is a former client id path present,
@@ -475,6 +509,9 @@ impl Stronghold {
     /// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If
     /// `kill_actor` is `true`, the actor will be removed from the system.  Otherwise, the cache of the
     /// current target actor will be cleared.
+    ///
+    /// **Note**: If `kill_actor` is set to `true` and the target is the currently active client, a new client has to be
+    /// set via [`Stronghold::switch_actor_target`], before any following operations can be performed.
     pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path.clone(), &client_path).expect(line_error!());
         if kill_actor {
@@ -483,9 +520,9 @@ impl Stronghold {
                 Err(e) => StatusMessage::Error(format!("{}", e)),
             }
         } else {
-            let client = match self.switch_client(client_id).await {
-                ResultMessage::Ok(addr) => addr,
-                ResultMessage::Error(e) => return StatusMessage::Error(e),
+            let client = match self.registry.send(GetClient { id: client_id }).await.unwrap() {
+                Some(addr) => addr,
+                None => return StatusMessage::Error(format!("No client with id {:?}", client_id)),
             };
 
             match client.send(ClearCache).await {
@@ -509,9 +546,12 @@ impl Stronghold {
     #[cfg(test)]
     pub async fn read_secret(&self, _client_path: Vec<u8>, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
         use crate::actors::ReadFromVault;
-
-        let target = self.registry.send(GetClient).await.unwrap();
         let empty_response = Some(Vec::new());
+
+        let target = match self.registry.send(GetTarget).await.unwrap() {
+            Some(addr) => addr,
+            None => return (empty_response, ResultMessage::Error("No active client.".into())),
+        };
 
         match target.send(ReadFromVault { location }).await {
             Ok(result) => match result {
@@ -617,7 +657,6 @@ impl Stronghold {
             let res = actor.send(network_msg::AddDialingRelay { relay: peer }).await;
             unwrap_or_err!(res);
         }
-
         StatusMessage::OK
     }
 

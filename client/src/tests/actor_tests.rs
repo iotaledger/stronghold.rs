@@ -37,7 +37,12 @@ async fn test_get_client() {
             .is_ok());
     }
 
-    assert!(registry.send(GetClient).await.is_ok());
+    assert!(registry
+        .send(GetClient {
+            id: ClientId::load("b".repeat(24).as_bytes()).unwrap(),
+        })
+        .await
+        .is_ok());
 }
 
 #[actix::test]
