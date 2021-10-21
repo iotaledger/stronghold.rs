@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::actors::{GetClient, InsertClient, Registry, RemoveClient};
+use crate::actors::{GetClient, Registry, RemoveClient, SpawnClient};
 use actix::Actor;
 use engine::vault::ClientId;
 
@@ -13,7 +13,7 @@ async fn test_insert_client() {
         let format_str = format!("{}", d).repeat(24);
         let id_str = format_str.as_str().as_bytes();
         let n = registry
-            .send(InsertClient {
+            .send(SpawnClient {
                 id: ClientId::load(id_str).unwrap(),
             })
             .await;
@@ -30,19 +30,14 @@ async fn test_get_client() {
         let format_str = format!("{}", d).repeat(24);
         let id_str = format_str.as_str().as_bytes();
         assert!(registry
-            .send(InsertClient {
+            .send(SpawnClient {
                 id: ClientId::load(id_str).unwrap(),
             })
             .await
             .is_ok());
     }
 
-    assert!(registry
-        .send(GetClient {
-            id: ClientId::load("b".repeat(24).as_bytes()).unwrap(),
-        })
-        .await
-        .is_ok());
+    assert!(registry.send(GetClient).await.is_ok());
 }
 
 #[actix::test]
@@ -53,7 +48,7 @@ async fn test_remove_client() {
         let format_str = format!("{}", d).repeat(24);
         let id_str = format_str.as_str().as_bytes();
         assert!(registry
-            .send(InsertClient {
+            .send(SpawnClient {
                 id: ClientId::load(id_str).unwrap(),
             })
             .await

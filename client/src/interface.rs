@@ -18,22 +18,25 @@ use crate::{
         },
         secure_procedures::{CallProcedure, ProcResult, Procedure},
         snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
-        GetAllClients, GetClient, GetSnapshot, InsertClient, Registry, RemoveClient, SecureClient,
+        GetAllClients, GetClient, GetSnapshot, Registry, RemoveClient, SecureClient, SpawnClient, SwitchClient,
     },
     line_error,
-    utils::{LoadFromPath, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{LoadFromPath, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
 use engine::vault::{ClientId, RecordHint, RecordId};
 
 #[cfg(feature = "p2p")]
 use crate::{
-    actors::p2p::{
-        messages as network_msg,
-        messages::{ShRequest, SwarmInfo},
-        NetworkActor, NetworkConfig,
+    actors::{
+        p2p::{
+            messages as network_msg,
+            messages::{ShRequest, SwarmInfo},
+            NetworkActor, NetworkConfig,
+        },
+        GetNetwork, InsertNetwork, StopNetwork,
     },
-    unwrap_or_err, unwrap_result_msg, ResultMessage,
+    unwrap_or_err, unwrap_result_msg,
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -46,10 +49,6 @@ use p2p::{
 /// metadata to interpret the data in the vault and store.
 pub struct Stronghold {
     registry: Addr<Registry>,
-    target: Addr<SecureClient>,
-
-    #[cfg(feature = "p2p")]
-    network_actor: Option<Addr<NetworkActor>>,
 }
 
 impl Stronghold {
@@ -68,17 +67,15 @@ impl Stronghold {
         let registry = Registry::from_registry();
 
         // we need to block for the target client actor
-        let target = match registry.send(InsertClient { id: client_id }).await? {
+        match registry.send(SpawnClient { id: client_id }).await? {
             Ok(addr) => addr,
             Err(e) => return Err(anyhow::anyhow!(e)),
         };
 
-        Ok(Self {
-            registry,
-            target,
-            #[cfg(feature = "p2p")]
-            network_actor: None,
-        })
+        let mut sh = Self { registry };
+        sh.switch_client(client_id).await;
+
+        Ok(sh)
     }
 
     /// Spawns a new set of actors for the Stronghold system. Accepts the client_path: [`Vec<u8>`] and the options:
@@ -89,56 +86,30 @@ impl Stronghold {
         _options: Vec<StrongholdFlags>,
     ) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
-
-        if let Ok(result) = self.registry.send(GetClient { id: client_id }).await {
-            match result {
-                Some(client) => {
-                    self.target = client;
-                }
-                None => {
-                    if let Ok(result) = self.registry.send(InsertClient { id: client_id }).await {
-                        self.target = match result {
-                            Ok(client) => client,
-                            Err(_e) => return StatusMessage::Error("".to_string()),
-                        };
-                    }
-                }
-            }
-        };
-
-        StatusMessage::OK
+        if let Err(e) = self.registry.send(SpawnClient { id: client_id }).await {
+            return StatusMessage::Error(format!("Could spawn new client: {:?}", e));
+        }
+        match self.switch_client(client_id).await {
+            ResultMessage::Ok(_) => StatusMessage::OK,
+            ResultMessage::Error(e) => StatusMessage::Error(e),
+        }
     }
 
     /// Switches the actor target to another actor in the system specified by the client_path: [`Vec<u8>`].
     pub async fn switch_actor_target(&mut self, client_path: Vec<u8>) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone()).expect(line_error!());
-
-        if let Ok(result) = self.registry.send(GetClient { id: client_id }).await {
-            match result {
-                Some(client) => {
-                    #[cfg(feature = "p2p")]
-                    if let Some(network_actor) = self.network_actor.as_ref() {
-                        match network_actor
-                            .send(network_msg::SwitchClient { client: client.clone() })
-                            .await
-                        {
-                            Ok(_) => {}
-                            Err(e) => {
-                                return StatusMessage::Error(format!(
-                                    "Could not switch target for network actor: {:?}",
-                                    e
-                                ))
-                            }
-                        }
-                    }
-
-                    self.target = client
-                }
-                None => return StatusMessage::Error("Could not find actor with provided client path".into()),
-            }
+        match self.switch_client(client_id).await {
+            ResultMessage::Ok(_) => StatusMessage::OK,
+            ResultMessage::Error(e) => StatusMessage::Error(e),
         }
+    }
 
-        StatusMessage::OK
+    async fn switch_client(&mut self, client_id: ClientId) -> ResultMessage<Addr<SecureClient>> {
+        match self.registry.send(SwitchClient { id: client_id }).await {
+            Ok(Ok(addr)) => ResultMessage::Ok(addr),
+            Ok(Err(e)) => ResultMessage::Error(format!("Could not switch target for network actor: {:?}", e)),
+            Err(e) => ResultMessage::Error(format!("Could not switch target for network actor: {:?}", e)),
+        }
     }
 
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified
@@ -154,11 +125,12 @@ impl Stronghold {
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
 
-        if let Ok(vault_exists) = self.target.send(CheckVault { vault_path }).await {
+        let target = self.registry.send(GetClient).await.unwrap();
+
+        if let Ok(vault_exists) = target.send(CheckVault { vault_path }).await {
             if vault_exists {
                 // exists
-                return match self
-                    .target
+                return match target
                     .send(WriteToVault {
                         location,
                         payload,
@@ -174,8 +146,7 @@ impl Stronghold {
                 };
             } else {
                 // does not exist
-                match self
-                    .target
+                match target
                     .send(CreateVault {
                         location: location.clone(),
                     })
@@ -183,8 +154,7 @@ impl Stronghold {
                 {
                     Ok(_) => {
                         // write to vault
-                        if let Ok(result) = self
-                            .target
+                        if let Ok(result) = target
                             .send(WriteToVault {
                                 location,
                                 payload,
@@ -221,8 +191,8 @@ impl Stronghold {
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> StatusMessage {
-        match self
-            .target
+        let target = self.registry.send(GetClient).await.unwrap();
+        match target
             .send(WriteToStore {
                 location,
                 payload,
@@ -240,7 +210,8 @@ impl Stronghold {
     /// along with an error [`StatusMessage`].  Note: One store is mapped to
     /// one client. Can specify the same location across multiple clients.
     pub async fn read_from_store(&self, location: Location) -> (Vec<u8>, StatusMessage) {
-        match self.target.send(ReadFromStore { location }).await {
+        let target = self.registry.send(GetClient).await.unwrap();
+        match target.send(ReadFromStore { location }).await {
             Ok(result) => match result {
                 Ok(data) => (data, StatusMessage::OK),
                 Err(e) => (Vec::new(), StatusMessage::Error(format!("{:?}", e))),
@@ -253,7 +224,8 @@ impl Stronghold {
     /// [`StatusMessage`]. Note: One store is mapped to one client. Can specify the same location across multiple
     /// clients.
     pub async fn delete_from_store(&self, location: Location) -> StatusMessage {
-        match self.target.send(DeleteFromStore { location }).await {
+        let target = self.registry.send(GetClient).await.unwrap();
+        match target.send(DeleteFromStore { location }).await {
             Ok(result) => match result {
                 Ok(_) => StatusMessage::OK,
                 Err(e) => StatusMessage::Error(format!("{:?}", e)),
@@ -266,15 +238,15 @@ impl Stronghold {
     /// removed from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call
     /// with automatically cleanup the revoke. Otherwise, the data is just marked as revoked.
     pub async fn delete_data(&self, location: Location, should_gc: bool) -> StatusMessage {
-        match self
-            .target
+        let target = self.registry.send(GetClient).await.unwrap();
+        match target
             .send(RevokeData {
                 location: location.clone(),
             })
             .await
         {
             Ok(result) => match result {
-                Ok(_ok) if should_gc => match self.target.send(GarbageCollect { location }).await {
+                Ok(_ok) if should_gc => match target.send(GarbageCollect { location }).await {
                     Ok(result) => match result {
                         Ok(_) => StatusMessage::OK,
                         Err(e) => StatusMessage::Error(format!("{:?}", e)),
@@ -290,8 +262,8 @@ impl Stronghold {
 
     /// Garbage collects any revokes in a Vault based on the given `vault_path` and the current target actor.
     pub async fn garbage_collect(&self, vault_path: Vec<u8>) -> StatusMessage {
-        match self
-            .target
+        let target = self.registry.send(GetClient).await.unwrap();
+        match target
             .send(GarbageCollect {
                 location: Location::Generic {
                     vault_path,
@@ -313,8 +285,8 @@ impl Stronghold {
         &self,
         vault_path: V,
     ) -> (Vec<(RecordId, RecordHint)>, StatusMessage) {
-        match self
-            .target
+        let target = self.registry.send(GetClient).await.unwrap();
+        match target
             .send(ListIds {
                 vault_path: vault_path.into(),
             })
@@ -334,7 +306,8 @@ impl Stronghold {
     /// Executes a runtime command given a [`Procedure`].  Returns a [`ProcResult`] based off of the control_request
     /// specified.
     pub async fn runtime_exec(&self, control_request: Procedure) -> ProcResult {
-        match self.target.send(CallProcedure { proc: control_request }).await {
+        let target = self.registry.send(GetClient).await.unwrap();
+        match target.send(CallProcedure { proc: control_request }).await {
             Ok(success) => match success {
                 Ok(result) => result,
                 Err(e) => ProcResult::Error(format!("{}", e)),
@@ -345,7 +318,8 @@ impl Stronghold {
 
     /// Checks whether a record exists in the client based off of the given [`Location`].
     pub async fn record_exists(&self, location: Location) -> bool {
-        match self.target.send(CheckRecord { location }).await {
+        let target = self.registry.send(GetClient).await.unwrap();
+        match target.send(CheckRecord { location }).await {
             Ok(result) => result,
             Err(_e) => false,
         }
@@ -356,7 +330,8 @@ impl Stronghold {
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
 
-        self.target.send(CheckVault { vault_path }).await.unwrap_or(false)
+        let target = self.registry.send(GetClient).await.unwrap();
+        target.send(CheckVault { vault_path }).await.unwrap_or(false)
     }
 
     /// Reads data from a given snapshot file.  Can only read the data for a single `client_path` at a time. If the new
@@ -372,6 +347,7 @@ impl Stronghold {
         path: Option<PathBuf>,
     ) -> StatusMessage {
         let client_id = ClientId::load_from_path(&client_path, &client_path).expect(line_error!());
+        let target = self.registry.send(GetClient).await.unwrap();
 
         // this feature resembles the functionality given by the former riker
         // system dependence. if there is a former client id path present,
@@ -420,8 +396,7 @@ impl Stronghold {
         };
 
         // send data to secure actor and reload
-        match self
-            .target
+        match target
             .send(ReloadData {
                 data: result.data,
                 id: result.id,
@@ -501,33 +476,16 @@ impl Stronghold {
     /// `kill_actor` is `true`, the actor will be removed from the system.  Otherwise, the cache of the
     /// current target actor will be cleared.
     pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StatusMessage {
-        let client_id = match ClientId::load_from_path(&client_path.clone(), &client_path)
-            .map_err(|_| crate::Error::LoadClientByPathError("Loading client_id by path failed".into()))
-        {
-            Ok(client_id) => client_id,
-            Err(e) => {
-                return StatusMessage::Error(format!("{}", e));
-            }
-        };
-
-        self.switch_actor_target(client_path).await;
-
+        let client_id = ClientId::load_from_path(&client_path.clone(), &client_path).expect(line_error!());
         if kill_actor {
             match self.registry.send(RemoveClient { id: client_id }).await {
                 Ok(_) => StatusMessage::OK,
                 Err(e) => StatusMessage::Error(format!("{}", e)),
             }
         } else {
-            let client = match self.registry.send(GetClient { id: client_id }).await {
-                Ok(option) => match option {
-                    Some(client) => client,
-                    None => {
-                        return StatusMessage::Error("No client present".into());
-                    }
-                },
-                Err(_e) => {
-                    return StatusMessage::Error("Mailbox error".into());
-                }
+            let client = match self.switch_client(client_id).await {
+                ResultMessage::Ok(addr) => addr,
+                ResultMessage::Error(e) => return StatusMessage::Error(e),
             };
 
             match client.send(ClearCache).await {
@@ -552,9 +510,10 @@ impl Stronghold {
     pub async fn read_secret(&self, _client_path: Vec<u8>, location: Location) -> (Option<Vec<u8>>, StatusMessage) {
         use crate::actors::ReadFromVault;
 
+        let target = self.registry.send(GetClient).await.unwrap();
         let empty_response = Some(Vec::new());
 
-        match self.target.send(ReadFromVault { location }).await {
+        match target.send(ReadFromVault { location }).await {
             Ok(result) => match result {
                 Ok(payload) => (Some(payload), StatusMessage::OK),
                 Err(_e) => (empty_response, StatusMessage::Error("No payload present".into())),
@@ -568,24 +527,27 @@ impl Stronghold {
 impl Stronghold {
     /// Spawn the p2p-network actor and swarm.
     pub async fn spawn_p2p(&mut self, firewall_rule: Rule<ShRequest>, network_config: NetworkConfig) -> StatusMessage {
-        if self.network_actor.is_some() {
-            return StatusMessage::Error(String::from("Network actor was already spawned"));
+        let addr = match NetworkActor::new(self.registry.clone(), firewall_rule, network_config).await {
+            Ok(actor) => actor.start(),
+            Err(_) => return StatusMessage::Error("Spawning Network actor failed".into()),
+        };
+        match self.registry.send(InsertNetwork { addr }).await {
+            Ok(()) => StatusMessage::OK,
+            Err(_) => StatusMessage::Error("Spawning Network actor failed".into()),
         }
-        let network_actor = unwrap_or_err!(NetworkActor::new(self.target.clone(), firewall_rule, network_config).await);
-        self.network_actor = Some(network_actor.start());
-        StatusMessage::OK
     }
 
     /// Gracefully stop the network actor and swarm.
-    pub fn stop_p2p(&mut self) {
-        // Dropping the only address of the network actor will stop the actor.
-        // Upon stopping the actor, its `StrongholdP2p` instance will be dropped, which results in a graceful shutdown.
-        self.network_actor.take();
+    pub async fn stop_p2p(&mut self) {
+        self.registry.send(StopNetwork).await.unwrap();
     }
 
     /// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.
     pub async fn start_listening(&self, address: Option<Multiaddr>) -> ResultMessage<Multiaddr> {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
         let res = actor.send(network_msg::StartListening { address }).await;
         let addr = unwrap_result_msg!(res);
         ResultMessage::Ok(addr)
@@ -593,7 +555,10 @@ impl Stronghold {
 
     /// Stop listening on the swarm.
     pub async fn stop_listening(&self) -> StatusMessage {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
         let res = actor.send(network_msg::StopListening).await;
         unwrap_or_err!(res);
         ResultMessage::OK
@@ -601,7 +566,10 @@ impl Stronghold {
 
     ///  Get the peer id, listening addresses and connection info of the local peer
     pub async fn get_swarm_info(&self) -> ResultMessage<SwarmInfo> {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
         let res = actor.send(network_msg::GetSwarmInfo).await;
         let info = unwrap_or_err!(res);
         ResultMessage::Ok(info)
@@ -622,7 +590,10 @@ impl Stronghold {
         is_listening_relay: bool,
         is_dialing_relay: bool,
     ) -> StatusMessage {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
 
         if is_listening_relay {
             let res = actor
@@ -652,7 +623,10 @@ impl Stronghold {
 
     /// Remove a peer from the list of peers used for dialing, and / or stop listening with the relay.
     pub async fn remove_relay(&self, relay: PeerId, rm_listening_relay: bool, rm_dialing_relay: bool) -> StatusMessage {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
 
         if rm_listening_relay {
             let res = actor.send(network_msg::StopListeningRelay { relay }).await;
@@ -675,7 +649,10 @@ impl Stronghold {
         peers: Vec<PeerId>,
         set_default: bool,
     ) -> StatusMessage {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
 
         for peer in peers {
             let res = actor
@@ -701,7 +678,10 @@ impl Stronghold {
 
     /// Remove peer specific rules from the firewall configuration.
     pub async fn remove_firewall_rules(&self, peers: Vec<PeerId>) -> StatusMessage {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
         for peer in peers {
             let res = actor
                 .send(network_msg::RemoveFirewallRule {
@@ -724,7 +704,10 @@ impl Stronghold {
         hint: RecordHint,
         _options: Vec<VaultFlags>,
     ) -> StatusMessage {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
 
         let vault_path = &location.vault_path();
         let vault_path = vault_path.to_vec();
@@ -773,7 +756,10 @@ impl Stronghold {
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> StatusMessage {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
         let send_request = network_msg::SendRequest {
             peer,
             request: WriteToStore {
@@ -791,7 +777,10 @@ impl Stronghold {
     /// Read from the store of a remote Stronghold.
     /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn read_from_remote_store(&self, peer: PeerId, location: Location) -> ResultMessage<Vec<u8>> {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
         let send_request = network_msg::SendRequest {
             peer,
             request: ReadFromStore { location },
@@ -809,7 +798,10 @@ impl Stronghold {
         peer: PeerId,
         vault_path: V,
     ) -> ResultMessage<Vec<(RecordId, RecordHint)>> {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
         let send_request = network_msg::SendRequest {
             peer,
             request: ListIds {
@@ -825,7 +817,10 @@ impl Stronghold {
     /// Executes a runtime command at a remote Stronghold.
     /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn remote_runtime_exec(&self, peer: PeerId, control_request: Procedure) -> ResultMessage<ProcResult> {
-        let actor = unwrap_or_err!(Option, self.network_actor, "No network actor spawned.");
+        let actor = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return ResultMessage::Error("No network actor spawned.".into()),
+        };
         let send_request = network_msg::SendRequest {
             peer,
             request: CallProcedure { proc: control_request },
