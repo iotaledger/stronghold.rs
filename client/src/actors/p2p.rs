@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::actors::{GetClient, Registry};
+use crate::actors::{GetTarget, Registry};
 use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
 pub use messages::SwarmInfo;
@@ -149,8 +149,11 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for NetworkActor {
         } = item;
         sh_request_dispatch!(request => |inner| {
             let fut = self.registry
-                .send(GetClient)
-                .and_then(|client| client.send(inner))
+                .send(GetTarget)
+                .and_then(|client| async { match client {
+                    Some(client) => client.send(inner).await,
+                    _ => Err(MailboxError::Closed)
+                }})
                 .map_ok(|response| response_tx.send(response.into()))
                 .map(|_| ())
                 .into_actor(self);

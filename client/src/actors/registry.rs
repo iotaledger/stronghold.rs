@@ -16,7 +16,7 @@ use thiserror::Error as ErrorType;
 
 #[cfg(feature = "p2p")]
 use super::p2p::NetworkActor;
-use crate::{actors::SecureClient, internals, state::snapshot::Snapshot};
+use crate::{actors::SecureClient, state::snapshot::Snapshot};
 
 #[derive(Debug, ErrorType)]
 pub enum RegistryError {
@@ -41,11 +41,11 @@ pub mod messages {
         type Result = Result<Addr<SecureClient>, RegistryError>;
     }
 
-    pub struct SwitchClient {
+    pub struct SwitchTarget {
         pub id: ClientId,
     }
 
-    impl Message for SwitchClient {
+    impl Message for SwitchTarget {
         type Result = Result<Addr<SecureClient>, RegistryError>;
     }
 
@@ -57,18 +57,18 @@ pub mod messages {
         type Result = Result<(), RegistryError>;
     }
 
-    pub struct GetClient;
+    pub struct GetTarget;
 
-    impl Message for GetClient {
-        type Result = Addr<SecureClient>;
+    impl Message for GetTarget {
+        type Result = Option<Addr<SecureClient>>;
     }
 
-    pub struct HasClient {
+    pub struct GetClient {
         pub id: ClientId,
     }
 
-    impl Message for HasClient {
-        type Result = bool;
+    impl Message for GetClient {
+        type Result = Option<Addr<SecureClient>>;
     }
 
     pub struct GetSnapshot;
@@ -112,38 +112,19 @@ pub mod messages {
 
 /// Registry [`Actor`], that owns [`Client`] actors, and manages them. The registry
 /// can be modified
+#[derive(Default)]
 pub struct Registry {
     clients: HashMap<ClientId, Addr<SecureClient>>,
-    current_client: ClientId,
+    current_target: Option<ClientId>,
     snapshot: Option<Addr<Snapshot>>,
     #[cfg(feature = "p2p")]
     network: Option<Addr<NetworkActor>>,
-}
-
-impl Default for Registry {
-    fn default() -> Self {
-        Registry {
-            clients: HashMap::new(),
-            current_client: ClientId::random::<internals::Provider>().unwrap(),
-            snapshot: None,
-            #[cfg(feature = "p2p")]
-            network: None,
-        }
-    }
 }
 
 impl Supervised for Registry {}
 
 impl Actor for Registry {
     type Context = Context<Self>;
-}
-
-impl Handler<messages::HasClient> for Registry {
-    type Result = bool;
-
-    fn handle(&mut self, msg: messages::HasClient, _ctx: &mut Self::Context) -> Self::Result {
-        self.clients.contains_key(&msg.id)
-    }
 }
 
 impl Handler<messages::SpawnClient> for Registry {
@@ -156,30 +137,35 @@ impl Handler<messages::SpawnClient> for Registry {
         let addr = SecureClient::new(msg.id).start();
         self.clients.insert(msg.id, addr);
 
-        <Self as Handler<messages::SwitchClient>>::handle(self, messages::SwitchClient { id: msg.id }, ctx)
+        <Self as Handler<messages::SwitchTarget>>::handle(self, messages::SwitchTarget { id: msg.id }, ctx)
+    }
+}
+
+impl Handler<messages::GetTarget> for Registry {
+    type Result = Option<Addr<SecureClient>>;
+
+    fn handle(&mut self, _msg: messages::GetTarget, _ctx: &mut Self::Context) -> Self::Result {
+        self.current_target.and_then(|id| self.clients.get(&id)).cloned()
     }
 }
 
 impl Handler<messages::GetClient> for Registry {
-    type Result = Addr<SecureClient>;
+    type Result = Option<Addr<SecureClient>>;
 
-    fn handle(&mut self, _msg: messages::GetClient, _ctx: &mut Self::Context) -> Self::Result {
-        self.clients
-            .get(&self.current_client)
-            .expect("Current Client is always present")
-            .clone()
+    fn handle(&mut self, msg: messages::GetClient, _ctx: &mut Self::Context) -> Self::Result {
+        self.clients.get(&msg.id).cloned()
     }
 }
 
-impl Handler<messages::SwitchClient> for Registry {
+impl Handler<messages::SwitchTarget> for Registry {
     type Result = Result<Addr<SecureClient>, RegistryError>;
 
-    fn handle(&mut self, msg: messages::SwitchClient, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: messages::SwitchTarget, _ctx: &mut Self::Context) -> Self::Result {
         let addr = self
             .clients
             .get(&msg.id)
             .ok_or_else(|| RegistryError::NoClientPresentById(msg.id.into()))?;
-        self.current_client = msg.id;
+        self.current_target = Some(msg.id);
         Ok(addr.clone())
     }
 }

@@ -13,7 +13,7 @@ pub use self::registry::messages::{GetNetwork, InsertNetwork, StopNetwork};
 pub use self::secure::testing as secure_testing;
 pub use self::{
     registry::{
-        messages::{GetAllClients, GetClient, GetSnapshot, HasClient, RemoveClient, SpawnClient, SwitchClient},
+        messages::{GetAllClients, GetClient, GetSnapshot, GetTarget, RemoveClient, SpawnClient, SwitchTarget},
         Registry, RegistryError,
     },
     secure::{
