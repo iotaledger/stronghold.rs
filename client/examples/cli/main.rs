@@ -4,7 +4,7 @@
 mod arguments;
 
 use arguments::*;
-use clap::Clap;
+use clap::Parser;
 use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, StatusMessage, Stronghold};
 use std::{
     error::Error,
