@@ -1,9 +1,9 @@
 // Copyright 2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use clap::{Clap, Subcommand};
+use clap::Parser;
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 #[clap(
     name = "Stronghold Example CLI",
     about = "Encrypts data into the Engine Vault.  Creates snapshots and can load from snapshots."
@@ -16,7 +16,7 @@ pub struct ExampleApp {
     pub actor_path: String,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Parser)]
 pub enum Commands {
     #[clap(about = "Write data to the unencrypted cache store")]
     Write {

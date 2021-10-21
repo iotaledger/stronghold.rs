@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// CLI arguments module
-use clap::{Clap, Subcommand};
+use clap::Parser;
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 #[clap(
     name = "Stronghold Example P2p-Network",
     about = "Example to show stronghold's p2p-network capabilities"
@@ -17,7 +17,7 @@ pub struct ExampleApp {
     pub actor_path: String,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Parser)]
 pub enum Commands {
     #[cfg(feature = "p2p")]
     #[clap(alias = "peers", about = "Lists all peers.")]
