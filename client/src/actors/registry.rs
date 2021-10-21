@@ -9,7 +9,7 @@
 //! The registry can also be queried for the snapshot actor.
 
 #![allow(clippy::redundant_pattern_matching)]
-use actix::{Actor, Addr, Context, Handler, Message, Supervised, SystemService};
+use actix::{Actor, Addr, Context, Handler, Message, Supervised};
 use engine::vault::ClientId;
 use std::collections::HashMap;
 use thiserror::Error as ErrorType;
@@ -137,10 +137,6 @@ impl Supervised for Registry {}
 impl Actor for Registry {
     type Context = Context<Self>;
 }
-
-/// For synchronized access across multiple clients, the [`Registry`]
-/// will run as a service.
-impl SystemService for Registry {}
 
 impl Handler<messages::HasClient> for Registry {
     type Result = bool;

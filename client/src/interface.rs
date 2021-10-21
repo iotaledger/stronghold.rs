@@ -64,7 +64,7 @@ impl Stronghold {
             .unwrap_or_else(|_| panic!("{}", crate::Error::IDError));
 
         // the registry will be run as a system service
-        let registry = Registry::from_registry();
+        let registry = Registry::default().start();
 
         // we need to block for the target client actor
         match registry.send(SpawnClient { id: client_id }).await? {
