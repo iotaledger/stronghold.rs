@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::actors::{secure_messages::WriteToVault, SecureClient};
+use crate::actors::{secure_messages::WriteToVault, GetTarget, Registry};
 use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
 pub use messages::SwarmInfo;
@@ -92,12 +92,12 @@ macro_rules! sh_result_mapping {
 pub struct NetworkActor {
     network: StrongholdP2p<ShRequest, ShResult>,
     inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
-    client: Addr<SecureClient>,
+    registry: Addr<Registry>,
 }
 
 impl NetworkActor {
     pub async fn new(
-        client: Addr<SecureClient>,
+        registry: Addr<Registry>,
         firewall_rule: Rule<ShRequest>,
         network_config: NetworkConfig,
     ) -> Result<Self, io::Error> {
@@ -122,7 +122,7 @@ impl NetworkActor {
         let actor = Self {
             network,
             inbound_request_rx: Some(inbound_request_rx),
-            client,
+            registry,
         };
         Ok(actor)
     }
@@ -143,20 +143,17 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for NetworkActor {
             request, response_tx, ..
         } = item;
         sh_request_dispatch!(request => |inner| {
-            let fut = self.client
-                .send(inner)
+            let fut = self.registry
+                .send(GetTarget)
+                .and_then(|client| async { match client {
+                    Some(client) => client.send(inner).await,
+                    _ => Err(MailboxError::Closed)
+                }})
                 .map_ok(|response| response_tx.send(response.into()))
                 .map(|_| ())
                 .into_actor(self);
             ctx.wait(fut);
         });
-    }
-}
-impl Handler<SwitchClient> for NetworkActor {
-    type Result = ();
-
-    fn handle(&mut self, msg: SwitchClient, _: &mut Self::Context) -> Self::Result {
-        self.client = msg.client;
     }
 }
 
@@ -327,12 +324,6 @@ pub mod messages {
         },
         secure_procedures::CallProcedure,
     };
-
-    #[derive(Message)]
-    #[rtype(result = "()")]
-    pub struct SwitchClient {
-        pub client: Addr<SecureClient>,
-    }
 
     #[derive(Message)]
     #[rtype(result = "Result<Rq::Result, OutboundFailure>")]
@@ -557,8 +548,8 @@ pub mod messages {
         Empty(()),
         Data(Option<Vec<u8>>),
         Bool(bool),
+        GarbageCollect(Result<(), VaultDoesNotExist>),
         WriteRemoteVault(Result<(), RemoteVaultError>),
-        GarbageCollect(Option<()>),
         ListIds(Result<Vec<(RecordId, RecordHint)>, VaultDoesNotExist>),
         Proc(Result<ProcResult, String>),
     }
@@ -566,7 +557,7 @@ pub mod messages {
     sh_result_mapping!(ShResult::Empty, ());
     sh_result_mapping!(ShResult::Bool, bool);
     sh_result_mapping!(ShResult::Data, Option<Vec<u8>>);
-    sh_result_mapping!(ShResult::GarbageCollect, Option<()>);
+    sh_result_mapping!(ShResult::GarbageCollect,Result<(), VaultDoesNotExist>);
     sh_result_mapping!(
         ShResult::ListIds,
         Result<Vec<(RecordId, RecordHint)>, VaultDoesNotExist>

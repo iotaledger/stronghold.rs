@@ -36,15 +36,18 @@ mod utils;
 mod tests;
 
 pub use crate::{
-    actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput, VaultError},
-    interface::Stronghold,
+    actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput, VaultDoesNotExist, VaultError},
+    interface::{Error, Stronghold},
     internals::Provider,
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
 
 #[cfg(feature = "p2p")]
 pub mod p2p {
-    pub use crate::actors::p2p::{NetworkConfig, SwarmInfo};
+    pub use crate::{
+        actors::p2p::{NetworkConfig, SwarmInfo},
+        interface::RemoteError,
+    };
     pub use p2p::{firewall::Rule, Multiaddr, PeerId};
 }
 

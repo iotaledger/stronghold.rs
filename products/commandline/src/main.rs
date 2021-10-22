@@ -304,7 +304,7 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
                         println!("[Error] Writing snapshot failed: {}", e);
                     }
                 } else {
-                    println!("[Error] Could not find a snapshot at the home path. Try writing first.");
+                    println!("[Error] Could not find a snapshot at the home path. Try writing first.");\
                 }
             }
         }
@@ -375,7 +375,6 @@ fn garbage_collect_vault_command(
                     }
                 } else {
                     println!("[Error] Could not find a snapshot at the home path. Try writing first.");
-                }
             }
         }
     }

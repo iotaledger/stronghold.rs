@@ -69,12 +69,14 @@ impl<'a> Lz4Decoder<'a> {
     fn read_int(&mut self) -> Result<usize, Lz4DecodeError> {
         let mut size = 0;
 
-        while {
+        loop {
             let extra = self.take(1)?[0];
             size += extra as usize;
 
-            extra == 0xFF
-        } {}
+            if extra != 0xFF {
+                break;
+            }
+        }
 
         Ok(size)
     }

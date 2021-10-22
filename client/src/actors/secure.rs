@@ -54,12 +54,6 @@ pub enum VaultError {
     Engine(#[from] RecordError<Provider>),
 }
 
-#[derive(DeriveError, Debug)]
-pub enum SnapshotError {
-    #[error("No snapshot present for client id ({0})")]
-    NoSnapshotPresent(String),
-}
-
 /// Message types for [`SecureClientActor`]
 pub mod messages {
 
@@ -125,7 +119,7 @@ pub mod messages {
     }
 
     impl Message for GarbageCollect {
-        type Result = Option<()>;
+        type Result = Result<(), VaultDoesNotExist>;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -576,14 +570,14 @@ impl_handler!(messages::RevokeData, Result<(), VaultError>, (self, msg, _ctx), {
     res.map_err(|e| e.into())
 });
 
-impl_handler!(messages::GarbageCollect, Option<()>, (self, msg, _ctx), {
+impl_handler!(messages::GarbageCollect, Result<(), VaultDoesNotExist>, (self, msg, _ctx), {
     let (vault_id, _) = self.resolve_location(msg.location);
 
-    let key = self.keystore.take_key(vault_id).ok()?;
+    let key = self.keystore.take_key(vault_id)?;
 
     self.db.garbage_collect_vault(&key, vault_id);
     self.keystore.insert_key(vault_id, key);
-    Some(())
+    Ok(())
 });
 
 impl_handler!(
