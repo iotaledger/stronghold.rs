@@ -233,8 +233,6 @@ impl Stronghold {
     }
 
     /// Garbage collects any revokes in a Vault based on the given `vault_path` and the current target actor.
-    ///
-    /// Return `Ok(false)` if the vault does not exist.
     pub async fn garbage_collect<V: Into<Vec<u8>>>(&self, vault_path: V) -> Result<(), Error<VaultDoesNotExist>> {
         let target = self.target().await?;
         target

@@ -163,7 +163,6 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
                         Ok(()) => println!("Wrote to snapshot."),
                         Err(e) => {
                             println!("[Error] Writing snapshot failed: {}", e);
-                            return;
                         }
                     }
                 } else {
@@ -210,7 +209,6 @@ fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongho
                         }
                         Err(e) => {
                             println!("[Error] Listing hints and ids failed: {}", e);
-                            return;
                         }
                     }
                 } else {
@@ -304,7 +302,7 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
                         println!("[Error] Writing snapshot failed: {}", e);
                     }
                 } else {
-                    println!("[Error] Could not find a snapshot at the home path. Try writing first.");\
+                    println!("[Error] Could not find a snapshot at the home path. Try writing first.");
                 }
             }
         }
@@ -342,8 +340,7 @@ fn garbage_collect_vault_command(
 
                     let result = block_on(stronghold.garbage_collect(Location::generic(id, id).vault_path().to_vec()));
                     match result {
-                        Ok(Some(())) => println!("Garbage collected."),
-                        Ok(None) => println!("[Error] Vault with path {} does not exist.", id),
+                        Ok(()) => println!("Garbage collected."),
                         Err(e) => {
                             println!("[Error] Garbage collect failed: {}", e);
                             return;
@@ -375,6 +372,7 @@ fn garbage_collect_vault_command(
                     }
                 } else {
                     println!("[Error] Could not find a snapshot at the home path. Try writing first.");
+                }
             }
         }
     }
