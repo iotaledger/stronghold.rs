@@ -357,7 +357,7 @@ where
         }
     }
 
-    fn new_self_handler(&mut self, peer: Option<PeerId>) -> ConnectionHandler<Rq, Rs> {
+    fn new_request_response_handler(&mut self, peer: Option<PeerId>) -> ConnectionHandler<Rq, Rs> {
         let protocol_support = match peer {
             Some(peer) => ProtocolSupport::from_rules(&self.firewall.get_effective_rules(&peer)),
             None => ProtocolSupport::Full,
@@ -374,7 +374,7 @@ where
     }
 
     fn new_handler_for_peer(&mut self, peer: Option<PeerId>) -> <Self as NetworkBehaviour>::ProtocolsHandler {
-        let handler = self.new_self_handler(peer);
+        let handler = self.new_request_response_handler(peer);
         let protocols_handler;
         #[cfg(all(feature = "mdns", feature = "relay"))]
         {
@@ -761,7 +761,7 @@ where
                 } => {
                     #[cfg(feature = "mdns")]
                     let handler = IntoProtocolsHandler::select(self.mdns.new_handler(), handler);
-                    let first = self.new_self_handler(Some(peer_id));
+                    let first = self.new_request_response_handler(Some(peer_id));
                     let handler = IntoProtocolsHandler::select(first, handler);
                     return Poll::Ready(NetworkBehaviourAction::DialPeer {
                         peer_id,
