@@ -3,7 +3,7 @@
 
 use crate::{line_error, Error, Location, RecordHint, Stronghold};
 
-use stronghold_utils::random::{bytestring, random};
+use stronghold_utils::random::bytestring;
 
 #[cfg(feature = "p2p")]
 use crate::{
@@ -11,6 +11,8 @@ use crate::{
     tests::fresh,
     ProcResult, Procedure, ResultMessage, SLIP10DeriveInput,
 };
+#[cfg(feature = "p2p")]
+use stronghold_utils::random::random;
 
 #[actix::test]
 async fn test_stronghold() {

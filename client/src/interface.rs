@@ -53,7 +53,7 @@ use std::io;
 use crate::actors::ReadFromVault;
 
 #[derive(DeriveError, Debug, Clone)]
-pub enum Error<E: Display = Infallible> {
+pub enum Error<E: Debug + Display = Infallible> {
     #[error("Error sending message to Actor: `{0}`")]
     ActorMailbox(#[from] MailboxError),
 
@@ -69,14 +69,14 @@ pub enum Error<E: Display = Infallible> {
 pub type RemoteError<E = Infallible> = Error<SendRequestError<E>>;
 
 #[cfg(feature = "p2p")]
-impl<E: Display> RemoteError<E> {
+impl<E: Debug + Display> RemoteError<E> {
     fn inner(e: E) -> Self {
         RemoteError::Inner(SendRequestError::Inner(e))
     }
 }
 
 #[cfg(feature = "p2p")]
-impl<E: Display> From<OutboundFailure> for RemoteError<E> {
+impl<E: Debug + Display> From<OutboundFailure> for RemoteError<E> {
     fn from(f: OutboundFailure) -> Self {
         RemoteError::Inner(SendRequestError::OutboundFailure(f))
     }
@@ -84,7 +84,7 @@ impl<E: Display> From<OutboundFailure> for RemoteError<E> {
 
 #[cfg(feature = "p2p")]
 #[derive(DeriveError, Debug, Clone)]
-pub enum SendRequestError<E: Display> {
+pub enum SendRequestError<E: Debug + Display> {
     #[error("Outbound Failure `{0}`")]
     OutboundFailure(OutboundFailure),
 
@@ -432,7 +432,7 @@ impl Stronghold {
             .ok_or(Error::ActorNotSpawned)
     }
 
-    async fn target<E: Display>(&self) -> Result<Addr<SecureClient>, Error<E>> {
+    async fn target<E: Debug + Display>(&self) -> Result<Addr<SecureClient>, Error<E>> {
         self.registry.send(GetTarget).await?.ok_or(Error::ActorNotSpawned)
     }
 }
@@ -695,7 +695,7 @@ impl Stronghold {
         Ok(result)
     }
 
-    async fn network_actor<E: Display>(&self) -> Result<Addr<NetworkActor>, Error<E>> {
+    async fn network_actor<E: Debug + Display>(&self) -> Result<Addr<NetworkActor>, Error<E>> {
         self.registry.send(GetNetwork).await?.ok_or(Error::ActorNotSpawned)
     }
 }
