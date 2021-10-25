@@ -75,7 +75,7 @@ pub enum Location {
 }
 
 /// Explicit implementation of [`Hash`], since [`PartialEq`] is implemented
-/// explicitly. See https://rust-lang.github.io/rust-clippy/master/index.html#derive_hash_xor_eq
+/// explicitly. See <https://rust-lang.github.io/rust-clippy/master/index.html#derive_hash_xor_eq>
 /// for more details.
 impl Hash for Location {
     fn hash<H>(&self, hasher: &mut H)

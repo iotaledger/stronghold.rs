@@ -72,7 +72,7 @@ pub enum SnapshotError {
     NoSnapshotPresent(String),
 }
 
-/// Message types for [`SecureClientActor`]
+/// Message types for [`SecureClient`]
 pub mod messages {
 
     use super::*;
@@ -471,7 +471,7 @@ pub mod procedures {
 }
 
 /// Functional macro to remove boilerplate code for the implementation
-/// of the [`SecureActor`].
+/// of the [`SecureClient`].
 /// TODO Make receiver type pass as argument.
 macro_rules! impl_handler {
     ($mty:ty, $rty:ty, ($sid:ident,$mid:ident, $ctx:ident), $($body:tt)*) => {

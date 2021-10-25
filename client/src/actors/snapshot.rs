@@ -231,7 +231,7 @@ mod statemachine {
         type Next: Transition;
 
         /// Executes the current state, returns some result and
-        /// the next [`StateHandler`].
+        /// the next [`Transition`].
         fn next(&mut self, message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error>;
     }
 
