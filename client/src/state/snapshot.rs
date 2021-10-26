@@ -5,12 +5,43 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{line_error, state::secure::Store, Provider};
+use crate::{state::secure::Store, Provider};
 use engine::{
     snapshot::{self, read_from, write_to, Key},
     vault::{ClientId, DbView, Key as PKey, VaultId},
 };
 use std::{collections::HashMap, path::Path};
+use thiserror::Error as DeriveError;
+
+#[derive(Debug, DeriveError)]
+pub enum SnapshotError {
+    #[error("Could Not Load Snapshot. Try another password")]
+    LoadFailure,
+
+    #[error("Could Not Synchronize Snapshot: ({0})")]
+    SynchronizationFailure(String),
+
+    #[error("Could Not Deserialize Snapshot: ({0})")]
+    DeserializationFailure(String),
+
+    #[error("Could Not Serialize Snapshot: ({0})")]
+    SerializationFailure(String),
+
+    #[error("Could Not Write Snapshot to File: ({0})")]
+    WriteSnapshotFailure(String),
+
+    #[error("Could Not Export Entries ({0})")]
+    ExportError(String),
+
+    #[error("Other Failure ({0})")]
+    OtherFailure(String),
+}
+
+impl From<engine::Error> for SnapshotError {
+    fn from(error: engine::Error) -> Self {
+        SnapshotError::OtherFailure(error.to_string())
+    }
+}
 
 /// Wrapper for the [`SnapshotState`] data structure.
 #[derive(Default)]
@@ -44,10 +75,10 @@ impl Snapshot {
 
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<Self> {
+    pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> Result<Self, SnapshotError> {
         let state = Self::read_from_name_or_path(name, path, key)?;
 
-        let data = SnapshotState::deserialize(state);
+        let data = SnapshotState::deserialize(state)?;
 
         Ok(Self::new(data))
     }
@@ -63,8 +94,8 @@ impl Snapshot {
 
     /// Writes state to the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn write_to_snapshot(&self, name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<()> {
-        let data = self.state.serialize();
+    pub fn write_to_snapshot(&self, name: Option<&str>, path: Option<&Path>, key: Key) -> Result<(), SnapshotError> {
+        let data = self.state.serialize()?;
 
         // TODO: This is a hack and probably should be removed when we add proper error handling.
         let f = move || {
@@ -96,20 +127,20 @@ impl SnapshotState {
     }
 
     /// Serializes the snapshot state into bytes.
-    pub fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(&self).expect(line_error!())
+    pub fn serialize(&self) -> Result<Vec<u8>, SnapshotError> {
+        bincode::serialize(&self).map_err(|error| SnapshotError::DeserializationFailure(error.to_string()))
     }
 
     /// Deserializes the snapshot state from bytes.
-    pub fn deserialize(data: Vec<u8>) -> Self {
-        bincode::deserialize(&data).expect(line_error!())
+    pub fn deserialize(data: Vec<u8>) -> Result<Self, SnapshotError> {
+        bincode::deserialize(&data).map_err(|error| SnapshotError::SerializationFailure(error.to_string()))
     }
 }
 
 /// unsafe implementations
 impl SnapshotState {
     /// this function transitively converts into another
-    /// type. this function is deemed **unsafe**!
+    /// type. this function is **unsafe**!
     pub unsafe fn convert<T>(&self) -> &'static T {
         &*(self as *const _ as *const T)
     }

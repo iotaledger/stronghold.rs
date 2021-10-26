@@ -244,3 +244,25 @@ pub struct EntryShape {
     // the size of the record in bytes
     pub record_size: usize,
 }
+
+/// Returns the complement items from A not in B
+pub fn complement<T>(a: Vec<T>, b: Vec<T>) -> Vec<T>
+where
+    T: PartialEq + Clone,
+{
+    a.into_iter().filter(|item| !b.contains(item)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_complement() {
+        let a = vec![1u8, 2, 3, 5, 6, 79, 12, 31];
+        let b = vec![2u8, 5, 6, 23, 42, 0];
+
+        let result: Vec<u8> = a.into_iter().filter(|item| !b.contains(item)).collect();
+
+        assert_eq!(result, vec![1u8, 3, 79, 12, 31]);
+    }
+}

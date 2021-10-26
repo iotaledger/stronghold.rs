@@ -68,7 +68,7 @@ impl<'a> Lz4Decoder<'a> {
             let extra = self.take(1)?[0];
             size += extra as usize;
 
-            if extra != 0xFF {
+            if extra == 0xFF {
                 break;
             }
         }

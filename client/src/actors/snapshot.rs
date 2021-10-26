@@ -12,10 +12,7 @@ use std::{
 };
 
 use engine::{
-    snapshot::{
-        diff::{Diff, DiffError, Lcs},
-        Key,
-    },
+    snapshot::Key,
     vault::{ClientId, DbView, Key as PKey, RecordId, VaultId},
 };
 
@@ -23,13 +20,12 @@ use crate::{
     internals, line_error,
     state::{
         secure::Store,
-        snapshot::{Snapshot, SnapshotState},
+        snapshot::{Snapshot, SnapshotError, SnapshotState},
     },
     utils::EntryShape,
     Location, Provider,
 };
 use std::collections::HashMap;
-use thiserror::Error as DeriveError;
 
 /// re-export local modules
 pub use messages::*;
@@ -196,233 +192,287 @@ impl Actor for Snapshot {
     type Context = actix::Context<Self>;
 }
 
-#[derive(Debug, DeriveError)]
-pub enum SnapshotError {
-    #[error("Could Not Load Snapshot. Try another password")]
-    LoadFailure,
-
-    #[error("Could Not Synchronize Snapshot: ({0})")]
-    SynchronizeSnapshot(String),
-
-    #[error("Could Not Deserialize Snapshot: ({0})")]
-    DeserializationFailure(String),
-
-    #[error("Could Not Serialize Snapshot: ({0})")]
-    SerializationFailure(String),
-
-    #[error("Could Not Write Snapshot to File: ({0})")]
-    WriteSnapshotFailure(String),
-
-    #[error("Could Not Export Entries ({0})")]
-    ExportError(String),
-}
-
 // actix impl
 impl Supervised for Snapshot {}
 
-/// TODO: move this to state(ful) implementation of Snapshot
-impl Snapshot {
-    /// This function exports the configured entries from the vault. The export
-    /// re-encrypts each entry with the newly provided keys.
-    pub(crate) fn export(
-        &mut self,
+/// Module to configure a statically typed state machine
+/// for Sender(A) and Receipient(B), where B wants to synchronize its entries
+/// with A.
+///
+/// This diagram shows the interaction between A and B and the internal state
+/// transitions inside the two participants
+///
+/// ``` no_run
+/// -----------------------------------------
+///   A                                 B
+///
+///  Export         
+///     |
+///     v                                       
+///   CalculateShape ----------------> CalculateDifference
+///   ExportSnapshot <---------------- CalculateDifference
+///     |----------------------------> ImportSnapshot
+/// ```
+mod statemachine {
+
+    use super::*;
+
+    pub trait Transition {
+        // The message type containing all relevant parameters
+        type Message;
+
+        // the error type to be thrown, if something goes wrong
+        type Error;
+
+        // the return type
+        type Return;
+
+        // the next state
+        type Next: Transition;
+
+        /// Executes the current state, returns some result and
+        /// the next [`StateHandler`].
+        fn next(&mut self, message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error>;
+    }
+
+    // -- state types
+
+    pub struct ExportAllEntries;
+    pub struct ExportSnapshot;
+    pub struct CalculateShape;
+    pub struct CalculateComplement;
+    pub struct ImportSnapshot;
+
+    // -- state messages
+
+    pub struct MessageExportAllEntries {
         entries: HashMap<Location, (PKey<Provider>, PKey<Provider>)>,
-    ) -> Result<(HashMap<VaultId, PKey<Provider>>, DbView<Provider>), SnapshotError> {
-        let mut result_view: DbView<Provider> = DbView::new();
-        let mut result_map = HashMap::new();
-
-        // access inner
-        let inner = &mut self.state.0;
-
-        // iterate over all client ids, and select entries
-        for (_id, data) in inner.iter_mut() {
-            let view = &mut data.1;
-
-            for (location, (key_old, key_new)) in entries.iter() {
-                let vid: VaultId = location.try_into().unwrap();
-                let rid: RecordId = location.try_into().unwrap();
-
-                // this check wouldn't be necessary, but could be an indicator that
-                // an assumed location is not correct.
-                if !view.contains_record(key_old, vid, rid) {
-                    continue;
-                }
-
-                let id_hint = crate::utils::into_map(view.list_hints_and_ids(key_old, vid));
-
-                // decrypt entry and re-encrypt with new key inside guard
-                view.get_guard(key_old, vid, rid, |guarded_data| {
-                    let record_hint = id_hint
-                        .get(&rid)
-                        .ok_or_else(|| engine::Error::ValueError("No RecordHint Present".to_string()))?;
-
-                    result_view.write(key_new, vid, rid, &guarded_data.borrow(), *record_hint)?;
-                    result_map.insert(vid, key_new.clone());
-
-                    Ok(())
-                })
-                .map_err(|error| SnapshotError::ExportError(error.to_string()))?;
-            }
-        }
-
-        Ok((result_map, result_view))
+        state: HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>,
     }
 
-    /// Returns an [`EntryShape`]s for each entry. The [`EntryShape`] should be used
-    /// to calculate a safe difference between entries without exposing any secrets.
-    /// This function expects a [`Hasher`] to be used for hasing the Records.
-    pub(crate) fn shape<H>(
-        &mut self,
-        entries: HashMap<Location, PKey<Provider>>,
-        hasher: &mut H,
-    ) -> HashMap<Location, EntryShape>
-    where
-        H: Hasher,
-    {
-        let inner = &mut self.state.0;
-        let mut output = HashMap::new();
-
-        inner.iter_mut().for_each(|(_, (_, view, _))| {
-            entries.iter().for_each(|(location, key)| {
-                let vid: VaultId = location.try_into().unwrap();
-                let rid: RecordId = location.try_into().unwrap();
-
-                view.get_guard(key, vid, rid, |guard| {
-                    let data = guard.borrow();
-
-                    data.hash(hasher);
-
-                    // create EntryShape
-                    let entry_shape = EntryShape {
-                        location: location.clone(),
-                        record_hash: hasher.finish(),
-                        record_size: data.len(),
-                    };
-
-                    // and store it in output
-                    output.insert(location.clone(), entry_shape);
-
-                    Ok(())
-                })
-                .unwrap();
-            });
-        });
-
-        output
+    pub struct MessageExportSnapshot {
+        input: Vec<(Location, PKey<Provider>)>,
+        state: HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>,
+        client_id: ClientId,
+        public_key: Vec<u8>,
     }
-
-    /// calculate the difference between two sets of entry shapes
-    /// and return the locations, that shall be exported
-    pub(crate) fn difference(
-        &self,
+    pub struct MessageCalculateShape {
+        entries: Option<HashMap<Location, PKey<Provider>>>,
+        data: Option<HashMap<ClientId, DbView<Provider>>>,
+        hasher: Option<Box<dyn Hasher>>,
+    }
+    pub struct MessageCalculateDifference {
         a: HashMap<Location, EntryShape>,
         b: HashMap<Location, EntryShape>,
-    ) -> Result<Vec<Location>, DiffError> {
-        let src: Vec<(&Location, &EntryShape)> = a.iter().collect();
-        let dst: Vec<(&Location, &EntryShape)> = b.iter().collect();
-
-        // calculate difference
-        let mut lcs = Lcs::diff(&src, &dst);
-
-        Ok(lcs.apply(src, dst)?.into_iter().map(|(a, _)| a.clone()).collect())
+    }
+    pub struct MessageImportSnapshot {
+        client_id: ClientId,
+        data: Vec<u8>,
     }
 
-    /// Exports the entries, that differ from a remote instance.
-    /// Returns the serialized snapshot
-    pub(crate) fn export_difference(
-        &mut self,
-        input: Vec<(Location, PKey<Provider>)>,
-        client_id: ClientId,
-        _public_key: Vec<u8>,
-    ) -> Result<Vec<u8>, SnapshotError> {
-        // (1) create empty map, view, and store
-        // (2) export the given locations
-        // (3) write the given locations into empty containers
-        // (4) embed containers into snapshot, serialize it and return the bytes
+    // -- transition implementation
 
-        // internal result
-        let mut result_view = DbView::new();
-        let mut result_maps = HashMap::new();
+    impl Transition for ExportAllEntries {
+        type Message = MessageExportAllEntries;
+        type Error = SnapshotError;
+        type Return = (HashMap<VaultId, PKey<Provider>>, DbView<Provider>);
+        type Next = CalculateShape;
 
-        // access inner
-        let inner = &mut self.state.0;
+        fn next(&mut self, mut message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error> {
+            let mut result_view: DbView<Provider> = DbView::new();
+            let mut result_map = HashMap::new();
 
-        // queue
-        let mut queue = Vec::new();
-        queue.clone_from(&input);
+            // access inner
+            let inner = &mut message.state;
 
-        // iterate over all client ids, and select entries
-        'entries: for (_id, data) in inner.iter_mut() {
-            let vault = &mut data.1;
+            // iterate over all client ids, and select entries
+            for (_id, data) in inner.iter_mut() {
+                let view = &mut data.1;
 
-            'comparison: loop {
-                if let Some((ref location, ref key)) = queue.pop() {
+                for (location, (key_old, key_new)) in message.entries.iter() {
                     let vid: VaultId = location.try_into().unwrap();
                     let rid: RecordId = location.try_into().unwrap();
 
-                    if vault.contains_record(key, vid, rid) {
-                        let id_hint = crate::utils::into_map(vault.list_hints_and_ids(key, vid));
-
-                        vault
-                            .get_guard(key, vid, rid, |guarded_data| {
-                                let record_hint = id_hint
-                                    .get(&rid)
-                                    .ok_or_else(|| engine::Error::ValueError("No RecordHint Present".to_string()))?;
-
-                                // this will reuse the old key
-                                result_view.write(key, vid, rid, &guarded_data.borrow(), *record_hint)?;
-                                result_maps.insert(vid, key.clone());
-
-                                Ok(())
-                            })
-                            .map_err(|error| SnapshotError::ExportError(error.to_string()))?;
-
+                    if !view.contains_record(key_old, vid, rid) {
                         continue;
                     }
 
-                    break 'comparison;
+                    let id_hint = crate::utils::into_map(view.list_hints_and_ids(key_old, vid));
+
+                    // decrypt entry and re-encrypt with new key inside guard
+                    view.get_guard(key_old, vid, rid, |guarded_data| {
+                        let record_hint = id_hint
+                            .get(&rid)
+                            .ok_or_else(|| engine::Error::ValueError("No RecordHint Present".to_string()))?;
+
+                        result_view.write(key_new, vid, rid, &guarded_data.borrow(), *record_hint)?;
+                        result_map.insert(vid, key_new.clone());
+
+                        Ok(())
+                    })
+                    .map_err(|error| SnapshotError::ExportError(error.to_string()))?;
                 }
-
-                // nothing more to process, skip outer loop
-                break 'entries;
             }
+
+            Ok(((result_map, result_view), CalculateShape))
         }
+    }
 
-        // create new snapshot by serializing the state
-        let state = SnapshotState::new(client_id, (result_maps, result_view, Store::default()));
+    impl Transition for CalculateShape {
+        type Message = MessageCalculateShape;
+        type Error = SnapshotError;
+        type Return = HashMap<Location, EntryShape>;
+        type Next = ExportSnapshot;
 
-        // serialize and return
-        Ok(state.serialize())
+        fn next(&mut self, mut message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error> {
+            let entries = message.entries.take().unwrap();
+            let mut inner = message.data.take().unwrap();
+            let mut hasher = message.hasher.take().unwrap();
+            let mut output = HashMap::new();
+
+            inner.iter_mut().for_each(|(_, view)| {
+                entries.iter().for_each(|(location, key)| {
+                    let vid: VaultId = location.try_into().unwrap();
+                    let rid: RecordId = location.try_into().unwrap();
+
+                    view.get_guard(key, vid, rid, |guard| {
+                        let data = guard.borrow();
+
+                        data.hash(&mut hasher);
+
+                        // create EntryShape
+                        let entry_shape = EntryShape {
+                            location: location.clone(),
+                            record_hash: hasher.finish(),
+                            record_size: data.len(),
+                        };
+
+                        // and store it in output
+                        output.insert(location.clone(), entry_shape);
+
+                        Ok(())
+                    })
+                    .unwrap();
+                });
+            });
+
+            Ok((output, ExportSnapshot))
+        }
+    }
+
+    impl Transition for ExportSnapshot {
+        type Message = MessageExportSnapshot;
+        type Error = SnapshotError;
+        type Return = Vec<u8>;
+        type Next = ExportAllEntries;
+
+        fn next(&mut self, message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error> {
+            // (1) create empty map, view, and store
+            // (2) export the given locations
+            // (3) write the given locations into empty containers
+            // (4) embed containers into snapshot, serialize it and return the bytes
+
+            // internal result
+            let mut result_view = DbView::new();
+            let mut result_maps = HashMap::new();
+
+            // access inner
+            let mut inner = message.state;
+
+            // queue
+            let mut queue = Vec::new();
+            queue.clone_from(&message.input);
+
+            // iterate over all client ids, and select entries
+            'entries: for (_id, data) in inner.iter_mut() {
+                let vault = &mut data.1;
+
+                'comparison: loop {
+                    if let Some((ref location, ref key)) = queue.pop() {
+                        let vid: VaultId = location.try_into().unwrap();
+                        let rid: RecordId = location.try_into().unwrap();
+
+                        if vault.contains_record(key, vid, rid) {
+                            let id_hint = crate::utils::into_map(vault.list_hints_and_ids(key, vid));
+
+                            vault
+                                .get_guard(key, vid, rid, |guarded_data| {
+                                    let record_hint = id_hint.get(&rid).ok_or_else(|| {
+                                        engine::Error::ValueError("No RecordHint Present".to_string())
+                                    })?;
+
+                                    // this will reuse the old key
+                                    result_view.write(key, vid, rid, &guarded_data.borrow(), *record_hint)?;
+                                    result_maps.insert(vid, key.clone());
+
+                                    Ok(())
+                                })
+                                .map_err(|error| SnapshotError::ExportError(error.to_string()))?;
+
+                            // process next entry
+                            continue;
+                        }
+
+                        break 'comparison;
+                    }
+
+                    // nothing more to process, skip outer loop
+                    break 'entries;
+                }
+            }
+
+            // create new snapshot by serializing the state
+            let state = SnapshotState::new(message.client_id, (result_maps, result_view, Store::default()));
+
+            // serialize and return
+            Ok((state.serialize()?, ExportAllEntries))
+        }
+    }
+
+    impl Transition for CalculateComplement {
+        type Message = MessageCalculateDifference;
+        type Error = SnapshotError;
+        type Return = Vec<Location>;
+        type Next = ImportSnapshot;
+
+        fn next(&mut self, message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error> {
+            let result = message
+                .a
+                .iter()
+                .filter(|(location, _)| !message.b.contains_key(location))
+                .map(|(a, _)| a.clone())
+                .collect();
+
+            Ok((result, ImportSnapshot))
+        }
+    }
+
+    /// TODO: move to ImportHandler of SnapshotActor
+    impl Transition for ImportSnapshot {
+        type Message = MessageImportSnapshot;
+        type Error = SnapshotError;
+        type Return = Result<(), SnapshotError>;
+        type Next = CalculateComplement;
+
+        fn next(&mut self, _message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error> {
+            // (1) import shall call the Snapshot object, import the current state by deserializing it
+            // (2) reload the actors
+
+            todo!()
+        }
     }
 }
 
-mod export_machine {
+impl Handler<Import> for Snapshot {
+    type Result = Result<(), SnapshotError>;
 
-    pub trait StateHandler {
-        type Error;
-        type Item;
+    fn handle(&mut self, msg: Import, _ctx: &mut Self::Context) -> Self::Result {
+        self.state = SnapshotState::deserialize(msg.entries)?;
 
-        fn run(&mut self) -> Result<Self::Item, Self::Error>;
+        // This is pointless. Change the return type
+        Ok(())
     }
-
-    pub struct Export;
-
-    pub struct CalculateShape;
-
-    pub struct ExportSnapshot;
-
-    pub struct CalculateDifference;
-
-    pub struct ImportSnapshot;
 }
-
-// impl Handler<Import> for Snapshot {
-//     type Result = Result<(), SnapshotError>;
-
-//     fn handle(&mut self, _msg: Import, _ctx: &mut Self::Context) -> Self::Result {
-//         todo!()
-//     }
-// }
 
 impl Handler<Export> for Snapshot {
     type Result = Result<ReturnExport, SnapshotError>;
@@ -434,7 +484,7 @@ impl Handler<Export> for Snapshot {
         // The caller would ideally import the entries into the same client_id
 
         // store exported entries
-        let (exported, secrets) = self.export(msg.entries)?;
+        // let (exported, secrets) = self.export(msg.entries)?;
 
         todo!()
     }
@@ -448,13 +498,6 @@ impl Handler<messages::FullSynchronization> for Snapshot {
     type Result = Result<ReturnReadSnapshot, SnapshotError>;
 
     fn handle(&mut self, msg: messages::FullSynchronization, ctx: &mut Self::Context) -> Self::Result {
-        // locally import necessary modules
-        use serde::{Deserialize, Serialize};
-
-        // define local snapshot data structure to access the private fields
-        #[derive(Deserialize, Serialize, Default)]
-        struct SnapshotStateLocal(pub HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
-
         let merge_config = msg.merge;
         let snapshot_data_merge = Snapshot::read_from_name_or_path(
             merge_config.filename.as_deref(),
@@ -473,12 +516,12 @@ impl Handler<messages::FullSynchronization> for Snapshot {
 
         let dst_config = msg.destination;
 
-        let snapshot_local = bincode::deserialize::<SnapshotStateLocal>(&snapshot_data_local)
-            .map_err(|error| SnapshotError::SynchronizeSnapshot(error.to_string()))?;
+        let snapshot_local = bincode::deserialize::<SnapshotState>(&snapshot_data_local)
+            .map_err(|error| SnapshotError::SynchronizationFailure(error.to_string()))?;
 
         // merge this state into current state
-        let snapshot_merge = bincode::deserialize::<SnapshotStateLocal>(&snapshot_data_merge)
-            .map_err(|error| SnapshotError::SynchronizeSnapshot(error.to_string()))?;
+        let snapshot_merge = bincode::deserialize::<SnapshotState>(&snapshot_data_merge)
+            .map_err(|error| SnapshotError::SynchronizationFailure(error.to_string()))?;
 
         // this is the actual output of the handler
         let mut output_map: HashMap<VaultId, PKey<Provider>> = HashMap::new();
@@ -535,16 +578,6 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
     type Result = Result<ReturnReadSnapshot, SnapshotError>;
 
     fn handle(&mut self, msg: messages::PartialSynchronization, ctx: &mut Self::Context) -> Self::Result {
-        // locally import necessary modules
-        use serde::{Deserialize, Serialize};
-
-        // define local snapshot data structure to access the private fields
-        #[derive(Deserialize, Serialize, Default)]
-        struct SnapshotStateLocal(pub HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
-
-        // TODO:
-        // introduce record level granularity
-
         // load associated system snapshot
         let src_config = msg.source;
         let snapshot_data_source = Snapshot::read_from_name_or_path(
@@ -552,7 +585,7 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
             src_config.path.as_deref(),
             src_config.key,
         )
-        .map_err(|err| SnapshotError::SynchronizeSnapshot(err.to_string()))?;
+        .map_err(|err| SnapshotError::SynchronizationFailure(err.to_string()))?;
 
         // load snapshot file for comparison
         // FIXME: this should be the current state of the secure actor
@@ -562,17 +595,17 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
             cmp_config.path.as_deref(),
             cmp_config.key,
         )
-        .map_err(|err| SnapshotError::SynchronizeSnapshot(err.to_string()))?;
+        .map_err(|err| SnapshotError::SynchronizationFailure(err.to_string()))?;
 
         // set snapshot file to be synchronized with
         let dst_config = msg.destination;
 
         // load the local state (or TODO: refill from current state)
-        let local_state: SnapshotStateLocal = bincode::deserialize(&snapshot_data_source)
+        let local_state: SnapshotState = bincode::deserialize(&snapshot_data_source)
             .map_err(|err| SnapshotError::DeserializationFailure(err.to_string()))?;
 
         // load comparison snapshot and handle partial synchronization
-        match bincode::deserialize::<SnapshotStateLocal>(&snapshot_data_compare) {
+        match bincode::deserialize::<SnapshotState>(&snapshot_data_compare) {
             Ok(compare_state) => {
                 // this is the handlers output
                 let mut output_map: HashMap<VaultId, PKey<Provider>> = HashMap::new();
@@ -629,7 +662,7 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
                     id: msg.id,
                 })
             }
-            Err(e) => Err(SnapshotError::SynchronizeSnapshot(e.to_string())),
+            Err(e) => Err(SnapshotError::SynchronizationFailure(e.to_string())),
         }
     }
 }

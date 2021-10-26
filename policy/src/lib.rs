@@ -46,3 +46,9 @@ impl PolicyEngine {
         todo!()
     }
 }
+
+pub struct Snapshot {}
+
+pub enum SyncError {
+    Fail,
+}
