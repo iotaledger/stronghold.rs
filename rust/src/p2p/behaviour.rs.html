@@ -1033,6 +1033,81 @@
 <span id="1033">1033</span>
 <span id="1034">1034</span>
 <span id="1035">1035</span>
+<span id="1036">1036</span>
+<span id="1037">1037</span>
+<span id="1038">1038</span>
+<span id="1039">1039</span>
+<span id="1040">1040</span>
+<span id="1041">1041</span>
+<span id="1042">1042</span>
+<span id="1043">1043</span>
+<span id="1044">1044</span>
+<span id="1045">1045</span>
+<span id="1046">1046</span>
+<span id="1047">1047</span>
+<span id="1048">1048</span>
+<span id="1049">1049</span>
+<span id="1050">1050</span>
+<span id="1051">1051</span>
+<span id="1052">1052</span>
+<span id="1053">1053</span>
+<span id="1054">1054</span>
+<span id="1055">1055</span>
+<span id="1056">1056</span>
+<span id="1057">1057</span>
+<span id="1058">1058</span>
+<span id="1059">1059</span>
+<span id="1060">1060</span>
+<span id="1061">1061</span>
+<span id="1062">1062</span>
+<span id="1063">1063</span>
+<span id="1064">1064</span>
+<span id="1065">1065</span>
+<span id="1066">1066</span>
+<span id="1067">1067</span>
+<span id="1068">1068</span>
+<span id="1069">1069</span>
+<span id="1070">1070</span>
+<span id="1071">1071</span>
+<span id="1072">1072</span>
+<span id="1073">1073</span>
+<span id="1074">1074</span>
+<span id="1075">1075</span>
+<span id="1076">1076</span>
+<span id="1077">1077</span>
+<span id="1078">1078</span>
+<span id="1079">1079</span>
+<span id="1080">1080</span>
+<span id="1081">1081</span>
+<span id="1082">1082</span>
+<span id="1083">1083</span>
+<span id="1084">1084</span>
+<span id="1085">1085</span>
+<span id="1086">1086</span>
+<span id="1087">1087</span>
+<span id="1088">1088</span>
+<span id="1089">1089</span>
+<span id="1090">1090</span>
+<span id="1091">1091</span>
+<span id="1092">1092</span>
+<span id="1093">1093</span>
+<span id="1094">1094</span>
+<span id="1095">1095</span>
+<span id="1096">1096</span>
+<span id="1097">1097</span>
+<span id="1098">1098</span>
+<span id="1099">1099</span>
+<span id="1100">1100</span>
+<span id="1101">1101</span>
+<span id="1102">1102</span>
+<span id="1103">1103</span>
+<span id="1104">1104</span>
+<span id="1105">1105</span>
+<span id="1106">1106</span>
+<span id="1107">1107</span>
+<span id="1108">1108</span>
+<span id="1109">1109</span>
+<span id="1110">1110</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -1094,15 +1169,9 @@
 <span class="kw">use</span> <span class="ident">smallvec</span>::{<span class="ident">smallvec</span>, <span class="ident">SmallVec</span>};
 <span class="kw">use</span> <span class="ident">std</span>::{
     <span class="ident">borrow::Borrow</span>,
-    <span class="ident">error</span>,
     <span class="ident">sync</span>::{<span class="ident">atomic::AtomicU64</span>, <span class="ident">Arc</span>},
     <span class="ident">time::Duration</span>,
 };
-
-<span class="kw">type</span> <span class="ident">NetworkAction</span><span class="op">&lt;</span><span class="ident">Proto</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">NetworkBehaviourAction</span><span class="op">&lt;</span>
-    <span class="op">&lt;</span><span class="op">&lt;</span><span class="op">&lt;</span><span class="ident">Proto</span> <span class="kw">as</span> <span class="ident">NetworkBehaviour</span><span class="op">&gt;</span><span class="ident">::ProtocolsHandler</span> <span class="kw">as</span> <span class="ident">IntoProtocolsHandler</span><span class="op">&gt;</span><span class="ident">::Handler</span> <span class="kw">as</span> <span class="ident">ProtocolsHandler</span><span class="op">&gt;</span><span class="ident">::InEvent</span>,
-    <span class="op">&lt;</span><span class="ident">Proto</span> <span class="kw">as</span> <span class="ident">NetworkBehaviour</span><span class="op">&gt;</span><span class="ident">::OutEvent</span>,
-<span class="op">&gt;</span>;
 
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>, <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>))]</span>
 <span class="kw">type</span> <span class="ident">ProtoHandler</span><span class="op">&lt;</span><span class="ident">Rq</span>, <span class="ident">Rs</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">IntoProtocolsHandlerSelect</span><span class="op">&lt;</span>
@@ -1399,6 +1468,50 @@
         }
     }
 
+    <span class="kw">fn</span> <span class="ident">new_request_response_handler</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ConnectionHandler</span><span class="op">&lt;</span><span class="ident">Rq</span>, <span class="ident">Rs</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">protocol_support</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">peer</span> {
+            <span class="prelude-val">Some</span>(<span class="ident">peer</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProtocolSupport::from_rules</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">firewall</span>.<span class="ident">get_effective_rules</span>(<span class="kw-2">&amp;</span><span class="ident">peer</span>)),
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProtocolSupport::Full</span>,
+        };
+        <span class="comment">// Use full protocol support on init.</span>
+        <span class="comment">// Once the connection is established, this will be updated with the effective rules for the remote peer.</span>
+        <span class="ident">ConnectionHandler::new</span>(
+            <span class="self">self</span>.<span class="ident">supported_protocols</span>.<span class="ident">clone</span>(),
+            <span class="ident">protocol_support</span>,
+            <span class="self">self</span>.<span class="ident">connection_timeout</span>,
+            <span class="self">self</span>.<span class="ident">request_timeout</span>,
+            <span class="self">self</span>.<span class="ident">next_inbound_id</span>.<span class="ident">clone</span>(),
+        )
+    }
+
+    <span class="kw">fn</span> <span class="ident">new_handler_for_peer</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="op">&lt;</span><span class="self">Self</span> <span class="kw">as</span> <span class="ident">NetworkBehaviour</span><span class="op">&gt;</span><span class="ident">::ProtocolsHandler</span> {
+        <span class="kw">let</span> <span class="ident">handler</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">new_request_response_handler</span>(<span class="ident">peer</span>);
+        <span class="kw">let</span> <span class="ident">protocols_handler</span>;
+        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>, <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>))]</span>
+        {
+            <span class="kw">let</span> <span class="ident">mdns_handler</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">new_handler</span>();
+            <span class="kw">let</span> <span class="ident">relay_handler</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">new_handler</span>();
+            <span class="ident">protocols_handler</span> <span class="op">=</span>
+                <span class="ident">IntoProtocolsHandler::select</span>(<span class="ident">handler</span>, <span class="ident">IntoProtocolsHandler::select</span>(<span class="ident">mdns_handler</span>, <span class="ident">relay_handler</span>))
+        }
+        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>, <span class="ident">not</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)))]</span>
+        {
+            <span class="kw">let</span> <span class="ident">mdns_handler</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">new_handler</span>();
+            <span class="ident">protocols_handler</span> <span class="op">=</span> <span class="ident">IntoProtocolsHandler::select</span>(<span class="ident">handler</span>, <span class="ident">mdns_handler</span>)
+        }
+        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">not</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>), <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>))]</span>
+        {
+            <span class="kw">let</span> <span class="ident">relay_handler</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">new_handler</span>();
+            <span class="ident">protocols_handler</span> <span class="op">=</span> <span class="ident">IntoProtocolsHandler::select</span>(<span class="ident">handler</span>, <span class="ident">relay_handler</span>)
+        }
+        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">not</span>(<span class="ident">any</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>, <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)))]</span>
+        {
+            <span class="ident">protocols_handler</span> <span class="op">=</span> <span class="ident">handler</span>;
+        }
+
+        <span class="ident">protocols_handler</span>
+    }
+
     <span class="comment">// Handle new [`HandlerOutEvent`] emitted by the [`ConnectionHandler`].</span>
     <span class="kw">fn</span> <span class="ident">handle_handler_event</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="ident">PeerId</span>, <span class="ident">connection</span>: <span class="ident">ConnectionId</span>, <span class="ident">event</span>: <span class="ident">HandlerOutEvent</span><span class="op">&lt;</span><span class="ident">Rq</span>, <span class="ident">Rs</span><span class="op">&gt;</span>) {
         <span class="kw">match</span> <span class="ident">event</span> {
@@ -1491,7 +1604,7 @@
     <span class="kw">fn</span> <span class="ident">handle_updated_peer_rule</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="ident">PeerId</span>, <span class="ident">direction</span>: <span class="ident">RuleDirection</span>) {
         <span class="comment">// Set protocol support for the active handlers according to the new rules.</span>
         <span class="kw">let</span> <span class="ident">rules</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">firewall</span>.<span class="ident">get_effective_rules</span>(<span class="kw-2">&amp;</span><span class="ident">peer</span>);
-        <span class="kw">let</span> <span class="ident">set_support</span> <span class="op">=</span> <span class="ident">ProtocolSupport::from_rules</span>(<span class="ident">rules</span>.<span class="ident">inbound</span>.<span class="ident">as_ref</span>(), <span class="ident">rules</span>.<span class="ident">outbound</span>.<span class="ident">as_ref</span>());
+        <span class="kw">let</span> <span class="ident">set_support</span> <span class="op">=</span> <span class="ident">ProtocolSupport::from_rules</span>(<span class="kw-2">&amp;</span><span class="ident">rules</span>);
         <span class="self">self</span>.<span class="ident">request_manager</span>.<span class="ident">set_protocol_support</span>(<span class="ident">peer</span>, <span class="prelude-val">None</span>, <span class="ident">set_support</span>);
         <span class="comment">// Query for individual request approval due to [`Rule::Ask`].</span>
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ask_reqs</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">request_manager</span>.<span class="ident">on_peer_rule</span>(<span class="ident">peer</span>, <span class="ident">rules</span>, <span class="ident">direction</span>) {
@@ -1546,39 +1659,7 @@
     <span class="kw">type</span> <span class="ident">OutEvent</span> <span class="op">=</span> <span class="ident">BehaviourEvent</span><span class="op">&lt;</span><span class="ident">Rq</span>, <span class="ident">Rs</span><span class="op">&gt;</span>;
 
     <span class="kw">fn</span> <span class="ident">new_handler</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span><span class="ident">::ProtocolsHandler</span> {
-        <span class="comment">// Use full protocol support on init.</span>
-        <span class="comment">// Once the connection is established, this will be updated with the effective rules for the remote peer.</span>
-        <span class="kw">let</span> <span class="ident">handler</span> <span class="op">=</span> <span class="ident">ConnectionHandler::new</span>(
-            <span class="self">self</span>.<span class="ident">supported_protocols</span>.<span class="ident">clone</span>(),
-            <span class="ident">ProtocolSupport::Full</span>,
-            <span class="self">self</span>.<span class="ident">connection_timeout</span>,
-            <span class="self">self</span>.<span class="ident">request_timeout</span>,
-            <span class="self">self</span>.<span class="ident">next_inbound_id</span>.<span class="ident">clone</span>(),
-        );
-        <span class="kw">let</span> <span class="ident">protocols_handler</span>;
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>, <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>))]</span>
-        {
-            <span class="kw">let</span> <span class="ident">mdns_handler</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">new_handler</span>();
-            <span class="kw">let</span> <span class="ident">relay_handler</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">new_handler</span>();
-            <span class="ident">protocols_handler</span> <span class="op">=</span>
-                <span class="ident">IntoProtocolsHandler::select</span>(<span class="ident">handler</span>, <span class="ident">IntoProtocolsHandler::select</span>(<span class="ident">mdns_handler</span>, <span class="ident">relay_handler</span>))
-        }
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>, <span class="ident">not</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)))]</span>
-        {
-            <span class="kw">let</span> <span class="ident">mdns_handler</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">new_handler</span>();
-            <span class="ident">protocols_handler</span> <span class="op">=</span> <span class="ident">IntoProtocolsHandler::select</span>(<span class="ident">handler</span>, <span class="ident">mdns_handler</span>)
-        }
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">not</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>), <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>))]</span>
-        {
-            <span class="kw">let</span> <span class="ident">relay_handler</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">new_handler</span>();
-            <span class="ident">protocols_handler</span> <span class="op">=</span> <span class="ident">IntoProtocolsHandler::select</span>(<span class="ident">handler</span>, <span class="ident">relay_handler</span>)
-        }
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">not</span>(<span class="ident">any</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>, <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)))]</span>
-        {
-            <span class="ident">protocols_handler</span> <span class="op">=</span> <span class="ident">handler</span>;
-        }
-
-        <span class="ident">protocols_handler</span>
+        <span class="self">self</span>.<span class="ident">new_handler_for_peer</span>(<span class="prelude-val">None</span>)
     }
 
     <span class="kw">fn</span> <span class="ident">addresses_of_peer</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="kw-2">&amp;</span><span class="ident">PeerId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span> {
@@ -1607,33 +1688,72 @@
         <span class="self">self</span>.<span class="ident">request_manager</span>.<span class="ident">on_peer_disconnected</span>(<span class="kw-2">*</span><span class="ident">peer</span>);
     }
 
-    <span class="kw">fn</span> <span class="ident">inject_connection_established</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="kw-2">&amp;</span><span class="ident">PeerId</span>, <span class="ident">connection</span>: <span class="kw-2">&amp;</span><span class="ident">ConnectionId</span>, <span class="ident">endpoint</span>: <span class="kw-2">&amp;</span><span class="ident">ConnectedPoint</span>) {
+    <span class="kw">fn</span> <span class="ident">inject_connection_established</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">peer</span>: <span class="kw-2">&amp;</span><span class="ident">PeerId</span>,
+        <span class="ident">connection</span>: <span class="kw-2">&amp;</span><span class="ident">ConnectionId</span>,
+        <span class="ident">endpoint</span>: <span class="kw-2">&amp;</span><span class="ident">ConnectedPoint</span>,
+        <span class="ident">failed_addresses</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    ) {
         <span class="comment">// If the remote connected to us and there is no rule for inbound requests yet, query firewall.</span>
         <span class="kw">if</span> <span class="ident">endpoint</span>.<span class="ident">is_listener</span>() <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">firewall</span>.<span class="ident">get_effective_rules</span>(<span class="ident">peer</span>).<span class="ident">inbound</span>.<span class="ident">is_none</span>() {
             <span class="self">self</span>.<span class="ident">query_peer_rule</span>(<span class="kw-2">*</span><span class="ident">peer</span>);
         }
         <span class="comment">// Set the protocol support for the remote peer.</span>
-        <span class="kw">let</span> <span class="ident">peer_rules</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">firewall</span>.<span class="ident">get_effective_rules</span>(<span class="ident">peer</span>);
-        <span class="kw">let</span> <span class="ident">support</span> <span class="op">=</span> <span class="ident">ProtocolSupport::from_rules</span>(<span class="ident">peer_rules</span>.<span class="ident">inbound</span>.<span class="ident">as_ref</span>(), <span class="ident">peer_rules</span>.<span class="ident">outbound</span>.<span class="ident">as_ref</span>());
+        <span class="kw">let</span> <span class="ident">support</span> <span class="op">=</span> <span class="ident">ProtocolSupport::from_rules</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">firewall</span>.<span class="ident">get_effective_rules</span>(<span class="ident">peer</span>));
         <span class="self">self</span>.<span class="ident">request_manager</span>
             .<span class="ident">set_protocol_support</span>(<span class="kw-2">*</span><span class="ident">peer</span>, <span class="prelude-val">Some</span>(<span class="kw-2">*</span><span class="ident">connection</span>), <span class="ident">support</span>);
+
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">addrs</span>) <span class="op">=</span> <span class="ident">failed_addresses</span> {
+            <span class="kw">for</span> <span class="ident">addr</span> <span class="kw">in</span> <span class="ident">addrs</span> {
+                <span class="self">self</span>.<span class="ident">addresses</span>.<span class="ident">deprioritize_addr</span>(<span class="kw-2">*</span><span class="ident">peer</span>, <span class="ident">addr</span>.<span class="ident">clone</span>());
+            }
+        }
 
         <span class="self">self</span>.<span class="ident">request_manager</span>
             .<span class="ident">on_connection_established</span>(<span class="kw-2">*</span><span class="ident">peer</span>, <span class="kw-2">*</span><span class="ident">connection</span>, <span class="ident">endpoint</span>.<span class="ident">clone</span>());
         <span class="self">self</span>.<span class="ident">addresses</span>
             .<span class="ident">prioritize_addr</span>(<span class="kw-2">*</span><span class="ident">peer</span>, <span class="ident">endpoint</span>.<span class="ident">get_remote_address</span>().<span class="ident">clone</span>());
         <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
-        <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">inject_connection_established</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">endpoint</span>);
+        <span class="self">self</span>.<span class="ident">relay</span>
+            .<span class="ident">inject_connection_established</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">endpoint</span>, <span class="ident">failed_addresses</span>);
         <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
-        <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">inject_connection_established</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">endpoint</span>);
+        <span class="self">self</span>.<span class="ident">mdns</span>
+            .<span class="ident">inject_connection_established</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">endpoint</span>, <span class="ident">failed_addresses</span>);
     }
 
-    <span class="kw">fn</span> <span class="ident">inject_connection_closed</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="kw-2">&amp;</span><span class="ident">PeerId</span>, <span class="ident">connection</span>: <span class="kw-2">&amp;</span><span class="ident">ConnectionId</span>, <span class="ident">_endpoint</span>: <span class="kw-2">&amp;</span><span class="ident">ConnectedPoint</span>) {
+    <span class="kw">fn</span> <span class="ident">inject_connection_closed</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">peer</span>: <span class="kw-2">&amp;</span><span class="ident">PeerId</span>,
+        <span class="ident">connection</span>: <span class="kw-2">&amp;</span><span class="ident">ConnectionId</span>,
+        <span class="ident">_endpoint</span>: <span class="kw-2">&amp;</span><span class="ident">ConnectedPoint</span>,
+        <span class="ident">_handler</span>: <span class="op">&lt;</span><span class="self">Self</span><span class="ident">::ProtocolsHandler</span> <span class="kw">as</span> <span class="ident">IntoProtocolsHandler</span><span class="op">&gt;</span><span class="ident">::Handler</span>,
+    ) {
         <span class="self">self</span>.<span class="ident">request_manager</span>.<span class="ident">on_connection_closed</span>(<span class="kw-2">*</span><span class="ident">peer</span>, <span class="ident">connection</span>);
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
-        <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">inject_connection_closed</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">_endpoint</span>);
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
-        <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">inject_connection_closed</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">_endpoint</span>);
+
+        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>, <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>))]</span>
+        {
+            <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">select</span>) <span class="op">=</span> <span class="ident">_handler</span>.<span class="ident">into_inner</span>();
+            <span class="kw">let</span> (<span class="ident">mdns_handler</span>, <span class="ident">relay_handler</span>) <span class="op">=</span> <span class="ident">select</span>.<span class="ident">into_inner</span>();
+            <span class="self">self</span>.<span class="ident">relay</span>
+                .<span class="ident">inject_connection_closed</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">_endpoint</span>, <span class="ident">relay_handler</span>);
+            <span class="self">self</span>.<span class="ident">mdns</span>
+                .<span class="ident">inject_connection_closed</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">_endpoint</span>, <span class="ident">mdns_handler</span>);
+        }
+
+        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>, <span class="ident">not</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)))]</span>
+        {
+            <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">relay_handler</span>) <span class="op">=</span> <span class="ident">_handler</span>.<span class="ident">into_inner</span>();
+            <span class="self">self</span>.<span class="ident">relay</span>
+                .<span class="ident">inject_connection_closed</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">_endpoint</span>, <span class="ident">relay_handler</span>);
+        }
+
+        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>, <span class="ident">not</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)))]</span>
+        {
+            <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">mdns_handler</span>) <span class="op">=</span> <span class="ident">_handler</span>.<span class="ident">into_inner</span>();
+            <span class="self">self</span>.<span class="ident">mdns</span>
+                .<span class="ident">inject_connection_closed</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">_endpoint</span>, <span class="ident">mdns_handler</span>);
+        }
     }
 
     <span class="kw">fn</span> <span class="ident">inject_address_change</span>(
@@ -1675,22 +1795,35 @@
         <span class="self">self</span>.<span class="ident">handle_handler_event</span>(<span class="ident">peer</span>, <span class="ident">connection</span>, <span class="ident">event</span>)
     }
 
-    <span class="kw">fn</span> <span class="ident">inject_addr_reach_failure</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">PeerId</span><span class="op">&gt;</span>, <span class="ident">addr</span>: <span class="kw-2">&amp;</span><span class="ident">Multiaddr</span>, <span class="ident">_error</span>: <span class="kw-2">&amp;</span><span class="kw">dyn</span> <span class="ident">error::Error</span>) {
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
-        <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">inject_addr_reach_failure</span>(<span class="ident">peer</span>, <span class="ident">addr</span>, <span class="ident">_error</span>);
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
-        <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">inject_addr_reach_failure</span>(<span class="ident">peer</span>, <span class="ident">addr</span>, <span class="ident">_error</span>);
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">peer</span>) <span class="op">=</span> <span class="ident">peer</span> {
-            <span class="self">self</span>.<span class="ident">addresses</span>.<span class="ident">deprioritize_addr</span>(<span class="kw-2">*</span><span class="ident">peer</span>, <span class="ident">addr</span>.<span class="ident">clone</span>());
+    <span class="kw">fn</span> <span class="ident">inject_dial_failure</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">peer_id</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>,
+        <span class="ident">_handler</span>: <span class="self">Self</span><span class="ident">::ProtocolsHandler</span>,
+        <span class="ident">_error</span>: <span class="kw-2">&amp;</span><span class="ident">libp2p::swarm::DialError</span>,
+    ) {
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">peer</span>) <span class="op">=</span> <span class="ident">peer_id</span> {
+            <span class="self">self</span>.<span class="ident">request_manager</span>.<span class="ident">on_dial_failure</span>(<span class="ident">peer</span>);
         }
-    }
 
-    <span class="kw">fn</span> <span class="ident">inject_dial_failure</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="kw-2">&amp;</span><span class="ident">PeerId</span>) {
-        <span class="self">self</span>.<span class="ident">request_manager</span>.<span class="ident">on_dial_failure</span>(<span class="kw-2">*</span><span class="ident">peer</span>);
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
-        <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">inject_dial_failure</span>(<span class="ident">peer</span>);
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
-        <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">inject_dial_failure</span>(<span class="ident">peer</span>);
+        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>, <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>))]</span>
+        {
+            <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">select</span>) <span class="op">=</span> <span class="ident">_handler</span>.<span class="ident">into_inner</span>();
+            <span class="kw">let</span> (<span class="ident">mdns_handler</span>, <span class="ident">relay_handler</span>) <span class="op">=</span> <span class="ident">select</span>.<span class="ident">into_inner</span>();
+            <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">inject_dial_failure</span>(<span class="ident">peer_id</span>, <span class="ident">relay_handler</span>, <span class="ident">_error</span>);
+            <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">inject_dial_failure</span>(<span class="ident">peer_id</span>, <span class="ident">mdns_handler</span>, <span class="ident">_error</span>);
+        }
+
+        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>, <span class="ident">not</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)))]</span>
+        {
+            <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">relay_handler</span>) <span class="op">=</span> <span class="ident">_handler</span>.<span class="ident">into_inner</span>();
+            <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">inject_dial_failure</span>(<span class="ident">peer_id</span>, <span class="ident">relay_handler</span>, <span class="ident">_error</span>);
+        }
+
+        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">all</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>, <span class="ident">not</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)))]</span>
+        {
+            <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">mdns_handler</span>) <span class="op">=</span> <span class="ident">_handler</span>.<span class="ident">into_inner</span>();
+            <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">inject_dial_failure</span>(<span class="ident">peer_id</span>, <span class="ident">mdns_handler</span>, <span class="ident">_error</span>);
+        }
     }
 
     <span class="kw">fn</span> <span class="ident">inject_new_listen_addr</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">_id</span>: <span class="ident">ListenerId</span>, <span class="ident">_addr</span>: <span class="kw-2">&amp;</span><span class="ident">Multiaddr</span>) {
@@ -1700,7 +1833,11 @@
         <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">inject_new_listen_addr</span>(<span class="ident">_id</span>, <span class="ident">_addr</span>);
     }
 
-    <span class="kw">fn</span> <span class="ident">poll</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">cx</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Context</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span><span class="op">&gt;</span>, <span class="ident">_params</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw">impl</span> <span class="ident">PollParameters</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Poll</span><span class="op">&lt;</span><span class="ident">NetworkAction</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">poll</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">cx</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Context</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span><span class="op">&gt;</span>,
+        <span class="ident">_params</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw">impl</span> <span class="ident">PollParameters</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Poll</span><span class="op">&lt;</span><span class="ident">NetworkBehaviourAction</span><span class="op">&lt;</span><span class="self">Self</span><span class="ident">::OutEvent</span>, <span class="self">Self</span><span class="ident">::ProtocolsHandler</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="comment">// Drive mdns.</span>
         <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
         <span class="kw">let</span> <span class="kw">_</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">poll</span>(<span class="ident">cx</span>, <span class="ident">_params</span>);
@@ -1728,8 +1865,20 @@
         <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
         <span class="kw">if</span> <span class="kw">let</span> <span class="ident">Poll::Ready</span>(<span class="ident">action</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">relay</span>.<span class="ident">poll</span>(<span class="ident">cx</span>, <span class="ident">_params</span>) {
             <span class="kw">match</span> <span class="ident">action</span> {
-                <span class="ident">NetworkBehaviourAction::DialPeer</span> { <span class="ident">peer_id</span>, <span class="ident">condition</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="kw">return</span> <span class="ident">Poll::Ready</span>(<span class="ident">NetworkBehaviourAction::DialPeer</span> { <span class="ident">peer_id</span>, <span class="ident">condition</span> })
+                <span class="ident">NetworkBehaviourAction::DialPeer</span> {
+                    <span class="ident">peer_id</span>,
+                    <span class="ident">condition</span>,
+                    <span class="ident">handler</span>,
+                } <span class="op">=</span><span class="op">&gt;</span> {
+                    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
+                    <span class="kw">let</span> <span class="ident">handler</span> <span class="op">=</span> <span class="ident">IntoProtocolsHandler::select</span>(<span class="self">self</span>.<span class="ident">mdns</span>.<span class="ident">new_handler</span>(), <span class="ident">handler</span>);
+                    <span class="kw">let</span> <span class="ident">first</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">new_request_response_handler</span>(<span class="prelude-val">Some</span>(<span class="ident">peer_id</span>));
+                    <span class="kw">let</span> <span class="ident">handler</span> <span class="op">=</span> <span class="ident">IntoProtocolsHandler::select</span>(<span class="ident">first</span>, <span class="ident">handler</span>);
+                    <span class="kw">return</span> <span class="ident">Poll::Ready</span>(<span class="ident">NetworkBehaviourAction::DialPeer</span> {
+                        <span class="ident">peer_id</span>,
+                        <span class="ident">condition</span>,
+                        <span class="ident">handler</span>,
+                    });
                 }
                 <span class="ident">NetworkBehaviourAction::NotifyHandler</span> {
                     <span class="ident">peer_id</span>,
@@ -1807,6 +1956,7 @@
                     <span class="ident">response</span>,
                 }),
                 <span class="ident">BehaviourAction::RequireDialAttempt</span>(<span class="ident">peer</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">NetworkBehaviourAction::DialPeer</span> {
+                    <span class="ident">handler</span>: <span class="self">self</span>.<span class="ident">new_handler_for_peer</span>(<span class="prelude-val">Some</span>(<span class="ident">peer</span>)),
                     <span class="ident">peer_id</span>: <span class="ident">peer</span>,
                     <span class="ident">condition</span>: <span class="ident">DialPeerCondition::Disconnected</span>,
                 },
@@ -2032,7 +2182,7 @@
 
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">init_swarm</span>() <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">PeerId</span>, <span class="ident">Swarm</span><span class="op">&lt;</span><span class="ident">NetBehaviour</span><span class="op">&lt;</span><span class="ident">Ping</span>, <span class="ident">Pong</span>, <span class="ident">Ping</span><span class="op">&gt;</span><span class="op">&gt;</span>) {
         <span class="kw">let</span> <span class="ident">id_keys</span> <span class="op">=</span> <span class="ident">identity::Keypair::generate_ed25519</span>();
-        <span class="kw">let</span> <span class="ident">peer</span> <span class="op">=</span> <span class="ident">id_keys</span>.<span class="ident">public</span>().<span class="ident">into_peer_id</span>();
+        <span class="kw">let</span> <span class="ident">peer</span> <span class="op">=</span> <span class="ident">id_keys</span>.<span class="ident">public</span>().<span class="ident">to_peer_id</span>();
         <span class="kw">let</span> <span class="ident">noise_keys</span> <span class="op">=</span> <span class="ident">NoiseKeypair</span>::<span class="op">&lt;</span><span class="ident">X25519Spec</span><span class="op">&gt;</span><span class="ident">::new</span>().<span class="ident">into_authentic</span>(<span class="kw-2">&amp;</span><span class="ident">id_keys</span>).<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">transport</span> <span class="op">=</span> <span class="ident">TokioTcpConfig::new</span>();
         <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>

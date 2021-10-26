@@ -987,7 +987,7 @@
     <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Shutdown</span>;
 
     <span class="comment">// Wrapper for Requests to a remote Secure Client</span>
-    <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
+    <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
     <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ShRequest</span> {
         <span class="ident">CheckVault</span>(<span class="ident">CheckVault</span>),
         <span class="ident">CheckRecord</span>(<span class="ident">CheckRecord</span>),
@@ -1018,7 +1018,7 @@
     <span class="macro">sh_request_from!</span>(<span class="ident">ClearCache</span>);
     <span class="macro">sh_request_from!</span>(<span class="ident">CallProcedure</span>);
 
-    <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
+    <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
     <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ShResult</span> {
         <span class="ident">Empty</span>(()),
         <span class="ident">Bool</span>(<span class="ident">bool</span>),

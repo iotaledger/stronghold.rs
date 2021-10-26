@@ -577,6 +577,7 @@
 <span id="577">577</span>
 <span id="578">578</span>
 <span id="579">579</span>
+<span id="580">580</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -1035,7 +1036,7 @@
         <span class="kw">let</span> (<span class="ident">keypair</span>, <span class="ident">id</span>) <span class="op">=</span> <span class="kw">match</span> <span class="ident">keys</span> {
             <span class="ident">InitKeypair::IdKeys</span>(<span class="ident">keypair</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">noise_keypair</span> <span class="op">=</span> <span class="ident">NoiseKeypair</span>::<span class="op">&lt;</span><span class="ident">X25519Spec</span><span class="op">&gt;</span><span class="ident">::new</span>().<span class="ident">into_authentic</span>(<span class="kw-2">&amp;</span><span class="ident">keypair</span>).<span class="ident">unwrap</span>();
-                <span class="kw">let</span> <span class="ident">id</span> <span class="op">=</span> <span class="ident">keypair</span>.<span class="ident">public</span>().<span class="ident">into_peer_id</span>();
+                <span class="kw">let</span> <span class="ident">id</span> <span class="op">=</span> <span class="ident">keypair</span>.<span class="ident">public</span>().<span class="ident">to_peer_id</span>();
                 (<span class="ident">noise_keypair</span>, <span class="ident">id</span>)
             }
             <span class="ident">InitKeypair::Authenticated</span> { <span class="ident">peer_id</span>, <span class="ident">noise_keypair</span> } <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">noise_keypair</span>, <span class="ident">peer_id</span>),
@@ -1113,8 +1114,9 @@
         <span class="comment">// Use the configured keypair or create a new one.</span>
         <span class="kw">let</span> (<span class="ident">noise_keypair</span>, <span class="ident">peer_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">ident</span>.<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> {
             <span class="kw">let</span> <span class="ident">keypair</span> <span class="op">=</span> <span class="ident">Keypair::generate_ed25519</span>();
+            <span class="comment">// Can never fail for `identity::Keypair::Ed25519` and `X25519Spec` protocol.</span>
             <span class="kw">let</span> <span class="ident">noise_keypair</span> <span class="op">=</span> <span class="ident">NoiseKeypair</span>::<span class="op">&lt;</span><span class="ident">X25519Spec</span><span class="op">&gt;</span><span class="ident">::new</span>().<span class="ident">into_authentic</span>(<span class="kw-2">&amp;</span><span class="ident">keypair</span>).<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="ident">peer_id</span> <span class="op">=</span> <span class="ident">keypair</span>.<span class="ident">public</span>().<span class="ident">into_peer_id</span>();
+            <span class="kw">let</span> <span class="ident">peer_id</span> <span class="op">=</span> <span class="ident">keypair</span>.<span class="ident">public</span>().<span class="ident">to_peer_id</span>();
             (<span class="ident">noise_keypair</span>, <span class="ident">peer_id</span>)
         });
         <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
