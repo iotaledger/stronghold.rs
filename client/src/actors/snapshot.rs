@@ -201,22 +201,14 @@ impl Supervised for Snapshot {}
 ///
 /// This diagram shows the interaction between A and B and the internal state
 /// transitions inside the two participants
-///
-/// ``` no_run
-/// -----------------------------------------
-///   A                                 B
-///
-///  Export         
-///     |
-///     v                                       
-///   CalculateShape ----------------> CalculateDifference
-///   ExportSnapshot <---------------- CalculateDifference
-///     |----------------------------> ImportSnapshot
-/// ```
-mod statemachine {
+pub(crate) mod statemachine {
 
     use super::*;
 
+    /// This trait defines the transition function from one state
+    /// to another. The intent for this trait is to be used
+    /// inside an implicit state machine for exporting snapshot entries
+    /// regardless of the [`ClientId`] to a remote [`crate::Stronghold`] instance.
     pub trait Transition {
         // The message type containing all relevant parameters
         type Message;
@@ -224,24 +216,31 @@ mod statemachine {
         // the error type to be thrown, if something goes wrong
         type Error;
 
-        // the return type
+        // the return type of the function
         type Return;
 
         // the next state
         type Next: Transition;
 
-        /// Executes the current state, returns some result and
-        /// the next [`Transition`].
+        /// Executes the current state, returns some result and the next [`Transition`]
         fn next(&mut self, message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error>;
     }
 
     // -- state types
 
+    /// Marker Type for exporting all internal entries
     pub struct ExportAllEntries;
+
+    /// Marker Type for  exporting the snapshot as serialized stream of bytes ( fully encrypted )
     pub struct ExportSnapshot;
+
+    /// Marker Type for calculating the exporting entries as secure shape types
     pub struct CalculateShape;
+
+    // Marker Type for calculating the complement set of received secure entry shapes
     pub struct CalculateComplement;
-    pub struct ImportSnapshot;
+
+    // pub struct ImportSnapshot;
 
     // -- state messages
 
@@ -265,10 +264,10 @@ mod statemachine {
         a: HashMap<Location, EntryShape>,
         b: HashMap<Location, EntryShape>,
     }
-    pub struct MessageImportSnapshot {
-        client_id: ClientId,
-        data: Vec<u8>,
-    }
+    // pub struct MessageImportSnapshot {
+    //     client_id: ClientId,
+    //     data: Vec<u8>,
+    // }
 
     // -- transition implementation
 
@@ -433,7 +432,7 @@ mod statemachine {
         type Message = MessageCalculateDifference;
         type Error = SnapshotError;
         type Return = Vec<Location>;
-        type Next = ImportSnapshot;
+        type Next = Self;
 
         fn next(&mut self, message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error> {
             let result = message
@@ -443,33 +442,35 @@ mod statemachine {
                 .map(|(a, _)| a.clone())
                 .collect();
 
-            Ok((result, ImportSnapshot))
+            Ok((result, Self))
         }
     }
 
-    /// TODO: move to ImportHandler of SnapshotActor
-    impl Transition for ImportSnapshot {
-        type Message = MessageImportSnapshot;
-        type Error = SnapshotError;
-        type Return = Result<(), SnapshotError>;
-        type Next = CalculateComplement;
+    // /// TODO: move to ImportHandler of SnapshotActor
+    // impl Transition for ImportSnapshot {
+    //     type Message = MessageImportSnapshot;
+    //     type Error = SnapshotError;
+    //     type Return = Result<(), SnapshotError>;
+    //     type Next = CalculateComplement;
 
-        fn next(&mut self, _message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error> {
-            // (1) import shall call the Snapshot object, import the current state by deserializing it
-            // (2) reload the actors
+    //     fn next(&mut self, _message: Self::Message) -> Result<(Self::Return, Self::Next), Self::Error> {
+    //         // (1) import shall call the Snapshot object, import the current state by deserializing it
+    //         // (2) reload the actors
 
-            todo!()
-        }
-    }
+    //         todo!()
+    //     }
+    // }
 }
 
 impl Handler<Import> for Snapshot {
     type Result = Result<(), SnapshotError>;
 
     fn handle(&mut self, msg: Import, _ctx: &mut Self::Context) -> Self::Result {
+        // the import handler for snapshots should be used on a temporarily
+        // created actor, later to be merged locally with the previous state
+
         self.state = SnapshotState::deserialize(msg.entries)?;
 
-        // This is pointless. Change the return type
         Ok(())
     }
 }
