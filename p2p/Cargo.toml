@@ -16,7 +16,7 @@ name = "p2p"
 
 [dependencies]
 futures = "0.3"
-libp2p = { version = "0.39", default-features = false, features = ["noise", "yamux"] }
+libp2p = { version = "0.40.0-rc.2", default-features = false, features = ["noise", "yamux"] }
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 smallvec = "1.6.1"
@@ -33,4 +33,4 @@ tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
 [dev-dependencies]
 stronghold-utils = { path = "../utils", version = "0.3" }
 tokio = {version = "1.10", features = ["time", "macros"]}
-libp2p = { version = "0.39", default-features = false, features = ["tcp-tokio"] }
+libp2p = { version = "0.40.0-rc.2", default-features = false, features = ["tcp-tokio"] }

@@ -18,7 +18,7 @@ use libp2p::{
     swarm::DialError,
     Multiaddr, TransportError,
 };
-use std::{fmt, io};
+use std::{convert::TryFrom, fmt, io};
 
 /// Error on dialing a peer and establishing a connection.
 #[derive(Debug)]
@@ -28,26 +28,40 @@ pub enum DialErr {
     /// The configured limit for simultaneous outgoing connections
     /// has been reached.
     ConnectionLimit { limit: u32, current: u32 },
-    /// The address given for dialing is invalid.
-    InvalidAddress(Multiaddr),
-    /// No known address for the peer could be reached.
-    UnreachableAddrs,
+    /// The peer being dialed is the local peer and thus the dial was aborted.
+    LocalPeerId,
     /// No direct or relayed addresses for the peer are known.
     NoAddresses,
+    /// Pending connection attempt has been aborted.
+    Aborted,
+    /// The peer identity obtained on the connection did not
+    /// match the one that was expected or is otherwise invalid.
+    InvalidPeerId,
+    /// An I/O error occurred on the connection.
+    ConnectionIo(io::Error),
+    /// An error occurred while negotiating the transport protocol(s) on a connection.
+    Transport(Vec<(Multiaddr, TransportError<io::Error>)>),
     /// The communication system was shut down before the dialing attempt resolved.
     Shutdown,
 }
 
-impl From<DialError> for DialErr {
-    fn from(err: DialError) -> Self {
-        match err {
+impl TryFrom<DialError> for DialErr {
+    type Error = ();
+    fn try_from(err: DialError) -> Result<Self, Self::Error> {
+        let e = match err {
             DialError::Banned => DialErr::Banned,
             DialError::ConnectionLimit(ConnectionLimit { limit, current }) => {
                 DialErr::ConnectionLimit { limit, current }
             }
-            DialError::InvalidAddress(addr) => DialErr::InvalidAddress(addr),
+            DialError::LocalPeerId => DialErr::LocalPeerId,
             DialError::NoAddresses => DialErr::NoAddresses,
-        }
+            DialError::DialPeerConditionFalse(_) => return Err(()),
+            DialError::Aborted => DialErr::Aborted,
+            DialError::InvalidPeerId => DialErr::InvalidPeerId,
+            DialError::ConnectionIo(e) => DialErr::ConnectionIo(e),
+            DialError::Transport(addrs) => DialErr::Transport(addrs),
+        };
+        Ok(e)
     }
 }
 
@@ -58,9 +72,16 @@ impl fmt::Display for DialErr {
                 write!(f, "Dial error: Connection limit: {}/{}.", current, limit)
             }
             DialErr::NoAddresses => write!(f, "Dial error: no addresses for peer."),
-            DialErr::InvalidAddress(a) => write!(f, "Dial error: invalid address: {}", a),
-            DialErr::UnreachableAddrs => write!(f, "Dial error: no known address could be reached"),
+            DialErr::LocalPeerId => write!(f, "Dial error: tried to dial local peer id."),
             DialErr::Banned => write!(f, "Dial error: peer is banned."),
+            DialErr::Aborted => write!(f, "Dial error: Pending connection attempt has been aborted."),
+            DialErr::InvalidPeerId => write!(f, "Dial error: Invalid peer ID."),
+            DialErr::ConnectionIo(e) => write!(f, "Dial error: An I/O error occurred on the connection: {:?}.", e),
+            DialErr::Transport(e) => write!(
+                f,
+                "An error occurred while negotiating the transport protocol(s) on a connection: {:?}.",
+                e
+            ),
             DialErr::Shutdown => write!(f, "Dial error: the network task was shut down."),
         }
     }
@@ -81,6 +102,8 @@ pub enum ConnectionErr {
     /// The connection was dropped because the connection limit
     /// for a peer has been reached.
     ConnectionLimit { limit: u32, current: u32 },
+    /// Pending connection attempt has been aborted.
+    Aborted,
 }
 
 impl fmt::Display for ConnectionErr {
@@ -92,12 +115,13 @@ impl fmt::Display for ConnectionErr {
                 write!(f, "Connection error: Connection limit: {}/{}.", current, limit)
             }
             ConnectionErr::Transport(e) => write!(f, "Connection error: Transport error: {}", e),
+            ConnectionErr::Aborted => write!(f, "Pending connection attempt has been aborted"),
         }
     }
 }
 
-impl From<PendingConnectionError<io::Error>> for ConnectionErr {
-    fn from(value: PendingConnectionError<io::Error>) -> Self {
+impl From<PendingConnectionError<TransportError<io::Error>>> for ConnectionErr {
+    fn from(value: PendingConnectionError<TransportError<io::Error>>) -> Self {
         match value {
             PendingConnectionError::Transport(TransportError::Other(e)) | PendingConnectionError::IO(e) => {
                 ConnectionErr::Io(e)
@@ -107,6 +131,7 @@ impl From<PendingConnectionError<io::Error>> for ConnectionErr {
                 ConnectionErr::ConnectionLimit { limit, current }
             }
             PendingConnectionError::Transport(err) => ConnectionErr::Transport(err.into()),
+            PendingConnectionError::Aborted => ConnectionErr::Aborted,
         }
     }
 }
@@ -179,9 +204,10 @@ pub enum ListenRelayErr {
     Shutdown,
 }
 
-impl From<DialError> for ListenRelayErr {
-    fn from(err: DialError) -> Self {
-        ListenRelayErr::DialRelay(err.into())
+impl TryFrom<DialError> for ListenRelayErr {
+    type Error = <DialErr as TryFrom<DialError>>::Error;
+    fn try_from(err: DialError) -> Result<Self, Self::Error> {
+        DialErr::try_from(err).map(ListenRelayErr::DialRelay)
     }
 }
 

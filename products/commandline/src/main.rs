@@ -128,7 +128,6 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
 
                     if let StatusMessage::Error(error) = status {
                         println!("{:?}", error);
-                        return;
                     } else {
                         block_on(stronghold.write_all_to_snapshot(
                             &key.to_vec(),
@@ -176,8 +175,6 @@ fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongho
                     println!("{:?}", list);
                 } else {
                     println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-                    return;
                 }
             }
         }
@@ -213,8 +210,6 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
                     println!("Data: {:?}", std::str::from_utf8(&data).unwrap());
                 } else {
                     println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-                    return;
                 }
             }
         }
@@ -252,8 +247,6 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
                     block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 } else {
                     println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-                    return;
                 }
             }
         }
@@ -298,8 +291,6 @@ fn garbage_collect_vault_command(
                     block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 } else {
                     println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-                    return;
                 }
             }
         }
@@ -337,8 +328,6 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
                     block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
                 } else {
                     println!("Could not find a snapshot at the home path.  Try writing first. ");
-
-                    return;
                 }
             }
         }

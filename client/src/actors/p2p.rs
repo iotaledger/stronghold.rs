@@ -468,7 +468,7 @@ pub mod messages {
     pub struct Shutdown;
 
     // Wrapper for Requests to a remote Secure Client
-    #[derive(Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShRequest {
         CheckVault(CheckVault),
         CheckRecord(CheckRecord),
@@ -499,7 +499,7 @@ pub mod messages {
     sh_request_from!(ClearCache);
     sh_request_from!(CallProcedure);
 
-    #[derive(Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {
         Empty(()),
         Bool(bool),
