@@ -76,8 +76,8 @@ impl Stronghold {
         Ok(Self { registry })
     }
 
-    /// Spawns a new set of actors for the Stronghold system. Accepts the client_path: [`Vec<u8>`] and the options:
-    /// `StrongholdFlags`
+    /// Spawn a new client for the Stronghold system and switch the actor target to it.
+    /// Accepts the client_path: [`Vec<u8>`] and the options: `StrongholdFlags`
     pub async fn spawn_stronghold_actor(
         &mut self,
         client_path: Vec<u8>,
