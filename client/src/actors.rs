@@ -8,7 +8,7 @@ mod secure;
 mod snapshot;
 
 #[cfg(feature = "p2p")]
-pub use self::registry::messages::{GetNetwork, InsertNetwork, StopNetwork};
+pub use self::registry::p2p_messages::{GetNetwork, InsertNetwork, StopNetwork};
 #[cfg(test)]
 pub use self::secure::testing as secure_testing;
 pub use self::{

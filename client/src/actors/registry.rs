@@ -82,29 +82,29 @@ pub mod messages {
     impl Message for GetAllClients {
         type Result = Vec<(ClientId, Addr<SecureClient>)>;
     }
+}
 
-    #[cfg(feature = "p2p")]
+#[cfg(feature = "p2p")]
+pub mod p2p_messages {
+
+    use super::*;
+
     pub struct InsertNetwork {
         pub addr: Addr<NetworkActor>,
     }
 
-    #[cfg(feature = "p2p")]
     impl Message for InsertNetwork {
         type Result = ();
     }
 
-    #[cfg(feature = "p2p")]
     pub struct GetNetwork;
 
-    #[cfg(feature = "p2p")]
     impl Message for GetNetwork {
         type Result = Option<Addr<NetworkActor>>;
     }
 
-    #[cfg(feature = "p2p")]
     pub struct StopNetwork;
 
-    #[cfg(feature = "p2p")]
     impl Message for StopNetwork {
         type Result = bool;
     }
@@ -203,27 +203,27 @@ impl Handler<messages::GetAllClients> for Registry {
 }
 
 #[cfg(feature = "p2p")]
-impl Handler<messages::InsertNetwork> for Registry {
+impl Handler<p2p_messages::InsertNetwork> for Registry {
     type Result = ();
-    fn handle(&mut self, msg: messages::InsertNetwork, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: p2p_messages::InsertNetwork, _ctx: &mut Self::Context) -> Self::Result {
         self.network = Some(msg.addr);
     }
 }
 
 #[cfg(feature = "p2p")]
-impl Handler<messages::GetNetwork> for Registry {
+impl Handler<p2p_messages::GetNetwork> for Registry {
     type Result = Option<Addr<NetworkActor>>;
 
-    fn handle(&mut self, _: messages::GetNetwork, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: p2p_messages::GetNetwork, _: &mut Self::Context) -> Self::Result {
         self.network.clone()
     }
 }
 
 #[cfg(feature = "p2p")]
-impl Handler<messages::StopNetwork> for Registry {
+impl Handler<p2p_messages::StopNetwork> for Registry {
     type Result = bool;
 
-    fn handle(&mut self, _: messages::StopNetwork, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: p2p_messages::StopNetwork, _: &mut Self::Context) -> Self::Result {
         // Dropping the only address of the network actor will stop the actor.
         // Upon stopping the actor, its `StrongholdP2p` instance will be dropped, which results in a graceful shutdown.
         self.network.take().is_some()

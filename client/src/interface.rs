@@ -73,10 +73,7 @@ impl Stronghold {
             Err(e) => return Err(anyhow::anyhow!(e)),
         };
 
-        let mut sh = Self { registry };
-        sh.switch_client(client_id).await;
-
-        Ok(sh)
+        Ok(Self { registry })
     }
 
     /// Spawns a new set of actors for the Stronghold system. Accepts the client_path: [`Vec<u8>`] and the options:
