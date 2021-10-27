@@ -253,6 +253,15 @@ impl Stronghold {
         }
     }
 
+    /// Exports selected entries from the current state
+    pub async fn synchronize_with_remote(&self) {
+        // accept the locations to be exported, alongside the old and new keys
+    }
+
+    pub async fn synchronized_from_remote(&self) {
+        // accept
+    }
+
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified
     /// location of [`Location`] type. The payload must be specified as a [`Vec<u8>`] and a [`RecordHint`] can be
     /// provided. Also accepts [`VaultFlags`] for when a new Vault is created.
