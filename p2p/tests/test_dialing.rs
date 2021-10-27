@@ -39,7 +39,10 @@ async fn init_peer() -> (mpsc::Receiver<NetworkEvent>, TestPeer) {
         let executor = |fut| {
             tokio::spawn(fut);
         };
-        builder.build_with_transport(TokioTcpConfig::new(), executor).await
+        builder
+            .build_with_transport(TokioTcpConfig::new(), executor)
+            .await
+            .unwrap();
     };
     #[cfg(feature = "tcp-transport")]
     let peer = builder.build().await.unwrap();
@@ -89,9 +92,9 @@ impl TestSourceConfig {
             7 | 8 | 9 => UseRelay::NoRelay,
             _ => unreachable!(),
         };
-        let knows_direct_target_addr = cfg!(feature = "mdns").then(|| true).unwrap_or_else(|| rand_bool(5));
-        let knows_relayed_target_addr = cfg!(feature = "mdns").then(|| true).unwrap_or_else(|| rand_bool(5));
-        let knows_relay_addr = cfg!(feature = "mdns").then(|| true).unwrap_or_else(|| rand_bool(5));
+        let knows_direct_target_addr = rand_bool(5);
+        let knows_relayed_target_addr = rand_bool(5);
+        let knows_relay_addr = rand_bool(5);
         TestSourceConfig {
             knows_direct_target_addr,
             knows_relayed_target_addr,
@@ -279,9 +282,7 @@ impl TestConfig {
             }
         }
         // if mdns is enabled, there is a chance that the source received the target address via the mdns service
-        if !cfg!(feature = "mdns") {
-            assert!(res.is_err(), "Unexpected Event {:?} on config {}", res, config_str);
-        }
+        assert!(res.is_err(), "Unexpected Event {:?} on config {}", res, config_str);
     }
 
     async fn try_direct(&mut self, config_str: &str) -> bool {

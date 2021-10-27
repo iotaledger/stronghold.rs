@@ -211,7 +211,7 @@ impl_handler!(StopListeningAddr => (), |network, msg| {
     network.stop_listening_addr(msg.address).await
 });
 
-impl_handler!(StopListeningRelay => (), |network, msg| {
+impl_handler!(StopListeningRelay => bool, |network, msg| {
     network.stop_listening_relay(msg.relay).await
 });
 
@@ -256,10 +256,10 @@ impl_handler!(RemovePeerAddr => (), |network, msg| {
 });
 
 impl_handler!(AddDialingRelay => Option<Multiaddr>, |network, msg| {
-    network.add_dialing_relay(msg.relay, None).await
+    network.add_dialing_relay(msg.relay, None).await.unwrap()
 });
 
-impl_handler!(RemoveDialingRelay => (), |network, msg| {
+impl_handler!(RemoveDialingRelay => bool, |network, msg| {
     network.remove_dialing_relay(msg.relay).await
 });
 
@@ -382,7 +382,7 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
+    #[rtype(result = "bool")]
     pub struct StopListeningRelay {
         pub relay: PeerId,
     }
@@ -458,7 +458,7 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
+    #[rtype(result = "bool")]
     pub struct RemoveDialingRelay {
         pub relay: PeerId,
     }

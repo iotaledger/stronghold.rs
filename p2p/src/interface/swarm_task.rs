@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{behaviour::EstablishedConnections, firewall::FirewallRules};
+use crate::{behaviour::EstablishedConnections, firewall::FirewallRules, RelayNotSupported};
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
@@ -42,7 +42,6 @@ pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
         address: Multiaddr,
         tx_yield: oneshot::Sender<Result<Multiaddr, ListenErr>>,
     },
-    #[cfg(feature = "relay")]
     StartRelayedListening {
         relay: PeerId,
         relay_addr: Option<Multiaddr>,
@@ -58,10 +57,9 @@ pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
         address: Multiaddr,
         tx_yield: oneshot::Sender<Ack>,
     },
-    #[cfg(feature = "relay")]
     StopListeningRelay {
         relay: PeerId,
-        tx_yield: oneshot::Sender<Ack>,
+        tx_yield: oneshot::Sender<bool>,
     },
 
     GetPeerAddrs {
@@ -79,29 +77,25 @@ pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
         tx_yield: oneshot::Sender<Ack>,
     },
 
-    #[cfg(feature = "relay")]
     AddDialingRelay {
         peer: PeerId,
         address: Option<Multiaddr>,
-        tx_yield: oneshot::Sender<Option<Multiaddr>>,
+        tx_yield: oneshot::Sender<Result<Option<Multiaddr>, RelayNotSupported>>,
     },
-    #[cfg(feature = "relay")]
     RemoveDialingRelay {
         peer: PeerId,
-        tx_yield: oneshot::Sender<Ack>,
+        tx_yield: oneshot::Sender<bool>,
     },
-    #[cfg(feature = "relay")]
     SetRelayFallback {
         peer: PeerId,
         use_relay_fallback: bool,
-        tx_yield: oneshot::Sender<Ack>,
+        tx_yield: oneshot::Sender<Result<(), RelayNotSupported>>,
     },
-    #[cfg(feature = "relay")]
     UseSpecificRelay {
         target: PeerId,
         relay: PeerId,
         is_exclusive: bool,
-        tx_yield: oneshot::Sender<Option<Multiaddr>>,
+        tx_yield: oneshot::Sender<Result<Option<Multiaddr>, RelayNotSupported>>,
     },
 
     GetFirewallDefault {
@@ -184,7 +178,6 @@ where
     // Response channels for start-listening via a relay.
     // A result is returned once the associated listener reported it's first new listening address, or a listener error
     // occurred. Additionally, an error will be returned if the relay could not be connected.
-    #[cfg(feature = "relay")]
     await_relayed_listen: HashMap<ListenerId, (PeerId, oneshot::Sender<Result<Multiaddr, ListenRelayErr>>)>,
 }
 
@@ -210,7 +203,6 @@ where
             await_response: HashMap::new(),
             await_connection: HashMap::new(),
             await_listen: HashMap::new(),
-            #[cfg(feature = "relay")]
             await_relayed_listen: HashMap::new(),
         }
     }
@@ -316,7 +308,6 @@ where
                 if let Some(listener) = self.listeners.get_mut(listener_id) {
                     listener.addrs.push(address.clone());
                 }
-                #[cfg(feature = "relay")]
                 if let Some((_, result_tx)) = self.await_relayed_listen.remove(listener_id) {
                     let _ = result_tx.send(Ok(address.clone()));
                 }
@@ -390,7 +381,6 @@ where
                 let _ = tx_yield.send(connections);
             }
             SwarmOperation::StartListening { address, tx_yield } => self.start_listening(address, tx_yield),
-            #[cfg(feature = "relay")]
             SwarmOperation::StartRelayedListening {
                 relay,
                 relay_addr,
@@ -408,10 +398,9 @@ where
                 self.remove_listener(|l: &Listener| l.addrs.contains(&address));
                 let _ = tx_yield.send(());
             }
-            #[cfg(feature = "relay")]
             SwarmOperation::StopListeningRelay { relay, tx_yield } => {
-                self.remove_listener(|l: &Listener| l.uses_relay == Some(relay));
-                let _ = tx_yield.send(());
+                let had_relay = self.remove_listener(|l: &Listener| l.uses_relay == Some(relay));
+                let _ = tx_yield.send(had_relay);
             }
             SwarmOperation::GetPeerAddrs { peer, tx_yield } => {
                 let addrs = self.swarm.behaviour_mut().addresses_of_peer(&peer);
@@ -433,7 +422,6 @@ where
                 self.swarm.behaviour_mut().remove_address(&peer, &address);
                 let _ = tx_yield.send(());
             }
-            #[cfg(feature = "relay")]
             SwarmOperation::AddDialingRelay {
                 peer,
                 address,
@@ -442,21 +430,18 @@ where
                 let relayed_addr = self.swarm.behaviour_mut().add_dialing_relay(peer, address);
                 let _ = tx_yield.send(relayed_addr);
             }
-            #[cfg(feature = "relay")]
             SwarmOperation::RemoveDialingRelay { peer, tx_yield } => {
-                self.swarm.behaviour_mut().remove_dialing_relay(&peer);
-                let _ = tx_yield.send(());
+                let was_relay = self.swarm.behaviour_mut().remove_dialing_relay(&peer);
+                let _ = tx_yield.send(was_relay);
             }
-            #[cfg(feature = "relay")]
             SwarmOperation::SetRelayFallback {
                 peer,
                 use_relay_fallback,
                 tx_yield,
             } => {
-                self.swarm.behaviour_mut().set_relay_fallback(peer, use_relay_fallback);
-                let _ = tx_yield.send(());
+                let res = self.swarm.behaviour_mut().set_relay_fallback(peer, use_relay_fallback);
+                let _ = tx_yield.send(res);
             }
-            #[cfg(feature = "relay")]
             SwarmOperation::UseSpecificRelay {
                 target,
                 relay,
@@ -534,7 +519,6 @@ where
     }
 
     // Start listening on a relayed address.
-    #[cfg(feature = "relay")]
     fn start_relayed_listening(
         &mut self,
         relay: PeerId,
@@ -572,17 +556,22 @@ where
     }
 
     // Remove listeners based on the given condition.
-    fn remove_listener<F: Fn(&Listener) -> bool>(&mut self, condition_fn: F) {
+    //
+    // Return whether there was at least one listener that matches the condition.
+    fn remove_listener<F: Fn(&Listener) -> bool>(&mut self, condition_fn: F) -> bool {
+        let mut removed_one = false;
         let mut remove_listeners = Vec::new();
         for (id, listener) in self.listeners.iter() {
             if condition_fn(listener) {
                 remove_listeners.push(*id);
+                removed_one = true;
             }
         }
         for id in remove_listeners {
             let _ = self.listeners.remove(&id);
             let _ = self.swarm.remove_listener(id);
         }
+        removed_one
     }
 
     // Shutdown the task, send errors for all pending operations.
@@ -596,7 +585,6 @@ where
         for (_, tx_yield) in self.await_listen.drain() {
             let _ = tx_yield.send(Err(ListenErr::Shutdown));
         }
-        #[cfg(feature = "relay")]
         for (_, (_, tx_yield)) in self.await_relayed_listen.drain() {
             let _ = tx_yield.send(Err(ListenRelayErr::Shutdown));
         }

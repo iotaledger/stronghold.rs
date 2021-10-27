@@ -63,7 +63,10 @@ async fn init_peer() -> NewPeer {
         let executor = |fut| {
             tokio::spawn(fut);
         };
-        builder.build_with_transport(TokioTcpConfig::new(), executor).await
+        builder
+            .build_with_transport(TokioTcpConfig::new(), executor)
+            .await
+            .unwrap()
     };
     #[cfg(feature = "tcp-transport")]
     let peer = builder.build().await.unwrap();

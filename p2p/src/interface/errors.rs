@@ -196,6 +196,8 @@ impl std::error::Error for ListenErr {}
 /// Error on listening on a relayed address.
 #[derive(Debug)]
 pub enum ListenRelayErr {
+    /// The relay protocol is not supported.
+    ProtocolNotSupported,
     /// Establishing a connection to the relay failed.
     DialRelay(DialErr),
     /// Listening on the address failed on the transport layer.
@@ -226,6 +228,7 @@ impl From<TransportError<io::Error>> for ListenRelayErr {
 impl fmt::Display for ListenRelayErr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            ListenRelayErr::ProtocolNotSupported => write!(f, "Listen on Relay error: Relay Protocol not supported"),
             ListenRelayErr::DialRelay(e) => write!(f, "Listen on Relay error: Dial Relay Error: {}", e),
             ListenRelayErr::Transport(e) => write!(f, "Listen on Relay error: Listening Error: {}", e),
             ListenRelayErr::Shutdown => write!(f, "Listen on Relay error: the network task was shut down."),
