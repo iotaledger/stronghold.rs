@@ -7,11 +7,13 @@ mod registry;
 mod secure;
 mod snapshot;
 
+#[cfg(feature = "p2p")]
+pub use self::registry::p2p_messages::{GetNetwork, InsertNetwork, StopNetwork};
 #[cfg(test)]
 pub use self::secure::testing as secure_testing;
 pub use self::{
     registry::{
-        messages::{GetAllClients, GetClient, GetSnapshot, HasClient, InsertClient, RemoveClient},
+        messages::{GetAllClients, GetClient, GetSnapshot, GetTarget, RemoveClient, SpawnClient, SwitchTarget},
         Registry, RegistryError,
     },
     secure::{

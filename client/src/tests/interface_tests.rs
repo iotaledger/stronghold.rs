@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{line_error, Location, RecordHint, Stronghold};
+use crate::{line_error, Location, RecordHint, StatusMessage, Stronghold};
 
 #[cfg(feature = "p2p")]
 use p2p::firewall::Rule;
@@ -10,7 +10,7 @@ use p2p::firewall::Rule;
 use crate::{
     actors::p2p::{messages::SwarmInfo, NetworkConfig},
     tests::fresh,
-    ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, StatusMessage,
+    ProcResult, Procedure, ResultMessage, SLIP10DeriveInput,
 };
 
 #[actix::test]
@@ -156,10 +156,12 @@ async fn test_stronghold() {
 
     assert_eq!(std::str::from_utf8(&data), Ok(""));
 
-    stronghold.kill_stronghold(client_path, true).await;
+    stronghold.kill_stronghold(client_path.clone(), true).await;
 
-    // actor tree?
-    // stronghold.system.print_tree();
+    assert!(matches!(
+        stronghold.switch_actor_target(client_path).await,
+        StatusMessage::Error(_)
+    ))
 }
 
 #[actix::test]
