@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["RegistryError",""]],"mod":[["messages",""]],"struct":[["Registry","Registry [`Actor`], that owns [`Client`] actors, and manages them. The registry can be modified"]]});
+initSidebarItems({"enum":[["RegistryError",""]],"mod":[["messages",""],["p2p_messages",""]],"struct":[["Registry","Registry [`Actor`], that owns [`Client`] actors, and manages them. The registry can be modified"]]});

@@ -838,6 +838,37 @@
 <span id="838">838</span>
 <span id="839">839</span>
 <span id="840">840</span>
+<span id="841">841</span>
+<span id="842">842</span>
+<span id="843">843</span>
+<span id="844">844</span>
+<span id="845">845</span>
+<span id="846">846</span>
+<span id="847">847</span>
+<span id="848">848</span>
+<span id="849">849</span>
+<span id="850">850</span>
+<span id="851">851</span>
+<span id="852">852</span>
+<span id="853">853</span>
+<span id="854">854</span>
+<span id="855">855</span>
+<span id="856">856</span>
+<span id="857">857</span>
+<span id="858">858</span>
+<span id="859">859</span>
+<span id="860">860</span>
+<span id="861">861</span>
+<span id="862">862</span>
+<span id="863">863</span>
+<span id="864">864</span>
+<span id="865">865</span>
+<span id="866">866</span>
+<span id="867">867</span>
+<span id="868">868</span>
+<span id="869">869</span>
+<span id="870">870</span>
+<span id="871">871</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -859,22 +890,26 @@
         },
         <span class="ident">secure_procedures</span>::{<span class="ident">CallProcedure</span>, <span class="ident">ProcResult</span>, <span class="ident">Procedure</span>},
         <span class="ident">snapshot_messages</span>::{<span class="ident">FillSnapshot</span>, <span class="ident">ReadFromSnapshot</span>, <span class="ident">WriteSnapshot</span>},
-        <span class="ident">GetAllClients</span>, <span class="ident">GetClient</span>, <span class="ident">GetSnapshot</span>, <span class="ident">InsertClient</span>, <span class="ident">Registry</span>, <span class="ident">RemoveClient</span>, <span class="ident">SecureClient</span>,
+        <span class="ident">GetAllClients</span>, <span class="ident">GetClient</span>, <span class="ident">GetSnapshot</span>, <span class="ident">GetTarget</span>, <span class="ident">Registry</span>, <span class="ident">RemoveClient</span>, <span class="ident">SecureClient</span>, <span class="ident">SpawnClient</span>,
+        <span class="ident">SwitchTarget</span>,
     },
     <span class="ident">line_error</span>,
-    <span class="ident">utils</span>::{<span class="ident">LoadFromPath</span>, <span class="ident">StatusMessage</span>, <span class="ident">StrongholdFlags</span>, <span class="ident">VaultFlags</span>},
+    <span class="ident">utils</span>::{<span class="ident">LoadFromPath</span>, <span class="ident">ResultMessage</span>, <span class="ident">StatusMessage</span>, <span class="ident">StrongholdFlags</span>, <span class="ident">VaultFlags</span>},
     <span class="ident">Location</span>,
 };
 <span class="kw">use</span> <span class="ident">engine::vault</span>::{<span class="ident">ClientId</span>, <span class="ident">RecordHint</span>, <span class="ident">RecordId</span>};
 
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;p2p&quot;</span>)]</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
-    <span class="ident">actors::p2p</span>::{
-        <span class="ident">messages</span> <span class="kw">as</span> <span class="ident">network_msg</span>,
-        <span class="ident">messages</span>::{<span class="ident">ShRequest</span>, <span class="ident">SwarmInfo</span>},
-        <span class="ident">NetworkActor</span>, <span class="ident">NetworkConfig</span>,
+    <span class="ident">actors</span>::{
+        <span class="ident">p2p</span>::{
+            <span class="ident">messages</span> <span class="kw">as</span> <span class="ident">network_msg</span>,
+            <span class="ident">messages</span>::{<span class="ident">ShRequest</span>, <span class="ident">SwarmInfo</span>},
+            <span class="ident">NetworkActor</span>, <span class="ident">NetworkConfig</span>,
+        },
+        <span class="ident">GetNetwork</span>, <span class="ident">InsertNetwork</span>, <span class="ident">StopNetwork</span>,
     },
-    <span class="ident">unwrap_or_err</span>, <span class="ident">unwrap_result_msg</span>, <span class="ident">ResultMessage</span>,
+    <span class="ident">unwrap_or_err</span>, <span class="ident">unwrap_result_msg</span>,
 };
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;p2p&quot;</span>)]</span>
 <span class="kw">use</span> <span class="ident">p2p</span>::{
@@ -887,10 +922,6 @@
 <span class="doccomment">/// metadata to interpret the data in the vault and store.</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Stronghold</span> {
     <span class="ident">registry</span>: <span class="ident">Addr</span><span class="op">&lt;</span><span class="ident">Registry</span><span class="op">&gt;</span>,
-    <span class="ident">target</span>: <span class="ident">Addr</span><span class="op">&lt;</span><span class="ident">SecureClient</span><span class="op">&gt;</span>,
-
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;p2p&quot;</span>)]</span>
-    <span class="ident">network_actor</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Addr</span><span class="op">&lt;</span><span class="ident">NetworkActor</span><span class="op">&gt;</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span> <span class="ident">Stronghold</span> {
@@ -906,80 +937,49 @@
             .<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="macro">panic!</span>(<span class="string">&quot;{}&quot;</span>, <span class="kw">crate</span><span class="ident">::Error::IDError</span>));
 
         <span class="comment">// the registry will be run as a system service</span>
-        <span class="kw">let</span> <span class="ident">registry</span> <span class="op">=</span> <span class="ident">Registry::from_registry</span>();
+        <span class="kw">let</span> <span class="ident">registry</span> <span class="op">=</span> <span class="ident">Registry::default</span>().<span class="ident">start</span>();
 
         <span class="comment">// we need to block for the target client actor</span>
-        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">InsertClient</span> { <span class="ident">id</span>: <span class="ident">client_id</span> }).<span class="kw">await</span><span class="question-mark">?</span> {
+        <span class="kw">match</span> <span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">SpawnClient</span> { <span class="ident">id</span>: <span class="ident">client_id</span> }).<span class="kw">await</span><span class="question-mark">?</span> {
             <span class="prelude-val">Ok</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
             <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="macro">anyhow::anyhow!</span>(<span class="ident">e</span>)),
         };
 
-        <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
-            <span class="ident">registry</span>,
-            <span class="ident">target</span>,
-            <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;p2p&quot;</span>)]</span>
-            <span class="ident">network_actor</span>: <span class="prelude-val">None</span>,
-        })
+        <span class="prelude-val">Ok</span>(<span class="self">Self</span> { <span class="ident">registry</span> })
     }
 
-    <span class="doccomment">/// Spawns a new set of actors for the Stronghold system. Accepts the client_path: [`Vec&lt;u8&gt;`] and the options:</span>
-    <span class="doccomment">/// `StrongholdFlags`</span>
+    <span class="doccomment">/// Spawn a new client for the Stronghold system and switch the actor target to it.</span>
+    <span class="doccomment">/// Accepts the client_path: [`Vec&lt;u8&gt;`] and the options: `StrongholdFlags`</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">spawn_stronghold_actor</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
         <span class="ident">_options</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">StrongholdFlags</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>()).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
-
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetClient</span> { <span class="ident">id</span>: <span class="ident">client_id</span> }).<span class="kw">await</span> {
-            <span class="kw">match</span> <span class="ident">result</span> {
-                <span class="prelude-val">Some</span>(<span class="ident">client</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="self">self</span>.<span class="ident">target</span> <span class="op">=</span> <span class="ident">client</span>;
-                }
-                <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">InsertClient</span> { <span class="ident">id</span>: <span class="ident">client_id</span> }).<span class="kw">await</span> {
-                        <span class="self">self</span>.<span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">result</span> {
-                            <span class="prelude-val">Ok</span>(<span class="ident">client</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">client</span>,
-                            <span class="prelude-val">Err</span>(<span class="ident">_e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;&quot;</span>.<span class="ident">to_string</span>()),
-                        };
-                    }
-                }
-            }
-        };
-
-        <span class="ident">StatusMessage::OK</span>
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">SpawnClient</span> { <span class="ident">id</span>: <span class="ident">client_id</span> }).<span class="kw">await</span> {
+            <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;Could spawn new client: {:?}&quot;</span>, <span class="ident">e</span>));
+        }
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">switch_client</span>(<span class="ident">client_id</span>).<span class="kw">await</span> {
+            <span class="ident">ResultMessage::Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
+            <span class="ident">ResultMessage::Error</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">e</span>),
+        }
     }
 
     <span class="doccomment">/// Switches the actor target to another actor in the system specified by the client_path: [`Vec&lt;u8&gt;`].</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">switch_actor_target</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>()).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
-
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetClient</span> { <span class="ident">id</span>: <span class="ident">client_id</span> }).<span class="kw">await</span> {
-            <span class="kw">match</span> <span class="ident">result</span> {
-                <span class="prelude-val">Some</span>(<span class="ident">client</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;p2p&quot;</span>)]</span>
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">network_actor</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">network_actor</span>.<span class="ident">as_ref</span>() {
-                        <span class="kw">match</span> <span class="ident">network_actor</span>
-                            .<span class="ident">send</span>(<span class="ident">network_msg::SwitchClient</span> { <span class="ident">client</span>: <span class="ident">client</span>.<span class="ident">clone</span>() })
-                            .<span class="kw">await</span>
-                        {
-                            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {}
-                            <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                                <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="macro">format!</span>(
-                                    <span class="string">&quot;Could not switch target for network actor: {:?}&quot;</span>,
-                                    <span class="ident">e</span>
-                                ))
-                            }
-                        }
-                    }
-
-                    <span class="self">self</span>.<span class="ident">target</span> <span class="op">=</span> <span class="ident">client</span>
-                }
-                <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Could not find actor with provided client path&quot;</span>.<span class="ident">into</span>()),
-            }
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">switch_client</span>(<span class="ident">client_id</span>).<span class="kw">await</span> {
+            <span class="ident">ResultMessage::Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
+            <span class="ident">ResultMessage::Error</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">e</span>),
         }
+    }
 
-        <span class="ident">StatusMessage::OK</span>
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">switch_client</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">client_id</span>: <span class="ident">ClientId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">Addr</span><span class="op">&lt;</span><span class="ident">SecureClient</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">SwitchTarget</span> { <span class="ident">id</span>: <span class="ident">client_id</span> }).<span class="kw">await</span> {
+            <span class="prelude-val">Ok</span>(<span class="prelude-val">Ok</span>(<span class="ident">addr</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Ok</span>(<span class="ident">addr</span>),
+            <span class="prelude-val">Ok</span>(<span class="prelude-val">Err</span>(<span class="ident">e</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;Could not switch target for network actor: {:?}&quot;</span>, <span class="ident">e</span>)),
+            <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ResultMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;Could not switch target for network actor: {:?}&quot;</span>, <span class="ident">e</span>)),
+        }
     }
 
     <span class="doccomment">/// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified</span>
@@ -995,11 +995,15 @@
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">location</span>.<span class="ident">vault_path</span>();
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">vault_path</span>.<span class="ident">to_vec</span>();
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">vault_exists</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CheckVault</span> { <span class="ident">vault_path</span> }).<span class="kw">await</span> {
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No active client.&quot;</span>.<span class="ident">into</span>()),
+        };
+
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">vault_exists</span>) <span class="op">=</span> <span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CheckVault</span> { <span class="ident">vault_path</span> }).<span class="kw">await</span> {
             <span class="kw">if</span> <span class="ident">vault_exists</span> {
                 <span class="comment">// exists</span>
-                <span class="kw">return</span> <span class="kw">match</span> <span class="self">self</span>
-                    .<span class="ident">target</span>
+                <span class="kw">return</span> <span class="kw">match</span> <span class="ident">target</span>
                     .<span class="ident">send</span>(<span class="ident">WriteToVault</span> {
                         <span class="ident">location</span>,
                         <span class="ident">payload</span>,
@@ -1015,8 +1019,7 @@
                 };
             } <span class="kw">else</span> {
                 <span class="comment">// does not exist</span>
-                <span class="kw">match</span> <span class="self">self</span>
-                    .<span class="ident">target</span>
+                <span class="kw">match</span> <span class="ident">target</span>
                     .<span class="ident">send</span>(<span class="ident">CreateVault</span> {
                         <span class="ident">location</span>: <span class="ident">location</span>.<span class="ident">clone</span>(),
                     })
@@ -1024,8 +1027,7 @@
                 {
                     <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
                         <span class="comment">// write to vault</span>
-                        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span> <span class="self">self</span>
-                            .<span class="ident">target</span>
+                        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span> <span class="ident">target</span>
                             .<span class="ident">send</span>(<span class="ident">WriteToVault</span> {
                                 <span class="ident">location</span>,
                                 <span class="ident">payload</span>,
@@ -1062,8 +1064,11 @@
         <span class="ident">payload</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
         <span class="ident">lifetime</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">target</span>
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No active client.&quot;</span>.<span class="ident">into</span>()),
+        };
+        <span class="kw">match</span> <span class="ident">target</span>
             .<span class="ident">send</span>(<span class="ident">WriteToStore</span> {
                 <span class="ident">location</span>,
                 <span class="ident">payload</span>,
@@ -1081,7 +1086,11 @@
     <span class="doccomment">/// along with an error [`StatusMessage`].  Note: One store is mapped to</span>
     <span class="doccomment">/// one client. Can specify the same location across multiple clients.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_from_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">ReadFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> (<span class="ident">Vec::new</span>(), <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No active client.&quot;</span>.<span class="ident">into</span>())),
+        };
+        <span class="kw">match</span> <span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">ReadFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
             <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">result</span> {
                 <span class="prelude-val">Ok</span>(<span class="ident">data</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">data</span>, <span class="ident">StatusMessage::OK</span>),
                 <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">Vec::new</span>(), <span class="ident">StatusMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, <span class="ident">e</span>))),
@@ -1094,7 +1103,11 @@
     <span class="doccomment">/// [`StatusMessage`]. Note: One store is mapped to one client. Can specify the same location across multiple</span>
     <span class="doccomment">/// clients.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">delete_from_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">DeleteFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No active client.&quot;</span>.<span class="ident">into</span>()),
+        };
+        <span class="kw">match</span> <span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">DeleteFromStore</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
             <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">result</span> {
                 <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
                 <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, <span class="ident">e</span>)),
@@ -1107,15 +1120,18 @@
     <span class="doccomment">/// removed from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call</span>
     <span class="doccomment">/// with automatically cleanup the revoke. Otherwise, the data is just marked as revoked.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">delete_data</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>, <span class="ident">should_gc</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">target</span>
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No active client.&quot;</span>.<span class="ident">into</span>()),
+        };
+        <span class="kw">match</span> <span class="ident">target</span>
             .<span class="ident">send</span>(<span class="ident">RevokeData</span> {
                 <span class="ident">location</span>: <span class="ident">location</span>.<span class="ident">clone</span>(),
             })
             .<span class="kw">await</span>
         {
             <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">result</span> {
-                <span class="prelude-val">Ok</span>(<span class="ident">_ok</span>) <span class="kw">if</span> <span class="ident">should_gc</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">GarbageCollect</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
+                <span class="prelude-val">Ok</span>(<span class="ident">_ok</span>) <span class="kw">if</span> <span class="ident">should_gc</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">GarbageCollect</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
                     <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">result</span> {
                         <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
                         <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, <span class="ident">e</span>)),
@@ -1131,8 +1147,11 @@
 
     <span class="doccomment">/// Garbage collects any revokes in a Vault based on the given `vault_path` and the current target actor.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">garbage_collect</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">vault_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">target</span>
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No active client.&quot;</span>.<span class="ident">into</span>()),
+        };
+        <span class="kw">match</span> <span class="ident">target</span>
             .<span class="ident">send</span>(<span class="ident">GarbageCollect</span> {
                 <span class="ident">location</span>: <span class="ident">Location::Generic</span> {
                     <span class="ident">vault_path</span>,
@@ -1154,8 +1173,11 @@
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">vault_path</span>: <span class="ident">V</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordId</span>, <span class="ident">RecordHint</span>)<span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
-        <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">target</span>
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> (<span class="ident">Vec::new</span>(), <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No active client.&quot;</span>.<span class="ident">into</span>())),
+        };
+        <span class="kw">match</span> <span class="ident">target</span>
             .<span class="ident">send</span>(<span class="ident">ListIds</span> {
                 <span class="ident">vault_path</span>: <span class="ident">vault_path</span>.<span class="ident">into</span>(),
             })
@@ -1175,7 +1197,11 @@
     <span class="doccomment">/// Executes a runtime command given a [`Procedure`].  Returns a [`ProcResult`] based off of the control_request</span>
     <span class="doccomment">/// specified.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">runtime_exec</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">control_request</span>: <span class="ident">Procedure</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ProcResult</span> {
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CallProcedure</span> { <span class="ident">proc</span>: <span class="ident">control_request</span> }).<span class="kw">await</span> {
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ProcResult::Error</span>(<span class="string">&quot;No active client.&quot;</span>.<span class="ident">into</span>()),
+        };
+        <span class="kw">match</span> <span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CallProcedure</span> { <span class="ident">proc</span>: <span class="ident">control_request</span> }).<span class="kw">await</span> {
             <span class="prelude-val">Ok</span>(<span class="ident">success</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">success</span> {
                 <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">result</span>,
                 <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ProcResult::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;{}&quot;</span>, <span class="ident">e</span>)),
@@ -1186,7 +1212,11 @@
 
     <span class="doccomment">/// Checks whether a record exists in the client based off of the given [`Location`].</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">record_exists</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CheckRecord</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="bool-val">false</span>,
+        };
+        <span class="kw">match</span> <span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CheckRecord</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
             <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">result</span>,
             <span class="prelude-val">Err</span>(<span class="ident">_e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="bool-val">false</span>,
         }
@@ -1197,7 +1227,11 @@
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">location</span>.<span class="ident">vault_path</span>();
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">vault_path</span>.<span class="ident">to_vec</span>();
 
-        <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CheckVault</span> { <span class="ident">vault_path</span> }).<span class="kw">await</span>.<span class="ident">unwrap_or</span>(<span class="bool-val">false</span>)
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="bool-val">false</span>,
+        };
+        <span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">CheckVault</span> { <span class="ident">vault_path</span> }).<span class="kw">await</span>.<span class="ident">unwrap_or</span>(<span class="bool-val">false</span>)
     }
 
     <span class="doccomment">/// Reads data from a given snapshot file.  Can only read the data for a single `client_path` at a time. If the new</span>
@@ -1213,6 +1247,10 @@
         <span class="ident">path</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PathBuf</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
         <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>, <span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No active client.&quot;</span>.<span class="ident">into</span>()),
+        };
 
         <span class="comment">// this feature resembles the functionality given by the former riker</span>
         <span class="comment">// system dependence. if there is a former client id path present,</span>
@@ -1261,8 +1299,7 @@
         };
 
         <span class="comment">// send data to secure actor and reload</span>
-        <span class="kw">match</span> <span class="self">self</span>
-            .<span class="ident">target</span>
+        <span class="kw">match</span> <span class="ident">target</span>
             .<span class="ident">send</span>(<span class="ident">ReloadData</span> {
                 <span class="ident">data</span>: <span class="ident">result</span>.<span class="ident">data</span>,
                 <span class="ident">id</span>: <span class="ident">result</span>.<span class="ident">id</span>,
@@ -1341,34 +1378,20 @@
     <span class="doccomment">/// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If</span>
     <span class="doccomment">/// `kill_actor` is `true`, the actor will be removed from the system.  Otherwise, the cache of the</span>
     <span class="doccomment">/// current target actor will be cleared.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// **Note**: If `kill_actor` is set to `true` and the target is the currently active client, a new client has to be</span>
+    <span class="doccomment">/// set via [`Stronghold::switch_actor_target`], before any following operations can be performed.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">kill_stronghold</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">kill_actor</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>(), <span class="kw-2">&amp;</span><span class="ident">client_path</span>)
-            .<span class="ident">map_err</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="kw">crate</span><span class="ident">::Error::LoadClientByPathError</span>(<span class="string">&quot;Loading client_id by path failed&quot;</span>.<span class="ident">into</span>()))
-        {
-            <span class="prelude-val">Ok</span>(<span class="ident">client_id</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">client_id</span>,
-            <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;{}&quot;</span>, <span class="ident">e</span>));
-            }
-        };
-
-        <span class="self">self</span>.<span class="ident">switch_actor_target</span>(<span class="ident">client_path</span>).<span class="kw">await</span>;
-
+        <span class="kw">let</span> <span class="ident">client_id</span> <span class="op">=</span> <span class="ident">ClientId::load_from_path</span>(<span class="kw-2">&amp;</span><span class="ident">client_path</span>.<span class="ident">clone</span>(), <span class="kw-2">&amp;</span><span class="ident">client_path</span>).<span class="ident">expect</span>(<span class="macro">line_error!</span>());
         <span class="kw">if</span> <span class="ident">kill_actor</span> {
             <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">RemoveClient</span> { <span class="ident">id</span>: <span class="ident">client_id</span> }).<span class="kw">await</span> {
                 <span class="prelude-val">Ok</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
                 <span class="prelude-val">Err</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;{}&quot;</span>, <span class="ident">e</span>)),
             }
         } <span class="kw">else</span> {
-            <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetClient</span> { <span class="ident">id</span>: <span class="ident">client_id</span> }).<span class="kw">await</span> {
-                <span class="prelude-val">Ok</span>(<span class="ident">option</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">option</span> {
-                    <span class="prelude-val">Some</span>(<span class="ident">client</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">client</span>,
-                    <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;No client present&quot;</span>.<span class="ident">into</span>());
-                    }
-                },
-                <span class="prelude-val">Err</span>(<span class="ident">_e</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Mailbox error&quot;</span>.<span class="ident">into</span>());
-                }
+            <span class="kw">let</span> <span class="ident">client</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetClient</span> { <span class="ident">id</span>: <span class="ident">client_id</span> }).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+                <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+                <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="macro">format!</span>(<span class="string">&quot;No client with id {:?}&quot;</span>, <span class="ident">client_id</span>)),
             };
 
             <span class="kw">match</span> <span class="ident">client</span>.<span class="ident">send</span>(<span class="ident">ClearCache</span>).<span class="kw">await</span> {
@@ -1392,10 +1415,14 @@
     <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_secret</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">_client_path</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">StatusMessage</span>) {
         <span class="kw">use</span> <span class="kw">crate</span><span class="ident">::actors::ReadFromVault</span>;
-
         <span class="kw">let</span> <span class="ident">empty_response</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">Vec::new</span>());
 
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">ReadFromVault</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
+        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetTarget</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">addr</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> (<span class="ident">empty_response</span>, <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No active client.&quot;</span>.<span class="ident">into</span>())),
+        };
+
+        <span class="kw">match</span> <span class="ident">target</span>.<span class="ident">send</span>(<span class="ident">ReadFromVault</span> { <span class="ident">location</span> }).<span class="kw">await</span> {
             <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">result</span> {
                 <span class="prelude-val">Ok</span>(<span class="ident">payload</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="prelude-val">Some</span>(<span class="ident">payload</span>), <span class="ident">StatusMessage::OK</span>),
                 <span class="prelude-val">Err</span>(<span class="ident">_e</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">empty_response</span>, <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;No payload present&quot;</span>.<span class="ident">into</span>())),
@@ -1409,24 +1436,27 @@
 <span class="kw">impl</span> <span class="ident">Stronghold</span> {
     <span class="doccomment">/// Spawn the p2p-network actor and swarm.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">spawn_p2p</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">firewall_rule</span>: <span class="ident">Rule</span><span class="op">&lt;</span><span class="ident">ShRequest</span><span class="op">&gt;</span>, <span class="ident">network_config</span>: <span class="ident">NetworkConfig</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">network_actor</span>.<span class="ident">is_some</span>() {
-            <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="ident">String::from</span>(<span class="string">&quot;Network actor was already spawned&quot;</span>));
+        <span class="kw">let</span> <span class="ident">addr</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">NetworkActor::new</span>(<span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">clone</span>(), <span class="ident">firewall_rule</span>, <span class="ident">network_config</span>).<span class="kw">await</span> {
+            <span class="prelude-val">Ok</span>(<span class="ident">actor</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">actor</span>.<span class="ident">start</span>(),
+            <span class="prelude-val">Err</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Spawning Network actor failed&quot;</span>.<span class="ident">into</span>()),
+        };
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">InsertNetwork</span> { <span class="ident">addr</span> }).<span class="kw">await</span> {
+            <span class="prelude-val">Ok</span>(()) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::OK</span>,
+            <span class="prelude-val">Err</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">StatusMessage::Error</span>(<span class="string">&quot;Spawning Network actor failed&quot;</span>.<span class="ident">into</span>()),
         }
-        <span class="kw">let</span> <span class="ident">network_actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="ident">NetworkActor::new</span>(<span class="self">self</span>.<span class="ident">target</span>.<span class="ident">clone</span>(), <span class="ident">firewall_rule</span>, <span class="ident">network_config</span>).<span class="kw">await</span>);
-        <span class="self">self</span>.<span class="ident">network_actor</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">network_actor</span>.<span class="ident">start</span>());
-        <span class="ident">StatusMessage::OK</span>
     }
 
     <span class="doccomment">/// Gracefully stop the network actor and swarm.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">stop_p2p</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
-        <span class="comment">// Dropping the only address of the network actor will stop the actor.</span>
-        <span class="comment">// Upon stopping the actor, its `StrongholdP2p` instance will be dropped, which results in a graceful shutdown.</span>
-        <span class="self">self</span>.<span class="ident">network_actor</span>.<span class="ident">take</span>();
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">stop_p2p</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
+        <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">StopNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
     }
 
     <span class="doccomment">/// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">start_listening</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">address</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
         <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">actor</span>.<span class="ident">send</span>(<span class="ident">network_msg::StartListening</span> { <span class="ident">address</span> }).<span class="kw">await</span>;
         <span class="kw">let</span> <span class="ident">addr</span> <span class="op">=</span> <span class="macro">unwrap_result_msg!</span>(<span class="ident">res</span>);
         <span class="ident">ResultMessage::Ok</span>(<span class="ident">addr</span>)
@@ -1434,7 +1464,10 @@
 
     <span class="doccomment">/// Stop listening on the swarm.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">stop_listening</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
         <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">actor</span>.<span class="ident">send</span>(<span class="ident">network_msg::StopListening</span>).<span class="kw">await</span>;
         <span class="macro">unwrap_or_err!</span>(<span class="ident">res</span>);
         <span class="ident">ResultMessage::OK</span>
@@ -1442,7 +1475,10 @@
 
     <span class="doccomment">///  Get the peer id, listening addresses and connection info of the local peer</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">get_swarm_info</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">SwarmInfo</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
         <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">actor</span>.<span class="ident">send</span>(<span class="ident">network_msg::GetSwarmInfo</span>).<span class="kw">await</span>;
         <span class="kw">let</span> <span class="ident">info</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="ident">res</span>);
         <span class="ident">ResultMessage::Ok</span>(<span class="ident">info</span>)
@@ -1463,7 +1499,10 @@
         <span class="ident">is_listening_relay</span>: <span class="ident">bool</span>,
         <span class="ident">is_dialing_relay</span>: <span class="ident">bool</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
 
         <span class="kw">if</span> <span class="ident">is_listening_relay</span> {
             <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">actor</span>
@@ -1487,13 +1526,15 @@
             <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">actor</span>.<span class="ident">send</span>(<span class="ident">network_msg::AddDialingRelay</span> { <span class="ident">relay</span>: <span class="ident">peer</span> }).<span class="kw">await</span>;
             <span class="macro">unwrap_or_err!</span>(<span class="ident">res</span>);
         }
-
         <span class="ident">StatusMessage::OK</span>
     }
 
     <span class="doccomment">/// Remove a peer from the list of peers used for dialing, and / or stop listening with the relay.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remove_relay</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">relay</span>: <span class="ident">PeerId</span>, <span class="ident">rm_listening_relay</span>: <span class="ident">bool</span>, <span class="ident">rm_dialing_relay</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
 
         <span class="kw">if</span> <span class="ident">rm_listening_relay</span> {
             <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">actor</span>.<span class="ident">send</span>(<span class="ident">network_msg::StopListeningRelay</span> { <span class="ident">relay</span> }).<span class="kw">await</span>;
@@ -1516,7 +1557,10 @@
         <span class="ident">peers</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>,
         <span class="ident">set_default</span>: <span class="ident">bool</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
 
         <span class="kw">for</span> <span class="ident">peer</span> <span class="kw">in</span> <span class="ident">peers</span> {
             <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">actor</span>
@@ -1542,7 +1586,10 @@
 
     <span class="doccomment">/// Remove peer specific rules from the firewall configuration.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remove_firewall_rules</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peers</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PeerId</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
         <span class="kw">for</span> <span class="ident">peer</span> <span class="kw">in</span> <span class="ident">peers</span> {
             <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">actor</span>
                 .<span class="ident">send</span>(<span class="ident">network_msg::RemoveFirewallRule</span> {
@@ -1565,7 +1612,10 @@
         <span class="ident">hint</span>: <span class="ident">RecordHint</span>,
         <span class="ident">_options</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">VaultFlags</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
 
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">location</span>.<span class="ident">vault_path</span>();
         <span class="kw">let</span> <span class="ident">vault_path</span> <span class="op">=</span> <span class="ident">vault_path</span>.<span class="ident">to_vec</span>();
@@ -1614,7 +1664,10 @@
         <span class="ident">payload</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
         <span class="ident">lifetime</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Duration</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StatusMessage</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
         <span class="kw">let</span> <span class="ident">send_request</span> <span class="op">=</span> <span class="ident">network_msg::SendRequest</span> {
             <span class="ident">peer</span>,
             <span class="ident">request</span>: <span class="ident">WriteToStore</span> {
@@ -1632,7 +1685,10 @@
     <span class="doccomment">/// Read from the store of a remote Stronghold.</span>
     <span class="doccomment">/// It is required that the peer has successfully been added with the `add_peer` method.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">read_from_remote_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer</span>: <span class="ident">PeerId</span>, <span class="ident">location</span>: <span class="ident">Location</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
         <span class="kw">let</span> <span class="ident">send_request</span> <span class="op">=</span> <span class="ident">network_msg::SendRequest</span> {
             <span class="ident">peer</span>,
             <span class="ident">request</span>: <span class="ident">ReadFromStore</span> { <span class="ident">location</span> },
@@ -1650,7 +1706,10 @@
         <span class="ident">peer</span>: <span class="ident">PeerId</span>,
         <span class="ident">vault_path</span>: <span class="ident">V</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordId</span>, <span class="ident">RecordHint</span>)<span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
         <span class="kw">let</span> <span class="ident">send_request</span> <span class="op">=</span> <span class="ident">network_msg::SendRequest</span> {
             <span class="ident">peer</span>,
             <span class="ident">request</span>: <span class="ident">ListIds</span> {
@@ -1666,7 +1725,10 @@
     <span class="doccomment">/// Executes a runtime command at a remote Stronghold.</span>
     <span class="doccomment">/// It is required that the peer has successfully been added with the `add_peer` method.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remote_runtime_exec</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer</span>: <span class="ident">PeerId</span>, <span class="ident">control_request</span>: <span class="ident">Procedure</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ResultMessage</span><span class="op">&lt;</span><span class="ident">ProcResult</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="macro">unwrap_or_err!</span>(<span class="prelude-ty">Option</span>, <span class="self">self</span>.<span class="ident">network_actor</span>, <span class="string">&quot;No network actor spawned.&quot;</span>);
+        <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">registry</span>.<span class="ident">send</span>(<span class="ident">GetNetwork</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="ident">ResultMessage::Error</span>(<span class="string">&quot;No network actor spawned.&quot;</span>.<span class="ident">into</span>()),
+        };
         <span class="kw">let</span> <span class="ident">send_request</span> <span class="op">=</span> <span class="ident">network_msg::SendRequest</span> {
             <span class="ident">peer</span>,
             <span class="ident">request</span>: <span class="ident">CallProcedure</span> { <span class="ident">proc</span>: <span class="ident">control_request</span> },

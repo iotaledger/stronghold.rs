@@ -26,6 +26,8 @@
 <span id="26">26</span>
 <span id="27">27</span>
 <span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -36,11 +38,13 @@
 <span class="kw">mod</span> <span class="ident">secure</span>;
 <span class="kw">mod</span> <span class="ident">snapshot</span>;
 
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;p2p&quot;</span>)]</span>
+<span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span><span class="ident">::registry::p2p_messages</span>::{<span class="ident">GetNetwork</span>, <span class="ident">InsertNetwork</span>, <span class="ident">StopNetwork</span>};
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
 <span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span><span class="ident">::secure::testing</span> <span class="kw">as</span> <span class="ident">secure_testing</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span>::{
     <span class="ident">registry</span>::{
-        <span class="ident">messages</span>::{<span class="ident">GetAllClients</span>, <span class="ident">GetClient</span>, <span class="ident">GetSnapshot</span>, <span class="ident">HasClient</span>, <span class="ident">InsertClient</span>, <span class="ident">RemoveClient</span>},
+        <span class="ident">messages</span>::{<span class="ident">GetAllClients</span>, <span class="ident">GetClient</span>, <span class="ident">GetSnapshot</span>, <span class="ident">GetTarget</span>, <span class="ident">RemoveClient</span>, <span class="ident">SpawnClient</span>, <span class="ident">SwitchTarget</span>},
         <span class="ident">Registry</span>, <span class="ident">RegistryError</span>,
     },
     <span class="ident">secure</span>::{

@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["GetAllClients",""],["GetClient",""],["GetSnapshot",""],["HasClient",""],["InsertClient",""],["RemoveClient",""]]});
+initSidebarItems({"struct":[["GetAllClients",""],["GetClient",""],["GetSnapshot",""],["GetTarget",""],["RemoveClient",""],["SpawnClient",""],["SwitchTarget",""]]});

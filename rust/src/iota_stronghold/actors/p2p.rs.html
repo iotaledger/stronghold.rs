@@ -507,20 +507,11 @@
 <span id="507">507</span>
 <span id="508">508</span>
 <span id="509">509</span>
-<span id="510">510</span>
-<span id="511">511</span>
-<span id="512">512</span>
-<span id="513">513</span>
-<span id="514">514</span>
-<span id="515">515</span>
-<span id="516">516</span>
-<span id="517">517</span>
-<span id="518">518</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
 
-<span class="kw">use</span> <span class="kw">crate</span><span class="ident">::actors::SecureClient</span>;
+<span class="kw">use</span> <span class="kw">crate</span><span class="ident">::actors</span>::{<span class="ident">GetTarget</span>, <span class="ident">Registry</span>};
 <span class="kw">use</span> <span class="ident">actix::prelude</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">futures</span>::{<span class="ident">channel::mpsc</span>, <span class="ident">FutureExt</span>, <span class="ident">TryFutureExt</span>};
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">messages::SwarmInfo</span>;
@@ -616,12 +607,12 @@
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">NetworkActor</span> {
     <span class="ident">network</span>: <span class="ident">StrongholdP2p</span><span class="op">&lt;</span><span class="ident">ShRequest</span>, <span class="ident">ShResult</span><span class="op">&gt;</span>,
     <span class="ident">inbound_request_rx</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">mpsc::Receiver</span><span class="op">&lt;</span><span class="ident">ReceiveRequest</span><span class="op">&lt;</span><span class="ident">ShRequest</span>, <span class="ident">ShResult</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="ident">client</span>: <span class="ident">Addr</span><span class="op">&lt;</span><span class="ident">SecureClient</span><span class="op">&gt;</span>,
+    <span class="ident">registry</span>: <span class="ident">Addr</span><span class="op">&lt;</span><span class="ident">Registry</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span> <span class="ident">NetworkActor</span> {
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">new</span>(
-        <span class="ident">client</span>: <span class="ident">Addr</span><span class="op">&lt;</span><span class="ident">SecureClient</span><span class="op">&gt;</span>,
+        <span class="ident">registry</span>: <span class="ident">Addr</span><span class="op">&lt;</span><span class="ident">Registry</span><span class="op">&gt;</span>,
         <span class="ident">firewall_rule</span>: <span class="ident">Rule</span><span class="op">&lt;</span><span class="ident">ShRequest</span><span class="op">&gt;</span>,
         <span class="ident">network_config</span>: <span class="ident">NetworkConfig</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">io::Error</span><span class="op">&gt;</span> {
@@ -646,7 +637,7 @@
         <span class="kw">let</span> <span class="ident">actor</span> <span class="op">=</span> <span class="self">Self</span> {
             <span class="ident">network</span>,
             <span class="ident">inbound_request_rx</span>: <span class="prelude-val">Some</span>(<span class="ident">inbound_request_rx</span>),
-            <span class="ident">client</span>,
+            <span class="ident">registry</span>,
         };
         <span class="prelude-val">Ok</span>(<span class="ident">actor</span>)
     }
@@ -667,20 +658,17 @@
             <span class="ident">request</span>, <span class="ident">response_tx</span>, ..
         } <span class="op">=</span> <span class="ident">item</span>;
         <span class="macro">sh_request_dispatch!</span>(<span class="ident">request</span> <span class="op">=</span><span class="op">&gt;</span> <span class="op">|</span><span class="ident">inner</span><span class="op">|</span> {
-            <span class="kw">let</span> <span class="ident">fut</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">client</span>
-                .<span class="ident">send</span>(<span class="ident">inner</span>)
+            <span class="kw">let</span> <span class="ident">fut</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">registry</span>
+                .<span class="ident">send</span>(<span class="ident">GetTarget</span>)
+                .<span class="ident">and_then</span>(<span class="op">|</span><span class="ident">client</span><span class="op">|</span> <span class="kw">async</span> { <span class="kw">match</span> <span class="ident">client</span> {
+                    <span class="prelude-val">Some</span>(<span class="ident">client</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">client</span>.<span class="ident">send</span>(<span class="ident">inner</span>).<span class="kw">await</span>,
+                    <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">MailboxError::Closed</span>)
+                }})
                 .<span class="ident">map_ok</span>(<span class="op">|</span><span class="ident">response</span><span class="op">|</span> <span class="ident">response_tx</span>.<span class="ident">send</span>(<span class="ident">response</span>.<span class="ident">into</span>()))
                 .<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> ())
                 .<span class="ident">into_actor</span>(<span class="self">self</span>);
             <span class="ident">ctx</span>.<span class="ident">wait</span>(<span class="ident">fut</span>);
         });
-    }
-}
-<span class="kw">impl</span> <span class="ident">Handler</span><span class="op">&lt;</span><span class="ident">SwitchClient</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">NetworkActor</span> {
-    <span class="kw">type</span> <span class="prelude-ty">Result</span> <span class="op">=</span> ();
-
-    <span class="kw">fn</span> <span class="ident">handle</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">msg</span>: <span class="ident">SwitchClient</span>, <span class="kw">_</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span><span class="ident">::Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span><span class="ident">::Result</span> {
-        <span class="self">self</span>.<span class="ident">client</span> <span class="op">=</span> <span class="ident">msg</span>.<span class="ident">client</span>;
     }
 }
 
@@ -850,12 +838,6 @@
         },
         <span class="ident">secure_procedures::CallProcedure</span>,
     };
-
-    <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Message</span>)]</span>
-    <span class="attribute">#[<span class="ident">rtype</span>(<span class="ident">result</span> <span class="op">=</span> <span class="string">&quot;()&quot;</span>)]</span>
-    <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">SwitchClient</span> {
-        <span class="kw">pub</span> <span class="ident">client</span>: <span class="ident">Addr</span><span class="op">&lt;</span><span class="ident">SecureClient</span><span class="op">&gt;</span>,
-    }
 
     <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Message</span>)]</span>
     <span class="attribute">#[<span class="ident">rtype</span>(<span class="ident">result</span> <span class="op">=</span> <span class="string">&quot;Result&lt;Rq::Result, OutboundFailure&gt;&quot;</span>)]</span>
