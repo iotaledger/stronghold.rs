@@ -38,10 +38,10 @@ pub type Nonce = [u8; NONCE_SIZE];
 #[derive(Debug, DeriveError)]
 pub enum ReadError {
     #[error("I/O Error: `{0}`")]
-    IoError(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
 
-    #[error("Corrupted File: Decompression or Decryption Failed")]
-    CorruptedFile,
+    #[error("Corrupted File: `{0}`")]
+    CorruptedContent(String),
 
     #[error("Invalid File: Not a Snapshot")]
     InvalidFile,
@@ -53,13 +53,13 @@ pub enum ReadError {
 #[derive(Debug, DeriveError)]
 pub enum WriteError {
     #[error("I/O Error: `{0}`")]
-    IoError(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
 
-    #[error("Randomness Error: Use entropy source from OS failed`")]
-    SystemEntropy,
+    #[error("Generating random bytes failed: `{0}`")]
+    GenerateRandom(String),
 
-    #[error("Encryption Failed")]
-    EncryptionFailed,
+    #[error("Corrupted Data: `{0}`")]
+    CorruptedData(String),
 }
 
 /// Encrypt the opaque plaintext bytestring using the specified [`Key`] and optional associated data
@@ -70,7 +70,7 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     output.write_all(&VERSION)?;
 
     // create ephemeral key pair.
-    let ephemeral_key = x25519::SecretKey::generate().map_err(|_| WriteError::SystemEntropy)?;
+    let ephemeral_key = x25519::SecretKey::generate().map_err(|e| WriteError::GenerateRandom(format!("{}", e)))?;
 
     // get public key.
     let ephemeral_pk = ephemeral_key.public_key();
@@ -109,7 +109,7 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
 
     // decrypt the plain text into the ciphertext buffer.
     XChaCha20Poly1305::try_encrypt(&shared.to_bytes(), &nonce, associated_data, plain, &mut ct, &mut tag)
-        .map_err(|_| WriteError::EncryptionFailed)?;
+        .map_err(|e| WriteError::CorruptedData(format!("Encryption failed: {}", e)))?;
 
     // write tag and ciphertext into the output.
     output.write_all(&tag)?;
@@ -165,7 +165,7 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result
 
     // decrypt the ciphertext into the plain text buffer.
     XChaCha20Poly1305::try_decrypt(&shared.to_bytes(), &nonce, associated_data, &mut pt, &ct, &tag)
-        .map_err(|_| ReadError::CorruptedFile)?;
+        .map_err(|e| ReadError::CorruptedContent(format!("Decryption failed: {}", e)))?;
 
     Ok(pt)
 }
@@ -182,7 +182,7 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     let compressed_plain = compress(plain);
 
     let mut salt = [0u8; 6];
-    rand::fill(&mut salt).map_err(|_| WriteError::SystemEntropy)?;
+    rand::fill(&mut salt).map_err(|e| WriteError::GenerateRandom(format!("{}", e)))?;
 
     let mut s = path.as_os_str().to_os_string();
     s.push(".");
@@ -204,7 +204,7 @@ pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Vec<u
     check_min_file_len(&mut f)?;
     let pt = read(&mut f, key, associated_data)?;
 
-    decompress(&pt).map_err(|_| ReadError::CorruptedFile)
+    decompress(&pt).map_err(|e| ReadError::CorruptedContent(format!("Decompression failed: {}", e)))
 }
 
 fn check_min_file_len(input: &mut File) -> Result<(), ReadError> {

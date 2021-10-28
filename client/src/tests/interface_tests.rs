@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{line_error, Error, Location, RecordHint, Stronghold};
+use crate::{line_error, ActorError, Location, RecordHint, Stronghold};
 
 use stronghold_utils::random::bytestring;
 
@@ -167,7 +167,7 @@ async fn test_stronghold() {
 
     assert!(matches!(
         stronghold.switch_actor_target(client_path).await,
-        Err(Error::ActorNotSpawned)
+        Err(ActorError::TargetNotSpawned)
     ))
 }
 

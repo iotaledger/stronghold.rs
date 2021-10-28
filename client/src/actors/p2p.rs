@@ -311,9 +311,11 @@ impl Default for NetworkConfig {
 pub mod messages {
 
     use super::*;
-    use crate::{actors::VaultDoesNotExist, Location, ProcResult, RecordHint, RecordId, VaultError};
+    use crate::{actors::VaultError, Location, ProcResult, RecordHint, RecordId};
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
+
+    use engine::vault::VaultId;
 
     #[cfg(test)]
     use crate::actors::secure_testing::ReadFromVault;
@@ -495,11 +497,11 @@ pub mod messages {
 
     #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
     pub enum RemoteVaultError {
-        #[error("Vault error: {0}")]
-        NotExisting(#[from] VaultDoesNotExist),
+        #[error("Vault not found: {0:?}")]
+        VaultNotFound(VaultId),
 
-        #[error("Internal engine error")]
-        Engine,
+        #[error("Internal record error")]
+        Record(String),
     }
 
     // Wrapper for Requests to a remote Secure Client
@@ -537,8 +539,9 @@ pub mod messages {
     impl From<VaultError> for RemoteVaultError {
         fn from(e: VaultError) -> Self {
             match e {
-                VaultError::Engine(_) => RemoteVaultError::Engine,
-                VaultError::NotExisting(e) => RemoteVaultError::NotExisting(e),
+                VaultError::Record(_) => RemoteVaultError::Record(e.to_string()),
+                VaultError::VaultNotFound(e) => RemoteVaultError::VaultNotFound(e),
+                VaultError::Procedure(_) => unreachable!(),
             }
         }
     }
@@ -548,20 +551,15 @@ pub mod messages {
         Empty(()),
         Data(Option<Vec<u8>>),
         Bool(bool),
-        GarbageCollect(Result<(), VaultDoesNotExist>),
         WriteRemoteVault(Result<(), RemoteVaultError>),
-        ListIds(Result<Vec<(RecordId, RecordHint)>, VaultDoesNotExist>),
+        ListIds(Vec<(RecordId, RecordHint)>),
         Proc(Result<ProcResult, String>),
     }
 
     sh_result_mapping!(ShResult::Empty, ());
     sh_result_mapping!(ShResult::Bool, bool);
     sh_result_mapping!(ShResult::Data, Option<Vec<u8>>);
-    sh_result_mapping!(ShResult::GarbageCollect,Result<(), VaultDoesNotExist>);
-    sh_result_mapping!(
-        ShResult::ListIds,
-        Result<Vec<(RecordId, RecordHint)>, VaultDoesNotExist>
-    );
+    sh_result_mapping!(ShResult::ListIds, Vec<(RecordId, RecordHint)>);
     sh_result_mapping!(ShResult::Proc, Result<ProcResult, String>);
 
     impl From<Result<(), VaultError>> for ShResult {

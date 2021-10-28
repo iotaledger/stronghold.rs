@@ -19,7 +19,7 @@ pub use self::{
     secure::{
         messages as secure_messages, procedures as secure_procedures,
         procedures::{ProcResult, SLIP10DeriveInput},
-        SecureClient, VaultDoesNotExist, VaultError,
+        SecureClient, VaultError,
     },
     snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes, WriteSnapshot},
 };

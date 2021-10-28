@@ -5,7 +5,7 @@ use engine::vault::{Key, VaultId};
 
 use std::collections::HashMap;
 
-use crate::{actors::VaultDoesNotExist, Provider};
+use crate::Provider;
 
 pub struct KeyStore {
     store: HashMap<VaultId, Key<Provider>>,
@@ -18,11 +18,8 @@ impl KeyStore {
     }
 
     /// Gets the key from the [`KeyStore`] and removes it. Returns an [`Option<Key<Provider>>`]
-    pub fn take_key(&mut self, id: VaultId) -> Result<Key<Provider>, VaultDoesNotExist> {
-        match self.store.remove(&id) {
-            Some(key) => Ok(key),
-            None => Err(VaultDoesNotExist),
-        }
+    pub fn take_key(&mut self, id: VaultId) -> Option<Key<Provider>> {
+        self.store.remove(&id)
     }
 
     /// Checks to see if the vault exists.

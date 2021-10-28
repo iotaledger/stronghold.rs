@@ -84,7 +84,7 @@ impl Val {
 
 impl ChainId {
     /// Generates a random [`ChainId`]
-    pub fn random<P: BoxProvider>() -> Result<Self, P::RandomnessError> {
+    pub fn random<P: BoxProvider>() -> Result<Self, P::Error> {
         let mut buf = [0; 24];
         P::random_buf(&mut buf)?;
 
@@ -99,7 +99,7 @@ impl ChainId {
 
 impl BlobId {
     /// Generates a random [`BlobId`]
-    pub fn random<P: BoxProvider>() -> Result<Self, P::RandomnessError> {
+    pub fn random<P: BoxProvider>() -> Result<Self, P::Error> {
         let mut buf = [0; 24];
         P::random_buf(&mut buf)?;
         Ok(Self(buf))
@@ -108,7 +108,7 @@ impl BlobId {
 
 impl RecordId {
     /// Generates a random [`RecordId`]
-    pub fn random<P: BoxProvider>() -> Result<Self, P::RandomnessError> {
+    pub fn random<P: BoxProvider>() -> Result<Self, P::Error> {
         ChainId::random::<P>().map(RecordId)
     }
 
@@ -120,7 +120,7 @@ impl RecordId {
 
 impl Id {
     /// Generates a random [`Id`]
-    pub fn random<P: BoxProvider>() -> Result<Self, P::RandomnessError> {
+    pub fn random<P: BoxProvider>() -> Result<Self, P::Error> {
         let mut buf = [0; 24];
         P::random_buf(&mut buf)?;
 
@@ -135,7 +135,7 @@ impl Id {
 
 impl VaultId {
     /// Generates a random [`VaultId`]
-    pub fn random<P: BoxProvider>() -> Result<Self, P::RandomnessError> {
+    pub fn random<P: BoxProvider>() -> Result<Self, P::Error> {
         Id::random::<P>().map(VaultId)
     }
 
@@ -147,7 +147,7 @@ impl VaultId {
 
 impl ClientId {
     /// Generates a random [`ClientId`]
-    pub fn random<P: BoxProvider>() -> Result<Self, P::RandomnessError> {
+    pub fn random<P: BoxProvider>() -> Result<Self, P::Error> {
         Id::random::<P>().map(ClientId)
     }
 

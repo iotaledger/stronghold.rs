@@ -16,7 +16,7 @@ use crate::{
     internals,
     state::{
         secure::Store,
-        snapshot::{ReadSnapshotError, Snapshot, SnapshotState, WriteSnapshotError},
+        snapshot::{ReadError, Snapshot, SnapshotState, WriteError},
     },
     Provider,
 };
@@ -54,7 +54,7 @@ pub mod messages {
     }
 
     impl Message for WriteSnapshot {
-        type Result = Result<(), WriteSnapshotError>;
+        type Result = Result<(), WriteError>;
     }
 
     pub struct FillSnapshot {
@@ -76,7 +76,7 @@ pub mod messages {
     }
 
     impl Message for ReadFromSnapshot {
-        type Result = Result<returntypes::ReturnReadSnapshot, ReadSnapshotError>;
+        type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
     }
 }
 
@@ -102,7 +102,7 @@ impl Handler<messages::FillSnapshot> for Snapshot {
 }
 
 impl Handler<messages::ReadFromSnapshot> for Snapshot {
-    type Result = Result<returntypes::ReturnReadSnapshot, ReadSnapshotError>;
+    type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
 
     /// This will try to read from a snapshot on disk, otherwise load from a local snapshot
     /// in memory. Returns the loaded snapshot data, that must be loaded inside the client
@@ -131,7 +131,7 @@ impl Handler<messages::ReadFromSnapshot> for Snapshot {
 }
 
 impl Handler<messages::WriteSnapshot> for Snapshot {
-    type Result = Result<(), WriteSnapshotError>;
+    type Result = Result<(), WriteError>;
 
     fn handle(&mut self, msg: messages::WriteSnapshot, _ctx: &mut Self::Context) -> Self::Result {
         self.write_to_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;

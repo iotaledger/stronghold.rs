@@ -24,9 +24,7 @@ impl Provider {
 impl Unpin for Provider {}
 
 impl BoxProvider for Provider {
-    type SealError = crypto::Error;
-    type OpenError = crypto::Error;
-    type RandomnessError = crypto::Error;
+    type Error = crypto::Error;
 
     /// Key size.
     fn box_key_len() -> usize {
@@ -39,7 +37,7 @@ impl BoxProvider for Provider {
     }
 
     /// Encrypts the data using the xchacha20-poly1305 algorithm.
-    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::SealError> {
+    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error> {
         let mut cipher = vec![0u8; data.len()];
 
         let mut tag = vec![0u8; 16];
@@ -57,7 +55,7 @@ impl BoxProvider for Provider {
     }
 
     /// Decrypts the data using the xchacha20-poly1305 algorithm.
-    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::OpenError> {
+    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error> {
         let (tag, ct) = data.split_at(Self::TAG_LEN);
         let (nonce, cipher) = ct.split_at(Self::NONCE_LEN);
 
@@ -71,7 +69,7 @@ impl BoxProvider for Provider {
     }
 
     /// fills a buffer with random bytes.
-    fn random_buf(buf: &mut [u8]) -> Result<(), Self::RandomnessError> {
+    fn random_buf(buf: &mut [u8]) -> Result<(), Self::Error> {
         fill(buf)
     }
 }

@@ -36,8 +36,8 @@ mod utils;
 mod tests;
 
 pub use crate::{
-    actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput, VaultDoesNotExist, VaultError},
-    interface::{Error, Stronghold},
+    actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput},
+    interface::{ActorError, ReadSnapshotError, Stronghold, WriteSnapshotError, WriteVaultError},
     internals::Provider,
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
@@ -46,7 +46,7 @@ pub use crate::{
 pub mod p2p {
     pub use crate::{
         actors::p2p::{NetworkConfig, SwarmInfo},
-        interface::RemoteError,
+        interface::{DialError, ListenError, ListenRelayError, P2PError, SpawnNetworkError, WriteRemoteVaultError},
     };
     pub use p2p::{firewall::Rule, Multiaddr, PeerId};
 }

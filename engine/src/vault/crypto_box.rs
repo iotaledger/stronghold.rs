@@ -9,13 +9,10 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
-use thiserror::Error as DeriveError;
 
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
 pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
-    type SealError: Debug;
-    type OpenError: Debug;
-    type RandomnessError: Debug;
+    type Error: Debug;
 
     /// defines the key length for the [`BoxProvider`].
     fn box_key_len() -> usize;
@@ -23,16 +20,16 @@ pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
     fn box_overhead() -> usize;
 
     /// seals some data into the crypto box using the [`Key`] and the associated data.
-    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::SealError>;
+    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error>;
 
     /// opens a crypto box to get data using the [`Key`] and the associated data.
-    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::OpenError>;
+    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error>;
 
     /// fills a buffer [`&mut [u8]`] with secure random bytes.
-    fn random_buf(buf: &mut [u8]) -> Result<(), Self::RandomnessError>;
+    fn random_buf(buf: &mut [u8]) -> Result<(), Self::Error>;
 
     /// creates a vector with secure random bytes based off of an inputted [`usize`] length.
-    fn random_vec(len: usize) -> Result<Vec<u8>, Self::RandomnessError> {
+    fn random_vec(len: usize) -> Result<Vec<u8>, Self::Error> {
         let mut buf = vec![0; len];
         Self::random_buf(&mut buf)?;
         Ok(buf)
@@ -133,24 +130,22 @@ impl<T: BoxProvider> Debug for Key<T> {
 /// trait for encryptable data. Allows the data to be encrypted.
 pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
     /// encrypts a raw data and creates a type T from the ciphertext
-    fn encrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> Result<T, B::SealError> {
+    fn encrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> Result<T, B::Error> {
         let sealed = B::box_seal(key, ad.as_ref(), self.as_ref())?;
         Ok(T::from(sealed))
     }
 }
 
-#[derive(Debug, DeriveError)]
+#[derive(Debug)]
 pub enum DecryptError<E: Debug> {
-    #[error("Decrypted data could not be converted to required type.")]
     Invalid,
-    #[error("Provider Error: `{0:?}`")]
     Provider(E),
 }
 
 /// Trait for decryptable data. Allows the data to be decrypted.
 pub trait Decrypt<T: TryFrom<Vec<u8>>>: AsRef<[u8]> {
     /// decrypts raw data and creates a new type T from the plaintext
-    fn decrypt<P: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<P>, ad: AD) -> Result<T, DecryptError<P::OpenError>> {
+    fn decrypt<P: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<P>, ad: AD) -> Result<T, DecryptError<P::Error>> {
         let opened = P::box_open(key, ad.as_ref(), self.as_ref()).map_err(DecryptError::Provider)?;
         T::try_from(opened).map_err(|_| DecryptError::Invalid)
     }

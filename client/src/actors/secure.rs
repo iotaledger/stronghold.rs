@@ -26,9 +26,8 @@ use crypto::{
 };
 use engine::{
     store::Cache,
-    vault::{ClientId, DbView, Key, RecordError, RecordHint, RecordId, VaultId},
+    vault::{BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultError as EngineVaultError, VaultId},
 };
-use serde::{Deserialize, Serialize};
 use std::{cell::Cell, collections::HashMap, convert::TryFrom, rc::Rc};
 
 use self::procedures::CallProcedure;
@@ -38,21 +37,9 @@ pub use self::procedures::ProcResult;
 /// Store typedef on `engine::store::Cache`
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
+pub type VaultError = EngineVaultError<<Provider as BoxProvider>::Error>;
+
 use stronghold_utils::GuardDebug;
-use thiserror::Error as DeriveError;
-
-#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
-#[error("Vault does not exist")]
-pub struct VaultDoesNotExist;
-
-#[derive(DeriveError, Debug)]
-pub enum VaultError {
-    #[error("Vault error: {0}")]
-    NotExisting(#[from] VaultDoesNotExist),
-
-    #[error("Internal engine error: {0}")]
-    Engine(#[from] RecordError<Provider>),
-}
 
 /// Message types for [`SecureClientActor`]
 pub mod messages {
@@ -119,7 +106,7 @@ pub mod messages {
     }
 
     impl Message for GarbageCollect {
-        type Result = Result<(), VaultDoesNotExist>;
+        type Result = bool;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -128,7 +115,7 @@ pub mod messages {
     }
 
     impl Message for ListIds {
-        type Result = Result<Vec<(RecordId, RecordHint)>, VaultDoesNotExist>;
+        type Result = Vec<(RecordId, RecordHint)>;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -473,7 +460,7 @@ pub mod testing {
 
     use super::*;
     use crate::Location;
-    use engine::vault::{ProcedureError, RecordError};
+    use engine::vault::{RecordError, VaultError};
     use serde::{Deserialize, Serialize};
 
     /// INSECURE MESSAGE
@@ -492,7 +479,7 @@ pub mod testing {
     impl_handler!(ReadFromVault, Option<Vec<u8>>, (self, msg, _ctx), {
         let (vid, rid) = self.resolve_location(msg.location);
 
-        let key = self.keystore.take_key(vid).ok()?;
+        let key = self.keystore.take_key(vid)?;
 
         let mut data = Vec::new();
         let res = self.db.get_guard::<(), _>(&key, vid, rid, |guarded_data| {
@@ -504,9 +491,9 @@ pub mod testing {
 
         match res {
             Ok(()) => Some(data),
-            Err(ProcedureError::MissingVault(_)) | Err(ProcedureError::Record(RecordError::MissingRecord(_))) => None,
-            Err(ProcedureError::Record(e)) => panic!("Internal Error: {}", e),
-            Err(ProcedureError::Procedure(_)) => unreachable!(),
+            Err(VaultError::VaultNotFound(_)) | Err(VaultError::Record(RecordError::RecordNotFound(_))) => None,
+            Err(VaultError::Record(e)) => panic!("Internal Error: {}", e),
+            Err(VaultError::Procedure(_)) => unreachable!(),
         }
     });
 }
@@ -537,12 +524,12 @@ impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
     let (vault_id, record_id) = self.resolve_location(msg.location);
 
     return match self.keystore.take_key(vault_id) {
-        Ok(key) => {
+        Some(key) => {
             let res = self.db.contains_record(&key, vault_id, record_id);
             self.keystore.insert_key(vault_id, key);
             res
         }
-        Err(_) => false,
+        None => false,
     };
 });
 
@@ -551,7 +538,8 @@ impl_handler!(messages::WriteToVault, Result<(), VaultError>, (self, msg, _ctx),
 
     let key = self
         .keystore
-        .take_key(vault_id)?;
+        .take_key(vault_id)
+        .ok_or(VaultError::VaultNotFound(vault_id))?;
 
     let res = self.db.write(&key, vault_id, record_id, &msg.payload, msg.hint);
     self.keystore.insert_key(vault_id, key);
@@ -563,36 +551,38 @@ impl_handler!(messages::RevokeData, Result<(), VaultError>, (self, msg, _ctx), {
 
     let key = self
         .keystore
-        .take_key(vault_id)?;
+        .take_key(vault_id)
+        .ok_or(VaultError::VaultNotFound(vault_id))?;
 
     let res = self.db.revoke_record(&key, vault_id, record_id);
     self.keystore.insert_key(vault_id, key);
     res.map_err(|e| e.into())
 });
 
-impl_handler!(messages::GarbageCollect, Result<(), VaultDoesNotExist>, (self, msg, _ctx), {
+impl_handler!(messages::GarbageCollect, bool, (self, msg, _ctx), {
     let (vault_id, _) = self.resolve_location(msg.location);
 
-    let key = self.keystore.take_key(vault_id)?;
+    let key = match self.keystore.take_key(vault_id) {
+        Some(k) => k,
+        None => return false,
+    };
 
     self.db.garbage_collect_vault(&key, vault_id);
     self.keystore.insert_key(vault_id, key);
-    Ok(())
+    true
 });
 
-impl_handler!(
-    messages::ListIds,
-    Result<Vec<(RecordId, RecordHint)>, VaultDoesNotExist>,
-    (self, msg, _ctx),
-    {
-        let vault_id = self.derive_vault_id(msg.vault_path);
-        let key = self.keystore.take_key(vault_id)?;
+impl_handler!(messages::ListIds, Vec<(RecordId, RecordHint)>, (self, msg, _ctx), {
+    let vault_id = self.derive_vault_id(msg.vault_path);
+    let key = match self.keystore.take_key(vault_id) {
+        Some(k) => k,
+        None => return Vec::new(),
+    };
 
-        let list = self.db.list_hints_and_ids(&key, vault_id);
-        self.keystore.insert_key(vault_id, key);
-        Ok(list)
-    }
-);
+    let list = self.db.list_hints_and_ids(&key, vault_id);
+    self.keystore.insert_key(vault_id, key);
+    list
+});
 
 impl_handler!(messages::ReloadData, (), (self, msg, _ctx), {
     let (keystore, state, store) = *msg.data;
@@ -804,7 +794,8 @@ impl_handler!(procedures::SLIP10Generate, Result<crate::ProcResult, String>, (se
 impl_handler!(procedures::SLIP10DeriveFromSeed, Result<crate::ProcResult, String>, (self, msg, _ctx), {
     let seed_key = self
         .keystore
-        .take_key(msg.seed_vault_id).map_err(|e| e.to_string())?;
+        .take_key(msg.seed_vault_id)
+        .ok_or_else(|| "Vault not found".to_string())?;
 
     if !self.keystore.vault_exists(msg.key_vault_id) {
         let key = self.keystore.create_key(msg.key_vault_id);
@@ -851,7 +842,8 @@ impl_handler!(procedures::SLIP10DeriveFromSeed, Result<crate::ProcResult, String
 impl_handler!( procedures::SLIP10DeriveFromKey,Result<crate::ProcResult, String>, (self, msg, _ctx),{
     let parent_key = self
         .keystore
-        .take_key(msg.parent_vault_id).map_err(|e| e.to_string())?;
+        .take_key(msg.parent_vault_id)
+        .ok_or_else(|| "Vault not found".to_string())?;
 
     if !self.keystore.vault_exists(msg.child_vault_id) {
         let key = self.keystore.create_key(msg.child_vault_id);
@@ -943,7 +935,8 @@ impl_handler!(procedures::BIP39Recover, Result<crate::ProcResult, String>, (self
 impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, String>, (self, msg, _ctx), {
     let key = self
         .keystore
-        .take_key(msg.vault_id).map_err(|e| e.to_string())?;
+        .take_key(msg.vault_id)
+        .ok_or_else(|| "Vault not found".to_string())?;
 
     let result = Rc::new(Cell::default());
 
@@ -981,7 +974,8 @@ impl_handler!(procedures::Ed25519PublicKey, Result<crate::ProcResult, String>, (
 impl_handler!(procedures::Ed25519Sign, Result <crate::ProcResult, String>, (self, msg, _ctx), {
     let pkey = self
         .keystore
-        .take_key(msg.vault_id).map_err(|e| e.to_string())?;
+        .take_key(msg.vault_id)
+        .ok_or_else(|| "Vault not found".to_string())?;
 
     let result = Rc::new(Cell::new([0u8; 64]));
 
