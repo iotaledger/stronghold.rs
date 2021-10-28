@@ -1,0 +1,36 @@
+name: Licenses
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - dev
+
+jobs:
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+          profile: minimal
+          toolchain: nightly
+    - uses: actions-rs/cargo@v1
+      name: Install cargo-about
+      with:
+        command: install
+        args: cargo-about
+    - name: Move `about.toml` to project root
+      run: mv .github/workflows/about.toml .
+    - uses: actions-rs/cargo@v1
+      name: Initialize template
+      with:
+        command: about
+        args: --workspace --all-features init
+    - uses: actions-rs/cargo@v1
+      name: Check licenses
+      with:
+        command: about
+        args: --workspace --all-features --log-level info generate about.hbs
