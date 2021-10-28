@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    actors::{GetClient, InsertClient, Registry, RemoveClient},
+    actors::{GetClient, Registry, RemoveClient, SpawnClient},
     state::{secure::Store, snapshot::Snapshot},
     Location, Provider,
 };
@@ -19,7 +19,7 @@ async fn test_insert_client() {
         let format_str = format!("{}", d).repeat(24);
         let id_str = format_str.as_str().as_bytes();
         let n = registry
-            .send(InsertClient {
+            .send(SpawnClient {
                 id: ClientId::load(id_str).unwrap(),
             })
             .await;
@@ -36,7 +36,7 @@ async fn test_get_client() {
         let format_str = format!("{}", d).repeat(24);
         let id_str = format_str.as_str().as_bytes();
         assert!(registry
-            .send(InsertClient {
+            .send(SpawnClient {
                 id: ClientId::load(id_str).unwrap(),
             })
             .await
@@ -59,7 +59,7 @@ async fn test_remove_client() {
         let format_str = format!("{}", d).repeat(24);
         let id_str = format_str.as_str().as_bytes();
         assert!(registry
-            .send(InsertClient {
+            .send(SpawnClient {
                 id: ClientId::load(id_str).unwrap(),
             })
             .await
@@ -77,10 +77,10 @@ async fn test_remove_client() {
 }
 
 #[test]
+#[ignore]
 #[allow(unused, clippy::type_complexity)]
 fn test_snapshot_export() {
     // test specific imports
-
     use crate::state::snapshot::SnapshotState;
     use engine::vault::{Key as PKey, VaultId};
     use stronghold_utils::random;
