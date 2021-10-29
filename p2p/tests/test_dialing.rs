@@ -1,8 +1,5 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-
-#![cfg(feature = "relay")]
-
 use core::fmt;
 use futures::{
     channel::mpsc::{self, Receiver},
@@ -33,6 +30,7 @@ async fn init_peer() -> (mpsc::Receiver<NetworkEvent>, TestPeer) {
     let (event_channel, event_rx) = EventChannel::new(10, ChannelSinkConfig::Block);
     let builder = StrongholdP2pBuilder::new(dummy_fw_tx, dummy_rq_channel, Some(event_channel))
         .with_firewall_config(FirewallConfiguration::allow_all())
+        .with_mdns_support(false)
         .with_connection_timeout(Duration::from_millis(1));
     #[cfg(not(feature = "tcp-transport"))]
     let peer = {
@@ -136,9 +134,9 @@ impl fmt::Display for TestConfig {
 impl TestConfig {
     async fn new(relay_id: PeerId, relay_addr: Multiaddr) -> Self {
         let (source_event_rx, source_peer) = init_peer().await;
-        let source_id = source_peer.get_peer_id();
+        let source_id = source_peer.peer_id();
         let (target_event_rx, target_peer) = init_peer().await;
-        let target_id = target_peer.get_peer_id();
+        let target_id = target_peer.peer_id();
         TestConfig {
             source_config: TestSourceConfig::random(),
             source_peer,
@@ -208,18 +206,23 @@ impl TestConfig {
                 .await;
         }
         if self.source_config.knows_relay {
-            let addr = self.source_peer.add_dialing_relay(self.relay_id, None).await;
+            let addr = self.source_peer.add_dialing_relay(self.relay_id, None).await.unwrap();
             assert_eq!(addr.is_some(), self.source_config.knows_relay_addr);
         }
 
         match self.source_config.set_relay {
             UseRelay::Default => {}
-            UseRelay::NoRelay => self.source_peer.set_relay_fallback(self.target_id, false).await,
+            UseRelay::NoRelay => self
+                .source_peer
+                .set_relay_fallback(self.target_id, false)
+                .await
+                .unwrap(),
             UseRelay::UseSpecificRelay => {
                 let addr = self
                     .source_peer
                     .use_specific_relay(self.target_id, self.relay_id, true)
-                    .await;
+                    .await
+                    .unwrap();
                 if self.source_config.knows_relay_addr && self.source_config.knows_relay {
                     assert_eq!(
                         addr.unwrap(),
@@ -329,7 +332,7 @@ impl TestConfig {
 fn test_dialing() {
     let task = async {
         let (_, mut relay_peer) = init_peer().await;
-        let relay_id = relay_peer.get_peer_id();
+        let relay_id = relay_peer.peer_id();
         let relay_addr = relay_peer
             .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
             .await

@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{behaviour::EstablishedConnections, firewall::FirewallRules, RelayNotSupported};
+use crate::{assemble_relayed_addr, behaviour::EstablishedConnections, firewall::FirewallRules, RelayNotSupported};
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
@@ -525,7 +525,11 @@ where
         relay_addr: Option<Multiaddr>,
         tx_yield: oneshot::Sender<Result<Multiaddr, ListenRelayErr>>,
     ) {
-        use crate::assemble_relayed_addr;
+        if !self.swarm.behaviour().is_relay_enabled() {
+            let err = ListenRelayErr::ProtocolNotSupported;
+            let _ = tx_yield.send(Err(err));
+            return;
+        }
 
         if let Some(addr) = relay_addr.as_ref() {
             self.swarm.behaviour_mut().add_address(relay, addr.clone());

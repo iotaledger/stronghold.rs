@@ -189,7 +189,7 @@ where
 
 impl_handler!(GetSwarmInfo => SwarmInfo, |network, _msg| {
     let listeners = network.get_listeners().await;
-    let local_peer_id = network.get_peer_id();
+    let local_peer_id = network.peer_id();
     let connections = network.get_connections().await;
     SwarmInfo { local_peer_id, listeners, connections}
 });

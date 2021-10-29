@@ -49,7 +49,7 @@ async fn init_peer() -> (
 #[tokio::test]
 async fn test_send_req() {
     let (mut bob_request_rx, mut bob) = init_peer().await;
-    let bob_id = bob.get_peer_id();
+    let bob_id = bob.peer_id();
     let bob_addr = bob
         .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
         .await

@@ -313,12 +313,20 @@ where
         self.request_manager.get_established_connections()
     }
 
+    // Whether the relay protocol is enabled.
+    pub fn is_relay_enabled(&self) -> bool {
+        self.relay.is_some()
+    }
+
     /// Add a relay to the list of relays that may be tried to use if a remote peer can not be reached directly.
     pub fn add_dialing_relay(
         &mut self,
         peer: PeerId,
         address: Option<Multiaddr>,
     ) -> Result<Option<Multiaddr>, RelayNotSupported> {
+        if self.relay.is_none() {
+            return Err(RelayNotSupported);
+        }
         Ok(self.addresses.add_relay(peer, address))
     }
 

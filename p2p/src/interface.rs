@@ -85,7 +85,7 @@ where
     }
 
     /// Get the [`PeerId`] of the local peer.
-    pub fn get_peer_id(&self) -> PeerId {
+    pub fn peer_id(&self) -> PeerId {
         self.local_peer_id
     }
 
@@ -520,7 +520,7 @@ where
     /// Whether the peer should support the [`Mdns`][libp2p::mdns] protocol for peer discovery in a local network.
     ///
     /// **Note**: Enabling Mdns broadcasts our own address and id to the local network.
-    pub fn with_mdns_supported(mut self, support_mdns_protocol: bool) -> Self {
+    pub fn with_mdns_support(mut self, support_mdns_protocol: bool) -> Self {
         self.support_mdns = support_mdns_protocol;
         self
     }
@@ -529,7 +529,7 @@ where
     /// relay peer.
     ///
     /// **Note:** enabling this protocol also means that other peers can use our peer as relay.
-    pub fn with_relay_supported(mut self, support_relay_protocol: bool) -> Self {
+    pub fn with_relay_support(mut self, support_relay_protocol: bool) -> Self {
         self.support_relay = support_relay_protocol;
         self
     }

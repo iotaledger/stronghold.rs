@@ -168,8 +168,8 @@ impl<'a> RulesTestConfig<'a> {
     }
 
     async fn configure_firewall(&mut self) {
-        let peer_a_id = self.peer_a.get_peer_id();
-        let peer_b_id = self.peer_b.get_peer_id();
+        let peer_a_id = self.peer_a.peer_id();
+        let peer_b_id = self.peer_b.peer_id();
         if let Some(peer_rule) = self.b_rule.as_ref() {
             self.peer_b
                 .set_peer_rule(peer_a_id, RuleDirection::Inbound, peer_rule.as_rule())
@@ -189,8 +189,8 @@ impl<'a> RulesTestConfig<'a> {
     }
 
     async fn test_request(&mut self) {
-        let peer_a_id = self.peer_a.get_peer_id();
-        let peer_b_id = self.peer_b.get_peer_id();
+        let peer_a_id = self.peer_a.peer_id();
+        let peer_b_id = self.peer_b.peer_id();
 
         let mut peer_a = self.peer_a.clone();
         let res_future = peer_a.send_request(peer_b_id, self.req.clone()).boxed();
@@ -274,8 +274,8 @@ impl<'a> RulesTestConfig<'a> {
     }
 
     async fn clean(self) {
-        let peer_a_id = self.peer_a.get_peer_id();
-        let peer_b_id = self.peer_b.get_peer_id();
+        let peer_a_id = self.peer_a.peer_id();
+        let peer_b_id = self.peer_b.peer_id();
         self.peer_b.remove_peer_rule(peer_a_id, RuleDirection::Both).await;
         self.peer_b.remove_firewall_default(RuleDirection::Both).await;
         self.peer_a.remove_peer_rule(peer_b_id, RuleDirection::Both).await;
@@ -287,7 +287,7 @@ impl<'a> RulesTestConfig<'a> {
 async fn firewall_permissions() {
     let (_, _, _, mut peer_a) = init_peer().await;
     let (_, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
-    let peer_b_id = peer_b.get_peer_id();
+    let peer_b_id = peer_b.peer_id();
 
     let peer_b_addr = peer_b
         .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
@@ -397,8 +397,8 @@ impl<'a> AskTestConfig<'a> {
     }
 
     async fn test_request_with_ask(&mut self) {
-        let peer_a_id = self.peer_a.get_peer_id();
-        let peer_b_id = self.peer_b.get_peer_id();
+        let peer_a_id = self.peer_a.peer_id();
+        let peer_b_id = self.peer_b.peer_id();
 
         let is_allowed = |rule: &FwRuleRes, approval: &FwApprovalRes| match rule {
             FwRuleRes::AllowAll => true,
@@ -561,8 +561,8 @@ impl<'a> AskTestConfig<'a> {
     }
 
     async fn clean(self) {
-        let peer_a_id = self.peer_a.get_peer_id();
-        let peer_b_id = self.peer_b.get_peer_id();
+        let peer_a_id = self.peer_a.peer_id();
+        let peer_b_id = self.peer_b.peer_id();
         self.peer_a.remove_peer_rule(peer_b_id, RuleDirection::Both).await;
         self.peer_b.remove_peer_rule(peer_a_id, RuleDirection::Both).await;
     }
@@ -572,7 +572,7 @@ impl<'a> AskTestConfig<'a> {
 async fn firewall_ask() {
     let (mut firewall_a, _, _, mut peer_a) = init_peer().await;
     let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
-    let peer_b_id = peer_b.get_peer_id();
+    let peer_b_id = peer_b.peer_id();
 
     let peer_b_addr = peer_b
         .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
