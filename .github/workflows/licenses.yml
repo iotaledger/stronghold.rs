@@ -17,6 +17,7 @@ jobs:
       with:
           profile: minimal
           toolchain: nightly
+          override: true
     - uses: actions-rs/cargo@v1
       name: Install cargo-about
       with:
@@ -28,9 +29,9 @@ jobs:
       name: Initialize template
       with:
         command: about
-        args: --workspace --all-features init
+        args: init
     - uses: actions-rs/cargo@v1
       name: Check licenses
       with:
         command: about
-        args: --workspace --all-features --log-level info generate about.hbs
+        args: generate --workspace --all-features about.hbs
