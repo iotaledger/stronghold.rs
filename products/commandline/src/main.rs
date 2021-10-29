@@ -340,7 +340,8 @@ fn garbage_collect_vault_command(
 
                     let result = block_on(stronghold.garbage_collect(Location::generic(id, id).vault_path().to_vec()));
                     match result {
-                        Ok(()) => println!("Garbage collected."),
+                        Ok(true) => println!("Garbage collected."),
+                        Ok(false) => println!("[Error] Vault does not exist."),
                         Err(e) => {
                             println!("[Error] Garbage collect failed: {}", e);
                             return;

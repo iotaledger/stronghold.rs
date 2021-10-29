@@ -457,7 +457,7 @@ pub mod messages {
     #[rtype(result = "()")]
     pub struct Shutdown;
 
-    #[derive(Message, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Message, Clone, Serialize, Deserialize)]
     #[rtype(result = "Result<(), RemoteVaultError>")]
     pub struct WriteToRemoteVault {
         pub location: Location,
@@ -505,7 +505,7 @@ pub mod messages {
     }
 
     // Wrapper for Requests to a remote Secure Client
-    #[derive(Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShRequest {
         CheckVault(CheckVault),
         CheckRecord(CheckRecord),
@@ -546,7 +546,7 @@ pub mod messages {
         }
     }
 
-    #[derive(Serialize, Deserialize, Clone)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {
         Empty(()),
         Data(Option<Vec<u8>>),

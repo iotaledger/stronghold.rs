@@ -25,8 +25,8 @@ use smallvec::SmallVec;
 use std::{convert::TryFrom, fmt, io, num::NonZeroU32};
 
 /// Trait for the generic request and response messages.
-pub trait RqRsMessage: Serialize + DeserializeOwned + Send + Sync + 'static {}
-impl<TRq: Serialize + DeserializeOwned + Send + Sync + 'static> RqRsMessage for TRq {}
+pub trait RqRsMessage: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static {}
+impl<TRq: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static> RqRsMessage for TRq {}
 
 /// Unique Id for each request.
 /// **Note**: This ID is only local and does not match the request's ID at the remote peer.
@@ -176,6 +176,7 @@ impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THand
                 peer_id,
                 endpoint,
                 num_established,
+                concurrent_dial_errors: _,
             } => Ok(NetworkEvent::ConnectionEstablished {
                 peer: peer_id,
                 num_established,

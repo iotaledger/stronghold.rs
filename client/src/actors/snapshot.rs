@@ -21,7 +21,6 @@ use crate::{
     Provider,
 };
 use std::collections::HashMap;
-use thiserror::Error as DeriveError;
 
 /// re-export local modules
 pub use messages::*;
@@ -82,12 +81,6 @@ pub mod messages {
 
 impl Actor for Snapshot {
     type Context = actix::Context<Self>;
-}
-
-#[derive(Debug, DeriveError)]
-pub enum SnapshotError {
-    // #[error("Could Not Load Snapshot. Try another password")]
-// Engine(#[from] engine::Error),
 }
 
 // actix impl

@@ -65,16 +65,15 @@ impl Stronghold {
         // Init actor registry.
         let registry = Registry::default().start();
 
-        let mut stronghold = Self { registry };
+        // create client actor
+        let client_id = ClientId::load_from_path(&client_path, &client_path);
+        registry.send(SpawnClient { id: client_id }).await?;
 
-        match stronghold.spawn_stronghold_actor(client_path, _options).await {
-            Ok(_) => Ok(stronghold),
-            Err(e) => Err(e),
-        }
+        Ok(Self { registry })
     }
 
-    /// Spawns a new set of actors for the Stronghold system. Accepts the client_path: [`Vec<u8>`] and the options:
-    /// `StrongholdFlags`
+    /// Spawn a new client for the Stronghold system and switch the actor target to it.
+    /// Accepts the client_path: [`Vec<u8>`] and the options: `StrongholdFlags`
     pub async fn spawn_stronghold_actor(
         &mut self,
         client_path: Vec<u8>,
@@ -82,12 +81,7 @@ impl Stronghold {
     ) -> Result<(), MailboxError> {
         let client_id = ClientId::load_from_path(&client_path, &client_path.clone());
         self.registry.send(SpawnClient { id: client_id }).await?;
-
-        match self.switch_client(client_id).await {
-            Ok(_) => Ok(()),
-            Err(ActorError::Mailbox(e)) => Err(e),
-            _ => unreachable!(),
-        }
+        Ok(())
     }
 
     /// Switches the actor target to another actor in the system specified by the client_path: [`Vec<u8>`].
