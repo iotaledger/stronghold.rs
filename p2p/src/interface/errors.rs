@@ -198,10 +198,8 @@ impl std::error::Error for ListenErr {}
 pub enum ListenRelayErr {
     /// Establishing a connection to the relay failed.
     DialRelay(DialErr),
-    /// Listening on the address failed on the transport layer.
-    Transport(TransportErr),
-    /// The communication system was shut down before the listening attempt resolved.
-    Shutdown,
+    /// Error on listening on an address.
+    Listen(ListenErr),
 }
 
 impl TryFrom<DialError> for ListenRelayErr {
@@ -219,7 +217,7 @@ impl From<DialErr> for ListenRelayErr {
 
 impl From<TransportError<io::Error>> for ListenRelayErr {
     fn from(err: TransportError<io::Error>) -> Self {
-        ListenRelayErr::Transport(err.into())
+        ListenRelayErr::Listen(err.into())
     }
 }
 
@@ -227,8 +225,7 @@ impl fmt::Display for ListenRelayErr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ListenRelayErr::DialRelay(e) => write!(f, "Listen on Relay error: Dial Relay Error: {}", e),
-            ListenRelayErr::Transport(e) => write!(f, "Listen on Relay error: Listening Error: {}", e),
-            ListenRelayErr::Shutdown => write!(f, "Listen on Relay error: the network task was shut down."),
+            ListenRelayErr::Listen(e) => write!(f, "Listen on Relay error: Listening Error: {}", e),
         }
     }
 }

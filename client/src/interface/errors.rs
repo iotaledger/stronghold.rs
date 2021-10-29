@@ -22,7 +22,7 @@ pub enum ActorError {
 pub enum WriteVaultError {
     #[error("Actor Error: `{0}`")]
     Actors(#[from] ActorError),
-    #[error("Engine Error: `{0}`")]
+    #[error("Fatal Engine Error: `{0}`")]
     Engine(String),
 }
 
