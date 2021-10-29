@@ -5,7 +5,7 @@ can:
 
 - write a secret to insecure store
 - read a secret from insecure store
-- encrypt a secret to secure vault and write it to a snapshop
+- encrypt a secret to secure vault and write it to a snapshot
 - load an existing snapshot
 - revoke secrets
 - purge secrets
