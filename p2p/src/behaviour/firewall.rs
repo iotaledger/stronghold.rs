@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod permissions;
-use crate::RequestDirection;
+use crate::{serde::SerdeFirewallConfig, RequestDirection};
+pub use permissions::*;
+
 use core::fmt;
 use futures::channel::oneshot;
 use libp2p::PeerId;
-pub use permissions::*;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Debug, marker::PhantomData};
 
 /// Requests for approval and rules that are not covered by the current [`FirewallConfiguration`].
@@ -131,11 +133,14 @@ impl<TRq: Clone> FirewallRules<TRq> {
 /// If there are neither default rules, nor a peer specific rule for a request from/ to a peer,
 /// a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel that is passed to
 /// `StrongholdP2p`.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(try_from = "SerdeFirewallConfig")]
+#[serde(into = "SerdeFirewallConfig")]
 pub struct FirewallConfiguration<TRq: Clone> {
     /// Default rules that are used if there are no peer-specific ones for a peer.
-    default: FirewallRules<TRq>,
+    pub default: FirewallRules<TRq>,
     /// Peer specific rules.
-    peer_rules: HashMap<PeerId, FirewallRules<TRq>>,
+    pub peer_rules: HashMap<PeerId, FirewallRules<TRq>>,
 }
 
 impl<TRq: Clone> Default for FirewallConfiguration<TRq> {

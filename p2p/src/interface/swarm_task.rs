@@ -1,7 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{assemble_relayed_addr, behaviour::EstablishedConnections, firewall::FirewallRules, RelayNotSupported};
+use crate::{
+    assemble_relayed_addr,
+    behaviour::{BehaviourState, EstablishedConnections},
+    firewall::FirewallRules,
+    RelayNotSupported,
+};
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
@@ -133,6 +138,10 @@ pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
     UnbanPeer {
         peer: PeerId,
         tx_yield: oneshot::Sender<Ack>,
+    },
+
+    ExportState {
+        tx_yield: oneshot::Sender<BehaviourState<TRq>>,
     },
 }
 
@@ -498,6 +507,10 @@ where
             SwarmOperation::UnbanPeer { peer, tx_yield } => {
                 self.swarm.unban_peer_id(peer);
                 let _ = tx_yield.send(());
+            }
+            SwarmOperation::ExportState { tx_yield } => {
+                let state = self.swarm.behaviour_mut().export_state();
+                let _ = tx_yield.send(state);
             }
         }
     }

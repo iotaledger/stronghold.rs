@@ -22,8 +22,7 @@ mod handler;
 mod request_manager;
 pub use self::request_manager::EstablishedConnections;
 use crate::{InboundFailure, OutboundFailure, RequestDirection, RequestId, RqRsMessage};
-pub use addresses::assemble_relayed_addr;
-use addresses::AddressInfo;
+pub use addresses::{assemble_relayed_addr, AddressInfo, PeerAddress};
 use either::Either;
 use firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection};
 use futures::{
@@ -53,6 +52,7 @@ use libp2p::{
     },
 };
 use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
+use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use std::{
     borrow::Borrow,
@@ -217,7 +217,7 @@ where
             next_request_id: RequestId::new(1),
             next_inbound_id: Arc::new(AtomicU64::new(1)),
             request_manager: RequestManager::new(),
-            addresses: AddressInfo::new(),
+            addresses: AddressInfo::default(),
             firewall: config.firewall,
             permission_req_channel,
             pending_rule_rqs: FuturesUnordered::default(),
@@ -364,6 +364,13 @@ where
             return Err(RelayNotSupported);
         }
         Ok(self.addresses.use_relay(target, relay, is_exclusive))
+    }
+
+    pub fn export_state(&self) -> BehaviourState<TRq> {
+        BehaviourState {
+            firewall: self.firewall.clone(),
+            address_info: self.addresses.clone(),
+        }
     }
 
     /// [`RequestId`] for the next outbound request.
@@ -1025,6 +1032,12 @@ where
             relay.inject_expired_external_addr(addr);
         }
     }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct BehaviourState<TRq: Clone> {
+    firewall: FirewallConfiguration<TRq>,
+    address_info: AddressInfo,
 }
 
 #[cfg(test)]

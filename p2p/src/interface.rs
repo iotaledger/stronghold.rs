@@ -12,7 +12,7 @@ use swarm_task::{SwarmOperation, SwarmTask};
 pub use types::*;
 
 use crate::{
-    behaviour::{BehaviourEvent, EstablishedConnections, NetBehaviour, NetBehaviourConfig},
+    behaviour::{BehaviourEvent, BehaviourState, EstablishedConnections, NetBehaviour, NetBehaviourConfig},
     firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection},
     Keypair, RelayNotSupported,
 };
@@ -372,6 +372,14 @@ where
     pub async fn get_connections(&mut self) -> Vec<(PeerId, EstablishedConnections)> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::GetConnections { tx_yield };
+        self.send_command(command).await;
+        rx_yield.await.unwrap()
+    }
+
+    // Export the firewall configuration and address info.
+    pub async fn export_state(&mut self) -> BehaviourState<TRq> {
+        let (tx_yield, rx_yield) = oneshot::channel();
+        let command = SwarmOperation::ExportState { tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }

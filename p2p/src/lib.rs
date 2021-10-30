@@ -12,10 +12,15 @@ mod libp2p_reexport {
     pub type AuthenticKeypair = libp2p::noise::AuthenticKeypair<libp2p::noise::X25519Spec>;
     pub type NoiseKeypair = libp2p::noise::Keypair<libp2p::noise::X25519Spec>;
 }
-pub use libp2p_reexport::*;
 mod interface;
-pub use behaviour::{assemble_relayed_addr, firewall, EstablishedConnections, MessageProtocol, RelayNotSupported};
+mod serde;
+
+pub use behaviour::{
+    assemble_relayed_addr, firewall, AddressInfo, BehaviourState, EstablishedConnections, MessageProtocol,
+    RelayNotSupported,
+};
 pub use interface::*;
+pub use libp2p_reexport::*;
 
 #[macro_export]
 macro_rules! unwrap_or_return (
