@@ -151,7 +151,7 @@ async fn test_revoke_with_gc() {
 
         let p = stronghold.read_secret(client_path.clone(), loc).await.unwrap();
 
-        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
+        assert!(p.is_none());
     }
 
     let ids = stronghold

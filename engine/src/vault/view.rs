@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::Infallible, fmt::Debug};
 use thiserror::Error as DeriveError;
 
-use super::crypto_box::DecryptError;
+use super::{crypto_box::DecryptError, types::transactions::Transaction};
 
 #[derive(DeriveError, Debug)]
 pub enum VaultError<TProvErr: Debug, TProcErr: Debug = Infallible> {
@@ -102,13 +102,11 @@ impl<P: BoxProvider> DbView<P> {
 
     /// Lists all of the [`RecordHint`] values and [`RecordId`] values for the given [`Vault`].
     pub fn list_hints_and_ids(&self, key: &Key<P>, vid: VaultId) -> Vec<(RecordId, RecordHint)> {
-        let buf: Vec<(RecordId, RecordHint)> = if let Some(vault) = self.vaults.get(&vid) {
+        if let Some(vault) = self.vaults.get(&vid) {
             vault.list_hints_and_ids(key)
         } else {
             vec![]
-        };
-
-        buf
+        }
     }
 
     /// Check to see if a [`Vault`] contains a [`Record`] through the given [`RecordId`].
@@ -231,7 +229,7 @@ impl<P: BoxProvider> Vault<P> {
                 .entries
                 .values()
                 .into_iter()
-                .filter_map(|entry| entry.get_hint_and_id(key))
+                .filter_map(|entry| entry.get_hint_and_id(key).ok())
                 .collect();
         }
 
@@ -307,22 +305,30 @@ impl Record {
         })
     }
 
-    /// gets the [`RecordHint`] and [`RecordId`] of the [`Record`].
-    fn get_hint_and_id<P: BoxProvider>(&self, key: &Key<P>) -> Option<(RecordId, RecordHint)> {
+    fn get_transaction<P: BoxProvider>(&self, key: &Key<P>) -> Result<Transaction, RecordError<P::Error>> {
+        // check if a revocation transaction exists.
         if self.revoke.is_none() {
-            let tx = self.data.decrypt(key, self.id).expect("Unable to decrypt transaction");
-
-            let tx = tx
-                .typed::<DataTransaction>()
-                .expect("Failed to convert to data transaction");
-
-            let hint = tx.record_hint;
-            let id = RecordId(self.id);
-
-            Some((id, hint))
+            // decrypt data transaction.
+            self.data.decrypt(key, self.id).map_err(|err| match err {
+                DecryptError::Invalid => {
+                    RecordError::CorruptedContent("Could not convert bytes into transaction structure".into())
+                }
+                DecryptError::Provider(e) => RecordError::Provider(e),
+            })
         } else {
-            None
+            Err(RecordError::RecordNotFound(self.id))
         }
+    }
+
+    /// gets the [`RecordHint`] and [`RecordId`] of the [`Record`].
+    fn get_hint_and_id<P: BoxProvider>(&self, key: &Key<P>) -> Result<(RecordId, RecordHint), RecordError<P::Error>> {
+        let tx = self.get_transaction(key)?;
+        let tx = tx.typed::<DataTransaction>().ok_or_else(|| {
+            RecordError::CorruptedContent("Could not type decrypted transaction as data-transaction".into())
+        })?;
+        let hint = tx.record_hint;
+        let id = RecordId(self.id);
+        Ok((id, hint))
     }
 
     /// Check to see if a [`RecordId`] pairs with the [`Record`]. Comes back as false if there is a revocation
@@ -337,35 +343,25 @@ impl Record {
 
     /// Get the blob from this [`Record`].
     fn get_blob<P: BoxProvider>(&self, key: &Key<P>, id: ChainId) -> Result<GuardedVec<u8>, RecordError<P::Error>> {
-        // check if id id and tx id match.
-        if self.id == id {
-            // check if there is a revocation transaction.
-            if self.revoke.is_none() {
-                let tx = self.data.decrypt(key, self.id).map_err(|err| match err {
-                    DecryptError::Invalid => {
-                        RecordError::CorruptedContent("Could not convert bytes into transaction structure".into())
-                    }
-                    DecryptError::Provider(e) => RecordError::Provider(e),
-                })?;
-                let tx = tx.typed::<DataTransaction>().ok_or_else(|| {
-                    RecordError::CorruptedContent("Could not type decrypted transaction as data-transaction".into())
-                })?;
-
-                let guarded = GuardedVec::new(tx.len.u64() as usize, |i| {
-                    let blob = SealedBlob::from(self.blob.as_ref())
-                        .decrypt(key, tx.blob)
-                        .expect("Unable to decrypt blob");
-
-                    i.copy_from_slice(blob.as_ref());
-                });
-
-                Ok(guarded)
-            } else {
-                Ok(GuardedVec::zero(0))
-            }
-        } else {
-            Err(RecordError::RecordNotFound(id))
+        // check if ids match
+        if self.id != id {
+            return Err(RecordError::RecordNotFound(id));
         }
+
+        let tx = self.get_transaction(key)?;
+        let tx = tx.typed::<DataTransaction>().ok_or_else(|| {
+            RecordError::CorruptedContent("Could not type decrypted transaction as data-transaction".into())
+        })?;
+
+        let guarded = GuardedVec::new(tx.len.u64() as usize, |i| {
+            let blob = SealedBlob::from(self.blob.as_ref())
+                .decrypt(key, tx.blob)
+                .expect("Unable to decrypt blob");
+
+            i.copy_from_slice(blob.as_ref());
+        });
+
+        Ok(guarded)
     }
 
     /// Update the data in an existing [`Record`].
@@ -376,30 +372,23 @@ impl Record {
         new_data: &[u8],
     ) -> Result<(), RecordError<P::Error>> {
         // check if ids match
-        if self.id == id {
-            // check if a revocation transaction exists.
-            if self.revoke.is_none() {
-                // decrypt data transaction.
-                let tx = self.data.decrypt(key, self.id).map_err(|err| match err {
-                    DecryptError::Invalid => {
-                        RecordError::CorruptedContent("Could not convert bytes into transaction structure".into())
-                    }
-                    DecryptError::Provider(e) => RecordError::Provider(e),
-                })?;
-                let tx = tx.typed::<DataTransaction>().ok_or_else(|| {
-                    RecordError::CorruptedContent("Could not type decrypted transaction as data-transaction".into())
-                })?;
-
-                // create a new sealed blob with the new_data.
-                let blob: SealedBlob = new_data.encrypt(key, tx.blob).map_err(RecordError::Provider)?;
-                // create a new sealed transaction with the new_data length.
-                let dtx = DataTransaction::new(tx.id, new_data.len() as u64, tx.blob, tx.record_hint);
-                let data = dtx.encrypt(key, tx.id).map_err(RecordError::Provider)?;
-
-                self.blob = blob;
-                self.data = data;
-            }
+        if self.id != id {
+            return Err(RecordError::RecordNotFound(id));
         }
+
+        let tx = self.get_transaction(key)?;
+        let tx = tx.typed::<DataTransaction>().ok_or_else(|| {
+            RecordError::CorruptedContent("Could not type decrypted transaction as data-transaction".into())
+        })?;
+
+        // create a new sealed blob with the new_data.
+        let blob: SealedBlob = new_data.encrypt(key, tx.blob).map_err(RecordError::Provider)?;
+        // create a new sealed transaction with the new_data length.
+        let dtx = DataTransaction::new(tx.id, new_data.len() as u64, tx.blob, tx.record_hint);
+        let data = dtx.encrypt(key, tx.id).map_err(RecordError::Provider)?;
+
+        self.blob = blob;
+        self.data = data;
 
         Ok(())
     }
