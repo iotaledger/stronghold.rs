@@ -265,7 +265,7 @@ impl fmt::Display for OutboundFailure {
 
 /// Possible failures occurring in the context of receiving an inbound request and sending a response.
 ///
-/// Note: If the firewall is configured to block per se all requests from the remote peer, the protocol for inbound
+/// **Note**: If the firewall is configured to block per se all requests from the remote peer, the protocol for inbound
 /// requests will not be supported in the first place, and inbound requests are rejected without emitting a failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InboundFailure {

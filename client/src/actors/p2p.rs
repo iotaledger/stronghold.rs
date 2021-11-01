@@ -109,8 +109,10 @@ impl NetworkActor {
         let (firewall_tx, _) = mpsc::channel(0);
         let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
         let firewall_config = FirewallConfiguration::new(Some(firewall_rule), Some(Rule::AllowAll));
-        let mut builder =
-            StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None).with_firewall_config(firewall_config);
+        let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None)
+            .with_firewall_config(firewall_config)
+            .with_mdns_support(network_config.enable_mdns)
+            .with_relay_support(network_config.enable_relay);
         if let Some(keypair) = network_config.keypair {
             builder = builder.with_keys(keypair)
         }
@@ -123,6 +125,7 @@ impl NetworkActor {
         if let Some(limit) = network_config.connections_limit {
             builder = builder.with_connections_limit(limit)
         }
+
         let network = builder.build().await?;
         let actor = Self {
             network,
@@ -186,7 +189,7 @@ where
 
 impl_handler!(GetSwarmInfo => SwarmInfo, |network, _msg| {
     let listeners = network.get_listeners().await;
-    let local_peer_id = network.get_peer_id();
+    let local_peer_id = network.peer_id();
     let connections = network.get_connections().await;
     SwarmInfo { local_peer_id, listeners, connections}
 });
@@ -208,7 +211,7 @@ impl_handler!(StopListeningAddr => (), |network, msg| {
     network.stop_listening_addr(msg.address).await
 });
 
-impl_handler!(StopListeningRelay => (), |network, msg| {
+impl_handler!(StopListeningRelay => bool, |network, msg| {
     network.stop_listening_relay(msg.relay).await
 });
 
@@ -253,10 +256,10 @@ impl_handler!(RemovePeerAddr => (), |network, msg| {
 });
 
 impl_handler!(AddDialingRelay => Option<Multiaddr>, |network, msg| {
-    network.add_dialing_relay(msg.relay, None).await
+    network.add_dialing_relay(msg.relay, None).await.unwrap()
 });
 
-impl_handler!(RemoveDialingRelay => (), |network, msg| {
+impl_handler!(RemoveDialingRelay => bool, |network, msg| {
     network.remove_dialing_relay(msg.relay).await
 });
 
@@ -265,11 +268,16 @@ impl_handler!(RemoveDialingRelay => (), |network, msg| {
 /// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
 /// - No limit for simultaneous connections.
 /// - Request-timeout and Connection-timeout are 10s.
+/// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id to
+///   the local network.
+/// - [`Relay`][`libp2p::relay`] functionality is disabled.
 pub struct NetworkConfig {
     keypair: Option<InitKeypair>,
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
     connections_limit: Option<ConnectionLimits>,
+    enable_mdns: bool,
+    enable_relay: bool,
 }
 
 impl NetworkConfig {
@@ -300,6 +308,20 @@ impl NetworkConfig {
         self.connection_timeout = Some(t);
         self
     }
+
+    /// Enable / Disable [`Mdns`][`libp2p::mdns`] protocol.
+    /// **Note**: Enabling mdns will broadcast our own address and id to the local network.
+    pub fn with_mdns_enabled(mut self, is_enabled: bool) -> Self {
+        self.enable_mdns = is_enabled;
+        self
+    }
+
+    /// Enable / Disable [`Relay`][`libp2p::relay`] functionality.
+    /// This also means that other peers can use us as relay/
+    pub fn with_relay_enabled(mut self, is_enabled: bool) -> Self {
+        self.enable_relay = is_enabled;
+        self
+    }
 }
 
 impl Default for NetworkConfig {
@@ -309,6 +331,8 @@ impl Default for NetworkConfig {
             request_timeout: None,
             connection_timeout: None,
             connections_limit: None,
+            enable_mdns: false,
+            enable_relay: false,
         }
     }
 }
@@ -373,7 +397,7 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
+    #[rtype(result = "bool")]
     pub struct StopListeningRelay {
         pub relay: PeerId,
     }
@@ -449,7 +473,7 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
+    #[rtype(result = "bool")]
     pub struct RemoveDialingRelay {
         pub relay: PeerId,
     }
