@@ -185,55 +185,6 @@
 <span id="185">185</span>
 <span id="186">186</span>
 <span id="187">187</span>
-<span id="188">188</span>
-<span id="189">189</span>
-<span id="190">190</span>
-<span id="191">191</span>
-<span id="192">192</span>
-<span id="193">193</span>
-<span id="194">194</span>
-<span id="195">195</span>
-<span id="196">196</span>
-<span id="197">197</span>
-<span id="198">198</span>
-<span id="199">199</span>
-<span id="200">200</span>
-<span id="201">201</span>
-<span id="202">202</span>
-<span id="203">203</span>
-<span id="204">204</span>
-<span id="205">205</span>
-<span id="206">206</span>
-<span id="207">207</span>
-<span id="208">208</span>
-<span id="209">209</span>
-<span id="210">210</span>
-<span id="211">211</span>
-<span id="212">212</span>
-<span id="213">213</span>
-<span id="214">214</span>
-<span id="215">215</span>
-<span id="216">216</span>
-<span id="217">217</span>
-<span id="218">218</span>
-<span id="219">219</span>
-<span id="220">220</span>
-<span id="221">221</span>
-<span id="222">222</span>
-<span id="223">223</span>
-<span id="224">224</span>
-<span id="225">225</span>
-<span id="226">226</span>
-<span id="227">227</span>
-<span id="228">228</span>
-<span id="229">229</span>
-<span id="230">230</span>
-<span id="231">231</span>
-<span id="232">232</span>
-<span id="233">233</span>
-<span id="234">234</span>
-<span id="235">235</span>
-<span id="236">236</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -255,30 +206,40 @@
     <span class="ident">swarm::DialError</span>,
     <span class="ident">Multiaddr</span>, <span class="ident">TransportError</span>,
 };
-<span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">convert::TryFrom</span>, <span class="ident">fmt</span>, <span class="ident">io</span>};
+<span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">convert::TryFrom</span>, <span class="ident">io</span>};
+<span class="kw">use</span> <span class="ident">thiserror::Error</span>;
 
 <span class="doccomment">/// Error on dialing a peer and establishing a connection.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Error</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">DialErr</span> {
     <span class="doccomment">/// The peer is currently banned.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Peer is banned.&quot;</span>)]</span>
     <span class="ident">Banned</span>,
     <span class="doccomment">/// The configured limit for simultaneous outgoing connections</span>
     <span class="doccomment">/// has been reached.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Connection limit: `{limit}`/`{current}`.&quot;</span>)]</span>
     <span class="ident">ConnectionLimit</span> { <span class="ident">limit</span>: <span class="ident">u32</span>, <span class="ident">current</span>: <span class="ident">u32</span> },
     <span class="doccomment">/// The peer being dialed is the local peer and thus the dial was aborted.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Tried to dial local peer id.&quot;</span>)]</span>
     <span class="ident">LocalPeerId</span>,
     <span class="doccomment">/// No direct or relayed addresses for the peer are known.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;No addresses known for peer.&quot;</span>)]</span>
     <span class="ident">NoAddresses</span>,
     <span class="doccomment">/// Pending connection attempt has been aborted.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot; Pending connection attempt has been aborted.&quot;</span>)]</span>
     <span class="ident">Aborted</span>,
     <span class="doccomment">/// The peer identity obtained on the connection did not</span>
     <span class="doccomment">/// match the one that was expected or is otherwise invalid.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Invalid peer ID.&quot;</span>)]</span>
     <span class="ident">InvalidPeerId</span>,
     <span class="doccomment">/// An I/O error occurred on the connection.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;An I/O error occurred on the connection: `{0}`.&quot;</span>)]</span>
     <span class="ident">ConnectionIo</span>(<span class="ident">io::Error</span>),
     <span class="doccomment">/// An error occurred while negotiating the transport protocol(s) on a connection.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;An error occurred while negotiating the transport protocol(s) on a connection: `{0:?}`.&quot;</span>)]</span>
     <span class="ident">Transport</span>(<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Multiaddr</span>, <span class="ident">TransportError</span><span class="op">&lt;</span><span class="ident">io::Error</span><span class="op">&gt;</span>)<span class="op">&gt;</span>),
     <span class="doccomment">/// The communication system was shut down before the dialing attempt resolved.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;The network task was shut down.&quot;</span>)]</span>
     <span class="ident">Shutdown</span>,
 }
 
@@ -302,59 +263,26 @@
     }
 }
 
-<span class="kw">impl</span> <span class="ident">fmt::Display</span> <span class="kw">for</span> <span class="ident">DialErr</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">fmt::Formatter</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">fmt::Result</span> {
-        <span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident">DialErr::ConnectionLimit</span> { <span class="ident">limit</span>, <span class="ident">current</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Dial error: Connection limit: {}/{}.&quot;</span>, <span class="ident">current</span>, <span class="ident">limit</span>)
-            }
-            <span class="ident">DialErr::NoAddresses</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Dial error: no addresses for peer.&quot;</span>),
-            <span class="ident">DialErr::LocalPeerId</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Dial error: tried to dial local peer id.&quot;</span>),
-            <span class="ident">DialErr::Banned</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Dial error: peer is banned.&quot;</span>),
-            <span class="ident">DialErr::Aborted</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Dial error: Pending connection attempt has been aborted.&quot;</span>),
-            <span class="ident">DialErr::InvalidPeerId</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Dial error: Invalid peer ID.&quot;</span>),
-            <span class="ident">DialErr::ConnectionIo</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Dial error: An I/O error occurred on the connection: {:?}.&quot;</span>, <span class="ident">e</span>),
-            <span class="ident">DialErr::Transport</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(
-                <span class="ident">f</span>,
-                <span class="string">&quot;An error occurred while negotiating the transport protocol(s) on a connection: {:?}.&quot;</span>,
-                <span class="ident">e</span>
-            ),
-            <span class="ident">DialErr::Shutdown</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Dial error: the network task was shut down.&quot;</span>),
-        }
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">std::error::Error</span> <span class="kw">for</span> <span class="ident">DialErr</span> {}
-
 <span class="doccomment">/// Error on establishing a connection.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Error</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ConnectionErr</span> {
     <span class="doccomment">/// An I/O error occurred on the connection.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;I/O error: `{0}`&quot;</span>)]</span>
     <span class="ident">Io</span>(<span class="ident">io::Error</span>),
     <span class="doccomment">/// The peer identity obtained on the connection did not</span>
     <span class="doccomment">/// match the one that was expected or is otherwise invalid.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Invalid peer ID.&quot;</span>)]</span>
     <span class="ident">InvalidPeerId</span>,
     <span class="doccomment">/// An error occurred while negotiating the transport protocol(s).</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Transport error: `{0}`&quot;</span>)]</span>
     <span class="ident">Transport</span>(<span class="ident">TransportErr</span>),
     <span class="doccomment">/// The connection was dropped because the connection limit</span>
     <span class="doccomment">/// for a peer has been reached.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Connection limit: `{limit}`/`{current}`.&quot;</span>)]</span>
     <span class="ident">ConnectionLimit</span> { <span class="ident">limit</span>: <span class="ident">u32</span>, <span class="ident">current</span>: <span class="ident">u32</span> },
     <span class="doccomment">/// Pending connection attempt has been aborted.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Pending connection attempt has been aborted.&quot;</span>)]</span>
     <span class="ident">Aborted</span>,
-}
-
-<span class="kw">impl</span> <span class="ident">fmt::Display</span> <span class="kw">for</span> <span class="ident">ConnectionErr</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">fmt::Formatter</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">fmt::Result</span> {
-        <span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident">ConnectionErr::Io</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Connection error: I/O error: {}&quot;</span>, <span class="ident">err</span>),
-            <span class="ident">ConnectionErr::InvalidPeerId</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Connection error: Invalid peer ID.&quot;</span>),
-            <span class="ident">ConnectionErr::ConnectionLimit</span> { <span class="ident">current</span>, <span class="ident">limit</span> } <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Connection error: Connection limit: {}/{}.&quot;</span>, <span class="ident">current</span>, <span class="ident">limit</span>)
-            }
-            <span class="ident">ConnectionErr::Transport</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Connection error: Transport error: {}&quot;</span>, <span class="ident">e</span>),
-            <span class="ident">ConnectionErr::Aborted</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Pending connection attempt has been aborted&quot;</span>),
-        }
-    }
 }
 
 <span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">PendingConnectionError</span><span class="op">&lt;</span><span class="ident">TransportError</span><span class="op">&lt;</span><span class="ident">io::Error</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">ConnectionErr</span> {
@@ -373,24 +301,15 @@
     }
 }
 
-<span class="kw">impl</span> <span class="ident">std::error::Error</span> <span class="kw">for</span> <span class="ident">ConnectionErr</span> {}
-
 <span class="doccomment">/// Error on the [Transport][libp2p::Transport].</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Error</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">TransportErr</span> {
     <span class="doccomment">/// The address is not supported.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Multiaddress not supported: `{0}`&quot;</span>)]</span>
     <span class="ident">MultiaddrNotSupported</span>(<span class="ident">Multiaddr</span>),
     <span class="doccomment">/// An I/O Error occurred.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;I/O error: `{0}`&quot;</span>)]</span>
     <span class="ident">Io</span>(<span class="ident">io::Error</span>),
-}
-
-<span class="kw">impl</span> <span class="ident">fmt::Display</span> <span class="kw">for</span> <span class="ident">TransportErr</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">fmt::Formatter</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">fmt::Result</span> {
-        <span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident">TransportErr::MultiaddrNotSupported</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Transport error: Multiaddress not supported: {}&quot;</span>, <span class="ident">a</span>),
-            <span class="ident">TransportErr::Io</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Transport error: I/O error: {}&quot;</span>, <span class="ident">err</span>),
-        }
-    }
 }
 
 <span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">TransportError</span><span class="op">&lt;</span><span class="ident">io::Error</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">TransportErr</span> {
@@ -402,14 +321,14 @@
     }
 }
 
-<span class="kw">impl</span> <span class="ident">std::error::Error</span> <span class="kw">for</span> <span class="ident">TransportErr</span> {}
-
 <span class="doccomment">/// Error on listening on an address.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Error</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ListenErr</span> {
     <span class="doccomment">/// Listening on the address failed on the transport layer.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Transport error: `{0}`&quot;</span>)]</span>
     <span class="ident">Transport</span>(<span class="ident">TransportErr</span>),
     <span class="doccomment">/// The communication system was shut down before the listening attempt resolved.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;The network task was shut down.&quot;</span>)]</span>
     <span class="ident">Shutdown</span>,
 }
 
@@ -419,25 +338,20 @@
     }
 }
 
-<span class="kw">impl</span> <span class="ident">fmt::Display</span> <span class="kw">for</span> <span class="ident">ListenErr</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">fmt::Formatter</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">fmt::Result</span> {
-        <span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident">ListenErr::Transport</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Listen error: Transport Error: {}&quot;</span>, <span class="ident">e</span>),
-            <span class="ident">ListenErr::Shutdown</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Listen error: the network task was shut down.&quot;</span>),
-        }
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">std::error::Error</span> <span class="kw">for</span> <span class="ident">ListenErr</span> {}
-
 <span class="doccomment">/// Error on listening on a relayed address.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Error</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ListenRelayErr</span> {
+    <span class="doccomment">/// The relay protocol is not supported.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Relay Protocol not enabled.&quot;</span>)]</span>
+    <span class="ident">ProtocolNotSupported</span>,
     <span class="doccomment">/// Establishing a connection to the relay failed.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Dial Relay Error: `{0}`&quot;</span>)]</span>
     <span class="ident">DialRelay</span>(<span class="ident">DialErr</span>),
     <span class="doccomment">/// Listening on the address failed on the transport layer.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;Transport error: `{0}`&quot;</span>)]</span>
     <span class="ident">Transport</span>(<span class="ident">TransportErr</span>),
     <span class="doccomment">/// The communication system was shut down before the listening attempt resolved.</span>
+    <span class="attribute">#[<span class="ident">error</span>(<span class="string">&quot;The network task was shut down.&quot;</span>)]</span>
     <span class="ident">Shutdown</span>,
 }
 
@@ -459,18 +373,6 @@
         <span class="ident">ListenRelayErr::Transport</span>(<span class="ident">err</span>.<span class="ident">into</span>())
     }
 }
-
-<span class="kw">impl</span> <span class="ident">fmt::Display</span> <span class="kw">for</span> <span class="ident">ListenRelayErr</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">fmt::Formatter</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">fmt::Result</span> {
-        <span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident">ListenRelayErr::DialRelay</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Listen on Relay error: Dial Relay Error: {}&quot;</span>, <span class="ident">e</span>),
-            <span class="ident">ListenRelayErr::Transport</span>(<span class="ident">e</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Listen on Relay error: Listening Error: {}&quot;</span>, <span class="ident">e</span>),
-            <span class="ident">ListenRelayErr::Shutdown</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;Listen on Relay error: the network task was shut down.&quot;</span>),
-        }
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">std::error::Error</span> <span class="kw">for</span> <span class="ident">ListenRelayErr</span> {}
 </pre></div>
 </section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../../../" data-current-crate="p2p" data-search-index-js="../../../search-index.js" data-search-js="../../../search.js"></div>
     <script src="../../../main.js"></script><script src="../../../source-script.js"></script><script src="../../../source-files.js"></script>

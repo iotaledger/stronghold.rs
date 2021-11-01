@@ -3,7 +3,7 @@
     NotPermitted,
     ConnectionClosed,
 }</pre></div><details class="rustdoc-toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Possible failures occurring in the context of receiving an inbound request and sending a response.</p>
-<p>Note: If the firewall is configured to block per se all requests from the remote peer, the protocol for inbound
+<p><strong>Note</strong>: If the firewall is configured to block per se all requests from the remote peer, the protocol for inbound
 requests will not be supported in the first place, and inbound requests are rejected without emitting a failure.</p>
 </div></details><h2 id="variants" class="variants small-section-header">Variants<a href="#variants" class="anchor"></a></h2><div id="variant.Timeout" class="variant small-section-header"><a href="#variant.Timeout" class="anchor field"></a><code>Timeout</code></div><div class="docblock"><p>The inbound request timed out, either while reading the
 incoming request or before a response is sent through [<code>RequestMessage.response_tx</code>].</p>

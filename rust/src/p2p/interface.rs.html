@@ -578,6 +578,56 @@
 <span id="578">578</span>
 <span id="579">579</span>
 <span id="580">580</span>
+<span id="581">581</span>
+<span id="582">582</span>
+<span id="583">583</span>
+<span id="584">584</span>
+<span id="585">585</span>
+<span id="586">586</span>
+<span id="587">587</span>
+<span id="588">588</span>
+<span id="589">589</span>
+<span id="590">590</span>
+<span id="591">591</span>
+<span id="592">592</span>
+<span id="593">593</span>
+<span id="594">594</span>
+<span id="595">595</span>
+<span id="596">596</span>
+<span id="597">597</span>
+<span id="598">598</span>
+<span id="599">599</span>
+<span id="600">600</span>
+<span id="601">601</span>
+<span id="602">602</span>
+<span id="603">603</span>
+<span id="604">604</span>
+<span id="605">605</span>
+<span id="606">606</span>
+<span id="607">607</span>
+<span id="608">608</span>
+<span id="609">609</span>
+<span id="610">610</span>
+<span id="611">611</span>
+<span id="612">612</span>
+<span id="613">613</span>
+<span id="614">614</span>
+<span id="615">615</span>
+<span id="616">616</span>
+<span id="617">617</span>
+<span id="618">618</span>
+<span id="619">619</span>
+<span id="620">620</span>
+<span id="621">621</span>
+<span id="622">622</span>
+<span id="623">623</span>
+<span id="624">624</span>
+<span id="625">625</span>
+<span id="626">626</span>
+<span id="627">627</span>
+<span id="628">628</span>
+<span id="629">629</span>
+<span id="630">630</span>
 </pre><pre class="rust">
 <span class="comment">// Copyright 2020-2021 IOTA Stiftung</span>
 <span class="comment">// SPDX-License-Identifier: Apache-2.0</span>
@@ -586,39 +636,38 @@
 <span class="kw">mod</span> <span class="ident">msg_channel</span>;
 <span class="kw">mod</span> <span class="ident">swarm_task</span>;
 <span class="kw">mod</span> <span class="ident">types</span>;
-<span class="kw">use</span> <span class="self">self</span><span class="ident">::swarm_task</span>::{<span class="ident">SwarmOperation</span>, <span class="ident">SwarmTask</span>};
+
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">errors</span>::<span class="kw-2">*</span>;
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">msg_channel</span>::{<span class="ident">ChannelSinkConfig</span>, <span class="ident">EventChannel</span>};
+<span class="kw">use</span> <span class="ident">swarm_task</span>::{<span class="ident">SwarmOperation</span>, <span class="ident">SwarmTask</span>};
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">types</span>::<span class="kw-2">*</span>;
+
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">behaviour</span>::{<span class="ident">BehaviourEvent</span>, <span class="ident">EstablishedConnections</span>, <span class="ident">NetBehaviour</span>, <span class="ident">NetBehaviourConfig</span>},
     <span class="ident">firewall</span>::{<span class="ident">FirewallConfiguration</span>, <span class="ident">FirewallRequest</span>, <span class="ident">FirewallRules</span>, <span class="ident">Rule</span>, <span class="ident">RuleDirection</span>},
-    <span class="ident">Keypair</span>,
+    <span class="ident">Keypair</span>, <span class="ident">RelayNotSupported</span>,
 };
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">errors</span>::<span class="kw-2">*</span>;
+
 <span class="kw">use</span> <span class="ident">futures</span>::{
     <span class="ident">channel</span>::{<span class="ident">mpsc</span>, <span class="ident">oneshot</span>},
     <span class="ident">future::poll_fn</span>,
     <span class="ident">AsyncRead</span>, <span class="ident">AsyncWrite</span>, <span class="ident">FutureExt</span>,
 };
-<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
-<span class="kw">use</span> <span class="ident">libp2p::mdns</span>::{<span class="ident">Mdns</span>, <span class="ident">MdnsConfig</span>};
-<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
-<span class="kw">use</span> <span class="ident">libp2p::relay</span>::{<span class="ident">new_transport_and_behaviour</span>, <span class="ident">RelayConfig</span>};
 <span class="kw">use</span> <span class="ident">libp2p</span>::{
     <span class="ident">core</span>::{
         <span class="ident">connection</span>::{<span class="ident">ConnectionLimits</span>, <span class="ident">ListenerId</span>},
         <span class="ident">transport::Transport</span>,
         <span class="ident">upgrade</span>, <span class="ident">Executor</span>, <span class="ident">Multiaddr</span>, <span class="ident">PeerId</span>,
     },
+    <span class="ident">mdns</span>::{<span class="ident">Mdns</span>, <span class="ident">MdnsConfig</span>},
     <span class="ident">noise</span>::{<span class="ident">AuthenticKeypair</span>, <span class="ident">Keypair</span> <span class="kw">as</span> <span class="ident">NoiseKeypair</span>, <span class="ident">NoiseConfig</span>, <span class="ident">X25519Spec</span>},
+    <span class="ident">relay</span>::{<span class="ident">new_transport_and_behaviour</span>, <span class="ident">RelayConfig</span>},
     <span class="ident">swarm::SwarmBuilder</span>,
     <span class="ident">yamux::YamuxConfig</span>,
 };
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;tcp-transport&quot;</span>)]</span>
 <span class="kw">use</span> <span class="ident">libp2p</span>::{<span class="ident">dns::TokioDnsConfig</span>, <span class="ident">tcp::TokioTcpConfig</span>, <span class="ident">websocket::WsConfig</span>};
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">msg_channel</span>::{<span class="ident">ChannelSinkConfig</span>, <span class="ident">EventChannel</span>};
-<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;tcp-transport&quot;</span>)]</span>
-<span class="kw">use</span> <span class="ident">std::io</span>;
-<span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">borrow::Borrow</span>, <span class="ident">time::Duration</span>};
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">types</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">borrow::Borrow</span>, <span class="ident">io</span>, <span class="ident">time::Duration</span>};
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>)]</span>
 <span class="doccomment">/// Interface for the stronghold-p2p library to create a swarm, handle events and perform operations.</span>
@@ -667,7 +716,7 @@
     }
 
     <span class="doccomment">/// Get the [`PeerId`] of the local peer.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_peer_id</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">PeerId</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">peer_id</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">PeerId</span> {
         <span class="self">self</span>.<span class="ident">local_peer_id</span>
     }
 
@@ -690,7 +739,7 @@
     <span class="doccomment">/// In case of a tcp-transport, the address `/ip4/0.0.0.0/tcp/0` can be set if an OS-assigned address should be</span>
     <span class="doccomment">/// used.</span>
     <span class="doccomment">///</span>
-    <span class="doccomment">/// Note: Depending on the used transport, this may produce multiple listening addresses.</span>
+    <span class="doccomment">/// **Note**: Depending on the used transport, this may produce multiple listening addresses.</span>
     <span class="doccomment">/// This method only returns the first reported listening address for the new listener.</span>
     <span class="doccomment">/// All active listening addresses for each listener can be obtained from [`StrongholdP2p::get_listeners`]</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">start_listening</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">address</span>: <span class="ident">Multiaddr</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Multiaddr</span>, <span class="ident">ListenErr</span><span class="op">&gt;</span> {
@@ -700,7 +749,6 @@
         <span class="ident">rx_yield</span>.<span class="kw">await</span>.<span class="ident">unwrap</span>()
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
     <span class="doccomment">/// Start listening via a relay peer on an address following the scheme</span>
     <span class="doccomment">/// `&lt;relay-addr&gt;/&lt;relay-id&gt;/p2p-circuit/&lt;local-id&gt;`. This will establish a keep-alive connection to the relay,</span>
     <span class="doccomment">/// the relay will forward all requests to the local peer.</span>
@@ -743,9 +791,8 @@
         <span class="ident">rx_yield</span>.<span class="kw">await</span>.<span class="ident">unwrap</span>()
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
     <span class="doccomment">/// Stop listening via the given relay.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">stop_listening_relay</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">relay</span>: <span class="ident">PeerId</span>) {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">stop_listening_relay</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">relay</span>: <span class="ident">PeerId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="kw">let</span> (<span class="ident">tx_yield</span>, <span class="ident">rx_yield</span>) <span class="op">=</span> <span class="ident">oneshot::channel</span>();
         <span class="kw">let</span> <span class="ident">command</span> <span class="op">=</span> <span class="ident">SwarmOperation::StopListeningRelay</span> { <span class="ident">relay</span>, <span class="ident">tx_yield</span> };
         <span class="self">self</span>.<span class="ident">send_command</span>(<span class="ident">command</span>).<span class="kw">await</span>;
@@ -858,9 +905,12 @@
         <span class="ident">rx_yield</span>.<span class="kw">await</span>.<span class="ident">unwrap</span>()
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
     <span class="doccomment">/// Add a relay to the list of relays that may be tried to use if a remote peer can not be reached directly.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">add_dialing_relay</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="ident">PeerId</span>, <span class="ident">address</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">add_dialing_relay</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">peer</span>: <span class="ident">PeerId</span>,
+        <span class="ident">address</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>, <span class="ident">RelayNotSupported</span><span class="op">&gt;</span> {
         <span class="kw">let</span> (<span class="ident">tx_yield</span>, <span class="ident">rx_yield</span>) <span class="op">=</span> <span class="ident">oneshot::channel</span>();
         <span class="kw">let</span> <span class="ident">command</span> <span class="op">=</span> <span class="ident">SwarmOperation::AddDialingRelay</span> {
             <span class="ident">peer</span>,
@@ -871,19 +921,24 @@
         <span class="ident">rx_yield</span>.<span class="kw">await</span>.<span class="ident">unwrap</span>()
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
     <span class="doccomment">/// Remove a relay from the list of dialing relays.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remove_dialing_relay</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="ident">PeerId</span>) {
+    <span class="comment">// Returns `false` if the peer was not among the known relays.</span>
+    <span class="comment">//</span>
+    <span class="comment">// **Note**: Known relayed addresses for remote peers using this relay will not be influenced by this.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">remove_dialing_relay</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="ident">PeerId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="kw">let</span> (<span class="ident">tx_yield</span>, <span class="ident">rx_yield</span>) <span class="op">=</span> <span class="ident">oneshot::channel</span>();
         <span class="kw">let</span> <span class="ident">command</span> <span class="op">=</span> <span class="ident">SwarmOperation::RemoveDialingRelay</span> { <span class="ident">peer</span>, <span class="ident">tx_yield</span> };
         <span class="self">self</span>.<span class="ident">send_command</span>(<span class="ident">command</span>).<span class="kw">await</span>;
         <span class="ident">rx_yield</span>.<span class="kw">await</span>.<span class="ident">unwrap</span>()
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
     <span class="doccomment">/// Configure whether it should be attempted to reach the remote via known relays, if it can not be reached via</span>
     <span class="doccomment">/// known addresses.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">set_relay_fallback</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">peer</span>: <span class="ident">PeerId</span>, <span class="ident">use_relay_fallback</span>: <span class="ident">bool</span>) {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">set_relay_fallback</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">peer</span>: <span class="ident">PeerId</span>,
+        <span class="ident">use_relay_fallback</span>: <span class="ident">bool</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">RelayNotSupported</span><span class="op">&gt;</span> {
         <span class="kw">let</span> (<span class="ident">tx_yield</span>, <span class="ident">rx_yield</span>) <span class="op">=</span> <span class="ident">oneshot::channel</span>();
         <span class="kw">let</span> <span class="ident">command</span> <span class="op">=</span> <span class="ident">SwarmOperation::SetRelayFallback</span> {
             <span class="ident">peer</span>,
@@ -894,14 +949,18 @@
         <span class="ident">rx_yield</span>.<span class="kw">await</span>.<span class="ident">unwrap</span>()
     }
 
-    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
     <span class="doccomment">/// Dial the target via the specified relay.</span>
     <span class="doccomment">/// The `is_exclusive` parameter specifies whether other known relays should be used if using the set relay is not</span>
     <span class="doccomment">/// successful.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// Returns the relayed address of the local peer (`&lt;relay-addr&gt;/&lt;relay-id&gt;/p2p-circuit/&lt;local-id&gt;),</span>
     <span class="doccomment">/// if an address for the relay is known.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">use_specific_relay</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">target</span>: <span class="ident">PeerId</span>, <span class="ident">relay</span>: <span class="ident">PeerId</span>, <span class="ident">is_exclusive</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">use_specific_relay</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">target</span>: <span class="ident">PeerId</span>,
+        <span class="ident">relay</span>: <span class="ident">PeerId</span>,
+        <span class="ident">is_exclusive</span>: <span class="ident">bool</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Multiaddr</span><span class="op">&gt;</span>, <span class="ident">RelayNotSupported</span><span class="op">&gt;</span> {
         <span class="kw">let</span> (<span class="ident">tx_yield</span>, <span class="ident">rx_yield</span>) <span class="op">=</span> <span class="ident">oneshot::channel</span>();
         <span class="kw">let</span> <span class="ident">command</span> <span class="op">=</span> <span class="ident">SwarmOperation::UseSpecificRelay</span> {
             <span class="ident">target</span>,
@@ -977,6 +1036,10 @@
 <span class="doccomment">/// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.</span>
 <span class="doccomment">/// - No limit for simultaneous connections.</span>
 <span class="doccomment">/// - Request-timeout and Connection-timeout are 10s.</span>
+<span class="doccomment">/// - [`Mdns`][`libp2p::mdns`] protocol is enabled. **Note**: This also broadcasts our own address and id to the local</span>
+<span class="doccomment">///   network.</span>
+<span class="doccomment">/// - [`Relay`][`libp2p::relay`] protocol is supported. *Note:* This also means that other peers can use our peer as</span>
+<span class="doccomment">///   relay.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// `StrongholdP2p` is build either via [`StrongholdP2pBuilder::build`] (requires feature **tcp-transport**) with a</span>
 <span class="doccomment">/// pre-configured transport, or [`StrongholdP2pBuilder::build_with_transport`] with a custom transport.</span>
@@ -1002,6 +1065,13 @@
 
     <span class="comment">// Limit of simultaneous connections.</span>
     <span class="ident">connections_limit</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">ConnectionLimits</span><span class="op">&gt;</span>,
+
+    <span class="doccomment">/// Use Mdns protocol for peer discovery in the local network.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Note: This also broadcasts our own address and id to the local network.</span>
+    <span class="ident">support_mdns</span>: <span class="ident">bool</span>,
+
+    <span class="ident">support_relay</span>: <span class="ident">bool</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Rq</span>, <span class="ident">Rs</span>, <span class="ident">TRq</span><span class="op">&gt;</span> <span class="ident">StrongholdP2pBuilder</span><span class="op">&lt;</span><span class="ident">Rq</span>, <span class="ident">Rs</span>, <span class="ident">TRq</span><span class="op">&gt;</span>
@@ -1027,6 +1097,8 @@
             <span class="ident">ident</span>: <span class="prelude-val">None</span>,
             <span class="ident">behaviour_config</span>: <span class="ident">Default::default</span>(),
             <span class="ident">connections_limit</span>: <span class="prelude-val">None</span>,
+            <span class="ident">support_mdns</span>: <span class="bool-val">true</span>,
+            <span class="ident">support_relay</span>: <span class="bool-val">true</span>,
         }
     }
 
@@ -1076,6 +1148,23 @@
         <span class="self">self</span>
     }
 
+    <span class="doccomment">/// Whether the peer should support the [`Mdns`][libp2p::mdns] protocol for peer discovery in a local network.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// **Note**: Enabling Mdns broadcasts our own address and id to the local network.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">with_mdns_support</span>(<span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">support_mdns_protocol</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="self">self</span>.<span class="ident">support_mdns</span> <span class="op">=</span> <span class="ident">support_mdns_protocol</span>;
+        <span class="self">self</span>
+    }
+
+    <span class="doccomment">/// Whether the peer should support the [`Relay`][libp2p::relay] protocol that allows dialing and listening via a</span>
+    <span class="doccomment">/// relay peer.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// **Note:** enabling this protocol also means that other peers can use our peer as relay.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">with_relay_support</span>(<span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">support_relay_protocol</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="self">self</span>.<span class="ident">support_relay</span> <span class="op">=</span> <span class="ident">support_relay_protocol</span>;
+        <span class="self">self</span>
+    }
+
     <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;tcp-transport&quot;</span>)]</span>
     <span class="doccomment">/// [`Self::build_with_transport`] with a [`Transport`] based on TCP/IP that supports dns resolution and websockets.</span>
     <span class="doccomment">/// It uses [`tokio::spawn`] as executor, hence this method has to be called in the context of a tokio.rs runtime.</span>
@@ -1085,14 +1174,14 @@
         <span class="kw">let</span> <span class="ident">executor</span> <span class="op">=</span> <span class="op">|</span><span class="ident">fut</span><span class="op">|</span> {
             <span class="ident">tokio::spawn</span>(<span class="ident">fut</span>);
         };
-        <span class="prelude-val">Ok</span>(<span class="self">self</span>.<span class="ident">build_with_transport</span>(<span class="ident">transport</span>, <span class="ident">executor</span>).<span class="kw">await</span>)
+        <span class="self">self</span>.<span class="ident">build_with_transport</span>(<span class="ident">transport</span>, <span class="ident">executor</span>).<span class="kw">await</span>
     }
 
     <span class="doccomment">/// Create a new [`StrongholdP2p`] instance with an underlying [`Swarm`][libp2p::Swarm] that uses the provided</span>
     <span class="doccomment">/// transport.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// The transport is upgraded with:</span>
-    <span class="doccomment">/// - [Relay protocol][&lt;https://docs.libp2p.io/concepts/circuit-relay/&gt;] (requires *feature = &quot;relay&quot;*)</span>
+    <span class="doccomment">/// - [Relay protocol][&lt;https://docs.libp2p.io/concepts/circuit-relay/&gt;]</span>
     <span class="doccomment">/// - Authentication and encryption with the Noise-Protocol, using the XX-handshake</span>
     <span class="doccomment">/// - Yamux substream multiplexing</span>
     <span class="doccomment">///</span>
@@ -1101,7 +1190,11 @@
     <span class="doccomment">/// operations on the swarm-task.</span>
     <span class="doccomment">/// Additionally, the executor is used to configure the</span>
     <span class="doccomment">/// [`SwarmBuilder::executor`][libp2p::swarm::SwarmBuilder::executor].</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">build_with_transport</span><span class="op">&lt;</span><span class="ident">Tp</span>, <span class="ident">E</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">transport</span>: <span class="ident">Tp</span>, <span class="ident">executor</span>: <span class="ident">E</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">StrongholdP2p</span><span class="op">&lt;</span><span class="ident">Rq</span>, <span class="ident">Rs</span>, <span class="ident">TRq</span><span class="op">&gt;</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">build_with_transport</span><span class="op">&lt;</span><span class="ident">Tp</span>, <span class="ident">E</span><span class="op">&gt;</span>(
+        <span class="self">self</span>,
+        <span class="ident">transport</span>: <span class="ident">Tp</span>,
+        <span class="ident">executor</span>: <span class="ident">E</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">StrongholdP2p</span><span class="op">&lt;</span><span class="ident">Rq</span>, <span class="ident">Rs</span>, <span class="ident">TRq</span><span class="op">&gt;</span>, <span class="ident">io::Error</span><span class="op">&gt;</span>
     <span class="kw">where</span>
         <span class="ident">Tp</span>: <span class="ident">Transport</span> <span class="op">+</span> <span class="ident">Sized</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="lifetime">&#39;static</span>,
         <span class="ident">Tp::Output</span>: <span class="ident">AsyncRead</span> <span class="op">+</span> <span class="ident">AsyncWrite</span> <span class="op">+</span> <span class="ident">Unpin</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="lifetime">&#39;static</span>,
@@ -1119,27 +1212,34 @@
             <span class="kw">let</span> <span class="ident">peer_id</span> <span class="op">=</span> <span class="ident">keypair</span>.<span class="ident">public</span>().<span class="ident">to_peer_id</span>();
             (<span class="ident">noise_keypair</span>, <span class="ident">peer_id</span>)
         });
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
-        <span class="kw">let</span> (<span class="ident">transport</span>, <span class="ident">relay_behaviour</span>) <span class="op">=</span> <span class="ident">new_transport_and_behaviour</span>(<span class="ident">RelayConfig::default</span>(), <span class="ident">transport</span>);
-        <span class="kw">let</span> <span class="ident">transport</span> <span class="op">=</span> <span class="ident">transport</span>
-            .<span class="ident">upgrade</span>(<span class="ident">upgrade::Version::V1</span>)
-            .<span class="ident">authenticate</span>(<span class="ident">NoiseConfig::xx</span>(<span class="ident">noise_keypair</span>).<span class="ident">into_authenticated</span>())
-            .<span class="ident">multiplex</span>(<span class="ident">YamuxConfig::default</span>())
-            .<span class="ident">boxed</span>();
-        <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
-        <span class="kw">let</span> <span class="ident">mdns</span> <span class="op">=</span> <span class="ident">Mdns::new</span>(<span class="ident">MdnsConfig::default</span>())
-            .<span class="kw">await</span>
-            .<span class="ident">expect</span>(<span class="string">&quot;Failed to create mdns behaviour.&quot;</span>);
-        <span class="kw">let</span> <span class="ident">behaviour</span> <span class="op">=</span> <span class="ident">NetBehaviour::new</span>(
-            <span class="self">self</span>.<span class="ident">behaviour_config</span>,
-            <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;mdns&quot;</span>)]</span>
-            <span class="ident">mdns</span>,
-            <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;relay&quot;</span>)]</span>
-            <span class="ident">relay_behaviour</span>,
-            <span class="self">self</span>.<span class="ident">firewall_channel</span>,
-        );
+        <span class="kw">let</span> <span class="ident">relay</span>;
+        <span class="kw">let</span> <span class="ident">boxed_transport</span>;
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">support_relay</span> {
+            <span class="kw">let</span> (<span class="ident">relay_transport</span>, <span class="ident">relay_behaviour</span>) <span class="op">=</span> <span class="ident">new_transport_and_behaviour</span>(<span class="ident">RelayConfig::default</span>(), <span class="ident">transport</span>);
+            <span class="ident">boxed_transport</span> <span class="op">=</span> <span class="ident">relay_transport</span>
+                .<span class="ident">upgrade</span>(<span class="ident">upgrade::Version::V1</span>)
+                .<span class="ident">authenticate</span>(<span class="ident">NoiseConfig::xx</span>(<span class="ident">noise_keypair</span>).<span class="ident">into_authenticated</span>())
+                .<span class="ident">multiplex</span>(<span class="ident">YamuxConfig::default</span>())
+                .<span class="ident">boxed</span>();
+            <span class="ident">relay</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">relay_behaviour</span>)
+        } <span class="kw">else</span> {
+            <span class="ident">boxed_transport</span> <span class="op">=</span> <span class="ident">transport</span>
+                .<span class="ident">upgrade</span>(<span class="ident">upgrade::Version::V1</span>)
+                .<span class="ident">authenticate</span>(<span class="ident">NoiseConfig::xx</span>(<span class="ident">noise_keypair</span>).<span class="ident">into_authenticated</span>())
+                .<span class="ident">multiplex</span>(<span class="ident">YamuxConfig::default</span>())
+                .<span class="ident">boxed</span>();
+            <span class="ident">relay</span> <span class="op">=</span> <span class="prelude-val">None</span>;
+        }
+        <span class="kw">let</span> <span class="ident">mdns</span>;
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">support_mdns</span> {
+            <span class="ident">mdns</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">Mdns::new</span>(<span class="ident">MdnsConfig::default</span>()).<span class="kw">await</span><span class="question-mark">?</span>);
+        } <span class="kw">else</span> {
+            <span class="ident">mdns</span> <span class="op">=</span> <span class="prelude-val">None</span>
+        };
+        <span class="kw">let</span> <span class="ident">behaviour</span> <span class="op">=</span> <span class="ident">NetBehaviour::new</span>(<span class="self">self</span>.<span class="ident">behaviour_config</span>, <span class="ident">mdns</span>, <span class="ident">relay</span>, <span class="self">self</span>.<span class="ident">firewall_channel</span>);
 
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">swarm_builder</span> <span class="op">=</span> <span class="ident">SwarmBuilder::new</span>(<span class="ident">transport</span>, <span class="ident">behaviour</span>, <span class="ident">peer_id</span>).<span class="ident">executor</span>(<span class="ident">Box::new</span>(<span class="ident">executor</span>.<span class="ident">clone</span>()));
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">swarm_builder</span> <span class="op">=</span>
+            <span class="ident">SwarmBuilder::new</span>(<span class="ident">boxed_transport</span>, <span class="ident">behaviour</span>, <span class="ident">peer_id</span>).<span class="ident">executor</span>(<span class="ident">Box::new</span>(<span class="ident">executor</span>.<span class="ident">clone</span>()));
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">limit</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">connections_limit</span> {
             <span class="ident">swarm_builder</span> <span class="op">=</span> <span class="ident">swarm_builder</span>.<span class="ident">connection_limits</span>(<span class="ident">limit</span>);
         }
@@ -1153,10 +1253,10 @@
         <span class="kw">let</span> <span class="ident">swarm_task</span> <span class="op">=</span> <span class="ident">SwarmTask::new</span>(<span class="ident">swarm</span>, <span class="ident">command_rx</span>, <span class="self">self</span>.<span class="ident">requests_channel</span>, <span class="self">self</span>.<span class="ident">events_channel</span>);
         <span class="ident">executor</span>.<span class="ident">exec</span>(<span class="ident">swarm_task</span>.<span class="ident">run</span>().<span class="ident">boxed</span>());
 
-        <span class="ident">StrongholdP2p</span> {
+        <span class="prelude-val">Ok</span>(<span class="ident">StrongholdP2p</span> {
             <span class="ident">local_peer_id</span>,
             <span class="ident">command_tx</span>,
-        }
+        })
     }
 }
 </pre></div>
