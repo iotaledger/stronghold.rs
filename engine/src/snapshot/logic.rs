@@ -37,28 +37,28 @@ pub type Nonce = [u8; NONCE_SIZE];
 
 #[derive(Debug, DeriveError)]
 pub enum ReadError {
-    #[error("I/O Error: `{0}`")]
+    #[error("I/O error: `{0}`")]
     Io(#[from] std::io::Error),
 
-    #[error("Corrupted File: `{0}`")]
+    #[error("corrupted file: `{0}`")]
     CorruptedContent(String),
 
-    #[error("Invalid File: Not a Snapshot")]
+    #[error("invalid File: not a snapshot")]
     InvalidFile,
 
-    #[error("Unsupported version: expected `{expected:?}`, found `{found:?}`")]
+    #[error("unsupported version: expected `{expected:?}`, found `{found:?}`")]
     UnsupportedVersion { expected: [u8; 2], found: [u8; 2] },
 }
 
 #[derive(Debug, DeriveError)]
 pub enum WriteError {
-    #[error("I/O Error: `{0}`")]
+    #[error("I/O error: `{0}`")]
     Io(#[from] std::io::Error),
 
-    #[error("Generating random bytes failed: `{0}`")]
+    #[error("generating random bytes failed: `{0}`")]
     GenerateRandom(String),
 
-    #[error("Corrupted Data: `{0}`")]
+    #[error("corrupted data: `{0}`")]
     CorruptedData(String),
 }
 

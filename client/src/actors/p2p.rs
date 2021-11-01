@@ -497,10 +497,10 @@ pub mod messages {
 
     #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
     pub enum RemoteVaultError {
-        #[error("Vault not found: {0:?}")]
+        #[error("vault `{0:?}` not found")]
         VaultNotFound(VaultId),
 
-        #[error("Internal record error")]
+        #[error("internal record error: `{0}`")]
         Record(String),
     }
 

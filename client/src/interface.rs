@@ -344,13 +344,13 @@ impl Stronghold {
                 .registry
                 .send(RemoveClient { id: client_id })
                 .await?
-                .ok_or(ActorError::TargetNotSpawned)?;
+                .ok_or(ActorError::TargetNotFound)?;
         } else {
             client = self
                 .registry
                 .send(GetClient { id: client_id })
                 .await?
-                .ok_or(ActorError::TargetNotSpawned)?;
+                .ok_or(ActorError::TargetNotFound)?;
         }
         client.send(ClearCache).await?;
         Ok(())
@@ -375,11 +375,11 @@ impl Stronghold {
         self.registry
             .send(SwitchTarget { id: client_id })
             .await?
-            .ok_or(ActorError::TargetNotSpawned)
+            .ok_or(ActorError::TargetNotFound)
     }
 
     async fn target(&self) -> Result<Addr<SecureClient>, ActorError> {
-        self.registry.send(GetTarget).await?.ok_or(ActorError::TargetNotSpawned)
+        self.registry.send(GetTarget).await?.ok_or(ActorError::TargetNotFound)
     }
 }
 
@@ -635,9 +635,6 @@ impl Stronghold {
     }
 
     async fn network_actor(&self) -> Result<Addr<NetworkActor>, ActorError> {
-        self.registry
-            .send(GetNetwork)
-            .await?
-            .ok_or(ActorError::TargetNotSpawned)
+        self.registry.send(GetNetwork).await?.ok_or(ActorError::TargetNotFound)
     }
 }

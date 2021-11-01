@@ -105,13 +105,13 @@ impl SnapshotState {
 
 #[derive(Debug, DeriveError)]
 pub enum ReadError {
-    #[error("I/O Error: `{0}`")]
+    #[error("I/O error: `{0}`")]
     Io(#[from] io::Error),
 
-    #[error("Corrupted File: `{0}`")]
+    #[error("corrupted file: `{0}`")]
     CorruptedContent(String),
 
-    #[error("Invalid File `{0}`")]
+    #[error("invalid file `{0}`")]
     InvalidFile(String),
 }
 
@@ -131,10 +131,10 @@ impl From<EngineReadError> for ReadError {
 
 #[derive(Debug, DeriveError)]
 pub enum WriteError {
-    #[error("I/O Error: `{0}`")]
+    #[error("I/O error: `{0}`")]
     Io(#[from] io::Error),
 
-    #[error("Corrupted Data: `{0}`")]
+    #[error("corrupted data: `{0}`")]
     CorruptedData(String),
 }
 

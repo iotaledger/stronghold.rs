@@ -18,28 +18,28 @@ use super::crypto_box::DecryptError;
 
 #[derive(DeriveError, Debug)]
 pub enum VaultError<TProvErr: Debug, TProcErr: Debug = Infallible> {
-    #[error("Vault `{0:?}` does not exist.")]
+    #[error("vault `{0:?}` does not exist")]
     VaultNotFound(VaultId),
 
-    #[error("Record Error: `{0:?}`")]
+    #[error("record error: `{0:?}`")]
     Record(#[from] RecordError<TProvErr>),
 
-    #[error("Procedure Error `{0:?}`")]
+    #[error("procedure error `{0:?}`")]
     Procedure(TProcErr),
 }
 
 #[derive(DeriveError, Debug)]
 pub enum RecordError<TProvErr: Debug> {
-    #[error("Provider Error: `{0:?}`")]
+    #[error("provider error: `{0:?}`")]
     Provider(TProvErr),
 
-    #[error("Found Invalid Transaction")]
-    CorruptedContent,
+    #[error("decrypted content does not match expected format: `{0}`")]
+    CorruptedContent(String),
 
-    #[error("Invalid Key provided")]
+    #[error("invalid key provided")]
     InvalidKey,
 
-    #[error("Not record with `{0:?}`")]
+    #[error("no record with `{0:?}`")]
     RecordNotFound(ChainId),
 }
 
@@ -96,7 +96,7 @@ impl<P: BoxProvider> DbView<P> {
             self.init_vault(key, vid);
         }
 
-        let vault = self.vaults.get_mut(&vid).expect("Vault was inited.");
+        let vault = self.vaults.get_mut(&vid).expect("Vault was initiated");
         vault.add_or_update_record(key, rid.0, data, record_hint)
     }
 
@@ -342,10 +342,14 @@ impl Record {
             // check if there is a revocation transaction.
             if self.revoke.is_none() {
                 let tx = self.data.decrypt(key, self.id).map_err(|err| match err {
-                    DecryptError::Invalid => RecordError::CorruptedContent,
+                    DecryptError::Invalid => {
+                        RecordError::CorruptedContent("Could not convert bytes into transaction structure".into())
+                    }
                     DecryptError::Provider(e) => RecordError::Provider(e),
                 })?;
-                let tx = tx.typed::<DataTransaction>().ok_or(RecordError::CorruptedContent)?;
+                let tx = tx.typed::<DataTransaction>().ok_or_else(|| {
+                    RecordError::CorruptedContent("Could not type decrypted transaction as data-transaction".into())
+                })?;
 
                 let guarded = GuardedVec::new(tx.len.u64() as usize, |i| {
                     let blob = SealedBlob::from(self.blob.as_ref())
@@ -377,10 +381,14 @@ impl Record {
             if self.revoke.is_none() {
                 // decrypt data transaction.
                 let tx = self.data.decrypt(key, self.id).map_err(|err| match err {
-                    DecryptError::Invalid => RecordError::CorruptedContent,
+                    DecryptError::Invalid => {
+                        RecordError::CorruptedContent("Could not convert bytes into transaction structure".into())
+                    }
                     DecryptError::Provider(e) => RecordError::Provider(e),
                 })?;
-                let tx = tx.typed::<DataTransaction>().ok_or(RecordError::CorruptedContent)?;
+                let tx = tx.typed::<DataTransaction>().ok_or_else(|| {
+                    RecordError::CorruptedContent("Could not type decrypted transaction as data-transaction".into())
+                })?;
 
                 // create a new sealed blob with the new_data.
                 let blob: SealedBlob = new_data.encrypt(key, tx.blob).map_err(RecordError::Provider)?;

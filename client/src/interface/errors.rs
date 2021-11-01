@@ -12,50 +12,50 @@ use thiserror::Error as DeriveError;
 
 #[derive(DeriveError, Debug)]
 pub enum ActorError {
-    #[error("Error sending message to Actor: `{0}`")]
+    #[error("actor mailbox error: `{0}`")]
     Mailbox(#[from] MailboxError),
-    #[error("Target Actor has not been spawned or was killed.")]
-    TargetNotSpawned,
+    #[error("target actor has not been spawned or was killed")]
+    TargetNotFound,
 }
 
 #[derive(DeriveError, Debug)]
 pub enum WriteVaultError {
-    #[error("Actor Error: `{0}`")]
-    Actors(#[from] ActorError),
-    #[error("Fatal Engine Error: `{0}`")]
+    #[error("actor error: `{0}`")]
+    Actor(#[from] ActorError),
+    #[error("fatal engine error: `{0}`")]
     Engine(String),
 }
 
 #[derive(DeriveError, Debug)]
 pub enum ReadSnapshotError {
-    #[error("Actor Error: `{0}`")]
-    Actors(#[from] ActorError),
-    #[error("Read Snapshot Error: `{0}`")]
+    #[error("actor error: `{0}`")]
+    Actor(#[from] ActorError),
+    #[error("read snapshot error: `{0}`")]
     Read(#[from] snapshot::ReadError),
 }
 #[derive(DeriveError, Debug)]
 pub enum WriteSnapshotError {
-    #[error("Actor Error: `{0}`")]
-    Actors(#[from] ActorError),
-    #[error("Write Snapshot Error: `{0}`")]
+    #[error("actor error: `{0}`")]
+    Actor(#[from] ActorError),
+    #[error("write snapshot error: `{0}`")]
     Write(#[from] snapshot::WriteError),
 }
 
 impl From<MailboxError> for WriteVaultError {
     fn from(e: MailboxError) -> Self {
-        WriteVaultError::Actors(e.into())
+        WriteVaultError::Actor(e.into())
     }
 }
 
 impl From<MailboxError> for ReadSnapshotError {
     fn from(e: MailboxError) -> Self {
-        ReadSnapshotError::Actors(e.into())
+        ReadSnapshotError::Actor(e.into())
     }
 }
 
 impl From<MailboxError> for WriteSnapshotError {
     fn from(e: MailboxError) -> Self {
-        WriteSnapshotError::Actors(e.into())
+        WriteSnapshotError::Actor(e.into())
     }
 }
 
@@ -68,77 +68,77 @@ mod p2p_errors {
 
     #[derive(DeriveError, Debug)]
     pub enum SpawnNetworkError {
-        #[error("Actor Mailbox Error: `{0}`")]
+        #[error("actor mailbox error: `{0}`")]
         ActorMailbox(#[from] MailboxError),
 
-        #[error("Error: Network already running.")]
+        #[error("network already running")]
         AlreadySpawned,
 
-        #[error("Io Error: `{0}`")]
+        #[error("I/O error: `{0}`")]
         Io(#[from] io::Error),
     }
 
     #[derive(DeriveError, Debug)]
     pub enum DialError {
-        #[error("Local Actor Error: `{0}`")]
-        LocalActors(#[from] ActorError),
-        #[error("Dial Error: `{0}`")]
+        #[error("local actor error: `{0}`")]
+        LocalActor(#[from] ActorError),
+        #[error("dial error: `{0}`")]
         Dial(#[from] DialErr),
     }
 
     #[derive(DeriveError, Debug)]
     pub enum ListenError {
-        #[error("Local Actor Error: `{0}`")]
-        LocalActors(#[from] ActorError),
-        #[error("Listen Error: `{0}`")]
+        #[error("local actor error: `{0}`")]
+        LocalActor(#[from] ActorError),
+        #[error("listen error: `{0}`")]
         Listen(#[from] ListenErr),
     }
 
     #[derive(DeriveError, Debug)]
     pub enum ListenRelayError {
-        #[error("Local Actor Error: `{0}`")]
-        LocalActors(#[from] ActorError),
-        #[error("Listen Relay Error: `{0}`")]
+        #[error("local actor error: `{0}`")]
+        LocalActor(#[from] ActorError),
+        #[error("listen relay error: `{0}`")]
         ListenRelay(#[from] ListenRelayErr),
     }
 
     #[derive(DeriveError, Debug)]
     pub enum P2PError {
-        #[error("Local Actor Error: `{0}`")]
-        LocalActors(#[from] ActorError),
-        #[error("Outbound Failure: `{0}`")]
+        #[error("local actor error: `{0}`")]
+        LocalActor(#[from] ActorError),
+        #[error("outbound failure: `{0}`")]
         OutboundFailure(#[from] OutboundFailure),
     }
 
     #[derive(DeriveError, Debug)]
     pub enum WriteRemoteVaultError {
-        #[error("P2P Error: `{0}`")]
+        #[error("p2p error: `{0}`")]
         P2P(#[from] P2PError),
-        #[error("Remote Engine Error `{0}`")]
+        #[error("remote engine error `{0}`")]
         RemoteEngine(String),
     }
 
     impl From<MailboxError> for P2PError {
         fn from(e: MailboxError) -> Self {
-            P2PError::LocalActors(e.into())
+            P2PError::LocalActor(e.into())
         }
     }
 
     impl From<MailboxError> for DialError {
         fn from(e: MailboxError) -> Self {
-            DialError::LocalActors(e.into())
+            DialError::LocalActor(e.into())
         }
     }
 
     impl From<MailboxError> for ListenError {
         fn from(e: MailboxError) -> Self {
-            ListenError::LocalActors(e.into())
+            ListenError::LocalActor(e.into())
         }
     }
 
     impl From<MailboxError> for ListenRelayError {
         fn from(e: MailboxError) -> Self {
-            ListenRelayError::LocalActors(e.into())
+            ListenRelayError::LocalActor(e.into())
         }
     }
 

@@ -167,7 +167,7 @@ async fn test_stronghold() {
 
     assert!(matches!(
         stronghold.switch_actor_target(client_path).await,
-        Err(ActorError::TargetNotSpawned)
+        Err(ActorError::TargetNotFound)
     ))
 }
 
