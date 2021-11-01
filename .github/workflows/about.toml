@@ -8,5 +8,8 @@ accepted = [
     "MPL-2.0",
     "OpenSSL",
 ]
+workarounds = [
+    "ring"
+]
 ignore-build-dependencies = false
 ignore-dev-dependencies = false
