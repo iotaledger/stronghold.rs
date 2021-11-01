@@ -407,7 +407,7 @@ pub enum InitKeypair {
 /// - Request-timeout and Connection-timeout are 10s.
 /// - [`Mdns`][`libp2p::mdns`] protocol is enabled. **Note**: This also broadcasts our own address and id to the local
 ///   network.
-/// - [`Relay`][`libp2p::relay`] protocols is supported. *Note:* This also means that other peers can use our peer as
+/// - [`Relay`][`libp2p::relay`] protocol is supported. *Note:* This also means that other peers can use our peer as
 ///   relay.
 ///
 /// `StrongholdP2p` is build either via [`StrongholdP2pBuilder::build`] (requires feature **tcp-transport**) with a
