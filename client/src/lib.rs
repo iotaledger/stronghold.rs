@@ -46,7 +46,7 @@ pub use crate::{
 pub mod p2p {
     pub use crate::{
         actors::p2p::{NetworkConfig, SwarmInfo},
-        interface::{DialError, ListenError, ListenRelayError, P2PError, SpawnNetworkError, WriteRemoteVaultError},
+        interface::{DialError, ListenError, P2PError, RelayError, SpawnNetworkError, WriteRemoteVaultError},
     };
     pub use p2p::{firewall::Rule, Multiaddr, PeerId};
 }

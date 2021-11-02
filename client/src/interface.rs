@@ -447,9 +447,9 @@ impl Stronghold {
         &self,
         relay: PeerId,
         relay_addr: Option<Multiaddr>,
-    ) -> Result<Option<Multiaddr>, ActorError> {
+    ) -> Result<Option<Multiaddr>, RelayError> {
         let actor = self.network_actor().await?;
-        let addr = actor.send(network_msg::AddDialingRelay { relay, relay_addr }).await?;
+        let addr = actor.send(network_msg::AddDialingRelay { relay, relay_addr }).await??;
         Ok(addr)
     }
 
@@ -460,7 +460,7 @@ impl Stronghold {
         &self,
         relay: PeerId,
         relay_addr: Option<Multiaddr>,
-    ) -> Result<Multiaddr, ListenRelayError> {
+    ) -> Result<Multiaddr, RelayError> {
         let actor = self.network_actor().await?;
         let addr = actor
             .send(network_msg::StartListeningRelay { relay, relay_addr })

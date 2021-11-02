@@ -10,6 +10,8 @@ use actix::MailboxError;
 use std::fmt::Debug;
 use thiserror::Error as DeriveError;
 
+type Result<T, E> = std::result::Result<std::result::Result<T, E>, ActorError>;
+
 #[derive(DeriveError, Debug)]
 pub enum ActorError {
     #[error("actor mailbox error: `{0}`")]
@@ -63,7 +65,7 @@ impl From<MailboxError> for WriteSnapshotError {
 mod p2p_errors {
 
     use super::*;
-    use p2p::{DialErr, ListenErr, ListenRelayErr, OutboundFailure};
+    use p2p::{DialErr, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
     use std::io;
 
     #[derive(DeriveError, Debug)]
@@ -95,11 +97,11 @@ mod p2p_errors {
     }
 
     #[derive(DeriveError, Debug)]
-    pub enum ListenRelayError {
+    pub enum RelayError {
         #[error("local actor error: `{0}`")]
         LocalActor(#[from] ActorError),
-        #[error("listen relay error: `{0}`")]
-        ListenRelay(#[from] ListenRelayErr),
+        #[error("relay error: `{0}`")]
+        Relay(#[from] ListenRelayErr),
     }
 
     #[derive(DeriveError, Debug)]
@@ -136,9 +138,15 @@ mod p2p_errors {
         }
     }
 
-    impl From<MailboxError> for ListenRelayError {
+    impl From<MailboxError> for RelayError {
         fn from(e: MailboxError) -> Self {
-            ListenRelayError::LocalActor(e.into())
+            RelayError::LocalActor(e.into())
+        }
+    }
+
+    impl From<RelayNotSupported> for RelayError {
+        fn from(_: RelayNotSupported) -> Self {
+            RelayError::Relay(ListenRelayErr::ProtocolNotSupported)
         }
     }
 
