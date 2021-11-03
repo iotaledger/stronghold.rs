@@ -40,7 +40,7 @@ async fn init_peer() -> (mpsc::Receiver<NetworkEvent>, TestPeer) {
         builder
             .build_with_transport(TokioTcpConfig::new(), executor)
             .await
-            .unwrap();
+            .unwrap()
     };
     #[cfg(feature = "tcp-transport")]
     let peer = builder.build().await.unwrap();

@@ -524,7 +524,7 @@ pub mod messages {
         #[error("vault `{0:?}` not found")]
         VaultNotFound(VaultId),
 
-        #[error("internal record error: `{0}`")]
+        #[error("internal record error: {0}")]
         Record(String),
     }
 

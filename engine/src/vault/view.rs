@@ -33,7 +33,7 @@ pub enum RecordError<TProvErr: Debug> {
     #[error("provider error: `{0:?}`")]
     Provider(TProvErr),
 
-    #[error("decrypted content does not match expected format: `{0}`")]
+    #[error("decrypted content does not match expected format: {0}")]
     CorruptedContent(String),
 
     #[error("invalid key provided")]

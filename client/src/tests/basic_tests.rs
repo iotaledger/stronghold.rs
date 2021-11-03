@@ -30,7 +30,8 @@ async fn test_read_write() {
             vec![],
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write vault error: {}", e));
 
     let p = stronghold.read_secret(client_path, loc0).await.unwrap();
 
@@ -53,7 +54,8 @@ async fn test_head_read_write() {
             vec![],
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write vault error: {}", e));
 
     // update on api: test bogus now?
     // let lochead = lochead.increment_counter();
@@ -66,7 +68,8 @@ async fn test_head_read_write() {
             vec![],
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write vault error: {}", e));
 
     let p = stronghold.read_secret(client_path, lochead).await.unwrap();
 
@@ -93,7 +96,8 @@ async fn test_multi_write_read_counter_head() {
                 vec![],
             )
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Write vault error: {}", e));
     }
 
     let list = stronghold.list_hints_and_ids("path").await.unwrap();
@@ -141,13 +145,14 @@ async fn test_revoke_with_gc() {
                 vec![],
             )
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Write vault error: {}", e));
     }
 
     for i in 0..10 {
         let loc = Location::counter::<_, usize>("path", i);
 
-        stronghold.delete_data(loc.clone(), false).await.unwrap();
+        stronghold.delete_data(loc.clone(), false).await.unwrap().unwrap();
 
         let p = stronghold.read_secret(client_path.clone(), loc).await.unwrap();
 
@@ -185,13 +190,15 @@ async fn test_write_read_snapshot() {
                 vec![],
             )
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Write vault error: {}", e));
     }
 
     stronghold
         .write_all_to_snapshot(&key_data, Some("test1".into()), None)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
     stronghold.kill_stronghold(client_path.clone(), false).await.unwrap();
 
@@ -199,7 +206,8 @@ async fn test_write_read_snapshot() {
     stronghold
         .read_snapshot(client_path.clone(), None, &key_data, Some("test1".into()), None)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
 
     for i in 0..20 {
         let loc = Location::counter::<_, usize>("path", i);
@@ -247,13 +255,15 @@ async fn test_write_read_multi_snapshot() {
                 vec![],
             )
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Write vault error: {}", e));
     }
 
     stronghold
         .write_all_to_snapshot(&key_data, Some("test2".into()), None)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
     for i in 0..num_actors {
         stronghold
@@ -268,7 +278,8 @@ async fn test_write_read_multi_snapshot() {
         stronghold
             .read_snapshot(client_path, None, &key_data, Some("test2".into()), None)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
     }
 
     for i in 0..num_actors {

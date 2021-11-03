@@ -5,7 +5,7 @@ use std::convert::TryInto;
 use thiserror::Error as DeriveError;
 
 #[derive(Debug, DeriveError)]
-#[error("Lz4 Decode Failed: `{0}`")]
+#[error("Lz4 Decode Failed: {0}")]
 pub struct Lz4DecodeError(String);
 
 /// Public function to decompress some data into an output.

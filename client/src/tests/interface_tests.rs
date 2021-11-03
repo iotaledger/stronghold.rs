@@ -106,7 +106,11 @@ async fn test_stronghold() {
     let ids = stronghold.list_hints_and_ids(vault_path.clone()).await.unwrap();
     println!("{:?}", ids);
 
-    stronghold.delete_data(loc0.clone(), true).await.unwrap();
+    stronghold
+        .delete_data(loc0.clone(), true)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap();
 
     // attempt to read the first record of the vault.
     let p = stronghold.read_secret(client_path.clone(), loc0.clone()).await.unwrap();
@@ -130,12 +134,14 @@ async fn test_stronghold() {
     stronghold
         .write_all_to_snapshot(&key_data, Some("test0".into()), None)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
     stronghold
         .read_snapshot(client_path.clone(), None, &key_data, Some("test0".into()), None)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
 
     // read head after reading snapshot.
 
@@ -261,7 +267,8 @@ async fn run_stronghold_multi_actors() {
     stronghold
         .write_all_to_snapshot(&key_data.to_vec(), Some("megasnap".into()), None)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
     stronghold.switch_actor_target(client_path1.clone()).await.unwrap();
 
@@ -282,7 +289,8 @@ async fn run_stronghold_multi_actors() {
             None,
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
 
     // client_path2 correct?
     let p = stronghold.read_secret(client_path2.clone(), loc0).await.unwrap();
@@ -344,7 +352,8 @@ async fn run_stronghold_multi_actors() {
             None,
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
 
     let mut ids3 = stronghold.list_hints_and_ids(loc4.vault_path()).await.unwrap();
     println!("actor 3: {:?}", ids3);
@@ -390,7 +399,8 @@ async fn test_stronghold_generics() {
     stronghold
         .write_all_to_snapshot(&key_data.to_vec(), Some("generic".into()), None)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 }
 
 #[cfg(feature = "p2p")]
@@ -438,6 +448,7 @@ async fn test_stronghold_p2p() {
         local_stronghold
             .add_peer(peer_id, Some(addr))
             .await
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
             .unwrap_or_else(|e| panic!("Could not establish connection to remote: {}", e));
 
         remote_ready_rx.recv().await.unwrap();
@@ -506,6 +517,7 @@ async fn test_stronghold_p2p() {
         let addr = remote_stronghold
             .start_listening(None)
             .await
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
             .unwrap_or_else(|e| panic!("Could not start listening: {}", e));
 
         let swarm_info = remote_stronghold

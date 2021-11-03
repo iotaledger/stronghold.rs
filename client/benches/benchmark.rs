@@ -21,6 +21,7 @@ fn init_read_vault(stronghold: Stronghold) -> Stronghold {
                 RecordHint::new(b"test").unwrap(),
                 vec![],
             ))
+            .unwrap()
             .unwrap();
     }
 
@@ -33,6 +34,7 @@ fn init_read_snap(stronghold: Stronghold, key_data: &[u8]) -> Stronghold {
 
     system
         .block_on(stronghold.write_all_to_snapshot(&key_data.to_vec(), Some("bench_read".into()), None))
+        .unwrap()
         .unwrap();
 
     stronghold
@@ -52,6 +54,7 @@ fn bench_stronghold_write_create(c: &mut Criterion) {
                     RecordHint::new(b"test").unwrap(),
                     vec![],
                 ))
+                .unwrap()
                 .unwrap();
         });
     });

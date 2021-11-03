@@ -37,20 +37,11 @@ mod tests;
 
 pub use crate::{
     actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput},
-    interface::{ActorError, ReadSnapshotError, Stronghold, WriteSnapshotError, WriteVaultError},
+    interface::{ActorError, Stronghold, StrongholdResult},
     internals::Provider,
+    state::snapshot::{ReadError, WriteError},
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
 };
-
-#[cfg(feature = "p2p")]
-pub mod p2p {
-    pub use crate::{
-        actors::p2p::{NetworkConfig, SwarmInfo},
-        interface::{DialError, ListenError, P2PError, RelayError, SpawnNetworkError, WriteRemoteVaultError},
-    };
-    pub use p2p::{firewall::Rule, Multiaddr, PeerId};
-}
-
 pub use engine::{
     snapshot::{
         files::{home_dir, snapshot_dir},
@@ -59,6 +50,18 @@ pub use engine::{
     },
     vault::{RecordHint, RecordId},
 };
+#[cfg(feature = "p2p")]
+pub mod p2p {
+    pub use crate::{
+        actors::p2p::{NetworkConfig, SwarmInfo},
+        interface::{P2pError, P2pResult, SpawnNetworkError},
+    };
+    pub use p2p::{
+        firewall::Rule, DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId, RelayNotSupported,
+    };
+}
+
+pub use actix::MailboxError;
 
 /// TODO: Should be replaced with proper errors.
 #[cfg(test)]

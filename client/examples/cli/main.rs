@@ -41,6 +41,7 @@ async fn write_to_store_command(
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
     }
 
@@ -52,6 +53,7 @@ async fn write_to_store_command(
     stronghold
         .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
         .await
+        .unwrap()
         .unwrap();
     Ok(())
 }
@@ -75,6 +77,7 @@ async fn encrypt_command(
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
     }
 
@@ -86,11 +89,13 @@ async fn encrypt_command(
             vec![],
         )
         .await
+        .unwrap()
         .unwrap();
 
     stronghold
         .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
         .await
+        .unwrap()
         .unwrap();
 
     Ok(())
@@ -120,10 +125,12 @@ async fn snapshot_command(
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), None, Some(input))
             .await
+            .unwrap()
             .unwrap();
         stronghold
             .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
     } else {
         return Err(Box::from("The path you entered does not contain a valid snapshot"));
@@ -149,6 +156,7 @@ async fn list_command(
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
 
         let list = stronghold
@@ -183,6 +191,7 @@ async fn read_from_store_command(
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
 
         let data = stronghold.read_from_store(rpath.into()).await.unwrap();
@@ -214,12 +223,14 @@ async fn delete_from_store_command(
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
 
         stronghold.delete_from_store(rpath.into()).await.unwrap();
         stronghold
             .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
     } else {
         return Err(Box::from(
@@ -248,12 +259,18 @@ async fn revoke_command(
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
-        stronghold.delete_data(Location::generic(id, id), false).await.unwrap();
+        stronghold
+            .delete_data(Location::generic(id, id), false)
+            .await
+            .unwrap()
+            .unwrap();
 
         stronghold
             .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
     } else {
         return Err(Box::from(
@@ -281,6 +298,7 @@ async fn garbage_collect_vault_command(
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
 
         let location = Location::generic(id, id);
@@ -298,6 +316,7 @@ async fn garbage_collect_vault_command(
         stronghold
             .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
     } else {
         return Err(Box::from(
@@ -326,9 +345,10 @@ async fn purge_command(
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
         let location = Location::generic(id, id);
-        stronghold.delete_data(location.clone(), true).await.unwrap();
+        stronghold.delete_data(location.clone(), true).await.unwrap().unwrap();
         let list = stronghold
             .list_hints_and_ids(location.vault_path().to_vec())
             .await
@@ -339,6 +359,7 @@ async fn purge_command(
         stronghold
             .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
             .await
+            .unwrap()
             .unwrap();
     } else {
         return Err(Box::from(
