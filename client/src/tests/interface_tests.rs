@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{line_error, ActorError, Location, RecordHint, Stronghold};
+use crate::{ActorError, Location, RecordHint, Stronghold};
 
 use stronghold_utils::random::bytestring;
 
@@ -39,7 +39,7 @@ async fn test_stronghold() {
         .write_to_vault(
             loc0.clone(),
             b"test".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"first hint").unwrap(),
             vec![],
         )
         .await
@@ -63,7 +63,7 @@ async fn test_stronghold() {
         .write_to_vault(
             loc1.clone(),
             b"another test".to_vec(),
-            RecordHint::new(b"another hint").expect(line_error!()),
+            RecordHint::new(b"another hint").unwrap(),
             vec![],
         )
         .await
@@ -78,7 +78,7 @@ async fn test_stronghold() {
         .write_to_vault(
             loc2.clone(),
             b"yet another test".to_vec(),
-            RecordHint::new(b"yet another hint").expect(line_error!()),
+            RecordHint::new(b"yet another hint").unwrap(),
             vec![],
         )
         .await
@@ -204,12 +204,7 @@ async fn run_stronghold_multi_actors() {
     stronghold.switch_actor_target(client_path0.clone()).await.unwrap();
 
     assert!(stronghold
-        .write_to_vault(
-            loc0.clone(),
-            b"test".to_vec(),
-            RecordHint::new(b"0").expect(line_error!()),
-            vec![],
-        )
+        .write_to_vault(loc0.clone(), b"test".to_vec(), RecordHint::new(b"0").unwrap(), vec![],)
         .await
         .is_ok());
 
@@ -228,7 +223,7 @@ async fn run_stronghold_multi_actors() {
         .write_to_vault(
             loc0.clone(),
             b"another test".to_vec(),
-            RecordHint::new(b"1").expect(line_error!()),
+            RecordHint::new(b"1").unwrap(),
             vec![],
         )
         .await
@@ -248,7 +243,7 @@ async fn run_stronghold_multi_actors() {
         .write_to_vault(
             loc0.clone(),
             b"yet another test".to_vec(),
-            RecordHint::new(b"2").expect(line_error!()),
+            RecordHint::new(b"2").unwrap(),
             vec![],
         )
         .await
@@ -301,7 +296,7 @@ async fn run_stronghold_multi_actors() {
         .write_to_vault(
             loc3.clone(),
             b"a new actor test".to_vec(),
-            RecordHint::new(b"2").expect(line_error!()),
+            RecordHint::new(b"2").unwrap(),
             vec![],
         )
         .await
@@ -315,7 +310,7 @@ async fn run_stronghold_multi_actors() {
         .write_to_vault(
             loc4.clone(),
             b"a new actor test again".to_vec(),
-            RecordHint::new(b"3").expect(line_error!()),
+            RecordHint::new(b"3").unwrap(),
             vec![],
         )
         .await
@@ -388,7 +383,7 @@ async fn test_stronghold_generics() {
         .write_to_vault(
             slip10_seed.clone(),
             b"AAAAAA".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"first hint").unwrap(),
             vec![],
         )
         .await

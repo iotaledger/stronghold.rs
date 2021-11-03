@@ -135,11 +135,11 @@ impl SecureClient {
 mod tests {
     use super::*;
 
-    use crate::{line_error, Provider};
+    use crate::Provider;
 
     #[test]
     fn test_rid_internals() {
-        let clientid = ClientId::random::<Provider>().expect(line_error!());
+        let clientid = ClientId::random::<Provider>().unwrap();
 
         let vault_path = b"some_vault".to_vec();
 
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_location_counter_api() {
-        let clientid = ClientId::random::<Provider>().expect(line_error!());
+        let clientid = ClientId::random::<Provider>().unwrap();
 
         let vidlochead = Location::counter::<_, usize>("some_vault", 0);
         let vidlochead2 = Location::counter::<_, usize>("some_vault 2", 0);

@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{line_error, utils::LoadFromPath, Location, RecordHint, Stronghold};
+use crate::{utils::LoadFromPath, Location, RecordHint, Stronghold};
 use crypto::macs::hmac::HMAC_SHA512;
 
 use engine::vault::{ClientId, VaultId};
@@ -26,7 +26,7 @@ async fn test_read_write() {
         .write_to_vault(
             loc0.clone(),
             b"test".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"first hint").unwrap(),
             vec![],
         )
         .await
@@ -50,7 +50,7 @@ async fn test_head_read_write() {
         .write_to_vault(
             lochead.clone(),
             b"test".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"first hint").unwrap(),
             vec![],
         )
         .await
@@ -64,7 +64,7 @@ async fn test_head_read_write() {
         .write_to_vault(
             lochead.clone(),
             b"another test".to_vec(),
-            RecordHint::new(b"second hint").expect(line_error!()),
+            RecordHint::new(b"second hint").unwrap(),
             vec![],
         )
         .await
@@ -92,7 +92,7 @@ async fn test_multi_write_read_counter_head() {
             .write_to_vault(
                 lochead.clone(),
                 data.as_bytes().to_vec(),
-                RecordHint::new(data).expect(line_error!()),
+                RecordHint::new(data).unwrap(),
                 vec![],
             )
             .await
@@ -141,7 +141,7 @@ async fn test_revoke_with_gc() {
             .write_to_vault(
                 lochead.clone(),
                 data.as_bytes().to_vec(),
-                RecordHint::new(data).expect(line_error!()),
+                RecordHint::new(data).unwrap(),
                 vec![],
             )
             .await
@@ -183,12 +183,7 @@ async fn test_write_read_snapshot() {
 
         let data = format!("test {:?}", i);
         stronghold
-            .write_to_vault(
-                loc,
-                data.as_bytes().to_vec(),
-                RecordHint::new(data).expect(line_error!()),
-                vec![],
-            )
+            .write_to_vault(loc, data.as_bytes().to_vec(), RecordHint::new(data).unwrap(), vec![])
             .await
             .unwrap_or_else(|e| panic!("Actor error: {}", e))
             .unwrap_or_else(|e| panic!("Write vault error: {}", e));
@@ -248,12 +243,7 @@ async fn test_write_read_multi_snapshot() {
             .unwrap();
 
         stronghold
-            .write_to_vault(
-                loc,
-                data.as_bytes().to_vec(),
-                RecordHint::new(data).expect(line_error!()),
-                vec![],
-            )
+            .write_to_vault(loc, data.as_bytes().to_vec(), RecordHint::new(data).unwrap(), vec![])
             .await
             .unwrap_or_else(|e| panic!("Actor error: {}", e))
             .unwrap_or_else(|e| panic!("Write vault error: {}", e));

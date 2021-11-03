@@ -60,17 +60,4 @@ pub mod p2p {
         firewall::Rule, DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId, RelayNotSupported,
     };
 }
-
 pub use actix::MailboxError;
-
-/// TODO: Should be replaced with proper errors.
-#[cfg(test)]
-#[macro_export]
-macro_rules! line_error {
-    () => {
-        concat!("Error at ", file!(), ":", line!())
-    };
-    ($str:expr) => {
-        concat!($str, " @", file!(), ":", line!())
-    };
-}
