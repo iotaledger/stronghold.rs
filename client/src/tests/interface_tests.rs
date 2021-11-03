@@ -11,8 +11,6 @@ use crate::{
     tests::fresh,
     ProcResult, Procedure, ResultMessage, SLIP10DeriveInput,
 };
-#[cfg(feature = "p2p")]
-use stronghold_utils::random::random;
 
 #[actix::test]
 async fn test_stronghold() {
@@ -413,12 +411,12 @@ async fn test_stronghold_p2p() {
     let (remote_ready_tx, mut remote_ready_rx) = mpsc::channel(1);
     let (local_ready_tx, mut local_ready_rx) = mpsc::channel(1);
 
-    let key1 = bytestring(random());
+    let key1 = bytestring(1024);
     let data1 = b"some data".to_vec();
     let key1_clone = key1.clone();
     let data1_clone = data1.clone();
 
-    let key2 = bytestring(random());
+    let key2 = bytestring(1024);
     let data2 = b"some second data".to_vec();
     let key2_clone = key2.clone();
     let data2_clone = data2.clone();
@@ -463,7 +461,7 @@ async fn test_stronghold_p2p() {
         local_ready_tx.send(()).await.unwrap();
 
         // test writing and reading from local
-        let key3 = bytestring(random());
+        let key3 = bytestring(1024);
         let original_data3 = b"some third data".to_vec();
         local_stronghold
             .write_to_remote_store(peer_id, key3.clone(), original_data3.clone(), None)
