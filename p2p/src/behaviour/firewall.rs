@@ -109,7 +109,7 @@ impl<TRq: Clone> FirewallRules<TRq> {
     }
 
     /// Create a new instance that permits all inbound and outbound requests.
-    pub fn permit_all() -> Self {
+    pub fn allow_all() -> Self {
         FirewallRules {
             inbound: Some(Rule::AllowAll),
             outbound: Some(Rule::AllowAll),

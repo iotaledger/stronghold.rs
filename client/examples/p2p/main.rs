@@ -30,7 +30,6 @@ use arguments::*;
 pub use clap::Parser;
 use iota_stronghold::p2p::{Multiaddr, NetworkConfig, SwarmInfo};
 pub use iota_stronghold::Stronghold;
-use p2p::firewall::Rule;
 pub use std::error::Error;
 
 /// Returns a list of all available peers
@@ -52,7 +51,7 @@ pub async fn list_peers_command(stronghold: &mut iota_stronghold::Stronghold) ->
 
 /// Displays the swarm info of this stronghold instance
 pub async fn show_swarm_info_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
-    stronghold.spawn_p2p(Rule::AllowAll, NetworkConfig::default()).await?;
+    stronghold.spawn_p2p(NetworkConfig::default()).await?;
 
     let SwarmInfo {
         local_peer_id,
@@ -77,7 +76,7 @@ pub async fn start_listening_command(
     let multiaddress: Multiaddr = multiaddr.parse()?;
 
     // spawn network actor
-    let network = stronghold.spawn_p2p(Rule::AllowAll, NetworkConfig::default()).await;
+    let network = stronghold.spawn_p2p(NetworkConfig::default()).await;
     println!("Network actor spawned: {:?}", network);
 
     // start listening

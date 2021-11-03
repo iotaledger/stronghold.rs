@@ -42,7 +42,7 @@ use crate::actors::secure_testing::ReadFromVault;
 use crate::actors::{
     network_messages,
     network_messages::{ShRequest, SwarmInfo},
-    GetNetwork, InsertNetwork, NetworkActor, NetworkConfig, StopNetwork,
+    GetNetwork, InsertNetwork, NetworkActor, NetworkConfig, RemoveNetwork,
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -443,15 +443,11 @@ impl Stronghold {
 #[cfg(feature = "p2p")]
 impl Stronghold {
     /// Spawn the p2p-network actor and swarm.
-    pub async fn spawn_p2p(
-        &mut self,
-        firewall_rule: Rule<ShRequest>,
-        network_config: NetworkConfig,
-    ) -> Result<(), SpawnNetworkError> {
+    pub async fn spawn_p2p(&mut self, network_config: NetworkConfig) -> Result<(), SpawnNetworkError> {
         if self.registry.send(GetNetwork).await?.is_some() {
             return Err(SpawnNetworkError::AlreadySpawned);
         }
-        let addr = NetworkActor::new(self.registry.clone(), firewall_rule, network_config)
+        let addr = NetworkActor::new(self.registry.clone(), network_config, None, None)
             .await?
             .start();
         self.registry.send(InsertNetwork { addr }).await?;
@@ -460,11 +456,21 @@ impl Stronghold {
 
     /// Gracefully stop the network actor and swarm.
     /// Return `false` if there is no active network actor.
-    pub async fn stop_p2p(&mut self) -> StrongholdResult<()> {
-        match self.registry.send(StopNetwork).await? {
-            true => Ok(()),
-            false => Err(ActorError::TargetNotFound),
+    pub async fn stop_p2p(&mut self, write_config: Option<Vec<u8>>) -> StrongholdResult<bincode::Result<()>> {
+        let actor = self
+            .registry
+            .send(RemoveNetwork)
+            .await?
+            .ok_or(ActorError::TargetNotFound)?;
+        if let Some(key) = write_config {
+            let state = actor.send(network_messages::ExportState).await?;
+            let payload = match bincode::serialize(&state) {
+                Ok(bytes) => bytes,
+                Err(e) => return Ok(Err(e)),
+            };
+            self.write_to_store(key, payload, None).await?;
         }
+        Ok(Ok(()))
     }
 
     /// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.

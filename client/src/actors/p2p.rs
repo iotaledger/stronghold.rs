@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{secure_messages::WriteToVault, GetTarget, Registry},
+    actors::{secure_messages::WriteToVault, GetTarget, RecordError, Registry},
     enum_from_inner,
     procedures::{CollectedOutput, Procedure},
 };
@@ -10,9 +10,9 @@ use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
 use messages::*;
 use p2p::{
-    firewall::{FirewallConfiguration, FirewallRules, Rule},
-    ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr, Multiaddr,
-    OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
+    firewall::{FirewallRules, Rule},
+    BehaviourState, ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr,
+    Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
 };
 use std::{
     convert::{TryFrom, TryInto},
@@ -78,22 +78,27 @@ pub struct NetworkActor {
     network: StrongholdP2p<ShRequest, ShResult>,
     inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
     registry: Addr<Registry>,
+    config: NetworkConfig,
 }
 
 impl NetworkActor {
     pub async fn new(
         registry: Addr<Registry>,
-        firewall_rule: Rule<ShRequest>,
         network_config: NetworkConfig,
+        former_state: Option<BehaviourState<ShRequest>>,
+        keypair: Option<InitKeypair>,
     ) -> Result<Self, io::Error> {
         let (firewall_tx, _) = mpsc::channel(0);
         let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
-        let firewall_config = FirewallConfiguration::new(Some(firewall_rule), Some(Rule::AllowAll));
         let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None)
-            .with_firewall_config(firewall_config)
             .with_mdns_support(network_config.enable_mdns)
             .with_relay_support(network_config.enable_relay);
-        if let Some(keypair) = network_config.keypair {
+        if let Some(state) = former_state {
+            builder = builder.load_state(state);
+        } else {
+            builder = builder.with_firewall_default(FirewallRules::allow_all())
+        }
+        if let Some(keypair) = keypair {
             builder = builder.with_keys(keypair)
         }
         if let Some(timeout) = network_config.request_timeout {
@@ -102,8 +107,8 @@ impl NetworkActor {
         if let Some(timeout) = network_config.connection_timeout {
             builder = builder.with_connection_timeout(timeout)
         }
-        if let Some(limit) = network_config.connections_limit {
-            builder = builder.with_connections_limit(limit)
+        if let Some(ref limit) = network_config.connections_limit {
+            builder = builder.with_connections_limit(limit.clone())
         }
 
         let network = builder.build().await?;
@@ -111,6 +116,7 @@ impl NetworkActor {
             network,
             inbound_request_rx: Some(inbound_request_rx),
             registry,
+            config: network_config,
         };
         Ok(actor)
     }
@@ -243,16 +249,18 @@ impl_handler!(RemoveDialingRelay => bool, |network, msg| {
     network.remove_dialing_relay(msg.relay).await
 });
 
+impl_handler!(ExportState => BehaviourState<ShRequest>, |network, _msg| {
+    network.export_state().await
+});
+
 // Config for the new network.
 /// Default behaviour:
-/// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
 /// - No limit for simultaneous connections.
 /// - Request-timeout and Connection-timeout are 10s.
 /// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id to
 ///   the local network.
 /// - [`Relay`][`libp2p::relay`] functionality is disabled.
 pub struct NetworkConfig {
-    keypair: Option<InitKeypair>,
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
     connections_limit: Option<ConnectionLimits>,
@@ -261,13 +269,6 @@ pub struct NetworkConfig {
 }
 
 impl NetworkConfig {
-    /// Set the keypair that is used for authenticating the traffic on the transport layer.
-    /// The local [`PeerId`] is derived from the keypair.
-    pub fn with_keypair(mut self, keypair: InitKeypair) -> Self {
-        self.keypair = Some(keypair);
-        self
-    }
-
     /// Set a timeout for receiving a response after a request was sent.
     ///
     /// This applies for inbound and outbound requests.
@@ -307,7 +308,6 @@ impl NetworkConfig {
 impl Default for NetworkConfig {
     fn default() -> Self {
         NetworkConfig {
-            keypair: None,
             request_timeout: None,
             connection_timeout: None,
             connections_limit: None,
@@ -320,7 +320,7 @@ impl Default for NetworkConfig {
 pub mod messages {
 
     use super::*;
-    use crate::{actors::RecordError, procedures::ProcedureError, Location, RecordHint, RecordId};
+    use crate::{procedures::ProcedureError, Location, RecordHint, RecordId};
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
@@ -458,8 +458,8 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
-    pub struct Shutdown;
+    #[rtype(result = "BehaviourState<ShRequest>")]
+    pub struct ExportState;
 
     #[derive(Debug, Message, Clone, Serialize, Deserialize)]
     #[rtype(result = "Result<(), RemoteRecordError>")]

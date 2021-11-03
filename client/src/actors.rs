@@ -10,7 +10,7 @@ mod snapshot;
 #[cfg(feature = "p2p")]
 pub use self::{
     p2p::{messages as network_messages, NetworkActor, NetworkConfig},
-    registry::p2p_messages::{GetNetwork, InsertNetwork, StopNetwork},
+    registry::p2p_messages::{GetNetwork, InsertNetwork, RemoveNetwork},
 };
 pub use self::{
     registry::{

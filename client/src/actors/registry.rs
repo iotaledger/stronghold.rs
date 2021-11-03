@@ -89,10 +89,10 @@ pub mod p2p_messages {
         type Result = Option<Addr<NetworkActor>>;
     }
 
-    pub struct StopNetwork;
+    pub struct RemoveNetwork;
 
-    impl Message for StopNetwork {
-        type Result = bool;
+    impl Message for RemoveNetwork {
+        type Result = Option<Addr<NetworkActor>>;
     }
 }
 
@@ -200,12 +200,12 @@ impl Handler<p2p_messages::GetNetwork> for Registry {
 }
 
 #[cfg(feature = "p2p")]
-impl Handler<p2p_messages::StopNetwork> for Registry {
-    type Result = bool;
+impl Handler<p2p_messages::RemoveNetwork> for Registry {
+    type Result = Option<Addr<NetworkActor>>;
 
-    fn handle(&mut self, _: p2p_messages::StopNetwork, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: p2p_messages::RemoveNetwork, _: &mut Self::Context) -> Self::Result {
         // Dropping the only address of the network actor will stop the actor.
         // Upon stopping the actor, its `StrongholdP2p` instance will be dropped, which results in a graceful shutdown.
-        self.network.take().is_some()
+        self.network.take()
     }
 }

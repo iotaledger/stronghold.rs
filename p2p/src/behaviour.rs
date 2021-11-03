@@ -123,24 +123,21 @@ pub enum BehaviourEvent<Rq, Rs> {
 pub struct RelayNotSupported;
 
 /// Configuration of the [`NetBehaviour`].
-pub struct NetBehaviourConfig<TRq: Clone> {
+pub struct NetBehaviourConfig {
     /// Supported versions of the `MessageProtocol`.
     pub supported_protocols: SmallVec<[MessageProtocol; 2]>,
     /// Timeout for inbound and outbound requests.
     pub request_timeout: Duration,
     /// Keep-alive timeout of idle connections.
     pub connection_timeout: Duration,
-    /// Configuration for the firewall that checks every outbound and inbound request.
-    pub firewall: FirewallConfiguration<TRq>,
 }
 
-impl<TRq: Clone> Default for NetBehaviourConfig<TRq> {
+impl Default for NetBehaviourConfig {
     fn default() -> Self {
         Self {
             supported_protocols: smallvec![MessageProtocol::new_version(1, 0, 0)],
             connection_timeout: Duration::from_secs(10),
             request_timeout: Duration::from_secs(10),
-            firewall: FirewallConfiguration::default(),
         }
     }
 }
@@ -203,10 +200,12 @@ where
 {
     /// Create a new instance of a NetBehaviour to customize the [`Swarm`][libp2p::Swarm].
     pub fn new(
-        config: NetBehaviourConfig<TRq>,
+        config: NetBehaviourConfig,
         mdns: Option<Mdns>,
         relay: Option<Relay>,
         permission_req_channel: mpsc::Sender<FirewallRequest<TRq>>,
+        firewall: FirewallConfiguration<TRq>,
+        address_info: Option<AddressInfo>,
     ) -> Self {
         NetBehaviour {
             mdns,
@@ -217,8 +216,8 @@ where
             next_request_id: RequestId::new(1),
             next_inbound_id: Arc::new(AtomicU64::new(1)),
             request_manager: RequestManager::new(),
-            addresses: AddressInfo::default(),
-            firewall: config.firewall,
+            addresses: address_info.unwrap_or_default(),
+            firewall,
             permission_req_channel,
             pending_rule_rqs: FuturesUnordered::default(),
             pending_approval_rqs: FuturesUnordered::default(),
@@ -1036,8 +1035,8 @@ where
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct BehaviourState<TRq: Clone> {
-    firewall: FirewallConfiguration<TRq>,
-    address_info: AddressInfo,
+    pub firewall: FirewallConfiguration<TRq>,
+    pub address_info: AddressInfo,
 }
 
 #[cfg(test)]
@@ -1045,7 +1044,7 @@ mod test {
     use core::panic;
 
     use super::*;
-    use crate::firewall::{PermissionValue, RequestPermissions, Rule, RuleDirection, VariantPermission};
+    use crate::firewall::{PermissionValue, RequestPermissions, VariantPermission};
     use futures::{channel::mpsc, StreamExt};
     use libp2p::{
         core::{identity, upgrade, PeerId, Transport},
@@ -1250,14 +1249,18 @@ mod test {
             .multiplex(YamuxConfig::default())
             .boxed();
 
-        let mut cfg = NetBehaviourConfig::default();
-        cfg.firewall.set_default(Some(Rule::AllowAll), RuleDirection::Both);
-
         let mdns = Mdns::new(MdnsConfig::default())
             .await
             .expect("Failed to create mdns behaviour.");
         let (dummy_tx, _) = mpsc::channel(10);
-        let behaviour = NetBehaviour::new(cfg, Some(mdns), Some(relay_behaviour), dummy_tx);
+        let behaviour = NetBehaviour::new(
+            NetBehaviourConfig::default(),
+            Some(mdns),
+            Some(relay_behaviour),
+            dummy_tx,
+            FirewallConfiguration::allow_all(),
+            None,
+        );
         let builder = SwarmBuilder::new(transport, behaviour, peer).executor(Box::new(|fut| {
             tokio::spawn(fut);
         }));

@@ -397,7 +397,6 @@ async fn test_stronghold_p2p() {
         procedures::{PersistSecret, Slip10Derive, Slip10Generate},
         tests::fresh,
     };
-    use p2p::firewall::Rule;
     use tokio::sync::{mpsc, oneshot};
 
     let system = actix::System::current();
@@ -432,7 +431,7 @@ async fn test_stronghold_p2p() {
             .await
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
         local_stronghold
-            .spawn_p2p(Rule::AllowAll, NetworkConfig::default())
+            .spawn_p2p(NetworkConfig::default())
             .await
             .unwrap_or_else(|e| panic!("Could not spawn p2p: {}", e));
 
@@ -496,7 +495,7 @@ async fn test_stronghold_p2p() {
             .await
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
         remote_stronghold
-            .spawn_p2p(Rule::AllowAll, NetworkConfig::default())
+            .spawn_p2p(NetworkConfig::default())
             .await
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
 

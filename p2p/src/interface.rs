@@ -438,14 +438,20 @@ where
     ident: Option<(AuthenticKeypair<X25519Spec>, PeerId)>,
 
     // Configuration of the underlying [`NetBehaviour`].
-    behaviour_config: NetBehaviourConfig<TRq>,
+    behaviour_config: NetBehaviourConfig,
 
     // Limit of simultaneous connections.
     connections_limit: Option<ConnectionLimits>,
 
-    /// Use Mdns protocol for peer discovery in the local network.
-    ///
-    /// Note: This also broadcasts our own address and id to the local network.
+    // Firewall config and list of known addresses that were persisted from a former running instance.
+    state: Option<BehaviourState<TRq>>,
+
+    // Default rules for the firewall.
+    default_rules: Option<FirewallRules<TRq>>,
+
+    // Use Mdns protocol for peer discovery in the local network.
+    //
+    // Note: This also broadcasts our own address and id to the local network.
     support_mdns: bool,
 
     support_relay: bool,
@@ -474,8 +480,10 @@ where
             ident: None,
             behaviour_config: Default::default(),
             connections_limit: None,
+            default_rules: None,
             support_mdns: true,
             support_relay: true,
+            state: None,
         }
     }
 
@@ -515,13 +523,21 @@ where
         self
     }
 
-    /// Set the firewall configuration.
-    /// The peer-specific rules overwrite the default rules for that peer.
+    /// Load the behaviour state from a former running instance.
+    /// The state contains default and peer-specific rules, and the list of known addresses for remote peers.
+    pub fn load_state(mut self, state: BehaviourState<TRq>) -> Self {
+        self.state = Some(state);
+        self
+    }
+
+    /// Set the default firewall rules, which apply for all requests from/ to peers for which no peer-specific rule was
+    /// set. Per default in the firewall, no rules are set and a [`FirewallRequest::PeerSpecificRule`] request is
+    /// sent through the `firewall_channel` when a peer connect or an inbound/ outbound request is sent.
     ///
-    /// Per default, no rules are set and a [`FirewallRequest::PeerSpecificRule`] request is sent through the
-    /// `firewall_channel` when a peer connect or an inbound/ outbound request is sent.
-    pub fn with_firewall_config(mut self, config: FirewallConfiguration<TRq>) -> Self {
-        self.behaviour_config.firewall = config;
+    /// **Note**: If former firewall config was loaded via `StrongholdP2pBuilder::load_state` the default rules will be
+    /// overwritten with this method.
+    pub fn with_firewall_default(mut self, rules: FirewallRules<TRq>) -> Self {
+        self.default_rules = Some(rules);
         self
     }
 
@@ -613,7 +629,22 @@ where
         } else {
             mdns = None
         };
-        let behaviour = NetBehaviour::new(self.behaviour_config, mdns, relay, self.firewall_channel);
+        let (address_info, mut firewall) = match self.state {
+            Some(state) => (Some(state.address_info), state.firewall),
+            None => (None, FirewallConfiguration::default()),
+        };
+        if let Some(rules) = self.default_rules {
+            firewall.default = rules;
+        }
+
+        let behaviour = NetBehaviour::new(
+            self.behaviour_config,
+            mdns,
+            relay,
+            self.firewall_channel,
+            firewall,
+            address_info,
+        );
 
         let mut swarm_builder =
             SwarmBuilder::new(boxed_transport, behaviour, peer_id).executor(Box::new(executor.clone()));
