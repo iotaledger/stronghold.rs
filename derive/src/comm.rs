@@ -56,9 +56,11 @@ pub fn impl_to_permissioned(input: &Ident, name: &Ident, data_enum: &DataEnum) -
 }
 
 pub fn impl_permission(name: &Ident, data_enum: &DataEnum) -> TokenStream {
-    if data_enum.variants.len() > 32 {
-        panic!("More then 32 variants on enums are not supported.");
-    }
+    assert!(
+        data_enum.variants.len() <= 32,
+        "More then 32 variants on enums are not supported."
+    );
+
     let mut i = 0u8;
     let permissions = data_enum
         .variants

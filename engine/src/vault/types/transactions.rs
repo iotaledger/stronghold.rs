@@ -12,13 +12,12 @@ use crate::vault::{
     },
 };
 
+use serde::{Deserialize, Serialize};
 use std::{
-    convert::{Infallible, TryFrom},
+    convert::TryFrom,
     fmt::{self, Debug, Formatter},
     hash::Hash,
 };
-
-use serde::{Deserialize, Serialize};
 
 /// A generic transaction type enum.  Data Transactions refer to `SealedBlobs` while revocation transactions are used to
 /// revoke records.
@@ -27,22 +26,6 @@ use serde::{Deserialize, Serialize};
 pub enum TransactionType {
     Data = 1,
     Revocation = 2,
-}
-
-impl TryFrom<Val> for TransactionType {
-    type Error = crate::Error;
-
-    fn try_from(v: Val) -> Result<Self, Self::Error> {
-        match v.u64() {
-            1 => Ok(TransactionType::Data),
-            2 => Ok(TransactionType::Revocation),
-
-            _ => Err(crate::Error::ValueError(format!(
-                "{:?} is not a valid transaction type",
-                v
-            ))),
-        }
-    }
 }
 
 impl TransactionType {
@@ -58,13 +41,9 @@ pub struct Transaction(Vec<u8>);
 
 impl Debug for Transaction {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let t = self.untyped();
         f.debug_struct("Transaction")
-            .field(
-                "type",
-                &TransactionType::try_from(t.type_id).map_err(|_| fmt::Error {})?,
-            )
-            .field("id", &t.id)
+            .field("type", &self)
+            .field("id", &self.untyped().id)
             .finish()
     }
 }
@@ -237,7 +216,7 @@ impl AsMut<[u8]> for SealedTransaction {
 }
 
 impl Encrypt<SealedTransaction> for Transaction {}
-impl Decrypt<(), Transaction> for SealedTransaction {}
+impl Decrypt<Transaction> for SealedTransaction {}
 
 /// A sealed blob type which contains encrypted data in byte format.
 #[derive(Deserialize, Serialize, Clone)]
@@ -268,6 +247,6 @@ impl AsMut<[u8]> for SealedBlob {
 }
 
 /// Encryption and Decryption Traits for the [`SealedBlob`], [`Vec<u8>`], and [`&[u8]`] types.
-impl Decrypt<Infallible, Vec<u8>> for SealedBlob {}
+impl Decrypt<Vec<u8>> for SealedBlob {}
 impl Encrypt<SealedBlob> for Vec<u8> {}
 impl Encrypt<SealedBlob> for &[u8] {}

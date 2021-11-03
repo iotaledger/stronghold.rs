@@ -14,12 +14,15 @@ fn init_read_vault(stronghold: Stronghold) -> Stronghold {
     let system = actix::System::new();
 
     for i in 0..30 {
-        system.block_on(stronghold.write_to_vault(
-            Location::generic("test", format!("some_record {}", i)),
-            format!("test data {}", i).as_bytes().to_vec(),
-            RecordHint::new(b"test").unwrap(),
-            vec![],
-        ));
+        system
+            .block_on(stronghold.write_to_vault(
+                Location::generic("test", format!("some_record {}", i)),
+                format!("test data {}", i).as_bytes().to_vec(),
+                RecordHint::new(b"test").unwrap(),
+                vec![],
+            ))
+            .unwrap()
+            .unwrap();
     }
 
     stronghold
@@ -29,7 +32,10 @@ fn init_read_snap(stronghold: Stronghold, key_data: &[u8]) -> Stronghold {
     let system = actix::System::new();
     let mut stronghold = init_read_vault(stronghold);
 
-    system.block_on(stronghold.write_all_to_snapshot(&key_data.to_vec(), Some("bench_read".into()), None));
+    system
+        .block_on(stronghold.write_all_to_snapshot(&key_data.to_vec(), Some("bench_read".into()), None))
+        .unwrap()
+        .unwrap();
 
     stronghold
 }
@@ -41,12 +47,15 @@ fn bench_stronghold_write_create(c: &mut Criterion) {
 
     c.bench_function("write to stronghold while creating vaults", |b| {
         b.iter(|| {
-            system.block_on(stronghold.write_to_vault(
-                Location::generic("test", "some_record"),
-                b"test data".to_vec(),
-                RecordHint::new(b"test").unwrap(),
-                vec![],
-            ));
+            system
+                .block_on(stronghold.write_to_vault(
+                    Location::generic("test", "some_record"),
+                    b"test data".to_vec(),
+                    RecordHint::new(b"test").unwrap(),
+                    vec![],
+                ))
+                .unwrap()
+                .unwrap();
         });
     });
 }
@@ -86,19 +95,19 @@ fn bench_write_store(c: &mut Criterion) {
     let stronghold = system.block_on(init_stronghold());
 
     c.bench_function("Bench write to store", |b| {
-        b.iter(|| {
-            system.block_on(stronghold.write_to_store(Location::generic("test", "some_key"), b"test".to_vec(), None))
-        });
+        b.iter(|| system.block_on(stronghold.write_to_store("test some_key".into(), b"test".to_vec(), None)));
     });
 }
 
 fn bench_read_store(c: &mut Criterion) {
     let system = actix::System::new();
     let stronghold = system.block_on(init_stronghold());
-    system.block_on(stronghold.write_to_store(Location::generic("test", "some_key"), b"test".to_vec(), None));
+    system
+        .block_on(stronghold.write_to_store("test some_key".into(), b"test".to_vec(), None))
+        .unwrap();
 
     c.bench_function("Bench read from store", |b| {
-        b.iter(|| system.block_on(stronghold.read_from_store(Location::generic("test", "some_key"))));
+        b.iter(|| system.block_on(stronghold.read_from_store("test some_key".into())));
     });
 }
 

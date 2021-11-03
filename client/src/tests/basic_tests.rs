@@ -1,10 +1,11 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{line_error, utils::LoadFromPath, Location, RecordHint, Stronghold};
+use crate::{utils::LoadFromPath, Location, RecordHint, Stronghold};
 use crypto::macs::hmac::HMAC_SHA512;
 
 use engine::vault::{ClientId, VaultId};
+use stronghold_utils::random::bytestring;
 
 async fn setup_stronghold() -> Stronghold {
     let client_path = b"test".to_vec();
@@ -25,12 +26,14 @@ async fn test_read_write() {
         .write_to_vault(
             loc0.clone(),
             b"test".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"first hint").unwrap(),
             vec![],
         )
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write vault error: {}", e));
 
-    let (p, _) = stronghold.read_secret(client_path, loc0).await;
+    let p = stronghold.read_secret(client_path, loc0).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 }
@@ -47,10 +50,12 @@ async fn test_head_read_write() {
         .write_to_vault(
             lochead.clone(),
             b"test".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"first hint").unwrap(),
             vec![],
         )
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write vault error: {}", e));
 
     // update on api: test bogus now?
     // let lochead = lochead.increment_counter();
@@ -59,12 +64,14 @@ async fn test_head_read_write() {
         .write_to_vault(
             lochead.clone(),
             b"another test".to_vec(),
-            RecordHint::new(b"second hint").expect(line_error!()),
+            RecordHint::new(b"second hint").unwrap(),
             vec![],
         )
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write vault error: {}", e));
 
-    let (p, _) = stronghold.read_secret(client_path, lochead).await;
+    let p = stronghold.read_secret(client_path, lochead).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 }
@@ -85,31 +92,34 @@ async fn test_multi_write_read_counter_head() {
             .write_to_vault(
                 lochead.clone(),
                 data.as_bytes().to_vec(),
-                RecordHint::new(data).expect(line_error!()),
+                RecordHint::new(data).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Write vault error: {}", e));
     }
 
-    let (list, _) = stronghold.list_hints_and_ids("path").await;
+    let list = stronghold.list_hints_and_ids("path").await.unwrap();
 
     assert_eq!(20, list.len());
 
-    let b = stronghold.record_exists(loc5.clone()).await;
+    let b = stronghold.record_exists(loc5.clone()).await.unwrap();
     assert!(b);
-    let b = stronghold.record_exists(loc19.clone()).await;
+    let b = stronghold.record_exists(loc19.clone()).await.unwrap();
     assert!(b);
-    let b = stronghold.record_exists(loc15.clone()).await;
+    let b = stronghold.record_exists(loc15.clone()).await.unwrap();
     assert!(b);
 
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc19).await;
+    let p = stronghold.read_secret(client_path.clone(), loc19).await.unwrap();
+
     assert_eq!(Some(b"test 19".to_vec()), p);
 
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc5).await;
+    let p = stronghold.read_secret(client_path.clone(), loc5).await.unwrap();
 
     assert_eq!(Some(b"test 5".to_vec()), p);
 
-    let (p, _) = stronghold.read_secret(client_path, loc15).await;
+    let p = stronghold.read_secret(client_path, loc15).await.unwrap();
 
     assert_eq!(Some(b"test 15".to_vec()), p);
 }
@@ -131,25 +141,30 @@ async fn test_revoke_with_gc() {
             .write_to_vault(
                 lochead.clone(),
                 data.as_bytes().to_vec(),
-                RecordHint::new(data).expect(line_error!()),
+                RecordHint::new(data).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Write vault error: {}", e));
     }
 
     for i in 0..10 {
         let loc = Location::counter::<_, usize>("path", i);
 
-        stronghold.delete_data(loc.clone(), false).await;
+        stronghold.delete_data(loc.clone(), false).await.unwrap().unwrap();
 
-        let (p, _) = stronghold.read_secret(client_path.clone(), loc).await;
+        let p = stronghold.read_secret(client_path.clone(), loc).await.unwrap();
 
-        assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
+        assert!(p.is_none());
     }
 
-    let (ids, _res) = stronghold.list_hints_and_ids(lochead.vault_path().to_vec()).await;
+    let ids = stronghold
+        .list_hints_and_ids(lochead.vault_path().to_vec())
+        .await
+        .unwrap();
 
-    stronghold.garbage_collect(lochead.vault_path().to_vec()).await;
+    stronghold.garbage_collect(lochead.vault_path().to_vec()).await.unwrap();
 
     assert_eq!(ids, vec![]);
 }
@@ -168,34 +183,31 @@ async fn test_write_read_snapshot() {
 
         let data = format!("test {:?}", i);
         stronghold
-            .write_to_vault(
-                loc,
-                data.as_bytes().to_vec(),
-                RecordHint::new(data).expect(line_error!()),
-                vec![],
-            )
-            .await;
+            .write_to_vault(loc, data.as_bytes().to_vec(), RecordHint::new(data).unwrap(), vec![])
+            .await
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Write vault error: {}", e));
     }
 
     stronghold
         .write_all_to_snapshot(&key_data, Some("test1".into()), None)
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
-    stronghold.kill_stronghold(client_path.clone(), false).await;
+    stronghold.kill_stronghold(client_path.clone(), false).await.unwrap();
 
     // remark: changed former_client_path from 'None' to 'Some(client_path)'
     stronghold
         .read_snapshot(client_path.clone(), None, &key_data, Some("test1".into()), None)
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
 
     for i in 0..20 {
         let loc = Location::counter::<_, usize>("path", i);
 
-        let (p, err) = stronghold.read_secret(client_path.clone(), loc).await;
-
-        if let crate::ResultMessage::Error(e) = err {
-            println!("Error occured: {}", e)
-        }
+        let p = stronghold.read_secret(client_path.clone(), loc).await.unwrap();
 
         let res = format!("test {:?}", i);
 
@@ -216,7 +228,8 @@ async fn test_write_read_multi_snapshot() {
     for i in 0..num_actors {
         stronghold
             .spawn_stronghold_actor(format!("test {:?}", i).as_bytes().to_vec(), vec![])
-            .await;
+            .await
+            .unwrap();
     }
 
     // write into vault
@@ -226,41 +239,47 @@ async fn test_write_read_multi_snapshot() {
 
         stronghold
             .switch_actor_target(format!("test {:?}", i).as_bytes().to_vec())
-            .await;
+            .await
+            .unwrap();
 
         stronghold
-            .write_to_vault(
-                loc,
-                data.as_bytes().to_vec(),
-                RecordHint::new(data).expect(line_error!()),
-                vec![],
-            )
-            .await;
+            .write_to_vault(loc, data.as_bytes().to_vec(), RecordHint::new(data).unwrap(), vec![])
+            .await
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Write vault error: {}", e));
     }
 
     stronghold
         .write_all_to_snapshot(&key_data, Some("test2".into()), None)
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
     for i in 0..num_actors {
         stronghold
             .kill_stronghold(format!("test {:?}", i).as_bytes().to_vec(), false)
-            .await;
+            .await
+            .unwrap();
     }
 
     for i in 0..num_actors {
         let client_path = format!("test {:?}", i).as_bytes().to_vec();
-        stronghold.switch_actor_target(client_path.clone()).await;
+        stronghold.switch_actor_target(client_path.clone()).await.unwrap();
         stronghold
             .read_snapshot(client_path, None, &key_data, Some("test2".into()), None)
-            .await;
+            .await
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
     }
 
     for i in 0..num_actors {
         let loc = Location::counter::<_, usize>("path", i);
         let local_client_path = format!("test {:?}", i).as_bytes().to_vec();
-        stronghold.switch_actor_target(local_client_path.clone()).await;
-        let (p, _) = stronghold.read_secret(local_client_path.clone(), loc.clone()).await;
+        stronghold.switch_actor_target(local_client_path.clone()).await.unwrap();
+        let p = stronghold
+            .read_secret(local_client_path.clone(), loc.clone())
+            .await
+            .unwrap();
         let res = format!("test {:?}", i);
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));
@@ -272,14 +291,17 @@ async fn test_store() {
     let client_path = b"test".to_vec();
     let payload = b"test data";
 
-    let location = Location::generic("some_data", "location");
+    let key = bytestring(4096);
     let stronghold = Stronghold::init_stronghold_system(client_path, vec![]).await.unwrap();
 
-    stronghold
-        .write_to_store(location.clone(), payload.to_vec(), None)
-        .await;
+    let existing_value = stronghold
+        .write_to_store(key.clone(), payload.to_vec(), None)
+        .await
+        .unwrap();
 
-    let (res, _) = stronghold.read_from_store(location).await;
+    assert!(existing_value.is_none());
+
+    let res = stronghold.read_from_store(key).await.unwrap().unwrap();
 
     assert_eq!(std::str::from_utf8(&res), Ok("test data"));
 }
@@ -291,7 +313,7 @@ fn test_client_id() {
     let data = b"a bunch of random data";
     let mut buf = [0; 64];
 
-    let id = ClientId::load_from_path(data, path).unwrap();
+    let id = ClientId::load_from_path(data, path);
 
     HMAC_SHA512(data, path, &mut buf);
 
@@ -306,7 +328,7 @@ fn test_vault_id() {
     let data = b"a long sentence for seeding the id with some data and bytes.  Testing to see how long this can be without breaking the hmac";
     let mut buf = [0; 64];
 
-    let id = VaultId::load_from_path(data, path).unwrap();
+    let id = VaultId::load_from_path(data, path);
 
     HMAC_SHA512(data, path, &mut buf);
 

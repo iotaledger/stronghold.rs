@@ -45,7 +45,7 @@ pub enum DialErr {
     #[error("Invalid peer ID.")]
     InvalidPeerId,
     /// An I/O error occurred on the connection.
-    #[error("An I/O error occurred on the connection: `{0}`.")]
+    #[error("An I/O error occurred on the connection: {0}.")]
     ConnectionIo(io::Error),
     /// An error occurred while negotiating the transport protocol(s) on a connection.
     #[error("An error occurred while negotiating the transport protocol(s) on a connection: `{0:?}`.")]
@@ -79,14 +79,14 @@ impl TryFrom<DialError> for DialErr {
 #[derive(Error, Debug)]
 pub enum ConnectionErr {
     /// An I/O error occurred on the connection.
-    #[error("I/O error: `{0}`")]
+    #[error("I/O error: {0}")]
     Io(io::Error),
     /// The peer identity obtained on the connection did not
     /// match the one that was expected or is otherwise invalid.
     #[error("Invalid peer ID.")]
     InvalidPeerId,
     /// An error occurred while negotiating the transport protocol(s).
-    #[error("Transport error: `{0}`")]
+    #[error("Transport error: {0}")]
     Transport(TransportErr),
     /// The connection was dropped because the connection limit
     /// for a peer has been reached.
@@ -117,10 +117,10 @@ impl From<PendingConnectionError<TransportError<io::Error>>> for ConnectionErr {
 #[derive(Error, Debug)]
 pub enum TransportErr {
     /// The address is not supported.
-    #[error("Multiaddress not supported: `{0}`")]
+    #[error("Multiaddress not supported: {0}")]
     MultiaddrNotSupported(Multiaddr),
     /// An I/O Error occurred.
-    #[error("I/O error: `{0}`")]
+    #[error("I/O error: {0}")]
     Io(io::Error),
 }
 
@@ -137,7 +137,7 @@ impl From<TransportError<io::Error>> for TransportErr {
 #[derive(Error, Debug)]
 pub enum ListenErr {
     /// Listening on the address failed on the transport layer.
-    #[error("Transport error: `{0}`")]
+    #[error("Transport error: {0}")]
     Transport(TransportErr),
     /// The communication system was shut down before the listening attempt resolved.
     #[error("The network task was shut down.")]
@@ -157,14 +157,11 @@ pub enum ListenRelayErr {
     #[error("Relay Protocol not enabled.")]
     ProtocolNotSupported,
     /// Establishing a connection to the relay failed.
-    #[error("Dial Relay Error: `{0}`")]
-    DialRelay(DialErr),
-    /// Listening on the address failed on the transport layer.
-    #[error("Transport error: `{0}`")]
-    Transport(TransportErr),
-    /// The communication system was shut down before the listening attempt resolved.
-    #[error("The network task was shut down.")]
-    Shutdown,
+    #[error("Dial Relay Error: {0}")]
+    DialRelay(#[from] DialErr),
+    /// Error on listening on an address.
+    #[error("Listening Error: {0}")]
+    Listen(ListenErr),
 }
 
 impl TryFrom<DialError> for ListenRelayErr {
@@ -174,14 +171,8 @@ impl TryFrom<DialError> for ListenRelayErr {
     }
 }
 
-impl From<DialErr> for ListenRelayErr {
-    fn from(err: DialErr) -> Self {
-        ListenRelayErr::DialRelay(err)
-    }
-}
-
 impl From<TransportError<io::Error>> for ListenRelayErr {
     fn from(err: TransportError<io::Error>) -> Self {
-        ListenRelayErr::Transport(err.into())
+        ListenRelayErr::Listen(err.into())
     }
 }

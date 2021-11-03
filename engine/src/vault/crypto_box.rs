@@ -1,5 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
+use runtime::GuardedVec;
+use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
     fmt::Debug,
@@ -7,28 +10,26 @@ use std::{
     marker::PhantomData,
 };
 
-use runtime::GuardedVec;
-
-use serde::{Deserialize, Serialize};
-
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
-pub trait BoxProvider: Sized + Ord + PartialOrd {
+pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
+    type Error: Debug;
+
     /// defines the key length for the [`BoxProvider`].
     fn box_key_len() -> usize;
     /// defines the size of the Nonce combined with the Ad for the [`BoxProvider`].
     fn box_overhead() -> usize;
 
     /// seals some data into the crypto box using the [`Key`] and the associated data.
-    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> crate::Result<Vec<u8>>;
+    fn box_seal(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error>;
 
     /// opens a crypto box to get data using the [`Key`] and the associated data.
-    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> crate::Result<Vec<u8>>;
+    fn box_open(key: &Key<Self>, ad: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error>;
 
     /// fills a buffer [`&mut [u8]`] with secure random bytes.
-    fn random_buf(buf: &mut [u8]) -> crate::Result<()>;
+    fn random_buf(buf: &mut [u8]) -> Result<(), Self::Error>;
 
     /// creates a vector with secure random bytes based off of an inputted [`usize`] length.
-    fn random_vec(len: usize) -> crate::Result<Vec<u8>> {
+    fn random_vec(len: usize) -> Result<Vec<u8>, Self::Error> {
         let mut buf = vec![0; len];
         Self::random_buf(&mut buf)?;
         Ok(buf)
@@ -49,8 +50,8 @@ pub struct Key<T: BoxProvider> {
 
 impl<T: BoxProvider> Key<T> {
     /// generate a random key using secure random bytes
-    pub fn random() -> crate::Result<Self> {
-        Ok(Self {
+    pub fn random() -> Self {
+        Self {
             key: GuardedVec::new(T::box_key_len(), |v| {
                 v.copy_from_slice(
                     T::random_vec(T::box_key_len())
@@ -60,17 +61,20 @@ impl<T: BoxProvider> Key<T> {
             }),
 
             _box_provider: PhantomData,
-        })
+        }
     }
 
     /// attempts to load a key from inputted data
-    pub fn load(key: Vec<u8>) -> crate::Result<Self> {
-        match key {
-            key if key.len() != T::box_key_len() => Err(crate::Error::InterfaceError),
-            key => Ok(Self {
+    ///
+    /// Return `None` if the key length doesn't match [`BoxProvider::box_key_len`].
+    pub fn load(key: Vec<u8>) -> Option<Self> {
+        if key.len() == T::box_key_len() {
+            Some(Self {
                 key: GuardedVec::new(T::box_key_len(), |v| v.copy_from_slice(key.as_slice())),
                 _box_provider: PhantomData,
-            }),
+            })
+        } else {
+            None
         }
     }
 
@@ -126,17 +130,23 @@ impl<T: BoxProvider> Debug for Key<T> {
 /// trait for encryptable data. Allows the data to be encrypted.
 pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
     /// encrypts a raw data and creates a type T from the ciphertext
-    fn encrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> crate::Result<T> {
+    fn encrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> Result<T, B::Error> {
         let sealed = B::box_seal(key, ad.as_ref(), self.as_ref())?;
         Ok(T::from(sealed))
     }
 }
 
+#[derive(Debug)]
+pub enum DecryptError<E: Debug> {
+    Invalid,
+    Provider(E),
+}
+
 /// Trait for decryptable data. Allows the data to be decrypted.
-pub trait Decrypt<E, T: TryFrom<Vec<u8>, Error = E>>: AsRef<[u8]> {
+pub trait Decrypt<T: TryFrom<Vec<u8>>>: AsRef<[u8]> {
     /// decrypts raw data and creates a new type T from the plaintext
-    fn decrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> crate::Result<T> {
-        let opened = B::box_open(key, ad.as_ref(), self.as_ref())?;
-        T::try_from(opened).map_err(|_| crate::Error::DatabaseError(String::from("Invalid Entry")))
+    fn decrypt<P: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<P>, ad: AD) -> Result<T, DecryptError<P::Error>> {
+        let opened = P::box_open(key, ad.as_ref(), self.as_ref()).map_err(DecryptError::Provider)?;
+        T::try_from(opened).map_err(|_| DecryptError::Invalid)
     }
 }

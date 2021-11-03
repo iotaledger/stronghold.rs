@@ -33,6 +33,7 @@ async fn usecase_ed25519() {
                 hint: fresh::record_hint(),
             })
             .await
+            .unwrap()
         {
             ProcResult::SLIP10Generate(ResultMessage::OK) => (),
             r => panic!("unexpected result: {:?}", r),
@@ -45,6 +46,7 @@ async fn usecase_ed25519() {
                 hint: fresh::record_hint(),
             })
             .await
+            .unwrap()
         {
             ProcResult::BIP39Generate(ResultMessage::OK) => (),
             r => panic!("unexpected result: {:?}", r),
@@ -62,6 +64,7 @@ async fn usecase_ed25519() {
             hint: fresh::record_hint(),
         })
         .await
+        .unwrap()
     {
         ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => (),
         r => panic!("unexpected result: {:?}", r),
@@ -72,6 +75,7 @@ async fn usecase_ed25519() {
             private_key: key.clone(),
         })
         .await
+        .unwrap()
     {
         ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk)) => pk,
         r => panic!("unexpected result: {:?}", r),
@@ -85,6 +89,7 @@ async fn usecase_ed25519() {
             msg: msg.clone(),
         })
         .await
+        .unwrap()
     {
         ProcResult::Ed25519Sign(ResultMessage::Ok(sig)) => sig,
         r => panic!("unexpected result: {:?}", r),
@@ -112,6 +117,7 @@ async fn usecase_SLIP10Derive_intermediate_keys() {
             hint: fresh::record_hint(),
         })
         .await
+        .unwrap()
     {
         ProcResult::SLIP10Generate(ResultMessage::OK) => (),
         r => panic!("unexpected result: {:?}", r),
@@ -128,6 +134,7 @@ async fn usecase_SLIP10Derive_intermediate_keys() {
             hint: fresh::record_hint(),
         })
         .await
+        .unwrap()
     {
         ProcResult::SLIP10Derive(ResultMessage::Ok(cc)) => cc,
         r => panic!("unexpected result: {:?}", r),
@@ -144,6 +151,7 @@ async fn usecase_SLIP10Derive_intermediate_keys() {
                 hint: fresh::record_hint(),
             })
             .await
+            .unwrap()
         {
             ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => (),
             r => panic!("unexpected result: {:?}", r),
@@ -157,6 +165,7 @@ async fn usecase_SLIP10Derive_intermediate_keys() {
                 hint: fresh::record_hint(),
             })
             .await
+            .unwrap()
         {
             ProcResult::SLIP10Derive(ResultMessage::Ok(cc)) => cc,
             r => panic!("unexpected result: {:?}", r),

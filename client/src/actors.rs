@@ -14,14 +14,14 @@ pub use self::secure::testing as secure_testing;
 pub use self::{
     registry::{
         messages::{GetAllClients, GetClient, GetSnapshot, GetTarget, RemoveClient, SpawnClient, SwitchTarget},
-        Registry, RegistryError,
+        Registry,
     },
     secure::{
         messages as secure_messages, procedures as secure_procedures,
         procedures::{ProcResult, SLIP10DeriveInput},
         SecureClient, VaultError,
     },
-    snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes},
+    snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes, WriteSnapshot},
 };
 
 #[cfg(test)]

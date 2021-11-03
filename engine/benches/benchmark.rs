@@ -18,11 +18,11 @@ fn bench_vault_write(c: &mut Criterion) {
     c.bench_function("Write to new vault", |b| {
         b.iter(|| {
             let mut view: DbView<Provider> = DbView::new();
-            let key0 = Key::random().unwrap();
+            let key0 = Key::random();
             let vid0 = VaultId::random::<Provider>().unwrap();
             let rid0 = RecordId::random::<Provider>().unwrap();
 
-            view.init_vault(&key0, vid0).unwrap();
+            view.init_vault(&key0, vid0);
 
             // write to vault0 and record0
             view.write(

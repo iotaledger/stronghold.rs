@@ -590,7 +590,7 @@ where
             let _ = tx_yield.send(Err(ListenErr::Shutdown));
         }
         for (_, (_, tx_yield)) in self.await_relayed_listen.drain() {
-            let _ = tx_yield.send(Err(ListenRelayErr::Shutdown));
+            let _ = tx_yield.send(Err(ListenRelayErr::Listen(ListenErr::Shutdown)));
         }
     }
 }

@@ -4,7 +4,7 @@
 mod decoder;
 mod encoder;
 
-pub use decoder::decompress;
+pub use decoder::{decompress, Lz4DecodeError};
 pub use encoder::compress;
 
 /// Block for the LZ4 compression algorithm.
