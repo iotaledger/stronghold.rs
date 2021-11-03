@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["messages",""]],"struct":[["NetworkActor",""],["NetworkConfig","Default behaviour:"]]});
+initSidebarItems({"macro":[["impl_handler",""],["sh_request_dispatch",""],["sh_request_from",""],["sh_result_mapping",""]],"mod":[["messages",""]],"struct":[["NetworkActor",""],["NetworkConfig","Default behaviour:"]]});

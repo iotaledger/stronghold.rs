@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["bytes",""],["const_eq",""],["rand",""],["zero",""]]});
+initSidebarItems({"macro":[["impls","Implements the traits [`Bytes`] onto primitive types and slices."]],"mod":[["bytes",""],["const_eq",""],["rand",""],["zero",""]]});
