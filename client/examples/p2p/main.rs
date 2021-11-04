@@ -27,56 +27,46 @@
 mod arguments;
 use arguments::*;
 
-pub use clap::Clap;
+pub use clap::Parser;
 use iota_stronghold::p2p::{Multiaddr, NetworkConfig, SwarmInfo};
-pub use iota_stronghold::{ResultMessage, Stronghold};
+pub use iota_stronghold::Stronghold;
 use p2p::firewall::Rule;
 pub use std::error::Error;
 
 /// Returns a list of all available peers
-
 pub async fn list_peers_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
-    match stronghold.get_swarm_info().await {
-        ResultMessage::Ok(SwarmInfo { connections, .. }) => {
-            let peers = connections.into_iter().map(|(p, _)| p);
-            let info = format!(
-                r#"
-            Peers
-            ===
-            {:?}
-            "#,
-                peers
-            );
-            println!("{}", info)
-        }
-        ResultMessage::Error(e) => return Err(Box::from(format!("{:?}", e))),
-    }
+    let SwarmInfo { connections, .. } = stronghold.get_swarm_info().await?;
+    let peers = connections.into_iter().map(|(p, _)| p);
+    let info = format!(
+        r#"
+    Peers
+    ===
+    {:?}
+    "#,
+        peers
+    );
+    println!("{}", info);
 
     Ok(())
 }
 
 /// Displays the swarm info of this stronghold instance
 pub async fn show_swarm_info_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
-    stronghold.spawn_p2p(Rule::AllowAll, NetworkConfig::default()).await;
+    stronghold.spawn_p2p(Rule::AllowAll, NetworkConfig::default()).await?;
 
-    match stronghold.get_swarm_info().await {
-        ResultMessage::Ok(SwarmInfo {
-            local_peer_id,
-            listeners,
-            connections,
-        }) => {
-            let addrs = listeners.into_iter().map(|l| l.addrs).flatten();
-            let peers = connections.into_iter().map(|(p, _)| p);
-            let info = format!(
-                "-----------\nSwarm Info:\n-----------\nPeer Id : {},\nAddresses: {:?},\nPeers: {:?}\n",
-                local_peer_id, addrs, peers
-            );
+    let SwarmInfo {
+        local_peer_id,
+        listeners,
+        connections,
+    } = stronghold.get_swarm_info().await?;
+    let addrs = listeners.into_iter().map(|l| l.addrs).flatten();
+    let peers = connections.into_iter().map(|(p, _)| p);
+    let info = format!(
+        "-----------\nSwarm Info:\n-----------\nPeer Id : {},\nAddresses: {:?},\nPeers: {:?}\n",
+        local_peer_id, addrs, peers
+    );
 
-            println!("{}", info)
-        }
-        ResultMessage::Error(e) => return Err(Box::from(format!("{:?}", e))),
-    }
-
+    println!("{}", info);
     Ok(())
 }
 

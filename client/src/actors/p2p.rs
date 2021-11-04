@@ -2,24 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::SecureClient,
+    actors::{secure_messages::WriteToVault, GetTarget, Registry},
     enum_from_inner,
     procedures::{CollectedOutput, Procedure},
 };
 use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
-pub use messages::SwarmInfo;
 use messages::*;
+pub use messages::{ShRequest, SwarmInfo};
 use p2p::{
     firewall::{FirewallConfiguration, FirewallRules, Rule},
     ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr, Multiaddr,
-    OutboundFailure, ReceiveRequest, StrongholdP2p, StrongholdP2pBuilder,
+    OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
 };
 use std::{
     convert::{TryFrom, TryInto},
     io,
     time::Duration,
 };
+use thiserror::Error as DeriveError;
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {
@@ -42,7 +43,10 @@ macro_rules! sh_request_dispatch {
             ShRequest::ReadFromStore($inner) => $body
             ShRequest::DeleteFromStore($inner) => $body
             ShRequest::CreateVault($inner) => $body
-            ShRequest::WriteToVault($inner) => $body
+            ShRequest::WriteToRemoteVault($inner) =>  {
+                let $inner: WriteToVault = $inner.into();
+                $body
+            }
             #[cfg(test)]
             ShRequest::ReadFromVault($inner) => $body
             ShRequest::GarbageCollect($inner) => $body
@@ -54,57 +58,44 @@ macro_rules! sh_request_dispatch {
 }
 
 macro_rules! sh_result_mapping {
-    ($enum:ident::$variant:ident => Result<$ok:ty, anyhow::Error>) => {
-        sh_result_mapping!($enum::$variant => Result<$ok, anyhow::Error>,
-            |i| $enum::$variant(i.map_err(|e| e.to_string())),
-            |v| v.map_err(anyhow::Error::msg)
-        );
-    };
     ($enum:ident::$variant:ident => $inner:ty) => {
-        sh_result_mapping!($enum::$variant => $inner,
-            |t| $enum::$variant(t),
-            |t| t
-        );
-    };
-    ($enum:ident::$variant:ident => $inner:ty,
-        |$i:ident| $map_from_inner:expr,
-        |$v:ident| $map_try_from_enum:expr
-    ) => {
         impl From<$inner> for $enum {
-            fn from($i: $inner) -> Self {
-                $map_from_inner
+            fn from(i: $inner) -> Self {
+                $enum::$variant(i)
             }
         }
         impl TryFrom<$enum> for $inner {
             type Error = ();
             fn try_from(t: $enum) -> Result<Self, Self::Error> {
-                if let $enum::$variant($v) = t {
-                    Ok($map_try_from_enum)
+                if let $enum::$variant(v) = t {
+                    Ok(v)
                 } else {
                     Err(())
                 }
             }
         }
-    }
+    };
 }
 
 pub struct NetworkActor {
     network: StrongholdP2p<ShRequest, ShResult>,
     inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
-    client: Addr<SecureClient>,
+    registry: Addr<Registry>,
 }
 
 impl NetworkActor {
     pub async fn new(
-        client: Addr<SecureClient>,
+        registry: Addr<Registry>,
         firewall_rule: Rule<ShRequest>,
         network_config: NetworkConfig,
     ) -> Result<Self, io::Error> {
         let (firewall_tx, _) = mpsc::channel(0);
         let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
         let firewall_config = FirewallConfiguration::new(Some(firewall_rule), Some(Rule::AllowAll));
-        let mut builder =
-            StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None).with_firewall_config(firewall_config);
+        let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None)
+            .with_firewall_config(firewall_config)
+            .with_mdns_support(network_config.enable_mdns)
+            .with_relay_support(network_config.enable_relay);
         if let Some(keypair) = network_config.keypair {
             builder = builder.with_keys(keypair)
         }
@@ -117,11 +108,12 @@ impl NetworkActor {
         if let Some(limit) = network_config.connections_limit {
             builder = builder.with_connections_limit(limit)
         }
+
         let network = builder.build().await?;
         let actor = Self {
             network,
             inbound_request_rx: Some(inbound_request_rx),
-            client,
+            registry,
         };
         Ok(actor)
     }
@@ -142,20 +134,17 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for NetworkActor {
             request, response_tx, ..
         } = item;
         sh_request_dispatch!(request => |inner| {
-            let fut = self.client
-                .send(inner)
+            let fut = self.registry
+                .send(GetTarget)
+                .and_then(|client| async { match client {
+                    Some(client) => client.send(inner).await,
+                    _ => Err(MailboxError::Closed)
+                }})
                 .map_ok(|response| response_tx.send(response.into()))
                 .map(|_| ())
                 .into_actor(self);
             ctx.wait(fut);
         });
-    }
-}
-impl Handler<SwitchClient> for NetworkActor {
-    type Result = ();
-
-    fn handle(&mut self, msg: SwitchClient, _: &mut Self::Context) -> Self::Result {
-        self.client = msg.client;
     }
 }
 
@@ -183,7 +172,7 @@ where
 
 impl_handler!(GetSwarmInfo => SwarmInfo, |network, _msg| {
     let listeners = network.get_listeners().await;
-    let local_peer_id = network.get_peer_id();
+    let local_peer_id = network.peer_id();
     let connections = network.get_connections().await;
     SwarmInfo { local_peer_id, listeners, connections}
 });
@@ -205,7 +194,7 @@ impl_handler!(StopListeningAddr => (), |network, msg| {
     network.stop_listening_addr(msg.address).await
 });
 
-impl_handler!(StopListeningRelay => (), |network, msg| {
+impl_handler!(StopListeningRelay => bool, |network, msg| {
     network.stop_listening_relay(msg.relay).await
 });
 
@@ -249,11 +238,11 @@ impl_handler!(RemovePeerAddr => (), |network, msg| {
     network.add_address(msg.peer, msg.address).await
 });
 
-impl_handler!(AddDialingRelay => Option<Multiaddr>, |network, msg| {
-    network.add_dialing_relay(msg.relay, None).await
+impl_handler!(AddDialingRelay => Result<Option<Multiaddr>, RelayNotSupported>, |network, msg| {
+    network.add_dialing_relay(msg.relay, msg.relay_addr).await
 });
 
-impl_handler!(RemoveDialingRelay => (), |network, msg| {
+impl_handler!(RemoveDialingRelay => bool, |network, msg| {
     network.remove_dialing_relay(msg.relay).await
 });
 
@@ -262,11 +251,16 @@ impl_handler!(RemoveDialingRelay => (), |network, msg| {
 /// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
 /// - No limit for simultaneous connections.
 /// - Request-timeout and Connection-timeout are 10s.
+/// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id to
+///   the local network.
+/// - [`Relay`][`libp2p::relay`] functionality is disabled.
 pub struct NetworkConfig {
     keypair: Option<InitKeypair>,
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
     connections_limit: Option<ConnectionLimits>,
+    enable_mdns: bool,
+    enable_relay: bool,
 }
 
 impl NetworkConfig {
@@ -297,6 +291,20 @@ impl NetworkConfig {
         self.connection_timeout = Some(t);
         self
     }
+
+    /// Enable / Disable [`Mdns`][`libp2p::mdns`] protocol.
+    /// **Note**: Enabling mdns will broadcast our own address and id to the local network.
+    pub fn with_mdns_enabled(mut self, is_enabled: bool) -> Self {
+        self.enable_mdns = is_enabled;
+        self
+    }
+
+    /// Enable / Disable [`Relay`][`libp2p::relay`] functionality.
+    /// This also means that other peers can use us as relay/
+    pub fn with_relay_enabled(mut self, is_enabled: bool) -> Self {
+        self.enable_relay = is_enabled;
+        self
+    }
 }
 
 impl Default for NetworkConfig {
@@ -306,13 +314,16 @@ impl Default for NetworkConfig {
             request_timeout: None,
             connection_timeout: None,
             connections_limit: None,
+            enable_mdns: false,
+            enable_relay: false,
         }
     }
 }
 
 pub mod messages {
+
     use super::*;
-    use crate::{RecordHint, RecordId};
+    use crate::{actors::VaultError, procedures::ProcedureError, Location, RecordHint, RecordId};
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
@@ -322,12 +333,7 @@ pub mod messages {
     };
     #[cfg(test)]
     use crate::actors::secure_testing::ReadFromVault;
-
-    #[derive(Message)]
-    #[rtype(result = "()")]
-    pub struct SwitchClient {
-        pub client: Addr<SecureClient>,
-    }
+    use engine::vault::VaultId;
 
     #[derive(Message)]
     #[rtype(result = "Result<Rq::Result, OutboundFailure>")]
@@ -373,7 +379,7 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
+    #[rtype(result = "bool")]
     pub struct StopListeningRelay {
         pub relay: PeerId,
     }
@@ -443,13 +449,14 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "Option<Multiaddr>")]
+    #[rtype(result = "Result<Option<Multiaddr>, RelayNotSupported>")]
     pub struct AddDialingRelay {
         pub relay: PeerId,
+        pub relay_addr: Option<Multiaddr>,
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
+    #[rtype(result = "bool")]
     pub struct RemoveDialingRelay {
         pub relay: PeerId,
     }
@@ -458,8 +465,55 @@ pub mod messages {
     #[rtype(result = "()")]
     pub struct Shutdown;
 
+    #[derive(Debug, Message, Clone, Serialize, Deserialize)]
+    #[rtype(result = "Result<(), RemoteVaultError>")]
+    pub struct WriteToRemoteVault {
+        pub location: Location,
+        pub payload: Vec<u8>,
+        pub hint: RecordHint,
+    }
+
+    impl From<WriteToRemoteVault> for WriteToVault {
+        fn from(t: WriteToRemoteVault) -> Self {
+            let WriteToRemoteVault {
+                location,
+                payload,
+                hint,
+            } = t;
+            WriteToVault {
+                location,
+                payload,
+                hint,
+            }
+        }
+    }
+
+    impl From<WriteToVault> for WriteToRemoteVault {
+        fn from(t: WriteToVault) -> Self {
+            let WriteToVault {
+                location,
+                payload,
+                hint,
+            } = t;
+            WriteToRemoteVault {
+                location,
+                payload,
+                hint,
+            }
+        }
+    }
+
+    #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
+    pub enum RemoteVaultError {
+        #[error("vault `{0:?}` not found")]
+        VaultNotFound(VaultId),
+
+        #[error("internal record error: {0}")]
+        Record(String),
+    }
+
     // Wrapper for Requests to a remote Secure Client
-    #[derive(Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShRequest {
         CheckVault(CheckVault),
         CheckRecord(CheckRecord),
@@ -467,7 +521,7 @@ pub mod messages {
         CreateVault(CreateVault),
         #[cfg(test)]
         ReadFromVault(ReadFromVault),
-        WriteToVault(WriteToVault),
+        WriteToRemoteVault(WriteToRemoteVault),
         ReadFromStore(ReadFromStore),
         WriteToStore(WriteToStore),
         DeleteFromStore(DeleteFromStore),
@@ -481,7 +535,7 @@ pub mod messages {
     enum_from_inner!(ShRequest from CreateVault);
     #[cfg(test)]
     enum_from_inner!(ShRequest from ReadFromVault);
-    enum_from_inner!(ShRequest from WriteToVault);
+    enum_from_inner!(ShRequest from WriteToRemoteVault);
     enum_from_inner!(ShRequest from ReadFromStore);
     enum_from_inner!(ShRequest from WriteToStore);
     enum_from_inner!(ShRequest from DeleteFromStore);
@@ -489,20 +543,46 @@ pub mod messages {
     enum_from_inner!(ShRequest from ClearCache);
     enum_from_inner!(ShRequest from Procedure);
 
-    #[derive(Clone, Serialize, Deserialize)]
+    impl From<VaultError> for RemoteVaultError {
+        fn from(e: VaultError) -> Self {
+            match e {
+                VaultError::Record(_) => RemoteVaultError::Record(e.to_string()),
+                VaultError::VaultNotFound(e) => RemoteVaultError::VaultNotFound(e),
+                VaultError::Procedure(_) => unreachable!(),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {
         Empty(()),
+        Data(Option<Vec<u8>>),
         Bool(bool),
-        Status(Result<(), String>),
-        Vector(Result<Vec<u8>, String>),
-        List(Result<Vec<(RecordId, RecordHint)>, String>),
-        Proc(Result<CollectedOutput, String>),
+        WriteRemoteVault(Result<(), RemoteVaultError>),
+        ListIds(Vec<(RecordId, RecordHint)>),
+        Proc(Result<CollectedOutput, ProcedureError>),
     }
 
     sh_result_mapping!(ShResult::Empty => ());
     sh_result_mapping!(ShResult::Bool => bool);
-    sh_result_mapping!(ShResult::Status => Result<(), anyhow::Error>);
-    sh_result_mapping!(ShResult::Vector => Result<Vec<u8>, anyhow::Error>);
-    sh_result_mapping!(ShResult::List => Result<Vec<(RecordId, RecordHint)>, anyhow::Error>);
-    sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, anyhow::Error>);
+    sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
+    sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
+    sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
+
+    impl From<Result<(), VaultError>> for ShResult {
+        fn from(inner: Result<(), VaultError>) -> Self {
+            ShResult::WriteRemoteVault(inner.map_err(RemoteVaultError::from))
+        }
+    }
+
+    impl TryFrom<ShResult> for Result<(), RemoteVaultError> {
+        type Error = ();
+        fn try_from(t: ShResult) -> Result<Self, Self::Error> {
+            if let ShResult::WriteRemoteVault(result) = t {
+                Ok(result)
+            } else {
+                Err(())
+            }
+        }
+    }
 }

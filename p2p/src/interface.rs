@@ -5,39 +5,38 @@ mod errors;
 mod msg_channel;
 mod swarm_task;
 mod types;
-use self::swarm_task::{SwarmOperation, SwarmTask};
+
+pub use errors::*;
+pub use msg_channel::{ChannelSinkConfig, EventChannel};
+use swarm_task::{SwarmOperation, SwarmTask};
+pub use types::*;
+
 use crate::{
     behaviour::{BehaviourEvent, EstablishedConnections, NetBehaviour, NetBehaviourConfig},
     firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection},
-    Keypair,
+    Keypair, RelayNotSupported,
 };
-pub use errors::*;
+
 use futures::{
     channel::{mpsc, oneshot},
     future::poll_fn,
     AsyncRead, AsyncWrite, FutureExt,
 };
-#[cfg(feature = "mdns")]
-use libp2p::mdns::{Mdns, MdnsConfig};
-#[cfg(feature = "relay")]
-use libp2p::relay::{new_transport_and_behaviour, RelayConfig};
 use libp2p::{
     core::{
         connection::{ConnectionLimits, ListenerId},
         transport::Transport,
         upgrade, Executor, Multiaddr, PeerId,
     },
+    mdns::{Mdns, MdnsConfig},
     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
+    relay::{new_transport_and_behaviour, RelayConfig},
     swarm::SwarmBuilder,
     yamux::YamuxConfig,
 };
 #[cfg(feature = "tcp-transport")]
 use libp2p::{dns::TokioDnsConfig, tcp::TokioTcpConfig, websocket::WsConfig};
-pub use msg_channel::{ChannelSinkConfig, EventChannel};
-#[cfg(feature = "tcp-transport")]
-use std::io;
-use std::{borrow::Borrow, time::Duration};
-pub use types::*;
+use std::{borrow::Borrow, io, time::Duration};
 
 #[derive(Clone)]
 /// Interface for the stronghold-p2p library to create a swarm, handle events and perform operations.
@@ -86,7 +85,7 @@ where
     }
 
     /// Get the [`PeerId`] of the local peer.
-    pub fn get_peer_id(&self) -> PeerId {
+    pub fn peer_id(&self) -> PeerId {
         self.local_peer_id
     }
 
@@ -109,7 +108,7 @@ where
     /// In case of a tcp-transport, the address `/ip4/0.0.0.0/tcp/0` can be set if an OS-assigned address should be
     /// used.
     ///
-    /// Note: Depending on the used transport, this may produce multiple listening addresses.
+    /// **Note**: Depending on the used transport, this may produce multiple listening addresses.
     /// This method only returns the first reported listening address for the new listener.
     /// All active listening addresses for each listener can be obtained from [`StrongholdP2p::get_listeners`]
     pub async fn start_listening(&mut self, address: Multiaddr) -> Result<Multiaddr, ListenErr> {
@@ -119,7 +118,6 @@ where
         rx_yield.await.unwrap()
     }
 
-    #[cfg(feature = "relay")]
     /// Start listening via a relay peer on an address following the scheme
     /// `<relay-addr>/<relay-id>/p2p-circuit/<local-id>`. This will establish a keep-alive connection to the relay,
     /// the relay will forward all requests to the local peer.
@@ -162,9 +160,8 @@ where
         rx_yield.await.unwrap()
     }
 
-    #[cfg(feature = "relay")]
     /// Stop listening via the given relay.
-    pub async fn stop_listening_relay(&mut self, relay: PeerId) {
+    pub async fn stop_listening_relay(&mut self, relay: PeerId) -> bool {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::StopListeningRelay { relay, tx_yield };
         self.send_command(command).await;
@@ -277,9 +274,12 @@ where
         rx_yield.await.unwrap()
     }
 
-    #[cfg(feature = "relay")]
     /// Add a relay to the list of relays that may be tried to use if a remote peer can not be reached directly.
-    pub async fn add_dialing_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
+    pub async fn add_dialing_relay(
+        &mut self,
+        peer: PeerId,
+        address: Option<Multiaddr>,
+    ) -> Result<Option<Multiaddr>, RelayNotSupported> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::AddDialingRelay {
             peer,
@@ -290,19 +290,24 @@ where
         rx_yield.await.unwrap()
     }
 
-    #[cfg(feature = "relay")]
     /// Remove a relay from the list of dialing relays.
-    pub async fn remove_dialing_relay(&mut self, peer: PeerId) {
+    // Returns `false` if the peer was not among the known relays.
+    //
+    // **Note**: Known relayed addresses for remote peers using this relay will not be influenced by this.
+    pub async fn remove_dialing_relay(&mut self, peer: PeerId) -> bool {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::RemoveDialingRelay { peer, tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
-    #[cfg(feature = "relay")]
     /// Configure whether it should be attempted to reach the remote via known relays, if it can not be reached via
     /// known addresses.
-    pub async fn set_relay_fallback(&mut self, peer: PeerId, use_relay_fallback: bool) {
+    pub async fn set_relay_fallback(
+        &mut self,
+        peer: PeerId,
+        use_relay_fallback: bool,
+    ) -> Result<(), RelayNotSupported> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::SetRelayFallback {
             peer,
@@ -313,14 +318,18 @@ where
         rx_yield.await.unwrap()
     }
 
-    #[cfg(feature = "relay")]
     /// Dial the target via the specified relay.
     /// The `is_exclusive` parameter specifies whether other known relays should be used if using the set relay is not
     /// successful.
     ///
     /// Returns the relayed address of the local peer (`<relay-addr>/<relay-id>/p2p-circuit/<local-id>),
     /// if an address for the relay is known.
-    pub async fn use_specific_relay(&mut self, target: PeerId, relay: PeerId, is_exclusive: bool) -> Option<Multiaddr> {
+    pub async fn use_specific_relay(
+        &mut self,
+        target: PeerId,
+        relay: PeerId,
+        is_exclusive: bool,
+    ) -> Result<Option<Multiaddr>, RelayNotSupported> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::UseSpecificRelay {
             target,
@@ -396,6 +405,10 @@ pub enum InitKeypair {
 /// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
 /// - No limit for simultaneous connections.
 /// - Request-timeout and Connection-timeout are 10s.
+/// - [`Mdns`][`libp2p::mdns`] protocol is enabled. **Note**: This also broadcasts our own address and id to the local
+///   network.
+/// - [`Relay`][`libp2p::relay`] protocol is supported. *Note:* This also means that other peers can use our peer as
+///   relay.
 ///
 /// `StrongholdP2p` is build either via [`StrongholdP2pBuilder::build`] (requires feature **tcp-transport**) with a
 /// pre-configured transport, or [`StrongholdP2pBuilder::build_with_transport`] with a custom transport.
@@ -421,6 +434,13 @@ where
 
     // Limit of simultaneous connections.
     connections_limit: Option<ConnectionLimits>,
+
+    /// Use Mdns protocol for peer discovery in the local network.
+    ///
+    /// Note: This also broadcasts our own address and id to the local network.
+    support_mdns: bool,
+
+    support_relay: bool,
 }
 
 impl<Rq, Rs, TRq> StrongholdP2pBuilder<Rq, Rs, TRq>
@@ -446,6 +466,8 @@ where
             ident: None,
             behaviour_config: Default::default(),
             connections_limit: None,
+            support_mdns: true,
+            support_relay: true,
         }
     }
 
@@ -455,7 +477,7 @@ where
         let (keypair, id) = match keys {
             InitKeypair::IdKeys(keypair) => {
                 let noise_keypair = NoiseKeypair::<X25519Spec>::new().into_authentic(&keypair).unwrap();
-                let id = keypair.public().into_peer_id();
+                let id = keypair.public().to_peer_id();
                 (noise_keypair, id)
             }
             InitKeypair::Authenticated { peer_id, noise_keypair } => (noise_keypair, peer_id),
@@ -495,6 +517,23 @@ where
         self
     }
 
+    /// Whether the peer should support the [`Mdns`][libp2p::mdns] protocol for peer discovery in a local network.
+    ///
+    /// **Note**: Enabling Mdns broadcasts our own address and id to the local network.
+    pub fn with_mdns_support(mut self, support_mdns_protocol: bool) -> Self {
+        self.support_mdns = support_mdns_protocol;
+        self
+    }
+
+    /// Whether the peer should support the [`Relay`][libp2p::relay] protocol that allows dialing and listening via a
+    /// relay peer.
+    ///
+    /// **Note:** enabling this protocol also means that other peers can use our peer as relay.
+    pub fn with_relay_support(mut self, support_relay_protocol: bool) -> Self {
+        self.support_relay = support_relay_protocol;
+        self
+    }
+
     #[cfg(feature = "tcp-transport")]
     /// [`Self::build_with_transport`] with a [`Transport`] based on TCP/IP that supports dns resolution and websockets.
     /// It uses [`tokio::spawn`] as executor, hence this method has to be called in the context of a tokio.rs runtime.
@@ -504,14 +543,14 @@ where
         let executor = |fut| {
             tokio::spawn(fut);
         };
-        Ok(self.build_with_transport(transport, executor).await)
+        self.build_with_transport(transport, executor).await
     }
 
     /// Create a new [`StrongholdP2p`] instance with an underlying [`Swarm`][libp2p::Swarm] that uses the provided
     /// transport.
     ///
     /// The transport is upgraded with:
-    /// - [Relay protocol][<https://docs.libp2p.io/concepts/circuit-relay/>] (requires *feature = "relay"*)
+    /// - [Relay protocol][<https://docs.libp2p.io/concepts/circuit-relay/>]
     /// - Authentication and encryption with the Noise-Protocol, using the XX-handshake
     /// - Yamux substream multiplexing
     ///
@@ -520,7 +559,11 @@ where
     /// operations on the swarm-task.
     /// Additionally, the executor is used to configure the
     /// [`SwarmBuilder::executor`][libp2p::swarm::SwarmBuilder::executor].
-    pub async fn build_with_transport<Tp, E>(self, transport: Tp, executor: E) -> StrongholdP2p<Rq, Rs, TRq>
+    pub async fn build_with_transport<Tp, E>(
+        self,
+        transport: Tp,
+        executor: E,
+    ) -> Result<StrongholdP2p<Rq, Rs, TRq>, io::Error>
     where
         Tp: Transport + Sized + Clone + Send + Sync + 'static,
         Tp::Output: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -533,31 +576,39 @@ where
         // Use the configured keypair or create a new one.
         let (noise_keypair, peer_id) = self.ident.unwrap_or_else(|| {
             let keypair = Keypair::generate_ed25519();
+            // Can never fail for `identity::Keypair::Ed25519` and `X25519Spec` protocol.
             let noise_keypair = NoiseKeypair::<X25519Spec>::new().into_authentic(&keypair).unwrap();
-            let peer_id = keypair.public().into_peer_id();
+            let peer_id = keypair.public().to_peer_id();
             (noise_keypair, peer_id)
         });
-        #[cfg(feature = "relay")]
-        let (transport, relay_behaviour) = new_transport_and_behaviour(RelayConfig::default(), transport);
-        let transport = transport
-            .upgrade(upgrade::Version::V1)
-            .authenticate(NoiseConfig::xx(noise_keypair).into_authenticated())
-            .multiplex(YamuxConfig::default())
-            .boxed();
-        #[cfg(feature = "mdns")]
-        let mdns = Mdns::new(MdnsConfig::default())
-            .await
-            .expect("Failed to create mdns behaviour.");
-        let behaviour = NetBehaviour::new(
-            self.behaviour_config,
-            #[cfg(feature = "mdns")]
-            mdns,
-            #[cfg(feature = "relay")]
-            relay_behaviour,
-            self.firewall_channel,
-        );
+        let relay;
+        let boxed_transport;
+        if self.support_relay {
+            let (relay_transport, relay_behaviour) = new_transport_and_behaviour(RelayConfig::default(), transport);
+            boxed_transport = relay_transport
+                .upgrade(upgrade::Version::V1)
+                .authenticate(NoiseConfig::xx(noise_keypair).into_authenticated())
+                .multiplex(YamuxConfig::default())
+                .boxed();
+            relay = Some(relay_behaviour)
+        } else {
+            boxed_transport = transport
+                .upgrade(upgrade::Version::V1)
+                .authenticate(NoiseConfig::xx(noise_keypair).into_authenticated())
+                .multiplex(YamuxConfig::default())
+                .boxed();
+            relay = None;
+        }
+        let mdns;
+        if self.support_mdns {
+            mdns = Some(Mdns::new(MdnsConfig::default()).await?);
+        } else {
+            mdns = None
+        };
+        let behaviour = NetBehaviour::new(self.behaviour_config, mdns, relay, self.firewall_channel);
 
-        let mut swarm_builder = SwarmBuilder::new(transport, behaviour, peer_id).executor(Box::new(executor.clone()));
+        let mut swarm_builder =
+            SwarmBuilder::new(boxed_transport, behaviour, peer_id).executor(Box::new(executor.clone()));
         if let Some(limit) = self.connections_limit {
             swarm_builder = swarm_builder.connection_limits(limit);
         }
@@ -571,9 +622,9 @@ where
         let swarm_task = SwarmTask::new(swarm, command_rx, self.requests_channel, self.events_channel);
         executor.exec(swarm_task.run().boxed());
 
-        StrongholdP2p {
+        Ok(StrongholdP2p {
             local_peer_id,
             command_tx,
-        }
+        })
     }
 }

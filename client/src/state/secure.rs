@@ -5,8 +5,8 @@
 
 use crate::{
     actors::VaultError,
-    internals, line_error,
-    procedures::{Products, Runner},
+    internals,
+    procedures::{FatalProcedureError, Products, Runner},
     state::key_store::KeyStore,
     utils::LoadFromPath,
     Location,
@@ -86,7 +86,7 @@ impl SecureClient {
                 record_path,
             } => {
                 let vid = Self::derive_vault_id(vault_path);
-                let rid = RecordId::load_from_path(vid.as_ref(), record_path).expect(line_error!(""));
+                let rid = RecordId::load_from_path(vid.as_ref(), record_path);
                 (vid, rid)
             }
             Location::Counter { vault_path, counter } => {
@@ -100,7 +100,7 @@ impl SecureClient {
 
     /// Gets the [`VaultId`] from a specified path.
     pub fn derive_vault_id<P: AsRef<Vec<u8>>>(path: P) -> VaultId {
-        VaultId::load_from_path(path.as_ref(), path.as_ref()).expect(line_error!(""))
+        VaultId::load_from_path(path.as_ref(), path.as_ref())
     }
 
     /// Derives the counter [`RecordId`] from the given vault path and the counter value.
@@ -113,7 +113,7 @@ impl SecureClient {
             format!("{:?}{}", vault_path, ctr)
         };
 
-        RecordId::load_from_path(path.as_bytes(), path.as_bytes()).expect(line_error!())
+        RecordId::load_from_path(path.as_bytes(), path.as_bytes())
     }
 
     /// Gets the client string.
@@ -139,12 +139,15 @@ impl SecureClient {
 }
 
 impl Runner for SecureClient {
-    fn get_guard<F, T>(&mut self, location: &Location, f: F) -> Result<T, VaultError>
+    fn get_guard<F, T>(&mut self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<T, engine::Error>,
+        F: FnOnce(GuardedVec<u8>) -> Result<T, FatalProcedureError>,
     {
         let (vault_id, record_id) = Self::resolve_location(location);
-        let key = self.keystore.take_key(vault_id)?;
+        let key = self
+            .keystore
+            .take_key(vault_id)
+            .ok_or(VaultError::VaultNotFound(vault_id))?;
 
         let mut ret = None;
         let execute_procedure = |guard: GuardedVec<u8>| {
@@ -156,7 +159,7 @@ impl Runner for SecureClient {
 
         match res {
             Ok(()) => Ok(ret.unwrap()),
-            Err(e) => Err(VaultError::EngineError(e)),
+            Err(e) => Err(e),
         }
     }
 
@@ -166,24 +169,18 @@ impl Runner for SecureClient {
         location1: &Location,
         hint: RecordHint,
         f: F,
-    ) -> Result<T, VaultError>
+    ) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, engine::Error>,
+        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, FatalProcedureError>,
     {
         let (vid0, rid0) = Self::resolve_location(location0);
         let (vid1, rid1) = Self::resolve_location(location1);
 
-        let key0 = self.keystore.take_key(vid0)?;
+        let key0 = self.keystore.take_key(vid0).ok_or(VaultError::VaultNotFound(vid0))?;
 
         if !self.keystore.vault_exists(vid1) {
             let key1 = self.keystore.create_key(vid1);
-            match self.db.init_vault(key1, vid1) {
-                Ok(_) => {}
-                Err(e) => {
-                    self.keystore.insert_key(vid0, key0);
-                    return Err(VaultError::EngineError(e));
-                }
-            }
+            self.db.init_vault(key1, vid1);
         }
         let key1 = self.keystore.take_key(vid1).unwrap();
 
@@ -202,52 +199,50 @@ impl Runner for SecureClient {
 
         match res {
             Ok(()) => Ok(ret.unwrap()),
-            Err(e) => Err(VaultError::EngineError(e)),
+            Err(e) => Err(e),
         }
     }
 
     fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), VaultError> {
         let (vault_id, record_id) = Self::resolve_location(location);
-
         if !self.keystore.vault_exists(vault_id) {
             let key = self.keystore.create_key(vault_id);
-            self.db.init_vault(key, vault_id).map_err(VaultError::EngineError)?;
+            self.db.init_vault(key, vault_id);
         }
-        let key = self.keystore.take_key(vault_id)?;
-
+        let key = self
+            .keystore
+            .take_key(vault_id)
+            .ok_or(VaultError::VaultNotFound(vault_id))?;
         let res = self.db.write(&key, vault_id, record_id, &value, hint);
-
         self.keystore.insert_key(vault_id, key);
-
         match res {
             Ok(()) => Ok(()),
-            Err(e) => Err(VaultError::EngineError(e)),
+            Err(e) => Err(VaultError::Record(e)),
         }
     }
 
     fn revoke_data(&mut self, location: &Location) -> Result<(), VaultError> {
         let (vault_id, record_id) = Self::resolve_location(location);
-        let key = self.keystore.take_key(vault_id)?;
-
+        let key = self
+            .keystore
+            .take_key(vault_id)
+            .ok_or(VaultError::VaultNotFound(vault_id))?;
         let res = self.db.revoke_record(&key, vault_id, record_id);
         self.keystore.insert_key(vault_id, key);
-
         match res {
             Ok(()) => Ok(()),
-            Err(e) => Err(VaultError::EngineError(e)),
+            Err(e) => Err(VaultError::Record(e)),
         }
     }
 
-    fn garbage_collect(&mut self, vault_id: VaultId) -> Result<(), VaultError> {
-        let key = self.keystore.take_key(vault_id)?;
-
-        let res = self.db.garbage_collect_vault(&key, vault_id);
+    fn garbage_collect(&mut self, vault_id: VaultId) -> bool {
+        let key = match self.keystore.take_key(vault_id) {
+            Some(key) => key,
+            None => return false,
+        };
+        self.db.garbage_collect_vault(&key, vault_id);
         self.keystore.insert_key(vault_id, key);
-
-        match res {
-            Ok(()) => Ok(()),
-            Err(e) => Err(VaultError::EngineError(e)),
-        }
+        true
     }
 }
 
@@ -259,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_rid_internals() {
-        let clientid = ClientId::random::<Provider>().expect(line_error!());
+        let clientid = ClientId::random::<Provider>().unwrap();
 
         let vault_path = b"some_vault".to_vec();
 

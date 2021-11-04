@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod utils;
+use std::convert::Infallible;
+
 use utils::provider::Provider;
 
 use engine::vault::{DbView, Key, RecordHint, RecordId, VaultId};
@@ -10,18 +12,18 @@ use engine::vault::{DbView, Key, RecordHint, RecordId, VaultId};
 fn test_vaults() {
     let mut view: DbView<Provider> = DbView::new();
 
-    let key0 = Key::random().unwrap();
+    let key0 = Key::random();
     let vid0 = VaultId::random::<Provider>().unwrap();
     let rid0 = RecordId::random::<Provider>().unwrap();
     let rid01 = RecordId::random::<Provider>().unwrap();
 
-    let key1 = Key::random().unwrap();
+    let key1 = Key::random();
     let vid1 = VaultId::random::<Provider>().unwrap();
     let rid1 = RecordId::random::<Provider>().unwrap();
 
     // init two vaults.
-    view.init_vault(&key0, vid0).unwrap();
-    view.init_vault(&key1, vid1).unwrap();
+    view.init_vault(&key0, vid0);
+    view.init_vault(&key1, vid1);
     // write to vault0 and record0
     view.write(&key0, vid0, rid0, b"test0", RecordHint::new(b"hint").unwrap())
         .unwrap();
@@ -37,7 +39,7 @@ fn test_vaults() {
     assert_eq!(list0.len(), 2);
 
     // read from vault0 and record0
-    view.get_guard(&key0, vid0, rid0, |g| {
+    view.get_guard::<Infallible, _>(&key0, vid0, rid0, |g| {
         assert_eq!(b"test0", &(*g.borrow()));
 
         Ok(())
@@ -45,7 +47,7 @@ fn test_vaults() {
     .unwrap();
 
     // read from vault0 and record01
-    view.get_guard(&key0, vid0, rid01, |g| {
+    view.get_guard::<Infallible, _>(&key0, vid0, rid01, |g| {
         assert_eq!(b"test01", &(*g.borrow()));
 
         Ok(())
@@ -53,7 +55,7 @@ fn test_vaults() {
     .unwrap();
 
     // read from vault1 and record1
-    view.get_guard(&key1, vid1, rid1, |g| {
+    view.get_guard::<Infallible, _>(&key1, vid1, rid1, |g| {
         assert_eq!(b"test1", &(*g.borrow()));
 
         Ok(())
@@ -69,7 +71,7 @@ fn test_vaults() {
     assert_eq!(list0.len(), 1);
 
     // garbage collect vid0.
-    view.garbage_collect_vault(&key0, vid0).unwrap();
+    view.garbage_collect_vault(&key0, vid0);
 
     let list0 = view.list_hints_and_ids(&key0, vid0);
 
@@ -84,18 +86,18 @@ fn test_vaults() {
     assert!(!b);
 
     // read vid0 and rid0.
-    view.get_guard(&key0, vid0, rid0, |g| {
+    view.get_guard::<Infallible, _>(&key0, vid0, rid0, |g| {
         assert_eq!(b"test0", &(*g.borrow()));
 
         Ok(())
     })
     .unwrap();
 
-    let key0 = Key::random().unwrap();
+    let key0 = Key::random();
     let vid0 = VaultId::random::<Provider>().unwrap();
     let rid0 = RecordId::random::<Provider>().unwrap();
 
-    let key1 = Key::random().unwrap();
+    let key1 = Key::random();
     let vid1 = VaultId::random::<Provider>().unwrap();
     let rid1 = RecordId::random::<Provider>().unwrap();
 
@@ -104,7 +106,7 @@ fn test_vaults() {
         .unwrap();
 
     // execute a procedure and put the result into a new record
-    view.exec_proc(
+    view.exec_proc::<Infallible, _>(
         &key0,
         vid0,
         rid0,
@@ -125,7 +127,7 @@ fn test_vaults() {
     .unwrap();
 
     // read vid0 and rid0.
-    view.get_guard(&key0, vid0, rid0, |g| {
+    view.get_guard::<Infallible, _>(&key0, vid0, rid0, |g| {
         assert_eq!(b"test", &(*g.borrow()));
 
         Ok(())
@@ -133,7 +135,7 @@ fn test_vaults() {
     .unwrap();
 
     // read vid1 and rid1.
-    view.get_guard(&key1, vid1, rid1, |g| {
+    view.get_guard::<Infallible, _>(&key1, vid1, rid1, |g| {
         assert_eq!(b"testtest", &(*g.borrow()));
 
         Ok(())

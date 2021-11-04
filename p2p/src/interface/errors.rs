@@ -18,86 +18,87 @@ use libp2p::{
     swarm::DialError,
     Multiaddr, TransportError,
 };
-use std::{fmt, io};
+use std::{convert::TryFrom, io};
+use thiserror::Error;
 
 /// Error on dialing a peer and establishing a connection.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum DialErr {
     /// The peer is currently banned.
+    #[error("Peer is banned.")]
     Banned,
     /// The configured limit for simultaneous outgoing connections
     /// has been reached.
+    #[error("Connection limit: `{limit}`/`{current}`.")]
     ConnectionLimit { limit: u32, current: u32 },
-    /// The address given for dialing is invalid.
-    InvalidAddress(Multiaddr),
-    /// No known address for the peer could be reached.
-    UnreachableAddrs,
+    /// The peer being dialed is the local peer and thus the dial was aborted.
+    #[error("Tried to dial local peer id.")]
+    LocalPeerId,
     /// No direct or relayed addresses for the peer are known.
+    #[error("No addresses known for peer.")]
     NoAddresses,
+    /// Pending connection attempt has been aborted.
+    #[error(" Pending connection attempt has been aborted.")]
+    Aborted,
+    /// The peer identity obtained on the connection did not
+    /// match the one that was expected or is otherwise invalid.
+    #[error("Invalid peer ID.")]
+    InvalidPeerId,
+    /// An I/O error occurred on the connection.
+    #[error("An I/O error occurred on the connection: {0}.")]
+    ConnectionIo(io::Error),
+    /// An error occurred while negotiating the transport protocol(s) on a connection.
+    #[error("An error occurred while negotiating the transport protocol(s) on a connection: `{0:?}`.")]
+    Transport(Vec<(Multiaddr, TransportError<io::Error>)>),
     /// The communication system was shut down before the dialing attempt resolved.
+    #[error("The network task was shut down.")]
     Shutdown,
 }
 
-impl From<DialError> for DialErr {
-    fn from(err: DialError) -> Self {
-        match err {
+impl TryFrom<DialError> for DialErr {
+    type Error = ();
+    fn try_from(err: DialError) -> Result<Self, Self::Error> {
+        let e = match err {
             DialError::Banned => DialErr::Banned,
             DialError::ConnectionLimit(ConnectionLimit { limit, current }) => {
                 DialErr::ConnectionLimit { limit, current }
             }
-            DialError::InvalidAddress(addr) => DialErr::InvalidAddress(addr),
+            DialError::LocalPeerId => DialErr::LocalPeerId,
             DialError::NoAddresses => DialErr::NoAddresses,
-        }
+            DialError::DialPeerConditionFalse(_) => return Err(()),
+            DialError::Aborted => DialErr::Aborted,
+            DialError::InvalidPeerId => DialErr::InvalidPeerId,
+            DialError::ConnectionIo(e) => DialErr::ConnectionIo(e),
+            DialError::Transport(addrs) => DialErr::Transport(addrs),
+        };
+        Ok(e)
     }
 }
-
-impl fmt::Display for DialErr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DialErr::ConnectionLimit { limit, current } => {
-                write!(f, "Dial error: Connection limit: {}/{}.", current, limit)
-            }
-            DialErr::NoAddresses => write!(f, "Dial error: no addresses for peer."),
-            DialErr::InvalidAddress(a) => write!(f, "Dial error: invalid address: {}", a),
-            DialErr::UnreachableAddrs => write!(f, "Dial error: no known address could be reached"),
-            DialErr::Banned => write!(f, "Dial error: peer is banned."),
-            DialErr::Shutdown => write!(f, "Dial error: the network task was shut down."),
-        }
-    }
-}
-
-impl std::error::Error for DialErr {}
 
 /// Error on establishing a connection.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum ConnectionErr {
     /// An I/O error occurred on the connection.
+    #[error("I/O error: {0}")]
     Io(io::Error),
     /// The peer identity obtained on the connection did not
     /// match the one that was expected or is otherwise invalid.
+    #[error("Invalid peer ID.")]
     InvalidPeerId,
     /// An error occurred while negotiating the transport protocol(s).
+    #[error("Transport error: {0}")]
     Transport(TransportErr),
     /// The connection was dropped because the connection limit
     /// for a peer has been reached.
+    #[error("Connection limit: `{limit}`/`{current}`.")]
     ConnectionLimit { limit: u32, current: u32 },
+    /// Pending connection attempt has been aborted.
+    #[error("Pending connection attempt has been aborted.")]
+    Aborted,
 }
 
-impl fmt::Display for ConnectionErr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ConnectionErr::Io(err) => write!(f, "Connection error: I/O error: {}", err),
-            ConnectionErr::InvalidPeerId => write!(f, "Connection error: Invalid peer ID."),
-            ConnectionErr::ConnectionLimit { current, limit } => {
-                write!(f, "Connection error: Connection limit: {}/{}.", current, limit)
-            }
-            ConnectionErr::Transport(e) => write!(f, "Connection error: Transport error: {}", e),
-        }
-    }
-}
-
-impl From<PendingConnectionError<io::Error>> for ConnectionErr {
-    fn from(value: PendingConnectionError<io::Error>) -> Self {
+impl From<PendingConnectionError<TransportError<io::Error>>> for ConnectionErr {
+    fn from(value: PendingConnectionError<TransportError<io::Error>>) -> Self {
         match value {
             PendingConnectionError::Transport(TransportError::Other(e)) | PendingConnectionError::IO(e) => {
                 ConnectionErr::Io(e)
@@ -107,28 +108,20 @@ impl From<PendingConnectionError<io::Error>> for ConnectionErr {
                 ConnectionErr::ConnectionLimit { limit, current }
             }
             PendingConnectionError::Transport(err) => ConnectionErr::Transport(err.into()),
+            PendingConnectionError::Aborted => ConnectionErr::Aborted,
         }
     }
 }
-
-impl std::error::Error for ConnectionErr {}
 
 /// Error on the [Transport][libp2p::Transport].
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum TransportErr {
     /// The address is not supported.
+    #[error("Multiaddress not supported: {0}")]
     MultiaddrNotSupported(Multiaddr),
     /// An I/O Error occurred.
+    #[error("I/O error: {0}")]
     Io(io::Error),
-}
-
-impl fmt::Display for TransportErr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            TransportErr::MultiaddrNotSupported(a) => write!(f, "Transport error: Multiaddress not supported: {}", a),
-            TransportErr::Io(err) => write!(f, "Transport error: I/O error: {}", err),
-        }
-    }
 }
 
 impl From<TransportError<io::Error>> for TransportErr {
@@ -140,14 +133,14 @@ impl From<TransportError<io::Error>> for TransportErr {
     }
 }
 
-impl std::error::Error for TransportErr {}
-
 /// Error on listening on an address.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum ListenErr {
     /// Listening on the address failed on the transport layer.
+    #[error("Transport error: {0}")]
     Transport(TransportErr),
     /// The communication system was shut down before the listening attempt resolved.
+    #[error("The network task was shut down.")]
     Shutdown,
 }
 
@@ -157,54 +150,29 @@ impl From<TransportError<io::Error>> for ListenErr {
     }
 }
 
-impl fmt::Display for ListenErr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ListenErr::Transport(e) => write!(f, "Listen error: Transport Error: {}", e),
-            ListenErr::Shutdown => write!(f, "Listen error: the network task was shut down."),
-        }
-    }
-}
-
-impl std::error::Error for ListenErr {}
-
 /// Error on listening on a relayed address.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum ListenRelayErr {
+    /// The relay protocol is not supported.
+    #[error("Relay Protocol not enabled.")]
+    ProtocolNotSupported,
     /// Establishing a connection to the relay failed.
-    DialRelay(DialErr),
-    /// Listening on the address failed on the transport layer.
-    Transport(TransportErr),
-    /// The communication system was shut down before the listening attempt resolved.
-    Shutdown,
+    #[error("Dial Relay Error: {0}")]
+    DialRelay(#[from] DialErr),
+    /// Error on listening on an address.
+    #[error("Listening Error: {0}")]
+    Listen(ListenErr),
 }
 
-impl From<DialError> for ListenRelayErr {
-    fn from(err: DialError) -> Self {
-        ListenRelayErr::DialRelay(err.into())
-    }
-}
-
-impl From<DialErr> for ListenRelayErr {
-    fn from(err: DialErr) -> Self {
-        ListenRelayErr::DialRelay(err)
+impl TryFrom<DialError> for ListenRelayErr {
+    type Error = <DialErr as TryFrom<DialError>>::Error;
+    fn try_from(err: DialError) -> Result<Self, Self::Error> {
+        DialErr::try_from(err).map(ListenRelayErr::DialRelay)
     }
 }
 
 impl From<TransportError<io::Error>> for ListenRelayErr {
     fn from(err: TransportError<io::Error>) -> Self {
-        ListenRelayErr::Transport(err.into())
+        ListenRelayErr::Listen(err.into())
     }
 }
-
-impl fmt::Display for ListenRelayErr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ListenRelayErr::DialRelay(e) => write!(f, "Listen on Relay error: Dial Relay Error: {}", e),
-            ListenRelayErr::Transport(e) => write!(f, "Listen on Relay error: Listening Error: {}", e),
-            ListenRelayErr::Shutdown => write!(f, "Listen on Relay error: the network task was shut down."),
-        }
-    }
-}
-
-impl std::error::Error for ListenRelayErr {}

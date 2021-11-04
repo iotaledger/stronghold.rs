@@ -3,50 +3,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// A type alias for the empty `ResultMessage<()>` type.
-pub type StatusMessage = ResultMessage<()>;
-
-/// Return value used for Actor Messages.  Can specify an `Error` or an `Ok` result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ResultMessage<T> {
-    Ok(T),
-    Error(String),
-}
-
-impl ResultMessage<()> {
-    pub const OK: Self = ResultMessage::Ok(());
-}
-
-impl<T> ResultMessage<T> {
-    /// Returns true, if the [`ResultMessage`] contains an `Ok` value
-    pub fn is_ok(&self) -> bool {
-        matches!(self, ResultMessage::Ok(_))
-    }
-
-    /// Returns true, if the [`ResultMessage`] contains an `Error`
-    pub fn is_err(&self) -> bool {
-        !self.is_ok()
-    }
-}
-
-impl<T> From<Result<T, String>> for ResultMessage<T> {
-    fn from(result: Result<T, String>) -> Self {
-        match result {
-            Ok(t) => ResultMessage::Ok(t),
-            Err(s) => ResultMessage::Error(s),
-        }
-    }
-}
-
-impl<T> From<Result<T, anyhow::Error>> for ResultMessage<T> {
-    fn from(result: Result<T, anyhow::Error>) -> Self {
-        match result {
-            Ok(t) => ResultMessage::Ok(t),
-            Err(e) => ResultMessage::Error(format!("{:?}", e)),
-        }
-    }
-}
-
 /// A `Location` type used to specify where in the `Stronghold` a piece of data should be stored. A generic location
 /// specifies a non-versioned location while a counter location specifies a versioned location. The Counter location can
 /// be used to get the head of the version chain by passing in `None` as the counter index. Otherwise, counter records

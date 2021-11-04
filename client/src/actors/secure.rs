@@ -8,63 +8,26 @@
 
 #![allow(clippy::type_complexity)]
 
+use crate::procedures::Runner;
 pub use crate::{
-    actors::{GetSnapshot, Registry},
     internals::Provider,
+    procedures::{CollectedOutput, Procedure, ProcedureError},
     state::{key_store::KeyStore, secure::SecureClient, snapshot::Snapshot},
-    utils::StatusMessage,
-    ResultMessage,
 };
-use crate::{
-    internals,
-    procedures::{CollectedOutput, Procedure, Runner},
-};
-use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
+use actix::{Actor, ActorContext, Context, Handler, Message, MessageResult, Supervised};
 
 use engine::{
     store::Cache,
-    vault::{ClientId, DbView, Key, RecordHint, RecordId, VaultId},
+    vault::{BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultError as EngineVaultError, VaultId},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::Infallible};
 
 /// Store typedef on `engine::store::Cache`
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
+pub type VaultError<E = Infallible> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
+
 use stronghold_utils::GuardDebug;
-use thiserror::Error as DeriveError;
-
-#[derive(DeriveError, Debug)]
-pub enum VaultError {
-    #[error("Vault does not exist")]
-    NotExisting,
-
-    #[error("Failed to revoke record, vault does not exist")]
-    RevocationError,
-
-    #[error("Failed to collect gargabe, vault does not exist")]
-    GarbageCollectError,
-
-    #[error("Failed to get list, vault does not exist")]
-    ListError,
-
-    #[error("Failed to access Vault")]
-    AccessError,
-
-    #[error("Engine Error {0}")]
-    EngineError(engine::Error),
-}
-
-#[derive(DeriveError, Debug)]
-pub enum StoreError {
-    #[error("Unable to read from store")]
-    NotExisting,
-}
-
-#[derive(DeriveError, Debug)]
-pub enum SnapshotError {
-    #[error("No snapshot present for client id ({0})")]
-    NoSnapshotPresent(String),
-}
 
 /// Message types for [`SecureClientActor`]
 pub mod messages {
@@ -113,7 +76,7 @@ pub mod messages {
     }
 
     impl Message for WriteToVault {
-        type Result = Result<(), anyhow::Error>;
+        type Result = Result<(), VaultError>;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -122,7 +85,7 @@ pub mod messages {
     }
 
     impl Message for RevokeData {
-        type Result = Result<(), anyhow::Error>;
+        type Result = Result<(), VaultError>;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -131,7 +94,7 @@ pub mod messages {
     }
 
     impl Message for GarbageCollect {
-        type Result = Result<(), anyhow::Error>;
+        type Result = bool;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -140,7 +103,7 @@ pub mod messages {
     }
 
     impl Message for ListIds {
-        type Result = Result<Vec<(RecordId, RecordHint)>, anyhow::Error>;
+        type Result = Vec<(RecordId, RecordHint)>;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -156,7 +119,7 @@ pub mod messages {
     pub struct ClearCache;
 
     impl Message for ClearCache {
-        type Result = Result<(), anyhow::Error>;
+        type Result = ();
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -170,44 +133,41 @@ pub mod messages {
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct WriteToStore {
-        pub location: Location,
+        pub key: Vec<u8>,
         pub payload: Vec<u8>,
         pub lifetime: Option<Duration>,
     }
 
     impl Message for WriteToStore {
-        type Result = Result<(), anyhow::Error>;
+        type Result = Option<Vec<u8>>;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct ReadFromStore {
-        pub location: Location,
+        pub key: Vec<u8>,
     }
 
     impl Message for ReadFromStore {
-        type Result = Result<Vec<u8>, anyhow::Error>;
+        type Result = Option<Vec<u8>>;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct DeleteFromStore {
-        pub location: Location,
+        pub key: Vec<u8>,
     }
 
     impl Message for DeleteFromStore {
-        type Result = Result<(), anyhow::Error>;
+        type Result = ();
     }
 
     pub struct GetData {}
 
     impl Message for GetData {
-        type Result = Result<
-            Box<(
-                HashMap<VaultId, Key<internals::Provider>>,
-                DbView<internals::Provider>,
-                Store,
-            )>,
-            anyhow::Error,
-        >;
+        type Result = Box<(
+            HashMap<VaultId, Key<internals::Provider>>,
+            DbView<internals::Provider>,
+            Store,
+        )>;
     }
 }
 
@@ -235,6 +195,7 @@ pub mod testing {
 
     use super::*;
     use crate::Location;
+    use engine::vault::{RecordError, VaultError};
     use serde::{Deserialize, Serialize};
 
     /// INSECURE MESSAGE
@@ -247,16 +208,16 @@ pub mod testing {
     }
 
     impl Message for ReadFromVault {
-        type Result = Result<Vec<u8>, anyhow::Error>;
+        type Result = Option<Vec<u8>>;
     }
 
-    impl_handler!(ReadFromVault, Result<Vec<u8>, anyhow::Error>, (self, msg, _ctx), {
+    impl_handler!(ReadFromVault, Option<Vec<u8>>, (self, msg, _ctx), {
         let (vid, rid) = Self::resolve_location(msg.location);
 
         let key = self.keystore.take_key(vid)?;
 
         let mut data = Vec::new();
-        let res = self.db.get_guard(&key, vid, rid, |guarded_data| {
+        let res = self.db.get_guard::<(), _>(&key, vid, rid, |guarded_data| {
             let guarded_data = guarded_data.borrow();
             data.extend_from_slice(&*guarded_data);
             Ok(())
@@ -264,8 +225,10 @@ pub mod testing {
         self.keystore.insert_key(vid, key);
 
         match res {
-            Ok(_) => Ok(data),
-            Err(e) => Err(anyhow::anyhow!(e)),
+            Ok(()) => Some(data),
+            Err(VaultError::VaultNotFound(_)) | Err(VaultError::Record(RecordError::RecordNotFound(_))) => None,
+            Err(VaultError::Record(e)) => panic!("Internal Error: {}", e),
+            Err(VaultError::Procedure(_)) => unreachable!(),
         }
     });
 }
@@ -280,65 +243,64 @@ impl_handler!(messages::Terminate, (), (self, _msg, ctx), {
     ctx.stop();
 });
 
-impl_handler!(messages::ClearCache, Result<(), anyhow::Error>, (self, _msg, _ctx), {
+impl_handler!(messages::ClearCache, (), (self, _msg, _ctx), {
     self.keystore.clear_keys();
-    self.db.clear().map_err(|e| anyhow::anyhow!(e))
+    self.db.clear();
 });
 
 impl_handler!(messages::CreateVault, (), (self, msg, _ctx), {
     let (vault_id, _) = Self::resolve_location(msg.location);
 
     let key = self.keystore.create_key(vault_id);
-    self.db.init_vault(key, vault_id).unwrap(); // potentially produces an error
+    self.db.init_vault(key, vault_id);
 });
 
 impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
     let (vault_id, record_id) = Self::resolve_location(msg.location);
 
     return match self.keystore.take_key(vault_id) {
-        Ok(key) => {
+        Some(key) => {
             let res = self.db.contains_record(&key, vault_id, record_id);
             self.keystore.insert_key(vault_id, key);
             res
         }
-        Err(_) => false,
+        None => false,
     };
 });
 
-impl_handler!(messages::WriteToVault, Result<(), anyhow::Error>, (self, msg, _ctx), {
+impl_handler!(messages::WriteToVault, Result<(), VaultError>, (self, msg, _ctx), {
     let (vault_id, record_id) = Self::resolve_location(msg.location);
 
     let key = self
         .keystore
-        .take_key(vault_id)?;
+        .take_key(vault_id)
+        .ok_or(VaultError::VaultNotFound(vault_id))?;
 
     let res = self.db.write(&key, vault_id, record_id, &msg.payload, msg.hint);
     self.keystore.insert_key(vault_id, key);
-    res.map_err(|e| anyhow::anyhow!(e))
+    res.map_err(|e| e.into())
 });
 
-impl_handler!(messages::RevokeData, Result<(), anyhow::Error>, (self, msg, _ctx), {
-    self.revoke_data(&msg.location).map_err(|e| anyhow::anyhow!(e))
+impl_handler!(messages::RevokeData, Result<(), VaultError>, (self, msg, _ctx), {
+    self.revoke_data(&msg.location)
 });
 
-impl_handler!(messages::GarbageCollect, Result<(), anyhow::Error>, (self, msg, _ctx), {
+impl_handler!(messages::GarbageCollect, bool, (self, msg, _ctx), {
     let (vault_id, _) = Self::resolve_location(msg.location);
-    self.garbage_collect(vault_id).map_err(|e| anyhow::anyhow!(e))
+    self.garbage_collect(vault_id)
 });
 
-impl_handler!(
-    messages::ListIds,
-    Result<Vec<(RecordId, RecordHint)>, anyhow::Error>,
-    (self, msg, _ctx),
-    {
-        let vault_id = Self::derive_vault_id(msg.vault_path);
-        let key = self.keystore.take_key(vault_id)?;
+impl_handler!(messages::ListIds, Vec<(RecordId, RecordHint)>, (self, msg, _ctx), {
+    let vault_id = Self::derive_vault_id(msg.vault_path);
+    let key = match self.keystore.take_key(vault_id) {
+        Some(k) => k,
+        None => return Vec::new(),
+    };
 
-        let list = self.db.list_hints_and_ids(&key, vault_id);
-        self.keystore.insert_key(vault_id, key);
-        Ok(list)
-    }
-);
+    let list = self.db.list_hints_and_ids(&key, vault_id);
+    self.keystore.insert_key(vault_id, key);
+    list
+});
 
 impl_handler!(messages::ReloadData, (), (self, msg, _ctx), {
     let (keystore, state, store) = *msg.data;
@@ -352,51 +314,28 @@ impl_handler!(messages::CheckVault, bool, (self, msg, _ctx), {
     self.keystore.vault_exists(vid)
 });
 
-impl_handler!(messages::WriteToStore, Result<(), anyhow::Error>, (self, msg, _ctx), {
-    let (vault_id, _) = Self::resolve_location(msg.location);
-    self.write_to_store(vault_id.into(), msg.payload, msg.lifetime);
-
-    Ok(())
+impl_handler!(messages::WriteToStore, Option<Vec<u8>>, (self, msg, _ctx), {
+    self.write_to_store(msg.key, msg.payload, msg.lifetime)
 });
 
-impl_handler!(
-    messages::ReadFromStore,
-    Result<Vec<u8>, anyhow::Error>,
-    (self, msg, _ctx),
-    {
-        let (vault_id, _) = Self::resolve_location(msg.location);
+impl_handler!(messages::ReadFromStore, Option<Vec<u8>>, (self, msg, _ctx), {
+    self.read_from_store(msg.key)
+});
 
-        match self.read_from_store(vault_id.into()) {
-            Some(data) => Ok(data),
-            None => Err(anyhow::anyhow!(StoreError::NotExisting)),
-        }
-    }
-);
-
-impl_handler!( messages::DeleteFromStore, Result <(), anyhow::Error>, (self, msg, _ctx), {
-    let (vault_id, _) = Self::resolve_location(msg.location);
-    self.store_delete_item(vault_id.into());
-
-    Ok(())
+impl_handler!(messages::DeleteFromStore, (), (self, msg, _ctx), {
+    self.store_delete_item(msg.key);
 });
 
 impl_handler!(
     messages::GetData,
-    Result<
-        Box<(
-            HashMap<VaultId, Key<internals::Provider>>,
-            DbView<internals::Provider>,
-            Store
-        )>,
-        anyhow::Error,
-    >,
+    MessageResult<messages::GetData>,
     (self, _msg, _ctx),
     {
         let keystore = self.keystore.get_data();
         let dbview = self.db.clone();
         let store = self.store.clone();
 
-        Ok(Box::from((keystore, dbview, store)))
+        MessageResult(Box::from((keystore, dbview, store)))
     }
 );
 
@@ -405,9 +344,9 @@ impl_handler!(
 // ---
 
 impl Handler<Procedure> for SecureClient {
-    type Result = Result<CollectedOutput, anyhow::Error>;
+    type Result = Result<CollectedOutput, ProcedureError>;
 
     fn handle(&mut self, proc: Procedure, _: &mut Self::Context) -> Self::Result {
-        proc.run(self).map_err(|e| anyhow::anyhow!(e))
+        proc.run(self)
     }
 }

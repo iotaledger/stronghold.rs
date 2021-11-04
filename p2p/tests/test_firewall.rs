@@ -19,6 +19,7 @@ use p2p::{
 };
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, fmt, future, marker::PhantomData, task::Poll, time::Duration};
+use stronghold_utils::random::random;
 use tokio::time::sleep;
 
 type TestPeer = StrongholdP2p<Request, Response, RequestPermission>;
@@ -62,7 +63,10 @@ async fn init_peer() -> NewPeer {
         let executor = |fut| {
             tokio::spawn(fut);
         };
-        builder.build_with_transport(TokioTcpConfig::new(), executor).await
+        builder
+            .build_with_transport(TokioTcpConfig::new(), executor)
+            .await
+            .unwrap()
     };
     #[cfg(feature = "tcp-transport")]
     let peer = builder.build().await.unwrap();
@@ -79,7 +83,7 @@ enum TestPermission {
 
 impl TestPermission {
     fn random() -> Self {
-        match rand::random::<u8>() % 4 {
+        match random::<u8>() % 4 {
             0 => TestPermission::AllowAll,
             1 => TestPermission::RejectAll,
             2 => TestPermission::PingOnly,
@@ -145,9 +149,9 @@ impl<'a> RulesTestConfig<'a> {
         b_events_rx: &'a mut mpsc::Receiver<NetworkEvent>,
         b_request_rx: &'a mut mpsc::Receiver<ReceiveRequest<Request, Response>>,
     ) -> Self {
-        let a_rule = (rand::random::<u8>() % 2 > 0).then(TestPermission::random);
-        let b_rule = (rand::random::<u8>() % 2 > 0).then(TestPermission::random);
-        let req = (rand::random::<u8>() % 2 > 0)
+        let a_rule = (random::<u8>() % 2 > 0).then(TestPermission::random);
+        let b_rule = (random::<u8>() % 2 > 0).then(TestPermission::random);
+        let req = (random::<u8>() % 2 > 0)
             .then(|| Request::Ping)
             .unwrap_or(Request::Other);
         RulesTestConfig {
@@ -164,8 +168,8 @@ impl<'a> RulesTestConfig<'a> {
     }
 
     async fn configure_firewall(&mut self) {
-        let peer_a_id = self.peer_a.get_peer_id();
-        let peer_b_id = self.peer_b.get_peer_id();
+        let peer_a_id = self.peer_a.peer_id();
+        let peer_b_id = self.peer_b.peer_id();
         if let Some(peer_rule) = self.b_rule.as_ref() {
             self.peer_b
                 .set_peer_rule(peer_a_id, RuleDirection::Inbound, peer_rule.as_rule())
@@ -185,8 +189,8 @@ impl<'a> RulesTestConfig<'a> {
     }
 
     async fn test_request(&mut self) {
-        let peer_a_id = self.peer_a.get_peer_id();
-        let peer_b_id = self.peer_b.get_peer_id();
+        let peer_a_id = self.peer_a.peer_id();
+        let peer_b_id = self.peer_b.peer_id();
 
         let mut peer_a = self.peer_a.clone();
         let res_future = peer_a.send_request(peer_b_id, self.req.clone()).boxed();
@@ -270,8 +274,8 @@ impl<'a> RulesTestConfig<'a> {
     }
 
     async fn clean(self) {
-        let peer_a_id = self.peer_a.get_peer_id();
-        let peer_b_id = self.peer_b.get_peer_id();
+        let peer_a_id = self.peer_a.peer_id();
+        let peer_b_id = self.peer_b.peer_id();
         self.peer_b.remove_peer_rule(peer_a_id, RuleDirection::Both).await;
         self.peer_b.remove_firewall_default(RuleDirection::Both).await;
         self.peer_a.remove_peer_rule(peer_b_id, RuleDirection::Both).await;
@@ -283,7 +287,7 @@ impl<'a> RulesTestConfig<'a> {
 async fn firewall_permissions() {
     let (_, _, _, mut peer_a) = init_peer().await;
     let (_, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
-    let peer_b_id = peer_b.get_peer_id();
+    let peer_b_id = peer_b.peer_id();
 
     let peer_b_addr = peer_b
         .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
@@ -310,7 +314,7 @@ enum FwRuleRes {
 
 impl FwRuleRes {
     fn random() -> Self {
-        match rand::random::<u8>() % 6 {
+        match random::<u8>() % 6 {
             0 | 1 => FwRuleRes::AllowAll,
             2 => FwRuleRes::RejectAll,
             3 | 4 => FwRuleRes::Ask,
@@ -329,7 +333,7 @@ enum FwApprovalRes {
 
 impl FwApprovalRes {
     fn random() -> Self {
-        match rand::random::<u8>() % 4 {
+        match random::<u8>() % 4 {
             0 | 1 => FwApprovalRes::Allow,
             2 => FwApprovalRes::Reject,
             3 => FwApprovalRes::Drop,
@@ -393,8 +397,8 @@ impl<'a> AskTestConfig<'a> {
     }
 
     async fn test_request_with_ask(&mut self) {
-        let peer_a_id = self.peer_a.get_peer_id();
-        let peer_b_id = self.peer_b.get_peer_id();
+        let peer_a_id = self.peer_a.peer_id();
+        let peer_b_id = self.peer_b.peer_id();
 
         let is_allowed = |rule: &FwRuleRes, approval: &FwApprovalRes| match rule {
             FwRuleRes::AllowAll => true,
@@ -557,8 +561,8 @@ impl<'a> AskTestConfig<'a> {
     }
 
     async fn clean(self) {
-        let peer_a_id = self.peer_a.get_peer_id();
-        let peer_b_id = self.peer_b.get_peer_id();
+        let peer_a_id = self.peer_a.peer_id();
+        let peer_b_id = self.peer_b.peer_id();
         self.peer_a.remove_peer_rule(peer_b_id, RuleDirection::Both).await;
         self.peer_b.remove_peer_rule(peer_a_id, RuleDirection::Both).await;
     }
@@ -568,7 +572,7 @@ impl<'a> AskTestConfig<'a> {
 async fn firewall_ask() {
     let (mut firewall_a, _, _, mut peer_a) = init_peer().await;
     let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
-    let peer_b_id = peer_b.get_peer_id();
+    let peer_b_id = peer_b.peer_id();
 
     let peer_b_addr = peer_b
         .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())

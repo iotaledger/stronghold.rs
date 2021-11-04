@@ -9,7 +9,7 @@ pub use primitives::{
     Hash, Hmac, MnemonicLanguage, Slip10Derive, Slip10Generate, WriteVault,
 };
 pub use types::{
-    CollectedOutput, InputData, InputInfo, IntoInput, OutputInfo, OutputKey, Procedure, ProcedureError, ProcedureIo,
-    ProcedureStep, SourceInfo, TargetInfo,
+    CollectedOutput, FatalProcedureError, InputData, InputInfo, IntoInput, OutputInfo, OutputKey, Procedure,
+    ProcedureError, ProcedureIo, ProcedureStep, SourceInfo, TargetInfo,
 };
 pub(crate) use types::{Products, Runner};

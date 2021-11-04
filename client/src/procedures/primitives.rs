@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::types::*;
-use crate::{actors::VaultError, enum_from_inner, Location};
+use crate::{enum_from_inner, Location};
 use crypto::{
     ciphers::traits::consts::Unsigned,
     keys::{bip39, slip10},
@@ -145,7 +145,7 @@ impl GenerateSecret for WriteVault {
     type Input = Vec<u8>;
     type Output = ();
 
-    fn generate(self, input: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
+    fn generate(self, input: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
         Ok(Products {
             secret: input,
             output: (),
@@ -223,7 +223,7 @@ impl GenerateSecret for Slip10Generate {
     type Input = ();
     type Output = ();
 
-    fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
+    fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
         let mut seed = vec![0u8; self.size_bytes];
         fill(&mut seed)?;
         Ok(Products {
@@ -302,7 +302,7 @@ impl DeriveSecret for Slip10Derive {
     type Input = ();
     type Output = ChainCode;
 
-    fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<ChainCode>, engine::Error> {
+    fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<ChainCode>, FatalProcedureError> {
         let dk = match self.source {
             SLIP10DeriveInput::Key(_) => {
                 slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&self.chain))
@@ -362,7 +362,7 @@ impl GenerateSecret for BIP39Generate {
     type Input = ();
     type Output = String;
 
-    fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
+    fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
         let mut entropy = [0u8; 32];
         fill(&mut entropy)?;
 
@@ -418,7 +418,7 @@ impl GenerateSecret for BIP39Recover {
     type Input = String;
     type Output = ();
 
-    fn generate(self, mnemonic: Self::Input) -> Result<Products<Self::Output>, engine::Error> {
+    fn generate(self, mnemonic: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
         let mut seed = [0u8; 64];
         let passphrase = self.passphrase.unwrap_or_else(|| "".into());
         bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
@@ -452,18 +452,18 @@ impl Ed25519PublicKey {
     }
 }
 
-fn ed25519_secret_key(guard: GuardedVec<u8>) -> Result<ed25519::SecretKey, engine::Error> {
+fn ed25519_secret_key(guard: GuardedVec<u8>) -> Result<ed25519::SecretKey, FatalProcedureError> {
     let raw = guard.borrow();
     let mut raw = (*raw).to_vec();
     if raw.len() < 32 {
         // the client actor will interrupt the control flow
         // but could this be an option to return an error
-        let e = engine::Error::CryptoError(crypto::Error::BufferSize {
+        let e = crypto::Error::BufferSize {
             has: raw.len(),
             needs: 32,
             name: "data buffer",
-        });
-        return Err(e);
+        };
+        return Err(e.into());
     }
     raw.truncate(32);
     let mut bs = [0; 32];
@@ -477,7 +477,7 @@ impl UseSecret for Ed25519PublicKey {
     type Input = ();
     type Output = [u8; ed25519::PUBLIC_KEY_LENGTH];
 
-    fn use_secret(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
+    fn use_secret(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
         let sk = ed25519_secret_key(guard)?;
         let pk = sk.public_key();
         Ok(pk.to_bytes())
@@ -521,7 +521,7 @@ impl UseSecret for Ed25519Sign {
     type Input = Vec<u8>;
     type Output = [u8; ed25519::SIGNATURE_LENGTH];
 
-    fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
+    fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
         let sk = ed25519_secret_key(guard)?;
         let sig = sk.sign(&msg);
         Ok(sig.to_bytes())
@@ -579,7 +579,7 @@ impl<T: Digest> ProcessData for Hash<T> {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
 
-    fn process(self, input: Self::Input) -> Result<Self::Output, engine::Error> {
+    fn process(self, input: Self::Input) -> Result<Self::Output, FatalProcedureError> {
         let mut digest = vec![0; T::OutputSize::USIZE];
         digest.copy_from_slice(&T::digest(&input));
         Ok(digest)
@@ -642,7 +642,7 @@ where
     type Input = Vec<u8>;
     type Output = Vec<u8>;
 
-    fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error> {
+    fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
         let mut mac = vec![0; <T as Digest>::OutputSize::USIZE];
         let mut m = hmac::Hmac::<T>::new_from_slice(&*guard.borrow()).unwrap();
         m.update(&msg);
@@ -771,11 +771,11 @@ impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
         let mut t = Tag::<T>::default();
 
         let f = |key: GuardedVec<u8>| {
-            T::try_encrypt(&*key.borrow(), nonce, ad, plaintext, &mut digested, &mut t)
-                .map_err(engine::Error::CryptoError)
+            T::try_encrypt(&*key.borrow(), nonce, ad, plaintext, &mut digested, &mut t)?;
+            Ok(())
         };
 
-        runner.get_guard(&key, f).map_err(ProcedureError::VaultError)?;
+        runner.get_guard(&key, f)?;
         state.insert_output(ciphertext.write_to, digested.into_procedure_io(), ciphertext.is_temp);
         state.insert_output(tag.write_to, Vec::from(&*t).into_procedure_io(), tag.is_temp);
         Ok(())
@@ -877,10 +877,11 @@ impl<T: Aead> ProcedureStep for AeadDecrypt<T> {
         let mut output = Vec::new();
 
         let f = |key: GuardedVec<u8>| {
-            T::try_decrypt(&*key.borrow(), nonce, ad, &mut output, ciphertext, tag).map_err(engine::Error::CryptoError)
+            T::try_decrypt(&*key.borrow(), nonce, ad, &mut output, ciphertext, tag)?;
+            Ok(())
         };
 
-        runner.get_guard(&key, f).map_err(ProcedureError::VaultError)?;
+        runner.get_guard(&key, f)?;
         state.insert_output(plaintext.write_to, output.into_procedure_io(), plaintext.is_temp);
         Ok(())
     }

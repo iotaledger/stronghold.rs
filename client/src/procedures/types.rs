@@ -4,7 +4,7 @@
 use super::primitives::PrimitiveProcedure;
 use crate::{
     actors::{SecureClient, VaultError},
-    Location,
+    FatalEngineError, Location,
 };
 use actix::Message;
 use engine::{
@@ -19,7 +19,7 @@ use std::{
     ops::Deref,
     string::FromUtf8Error,
 };
-use stronghold_utils::{test_utils::fresh::non_empty_bytestring, GuardDebug};
+use stronghold_utils::{random, GuardDebug};
 use thiserror::Error as DeriveError;
 
 // ==========================
@@ -82,7 +82,7 @@ impl ProcedureStep for Procedure {
 }
 
 impl Message for Procedure {
-    type Result = Result<CollectedOutput, anyhow::Error>;
+    type Result = Result<CollectedOutput, ProcedureError>;
 }
 
 impl<P> From<P> for Procedure
@@ -95,7 +95,7 @@ where
 }
 
 /// Collected permanent non-secret output of procedures.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectedOutput {
     output: HashMap<OutputKey, ProcedureIo>,
 }
@@ -145,7 +145,7 @@ impl From<TempCollectedOutput> for CollectedOutput {
 }
 
 /// Identifier for output in the `CollectedOutput`.
-#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct OutputKey(String);
 
 impl OutputKey {
@@ -170,7 +170,7 @@ impl Deref for ProcedureIo {
 }
 
 /// Error on procedure execution.
-#[derive(DeriveError, Debug)]
+#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
 pub enum ProcedureError {
     /// The input fetched from the collected output can not be converted to the required type.
     #[error("Invalid Input Type")]
@@ -181,12 +181,42 @@ pub enum ProcedureError {
     MissingInput,
 
     /// Operation on the vault failed.
-    #[error("Vault Error {0}")]
-    VaultError(VaultError),
+    #[error("engine: {0}")]
+    Engine(#[from] FatalEngineError),
+
+    /// Operation on the vault failed.
+    #[error("procedure: {0}")]
+    Procedure(#[from] FatalProcedureError),
+}
+
+impl From<VaultError<FatalProcedureError>> for ProcedureError {
+    fn from(e: VaultError<FatalProcedureError>) -> Self {
+        match e {
+            VaultError::Procedure(e) => ProcedureError::Procedure(e),
+            other => ProcedureError::Engine(other.to_string().into()),
+        }
+    }
+}
+
+impl From<VaultError> for ProcedureError {
+    fn from(e: VaultError) -> Self {
+        ProcedureError::Engine(e.into())
+    }
+}
+
+/// Execution of the procedure failed.
+#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
+#[error("fatal procedure error {0}")]
+pub struct FatalProcedureError(String);
+
+impl From<crypto::Error> for FatalProcedureError {
+    fn from(e: crypto::Error) -> Self {
+        FatalProcedureError(e.to_string())
+    }
 }
 
 /// State that is passed to the each procedure on execution.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct State {
     /// Collected output from each primitive procedure in the chain.
     aggregated: TempCollectedOutput,
@@ -214,14 +244,14 @@ impl State {
 }
 
 /// Log a newly created record.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 struct ChangeLog {
     location: Location,
     /// If `is_temp` is true, the record will be removed after the execution of all procedures in the chain finished.
     is_temp: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 struct TempCollectedOutput {
     // Collected ProcedureIo during execution, and whether it is temporary or not.
     temp_output: HashMap<OutputKey, (ProcedureIo, bool)>,
@@ -251,9 +281,9 @@ pub trait ProcedureStep {
 
 /// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
 pub trait Runner {
-    fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, VaultError>
+    fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<T, engine::Error>;
+        F: FnOnce(GuardedVec<u8>) -> Result<T, FatalProcedureError>;
 
     fn exec_proc<F, T>(
         &mut self,
@@ -261,15 +291,15 @@ pub trait Runner {
         location1: &Location,
         hint: RecordHint,
         f: F,
-    ) -> Result<T, VaultError>
+    ) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, engine::Error>;
+        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, FatalProcedureError>;
 
     fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), VaultError>;
 
     fn revoke_data(&mut self, location: &Location) -> Result<(), VaultError>;
 
-    fn garbage_collect(&mut self, vault_id: VaultId) -> Result<(), VaultError>;
+    fn garbage_collect(&mut self, vault_id: VaultId) -> bool;
 }
 
 /// Products of a procedure.
@@ -290,7 +320,7 @@ pub trait ProcessData {
     type Input;
     // Non-secret output type.
     type Output;
-    fn process(self, input: Self::Input) -> Result<Self::Output, engine::Error>;
+    fn process(self, input: Self::Input) -> Result<Self::Output, FatalProcedureError>;
 }
 
 /// No secret is used, a new secret is created.
@@ -299,7 +329,7 @@ pub trait GenerateSecret {
     type Input;
     // Non-secret output type.
     type Output;
-    fn generate(self, input: Self::Input) -> Result<Products<Self::Output>, engine::Error>;
+    fn generate(self, input: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError>;
 }
 
 /// Existing secret is used, a new secret is created.
@@ -308,7 +338,7 @@ pub trait DeriveSecret {
     type Input;
     // Non-secret output type.
     type Output;
-    fn derive(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, engine::Error>;
+    fn derive(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
 }
 
 /// Existing secret is used, no new secret is created.
@@ -317,7 +347,7 @@ pub trait UseSecret {
     type Input;
     // Non-secret output type.
     type Output;
-    fn use_secret(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, engine::Error>;
+    fn use_secret(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError>;
 }
 
 // ==========================
@@ -413,7 +443,7 @@ pub struct Target {
 
 impl Target {
     pub fn random() -> Self {
-        let location = Location::generic(non_empty_bytestring(), non_empty_bytestring());
+        let location = Location::generic(random::bytestring(4), random::bytestring(4));
         let hint = RecordHint::new("".to_string()).unwrap();
         Target { location, hint }
     }
@@ -550,14 +580,14 @@ impl<N: ArrayLength<u8>> TryFromProcedureIo for GenericArray<u8, N> {
 #[cfg(test)]
 mod test {
     use hmac::digest::{consts::U113, generic_array::GenericArray};
-    use stronghold_utils::test_utils::fresh;
+    use stronghold_utils::random;
 
     use super::{IntoProcedureIo, TryFromProcedureIo};
     use std::convert::TryInto;
 
     #[test]
     fn proc_io_vec() {
-        let vec = fresh::bytestring();
+        let vec = random::bytestring(2048);
         let proc_io = vec.clone().into_procedure_io();
         let converted = Vec::try_from_procedure_io(proc_io).unwrap();
         assert_eq!(vec.len(), converted.len());
@@ -566,7 +596,7 @@ mod test {
 
     #[test]
     fn proc_io_string() {
-        let string = fresh::string();
+        let string = random::string(2048);
         let proc_io = string.clone().into_procedure_io();
         let converted = String::try_from_procedure_io(proc_io).unwrap();
         assert_eq!(string.len(), converted.len());
@@ -575,7 +605,7 @@ mod test {
 
     #[test]
     fn proc_io_array() {
-        let array: [u8; 337] = vec![rand::random(); 337].try_into().unwrap();
+        let array: [u8; 337] = vec![random::random(); 337].try_into().unwrap();
         let proc_io = array.into_procedure_io();
         let converted = <[u8; 337]>::try_from_procedure_io(proc_io).unwrap();
         assert_eq!(array, converted);
@@ -583,7 +613,7 @@ mod test {
 
     #[test]
     fn proc_io_generic_array() {
-        let vec: Vec<u8> = vec![rand::random(); 113];
+        let vec: Vec<u8> = vec![random::random(); 113];
         let gen_array = GenericArray::<u8, U113>::clone_from_slice(vec.as_slice());
         let proc_io = gen_array.into_procedure_io();
         let converted = GenericArray::<u8, U113>::try_from_procedure_io(proc_io).unwrap();

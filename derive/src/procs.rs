@@ -247,8 +247,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
         "ProcessData" => quote! {
                 #gen_input
                 #gen_output_key
-                let output = <Self as ProcessData>::process(self, input)
-                    .map_err(|e| ProcedureError::VaultError(VaultError::EngineError(e)))?;
+                let output = <Self as ProcessData>::process(self, input)?;
                 #gen_insert_data
                 Ok(())
         },
@@ -262,10 +261,8 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 let Products {
                     secret,
                     output,
-                } = <Self as GenerateSecret>::generate(self, input)
-                    .map_err(|e| ProcedureError::VaultError(VaultError::EngineError(e)))?;
-                runner.write_to_vault(&location_1, hint, secret)
-                    .map_err(ProcedureError::VaultError)?;
+                } = <Self as GenerateSecret>::generate(self, input)?;
+                runner.write_to_vault(&location_1, hint, secret)?;
                 state.add_log(location_1, is_secret_temp);
                 #gen_insert_data
                 Ok(())
@@ -284,8 +281,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                     &location_1,
                     hint,
                     f,
-                )
-                    .map_err(ProcedureError::VaultError)?;
+                )?;
                 state.add_log(location_1, is_secret_temp);
                 #gen_insert_data
                 Ok(())
@@ -295,8 +291,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
             #gen_output_key
             #gen_input
             let f = move |guard| <Self as UseSecret>::use_secret(self, input, guard);
-            let output = runner.get_guard(&location_0, f)
-                    .map_err(ProcedureError::VaultError)?;
+            let output = runner.get_guard(&location_0, f)?;
             #gen_insert_data
             Ok(())
         },

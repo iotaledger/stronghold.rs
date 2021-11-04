@@ -1,6 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use thiserror::Error as DeriveError;
+
+#[derive(Debug, DeriveError)]
+#[error("Base 64 Error")]
+pub struct Base64Error;
+
 /// a [`Base64`] encoder and decoder used in the Vault.
 pub struct Base64;
 impl Base64 {
@@ -36,17 +42,17 @@ impl Base64 {
                 let error = e.utf8_error();
                 let valid_up_to = error.valid_up_to();
                 let error_msg = format!("Fail encoding to base64: valid_up_to({})", valid_up_to);
-                panic!("{}", crate::Error::Base64ErrorDetailed(error_msg))
+                panic!("{}", error_msg)
             }
         }
     }
 
     /// decode a [`&[u8]`] from base64 based off of the URI safe character set
-    pub fn decode_data(base: &[u8]) -> crate::Result<Vec<u8>> {
+    pub fn decode_data(base: &[u8]) -> Result<Vec<u8>, Base64Error> {
         // find and remove padding.
         let (padded, base) = match base.iter().rev().take_while(|b| **b == Self::PADDING).count() {
-            _ if base.len() % 4 != 0 => return Err(crate::Error::Base64Error),
-            padded if padded > 2 => return Err(crate::Error::Base64Error),
+            _ if base.len() % 4 != 0 => return Err(Base64Error),
+            padded if padded > 2 => return Err(Base64Error),
             padded => (padded, &base[..base.len() - padded]),
         };
 
@@ -73,19 +79,19 @@ impl Base64 {
             b @ 52..=61 => (b as u8 - 52) + b'0',
             62 => b'-',
             63 => b'_',
-            _ => panic!("{} ({})", crate::Error::Base64Error, b),
+            _ => panic!("{:?} ({})", Base64Error, b),
         }
     }
 
     /// decode a single byte
-    fn decode_byte(b: u8) -> crate::Result<usize> {
+    fn decode_byte(b: u8) -> Result<usize, Base64Error> {
         match b {
             b @ b'A'..=b'Z' => Ok((b - b'A') as usize),
             b @ b'a'..=b'z' => Ok((b - b'a') as usize + 26),
             b @ b'0'..=b'9' => Ok((b - b'0') as usize + 52),
             b'-' => Ok(62),
             b'_' => Ok(63),
-            _ => Err(crate::Error::Base64Error),
+            _ => Err(Base64Error),
         }
     }
 }
@@ -97,7 +103,8 @@ pub trait Base64Encodable {
 
 /// a trait to make types base64 decodable
 pub trait Base64Decodable: Sized {
-    fn from_base64(base: impl AsRef<[u8]>) -> crate::Result<Self>;
+    type Error;
+    fn from_base64(base: impl AsRef<[u8]>) -> Result<Self, Self::Error>;
 }
 
 impl<T: AsRef<[u8]>> Base64Encodable for T {
@@ -107,7 +114,8 @@ impl<T: AsRef<[u8]>> Base64Encodable for T {
 }
 
 impl Base64Decodable for Vec<u8> {
-    fn from_base64(base: impl AsRef<[u8]>) -> crate::Result<Self> {
+    type Error = Base64Error;
+    fn from_base64(base: impl AsRef<[u8]>) -> Result<Self, Self::Error> {
         Base64::decode_data(base.as_ref())
     }
 }

@@ -4,8 +4,8 @@
 mod arguments;
 
 use arguments::*;
-use clap::Clap;
-use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, StatusMessage, Stronghold};
+use clap::Parser;
+use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, Stronghold};
 use std::{
     error::Error,
     path::{Path, PathBuf},
@@ -33,25 +33,28 @@ async fn write_to_store_command(
 ) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
-    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
     let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
-            .await;
+            .await
+            .unwrap()
+            .unwrap();
     }
 
-    let status = stronghold
-        .write_to_store(Location::generic(rid, rid), plain.as_bytes().to_vec(), None)
-        .await;
-
-    println!("{:?}", status);
+    stronghold
+        .write_to_store(rid.into(), plain.as_bytes().to_vec(), None)
+        .await
+        .unwrap();
 
     stronghold
         .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
-        .await;
+        .await
+        .unwrap()
+        .unwrap();
     Ok(())
 }
 
@@ -66,30 +69,34 @@ async fn encrypt_command(
 ) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
-    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
     let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
-            .await;
+            .await
+            .unwrap()
+            .unwrap();
     }
 
-    let status = stronghold
+    stronghold
         .write_to_vault(
             Location::generic(rid, rid),
             plain.as_bytes().to_vec(),
             RecordHint::new("some hint").expect(line_error!()),
             vec![],
         )
-        .await;
-
-    println!("{:?}", status);
+        .await
+        .unwrap()
+        .unwrap();
 
     stronghold
         .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
-        .await;
+        .await
+        .unwrap()
+        .unwrap();
 
     Ok(())
 }
@@ -103,7 +110,7 @@ async fn snapshot_command(
 ) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
-    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
     let path = Path::new(path);
 
@@ -115,17 +122,16 @@ async fn snapshot_command(
     out.push(Path::new("recompute.stronghold"));
 
     if input.exists() {
-        let status = stronghold
+        stronghold
             .read_snapshot(client_path, None, &key.to_vec(), None, Some(input))
-            .await;
-
-        if let StatusMessage::Error(error) = status {
-            return Err(Box::from(format!("{:?}", error)));
-        } else {
-            stronghold
-                .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
-                .await;
-        }
+            .await
+            .unwrap()
+            .unwrap();
+        stronghold
+            .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
+            .await
+            .unwrap()
+            .unwrap();
     } else {
         return Err(Box::from("The path you entered does not contain a valid snapshot"));
     }
@@ -142,20 +148,22 @@ async fn list_command(
 ) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
-    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
     let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
-            .await;
+            .await
+            .unwrap()
+            .unwrap();
 
-        let (list, status) = stronghold
+        let list = stronghold
             .list_hints_and_ids(Location::generic(path, path).vault_path().to_vec())
-            .await;
+            .await
+            .unwrap();
 
-        println!("{:?}", status);
         println!("{:?}", list);
     } else {
         return Err(Box::from(
@@ -175,19 +183,20 @@ async fn read_from_store_command(
 ) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
-    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
     let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
-            .await;
+            .await
+            .unwrap()
+            .unwrap();
 
-        let (data, status) = stronghold.read_from_store(Location::generic(rpath, rpath)).await;
+        let data = stronghold.read_from_store(rpath.into()).await.unwrap();
 
-        println!("{:?}", status);
-        println!("Data: {:?}", std::str::from_utf8(&data).unwrap());
+        println!("Data: {:?}", std::str::from_utf8(&data.unwrap()).unwrap());
     } else {
         return Err(Box::from(
             "Could not find a snapshot at the home path.  Try writing first. ",
@@ -206,20 +215,23 @@ async fn delete_from_store_command(
 ) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
-    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
     let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
-            .await;
+            .await
+            .unwrap()
+            .unwrap();
 
-        let status_delete = stronghold.delete_from_store(Location::generic(rpath, rpath)).await;
+        stronghold.delete_from_store(rpath.into()).await.unwrap();
         stronghold
             .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
-            .await;
-        println!("Delete: {:?}", status_delete);
+            .await
+            .unwrap()
+            .unwrap();
     } else {
         return Err(Box::from(
             "Could not find a snapshot at the home path. Try writing first.",
@@ -239,21 +251,27 @@ async fn revoke_command(
 ) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
-    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
     let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
-            .await;
-        let status = stronghold.delete_data(Location::generic(id, id), false).await;
-
-        println!("{:?}", status);
+            .await
+            .unwrap()
+            .unwrap();
+        stronghold
+            .delete_data(Location::generic(id, id), false)
+            .await
+            .unwrap()
+            .unwrap();
 
         stronghold
             .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
-            .await;
+            .await
+            .unwrap()
+            .unwrap();
     } else {
         return Err(Box::from(
             "Could not find a snapshot at the home path.  Try writing first. ",
@@ -272,25 +290,34 @@ async fn garbage_collect_vault_command(
 ) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
-    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
     let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
-            .await;
+            .await
+            .unwrap()
+            .unwrap();
 
         let location = Location::generic(id, id);
-        let status = stronghold.garbage_collect(location.vault_path().to_vec()).await;
-        let (list, _) = stronghold.list_hints_and_ids(location.vault_path().to_vec()).await;
+        stronghold
+            .garbage_collect(location.vault_path().to_vec())
+            .await
+            .unwrap();
+        let list = stronghold
+            .list_hints_and_ids(location.vault_path().to_vec())
+            .await
+            .unwrap();
 
-        println!("{:?}", status);
         println!("{:?}", list);
 
         stronghold
             .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
-            .await;
+            .await
+            .unwrap()
+            .unwrap();
     } else {
         return Err(Box::from(
             "Could not find a snapshot at the home path.  Try writing first.",
@@ -310,24 +337,30 @@ async fn purge_command(
 ) -> Result<(), Box<dyn Error>> {
     let mut key = [0u8; 32];
     let salt = [0u8; 32];
-    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
     let snapshot = home_dir()?.join("snapshots").join("commandline.stronghold");
 
     if snapshot.exists() {
         stronghold
             .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
-            .await;
+            .await
+            .unwrap()
+            .unwrap();
         let location = Location::generic(id, id);
-        let status = stronghold.delete_data(location.clone(), true).await;
-        let (list, _) = stronghold.list_hints_and_ids(location.vault_path().to_vec()).await;
+        stronghold.delete_data(location.clone(), true).await.unwrap().unwrap();
+        let list = stronghold
+            .list_hints_and_ids(location.vault_path().to_vec())
+            .await
+            .unwrap();
 
-        println!("{:?}", status);
         println!("{:?}", list);
 
         stronghold
             .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
-            .await;
+            .await
+            .unwrap()
+            .unwrap();
     } else {
         return Err(Box::from(
             "Could not find a snapshot at the home path.  Try writing first.",

@@ -15,22 +15,22 @@ homepage = "https://stronghold.docs.iota.org"
 name = "p2p"
 
 [dependencies]
+either = "1.6"
 futures = "0.3"
-libp2p = { version = "0.39", default-features = false, features = ["noise", "yamux"] }
+libp2p = { version = "0.40.0-rc.3", default-features = false, features = ["noise", "yamux", "mdns", "relay"] }
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 smallvec = "1.6.1"
-stronghold-derive = { path = "../derive", version = "0.2.0" }
+stronghold-derive = { path = "../derive", version = "0.2" }
+thiserror = "1.0.30"
 tokio = { version = "1.10", default-features = false, features = ["rt", "sync"] }
 wasm-timer = "0.2.5"
 
 [features]
-default = [ "mdns", "relay", "tcp-transport"]
-mdns = ["libp2p/mdns"]
-relay = ["libp2p/relay"]
+default = [ "tcp-transport"]
 tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
 
 [dev-dependencies]
-rand = "0.8.3"
+stronghold-utils = { path = "../utils", version = "0.3" }
 tokio = {version = "1.10", features = ["time", "macros"]}
-libp2p = { version = "0.39", default-features = false, features = ["tcp-tokio"] }
+libp2p = { version = "0.40.0-rc.3", default-features = false, features = ["tcp-tokio"] }

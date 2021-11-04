@@ -3,18 +3,16 @@
 
 #![allow(clippy::type_complexity)]
 
-use serde::{Deserialize, Serialize};
+use crate::{state::secure::Store, Provider};
 
 use engine::{
-    snapshot::{self, read_from, write_to, Key},
+    snapshot::{self, read_from, write_to, Key, ReadError as EngineReadError, WriteError as EngineWriteError},
     vault::{ClientId, DbView, Key as PKey, VaultId},
 };
 
-use crate::{line_error, state::secure::Store, Provider};
-
-use std::path::Path;
-
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, io, path::Path};
+use thiserror::Error as DeriveError;
 
 /// Wrapper for the [`SnapshotState`] data structure.
 #[derive(Default)]
@@ -47,33 +45,35 @@ impl Snapshot {
 
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<Self> {
+    pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> Result<Self, ReadError> {
         let state = match path {
             Some(p) => read_from(p, &key, &[])?,
             None => read_from(&snapshot::files::get_path(name)?, &key, &[])?,
         };
 
-        let data = SnapshotState::deserialize(state);
+        let data =
+            SnapshotState::deserialize(state).map_err(|_| ReadError::CorruptedContent("Decryption failed.".into()))?;
 
         Ok(Self::new(data))
     }
 
     /// Writes state to the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn write_to_snapshot(&self, name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<()> {
-        let data = self.state.serialize();
+    pub fn write_to_snapshot(&self, name: Option<&str>, path: Option<&Path>, key: Key) -> Result<(), WriteError> {
+        let data = self
+            .state
+            .serialize()
+            .map_err(|_| WriteError::CorruptedData("Serialization failed.".into()))?;
 
         // TODO: This is a hack and probably should be removed when we add proper error handling.
-        let f = move || {
-            match path {
-                Some(p) => write_to(&data, p, &key, &[])?,
-                None => write_to(&data, &snapshot::files::get_path(name)?, &key, &[])?,
-            }
-            Ok(())
+        let f = move || match path {
+            Some(p) => write_to(&data, p, &key, &[]),
+            None => write_to(&data, &snapshot::files::get_path(name)?, &key, &[]),
         };
+
         match f() {
             Ok(()) => Ok(()),
-            Err(_) => f(),
+            Err(_) => f().map_err(|e| e.into()),
         }
     }
 }
@@ -93,12 +93,57 @@ impl SnapshotState {
     }
 
     /// Serializes the snapshot state into bytes.
-    pub fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(&self).expect(line_error!())
+    pub fn serialize(&self) -> bincode::Result<Vec<u8>> {
+        bincode::serialize(&self)
     }
 
     /// Deserializes the snapshot state from bytes.
-    pub fn deserialize(data: Vec<u8>) -> Self {
-        bincode::deserialize(&data).expect(line_error!())
+    pub fn deserialize(data: Vec<u8>) -> bincode::Result<Self> {
+        bincode::deserialize(&data)
+    }
+}
+
+#[derive(Debug, DeriveError)]
+pub enum ReadError {
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+
+    #[error("corrupted file: {0}")]
+    CorruptedContent(String),
+
+    #[error("invalid file {0}")]
+    InvalidFile(String),
+}
+
+impl From<EngineReadError> for ReadError {
+    fn from(e: EngineReadError) -> Self {
+        match e {
+            EngineReadError::CorruptedContent(reason) => ReadError::CorruptedContent(reason),
+            EngineReadError::InvalidFile => ReadError::InvalidFile("Not a Snapshot.".into()),
+            EngineReadError::Io(io) => ReadError::Io(io),
+            EngineReadError::UnsupportedVersion { expected, found } => ReadError::InvalidFile(format!(
+                "Unsupported version: expected {:?}, found {:?}.",
+                expected, found
+            )),
+        }
+    }
+}
+
+#[derive(Debug, DeriveError)]
+pub enum WriteError {
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+
+    #[error("corrupted data: {0}")]
+    CorruptedData(String),
+}
+
+impl From<EngineWriteError> for WriteError {
+    fn from(e: EngineWriteError) -> Self {
+        match e {
+            EngineWriteError::Io(io) => WriteError::Io(io),
+            EngineWriteError::CorruptedData(e) => WriteError::CorruptedData(e),
+            EngineWriteError::GenerateRandom(_) => WriteError::Io(io::ErrorKind::Other.into()),
+        }
     }
 }

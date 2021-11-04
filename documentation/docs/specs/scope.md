@@ -1,6 +1,18 @@
+---
+description: Stronghold is a secure software implementation with the sole purpose of isolating the seed, private keys, personally identifiable information (PII) and policy records from exposure to the genuinely hostile environment of user devices.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- rust
+- private key
+- High level library
+- Actor Model layer
+- low level libraries
+- Secure Element
+- libraries
+---
 # Specification: SCOPE
 
-# Project Scope (Scope)
+# Project Scope (Scope){#scope}
 [Scope]: #Scope
 
 ## Frontmatter
@@ -83,7 +95,7 @@ of IOTA in the security community.
 possible is a good baseline. Designing the library such that cryptographic primitives can be replaced will make the library viable
 in the long-term.
 
-## Product Introduction
+## Product Introduction{#product}
 [product]: #product
 ### Business Application Benefits
 - Enhance the security posture of critical IOTA Products

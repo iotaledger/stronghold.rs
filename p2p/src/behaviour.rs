@@ -22,9 +22,9 @@ mod handler;
 mod request_manager;
 pub use self::request_manager::EstablishedConnections;
 use crate::{InboundFailure, OutboundFailure, RequestDirection, RequestId, RqRsMessage};
-#[cfg(feature = "relay")]
 pub use addresses::assemble_relayed_addr;
 use addresses::AddressInfo;
+use either::Either;
 use firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection};
 use futures::{
     channel::{
@@ -38,53 +38,44 @@ use futures::{
 };
 pub use handler::MessageProtocol;
 use handler::{ConnectionHandler, HandlerInEvent, HandlerOutEvent, ProtocolSupport};
-#[cfg(feature = "mdns")]
-use libp2p::mdns::Mdns;
-#[cfg(feature = "relay")]
-use libp2p::relay::Relay;
-#[cfg(any(feature = "mdns", feature = "relay"))]
-use libp2p::{core::either::EitherOutput, swarm::IntoProtocolsHandlerSelect};
 use libp2p::{
     core::{
         connection::{ConnectionId, ListenerId},
+        either::EitherOutput,
         ConnectedPoint, Multiaddr, PeerId,
     },
+    mdns::Mdns,
+    relay::Relay,
     swarm::{
-        DialPeerCondition, IntoProtocolsHandler, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler,
-        PollParameters, ProtocolsHandler,
+        protocols_handler::either::IntoEitherHandler, DialPeerCondition, IntoProtocolsHandler,
+        IntoProtocolsHandlerSelect, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters,
+        ProtocolsHandler,
     },
 };
 use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
 use smallvec::{smallvec, SmallVec};
 use std::{
     borrow::Borrow,
-    error,
     sync::{atomic::AtomicU64, Arc},
     time::Duration,
 };
 
-type NetworkAction<Proto> = NetworkBehaviourAction<
-    <<<Proto as NetworkBehaviour>::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::InEvent,
-    <Proto as NetworkBehaviour>::OutEvent,
->;
-
-#[cfg(all(feature = "mdns", feature = "relay"))]
-type ProtoHandler<Rq, Rs> = IntoProtocolsHandlerSelect<
-    ConnectionHandler<Rq, Rs>,
-    IntoProtocolsHandlerSelect<
-        <Mdns as NetworkBehaviour>::ProtocolsHandler,
-        <Relay as NetworkBehaviour>::ProtocolsHandler,
+type ProtoHandler<Rq, Rs> = IntoEitherHandler<
+    IntoEitherHandler<
+        ConnectionHandler<Rq, Rs>,
+        IntoProtocolsHandlerSelect<
+            ConnectionHandler<Rq, Rs>,
+            IntoProtocolsHandlerSelect<
+                <Mdns as NetworkBehaviour>::ProtocolsHandler,
+                <Relay as NetworkBehaviour>::ProtocolsHandler,
+            >,
+        >,
+    >,
+    IntoEitherHandler<
+        IntoProtocolsHandlerSelect<ConnectionHandler<Rq, Rs>, <Mdns as NetworkBehaviour>::ProtocolsHandler>,
+        IntoProtocolsHandlerSelect<ConnectionHandler<Rq, Rs>, <Relay as NetworkBehaviour>::ProtocolsHandler>,
     >,
 >;
-#[cfg(all(not(feature = "mdns"), feature = "relay"))]
-type ProtoHandler<Rq, Rs> =
-    IntoProtocolsHandlerSelect<ConnectionHandler<Rq, Rs>, <Relay as NetworkBehaviour>::ProtocolsHandler>;
-#[cfg(all(feature = "mdns", not(feature = "relay")))]
-type ProtoHandler<Rq, Rs> =
-    IntoProtocolsHandlerSelect<ConnectionHandler<Rq, Rs>, <Mdns as NetworkBehaviour>::ProtocolsHandler>;
-
-#[cfg(not(any(feature = "mdns", feature = "relay")))]
-type ProtoHandler<Rq, Rs> = ConnectionHandler<Rq, Rs>;
 
 // Future for a pending response to a sent [`FirewallRequest::PeerSpecificRule`].
 type PendingPeerRuleRequest<TRq> = BoxFuture<'static, (PeerId, Option<FirewallRules<TRq>>)>;
@@ -127,6 +118,10 @@ pub enum BehaviourEvent<Rq, Rs> {
     },
 }
 
+/// The Relay protocol is not supported.
+#[derive(Debug)]
+pub struct RelayNotSupported;
+
 /// Configuration of the [`NetBehaviour`].
 pub struct NetBehaviourConfig<TRq: Clone> {
     /// Supported versions of the `MessageProtocol`.
@@ -164,11 +159,10 @@ where
     TRq: Clone + Send + 'static,
 {
     // integrate Mdns protocol
-    #[cfg(feature = "mdns")]
-    mdns: Mdns,
+    mdns: Option<Mdns>,
+
     // integrate Relay protocol
-    #[cfg(feature = "relay")]
-    relay: Relay,
+    relay: Option<Relay>,
 
     // List of supported protocol versions.
     supported_protocols: SmallVec<[MessageProtocol; 2]>,
@@ -210,14 +204,12 @@ where
     /// Create a new instance of a NetBehaviour to customize the [`Swarm`][libp2p::Swarm].
     pub fn new(
         config: NetBehaviourConfig<TRq>,
-        #[cfg(feature = "mdns")] mdns: Mdns,
-        #[cfg(feature = "relay")] relay: Relay,
+        mdns: Option<Mdns>,
+        relay: Option<Relay>,
         permission_req_channel: mpsc::Sender<FirewallRequest<TRq>>,
     ) -> Self {
         NetBehaviour {
-            #[cfg(feature = "mdns")]
             mdns,
-            #[cfg(feature = "relay")]
             relay,
             supported_protocols: config.supported_protocols,
             request_timeout: config.request_timeout,
@@ -321,6 +313,59 @@ where
         self.request_manager.get_established_connections()
     }
 
+    // Whether the relay protocol is enabled.
+    pub fn is_relay_enabled(&self) -> bool {
+        self.relay.is_some()
+    }
+
+    /// Add a relay to the list of relays that may be tried to use if a remote peer can not be reached directly.
+    pub fn add_dialing_relay(
+        &mut self,
+        peer: PeerId,
+        address: Option<Multiaddr>,
+    ) -> Result<Option<Multiaddr>, RelayNotSupported> {
+        if self.relay.is_none() {
+            return Err(RelayNotSupported);
+        }
+        Ok(self.addresses.add_relay(peer, address))
+    }
+
+    /// Remove a relay from the list of dialing relays.
+    // Returns `false` if the peer was not among the known relays.
+    //
+    // **Note**: Known relayed addresses for remote peers using this relay will not be influenced by this.
+    pub fn remove_dialing_relay(&mut self, peer: &PeerId) -> bool {
+        self.addresses.remove_relay(peer)
+    }
+
+    /// Configure whether it should be attempted to reach the remote via known relays, if it can not be reached via
+    /// known addresses.
+    pub fn set_relay_fallback(&mut self, peer: PeerId, use_relay_fallback: bool) -> Result<(), RelayNotSupported> {
+        if self.relay.is_none() {
+            return Err(RelayNotSupported);
+        }
+        self.addresses.set_relay_fallback(peer, use_relay_fallback);
+        Ok(())
+    }
+
+    /// Dial the target via the specified relay.
+    /// The `is_exclusive` parameter specifies whether other known relays should be used if using the set relay is not
+    /// successful.
+    ///
+    /// Returns the relayed address of the local peer (`<relay-addr>/<relay-id>/p2p-circuit/<local-id>),
+    /// if an address for the relay is known.
+    pub fn use_specific_relay(
+        &mut self,
+        target: PeerId,
+        relay: PeerId,
+        is_exclusive: bool,
+    ) -> Result<Option<Multiaddr>, RelayNotSupported> {
+        if self.relay.is_none() {
+            return Err(RelayNotSupported);
+        }
+        Ok(self.addresses.use_relay(target, relay, is_exclusive))
+    }
+
     /// [`RequestId`] for the next outbound request.
     fn next_request_id(&mut self) -> RequestId {
         *self.next_request_id.inc()
@@ -360,6 +405,43 @@ where
                     ApprovalStatus::Rejected
                 }
             }
+        }
+    }
+
+    fn new_request_response_handler(&mut self, peer: Option<PeerId>) -> ConnectionHandler<Rq, Rs> {
+        let protocol_support = match peer {
+            Some(peer) => ProtocolSupport::from_rules(&self.firewall.get_effective_rules(&peer)),
+            None => ProtocolSupport::Full,
+        };
+        // Use full protocol support on init.
+        // Once the connection is established, this will be updated with the effective rules for the remote peer.
+        ConnectionHandler::new(
+            self.supported_protocols.clone(),
+            protocol_support,
+            self.connection_timeout,
+            self.request_timeout,
+            self.next_inbound_id.clone(),
+        )
+    }
+
+    fn new_handler_for_peer(&mut self, peer: Option<PeerId>) -> <Self as NetworkBehaviour>::ProtocolsHandler {
+        let handler = self.new_request_response_handler(peer);
+        let mdns_handler = self.mdns.as_mut().map(|mdns| mdns.new_handler());
+        let relay_handler = self.relay.as_mut().map(|relay| relay.new_handler());
+        match mdns_handler {
+            Some(mh) => match relay_handler {
+                Some(rh) => IntoEitherHandler::Left(IntoEitherHandler::Right(IntoProtocolsHandler::select(
+                    handler,
+                    IntoProtocolsHandler::select(mh, rh),
+                ))),
+                None => IntoEitherHandler::Right(IntoEitherHandler::Left(IntoProtocolsHandler::select(handler, mh))),
+            },
+            None => match relay_handler {
+                Some(rh) => {
+                    IntoEitherHandler::Right(IntoEitherHandler::Right(IntoProtocolsHandler::select(handler, rh)))
+                }
+                None => IntoEitherHandler::Left(IntoEitherHandler::Left(handler)),
+            },
         }
     }
 
@@ -455,7 +537,7 @@ where
     fn handle_updated_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
         // Set protocol support for the active handlers according to the new rules.
         let rules = self.firewall.get_effective_rules(&peer);
-        let set_support = ProtocolSupport::from_rules(rules.inbound.as_ref(), rules.outbound.as_ref());
+        let set_support = ProtocolSupport::from_rules(&rules);
         self.request_manager.set_protocol_support(peer, None, set_support);
         // Query for individual request approval due to [`Rule::Ask`].
         if let Some(ask_reqs) = self.request_manager.on_peer_rule(peer, rules, direction) {
@@ -463,40 +545,6 @@ where
                 self.query_request_approval(peer, id, rq, dir);
             })
         }
-    }
-}
-
-#[cfg(feature = "relay")]
-impl<Rq, Rs, TRq> NetBehaviour<Rq, Rs, TRq>
-where
-    Rq: RqRsMessage + Borrow<TRq>,
-    Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
-{
-    /// Add a relay to the list of relays that may be tried to use if a remote peer can not be reached directly.
-    pub fn add_dialing_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
-        self.addresses.add_relay(peer, address)
-    }
-
-    /// Remove a relay from the list of dialing relays.
-    pub fn remove_dialing_relay(&mut self, peer: &PeerId) {
-        self.addresses.remove_relay(peer);
-    }
-
-    /// Configure whether it should be attempted to reach the remote via known relays, if it can not be reached via
-    /// known addresses.
-    pub fn set_relay_fallback(&mut self, peer: PeerId, use_relay_fallback: bool) {
-        self.addresses.set_relay_fallback(peer, use_relay_fallback);
-    }
-
-    /// Dial the target via the specified relay.
-    /// The `is_exclusive` paramter specifies whether other known relays should be used if using the set relay is not
-    /// successful.
-    ///
-    /// Returns the relayed address of the local peer (`<relay-addr>/<relay-id>/p2p-circuit/<local-id>),
-    /// if an address for the relay is known.
-    pub fn use_specific_relay(&mut self, target: PeerId, relay: PeerId, is_exclusive: bool) -> Option<Multiaddr> {
-        self.addresses.use_relay(target, relay, is_exclusive)
     }
 }
 
@@ -510,107 +558,7 @@ where
     type OutEvent = BehaviourEvent<Rq, Rs>;
 
     fn new_handler(&mut self) -> Self::ProtocolsHandler {
-        // Use full protocol support on init.
-        // Once the connection is established, this will be updated with the effective rules for the remote peer.
-        let handler = ConnectionHandler::new(
-            self.supported_protocols.clone(),
-            ProtocolSupport::Full,
-            self.connection_timeout,
-            self.request_timeout,
-            self.next_inbound_id.clone(),
-        );
-        let protocols_handler;
-        #[cfg(all(feature = "mdns", feature = "relay"))]
-        {
-            let mdns_handler = self.mdns.new_handler();
-            let relay_handler = self.relay.new_handler();
-            protocols_handler =
-                IntoProtocolsHandler::select(handler, IntoProtocolsHandler::select(mdns_handler, relay_handler))
-        }
-        #[cfg(all(feature = "mdns", not(feature = "relay")))]
-        {
-            let mdns_handler = self.mdns.new_handler();
-            protocols_handler = IntoProtocolsHandler::select(handler, mdns_handler)
-        }
-        #[cfg(all(not(feature = "mdns"), feature = "relay"))]
-        {
-            let relay_handler = self.relay.new_handler();
-            protocols_handler = IntoProtocolsHandler::select(handler, relay_handler)
-        }
-        #[cfg(not(any(feature = "mdns", feature = "relay")))]
-        {
-            protocols_handler = handler;
-        }
-
-        protocols_handler
-    }
-
-    fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
-        #[allow(unused_mut)]
-        let mut addresses = self.addresses.get_addrs(peer);
-        #[cfg(feature = "relay")]
-        addresses.extend(self.relay.addresses_of_peer(peer));
-        #[cfg(feature = "mdns")]
-        addresses.extend(self.mdns.addresses_of_peer(peer));
-        addresses
-    }
-
-    fn inject_connected(&mut self, peer: &PeerId) {
-        #[cfg(feature = "relay")]
-        self.relay.inject_connected(peer);
-        #[cfg(feature = "mdns")]
-        self.mdns.inject_connected(peer);
-        self.request_manager.on_peer_connected(*peer);
-    }
-
-    fn inject_disconnected(&mut self, peer: &PeerId) {
-        #[cfg(feature = "relay")]
-        self.relay.inject_disconnected(peer);
-        #[cfg(feature = "mdns")]
-        self.mdns.inject_disconnected(peer);
-        self.request_manager.on_peer_disconnected(*peer);
-    }
-
-    fn inject_connection_established(&mut self, peer: &PeerId, connection: &ConnectionId, endpoint: &ConnectedPoint) {
-        // If the remote connected to us and there is no rule for inbound requests yet, query firewall.
-        if endpoint.is_listener() && self.firewall.get_effective_rules(peer).inbound.is_none() {
-            self.query_peer_rule(*peer);
-        }
-        // Set the protocol support for the remote peer.
-        let peer_rules = self.firewall.get_effective_rules(peer);
-        let support = ProtocolSupport::from_rules(peer_rules.inbound.as_ref(), peer_rules.outbound.as_ref());
-        self.request_manager
-            .set_protocol_support(*peer, Some(*connection), support);
-
-        self.request_manager
-            .on_connection_established(*peer, *connection, endpoint.clone());
-        self.addresses
-            .prioritize_addr(*peer, endpoint.get_remote_address().clone());
-        #[cfg(feature = "relay")]
-        self.relay.inject_connection_established(peer, connection, endpoint);
-        #[cfg(feature = "mdns")]
-        self.mdns.inject_connection_established(peer, connection, endpoint);
-    }
-
-    fn inject_connection_closed(&mut self, peer: &PeerId, connection: &ConnectionId, _endpoint: &ConnectedPoint) {
-        self.request_manager.on_connection_closed(*peer, connection);
-        #[cfg(feature = "relay")]
-        self.relay.inject_connection_closed(peer, connection, _endpoint);
-        #[cfg(feature = "mdns")]
-        self.mdns.inject_connection_closed(peer, connection, _endpoint);
-    }
-
-    fn inject_address_change(
-        &mut self,
-        _peer: &PeerId,
-        _connection: &ConnectionId,
-        _old: &ConnectedPoint,
-        _new: &ConnectedPoint,
-    ) {
-        #[cfg(feature = "relay")]
-        self.relay.inject_address_change(_peer, _connection, _old, _new);
-        #[cfg(feature = "mdns")]
-        self.mdns.inject_address_change(_peer, _connection, _old, _new);
+        self.new_handler_for_peer(None)
     }
 
     fn inject_event(
@@ -619,55 +567,33 @@ where
         connection: ConnectionId,
         event: <<Self::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
     ) {
-        #[cfg(all(feature = "mdns", feature = "relay"))]
         match event {
-            EitherOutput::First(ev) => self.handle_handler_event(peer, connection, ev),
-            EitherOutput::Second(EitherOutput::First(ev)) => self.mdns.inject_event(peer, connection, ev),
-            EitherOutput::Second(EitherOutput::Second(ev)) => self.relay.inject_event(peer, connection, ev),
+            Either::Left(Either::Left(ev))
+            | Either::Left(Either::Right(EitherOutput::First(ev)))
+            | Either::Right(Either::Left(EitherOutput::First(ev)))
+            | Either::Right(Either::Right(EitherOutput::First(ev))) => self.handle_handler_event(peer, connection, ev),
+            Either::Left(Either::Right(EitherOutput::Second(EitherOutput::First(ev))))
+            | Either::Right(Either::Left(EitherOutput::Second(ev))) => {
+                // Event can only occur if mdns is not `None`
+                self.mdns.as_mut().unwrap().inject_event(peer, connection, ev)
+            }
+            Either::Left(Either::Right(EitherOutput::Second(EitherOutput::Second(ev))))
+            | Either::Right(Either::Right(EitherOutput::Second(ev))) => {
+                // Event can only occur if relay is not `None`
+                self.relay.as_mut().unwrap().inject_event(peer, connection, ev)
+            }
         };
-        #[cfg(all(feature = "mdns", not(feature = "relay")))]
-        return match event {
-            EitherOutput::First(ev) => self.handle_handler_event(peer, connection, ev),
-            EitherOutput::Second(ev) => self.mdns.inject_event(peer, connection, ev),
-        };
-        #[cfg(all(not(feature = "mdns"), feature = "relay"))]
-        return match event {
-            EitherOutput::First(ev) => self.handle_handler_event(peer, connection, ev),
-            EitherOutput::Second(ev) => self.relay.inject_event(peer, connection, ev),
-        };
-        #[cfg(not(any(feature = "mdns", feature = "relay")))]
-        self.handle_handler_event(peer, connection, event)
     }
 
-    fn inject_addr_reach_failure(&mut self, peer: Option<&PeerId>, addr: &Multiaddr, _error: &dyn error::Error) {
-        #[cfg(feature = "relay")]
-        self.relay.inject_addr_reach_failure(peer, addr, _error);
-        #[cfg(feature = "mdns")]
-        self.mdns.inject_addr_reach_failure(peer, addr, _error);
-        if let Some(peer) = peer {
-            self.addresses.deprioritize_addr(*peer, addr.clone());
-        }
-    }
-
-    fn inject_dial_failure(&mut self, peer: &PeerId) {
-        self.request_manager.on_dial_failure(*peer);
-        #[cfg(feature = "relay")]
-        self.relay.inject_dial_failure(peer);
-        #[cfg(feature = "mdns")]
-        self.mdns.inject_dial_failure(peer);
-    }
-
-    fn inject_new_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {
-        #[cfg(feature = "mdns")]
-        self.mdns.inject_new_listen_addr(_id, _addr);
-        #[cfg(feature = "relay")]
-        self.relay.inject_new_listen_addr(_id, _addr);
-    }
-
-    fn poll(&mut self, cx: &mut Context<'_>, _params: &mut impl PollParameters) -> Poll<NetworkAction<Self>> {
+    fn poll(
+        &mut self,
+        cx: &mut Context<'_>,
+        _params: &mut impl PollParameters,
+    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ProtocolsHandler>> {
         // Drive mdns.
-        #[cfg(feature = "mdns")]
-        let _ = self.mdns.poll(cx, _params);
+        if let Some(mdns) = self.mdns.as_mut() {
+            let _ = mdns.poll(cx, _params);
+        }
 
         // Update firewall rules if a peer specific rule was return after a [`FirewallRequest::PeerSpecificRule`] query.
         while let Poll::Ready(Some((peer, rules))) = self.pending_rule_rqs.poll_next_unpin(cx) {
@@ -689,31 +615,59 @@ where
         }
 
         // Handle events from the relay protocol.
-        #[cfg(feature = "relay")]
-        if let Poll::Ready(action) = self.relay.poll(cx, _params) {
-            match action {
-                NetworkBehaviourAction::DialPeer { peer_id, condition } => {
-                    return Poll::Ready(NetworkBehaviourAction::DialPeer { peer_id, condition })
-                }
-                NetworkBehaviourAction::NotifyHandler {
-                    peer_id,
-                    handler,
-                    event,
-                } => {
-                    #[cfg(feature = "mdns")]
-                    let event = EitherOutput::Second(EitherOutput::Second(event));
-                    #[cfg(not(feature = "mdns"))]
-                    let event = EitherOutput::Second(event);
-                    return Poll::Ready(NetworkBehaviourAction::NotifyHandler {
+        if let Some(relay) = self.relay.as_mut() {
+            if let Poll::Ready(action) = relay.poll(cx, _params) {
+                match action {
+                    NetworkBehaviourAction::DialPeer {
+                        peer_id,
+                        condition,
+                        handler,
+                    } => {
+                        let first = self.new_request_response_handler(Some(peer_id));
+                        let handler = match self.mdns.as_mut() {
+                            Some(mdns) => {
+                                let into_protocols = IntoProtocolsHandler::select(
+                                    first,
+                                    IntoProtocolsHandler::select(mdns.new_handler(), handler),
+                                );
+                                IntoEitherHandler::Left(IntoEitherHandler::Right(into_protocols))
+                            }
+                            None => {
+                                let into_protocols = IntoProtocolsHandler::select(first, handler);
+                                IntoEitherHandler::Right(IntoEitherHandler::Right(into_protocols))
+                            }
+                        };
+                        return Poll::Ready(NetworkBehaviourAction::DialPeer {
+                            peer_id,
+                            condition,
+                            handler,
+                        });
+                    }
+                    NetworkBehaviourAction::NotifyHandler {
                         peer_id,
                         handler,
                         event,
-                    });
+                    } => {
+                        let event = match self.mdns {
+                            Some(_) => {
+                                let event = EitherOutput::Second(EitherOutput::Second(event));
+                                Either::Left(Either::Right(event))
+                            }
+                            None => {
+                                let event = EitherOutput::Second(event);
+                                Either::Right(Either::Right(event))
+                            }
+                        };
+                        return Poll::Ready(NetworkBehaviourAction::NotifyHandler {
+                            peer_id,
+                            handler,
+                            event,
+                        });
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
-
         // Emit events for pending requests and required dial attempts.
         if let Some(event) = self.request_manager.take_next_action() {
             let action = match event {
@@ -744,8 +698,16 @@ where
                     connection,
                 } => {
                     let event = HandlerInEvent::SendRequest { request_id, request };
-                    #[cfg(any(feature = "mdns", feature = "relay"))]
-                    let event = EitherOutput::First(event);
+                    let event = match self.mdns {
+                        Some(_) => match self.relay {
+                            Some(_) => Either::Left(Either::Right(EitherOutput::First(event))),
+                            None => Either::Right(Either::Left(EitherOutput::First(event))),
+                        },
+                        None => match self.relay {
+                            Some(_) => Either::Right(Either::Right(EitherOutput::First(event))),
+                            None => Either::Left(Either::Left(event)),
+                        },
+                    };
                     NetworkBehaviourAction::NotifyHandler {
                         peer_id: peer,
                         handler: NotifyHandler::One(connection),
@@ -771,6 +733,7 @@ where
                     response,
                 }),
                 BehaviourAction::RequireDialAttempt(peer) => NetworkBehaviourAction::DialPeer {
+                    handler: self.new_handler_for_peer(Some(peer)),
                     peer_id: peer,
                     condition: DialPeerCondition::Disconnected,
                 },
@@ -780,8 +743,16 @@ where
                     support,
                 } => {
                     let event = HandlerInEvent::SetProtocolSupport(support);
-                    #[cfg(any(feature = "mdns", feature = "relay"))]
-                    let event = EitherOutput::First(event);
+                    let event = match self.mdns {
+                        Some(_) => match self.relay {
+                            Some(_) => Either::Left(Either::Right(EitherOutput::First(event))),
+                            None => Either::Right(Either::Left(EitherOutput::First(event))),
+                        },
+                        None => match self.relay {
+                            Some(_) => Either::Right(Either::Right(EitherOutput::First(event))),
+                            None => Either::Left(Either::Left(event)),
+                        },
+                    };
                     NetworkBehaviourAction::NotifyHandler {
                         peer_id: peer,
                         handler: NotifyHandler::One(connection),
@@ -793,6 +764,267 @@ where
         }
         Poll::Pending
     }
+
+    fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
+        #[allow(unused_mut)]
+        let mut addresses = self.addresses.get_addrs(peer);
+        if let Some(relay) = self.relay.as_mut() {
+            addresses.extend(relay.addresses_of_peer(peer));
+        }
+        if let Some(mdns) = self.mdns.as_mut() {
+            addresses.extend(mdns.addresses_of_peer(peer));
+        }
+        addresses
+    }
+
+    fn inject_connected(&mut self, peer: &PeerId) {
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_connected(peer);
+        }
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_connected(peer);
+        }
+        self.request_manager.on_peer_connected(*peer);
+    }
+
+    fn inject_disconnected(&mut self, peer: &PeerId) {
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_disconnected(peer);
+        }
+
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_disconnected(peer);
+        }
+        self.request_manager.on_peer_disconnected(*peer);
+    }
+
+    fn inject_connection_established(
+        &mut self,
+        peer: &PeerId,
+        connection: &ConnectionId,
+        endpoint: &ConnectedPoint,
+        failed_addresses: Option<&Vec<Multiaddr>>,
+    ) {
+        // If the remote connected to us and there is no rule for inbound requests yet, query firewall.
+        if endpoint.is_listener() && self.firewall.get_effective_rules(peer).inbound.is_none() {
+            self.query_peer_rule(*peer);
+        }
+        // Set the protocol support for the remote peer.
+        let support = ProtocolSupport::from_rules(&self.firewall.get_effective_rules(peer));
+        self.request_manager
+            .set_protocol_support(*peer, Some(*connection), support);
+
+        if let Some(addrs) = failed_addresses {
+            for addr in addrs {
+                self.addresses.deprioritize_addr(*peer, addr.clone());
+            }
+        }
+
+        self.request_manager
+            .on_connection_established(*peer, *connection, endpoint.clone());
+        self.addresses
+            .prioritize_addr(*peer, endpoint.get_remote_address().clone());
+
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_connection_established(peer, connection, endpoint, failed_addresses);
+        }
+
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_connection_established(peer, connection, endpoint, failed_addresses);
+        }
+    }
+
+    fn inject_connection_closed(
+        &mut self,
+        peer: &PeerId,
+        connection: &ConnectionId,
+        _endpoint: &ConnectedPoint,
+        _handler: <Self::ProtocolsHandler as IntoProtocolsHandler>::Handler,
+    ) {
+        self.request_manager.on_connection_closed(*peer, connection);
+        let (mdns_handler, relay_handler) = match _handler {
+            Either::Left(Either::Left(_)) => (None, None),
+            Either::Left(Either::Right(handler)) => {
+                let (_, select) = handler.into_inner();
+                let (mdns_handler, relay_handler) = select.into_inner();
+                (Some(mdns_handler), Some(relay_handler))
+            }
+            Either::Right(Either::Left(handler)) => {
+                let (_, mdns_handler) = handler.into_inner();
+                (Some(mdns_handler), None)
+            }
+            Either::Right(Either::Right(handler)) => {
+                let (_, relay_handler) = handler.into_inner();
+                (None, Some(relay_handler))
+            }
+        };
+        if let Some(mh) = mdns_handler {
+            // Event can only occur if mdns is not `None`
+            self.mdns
+                .as_mut()
+                .unwrap()
+                .inject_connection_closed(peer, connection, _endpoint, mh);
+        }
+        if let Some(rh) = relay_handler {
+            // Event can only occur if relay is not `None`
+            self.relay
+                .as_mut()
+                .unwrap()
+                .inject_connection_closed(peer, connection, _endpoint, rh);
+        }
+    }
+
+    fn inject_address_change(
+        &mut self,
+        _peer: &PeerId,
+        _connection: &ConnectionId,
+        _old: &ConnectedPoint,
+        _new: &ConnectedPoint,
+    ) {
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_address_change(_peer, _connection, _old, _new);
+        }
+
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_address_change(_peer, _connection, _old, _new);
+        }
+    }
+
+    fn inject_dial_failure(
+        &mut self,
+        peer_id: Option<PeerId>,
+        handler: Self::ProtocolsHandler,
+        error: &libp2p::swarm::DialError,
+    ) {
+        if let Some(peer) = peer_id {
+            self.request_manager.on_dial_failure(peer);
+        }
+        let (mdns_handler, relay_handler) = match handler {
+            IntoEitherHandler::Left(IntoEitherHandler::Left(_)) => (None, None),
+            IntoEitherHandler::Left(IntoEitherHandler::Right(handler)) => {
+                let (_, select) = handler.into_inner();
+                let (mdns_handler, relay_handler) = select.into_inner();
+                (Some(mdns_handler), Some(relay_handler))
+            }
+            IntoEitherHandler::Right(IntoEitherHandler::Left(handler)) => {
+                let (_, mdns_handler) = handler.into_inner();
+                (Some(mdns_handler), None)
+            }
+            IntoEitherHandler::Right(IntoEitherHandler::Right(handler)) => {
+                let (_, relay_handler) = handler.into_inner();
+                (None, Some(relay_handler))
+            }
+        };
+        if let Some(mh) = mdns_handler {
+            // Event can only occur if mdns is not `None`
+            self.mdns.as_mut().unwrap().inject_dial_failure(peer_id, mh, error);
+        }
+        if let Some(rh) = relay_handler {
+            // Event can only occur if relay is not `None`
+            self.relay.as_mut().unwrap().inject_dial_failure(peer_id, rh, error);
+        }
+    }
+
+    fn inject_listen_failure(
+        &mut self,
+        local_addr: &Multiaddr,
+        send_back_addr: &Multiaddr,
+        handler: Self::ProtocolsHandler,
+    ) {
+        let (mdns_handler, relay_handler) = match handler {
+            IntoEitherHandler::Left(IntoEitherHandler::Left(_)) => (None, None),
+            IntoEitherHandler::Left(IntoEitherHandler::Right(handler)) => {
+                let (_, select) = handler.into_inner();
+                let (mdns_handler, relay_handler) = select.into_inner();
+                (Some(mdns_handler), Some(relay_handler))
+            }
+            IntoEitherHandler::Right(IntoEitherHandler::Left(handler)) => {
+                let (_, mdns_handler) = handler.into_inner();
+                (Some(mdns_handler), None)
+            }
+            IntoEitherHandler::Right(IntoEitherHandler::Right(handler)) => {
+                let (_, relay_handler) = handler.into_inner();
+                (None, Some(relay_handler))
+            }
+        };
+        if let Some(mh) = mdns_handler {
+            // Event can only occur if mdns is not `None`
+            self.mdns
+                .as_mut()
+                .unwrap()
+                .inject_listen_failure(local_addr, send_back_addr, mh)
+        }
+        if let Some(rh) = relay_handler {
+            // Event can only occur if relay is not `None`
+            self.relay
+                .as_mut()
+                .unwrap()
+                .inject_listen_failure(local_addr, send_back_addr, rh)
+        }
+    }
+
+    fn inject_new_listener(&mut self, id: ListenerId) {
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_new_listener(id)
+        }
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_new_listener(id)
+        }
+    }
+
+    fn inject_new_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_new_listen_addr(_id, _addr);
+        }
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_new_listen_addr(_id, _addr);
+        }
+    }
+
+    fn inject_expired_listen_addr(&mut self, id: ListenerId, addr: &Multiaddr) {
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_expired_listen_addr(id, addr);
+        }
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_expired_listen_addr(id, addr);
+        }
+    }
+
+    fn inject_listener_error(&mut self, id: ListenerId, err: &(dyn std::error::Error + 'static)) {
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_listener_error(id, err);
+        }
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_listener_error(id, err);
+        }
+    }
+
+    fn inject_listener_closed(&mut self, id: ListenerId, reason: Result<(), &std::io::Error>) {
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_listener_closed(id, reason);
+        }
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_listener_closed(id, reason);
+        }
+    }
+
+    fn inject_new_external_addr(&mut self, addr: &Multiaddr) {
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_new_external_addr(addr);
+        }
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_new_external_addr(addr);
+        }
+    }
+
+    fn inject_expired_external_addr(&mut self, addr: &Multiaddr) {
+        if let Some(mdns) = self.mdns.as_mut() {
+            mdns.inject_expired_external_addr(addr);
+        }
+        if let Some(relay) = self.relay.as_mut() {
+            relay.inject_expired_external_addr(addr);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -802,13 +1034,11 @@ mod test {
     use super::*;
     use crate::firewall::{PermissionValue, RequestPermissions, Rule, RuleDirection, VariantPermission};
     use futures::{channel::mpsc, StreamExt};
-    #[cfg(feature = "mdns")]
-    use libp2p::mdns::{Mdns, MdnsConfig};
-    #[cfg(feature = "relay")]
-    use libp2p::relay::{new_transport_and_behaviour, RelayConfig};
     use libp2p::{
         core::{identity, upgrade, PeerId, Transport},
+        mdns::{Mdns, MdnsConfig},
         noise::{Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
+        relay::{new_transport_and_behaviour, RelayConfig},
         swarm::{Swarm, SwarmBuilder, SwarmEvent},
         tcp::TokioTcpConfig,
         yamux::YamuxConfig,
@@ -996,10 +1226,10 @@ mod test {
 
     async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong, Ping>>) {
         let id_keys = identity::Keypair::generate_ed25519();
-        let peer = id_keys.public().into_peer_id();
+        let peer = id_keys.public().to_peer_id();
         let noise_keys = NoiseKeypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
         let transport = TokioTcpConfig::new();
-        #[cfg(feature = "relay")]
+
         let (transport, relay_behaviour) = new_transport_and_behaviour(RelayConfig::default(), transport);
         let transport = transport
             .upgrade(upgrade::Version::V1)
@@ -1009,19 +1239,12 @@ mod test {
 
         let mut cfg = NetBehaviourConfig::default();
         cfg.firewall.set_default(Some(Rule::AllowAll), RuleDirection::Both);
-        #[cfg(feature = "mdns")]
+
         let mdns = Mdns::new(MdnsConfig::default())
             .await
             .expect("Failed to create mdns behaviour.");
         let (dummy_tx, _) = mpsc::channel(10);
-        let behaviour = NetBehaviour::new(
-            cfg,
-            #[cfg(feature = "mdns")]
-            mdns,
-            #[cfg(feature = "relay")]
-            relay_behaviour,
-            dummy_tx,
-        );
+        let behaviour = NetBehaviour::new(cfg, Some(mdns), Some(relay_behaviour), dummy_tx);
         let builder = SwarmBuilder::new(transport, behaviour, peer).executor(Box::new(|fut| {
             tokio::spawn(fut);
         }));

@@ -25,8 +25,6 @@
 // TODO: Add Handshake Messages.
 // TODO: Add Responses for each Message.
 // TODO: Remove #[allow(dead_code)]
-use thiserror::Error as DeriveError;
-
 mod actors;
 mod interface;
 mod internals;
@@ -39,67 +37,31 @@ mod utils;
 mod tests;
 
 pub use crate::{
-    interface::Stronghold,
+    interface::{ActorError, FatalEngineError, Stronghold, StrongholdResult},
     internals::Provider,
-    utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+    state::snapshot::{ReadError, WriteError},
+    utils::{Location, StrongholdFlags, VaultFlags},
 };
-
-#[cfg(feature = "p2p")]
-pub mod p2p {
-    pub use crate::actors::p2p::{NetworkConfig, SwarmInfo};
-    pub use p2p::{firewall::Rule, Multiaddr, PeerId};
-}
-
 pub use engine::{
     snapshot::{
         files::{home_dir, snapshot_dir},
         kdf::naive_kdf,
         Key,
     },
-    vault::RecordId,
+    vault::{RecordHint, RecordId},
 };
-
-pub use engine::vault::RecordHint;
-
-/// TODO: Should be replaced with proper errors.
-#[macro_export]
-macro_rules! line_error {
-    () => {
-        concat!("Error at ", file!(), ":", line!())
+#[cfg(feature = "p2p")]
+pub mod p2p {
+    pub use crate::{
+        actors::p2p::{NetworkConfig, SwarmInfo},
+        interface::{P2pError, P2pResult, SpawnNetworkError},
     };
-    ($str:expr) => {
-        concat!($str, " @", file!(), ":", line!())
+    pub use p2p::{
+        firewall::Rule, DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId, RelayNotSupported,
     };
 }
 
-#[macro_export]
-macro_rules! unwrap_or_err (
-    ($expression:expr) => {
-        match $expression {
-            Ok(ok) => ok,
-            Err(err) => return ResultMessage::Error(err.to_string())
-        }
-    };
-    ($expression:expr, $error:literal) => {
-        match $expression {
-            Ok(ok) => ok,
-            Err(_) => return ResultMessage::Error($error.to_string()),
-        }
-    };
-    (Option, $expression:expr, $error:literal) => {
-        match $expression.as_ref() {
-            Some(item) => item,
-            None => return ResultMessage::Error($error.to_string())
-        }
-    };
-);
-
-#[macro_export]
-macro_rules! unwrap_result_msg (
-    ($expr:expr) => {
-        unwrap_or_err!(unwrap_or_err!($expr))
-    };
-);
+pub use actix::MailboxError;
 
 #[macro_export]
 macro_rules! enum_from_inner {
@@ -134,29 +96,4 @@ macro_rules! enum_from_inner {
             }
         }
     };
-}
-
-/// Stronghold Client Result Type.
-pub type Result<T> = anyhow::Result<T, Error>;
-
-/// Stronghold Client error block.
-#[derive(DeriveError, Debug)]
-pub enum Error {
-    #[error("Id Error")]
-    IDError,
-
-    #[error("Engine Error: {0}")]
-    EngineError(#[from] engine::Error),
-
-    #[error("Id Conversion Error ({0})")]
-    IdConversionError(String),
-
-    #[error("Path Error: ({0})")]
-    PathError(String),
-
-    #[error("Keystore Access Error: ({0})")]
-    KeyStoreError(String),
-
-    #[error("Could not load client by path ({0})")]
-    LoadClientByPathError(String),
 }

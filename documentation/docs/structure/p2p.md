@@ -1,3 +1,12 @@
+---
+description: Peer to peer communications crate.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- rust
+- p2p
+- crate
+---
+
 # Structure: Communication
 
 | | | |

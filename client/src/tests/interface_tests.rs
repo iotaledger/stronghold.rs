@@ -1,7 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{line_error, Location, RecordHint, Stronghold};
+use crate::{ActorError, Location, RecordHint, Stronghold};
+
+use stronghold_utils::random::bytestring;
 
 #[actix::test]
 async fn test_stronghold() {
@@ -12,7 +14,7 @@ async fn test_stronghold() {
     let loc1 = Location::counter::<_, usize>("path", 1);
     let loc2 = Location::counter::<_, usize>("path", 2);
 
-    let store_loc = Location::generic("some", "path");
+    let store_loc = bytestring(4096);
 
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
@@ -28,19 +30,22 @@ async fn test_stronghold() {
         .write_to_vault(
             loc0.clone(),
             b"test".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"first hint").unwrap(),
             vec![],
         )
         .await
         .is_ok());
 
     // read head.
-    let (p, _) = stronghold2.read_secret(client_path.clone(), loc0.clone()).await;
+    let p = stronghold2
+        .read_secret(client_path.clone(), loc0.clone())
+        .await
+        .unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
     // read head from first reference
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc0.clone()).await;
+    let p = stronghold.read_secret(client_path.clone(), loc0.clone()).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
@@ -49,14 +54,14 @@ async fn test_stronghold() {
         .write_to_vault(
             loc1.clone(),
             b"another test".to_vec(),
-            RecordHint::new(b"another hint").expect(line_error!()),
+            RecordHint::new(b"another hint").unwrap(),
             vec![],
         )
         .await
         .is_ok());
 
     // read head.
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc1.clone()).await;
+    let p = stronghold.read_secret(client_path.clone(), loc1.clone()).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
@@ -64,92 +69,103 @@ async fn test_stronghold() {
         .write_to_vault(
             loc2.clone(),
             b"yet another test".to_vec(),
-            RecordHint::new(b"yet another hint").expect(line_error!()),
+            RecordHint::new(b"yet another hint").unwrap(),
             vec![],
         )
         .await
         .is_ok());
 
     // read head.
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc2.clone()).await;
+    let p = stronghold.read_secret(client_path.clone(), loc2.clone()).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
     // Read the first record of the vault.
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc0.clone()).await;
+    let p = stronghold.read_secret(client_path.clone(), loc0.clone()).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
     // Read the head record of the vault.
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc1).await;
+    let p = stronghold.read_secret(client_path.clone(), loc1).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc2.clone()).await;
+    let p = stronghold.read_secret(client_path.clone(), loc2.clone()).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
-    let (ids, _) = stronghold.list_hints_and_ids(vault_path.clone()).await;
+    let ids = stronghold.list_hints_and_ids(vault_path.clone()).await.unwrap();
     println!("{:?}", ids);
 
-    stronghold.delete_data(loc0.clone(), true).await;
+    stronghold
+        .delete_data(loc0.clone(), true)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap();
 
     // attempt to read the first record of the vault.
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc0.clone()).await;
+    let p = stronghold.read_secret(client_path.clone(), loc0.clone()).await.unwrap();
 
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
+    assert!(p.is_none());
 
-    let (ids, _) = stronghold.list_hints_and_ids(vault_path.clone()).await;
+    let ids = stronghold.list_hints_and_ids(vault_path.clone()).await.unwrap();
     println!("{:?}", ids);
 
     stronghold
         .write_to_store(store_loc.clone(), b"test".to_vec(), None)
-        .await;
+        .await
+        .unwrap();
 
-    let (data, _) = stronghold.read_from_store(store_loc.clone()).await;
+    let data = stronghold.read_from_store(store_loc.clone()).await.unwrap().unwrap();
 
     assert_eq!(std::str::from_utf8(&data), Ok("test"));
 
-    stronghold.garbage_collect(vault_path).await;
+    stronghold.garbage_collect(vault_path).await.unwrap();
 
     stronghold
         .write_all_to_snapshot(&key_data, Some("test0".into()), None)
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
     stronghold
         .read_snapshot(client_path.clone(), None, &key_data, Some("test0".into()), None)
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
 
     // read head after reading snapshot.
 
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc2.clone()).await;
+    let p = stronghold.read_secret(client_path.clone(), loc2.clone()).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
-    let (p, _e) = stronghold.read_secret(client_path.clone(), loc0).await;
+    let p = stronghold.read_secret(client_path.clone(), loc0).await.unwrap();
 
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
+    assert!(p.is_none());
 
-    stronghold.kill_stronghold(client_path.clone(), false).await;
+    stronghold.kill_stronghold(client_path.clone(), false).await.unwrap();
 
-    let (p, _) = stronghold.read_secret(client_path.clone(), loc2).await;
+    let p = stronghold.read_secret(client_path.clone(), loc2).await.unwrap();
 
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(""));
+    assert!(p.is_none());
 
-    let (data, _) = stronghold.read_from_store(store_loc.clone()).await;
+    let data = stronghold.read_from_store(store_loc.clone()).await.unwrap().unwrap();
 
     assert_eq!(std::str::from_utf8(&data), Ok("test"));
 
-    stronghold.delete_from_store(store_loc.clone()).await;
+    stronghold.delete_from_store(store_loc.clone()).await.unwrap();
 
-    let (data, _) = stronghold.read_from_store(store_loc).await;
+    let data = stronghold.read_from_store(store_loc).await.unwrap();
 
-    assert_eq!(std::str::from_utf8(&data), Ok(""));
+    assert!(data.is_none());
 
-    stronghold.kill_stronghold(client_path, true).await;
+    stronghold.kill_stronghold(client_path.clone(), true).await.unwrap();
 
-    // actor tree?
-    // stronghold.system.print_tree();
+    assert!(matches!(
+        stronghold.switch_actor_target(client_path).await,
+        Err(ActorError::TargetNotFound)
+    ))
 }
 
 #[actix::test]
@@ -171,72 +187,84 @@ async fn run_stronghold_multi_actors() {
         .await
         .unwrap();
 
-    stronghold.spawn_stronghold_actor(client_path1.clone(), vec![]).await;
+    stronghold
+        .spawn_stronghold_actor(client_path1.clone(), vec![])
+        .await
+        .unwrap();
 
-    stronghold.switch_actor_target(client_path0.clone()).await;
+    stronghold.switch_actor_target(client_path0.clone()).await.unwrap();
 
     assert!(stronghold
-        .write_to_vault(
-            loc0.clone(),
-            b"test".to_vec(),
-            RecordHint::new(b"0").expect(line_error!()),
-            vec![],
-        )
+        .write_to_vault(loc0.clone(), b"test".to_vec(), RecordHint::new(b"0").unwrap(), vec![],)
         .await
         .is_ok());
 
     // read head.
-    let (p, _) = stronghold.read_secret(client_path0.clone(), loc0.clone()).await;
+    let p = stronghold
+        .read_secret(client_path0.clone(), loc0.clone())
+        .await
+        .unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
 
-    stronghold.switch_actor_target(client_path1.clone()).await;
+    stronghold.switch_actor_target(client_path1.clone()).await.unwrap();
 
     // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
     assert!(stronghold
         .write_to_vault(
             loc0.clone(),
             b"another test".to_vec(),
-            RecordHint::new(b"1").expect(line_error!()),
+            RecordHint::new(b"1").unwrap(),
             vec![],
         )
         .await
         .is_ok());
 
     // read head.
-    let (p, _) = stronghold.read_secret(client_path1.clone(), loc0.clone()).await;
+    let p = stronghold
+        .read_secret(client_path1.clone(), loc0.clone())
+        .await
+        .unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
-    stronghold.switch_actor_target(client_path0.clone()).await;
+    stronghold.switch_actor_target(client_path0.clone()).await.unwrap();
 
     assert!(stronghold
         .write_to_vault(
             loc0.clone(),
             b"yet another test".to_vec(),
-            RecordHint::new(b"2").expect(line_error!()),
+            RecordHint::new(b"2").unwrap(),
             vec![],
         )
         .await
         .is_ok());
 
-    let (p, _) = stronghold.read_secret(client_path0.clone(), loc0.clone()).await;
+    let p = stronghold
+        .read_secret(client_path0.clone(), loc0.clone())
+        .await
+        .unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
 
-    let (ids, _) = stronghold.list_hints_and_ids(loc2.vault_path()).await;
+    let ids = stronghold.list_hints_and_ids(loc2.vault_path()).await.unwrap();
     println!("actor 0: {:?}", ids);
 
     stronghold
         .write_all_to_snapshot(&key_data.to_vec(), Some("megasnap".into()), None)
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
-    stronghold.switch_actor_target(client_path1.clone()).await;
+    stronghold.switch_actor_target(client_path1.clone()).await.unwrap();
 
-    let (ids, _) = stronghold.list_hints_and_ids(loc2.vault_path()).await;
+    let ids = stronghold.list_hints_and_ids(loc2.vault_path()).await.unwrap();
     println!("actor 1: {:?}", ids);
 
-    stronghold.spawn_stronghold_actor(client_path2.clone(), vec![]).await;
+    stronghold
+        .spawn_stronghold_actor(client_path2.clone(), vec![])
+        .await
+        .unwrap();
 
     stronghold
         .read_snapshot(
@@ -246,10 +274,12 @@ async fn run_stronghold_multi_actors() {
             Some("megasnap".into()),
             None,
         )
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
 
     // client_path2 correct?
-    let (p, _) = stronghold.read_secret(client_path2.clone(), loc0).await;
+    let p = stronghold.read_secret(client_path2.clone(), loc0).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
 
@@ -257,13 +287,13 @@ async fn run_stronghold_multi_actors() {
         .write_to_vault(
             loc3.clone(),
             b"a new actor test".to_vec(),
-            RecordHint::new(b"2").expect(line_error!()),
+            RecordHint::new(b"2").unwrap(),
             vec![],
         )
         .await
         .is_ok());
 
-    let (p, _) = stronghold.read_secret(client_path2.clone(), loc3).await;
+    let p = stronghold.read_secret(client_path2.clone(), loc3).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test"));
 
@@ -271,21 +301,21 @@ async fn run_stronghold_multi_actors() {
         .write_to_vault(
             loc4.clone(),
             b"a new actor test again".to_vec(),
-            RecordHint::new(b"3").expect(line_error!()),
+            RecordHint::new(b"3").unwrap(),
             vec![],
         )
         .await
         .is_ok());
 
-    let (p, _) = stronghold.read_secret(client_path2, loc4.clone()).await;
+    let p = stronghold.read_secret(client_path2, loc4.clone()).await.unwrap();
 
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test again"));
 
-    let (mut ids2, _) = stronghold.list_hints_and_ids(loc4.vault_path()).await;
+    let mut ids2 = stronghold.list_hints_and_ids(loc4.vault_path()).await.unwrap();
 
-    stronghold.switch_actor_target(client_path1).await;
+    stronghold.switch_actor_target(client_path1).await.unwrap();
 
-    let (mut ids1, _) = stronghold.list_hints_and_ids(loc4.vault_path()).await;
+    let mut ids1 = stronghold.list_hints_and_ids(loc4.vault_path()).await.unwrap();
     ids2.sort();
     ids1.sort();
 
@@ -294,7 +324,10 @@ async fn run_stronghold_multi_actors() {
 
     assert_eq!(ids1, ids2);
 
-    stronghold.spawn_stronghold_actor(client_path3.clone(), vec![]).await;
+    stronghold
+        .spawn_stronghold_actor(client_path3.clone(), vec![])
+        .await
+        .unwrap();
 
     stronghold
         .read_snapshot(
@@ -304,14 +337,16 @@ async fn run_stronghold_multi_actors() {
             Some("megasnap".into()),
             None,
         )
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
 
-    let (mut ids3, _) = stronghold.list_hints_and_ids(loc4.vault_path()).await;
+    let mut ids3 = stronghold.list_hints_and_ids(loc4.vault_path()).await.unwrap();
     println!("actor 3: {:?}", ids3);
 
-    stronghold.switch_actor_target(client_path0).await;
+    stronghold.switch_actor_target(client_path0).await.unwrap();
 
-    let (mut ids0, _) = stronghold.list_hints_and_ids(loc4.vault_path()).await;
+    let mut ids0 = stronghold.list_hints_and_ids(loc4.vault_path()).await.unwrap();
     println!("actor 0: {:?}", ids0);
 
     ids0.sort();
@@ -339,28 +374,28 @@ async fn test_stronghold_generics() {
         .write_to_vault(
             slip10_seed.clone(),
             b"AAAAAA".to_vec(),
-            RecordHint::new(b"first hint").expect(line_error!()),
+            RecordHint::new(b"first hint").unwrap(),
             vec![],
         )
         .await
         .is_ok());
-    let (p, _) = stronghold.read_secret(client_path, slip10_seed).await;
+    let p = stronghold.read_secret(client_path, slip10_seed).await.unwrap();
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
     stronghold
         .write_all_to_snapshot(&key_data.to_vec(), Some("generic".into()), None)
-        .await;
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 }
 
-/// this test has not been ported to actix
 #[cfg(feature = "p2p")]
 #[actix::test]
 async fn test_stronghold_p2p() {
     use crate::{
-        actors::p2p::{messages::SwarmInfo, NetworkConfig},
+        actors::p2p::NetworkConfig,
         procedures::{Slip10Derive, Slip10Generate, TargetInfo},
         tests::fresh,
-        ResultMessage, StatusMessage,
     };
     use p2p::firewall::Rule;
     use tokio::sync::{mpsc, oneshot};
@@ -375,14 +410,14 @@ async fn test_stronghold_p2p() {
     let (remote_ready_tx, mut remote_ready_rx) = mpsc::channel(1);
     let (local_ready_tx, mut local_ready_rx) = mpsc::channel(1);
 
-    let loc1 = Location::counter::<_, usize>("path", 0);
+    let key1 = bytestring(1024);
     let data1 = b"some data".to_vec();
-    let loc1_clone = loc1.clone();
+    let key1_clone = key1.clone();
     let data1_clone = data1.clone();
 
-    let loc2 = Location::counter::<_, usize>("path", 1);
+    let key2 = bytestring(1024);
     let data2 = b"some second data".to_vec();
-    let loc2_clone = loc2.clone();
+    let key2_clone = key2.clone();
     let data2_clone = data2.clone();
 
     let seed1 = fresh::location();
@@ -398,45 +433,46 @@ async fn test_stronghold_p2p() {
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
         local_stronghold
             .spawn_p2p(Rule::AllowAll, NetworkConfig::default())
-            .await;
+            .await
+            .unwrap_or_else(|e| panic!("Could not spawn p2p: {}", e));
 
         let (peer_id, addr) = addr_rx.await.unwrap();
-        match local_stronghold.add_peer(peer_id, Some(addr), false, false).await {
-            ResultMessage::Ok(_) => {}
-            ResultMessage::Error(_) => panic!("Could not establish connection to remote."),
-        }
+        local_stronghold
+            .add_peer(peer_id, Some(addr))
+            .await
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Could not establish connection to remote: {}", e));
 
         remote_ready_rx.recv().await.unwrap();
 
         // test writing at remote and reading it from local stronghold
-        let payload = match local_stronghold.read_from_remote_store(peer_id, loc1).await {
-            ResultMessage::Ok(payload) => payload,
-            ResultMessage::Error(_) => panic!("Could not read from remote store."),
-        };
-        assert_eq!(payload, data1);
+        let payload = local_stronghold
+            .read_from_remote_store(peer_id, key1)
+            .await
+            .unwrap_or_else(|e| panic!("Could not read from remote store: {}", e));
+        assert_eq!(payload.unwrap(), data1);
 
         // test writing from local and reading it at remote
-        match local_stronghold.write_to_remote_store(peer_id, loc2, data2, None).await {
-            StatusMessage::OK => {}
-            StatusMessage::Error(_) => panic!("Could not write to remote store"),
-        }
+        local_stronghold
+            .write_to_remote_store(peer_id, key2, data2, None)
+            .await
+            .unwrap_or_else(|e| panic!("Could not write to remote store: {}", e));
         local_ready_tx.send(()).await.unwrap();
 
         // test writing and reading from local
-        let loc3 = Location::counter::<_, usize>("path", 2);
+        let key3 = bytestring(1024);
         let original_data3 = b"some third data".to_vec();
-        match local_stronghold
-            .write_to_remote_store(peer_id, loc3.clone(), original_data3.clone(), None)
+        local_stronghold
+            .write_to_remote_store(peer_id, key3.clone(), original_data3.clone(), None)
             .await
-        {
-            StatusMessage::OK => {}
-            StatusMessage::Error(_) => panic!("Could not write to remote store."),
-        }
-        let payload = match local_stronghold.read_from_remote_store(peer_id, loc3).await {
-            ResultMessage::Ok(payload) => payload,
-            ResultMessage::Error(_) => panic!("Could not read from remote store."),
-        };
-        assert_eq!(payload, original_data3);
+            .unwrap_or_else(|e| panic!("Could not write to remote store: {}", e));
+
+        let payload = local_stronghold
+            .read_from_remote_store(peer_id, key3)
+            .await
+            .unwrap_or_else(|e| panic!("Could not read from remote store: {}", e));
+
+        assert_eq!(payload.unwrap(), original_data3);
 
         remote_ready_rx.recv().await.unwrap();
 
@@ -445,9 +481,10 @@ async fn test_stronghold_p2p() {
         match local_stronghold
             .remote_runtime_exec(peer_id, Slip10Derive::new_from_seed(seed1, chain))
             .await
+            .unwrap_or_else(|e| panic!("Could not execute remote procedure: {}", e))
         {
-            ResultMessage::Ok(out) => assert!(out.into_iter().next().is_none()),
-            ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
+            Ok(out) => assert!(out.into_iter().next().is_none()),
+            Err(e) => panic!("unexpected error: {:?}", e),
         };
         res_tx.send(()).await.unwrap();
     });
@@ -460,48 +497,47 @@ async fn test_stronghold_p2p() {
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
         remote_stronghold
             .spawn_p2p(Rule::AllowAll, NetworkConfig::default())
-            .await;
+            .await
+            .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
 
-        let addr = match remote_stronghold.start_listening(None).await {
-            ResultMessage::Ok(addr) => addr,
-            ResultMessage::Error(_) => panic!("Could not start listening"),
-        };
+        let addr = remote_stronghold
+            .start_listening(None)
+            .await
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Could not start listening: {}", e));
 
-        let (peer_id, listeners) = match remote_stronghold.get_swarm_info().await {
-            ResultMessage::Ok(SwarmInfo {
-                local_peer_id,
-                listeners,
-                ..
-            }) => (local_peer_id, listeners),
-            ResultMessage::Error(_) => panic!("Could not get swarm info."),
-        };
+        let swarm_info = remote_stronghold
+            .get_swarm_info()
+            .await
+            .unwrap_or_else(|e| panic!("Could not get swarm info: {}", e));
 
-        assert!(listeners.into_iter().any(|l| l.addrs.contains(&addr)));
-        addr_tx.send((peer_id, addr)).unwrap();
+        assert!(swarm_info.listeners.into_iter().any(|l| l.addrs.contains(&addr)));
+        addr_tx.send((swarm_info.local_peer_id, addr)).unwrap();
 
         // test writing at remote and reading it from local stronghold
-        match remote_stronghold.write_to_store(loc1_clone, data1_clone, None).await {
-            StatusMessage::OK => {}
-            StatusMessage::Error(_) => panic!("Could not write store."),
-        };
+        remote_stronghold
+            .write_to_store(key1_clone, data1_clone, None)
+            .await
+            .unwrap_or_else(|e| panic!("Could not write to remote store: {}", e));
 
         remote_ready_tx.send(()).await.unwrap();
         local_ready_rx.recv().await.unwrap();
 
         // test writing from local and reading it at remoteom local and reading it at remote
-        let payload = match remote_stronghold.read_from_store(loc2_clone).await {
-            (payload, StatusMessage::OK) => payload,
-            (_, StatusMessage::Error(_)) => panic!("Could not read from store."),
-        };
-        assert_eq!(payload, data2_clone);
+        let payload = remote_stronghold
+            .read_from_store(key2_clone)
+            .await
+            .unwrap_or_else(|e| panic!("Could not read from remote store: {}", e));
+        assert_eq!(payload.unwrap(), data2_clone);
 
         // test procedure execution
         match remote_stronghold
             .runtime_exec(Slip10Generate::default().write_secret(seed1_clone, fresh::record_hint()))
             .await
+            .unwrap_or_else(|e| panic!("Could not execute remote procedure: {}", e))
         {
-            ResultMessage::Ok(out) => assert!(out.into_iter().next().is_none()),
-            ResultMessage::Error(e) => panic!("unexpected error: {:?}", e),
+            Ok(out) => assert!(out.into_iter().next().is_none()),
+            Err(e) => panic!("unexpected error: {:?}", e),
         };
 
         remote_ready_tx.send(()).await.unwrap();
