@@ -14,11 +14,14 @@ use crate::{
             ReadFromStore, ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
         snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
-        GetAllClients, GetClient, GetSnapshot, GetTarget, Registry, RemoveClient, SecureClient, SpawnClient,
-        SwitchTarget, VaultError,
+        GetAllClients, GetClient, GetSnapshot, GetTarget, Registry, RemoveClient, SpawnClient, SwitchTarget,
+        VaultError,
     },
     procedures::{CollectedOutput, Procedure, ProcedureError},
-    state::snapshot::{ReadError, WriteError},
+    state::{
+        secure::SecureClient,
+        snapshot::{ReadError, WriteError},
+    },
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -33,11 +36,13 @@ use thiserror::Error as DeriveError;
 use zeroize::Zeroize;
 
 #[cfg(test)]
-use crate::actors::ReadFromVault;
+use crate::actors::secure_testing::ReadFromVault;
+
 #[cfg(feature = "p2p")]
 use crate::actors::{
-    p2p::{messages as network_msg, NetworkActor, NetworkConfig, ShRequest, SwarmInfo},
-    GetNetwork, InsertNetwork, StopNetwork,
+    network_messages,
+    network_messages::{ShRequest, SwarmInfo},
+    GetNetwork, InsertNetwork, NetworkActor, NetworkConfig, StopNetwork,
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -100,8 +105,8 @@ impl From<VaultError> for FatalEngineError {
 }
 
 #[cfg(feature = "p2p")]
-impl From<network_msg::RemoteVaultError> for FatalEngineError {
-    fn from(e: network_msg::RemoteVaultError) -> Self {
+impl From<network_messages::RemoteVaultError> for FatalEngineError {
+    fn from(e: network_messages::RemoteVaultError) -> Self {
         FatalEngineError(e.to_string())
     }
 }
@@ -485,21 +490,21 @@ impl Stronghold {
     /// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.
     pub async fn start_listening(&self, address: Option<Multiaddr>) -> StrongholdResult<Result<Multiaddr, ListenErr>> {
         let actor = self.network_actor().await?;
-        let result = actor.send(network_msg::StartListening { address }).await?;
+        let result = actor.send(network_messages::StartListening { address }).await?;
         Ok(result)
     }
 
     /// Stop listening on the swarm.
     pub async fn stop_listening(&self) -> StrongholdResult<()> {
         let actor = self.network_actor().await?;
-        actor.send(network_msg::StopListening).await?;
+        actor.send(network_messages::StopListening).await?;
         Ok(())
     }
 
     ///  Get the peer id, listening addresses and connection info of the local peer
     pub async fn get_swarm_info(&self) -> StrongholdResult<SwarmInfo> {
         let actor = self.network_actor().await?;
-        let info = actor.send(network_msg::GetSwarmInfo).await?;
+        let info = actor.send(network_messages::GetSwarmInfo).await?;
         Ok(info)
     }
 
@@ -515,9 +520,9 @@ impl Stronghold {
     ) -> StrongholdResult<Result<Multiaddr, DialErr>> {
         let actor = self.network_actor().await?;
         if let Some(address) = address {
-            actor.send(network_msg::AddPeerAddr { peer, address }).await?;
+            actor.send(network_messages::AddPeerAddr { peer, address }).await?;
         }
-        let result = actor.send(network_msg::ConnectPeer { peer }).await?;
+        let result = actor.send(network_messages::ConnectPeer { peer }).await?;
         Ok(result)
     }
 
@@ -528,7 +533,9 @@ impl Stronghold {
         relay_addr: Option<Multiaddr>,
     ) -> StrongholdResult<Result<Option<Multiaddr>, RelayNotSupported>> {
         let actor = self.network_actor().await?;
-        let result = actor.send(network_msg::AddDialingRelay { relay, relay_addr }).await?;
+        let result = actor
+            .send(network_messages::AddDialingRelay { relay, relay_addr })
+            .await?;
         Ok(result)
     }
 
@@ -542,7 +549,7 @@ impl Stronghold {
     ) -> StrongholdResult<Result<Multiaddr, ListenRelayErr>> {
         let actor = self.network_actor().await?;
         let result = actor
-            .send(network_msg::StartListeningRelay { relay, relay_addr })
+            .send(network_messages::StartListeningRelay { relay, relay_addr })
             .await?;
         Ok(result)
     }
@@ -550,14 +557,14 @@ impl Stronghold {
     /// Stop listening with the relay.
     pub async fn remove_listening_relay(&self, relay: PeerId) -> StrongholdResult<()> {
         let actor = self.network_actor().await?;
-        actor.send(network_msg::StopListeningRelay { relay }).await?;
+        actor.send(network_messages::StopListeningRelay { relay }).await?;
         Ok(())
     }
 
     /// Remove a peer from the list of peers used for dialing.
     pub async fn remove_dialing_relay(&self, relay: PeerId) -> StrongholdResult<()> {
         let actor = self.network_actor().await?;
-        actor.send(network_msg::RemoveDialingRelay { relay }).await?;
+        actor.send(network_messages::RemoveDialingRelay { relay }).await?;
         Ok(())
     }
 
@@ -574,7 +581,7 @@ impl Stronghold {
 
         if set_default {
             actor
-                .send(network_msg::SetFirewallDefault {
+                .send(network_messages::SetFirewallDefault {
                     direction: RuleDirection::Inbound,
                     rule: rule.clone(),
                 })
@@ -583,7 +590,7 @@ impl Stronghold {
 
         for peer in peers {
             actor
-                .send(network_msg::SetFirewallRule {
+                .send(network_messages::SetFirewallRule {
                     peer,
                     direction: RuleDirection::Inbound,
                     rule: rule.clone(),
@@ -598,7 +605,7 @@ impl Stronghold {
         let actor = self.network_actor().await?;
         for peer in peers {
             actor
-                .send(network_msg::RemoveFirewallRule {
+                .send(network_messages::RemoveFirewallRule {
                     peer,
                     direction: RuleDirection::Inbound,
                 })
@@ -621,7 +628,7 @@ impl Stronghold {
         let vault_path = location.vault_path().to_vec();
 
         // check if vault exists
-        let send_request = network_msg::SendRequest {
+        let send_request = network_messages::SendRequest {
             peer,
             request: CheckVault { vault_path },
         };
@@ -629,7 +636,7 @@ impl Stronghold {
 
         // no vault so create new one before writing.
         if !vault_exists {
-            let send_request = network_msg::SendRequest {
+            let send_request = network_messages::SendRequest {
                 peer,
                 request: CreateVault {
                     location: location.clone(),
@@ -639,9 +646,9 @@ impl Stronghold {
         }
 
         // write data
-        let send_request = network_msg::SendRequest {
+        let send_request = network_messages::SendRequest {
             peer,
-            request: network_msg::WriteToRemoteVault {
+            request: network_messages::WriteToRemoteVault {
                 location: location.clone(),
                 payload: payload.clone(),
                 hint,
@@ -663,7 +670,7 @@ impl Stronghold {
         lifetime: Option<Duration>,
     ) -> P2pResult<Option<Vec<u8>>> {
         let actor = self.network_actor().await?;
-        let send_request = network_msg::SendRequest {
+        let send_request = network_messages::SendRequest {
             peer,
             request: WriteToStore { key, payload, lifetime },
         };
@@ -674,7 +681,7 @@ impl Stronghold {
     /// Read from the store of a remote Stronghold.
     pub async fn read_from_remote_store(&self, peer: PeerId, key: Vec<u8>) -> P2pResult<Option<Vec<u8>>> {
         let actor = self.network_actor().await?;
-        let send_request = network_msg::SendRequest {
+        let send_request = network_messages::SendRequest {
             peer,
             request: ReadFromStore { key },
         };
@@ -689,7 +696,7 @@ impl Stronghold {
         vault_path: V,
     ) -> P2pResult<Vec<(RecordId, RecordHint)>> {
         let actor = self.network_actor().await?;
-        let send_request = network_msg::SendRequest {
+        let send_request = network_messages::SendRequest {
             peer,
             request: ListIds {
                 vault_path: vault_path.into(),
@@ -710,7 +717,7 @@ impl Stronghold {
         P: Into<Procedure>,
     {
         let actor = self.network_actor().await?;
-        let send_request = network_msg::SendRequest::<Procedure> {
+        let send_request = network_messages::SendRequest::<Procedure> {
             peer,
             request: control_request.into(),
         };

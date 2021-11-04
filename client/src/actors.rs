@@ -2,25 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[cfg(feature = "p2p")]
-pub mod p2p;
+mod p2p;
 mod registry;
 mod secure;
 mod snapshot;
 
 #[cfg(feature = "p2p")]
-pub use self::registry::p2p_messages::{GetNetwork, InsertNetwork, StopNetwork};
-#[cfg(test)]
-pub use self::secure::testing as secure_testing;
+pub use self::{
+    p2p::{messages as network_messages, NetworkActor, NetworkConfig},
+    registry::p2p_messages::{GetNetwork, InsertNetwork, StopNetwork},
+};
 pub use self::{
     registry::{
         messages::{GetAllClients, GetClient, GetSnapshot, GetTarget, RemoveClient, SpawnClient, SwitchTarget},
         Registry,
     },
-    secure::{messages as secure_messages, SecureClient, VaultError},
+    secure::{messages as secure_messages, VaultError},
     snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes},
 };
-
 #[cfg(test)]
-// this import is intended for testing purposes only, and should not be included
-// in any production code.
-pub use secure::testing::ReadFromVault;
+pub use secure::testing as secure_testing;

@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 #[cfg(feature = "p2p")]
 use super::p2p::NetworkActor;
-use crate::{actors::SecureClient, state::snapshot::Snapshot};
+use crate::state::{secure::SecureClient, snapshot::Snapshot};
 
 pub mod messages {
     use super::*;

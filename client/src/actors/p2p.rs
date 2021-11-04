@@ -9,7 +9,6 @@ use crate::{
 use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
 use messages::*;
-pub use messages::{ShRequest, SwarmInfo};
 use p2p::{
     firewall::{FirewallConfiguration, FirewallRules, Rule},
     ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr, Multiaddr,

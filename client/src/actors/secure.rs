@@ -8,26 +8,23 @@
 
 #![allow(clippy::type_complexity)]
 
-use crate::procedures::Runner;
-pub use crate::{
+use crate::{
     internals::Provider,
-    procedures::{CollectedOutput, Procedure, ProcedureError},
-    state::{key_store::KeyStore, secure::SecureClient, snapshot::Snapshot},
+    procedures::{CollectedOutput, Procedure, ProcedureError, Runner},
+    state::secure::SecureClient,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, MessageResult, Supervised};
-
 use engine::{
     store::Cache,
     vault::{BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultError as EngineVaultError, VaultId},
 };
 use std::{collections::HashMap, convert::Infallible};
+use stronghold_utils::GuardDebug;
 
 /// Store typedef on `engine::store::Cache`
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
 pub type VaultError<E = Infallible> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
-
-use stronghold_utils::GuardDebug;
 
 /// Message types for [`SecureClientActor`]
 pub mod messages {

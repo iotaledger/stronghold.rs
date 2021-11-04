@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::primitives::PrimitiveProcedure;
-use crate::{
-    actors::{SecureClient, VaultError},
-    FatalEngineError, Location,
-};
+use crate::{actors::VaultError, state::secure::SecureClient, FatalEngineError, Location};
 use actix::Message;
 use engine::{
     runtime::GuardedVec,

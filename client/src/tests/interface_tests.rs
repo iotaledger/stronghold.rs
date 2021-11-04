@@ -393,7 +393,7 @@ async fn test_stronghold_generics() {
 #[actix::test]
 async fn test_stronghold_p2p() {
     use crate::{
-        actors::p2p::NetworkConfig,
+        actors::NetworkConfig,
         procedures::{Slip10Derive, Slip10Generate, TargetInfo},
         tests::fresh,
     };
