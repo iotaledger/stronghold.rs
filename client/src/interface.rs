@@ -16,7 +16,7 @@ use crate::{
         secure_procedures::{CallProcedure, ProcResult, Procedure},
         snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, GetTarget, Registry, RemoveClient, SecureClient, SpawnClient,
-        SwitchTarget, VaultError,
+        SwitchTarget,
     },
     state::snapshot::{ReadError, WriteError},
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
@@ -37,7 +37,7 @@ use crate::actors::ReadFromVault;
 use crate::actors::{
     p2p::{
         messages as network_msg,
-        messages::{RemoteVaultError, ShRequest, SwarmInfo},
+        messages::{ShRequest, SwarmInfo},
         NetworkActor, NetworkConfig,
     },
     GetNetwork, InsertNetwork, StopNetwork,
@@ -92,6 +92,10 @@ pub enum SpawnNetworkError {
     Io(#[from] io::Error),
 }
 
+#[derive(DeriveError, Debug)]
+#[error("fatal engine error {0}")]
+pub struct FatalEngineError(String);
+
 #[derive(Clone)]
 /// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of
 /// metadata to interpret the data in the vault and store.
@@ -144,7 +148,7 @@ impl Stronghold {
         payload: Vec<u8>,
         hint: RecordHint,
         _options: Vec<VaultFlags>,
-    ) -> StrongholdResult<Result<(), String>> {
+    ) -> StrongholdResult<Result<(), FatalEngineError>> {
         let target = self.target().await?;
 
         let vault_path = location.vault_path().to_vec();
@@ -166,10 +170,7 @@ impl Stronghold {
                 hint,
             })
             .await?
-            .map_err(|e| match e {
-                VaultError::Record(e) => e.to_string(),
-                _ => unreachable!(),
-            });
+            .map_err(|e| FatalEngineError(e.to_string()));
         Ok(res)
     }
 
@@ -213,7 +214,11 @@ impl Stronghold {
     /// Revokes the data from the specified location of type [`Location`]. Revoked data is not readable and can be
     /// removed from a vault with a call to `garbage_collect`.  if the `should_gc` flag is set to `true`, this call
     /// with automatically cleanup the revoke. Otherwise, the data is just marked as revoked.
-    pub async fn delete_data(&self, location: Location, should_gc: bool) -> StrongholdResult<Result<(), String>> {
+    pub async fn delete_data(
+        &self,
+        location: Location,
+        should_gc: bool,
+    ) -> StrongholdResult<Result<(), FatalEngineError>> {
         let target = self.target().await?;
         let res = target
             .send(RevokeData {
@@ -222,8 +227,7 @@ impl Stronghold {
             .await?;
         match res {
             Ok(_) => {}
-            Err(VaultError::Record(e)) => return Ok(Err(e.to_string())),
-            Err(_) => unreachable!(),
+            Err(e) => return Ok(Err(FatalEngineError(e.to_string()))),
         };
 
         if should_gc {
@@ -595,7 +599,7 @@ impl Stronghold {
         payload: Vec<u8>,
         hint: RecordHint,
         _options: Vec<VaultFlags>,
-    ) -> P2pResult<Result<(), String>> {
+    ) -> P2pResult<Result<(), FatalEngineError>> {
         let actor = self.network_actor().await?;
 
         let vault_path = location.vault_path().to_vec();
@@ -627,10 +631,10 @@ impl Stronghold {
                 hint,
             },
         };
-        let res = actor.send(send_request).await??.map_err(|e| match e {
-            RemoteVaultError::Record(e) => e,
-            _ => unreachable!(),
-        });
+        let res = actor
+            .send(send_request)
+            .await??
+            .map_err(|e| FatalEngineError(e.to_string()));
         Ok(res)
     }
 
