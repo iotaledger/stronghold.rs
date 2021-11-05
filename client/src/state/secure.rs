@@ -178,24 +178,31 @@ impl Runner for SecureClient {
 
         let key0 = self.keystore.take_key(vid0).ok_or(VaultError::VaultNotFound(vid0))?;
 
-        if !self.keystore.vault_exists(vid1) {
-            let key1 = self.keystore.create_key(vid1);
-            self.db.init_vault(key1, vid1);
-        }
-        let key1 = self.keystore.take_key(vid1).unwrap();
-
         let mut ret = None;
         let execute_procedure = |guard: GuardedVec<u8>| {
             let Products { output: plain, secret } = f(guard)?;
             ret = Some(plain);
             Ok(secret)
         };
-        let res = self
-            .db
-            .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, execute_procedure);
+
+        let res;
+        if vid0 == vid1 {
+            res = self
+                .db
+                .exec_proc(&key0, vid0, rid0, &key0, vid1, rid1, hint, execute_procedure);
+        } else {
+            if !self.keystore.vault_exists(vid1) {
+                let key1 = self.keystore.create_key(vid1);
+                self.db.init_vault(key1, vid1);
+            }
+            let key1 = self.keystore.take_key(vid1).unwrap();
+            res = self
+                .db
+                .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, execute_procedure);
+            self.keystore.insert_key(vid1, key1);
+        }
 
         self.keystore.insert_key(vid0, key0);
-        self.keystore.insert_key(vid1, key1);
 
         match res {
             Ok(()) => Ok(ret.unwrap()),

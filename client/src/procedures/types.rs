@@ -62,7 +62,9 @@ impl Procedure {
             if entry.is_temp || !remove_only_temp {
                 let (v, _) = SecureClient::resolve_location(&entry.location);
                 let _ = runner.revoke_data(&entry.location);
-                vaults.insert(v);
+                if !vaults.contains(&v) {
+                    vaults.insert(v);
+                }
             }
         }
         for vault_id in vaults {
@@ -440,7 +442,7 @@ pub struct Target {
 
 impl Target {
     pub fn random() -> Self {
-        let location = Location::generic(random::bytestring(4), random::bytestring(4));
+        let location = Location::generic("TEMP".as_bytes(), random::bytestring(32));
         let hint = RecordHint::new("".to_string()).unwrap();
         Target { location, hint }
     }

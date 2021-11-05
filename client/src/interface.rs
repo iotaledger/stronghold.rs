@@ -95,7 +95,7 @@ pub enum SpawnNetworkError {
 }
 
 #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
-#[error("fatal engine error {0}")]
+#[error("fatal engine error: {0}")]
 pub struct FatalEngineError(String);
 
 impl From<VaultError> for FatalEngineError {
