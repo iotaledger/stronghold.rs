@@ -6,7 +6,7 @@
 use crypto::{
     hashes::sha::{SHA256, SHA256_LEN},
     keys::slip10,
-    signatures::ed25519::{PublicKey, SecretKey, Signature, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH},
+    signatures::ed25519,
     utils::rand::fill,
 };
 
@@ -14,8 +14,8 @@ use super::fresh;
 use crate::{
     procedures::{
         crypto::{ChainCode, Sha256},
-        BIP39Generate, Ed25519PublicKey, Ed25519Sign, Hash, MnemonicLanguage, OutputInfo, OutputKey, ProcedureIo,
-        ProcedureStep, Slip10Derive, Slip10Generate, TargetInfo, WriteVault,
+        BIP39Generate, Ed25519, Ed25519Sign, Hash, MnemonicLanguage, OutputInfo, OutputKey, ProcedureIo, ProcedureStep,
+        PublicKey, Slip10Derive, Slip10Generate, TargetInfo, WriteVault,
     },
     Stronghold,
 };
@@ -64,8 +64,8 @@ async fn usecase_ed25519() {
     };
 
     let k = OutputKey::random();
-    let ed25519_pk = Ed25519PublicKey::new(key.clone()).store_output(k.clone());
-    let pk: [u8; PUBLIC_KEY_LENGTH] = match sh.runtime_exec(ed25519_pk).await.unwrap() {
+    let ed25519_pk = PublicKey::<Ed25519>::new(key.clone()).store_output(k.clone());
+    let pk: [u8; ed25519::PUBLIC_KEY_LENGTH] = match sh.runtime_exec(ed25519_pk).await.unwrap() {
         Ok(mut data) => data.take(&k).unwrap(),
         Err(e) => panic!("unexpected error: {:?}", e),
     };
@@ -74,13 +74,13 @@ async fn usecase_ed25519() {
 
     let k = OutputKey::random();
     let ed25519_sign = Ed25519Sign::new(msg.clone(), key).store_output(k.clone());
-    let sig: [u8; SIGNATURE_LENGTH] = match sh.runtime_exec(ed25519_sign).await.unwrap() {
+    let sig: [u8; ed25519::SIGNATURE_LENGTH] = match sh.runtime_exec(ed25519_sign).await.unwrap() {
         Ok(mut data) => data.take(&k).unwrap(),
         Err(e) => panic!("unexpected error: {:?}", e),
     };
 
-    let pk = PublicKey::try_from_bytes(pk).unwrap();
-    let sig = Signature::from_bytes(sig);
+    let pk = ed25519::PublicKey::try_from_bytes(pk).unwrap();
+    let sig = ed25519::Signature::from_bytes(sig);
     assert!(pk.verify(&sig, &msg));
 }
 
@@ -143,7 +143,7 @@ async fn usecase_ed25519_as_complex() {
 
     let generate = Slip10Generate::default();
     let derive = Slip10Derive::new_from_seed(generate.target(), fresh::hd_path().1);
-    let get_pk = Ed25519PublicKey::new(derive.target()).store_output(pk_result.clone());
+    let get_pk = PublicKey::<Ed25519>::new(derive.target()).store_output(pk_result.clone());
     let sign = Ed25519Sign::new(msg.clone(), derive.target()).store_output(sign_result.clone());
 
     let combined_proc = generate.then(derive).then(get_pk).then(sign);
@@ -152,10 +152,10 @@ async fn usecase_ed25519_as_complex() {
         Err(e) => panic!("Unexpected error: {}", e),
     };
 
-    let pub_key_vec: [u8; PUBLIC_KEY_LENGTH] = output.take(&pk_result).unwrap();
-    let pk = PublicKey::try_from_bytes(pub_key_vec).unwrap();
-    let sig_vec: [u8; SIGNATURE_LENGTH] = output.take(&sign_result).unwrap();
-    let sig = Signature::from_bytes(sig_vec);
+    let pub_key_vec: [u8; ed25519::PUBLIC_KEY_LENGTH] = output.take(&pk_result).unwrap();
+    let pk = ed25519::PublicKey::try_from_bytes(pub_key_vec).unwrap();
+    let sig_vec: [u8; ed25519::SIGNATURE_LENGTH] = output.take(&sign_result).unwrap();
+    let sig = ed25519::Signature::from_bytes(sig_vec);
     assert!(pk.verify(&sig, &msg));
 }
 
@@ -194,7 +194,7 @@ async fn usecase_collection_of_data() {
             raw.truncate(32);
             let mut bs = [0; 32];
             bs.copy_from_slice(&raw);
-            let sk = SecretKey::from_bytes(bs);
+            let sk = ed25519::SecretKey::from_bytes(bs);
             let sig = sk.sign(&msg).to_bytes();
 
             // SHA-256 hash the signed message

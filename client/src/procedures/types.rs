@@ -126,7 +126,7 @@ impl IntoIterator for CollectedOutput {
     }
 }
 
-/// Convert from [`TempCollectedOutput`] by removing all temporary records.
+/// Convert from `TempCollectedOutput` by removing all temporary records.
 impl From<TempCollectedOutput> for CollectedOutput {
     fn from(temp: TempCollectedOutput) -> Self {
         let output = temp
@@ -352,7 +352,7 @@ pub trait UseSecret {
 // ==========================
 
 /// Non-secret input for a procedure
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InputData<T> {
     /// Take input dynamically from the `CollectedOutput`,
     /// i.g. use the output of a previously executed procedure as input.
@@ -381,7 +381,7 @@ impl<T> IntoInput<T> for OutputKey {
 }
 
 /// Location of a Secret / Non-secret Product of a primitive procedure.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TempProduct<T> {
     /// Location / Key into which the output is written.
     ///
@@ -432,7 +432,7 @@ pub trait TargetInfo {
     fn target_info_mut(&mut self) -> &mut TempTarget;
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
     pub location: Location,
     pub hint: RecordHint,

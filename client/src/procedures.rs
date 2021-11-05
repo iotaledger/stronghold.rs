@@ -5,8 +5,9 @@ mod primitives;
 mod types;
 
 pub use primitives::{
-    crypto_reexport as crypto, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, Ed25519PublicKey, Ed25519Sign,
-    Hash, Hmac, MnemonicLanguage, Slip10Derive, Slip10Generate, WriteVault,
+    crypto_reexport as crypto, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, Ed25519, Ed25519Sign,
+    GenerateKey, Hash, Hmac, MnemonicLanguage, PublicKey, Slip10Derive, Slip10Generate, WriteVault,
+    X25519DiffieHellman, X25519,
 };
 pub use types::{
     CollectedOutput, FatalProcedureError, InputData, InputInfo, IntoInput, OutputInfo, OutputKey, Procedure,

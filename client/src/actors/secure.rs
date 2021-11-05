@@ -26,7 +26,7 @@ pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
 pub type VaultError<E = Infallible> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
 
-/// Message types for [`SecureClientActor`]
+/// Message types for the [`SecureClient`].
 pub mod messages {
 
     use super::*;
@@ -169,7 +169,7 @@ pub mod messages {
 }
 
 /// Functional macro to remove boilerplate code for the implementation
-/// of the [`SecureActor`].
+/// of the [`SecureClient`].
 /// TODO Make receiver type pass as argument.
 macro_rules! impl_handler {
     ($mty:ty, $rty:ty, ($sid:ident,$mid:ident, $ctx:ident), $($body:tt)*) => {

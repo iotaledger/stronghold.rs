@@ -96,7 +96,7 @@ pub mod p2p_messages {
     }
 }
 
-/// Registry [`Actor`], that owns [`Client`] actors, and manages them. The registry
+/// Registry [`Actor`], that owns [`SecureClient`] actors, and manages them. The registry
 /// can be modified
 #[derive(Default)]
 pub struct Registry {

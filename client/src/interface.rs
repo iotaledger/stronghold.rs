@@ -287,8 +287,7 @@ impl Stronghold {
         Ok(list)
     }
 
-    /// Executes a runtime command given a [`Procedure`].  Returns a [`ProcResult`] based off of the control_request
-    /// specified.
+    /// Executes a runtime command given a [`Procedure`].
     pub async fn runtime_exec<P>(&self, control_request: P) -> StrongholdResult<Result<CollectedOutput, ProcedureError>>
     where
         P: Into<Procedure>,

@@ -5,7 +5,7 @@ use super::types::*;
 use crate::{enum_from_inner, Location};
 use crypto::{
     ciphers::traits::consts::Unsigned,
-    keys::{bip39, slip10},
+    keys::{bip39, slip10, x25519},
     signatures::ed25519,
     utils::rand::fill,
 };
@@ -88,8 +88,10 @@ pub enum CryptoProcedure {
     // bip39::mnemonic_to_seed(mnemonic, passphrase):
     // PBKDF2_HMAC_SHA512(password: mnemonic, salt: "mnemonic" ++ passphrase, count: 2048)
     BIP39Recover(BIP39Recover),
-    Ed25519PublicKey(Ed25519PublicKey),
+    PublicKey(PublicKeys),
+    GenerateKey(GenerateKeys),
     Ed25519Sign(Ed25519Sign),
+    X25519DiffieHellman(X25519DiffieHellman),
     Hash(Hashes),
     Hmac(Hmacs),
     Aead(Aeads),
@@ -103,8 +105,10 @@ impl ProcedureStep for CryptoProcedure {
             Slip10Derive(proc) => proc.execute(runner, state),
             BIP39Generate(proc) => proc.execute(runner, state),
             BIP39Recover(proc) => proc.execute(runner, state),
-            Ed25519PublicKey(proc) => proc.execute(runner, state),
+            GenerateKey(proc) => proc.execute(runner, state),
+            PublicKey(proc) => proc.execute(runner, state),
             Ed25519Sign(proc) => proc.execute(runner, state),
+            X25519DiffieHellman(proc) => proc.execute(runner, state),
             Hash(proc) => proc.execute(runner, state),
             Hmac(proc) => proc.execute(runner, state),
             Aead(proc) => proc.execute(runner, state),
@@ -112,7 +116,7 @@ impl ProcedureStep for CryptoProcedure {
     }
 }
 
-#[derive(Procedure, Clone, Serialize, Deserialize)]
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
 pub struct WriteVault {
     #[input_data]
     data: InputData<Vec<u8>>,
@@ -163,8 +167,12 @@ enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Generate fro
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Derive from Slip10Derive);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Generate from BIP39Generate);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Recover from BIP39Recover);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519PublicKey from Ed25519PublicKey);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::GenerateKey, GenerateKeys::Ed25519 from GenerateKey<Ed25519>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::GenerateKey, GenerateKeys::X25519 from GenerateKey<X25519>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::PublicKey, PublicKeys::Ed25519 from PublicKey<Ed25519>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::PublicKey, PublicKeys::X25519 from PublicKey<X25519>);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519Sign from Ed25519Sign);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::X25519DiffieHellman from X25519DiffieHellman);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash, Hashes::Sha2_256 from Hash<Sha256>);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash, Hashes::Sha2_384 from Hash<Sha384>);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash, Hashes::Sha2_512 from Hash<Sha512>);
@@ -181,12 +189,123 @@ enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::XChaC
 // Procedures for Cryptographic Primitives
 // ==========================
 
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum MnemonicLanguage {
+    English,
+    Japanese,
+}
+
+/// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
+/// passphrase). Store the seed and return the mnemonic sentence as data output.
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub struct BIP39Generate {
+    passphrase: Option<String>,
+
+    language: MnemonicLanguage,
+
+    #[output_key]
+    mnemonic_key: TempOutput,
+
+    #[target]
+    target: TempTarget,
+}
+
+impl BIP39Generate {
+    pub fn new(language: MnemonicLanguage, passphrase: Option<String>) -> Self {
+        BIP39Generate {
+            passphrase,
+            language,
+            mnemonic_key: TempOutput {
+                write_to: OutputKey::random(),
+                is_temp: true,
+            },
+            target: TempTarget {
+                write_to: Target::random(),
+                is_temp: true,
+            },
+        }
+    }
+}
+
+#[execute_procedure]
+impl GenerateSecret for BIP39Generate {
+    type Input = ();
+    type Output = String;
+
+    fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
+        let mut entropy = [0u8; 32];
+        fill(&mut entropy)?;
+
+        let wordlist = match self.language {
+            MnemonicLanguage::English => bip39::wordlist::ENGLISH,
+            MnemonicLanguage::Japanese => bip39::wordlist::JAPANESE,
+        };
+
+        let mnemonic = bip39::wordlist::encode(&entropy, &wordlist).unwrap();
+
+        let mut seed = [0u8; 64];
+        let passphrase = self.passphrase.unwrap_or_else(|| "".into());
+        bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+
+        Ok(Products {
+            secret: seed.to_vec(),
+            output: mnemonic,
+        })
+    }
+}
+
+/// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
+/// a BIP39 seed and store it in the `output` location
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub struct BIP39Recover {
+    passphrase: Option<String>,
+
+    #[input_data]
+    mnemonic: InputData<String>,
+
+    #[target]
+    target: TempTarget,
+}
+
+impl BIP39Recover {
+    pub fn new<I>(mnemonic: I, passphrase: Option<String>) -> Self
+    where
+        I: IntoInput<<Self as InputInfo>::Input>,
+    {
+        BIP39Recover {
+            passphrase,
+            mnemonic: mnemonic.into_input(),
+            target: TempTarget {
+                write_to: Target::random(),
+                is_temp: true,
+            },
+        }
+    }
+}
+
+#[execute_procedure]
+impl GenerateSecret for BIP39Recover {
+    type Input = String;
+    type Output = ();
+
+    fn generate(self, mnemonic: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
+        let mut seed = [0u8; 64];
+        let passphrase = self.passphrase.unwrap_or_else(|| "".into());
+        bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+        Ok(Products {
+            secret: seed.to_vec(),
+            output: (),
+        })
+    }
+}
+
 /// Generate a raw SLIP10 seed of the specified size (in bytes, defaults to 64 bytes/512 bits) and store it in
 /// the `output` location
 ///
 /// Note that this does not generate a BIP39 mnemonic sentence and it's not possible to
 /// generate one: use `BIP39Generate` if a mnemonic sentence will be required.
-#[derive(Procedure, Clone, Serialize, Deserialize)]
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
 pub struct Slip10Generate {
     size_bytes: usize,
 
@@ -258,7 +377,7 @@ impl SourceInfo for SLIP10DeriveInput {
 
 /// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
 /// return the corresponding chain code
-#[derive(Procedure, Clone, Serialize, Deserialize)]
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
 pub struct Slip10Derive {
     chain: Chain,
 
@@ -318,129 +437,153 @@ impl DeriveSecret for Slip10Derive {
     }
 }
 
-#[derive(Procedure, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum MnemonicLanguage {
-    English,
-    Japanese,
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub struct Ed25519;
+
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub struct X25519;
+
+pub trait Keys: Sized {
+    type SecretKey;
+    fn generate() -> Result<Vec<u8>, crypto::Error>;
+    fn from_guard(guard: GuardedVec<u8>) -> Result<Self::SecretKey, crypto::Error>;
+    fn public_key(sk: Self::SecretKey) -> Vec<u8>;
 }
 
-/// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
-/// passphrase) and store them in the `output` location
-#[derive(Procedure, Clone, Serialize, Deserialize)]
-pub struct BIP39Generate {
-    passphrase: Option<String>,
+impl Keys for Ed25519 {
+    type SecretKey = ed25519::SecretKey;
 
-    language: MnemonicLanguage,
+    fn generate() -> Result<Vec<u8>, crypto::Error> {
+        ed25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec())
+    }
 
-    #[output_key]
-    mnemonic_key: TempOutput,
+    fn from_guard(guard: GuardedVec<u8>) -> Result<Self::SecretKey, crypto::Error> {
+        let raw = guard.borrow();
+        let mut raw = (*raw).to_vec();
+        if raw.len() < ed25519::SECRET_KEY_LENGTH {
+            // the client actor will interrupt the control flow
+            // but could this be an option to return an error
+            let e = crypto::Error::BufferSize {
+                has: raw.len(),
+                needs: ed25519::SECRET_KEY_LENGTH,
+                name: "data buffer",
+            };
+            return Err(e);
+        }
+        raw.truncate(ed25519::SECRET_KEY_LENGTH);
+        let mut bs = [0; ed25519::SECRET_KEY_LENGTH];
+        bs.copy_from_slice(&raw);
+        Ok(ed25519::SecretKey::from_bytes(bs))
+    }
 
+    fn public_key(sk: Self::SecretKey) -> Vec<u8> {
+        sk.public_key().to_bytes().to_vec()
+    }
+}
+
+impl Keys for X25519 {
+    type SecretKey = x25519::SecretKey;
+
+    fn generate() -> Result<Vec<u8>, crypto::Error> {
+        ed25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec())
+    }
+
+    fn from_guard(guard: GuardedVec<u8>) -> Result<Self::SecretKey, crypto::Error> {
+        let raw = guard.borrow();
+        let raw = (*raw).to_vec();
+        if raw.len() != x25519::SECRET_KEY_LENGTH {
+            // the client actor will interrupt the control flow
+            // but could this be an option to return an error
+            let e = crypto::Error::BufferSize {
+                has: raw.len(),
+                needs: x25519::SECRET_KEY_LENGTH,
+                name: "data buffer",
+            };
+            return Err(e);
+        }
+        x25519::SecretKey::try_from_slice(&raw)
+    }
+
+    fn public_key(sk: Self::SecretKey) -> Vec<u8> {
+        sk.public_key().to_bytes().to_vec()
+    }
+}
+
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub enum GenerateKeys {
+    Ed25519(GenerateKey<Ed25519>),
+    X25519(GenerateKey<X25519>),
+}
+
+impl ProcedureStep for GenerateKeys {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
+        match self {
+            GenerateKeys::Ed25519(proc) => proc.execute(runner, state),
+            GenerateKeys::X25519(proc) => proc.execute(runner, state),
+        }
+    }
+}
+
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateKey<T: Keys> {
     #[target]
     target: TempTarget,
+
+    _marker: PhantomData<T>,
 }
 
-impl BIP39Generate {
-    pub fn new(language: MnemonicLanguage, passphrase: Option<String>) -> Self {
-        BIP39Generate {
-            passphrase,
-            language,
-            mnemonic_key: TempOutput {
-                write_to: OutputKey::random(),
-                is_temp: true,
-            },
+impl<T: Keys> Default for GenerateKey<T> {
+    fn default() -> Self {
+        GenerateKey {
             target: TempTarget {
                 write_to: Target::random(),
                 is_temp: true,
             },
+            _marker: PhantomData,
         }
     }
 }
 
 #[execute_procedure]
-impl GenerateSecret for BIP39Generate {
+impl<T: Keys> GenerateSecret for GenerateKey<T> {
     type Input = ();
-    type Output = String;
-
-    fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
-        let mut entropy = [0u8; 32];
-        fill(&mut entropy)?;
-
-        let wordlist = match self.language {
-            MnemonicLanguage::English => bip39::wordlist::ENGLISH,
-            MnemonicLanguage::Japanese => bip39::wordlist::JAPANESE,
-        };
-
-        let mnemonic = bip39::wordlist::encode(&entropy, &wordlist).unwrap();
-
-        let mut seed = [0u8; 64];
-        let passphrase = self.passphrase.unwrap_or_else(|| "".into());
-        bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
-
-        Ok(Products {
-            secret: seed.to_vec(),
-            output: mnemonic,
-        })
-    }
-}
-
-/// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
-/// a BIP39 seed and store it in the `output` location
-#[derive(Procedure, Clone, Serialize, Deserialize)]
-pub struct BIP39Recover {
-    passphrase: Option<String>,
-
-    #[input_data]
-    mnemonic: InputData<String>,
-
-    #[target]
-    target: TempTarget,
-}
-
-impl BIP39Recover {
-    pub fn new<I>(mnemonic: I, passphrase: Option<String>) -> Self
-    where
-        I: IntoInput<<Self as InputInfo>::Input>,
-    {
-        BIP39Recover {
-            passphrase,
-            mnemonic: mnemonic.into_input(),
-            target: TempTarget {
-                write_to: Target::random(),
-                is_temp: true,
-            },
-        }
-    }
-}
-
-#[execute_procedure]
-impl GenerateSecret for BIP39Recover {
-    type Input = String;
     type Output = ();
 
-    fn generate(self, mnemonic: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
-        let mut seed = [0u8; 64];
-        let passphrase = self.passphrase.unwrap_or_else(|| "".into());
-        bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
-        Ok(Products {
-            secret: seed.to_vec(),
-            output: (),
-        })
+    fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
+        let secret = T::generate()?.to_vec();
+        Ok(Products { secret, output: () })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PublicKeys {
+    Ed25519(PublicKey<Ed25519>),
+    X25519(PublicKey<X25519>),
+}
+
+impl ProcedureStep for PublicKeys {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
+        match self {
+            PublicKeys::Ed25519(proc) => proc.execute(runner, state),
+            PublicKeys::X25519(proc) => proc.execute(runner, state),
+        }
     }
 }
 
 /// Derive an Ed25519 public key from the corresponding private key stored at the specified
 /// location
-#[derive(Procedure, Clone, Serialize, Deserialize)]
-pub struct Ed25519PublicKey {
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub struct PublicKey<T: Keys> {
     #[source]
     private_key: Location,
 
     #[output_key]
     output_key: TempOutput,
+
+    _marker: PhantomData<T>,
 }
 
-impl Ed25519PublicKey {
+impl<T: Keys> PublicKey<T> {
     pub fn new(private_key: Location) -> Self {
         Self {
             private_key,
@@ -448,39 +591,19 @@ impl Ed25519PublicKey {
                 write_to: OutputKey::random(),
                 is_temp: true,
             },
+            _marker: PhantomData,
         }
     }
 }
 
-fn ed25519_secret_key(guard: GuardedVec<u8>) -> Result<ed25519::SecretKey, FatalProcedureError> {
-    let raw = guard.borrow();
-    let mut raw = (*raw).to_vec();
-    if raw.len() < 32 {
-        // the client actor will interrupt the control flow
-        // but could this be an option to return an error
-        let e = crypto::Error::BufferSize {
-            has: raw.len(),
-            needs: 32,
-            name: "data buffer",
-        };
-        return Err(e.into());
-    }
-    raw.truncate(32);
-    let mut bs = [0; 32];
-    bs.copy_from_slice(&raw);
-
-    Ok(ed25519::SecretKey::from_bytes(bs))
-}
-
 #[execute_procedure]
-impl UseSecret for Ed25519PublicKey {
+impl<T: Keys> UseSecret for PublicKey<T> {
     type Input = ();
-    type Output = [u8; ed25519::PUBLIC_KEY_LENGTH];
+    type Output = Vec<u8>;
 
     fn use_secret(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
-        let sk = ed25519_secret_key(guard)?;
-        let pk = sk.public_key();
-        Ok(pk.to_bytes())
+        let sk = T::from_guard(guard)?;
+        Ok(T::public_key(sk))
     }
 }
 
@@ -488,7 +611,7 @@ impl UseSecret for Ed25519PublicKey {
 ///
 /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
 /// in particular SLIP10 keys are compatible.
-#[derive(Procedure, Clone, Serialize, Deserialize)]
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
 pub struct Ed25519Sign {
     #[input_data]
     msg: InputData<Vec<u8>>,
@@ -522,9 +645,54 @@ impl UseSecret for Ed25519Sign {
     type Output = [u8; ed25519::SIGNATURE_LENGTH];
 
     fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
-        let sk = ed25519_secret_key(guard)?;
+        let sk = Ed25519::from_guard(guard)?;
         let sig = sk.sign(&msg);
         Ok(sig.to_bytes())
+    }
+}
+
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub struct X25519DiffieHellman {
+    #[input_data]
+    public_key: InputData<[u8; x25519::PUBLIC_KEY_LENGTH]>,
+
+    #[source]
+    private_key: Location,
+
+    #[target]
+    target: TempTarget,
+}
+
+impl X25519DiffieHellman {
+    pub fn new<I>(public_key: I, private_key: Location) -> Self
+    where
+        I: IntoInput<<Self as InputInfo>::Input>,
+    {
+        Self {
+            public_key: public_key.into_input(),
+            private_key,
+            target: TempTarget {
+                write_to: Target::random(),
+                is_temp: true,
+            },
+        }
+    }
+}
+
+#[execute_procedure]
+impl DeriveSecret for X25519DiffieHellman {
+    type Input = [u8; x25519::PUBLIC_KEY_LENGTH];
+    type Output = ();
+
+    fn derive(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Products<()>, FatalProcedureError> {
+        let sk = X25519::from_guard(guard)?;
+        let public = x25519::PublicKey::from_bytes(input);
+        let shared_key = sk.diffie_hellman(&public);
+
+        Ok(Products {
+            secret: shared_key.to_bytes().to_vec(),
+            output: (),
+        })
     }
 }
 
@@ -547,7 +715,7 @@ impl ProcedureStep for Hashes {
     }
 }
 
-#[derive(Procedure, Clone, Serialize, Deserialize)]
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
 pub struct Hash<T> {
     #[input_data]
     msg: InputData<Vec<u8>>,
@@ -586,7 +754,7 @@ impl<T: Digest> ProcessData for Hash<T> {
     }
 }
 
-#[derive(Procedure, Clone, Serialize, Deserialize)]
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
 pub enum Hmacs {
     Sha2_256(Hmac<Sha256>),
     Sha2_384(Hmac<Sha384>),
@@ -603,7 +771,7 @@ impl ProcedureStep for Hmacs {
     }
 }
 
-#[derive(Procedure, Clone, Serialize, Deserialize)]
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
 pub struct Hmac<T> {
     #[input_data]
     msg: InputData<Vec<u8>>,
@@ -670,7 +838,7 @@ impl ProcedureStep for Aeads {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AeadEncrypt<T> {
     associated_data: InputData<Vec<u8>>,
     plaintext: InputData<Vec<u8>>,
@@ -782,7 +950,7 @@ impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AeadDecrypt<T> {
     associated_data: InputData<Vec<u8>>,
     ciphertext: InputData<Vec<u8>>,
