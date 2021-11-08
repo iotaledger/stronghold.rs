@@ -16,9 +16,9 @@ use super::fresh;
 use crate::{
     procedures::{
         crypto::{ChainCode, Sha256},
-        AeadDecrypt, AeadEncrypt, BIP39Generate, Ed25519, Ed25519Sign, Hash, MnemonicLanguage, OutputInfo, OutputKey,
-        PrimitiveProcedure, ProcedureIo, ProcedureStep, PublicKey, Slip10Derive, Slip10Generate, TargetInfo,
-        WriteVault,
+        AeadDecrypt, AeadEncrypt, BIP39Generate, Ed25519, Ed25519Sign, GenerateKey, Hash, MnemonicLanguage, OutputInfo,
+        OutputKey, PrimitiveProcedure, ProcedureIo, ProcedureStep, PublicKey, Slip10Derive, Slip10Generate, TargetInfo,
+        WriteVault, X25519DiffieHellman, X25519,
     },
     Location, Stronghold,
 };
@@ -326,4 +326,29 @@ async fn usecase_aead() {
 
     test_aead::<Aes256Gcm>(&mut sh, key_location.clone(), &key).await;
     test_aead::<XChaCha20Poly1305>(&mut sh, key_location.clone(), &key).await;
+}
+
+#[actix::test]
+async fn usecase_diffie_hellman() {
+    let (cp, sh) = setup_stronghold().await;
+    let sk1 = GenerateKey::<X25519>::default();
+    let pk1 = PublicKey::<X25519>::new(sk1.target());
+    let sk2 = GenerateKey::<X25519>::default();
+    let pk2 = PublicKey::<X25519>::new(sk2.target());
+    let key_1_2 = fresh::location();
+    let dh_1_2 =
+        X25519DiffieHellman::new(pk2.output_key(), sk1.target()).write_secret(key_1_2.clone(), fresh::record_hint());
+    let key_2_1 = fresh::location();
+    let dh_2_1 =
+        X25519DiffieHellman::new(pk1.output_key(), sk2.target()).write_secret(key_2_1.clone(), fresh::record_hint());
+
+    sh.runtime_exec(sk1.then(pk1).then(sk2).then(pk2).then(dh_1_2).then(dh_2_1))
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
+
+    let shared_1_2 = sh.read_secret(cp.clone(), key_1_2).await.unwrap().unwrap();
+    let shared_2_1 = sh.read_secret(cp, key_2_1).await.unwrap().unwrap();
+
+    assert_eq!(shared_1_2, shared_2_1)
 }
