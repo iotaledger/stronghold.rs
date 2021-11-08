@@ -10,15 +10,15 @@ use crypto::{
     signatures::ed25519,
     utils::rand::fill,
 };
-use stronghold_utils::random;
+use stronghold_utils::random::{self, bytestring, string};
 
 use super::fresh;
 use crate::{
     procedures::{
         crypto::{ChainCode, Sha256},
-        AeadDecrypt, AeadEncrypt, BIP39Generate, Ed25519, Ed25519Sign, GenerateKey, Hash, MnemonicLanguage, OutputInfo,
-        OutputKey, PrimitiveProcedure, ProcedureIo, ProcedureStep, PublicKey, Slip10Derive, Slip10Generate, TargetInfo,
-        WriteVault, X25519DiffieHellman, X25519,
+        AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, Ed25519, Ed25519Sign, GenerateKey, Hash,
+        MnemonicLanguage, OutputInfo, OutputKey, PrimitiveProcedure, ProcedureIo, ProcedureStep, PublicKey,
+        Slip10Derive, Slip10Generate, TargetInfo, WriteVault, X25519DiffieHellman, X25519,
     },
     Location, Stronghold,
 };
@@ -351,4 +351,40 @@ async fn usecase_diffie_hellman() {
     let shared_2_1 = sh.read_secret(cp, key_2_1).await.unwrap().unwrap();
 
     assert_eq!(shared_1_2, shared_2_1)
+}
+
+#[actix::test]
+async fn usecase_recover_bip39() {
+    let (_cp, sh) = setup_stronghold().await;
+
+    let passphrase = string(4096);
+    let (_path, chain) = fresh::hd_path();
+    let message = bytestring(4095);
+
+    let generate_bip39 = BIP39Generate::new(MnemonicLanguage::English, Some(passphrase.clone()));
+    let derive_from_original = Slip10Derive::new_from_seed(generate_bip39.target(), chain.clone());
+    let signed_with_original = OutputKey::new("original");
+    let sign_from_original =
+        Ed25519Sign::new(message.clone(), derive_from_original.target()).store_output(signed_with_original.clone());
+
+    let recover_bip39 = BIP39Recover::new(generate_bip39.output_key(), Some(passphrase));
+    let derive_from_recovered = Slip10Derive::new_from_seed(recover_bip39.target(), chain.clone());
+    let signed_with_recovered = OutputKey::new("recovered");
+    let sign_from_recovered =
+        Ed25519Sign::new(message, derive_from_recovered.target()).store_output(signed_with_recovered.clone());
+
+    let proc = generate_bip39
+        .then(derive_from_original)
+        .then(sign_from_original)
+        .then(recover_bip39)
+        .then(derive_from_recovered)
+        .then(sign_from_recovered);
+    let mut output = sh
+        .runtime_exec(proc)
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
+    let with_original: Vec<u8> = output.take(&signed_with_original).unwrap();
+    let with_recovered: Vec<u8> = output.take(&signed_with_recovered).unwrap();
+    assert_eq!(with_original, with_recovered);
 }
