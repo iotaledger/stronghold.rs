@@ -6,7 +6,7 @@ mod types;
 
 pub use primitives::{
     crypto_reexport as crypto, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, Ed25519, Ed25519Sign,
-    GenerateKey, Hash, Hmac, MnemonicLanguage, PublicKey, Slip10Derive, Slip10Generate, WriteVault,
+    GenerateKey, Hash, Hmac, MnemonicLanguage, PrimitiveProcedure, PublicKey, Slip10Derive, Slip10Generate, WriteVault,
     X25519DiffieHellman, X25519,
 };
 pub use types::{

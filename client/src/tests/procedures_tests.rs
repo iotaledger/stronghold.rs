@@ -4,20 +4,23 @@
 #![allow(non_snake_case)]
 
 use crypto::{
+    ciphers::{aes::Aes256Gcm, chacha::XChaCha20Poly1305, traits::Aead},
     hashes::sha::{SHA256, SHA256_LEN},
     keys::slip10,
     signatures::ed25519,
     utils::rand::fill,
 };
+use stronghold_utils::random;
 
 use super::fresh;
 use crate::{
     procedures::{
         crypto::{ChainCode, Sha256},
-        BIP39Generate, Ed25519, Ed25519Sign, Hash, MnemonicLanguage, OutputInfo, OutputKey, ProcedureIo, ProcedureStep,
-        PublicKey, Slip10Derive, Slip10Generate, TargetInfo, WriteVault,
+        AeadDecrypt, AeadEncrypt, BIP39Generate, Ed25519, Ed25519Sign, Hash, MnemonicLanguage, OutputInfo, OutputKey,
+        PrimitiveProcedure, ProcedureIo, ProcedureStep, PublicKey, Slip10Derive, Slip10Generate, TargetInfo,
+        WriteVault,
     },
-    Stronghold,
+    Location, Stronghold,
 };
 
 async fn setup_stronghold() -> (Vec<u8>, Stronghold) {
@@ -63,19 +66,17 @@ async fn usecase_ed25519() {
         Err(err) => panic!("unexpected error: {:?}", err),
     };
 
-    let k = OutputKey::random();
-    let ed25519_pk = PublicKey::<Ed25519>::new(key.clone()).store_output(k.clone());
+    let ed25519_pk = PublicKey::<Ed25519>::new(key.clone()).store_output(OutputKey::random());
     let pk: [u8; ed25519::PUBLIC_KEY_LENGTH] = match sh.runtime_exec(ed25519_pk).await.unwrap() {
-        Ok(mut data) => data.take(&k).unwrap(),
+        Ok(data) => data.single_output().unwrap(),
         Err(e) => panic!("unexpected error: {:?}", e),
     };
 
     let msg = fresh::bytestring(4096);
 
-    let k = OutputKey::random();
-    let ed25519_sign = Ed25519Sign::new(msg.clone(), key).store_output(k.clone());
+    let ed25519_sign = Ed25519Sign::new(msg.clone(), key).store_output(OutputKey::random());
     let sig: [u8; ed25519::SIGNATURE_LENGTH] = match sh.runtime_exec(ed25519_sign).await.unwrap() {
-        Ok(mut data) => data.take(&k).unwrap(),
+        Ok(data) => data.single_output().unwrap(),
         Err(e) => panic!("unexpected error: {:?}", e),
     };
 
@@ -100,11 +101,11 @@ async fn usecase_Slip10Derive_intermediate_keys() {
     let (_path, chain1) = fresh::hd_path();
 
     let cc0: ChainCode = {
-        let k = OutputKey::random();
-        let slip10_derive = Slip10Derive::new_from_seed(seed.clone(), chain0.join(&chain1)).store_output(k.clone());
+        let slip10_derive =
+            Slip10Derive::new_from_seed(seed.clone(), chain0.join(&chain1)).store_output(OutputKey::random());
 
         match sh.runtime_exec(slip10_derive).await.unwrap() {
-            Ok(mut data) => data.take(&k).unwrap(),
+            Ok(data) => data.single_output().unwrap(),
             Err(e) => panic!("unexpected error: {:?}", e),
         }
     };
@@ -120,11 +121,10 @@ async fn usecase_Slip10Derive_intermediate_keys() {
             Err(e) => panic!("unexpected error: {:?}", e),
         };
 
-        let k = OutputKey::random();
-        let slip10_derive_child = Slip10Derive::new_from_key(intermediate, chain1).store_output(k.clone());
+        let slip10_derive_child = Slip10Derive::new_from_key(intermediate, chain1).store_output(OutputKey::random());
 
         match sh.runtime_exec(slip10_derive_child).await.unwrap() {
-            Ok(mut data) => data.take(&k).unwrap(),
+            Ok(data) => data.single_output().unwrap(),
             Err(e) => panic!("unexpected error: {:?}", e),
         }
     };
@@ -233,4 +233,97 @@ async fn usecase_collection_of_data() {
             acc
         });
     assert_eq!(res, expected);
+}
+
+async fn test_aead<T>(sh: &mut Stronghold, key_location: Location, key: &[u8])
+where
+    T: Aead,
+    PrimitiveProcedure: From<AeadEncrypt<T>> + From<AeadDecrypt<T>>,
+{
+    let test_plaintext = random::bytestring(4096);
+    let test_associated_data = random::bytestring(4096);
+    let test_nonce = vec![random::random(); T::NONCE_LENGTH];
+
+    // test encryption
+    let ctx_key = OutputKey::new("ctx");
+    let tag_key = OutputKey::new("tag");
+    let aead = AeadEncrypt::<T>::new(
+        key_location.clone(),
+        test_plaintext.clone(),
+        test_associated_data.clone(),
+        test_nonce.to_vec(),
+    )
+    .store_ciphertext(ctx_key.clone())
+    .store_tag(tag_key.clone());
+
+    let mut output = sh
+        .runtime_exec(aead)
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
+    let out_ciphertext: Vec<u8> = output.take(&ctx_key).unwrap();
+    let out_tag: Vec<u8> = output.take(&tag_key).unwrap();
+
+    let mut expected_ctx = vec![0; test_plaintext.len()];
+    let mut expected_tag = vec![0; T::TAG_LENGTH];
+    T::try_encrypt(
+        key,
+        &test_nonce,
+        &test_associated_data,
+        &test_plaintext,
+        &mut expected_ctx,
+        &mut expected_tag,
+    )
+    .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
+
+    assert_eq!(expected_ctx, out_ciphertext);
+    assert_eq!(expected_tag, out_tag);
+
+    // test decryption
+    let ptx_key = OutputKey::new("ptx");
+    let adad = AeadDecrypt::<T>::new(
+        key_location,
+        out_ciphertext.clone(),
+        test_associated_data.clone(),
+        out_tag.clone(),
+        test_nonce.to_vec(),
+    )
+    .store_plaintext(ptx_key.clone());
+
+    let mut output = sh
+        .runtime_exec(adad)
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
+    let out_plaintext: Vec<u8> = output.take(&ptx_key).unwrap();
+
+    let mut expected_ptx = vec![0; out_ciphertext.len()];
+    T::try_decrypt(
+        key,
+        &test_nonce,
+        &test_associated_data,
+        &mut expected_ptx,
+        &out_ciphertext,
+        &out_tag,
+    )
+    .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
+
+    assert_eq!(expected_ptx, out_plaintext);
+    assert_eq!(out_plaintext, test_plaintext);
+}
+
+#[actix::test]
+async fn usecase_aead() {
+    let (_cp, mut sh) = setup_stronghold().await;
+
+    // Init key
+    let key_location = fresh::location();
+    let key = ed25519::SecretKey::generate().unwrap().to_bytes();
+    sh.write_to_vault(key_location.clone(), key.to_vec(), fresh::record_hint(), Vec::new())
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
+
+    test_aead::<Aes256Gcm>(&mut sh, key_location.clone(), &key).await;
+    test_aead::<XChaCha20Poly1305>(&mut sh, key_location.clone(), &key).await;
 }

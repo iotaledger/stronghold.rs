@@ -103,7 +103,7 @@ impl CollectedOutput {
     /// Take the output associated with the key from the output, convert it to the required type and return it.
     ///
     /// If the output can not be converted into `T`, it is inserted back and `None` is returned.
-    /// Converting into `T = Vec<u8>` can not fail.
+    /// Conversion into `T = Vec<u8>` will never fail.
     pub fn take<T>(&mut self, key: &OutputKey) -> Option<T>
     where
         T: TryFromProcedureIo,
@@ -116,6 +116,18 @@ impl CollectedOutput {
                 None
             }
         }
+    }
+
+    /// Consume the `CollectedOutput`, take the next value found and convert it to `T`.
+    /// Return `None` if it is empty, or the value could not be converted to `T`.
+    /// Conversion into `T = Vec<u8>` will never fail.
+    pub fn single_output<T>(self) -> Option<T>
+    where
+        T: TryFromProcedureIo,
+    {
+        self.into_iter()
+            .next()
+            .and_then(|(_, v)| T::try_from_procedure_io(v).ok())
     }
 }
 

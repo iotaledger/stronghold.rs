@@ -851,6 +851,8 @@ pub struct AeadEncrypt<T> {
 }
 
 impl<T> AeadEncrypt<T> {
+    /// Create a new aead encryption procedure.
+    /// **Note**: The nonce is required to have length [`<T as Aead>::NONCE_LENGTH` ].
     pub fn new(
         key: Location,
         plaintext: impl IntoInput<Vec<u8>>,
@@ -884,12 +886,20 @@ impl<T> AeadEncrypt<T> {
         self
     }
 
+    pub fn ciphertext(&self) -> OutputKey {
+        self.ciphertext.output_key()
+    }
+
     pub fn store_tag(mut self, key: OutputKey) -> Self {
         self.tag = TempOutput {
             write_to: key,
             is_temp: false,
         };
         self
+    }
+
+    pub fn tag(&self) -> OutputKey {
+        self.tag.output_key()
     }
 }
 
@@ -935,16 +945,16 @@ impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
             }
         };
 
-        let mut digested = Vec::new();
+        let mut ctx = vec![0; plaintext.len()];
         let mut t = Tag::<T>::default();
 
         let f = |key: GuardedVec<u8>| {
-            T::try_encrypt(&*key.borrow(), nonce, ad, plaintext, &mut digested, &mut t)?;
+            T::try_encrypt(&*key.borrow(), nonce, ad, plaintext, &mut ctx, &mut t)?;
             Ok(())
         };
 
         runner.get_guard(&key, f)?;
-        state.insert_output(ciphertext.write_to, digested.into_procedure_io(), ciphertext.is_temp);
+        state.insert_output(ciphertext.write_to, ctx.into_procedure_io(), ciphertext.is_temp);
         state.insert_output(tag.write_to, Vec::from(&*t).into_procedure_io(), tag.is_temp);
         Ok(())
     }
@@ -962,6 +972,9 @@ pub struct AeadDecrypt<T> {
 }
 
 impl<T> AeadDecrypt<T> {
+    /// Create a new aead encryption procedure.
+    /// **Note**: It is required for the nonce to have length [`<T as Aead>::NONCE_LENGTH` ] and
+    /// the tag to have length [`<T as Aead>::TAG_LENGTH` ];
     pub fn new(
         key: Location,
         ciphertext: impl IntoInput<Vec<u8>>,
@@ -990,6 +1003,10 @@ impl<T> AeadDecrypt<T> {
             is_temp: false,
         };
         self
+    }
+
+    pub fn plaintext(&self) -> OutputKey {
+        self.plaintext.output_key()
     }
 }
 
@@ -1042,15 +1059,15 @@ impl<T: Aead> ProcedureStep for AeadDecrypt<T> {
             }
         };
 
-        let mut output = Vec::new();
+        let mut ptx = vec![0; ciphertext.len()];
 
         let f = |key: GuardedVec<u8>| {
-            T::try_decrypt(&*key.borrow(), nonce, ad, &mut output, ciphertext, tag)?;
+            T::try_decrypt(&*key.borrow(), nonce, ad, &mut ptx, ciphertext, tag)?;
             Ok(())
         };
 
         runner.get_guard(&key, f)?;
-        state.insert_output(plaintext.write_to, output.into_procedure_io(), plaintext.is_temp);
+        state.insert_output(plaintext.write_to, ptx.into_procedure_io(), plaintext.is_temp);
         Ok(())
     }
 }
