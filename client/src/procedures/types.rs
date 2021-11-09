@@ -8,7 +8,6 @@ use engine::{
     runtime::GuardedVec,
     vault::{RecordHint, VaultId},
 };
-use hmac::digest::generic_array::{ArrayLength, GenericArray};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -541,13 +540,6 @@ impl<const N: usize> IntoProcedureIo for [u8; N] {
     }
 }
 
-impl<N: ArrayLength<u8>> IntoProcedureIo for GenericArray<u8, N> {
-    fn into_procedure_io(self) -> ProcedureIo {
-        let vec: Vec<u8> = self.into_iter().collect();
-        vec.into_procedure_io()
-    }
-}
-
 pub trait TryFromProcedureIo: Sized {
     type Error;
     fn try_from_procedure_io(value: ProcedureIo) -> Result<Self, Self::Error>;
@@ -575,22 +567,8 @@ impl<const N: usize> TryFromProcedureIo for [u8; N] {
     }
 }
 
-impl<N: ArrayLength<u8>> TryFromProcedureIo for GenericArray<u8, N> {
-    type Error = crypto::Error;
-
-    fn try_from_procedure_io(value: ProcedureIo) -> Result<Self, Self::Error> {
-        let l = value.0.len();
-        GenericArray::from_exact_iter(value.0.into_iter()).ok_or(crypto::Error::BufferSize {
-            name: "Procedure I/O",
-            needs: N::USIZE,
-            has: l,
-        })
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use hmac::digest::{consts::U113, generic_array::GenericArray};
     use stronghold_utils::random;
 
     use super::{IntoProcedureIo, TryFromProcedureIo};
@@ -620,14 +598,5 @@ mod test {
         let proc_io = array.into_procedure_io();
         let converted = <[u8; 337]>::try_from_procedure_io(proc_io).unwrap();
         assert_eq!(array, converted);
-    }
-
-    #[test]
-    fn proc_io_generic_array() {
-        let vec: Vec<u8> = vec![random::random(); 113];
-        let gen_array = GenericArray::<u8, U113>::clone_from_slice(vec.as_slice());
-        let proc_io = gen_array.into_procedure_io();
-        let converted = GenericArray::<u8, U113>::try_from_procedure_io(proc_io).unwrap();
-        assert_eq!(gen_array, converted);
     }
 }

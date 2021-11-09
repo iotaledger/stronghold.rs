@@ -5,7 +5,13 @@ use super::types::*;
 use crate::{enum_from_inner, Location};
 use crypto::{
     ciphers::traits::consts::Unsigned,
-    keys::{bip39, slip10, x25519},
+    hashes::sha::{SHA256, SHA256_LEN, SHA384, SHA384_LEN, SHA512, SHA512_LEN},
+    keys::{
+        bip39,
+        pbkdf::{PBKDF2_HMAC_SHA256, PBKDF2_HMAC_SHA384, PBKDF2_HMAC_SHA512},
+        slip10, x25519,
+    },
+    macs::hmac::{HMAC_SHA256, HMAC_SHA384, HMAC_SHA512},
     signatures::ed25519,
     utils::rand::fill,
 };
@@ -27,15 +33,8 @@ pub mod crypto_reexport {
 }
 use crypto_reexport::*;
 use engine::{runtime::GuardedVec, vault::RecordHint};
-use hmac::{
-    digest::{BlockInput, FixedOutput, Reset, Update},
-    Mac, NewMac,
-};
 use serde::{Deserialize, Serialize};
-use std::{
-    convert::{From, Into, TryFrom},
-    marker::PhantomData,
-};
+use std::convert::{From, Into, TryFrom};
 use stronghold_derive::{execute_procedure, Procedure};
 use stronghold_utils::GuardDebug;
 
@@ -88,14 +87,15 @@ pub enum CryptoProcedure {
     // bip39::mnemonic_to_seed(mnemonic, passphrase):
     // PBKDF2_HMAC_SHA512(password: mnemonic, salt: "mnemonic" ++ passphrase, count: 2048)
     BIP39Recover(BIP39Recover),
-    PublicKey(PublicKeys),
-    GenerateKey(GenerateKeys),
+    PublicKey(PublicKey),
+    GenerateKey(GenerateKey),
     Ed25519Sign(Ed25519Sign),
     X25519DiffieHellman(X25519DiffieHellman),
-    Hash(Hashes),
-    Hmac(Hmacs),
-    Pbkdf2Hmac(Pbkdf2Hmacs),
-    Aead(Aeads),
+    Hash(Hash),
+    Hmac(Hmac),
+    Pbkdf2Hmac(Pbkdf2Hmac),
+    AeadEncrypt(AeadEncrypt),
+    AeadDecrypt(AeadDecrypt),
 }
 
 impl ProcedureStep for CryptoProcedure {
@@ -113,7 +113,8 @@ impl ProcedureStep for CryptoProcedure {
             Hash(proc) => proc.execute(runner, state),
             Hmac(proc) => proc.execute(runner, state),
             Pbkdf2Hmac(proc) => proc.execute(runner, state),
-            Aead(proc) => proc.execute(runner, state),
+            AeadEncrypt(proc) => proc.execute(runner, state),
+            AeadDecrypt(proc) => proc.execute(runner, state),
         }
     }
 }
@@ -169,26 +170,15 @@ enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Generate fro
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Slip10Derive from Slip10Derive);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Generate from BIP39Generate);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::BIP39Recover from BIP39Recover);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::GenerateKey, GenerateKeys::Ed25519 from GenerateKey<Ed25519>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::GenerateKey, GenerateKeys::X25519 from GenerateKey<X25519>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::PublicKey, PublicKeys::Ed25519 from PublicKey<Ed25519>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::PublicKey, PublicKeys::X25519 from PublicKey<X25519>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::GenerateKey from GenerateKey);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::PublicKey from PublicKey);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519Sign from Ed25519Sign);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::X25519DiffieHellman from X25519DiffieHellman);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash, Hashes::Sha2_256 from Hash<Sha256>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash, Hashes::Sha2_384 from Hash<Sha384>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash, Hashes::Sha2_512 from Hash<Sha512>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash, Hashes::Blake2b256 from Hash<Blake2b256>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac, Hmacs::Sha2_256 from Hmac<Sha256>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac, Hmacs::Sha2_384 from Hmac<Sha384>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac, Hmacs::Sha2_512 from Hmac<Sha512>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Pbkdf2Hmac, Pbkdf2Hmacs::Sha2_256 from Pbkdf2Hmac<Sha256>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Pbkdf2Hmac, Pbkdf2Hmacs::Sha2_384 from Pbkdf2Hmac<Sha384>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Pbkdf2Hmac, Pbkdf2Hmacs::Sha2_512 from Pbkdf2Hmac<Sha512>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::Aes256GcmEncrypt from AeadEncrypt<Aes256Gcm>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::Aes256GcmDecrypt from AeadDecrypt<Aes256Gcm>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::XChaCha20Poly1305Encrypt from AeadEncrypt<XChaCha20Poly1305>);
-enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::XChaCha20Poly1305Decrypt from AeadDecrypt<XChaCha20Poly1305>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash from Hash);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac from Hmac);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Pbkdf2Hmac from Pbkdf2Hmac);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::AeadEncrypt from AeadEncrypt);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::AeadDecrypt from AeadDecrypt);
 
 // ==========================
 // Procedures for Cryptographic Primitives
@@ -199,6 +189,31 @@ enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::XChaC
 pub enum MnemonicLanguage {
     English,
     Japanese,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum AeadAlg {
+    Aes256Gcm,
+    XChaCha20Poly1305,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum KeyType {
+    Ed25519,
+    X25519,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HashType {
+    Blake2b,
+    Sha2(Sha2Hash),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Sha2Hash {
+    Sha256,
+    Sha384,
+    Sha512,
 }
 
 /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
@@ -442,173 +457,114 @@ impl DeriveSecret for Slip10Derive {
     }
 }
 
-#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
-pub struct Ed25519;
-
-#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
-pub struct X25519;
-
-pub trait Keys: Sized {
-    type SecretKey;
-    fn generate() -> Result<Vec<u8>, crypto::Error>;
-    fn from_guard(guard: GuardedVec<u8>) -> Result<Self::SecretKey, crypto::Error>;
-    fn public_key(sk: Self::SecretKey) -> Vec<u8>;
+fn x25519_secret_key(guard: GuardedVec<u8>) -> Result<x25519::SecretKey, crypto::Error> {
+    let raw = guard.borrow();
+    let raw = (*raw).to_vec();
+    if raw.len() != x25519::SECRET_KEY_LENGTH {
+        let e = crypto::Error::BufferSize {
+            has: raw.len(),
+            needs: x25519::SECRET_KEY_LENGTH,
+            name: "data buffer",
+        };
+        return Err(e);
+    }
+    x25519::SecretKey::try_from_slice(&raw)
 }
 
-impl Keys for Ed25519 {
-    type SecretKey = ed25519::SecretKey;
-
-    fn generate() -> Result<Vec<u8>, crypto::Error> {
-        ed25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec())
+fn ed25519_secret_key(guard: GuardedVec<u8>) -> Result<ed25519::SecretKey, crypto::Error> {
+    let raw = guard.borrow();
+    let mut raw = (*raw).to_vec();
+    if raw.len() < ed25519::SECRET_KEY_LENGTH {
+        let e = crypto::Error::BufferSize {
+            has: raw.len(),
+            needs: ed25519::SECRET_KEY_LENGTH,
+            name: "data buffer",
+        };
+        return Err(e);
     }
+    raw.truncate(ed25519::SECRET_KEY_LENGTH);
+    let mut bs = [0; ed25519::SECRET_KEY_LENGTH];
+    bs.copy_from_slice(&raw);
 
-    fn from_guard(guard: GuardedVec<u8>) -> Result<Self::SecretKey, crypto::Error> {
-        let raw = guard.borrow();
-        let mut raw = (*raw).to_vec();
-        if raw.len() < ed25519::SECRET_KEY_LENGTH {
-            // the client actor will interrupt the control flow
-            // but could this be an option to return an error
-            let e = crypto::Error::BufferSize {
-                has: raw.len(),
-                needs: ed25519::SECRET_KEY_LENGTH,
-                name: "data buffer",
-            };
-            return Err(e);
-        }
-        raw.truncate(ed25519::SECRET_KEY_LENGTH);
-        let mut bs = [0; ed25519::SECRET_KEY_LENGTH];
-        bs.copy_from_slice(&raw);
-        Ok(ed25519::SecretKey::from_bytes(bs))
-    }
-
-    fn public_key(sk: Self::SecretKey) -> Vec<u8> {
-        sk.public_key().to_bytes().to_vec()
-    }
-}
-
-impl Keys for X25519 {
-    type SecretKey = x25519::SecretKey;
-
-    fn generate() -> Result<Vec<u8>, crypto::Error> {
-        ed25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec())
-    }
-
-    fn from_guard(guard: GuardedVec<u8>) -> Result<Self::SecretKey, crypto::Error> {
-        let raw = guard.borrow();
-        let raw = (*raw).to_vec();
-        if raw.len() != x25519::SECRET_KEY_LENGTH {
-            // the client actor will interrupt the control flow
-            // but could this be an option to return an error
-            let e = crypto::Error::BufferSize {
-                has: raw.len(),
-                needs: x25519::SECRET_KEY_LENGTH,
-                name: "data buffer",
-            };
-            return Err(e);
-        }
-        x25519::SecretKey::try_from_slice(&raw)
-    }
-
-    fn public_key(sk: Self::SecretKey) -> Vec<u8> {
-        sk.public_key().to_bytes().to_vec()
-    }
+    Ok(ed25519::SecretKey::from_bytes(bs))
 }
 
 #[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
-pub enum GenerateKeys {
-    Ed25519(GenerateKey<Ed25519>),
-    X25519(GenerateKey<X25519>),
-}
+pub struct GenerateKey {
+    ty: KeyType,
 
-impl ProcedureStep for GenerateKeys {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
-        match self {
-            GenerateKeys::Ed25519(proc) => proc.execute(runner, state),
-            GenerateKeys::X25519(proc) => proc.execute(runner, state),
-        }
-    }
-}
-
-#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
-pub struct GenerateKey<T: Keys> {
     #[target]
     target: TempTarget,
-
-    _marker: PhantomData<T>,
 }
 
-impl<T: Keys> Default for GenerateKey<T> {
-    fn default() -> Self {
+impl GenerateKey {
+    pub fn new(ty: KeyType) -> Self {
         GenerateKey {
+            ty,
             target: TempTarget {
                 write_to: Target::random(),
                 is_temp: true,
             },
-            _marker: PhantomData,
         }
     }
 }
 
 #[execute_procedure]
-impl<T: Keys> GenerateSecret for GenerateKey<T> {
+impl GenerateSecret for GenerateKey {
     type Input = ();
     type Output = ();
 
     fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
-        let secret = T::generate()?.to_vec();
+        let secret = match self.ty {
+            KeyType::Ed25519 => ed25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec())?,
+            KeyType::X25519 => x25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec())?,
+        };
         Ok(Products { secret, output: () })
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PublicKeys {
-    Ed25519(PublicKey<Ed25519>),
-    X25519(PublicKey<X25519>),
-}
-
-impl ProcedureStep for PublicKeys {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
-        match self {
-            PublicKeys::Ed25519(proc) => proc.execute(runner, state),
-            PublicKeys::X25519(proc) => proc.execute(runner, state),
-        }
     }
 }
 
 /// Derive an Ed25519 public key from the corresponding private key stored at the specified
 /// location
 #[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
-pub struct PublicKey<T: Keys> {
+pub struct PublicKey {
+    ty: KeyType,
+
     #[source]
     private_key: Location,
 
     #[output_key]
     output_key: TempOutput,
-
-    _marker: PhantomData<T>,
 }
 
-impl<T: Keys> PublicKey<T> {
-    pub fn new(private_key: Location) -> Self {
+impl PublicKey {
+    pub fn new(ty: KeyType, private_key: Location) -> Self {
         Self {
+            ty,
             private_key,
             output_key: TempOutput {
                 write_to: OutputKey::random(),
                 is_temp: true,
             },
-            _marker: PhantomData,
         }
     }
 }
 
 #[execute_procedure]
-impl<T: Keys> UseSecret for PublicKey<T> {
+impl UseSecret for PublicKey {
     type Input = ();
     type Output = Vec<u8>;
 
     fn use_secret(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
-        let sk = T::from_guard(guard)?;
-        Ok(T::public_key(sk))
+        match self.ty {
+            KeyType::Ed25519 => {
+                let sk = ed25519_secret_key(guard)?;
+                Ok(sk.public_key().to_bytes().to_vec())
+            }
+            KeyType::X25519 => {
+                let sk = x25519_secret_key(guard)?;
+                Ok(sk.public_key().to_bytes().to_vec())
+            }
+        }
     }
 }
 
@@ -650,7 +606,7 @@ impl UseSecret for Ed25519Sign {
     type Output = [u8; ed25519::SIGNATURE_LENGTH];
 
     fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
-        let sk = Ed25519::from_guard(guard)?;
+        let sk = ed25519_secret_key(guard)?;
         let sig = sk.sign(&msg);
         Ok(sig.to_bytes())
     }
@@ -686,7 +642,7 @@ impl DeriveSecret for X25519DiffieHellman {
     type Output = ();
 
     fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<()>, FatalProcedureError> {
-        let sk = X25519::from_guard(guard)?;
+        let sk = x25519_secret_key(guard)?;
         let public = x25519::PublicKey::from_bytes(self.public_key);
         let shared_key = sk.diffie_hellman(&public);
 
@@ -697,83 +653,68 @@ impl DeriveSecret for X25519DiffieHellman {
     }
 }
 
-#[derive(Procedure, Clone, Serialize, Deserialize)]
-pub enum Hashes {
-    Sha2_256(Hash<Sha256>),
-    Sha2_384(Hash<Sha384>),
-    Sha2_512(Hash<Sha512>),
-    Blake2b256(Hash<Blake2b256>),
-}
-
-impl ProcedureStep for Hashes {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
-        match self {
-            Hashes::Sha2_256(proc) => proc.execute(runner, state),
-            Hashes::Sha2_384(proc) => proc.execute(runner, state),
-            Hashes::Sha2_512(proc) => proc.execute(runner, state),
-            Hashes::Blake2b256(proc) => proc.execute(runner, state),
-        }
-    }
-}
-
 #[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
-pub struct Hash<T> {
+pub struct Hash {
+    ty: HashType,
+
     #[input_data]
     msg: InputData<Vec<u8>>,
 
     #[output_key]
     output_key: TempOutput,
-
-    _marker: PhantomData<T>,
 }
 
-impl<T> Hash<T> {
-    pub fn new<I>(msg: I) -> Self
+impl Hash {
+    pub fn new<I>(ty: HashType, msg: I) -> Self
     where
         I: IntoInput<<Self as InputInfo>::Input>,
     {
         Hash {
+            ty,
             msg: msg.into_input(),
             output_key: TempOutput {
                 write_to: OutputKey::random(),
                 is_temp: true,
             },
-            _marker: PhantomData,
         }
     }
 }
 
 #[execute_procedure]
-impl<T: Digest> ProcessData for Hash<T> {
+impl ProcessData for Hash {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
 
     fn process(self, input: Self::Input) -> Result<Self::Output, FatalProcedureError> {
-        let mut digest = vec![0; T::OutputSize::USIZE];
-        digest.copy_from_slice(&T::digest(&input));
-        Ok(digest)
-    }
-}
-
-#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
-pub enum Hmacs {
-    Sha2_256(Hmac<Sha256>),
-    Sha2_384(Hmac<Sha384>),
-    Sha2_512(Hmac<Sha512>),
-}
-
-impl ProcedureStep for Hmacs {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
-        match self {
-            Hmacs::Sha2_256(proc) => proc.execute(runner, state),
-            Hmacs::Sha2_384(proc) => proc.execute(runner, state),
-            Hmacs::Sha2_512(proc) => proc.execute(runner, state),
+        match self.ty {
+            HashType::Blake2b => {
+                let mut digest = [0; <Blake2b256 as Digest>::OutputSize::USIZE];
+                digest.copy_from_slice(&Blake2b256::digest(&input));
+                Ok(digest.to_vec())
+            }
+            HashType::Sha2(Sha2Hash::Sha256) => {
+                let mut digest = [0; SHA256_LEN];
+                SHA256(&input, &mut digest);
+                Ok(digest.to_vec())
+            }
+            HashType::Sha2(Sha2Hash::Sha384) => {
+                let mut digest = [0; SHA384_LEN];
+                SHA384(&input, &mut digest);
+                Ok(digest.to_vec())
+            }
+            HashType::Sha2(Sha2Hash::Sha512) => {
+                let mut digest = [0; SHA512_LEN];
+                SHA512(&input, &mut digest);
+                Ok(digest.to_vec())
+            }
         }
     }
 }
 
 #[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
-pub struct Hmac<T> {
+pub struct Hmac {
+    ty: Sha2Hash,
+
     #[input_data]
     msg: InputData<Vec<u8>>,
 
@@ -782,76 +723,67 @@ pub struct Hmac<T> {
 
     #[source]
     key: Location,
-
-    _marker: PhantomData<T>,
 }
 
-impl<T> Hmac<T> {
-    pub fn new<I>(msg: I, key: Location) -> Self
+impl Hmac {
+    pub fn new<I>(ty: Sha2Hash, msg: I, key: Location) -> Self
     where
         I: IntoInput<<Self as InputInfo>::Input>,
     {
         Hmac {
+            ty,
             msg: msg.into_input(),
             key,
             output_key: TempOutput {
                 write_to: OutputKey::random(),
                 is_temp: true,
             },
-            _marker: PhantomData,
         }
     }
 }
 
 #[execute_procedure]
-impl<T> UseSecret for Hmac<T>
-where
-    T: Update + BlockInput + FixedOutput + Reset + Default + Clone,
-{
+impl UseSecret for Hmac {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
 
     fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
-        let mut mac = vec![0; <T as Digest>::OutputSize::USIZE];
-        let mut m = hmac::Hmac::<T>::new_from_slice(&*guard.borrow()).unwrap();
-        m.update(&msg);
-        mac.copy_from_slice(&m.finalize().into_bytes());
-        Ok(mac)
-    }
-}
-
-#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
-pub enum Pbkdf2Hmacs {
-    Sha2_256(Pbkdf2Hmac<Sha256>),
-    Sha2_384(Pbkdf2Hmac<Sha384>),
-    Sha2_512(Pbkdf2Hmac<Sha512>),
-}
-
-impl ProcedureStep for Pbkdf2Hmacs {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
-        match self {
-            Pbkdf2Hmacs::Sha2_256(proc) => proc.execute(runner, state),
-            Pbkdf2Hmacs::Sha2_384(proc) => proc.execute(runner, state),
-            Pbkdf2Hmacs::Sha2_512(proc) => proc.execute(runner, state),
+        match self.ty {
+            Sha2Hash::Sha256 => {
+                let mut mac = [0; SHA256_LEN];
+                HMAC_SHA256(&msg, &*guard.borrow(), &mut mac);
+                Ok(mac.to_vec())
+            }
+            Sha2Hash::Sha384 => {
+                let mut mac = [0; SHA384_LEN];
+                HMAC_SHA384(&msg, &*guard.borrow(), &mut mac);
+                Ok(mac.to_vec())
+            }
+            Sha2Hash::Sha512 => {
+                let mut mac = [0; SHA512_LEN];
+                HMAC_SHA512(&msg, &*guard.borrow(), &mut mac);
+                Ok(mac.to_vec())
+            }
         }
     }
 }
 
 #[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
-pub struct Pbkdf2Hmac<T> {
+pub struct Pbkdf2Hmac {
+    ty: Sha2Hash,
+
     password: Vec<u8>,
     salt: Vec<u8>,
     count: u32,
 
     #[target]
     target: TempTarget,
-
-    _marker: PhantomData<T>,
 }
 
-impl<T> Pbkdf2Hmac<T> {
-    pub fn new(password: Vec<u8>, salt: Vec<u8>, count: u32) -> Self {
+impl Pbkdf2Hmac {
+    pub fn new(ty: Sha2Hash, password: Vec<u8>, salt: Vec<u8>, count: u32) -> Self {
         Pbkdf2Hmac {
+            ty,
             password,
             salt,
             count,
@@ -859,55 +791,42 @@ impl<T> Pbkdf2Hmac<T> {
                 write_to: Target::random(),
                 is_temp: true,
             },
-            _marker: PhantomData,
         }
     }
 }
 
 #[execute_procedure]
-impl<T: Digest> GenerateSecret for Pbkdf2Hmac<T> {
+impl GenerateSecret for Pbkdf2Hmac {
     type Input = ();
     type Output = ();
 
     fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
-        if self.count == 0 {
-            return Err(crypto::Error::InvalidArgumentError {
-                alg: "Pbkdf2",
-                expected: "non-zero iteration count",
+        let secret;
+        match self.ty {
+            Sha2Hash::Sha256 => {
+                let mut buffer = [0; SHA256_LEN];
+                PBKDF2_HMAC_SHA256(&self.password, &self.salt, self.count as usize, &mut buffer)?;
+                secret = buffer.to_vec()
             }
-            .into());
+            Sha2Hash::Sha384 => {
+                let mut buffer = [0; SHA384_LEN];
+                PBKDF2_HMAC_SHA384(&self.password, &self.salt, self.count as usize, &mut buffer)?;
+                secret = buffer.to_vec()
+            }
+            Sha2Hash::Sha512 => {
+                let mut buffer = [0; SHA512_LEN];
+                PBKDF2_HMAC_SHA512(&self.password, &self.salt, self.count as usize, &mut buffer)?;
+                secret = buffer.to_vec()
+            }
         }
-        let mut buffer = vec![0; <T as Digest>::OutputSize::USIZE];
-        pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha256>>(&self.password, &self.salt, self.count, &mut buffer);
-
-        Ok(Products {
-            secret: buffer,
-            output: (),
-        })
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub enum Aeads {
-    Aes256GcmEncrypt(AeadEncrypt<Aes256Gcm>),
-    Aes256GcmDecrypt(AeadDecrypt<Aes256Gcm>),
-    XChaCha20Poly1305Encrypt(AeadEncrypt<XChaCha20Poly1305>),
-    XChaCha20Poly1305Decrypt(AeadDecrypt<XChaCha20Poly1305>),
-}
-
-impl ProcedureStep for Aeads {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
-        match self {
-            Aeads::Aes256GcmEncrypt(proc) => proc.execute(runner, state),
-            Aeads::Aes256GcmDecrypt(proc) => proc.execute(runner, state),
-            Aeads::XChaCha20Poly1305Encrypt(proc) => proc.execute(runner, state),
-            Aeads::XChaCha20Poly1305Decrypt(proc) => proc.execute(runner, state),
-        }
+        Ok(Products { secret, output: () })
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AeadEncrypt<T> {
+pub struct AeadEncrypt {
+    alg: AeadAlg,
+
     associated_data: InputData<Vec<u8>>,
     plaintext: InputData<Vec<u8>>,
     nonce: InputData<Vec<u8>>,
@@ -915,13 +834,13 @@ pub struct AeadEncrypt<T> {
 
     ciphertext: TempOutput,
     tag: TempOutput,
-    _marker: PhantomData<T>,
 }
 
-impl<T> AeadEncrypt<T> {
+impl AeadEncrypt {
     /// Create a new aead encryption procedure.
     /// **Note**: The nonce is required to have length [`<T as Aead>::NONCE_LENGTH` ].
     pub fn new(
+        alg: AeadAlg,
         key: Location,
         plaintext: impl IntoInput<Vec<u8>>,
         associated_data: impl IntoInput<Vec<u8>>,
@@ -936,13 +855,13 @@ impl<T> AeadEncrypt<T> {
             is_temp: true,
         };
         AeadEncrypt {
+            alg,
             associated_data: associated_data.into_input(),
             plaintext: plaintext.into_input(),
             nonce: nonce.into_input(),
             key,
             ciphertext,
             tag,
-            _marker: PhantomData,
         }
     }
 
@@ -971,7 +890,7 @@ impl<T> AeadEncrypt<T> {
     }
 }
 
-impl<T> SourceInfo for AeadEncrypt<T> {
+impl SourceInfo for AeadEncrypt {
     fn source_location(&self) -> &Location {
         &self.key
     }
@@ -980,7 +899,7 @@ impl<T> SourceInfo for AeadEncrypt<T> {
     }
 }
 
-impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
+impl ProcedureStep for AeadEncrypt {
     fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         let AeadEncrypt {
             associated_data,
@@ -1014,10 +933,18 @@ impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
         };
 
         let mut ctx = vec![0; plaintext.len()];
-        let mut t = Tag::<T>::default();
+        let mut t = match self.alg {
+            AeadAlg::Aes256Gcm => Tag::<Aes256Gcm>::default(),
+            AeadAlg::XChaCha20Poly1305 => Tag::<XChaCha20Poly1305>::default(),
+        };
 
+        let alg = self.alg;
         let f = |key: GuardedVec<u8>| {
-            T::try_encrypt(&*key.borrow(), nonce, ad, plaintext, &mut ctx, &mut t)?;
+            let f = match alg {
+                AeadAlg::Aes256Gcm => Aes256Gcm::try_encrypt,
+                AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::try_encrypt,
+            };
+            f(&*key.borrow(), nonce, ad, plaintext, &mut ctx, &mut t)?;
             Ok(())
         };
 
@@ -1029,21 +956,22 @@ impl<T: Aead> ProcedureStep for AeadEncrypt<T> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AeadDecrypt<T> {
+pub struct AeadDecrypt {
+    alg: AeadAlg,
     associated_data: InputData<Vec<u8>>,
     ciphertext: InputData<Vec<u8>>,
     tag: InputData<Vec<u8>>,
     nonce: InputData<Vec<u8>>,
     key: Location,
     plaintext: TempOutput,
-    _marker: PhantomData<T>,
 }
 
-impl<T> AeadDecrypt<T> {
+impl AeadDecrypt {
     /// Create a new aead encryption procedure.
     /// **Note**: It is required for the nonce to have length [`<T as Aead>::NONCE_LENGTH` ] and
     /// the tag to have length [`<T as Aead>::TAG_LENGTH` ];
     pub fn new(
+        alg: AeadAlg,
         key: Location,
         ciphertext: impl IntoInput<Vec<u8>>,
         associated_data: impl IntoInput<Vec<u8>>,
@@ -1055,13 +983,13 @@ impl<T> AeadDecrypt<T> {
             is_temp: true,
         };
         AeadDecrypt {
+            alg,
             associated_data: associated_data.into_input(),
             ciphertext: ciphertext.into_input(),
             tag: tag.into_input(),
             nonce: nonce.into_input(),
             key,
             plaintext,
-            _marker: PhantomData,
         }
     }
 
@@ -1078,7 +1006,7 @@ impl<T> AeadDecrypt<T> {
     }
 }
 
-impl<T> SourceInfo for AeadDecrypt<T> {
+impl SourceInfo for AeadDecrypt {
     fn source_location(&self) -> &Location {
         &self.key
     }
@@ -1087,7 +1015,7 @@ impl<T> SourceInfo for AeadDecrypt<T> {
     }
 }
 
-impl<T: Aead> ProcedureStep for AeadDecrypt<T> {
+impl ProcedureStep for AeadDecrypt {
     fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         let AeadDecrypt {
             associated_data,
@@ -1129,8 +1057,13 @@ impl<T: Aead> ProcedureStep for AeadDecrypt<T> {
 
         let mut ptx = vec![0; ciphertext.len()];
 
+        let alg = self.alg;
         let f = |key: GuardedVec<u8>| {
-            T::try_decrypt(&*key.borrow(), nonce, ad, &mut ptx, ciphertext, tag)?;
+            let f = match alg {
+                AeadAlg::Aes256Gcm => Aes256Gcm::try_decrypt,
+                AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::try_decrypt,
+            };
+            f(&*key.borrow(), nonce, ad, &mut ptx, ciphertext, tag)?;
             Ok(())
         };
 

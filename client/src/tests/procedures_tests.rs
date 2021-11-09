@@ -15,10 +15,9 @@ use stronghold_utils::random::{self, bytestring, string};
 use super::fresh;
 use crate::{
     procedures::{
-        crypto::{ChainCode, Sha256},
-        AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, Ed25519, Ed25519Sign, GenerateKey, Hash,
-        MnemonicLanguage, OutputInfo, OutputKey, PrimitiveProcedure, ProcedureIo, ProcedureStep, PublicKey,
-        Slip10Derive, Slip10Generate, TargetInfo, WriteVault, X25519DiffieHellman, X25519,
+        crypto::ChainCode, AeadAlg, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, Ed25519Sign, GenerateKey,
+        Hash, HashType, KeyType, MnemonicLanguage, OutputInfo, OutputKey, ProcedureIo, ProcedureStep, PublicKey,
+        Sha2Hash, Slip10Derive, Slip10Generate, TargetInfo, WriteVault, X25519DiffieHellman,
     },
     Location, Stronghold,
 };
@@ -66,7 +65,7 @@ async fn usecase_ed25519() {
         Err(err) => panic!("unexpected error: {:?}", err),
     };
 
-    let ed25519_pk = PublicKey::<Ed25519>::new(key.clone()).store_output(OutputKey::random());
+    let ed25519_pk = PublicKey::new(KeyType::Ed25519, key.clone()).store_output(OutputKey::random());
     let pk: [u8; ed25519::PUBLIC_KEY_LENGTH] = match sh.runtime_exec(ed25519_pk).await.unwrap() {
         Ok(data) => data.single_output().unwrap(),
         Err(e) => panic!("unexpected error: {:?}", e),
@@ -143,7 +142,7 @@ async fn usecase_ed25519_as_complex() {
 
     let generate = Slip10Generate::default();
     let derive = Slip10Derive::new_from_seed(generate.target(), fresh::hd_path().1);
-    let get_pk = PublicKey::<Ed25519>::new(derive.target()).store_output(pk_result.clone());
+    let get_pk = PublicKey::new(KeyType::Ed25519, derive.target()).store_output(pk_result.clone());
     let sign = Ed25519Sign::new(msg.clone(), derive.target()).store_output(sign_result.clone());
 
     let combined_proc = generate.then(derive).then(get_pk).then(sign);
@@ -214,7 +213,8 @@ async fn usecase_collection_of_data() {
         .enumerate()
         .map(|(i, msg)| {
             let sign = Ed25519Sign::new(msg, key_location.clone());
-            let digest = Hash::<Sha256>::new(sign.output_key()).store_output(OutputKey::new(format!("{}", i)));
+            let digest = Hash::new(HashType::Sha2(Sha2Hash::Sha256), sign.output_key())
+                .store_output(OutputKey::new(format!("{}", i)));
             sign.then(digest)
         })
         .reduce(|acc, curr| acc.then(curr))
@@ -235,19 +235,20 @@ async fn usecase_collection_of_data() {
     assert_eq!(res, expected);
 }
 
-async fn test_aead<T>(sh: &mut Stronghold, key_location: Location, key: &[u8])
-where
-    T: Aead,
-    PrimitiveProcedure: From<AeadEncrypt<T>> + From<AeadDecrypt<T>>,
-{
+async fn test_aead(sh: &mut Stronghold, key_location: Location, key: &[u8], alg: AeadAlg) {
     let test_plaintext = random::bytestring(4096);
     let test_associated_data = random::bytestring(4096);
-    let test_nonce = vec![random::random(); T::NONCE_LENGTH];
+    let nonce_len = match alg {
+        AeadAlg::Aes256Gcm => Aes256Gcm::NONCE_LENGTH,
+        AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::NONCE_LENGTH,
+    };
+    let test_nonce = vec![random::random(); nonce_len];
 
     // test encryption
     let ctx_key = OutputKey::new("ctx");
     let tag_key = OutputKey::new("tag");
-    let aead = AeadEncrypt::<T>::new(
+    let aead = AeadEncrypt::new(
+        alg,
         key_location.clone(),
         test_plaintext.clone(),
         test_associated_data.clone(),
@@ -265,8 +266,17 @@ where
     let out_tag: Vec<u8> = output.take(&tag_key).unwrap();
 
     let mut expected_ctx = vec![0; test_plaintext.len()];
-    let mut expected_tag = vec![0; T::TAG_LENGTH];
-    T::try_encrypt(
+    let tag_len = match alg {
+        AeadAlg::Aes256Gcm => Aes256Gcm::TAG_LENGTH,
+        AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::TAG_LENGTH,
+    };
+    let mut expected_tag = vec![0; tag_len];
+
+    let f = match alg {
+        AeadAlg::Aes256Gcm => Aes256Gcm::try_encrypt,
+        AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::try_encrypt,
+    };
+    f(
         key,
         &test_nonce,
         &test_associated_data,
@@ -281,7 +291,8 @@ where
 
     // test decryption
     let ptx_key = OutputKey::new("ptx");
-    let adad = AeadDecrypt::<T>::new(
+    let adad = AeadDecrypt::new(
+        alg,
         key_location,
         out_ciphertext.clone(),
         test_associated_data.clone(),
@@ -298,7 +309,12 @@ where
     let out_plaintext: Vec<u8> = output.take(&ptx_key).unwrap();
 
     let mut expected_ptx = vec![0; out_ciphertext.len()];
-    T::try_decrypt(
+
+    let f = match alg {
+        AeadAlg::Aes256Gcm => Aes256Gcm::try_decrypt,
+        AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::try_decrypt,
+    };
+    f(
         key,
         &test_nonce,
         &test_associated_data,
@@ -324,8 +340,8 @@ async fn usecase_aead() {
         .unwrap()
         .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
 
-    test_aead::<Aes256Gcm>(&mut sh, key_location.clone(), &key).await;
-    test_aead::<XChaCha20Poly1305>(&mut sh, key_location.clone(), &key).await;
+    test_aead(&mut sh, key_location.clone(), &key, AeadAlg::Aes256Gcm).await;
+    test_aead(&mut sh, key_location.clone(), &key, AeadAlg::XChaCha20Poly1305).await;
 }
 
 #[actix::test]
@@ -333,8 +349,8 @@ async fn usecase_diffie_hellman() {
     let (cp, sh) = setup_stronghold().await;
 
     let sk1_location = fresh::location();
-    let sk1 = GenerateKey::<X25519>::default().write_secret(sk1_location.clone(), fresh::record_hint());
-    let pk1 = PublicKey::<X25519>::new(sk1.target()).store_output(OutputKey::random());
+    let sk1 = GenerateKey::new(KeyType::X25519).write_secret(sk1_location.clone(), fresh::record_hint());
+    let pk1 = PublicKey::new(KeyType::X25519, sk1.target()).store_output(OutputKey::random());
     let pub_key_1: [u8; 32] = sh
         .runtime_exec(sk1.then(pk1))
         .await
@@ -344,8 +360,8 @@ async fn usecase_diffie_hellman() {
         .unwrap();
 
     let sk2_location = fresh::location();
-    let sk2 = GenerateKey::<X25519>::default().write_secret(sk2_location.clone(), fresh::record_hint());
-    let pk2 = PublicKey::<X25519>::new(sk2.target()).store_output(OutputKey::random());
+    let sk2 = GenerateKey::new(KeyType::X25519).write_secret(sk2_location.clone(), fresh::record_hint());
+    let pk2 = PublicKey::new(KeyType::X25519, sk2.target()).store_output(OutputKey::random());
     let pub_key_2: [u8; 32] = sh
         .runtime_exec(sk2.then(pk2))
         .await
