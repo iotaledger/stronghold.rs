@@ -16,7 +16,7 @@ use super::fresh;
 use crate::{
     procedures::{
         crypto::ChainCode, AeadAlg, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, Ed25519Sign, GenerateKey,
-        Hash, HashType, KeyType, MnemonicLanguage, OutputInfo, OutputKey, ProcedureIo, ProcedureStep, PublicKey,
+        Hash, HashType, Hkdf, KeyType, MnemonicLanguage, OutputInfo, OutputKey, ProcedureIo, ProcedureStep, PublicKey,
         Sha2Hash, Slip10Derive, Slip10Generate, TargetInfo, WriteVault, X25519DiffieHellman,
     },
     Location, Stronghold,
@@ -344,7 +344,6 @@ async fn usecase_aead() {
     test_aead(&mut sh, key_location.clone(), &key, AeadAlg::XChaCha20Poly1305).await;
 }
 
-#[actix::test]
 async fn usecase_diffie_hellman() {
     let (cp, sh) = setup_stronghold().await;
 
@@ -370,20 +369,30 @@ async fn usecase_diffie_hellman() {
         .single_output()
         .unwrap();
 
-    let key_1_2 = fresh::location();
-    let dh_1_2 = X25519DiffieHellman::new(pub_key_2, sk1_location).write_secret(key_1_2.clone(), fresh::record_hint());
-    let key_2_1 = fresh::location();
-    let dh_2_1 = X25519DiffieHellman::new(pub_key_1, sk2_location).write_secret(key_2_1.clone(), fresh::record_hint());
+    let mut salt = vec![];
+    salt.extend_from_slice(&pub_key_1);
+    salt.extend_from_slice(&pub_key_2);
+    let label = bytestring(1024);
 
-    sh.runtime_exec(dh_1_2.then(dh_2_1))
+    let key_1_2 = fresh::location();
+    let dh_1_2 = X25519DiffieHellman::new(pub_key_2, sk1_location);
+    let derived_1_2 = Hkdf::new(Sha2Hash::Sha256, salt.clone(), label.clone(), dh_1_2.target())
+        .write_secret(key_1_2.clone(), fresh::record_hint());
+
+    let key_2_1 = fresh::location();
+    let dh_2_1 = X25519DiffieHellman::new(pub_key_1, sk2_location);
+    let derived_2_1 = Hkdf::new(Sha2Hash::Sha256, salt.clone(), label.clone(), dh_2_1.target())
+        .write_secret(key_2_1.clone(), fresh::record_hint());
+
+    sh.runtime_exec(dh_1_2.then(derived_1_2).then(dh_2_1).then(derived_2_1))
         .await
         .unwrap()
         .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
 
-    let shared_1_2 = sh.read_secret(cp.clone(), key_1_2).await.unwrap().unwrap();
-    let shared_2_1 = sh.read_secret(cp, key_2_1).await.unwrap().unwrap();
+    let hashed_shared_1_2 = sh.read_secret(cp.clone(), key_1_2).await.unwrap().unwrap();
+    let hashed_shared_2_1 = sh.read_secret(cp, key_2_1).await.unwrap().unwrap();
 
-    assert_eq!(shared_1_2, shared_2_1)
+    assert_eq!(hashed_shared_1_2, hashed_shared_2_1)
 }
 
 #[actix::test]

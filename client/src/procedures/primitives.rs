@@ -93,6 +93,7 @@ pub enum CryptoProcedure {
     X25519DiffieHellman(X25519DiffieHellman),
     Hash(Hash),
     Hmac(Hmac),
+    Hkdf(Hkdf),
     Pbkdf2Hmac(Pbkdf2Hmac),
     AeadEncrypt(AeadEncrypt),
     AeadDecrypt(AeadDecrypt),
@@ -112,6 +113,7 @@ impl ProcedureStep for CryptoProcedure {
             X25519DiffieHellman(proc) => proc.execute(runner, state),
             Hash(proc) => proc.execute(runner, state),
             Hmac(proc) => proc.execute(runner, state),
+            Hkdf(proc) => proc.execute(runner, state),
             Pbkdf2Hmac(proc) => proc.execute(runner, state),
             AeadEncrypt(proc) => proc.execute(runner, state),
             AeadDecrypt(proc) => proc.execute(runner, state),
@@ -176,6 +178,7 @@ enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Ed25519Sign from E
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::X25519DiffieHellman from X25519DiffieHellman);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash from Hash);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac from Hmac);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hkdf from Hkdf);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Pbkdf2Hmac from Pbkdf2Hmac);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::AeadEncrypt from AeadEncrypt);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::AeadDecrypt from AeadDecrypt);
@@ -765,6 +768,68 @@ impl UseSecret for Hmac {
                 Ok(mac.to_vec())
             }
         }
+    }
+}
+
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub struct Hkdf {
+    ty: Sha2Hash,
+
+    salt: Vec<u8>,
+    label: Vec<u8>,
+
+    #[source]
+    ikm: Location,
+
+    #[target]
+    okm: TempTarget,
+}
+
+impl Hkdf {
+    pub fn new(ty: Sha2Hash, salt: Vec<u8>, label: Vec<u8>, ikm: Location) -> Self {
+        Hkdf {
+            ty,
+            salt,
+            label,
+            ikm,
+            okm: TempTarget {
+                write_to: Target::random(),
+                is_temp: true,
+            },
+        }
+    }
+}
+
+#[execute_procedure]
+impl DeriveSecret for Hkdf {
+    type Input = ();
+    type Output = ();
+
+    fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<()>, FatalProcedureError> {
+        let secret = match self.ty {
+            Sha2Hash::Sha256 => {
+                let mut okm = [0; SHA256_LEN];
+                hkdf::Hkdf::<Sha256>::new(Some(&self.salt), &*guard.borrow())
+                    .expand(&self.label, &mut okm)
+                    .expect("okm is the correct length");
+                okm.to_vec()
+            }
+            Sha2Hash::Sha384 => {
+                let mut okm = [0; SHA384_LEN];
+                hkdf::Hkdf::<Sha384>::new(Some(&self.salt), &*guard.borrow())
+                    .expand(&self.label, &mut okm)
+                    .expect("okm is the correct length");
+                okm.to_vec()
+            }
+            Sha2Hash::Sha512 => {
+                let mut okm = [0; SHA512_LEN];
+                hkdf::Hkdf::<Sha512>::new(Some(&self.salt), &*guard.borrow())
+                    .expand(&self.label, &mut okm)
+                    .expect("okm is the correct length");
+                okm.to_vec()
+            }
+        };
+        Ok(Products { secret, output: () })
     }
 }
 
