@@ -233,7 +233,7 @@ pub enum VaultFlags {}
 
 /// Shape of an entry inside the vault. This type's sole purpose
 /// is to enable calculating differences between two Stronghold instances.
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
 pub struct EntryShape {
     // the location of the difference
     pub location: Location,

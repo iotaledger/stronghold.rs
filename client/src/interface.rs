@@ -6,8 +6,9 @@
 //! All functionality can be accessed from the interface. Functions
 //! are provided in an asynchronous way, and should be run by the
 //! actor's system [`SystemRunner`].
+
 use actix::prelude::*;
-use std::{path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 use zeroize::Zeroize;
 
 use crate::{
@@ -18,13 +19,15 @@ use crate::{
         },
         secure_procedures::{CallProcedure, ProcResult, Procedure},
         snapshot_messages::{
-            FillSnapshot, FullSynchronization, PartialSynchronization, ReadFromSnapshot, WriteSnapshot,
+            CalculateComplement, CalculateShape, ExportAllEntries, ExportSnapshot, FillSnapshot, FullSynchronization,
+            ImportSnapshot, PartialSynchronization, ReadFromSnapshot, WriteSnapshot,
         },
         GetAllClients, GetClient, GetSnapshot, GetTarget, Registry, RegistryError, RemoveClient, SecureClient,
         SnapshotConfig, SpawnClient, SwitchTarget,
     },
     line_error,
-    utils::{LoadFromPath, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+    state::snapshot::SnapshotError,
+    utils::{EntryShape, LoadFromPath, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
 use engine::vault::{ClientId, RecordHint, RecordId};
@@ -134,10 +137,7 @@ impl Stronghold {
         allowed: Vec<ClientId>,
     ) -> ResultMessage<()> {
         let snapshot_actor = match self.registry.send(GetSnapshot {}).await {
-            Ok(actor_option) => match actor_option {
-                Some(actor) => actor,
-                None => return ResultMessage::Error("No snapshot actor present in registry".to_string()),
-            },
+            Ok(actor) => actor,
             Err(error) => return ResultMessage::Error(error.to_string()),
         };
 
@@ -178,7 +178,6 @@ impl Stronghold {
     }
 
     /// Fully synchronizes the current snapshot state with another snapshot, write the result eventually to disk.
-    /// expects a closure that returns a
     pub async fn synchronize_full(
         &self,
         id: ClientId,
@@ -187,10 +186,7 @@ impl Stronghold {
         destination: SnapshotConfig,
     ) -> ResultMessage<()> {
         let snapshot_actor = match self.registry.send(GetSnapshot {}).await {
-            Ok(actor_option) => match actor_option {
-                Some(actor) => actor,
-                None => return ResultMessage::Error("No snapshot actor present in registry".to_string()),
-            },
+            Ok(actor) => actor,
             Err(error) => return ResultMessage::Error(error.to_string()),
         };
 
@@ -229,13 +225,161 @@ impl Stronghold {
         ResultMessage::Error(RegistryError::NoClientPresentById(format!("{:?}", id)).to_string())
     }
 
-    /// Exports selected entries from the current state
-    pub async fn synchronize_with_remote(&self) {
-        // accept the locations to be exported, alongside the old and new keys
+    // /// Exports selected entries from the current state
+    // pub async fn synchronize_with_remote(&self) {
+    //     // accept the locations to be exported, alongside the old and new keys
+    // }
+
+    // pub async fn synchronized_from_remote(&self) {
+    //     // accept
+    // }
+
+    /// Exports all locations across all [`ClientId`]s from their respective vaults.
+    pub(crate) async fn snapshot_protocol_export_shapes(
+        &self,
+        entries: Vec<Location>,
+    ) -> Result<HashMap<Location, EntryShape>, SnapshotError> {
+        // CalculateComplement, CalculateShape, ExportAllEntries, ExportSnapshot
+        // get the snapshot actor
+        let actor = match self.registry.send(GetSnapshot {}).await {
+            Ok(actor) => actor,
+            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
+        };
+
+        // get export data
+        let _data = match actor.send(ExportAllEntries { entries }).await {
+            Ok(result) => match result {
+                Ok(result) => result,
+                Err(error) => return Err(error),
+            },
+            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
+        };
+
+        // calculate shape
+        // TODO: set data
+        match actor
+            .send(CalculateShape {
+                entries: None,
+                // data: None,
+                hasher: None,
+            })
+            .await
+        {
+            Ok(shapes) => shapes,
+            Err(error) => Err(SnapshotError::ExportError(error.to_string())),
+        }
     }
 
-    pub async fn synchronized_from_remote(&self) {
-        // accept
+    /// Calculates the complement set for B (receiver) from A (sender). The complement set
+    /// consists of all parts that are missing inside B and should be send from A.
+    pub(crate) async fn snapshot_protocol_calculate_complement(
+        &self,
+        input: HashMap<Location, EntryShape>,
+    ) -> Result<Vec<Location>, SnapshotError> {
+        // get the snapshot actor
+        let actor = match self.registry.send(GetSnapshot {}).await {
+            Ok(actor) => actor,
+            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
+        };
+
+        let complement = match actor.send(CalculateComplement { input }).await {
+            Ok(result) => match result {
+                Ok(entries) => entries,
+                Err(error) => return Err(error),
+            },
+            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
+        };
+
+        Ok(complement)
+    }
+
+    pub(crate) async fn snapshot_protocol_export_snapshot(
+        &self,
+        input: Vec<Location>,
+        public_key: Vec<u8>,
+        client_id: ClientId,
+    ) -> Result<Vec<u8>, SnapshotError> {
+        // get the snapshot actor
+        let actor = match self.registry.send(GetSnapshot {}).await {
+            Ok(actor) => actor,
+            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
+        };
+
+        // export the snapshot
+        let snapshot = match actor
+            .send(ExportSnapshot {
+                input,
+                public_key,
+                client_id,
+            })
+            .await
+        {
+            Ok(result) => match result {
+                Ok(snapshot) => snapshot,
+                Err(error) => return Err(error),
+            },
+            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
+        };
+
+        Ok(snapshot)
+    }
+
+    /// Imports the snapshot from bytes into the current actor
+    pub(crate) async fn snapshot_protocol_import_snapshot<K>(
+        &self,
+        input: Vec<u8>,
+        key_data: &K,
+
+        _id: ClientId,
+    ) -> Result<(), SnapshotError>
+    where
+        K: Zeroize + AsRef<Vec<u8>>,
+    {
+        // get the snapshot actor
+        let actor = match self.registry.send(GetSnapshot {}).await {
+            Ok(actor) => actor,
+            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
+        };
+
+        // create key
+        let mut key = [0u8; 32];
+        key.copy_from_slice(key_data.as_ref());
+
+        // import the snapshot
+        if let Err(error) = actor.send(ImportSnapshot { input, key }).await {
+            return Err(SnapshotError::ImportFailure(error.to_string()));
+        };
+
+        // // get target actor
+        // let target = match self.registry.send(GetTarget {}).await {
+        //     Ok(target) => target,
+        //     Err(error) => return Err(SnapshotError::OtherFailure(error.to_string())),
+        // };
+
+        // reload snapshot
+
+        // merge with current state
+        // self.synchronize_full(id, source, sync_with, destination);
+
+        // // unwrapping the target might induce an error
+        // match target.unwrap().send(ReloadData { data, id }).await {
+        //     Ok(_) => {}
+        //     Err(_) => {}
+        // };
+
+        // match target
+        //     .send(ImportData {
+        //         data: result.data,
+        //         id: result.id,
+        //     })
+        //     .await
+        // {
+        //     Ok(_) => StatusMessage::OK,
+        //     Err(e) => StatusMessage::Error(format!("Error requestion Reload Data: {}", e)),
+        // }
+
+        // this may be remove
+        Ok(())
     }
 
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified
@@ -523,14 +667,7 @@ impl Stronghold {
 
         // get address of snapshot actor
         let snapshot_actor = match self.registry.send(GetSnapshot {}).await {
-            Ok(snapshot) => match snapshot {
-                Some(actor) => actor,
-                None => {
-                    // This would indicate another serious error on snapshot actor
-                    // creation side.
-                    return StatusMessage::Error("No snapshot actor present".into());
-                }
-            },
+            Ok(snapshot) => snapshot,
             Err(e) => {
                 return StatusMessage::Error(format!("{}", e));
             }
@@ -591,10 +728,7 @@ impl Stronghold {
 
         // get snapshot actor
         let snapshot = match self.registry.send(GetSnapshot {}).await {
-            Ok(result) => match result {
-                Some(snapshot) => snapshot,
-                None => return StatusMessage::Error("No snapshot actor present".to_string()),
-            },
+            Ok(snapshot) => snapshot,
             Err(e) => {
                 return StatusMessage::Error(format!("{}", e));
             }
@@ -995,5 +1129,57 @@ impl Stronghold {
             Ok(ok) => ResultMessage::Ok(ok),
             Err(err) => ResultMessage::Error(err.to_string()),
         }
+    }
+}
+
+/// Implementation for remote synchronization on top of p2p.
+#[cfg(feature = "p2p")]
+
+impl Stronghold {
+    /// Synchronizes with a remote peer
+    ///
+    /// This call runs through the synchronization protocol:
+    /// All vault entries will be taken to calculate a shape of each entry, that consists of its
+    /// size, location and hash value.
+    pub async fn synchronize_with_remote<K>(
+        &mut self,
+        _peer: PeerId,
+        _entries: Vec<Location>,
+        _key: K,
+        _client_id: ClientId,
+    ) -> ResultMessage<()>
+    where
+        K: Zeroize + AsRef<Vec<u8>>,
+    {
+        // let network_actor = match self.registry.send(GetNetwork).await.unwrap() {
+        //     Some(a) => a,
+        //     None => return ResultMessage::Error("No network actor spawned.".into()),
+        // };
+
+        // // calculate shapes
+        // let shapes = match self.snapshot_protocol_export_shapes(entries).await {
+        //     Ok(s) => s,
+        //     Err(error) => return ResultMessage::Error(error.to_string()),
+        // };
+
+        // let message = network_msg::SendRequest {
+        //     peer,
+        //     request: SynchronizeRemote { entries: shapes, key }, // SynchronizeWith
+        // };
+
+        // // TODO implement calculate_complement message handler on network actor side
+        // // the expected return value should be the encrypted messae
+        // let input: Vec<u8> = match network_actor.send(message).await {
+        //     Ok(result) => result,
+        //     Err(error) => return ResultMessage::Error(error.to_string()),
+        // };
+
+        // // import the remote entries
+        // match self.snapshot_protocol_import_snapshot(input, &key, client_id).await {
+        //     Ok(_) => ResultMessage::Ok(()),
+        //     Err(error) => ResultMessage::Error(error.to_string()),
+        // }
+
+        ResultMessage::Ok(())
     }
 }

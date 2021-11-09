@@ -16,6 +16,8 @@ use engine::{
     vault::{ClientId, DbView, Key as PKey, RecordId, VaultId},
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     internals, line_error,
     state::{
@@ -55,6 +57,8 @@ pub mod returntypes {
 }
 
 pub mod messages {
+
+    use zeroize::Zeroize;
 
     use crate::Location;
 
@@ -145,8 +149,10 @@ pub mod messages {
     /// Exports all entries given their prior keys, and re-encrypted
     /// via the new keys. Part of the snapshot protocol.
     pub struct ExportAllEntries {
-        pub entries: HashMap<Location, (PKey<Provider>, PKey<Provider>)>,
-        pub state: HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>,
+        // pub entries: HashMap<Location, (PKey<Provider>, PKey<Provider>)>,
+        // we only need the location
+        pub entries: Vec<Location>,
+        // pub state: HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>,
     }
 
     impl Message for ExportAllEntries {
@@ -155,8 +161,8 @@ pub mod messages {
 
     /// Exports the complete snapshot as vector of bytes. Part of the snapshot protocol
     pub struct ExportSnapshot {
-        pub input: Vec<(Location, PKey<Provider>)>,
-        pub state: HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>,
+        pub input: Vec<Location>,
+        // pub state: HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>,
         pub client_id: ClientId,
         pub public_key: Vec<u8>,
     }
@@ -168,9 +174,9 @@ pub mod messages {
     /// Returns a representation of the selected locations and their shape.
     /// Part of the snapshot protocol
     pub struct CalculateShape {
-        pub entries: Option<HashMap<Location, PKey<Provider>>>,
-        pub data: Option<HashMap<ClientId, DbView<Provider>>>,
-        pub hasher: Option<Box<dyn Hasher>>,
+        pub entries: Option<Vec<Location>>,
+        // pub data: Option<HashMap<ClientId, DbView<Provider>>>,
+        pub hasher: Option<Box<dyn Hasher + Send>>,
     }
 
     impl Message for CalculateShape {
@@ -179,8 +185,8 @@ pub mod messages {
 
     /// Returns the complement set of the side to be synchronized with. Part of the snapshot protocol
     pub struct CalculateComplement {
-        pub a: HashMap<Location, EntryShape>,
-        pub b: HashMap<Location, EntryShape>,
+        pub input: HashMap<Location, EntryShape>,
+        // pub b: HashMap<Location, EntryShape>,
     }
 
     impl Message for CalculateComplement {
@@ -188,6 +194,26 @@ pub mod messages {
     }
 
     // maybe import as message ?
+
+    pub struct ImportSnapshot {
+        pub input: Vec<u8>,
+        pub key: Key,
+    }
+
+    impl Message for ImportSnapshot {
+        type Result =
+            Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, SnapshotError>;
+    }
+
+    #[derive(Serialize, Deserialize, Clone, Debug)]
+    // compound message for remote peer to synchronize with
+    pub struct SynchronizeRemote<K>
+    where
+        K: Zeroize + AsRef<Vec<u8>>,
+    {
+        entries: HashMap<Location, EntryShape>,
+        key: K,
+    }
 }
 
 /// This struct provide file system configuration to the messages ['FullSynchronization`]
@@ -219,35 +245,37 @@ impl Supervised for Snapshot {}
 impl Handler<messages::ExportAllEntries> for Snapshot {
     type Result = Result<(HashMap<VaultId, PKey<Provider>>, DbView<Provider>), SnapshotError>;
 
-    fn handle(&mut self, mut message: messages::ExportAllEntries, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, message: messages::ExportAllEntries, _ctx: &mut Self::Context) -> Self::Result {
         let mut result_view: DbView<Provider> = DbView::new();
         let mut result_map = HashMap::new();
 
         // access inner
-        let inner = &mut message.state;
+        let inner = &mut self.state.0;
 
         // iterate over all client ids, and select entries
-        for (_id, data) in inner.iter_mut() {
-            let view = &mut data.1;
+        for (_id, (keys, view, _)) in inner.iter_mut() {
+            // let view = &mut data.1;
 
-            for (location, (key_old, key_new)) in message.entries.iter() {
+            for location in message.entries.iter() {
                 let vid: VaultId = location.try_into().unwrap();
                 let rid: RecordId = location.try_into().unwrap();
 
-                if !view.contains_record(key_old, vid, rid) {
+                let key = keys.get(&vid).unwrap(); // can potentially fail
+
+                if !view.contains_record(key, vid, rid) {
                     continue;
                 }
 
-                let id_hint = crate::utils::into_map(view.list_hints_and_ids(key_old, vid));
+                let id_hint = crate::utils::into_map(view.list_hints_and_ids(key, vid));
 
                 // decrypt entry and re-encrypt with new key inside guard
-                view.get_guard(key_old, vid, rid, |guarded_data| {
+                view.get_guard(key, vid, rid, |guarded_data| {
                     let record_hint = id_hint
                         .get(&rid)
                         .ok_or_else(|| engine::Error::ValueError("No RecordHint Present".to_string()))?;
 
-                    result_view.write(key_new, vid, rid, &guarded_data.borrow(), *record_hint)?;
-                    result_map.insert(vid, key_new.clone());
+                    result_view.write(key, vid, rid, &guarded_data.borrow(), *record_hint)?;
+                    result_map.insert(vid, key.clone());
 
                     Ok(())
                 })
@@ -273,20 +301,22 @@ impl Handler<messages::ExportSnapshot> for Snapshot {
         let mut result_maps = HashMap::new();
 
         // access inner
-        let mut inner = message.state;
+        let inner = &mut self.state.0;
 
         // queue
         let mut queue = Vec::new();
         queue.clone_from(&message.input);
 
         // iterate over all client ids, and select entries
-        'entries: for (_id, data) in inner.iter_mut() {
-            let vault = &mut data.1;
+        'entries: for (_id, (keys, vault, _)) in inner.iter_mut() {
+            // let vault = &mut data.1;
 
             'comparison: loop {
-                if let Some((ref location, ref key)) = queue.pop() {
+                if let Some(ref location) = queue.pop() {
                     let vid: VaultId = location.try_into().unwrap();
                     let rid: RecordId = location.try_into().unwrap();
+
+                    let key = keys.get(&vid).unwrap();
 
                     if vault.contains_record(key, vid, rid) {
                         let id_hint = crate::utils::into_map(vault.list_hints_and_ids(key, vid));
@@ -330,10 +360,13 @@ impl Handler<messages::CalculateComplement> for Snapshot {
     type Result = Result<Vec<Location>, SnapshotError>;
 
     fn handle(&mut self, message: messages::CalculateComplement, _ctx: &mut Self::Context) -> Self::Result {
+        // TODO: fill b, which is the self state
+        let b: HashMap<Location, EntryShape> = HashMap::new();
+
         let result = message
-            .a
+            .input
             .iter()
-            .filter(|(location, _)| !message.b.contains_key(location))
+            .filter(|(location, _)| !b.contains_key(location))
             .map(|(a, _)| a.clone())
             .collect();
 
@@ -345,16 +378,20 @@ impl Handler<messages::CalculateComplement> for Snapshot {
 impl Handler<messages::CalculateShape> for Snapshot {
     type Result = Result<HashMap<Location, EntryShape>, SnapshotError>;
 
+    #[allow(unused_variables)]
     fn handle(&mut self, mut message: messages::CalculateShape, _ctx: &mut Self::Context) -> Self::Result {
         let entries = message.entries.take().unwrap();
-        let mut inner = message.data.take().unwrap();
+
+        let inner = &mut self.state.0;
         let mut hasher = message.hasher.take().unwrap();
         let mut output = HashMap::new();
 
-        inner.iter_mut().for_each(|(_, view)| {
-            entries.iter().for_each(|(location, key)| {
+        inner.iter_mut().for_each(|(_, (keys, view, store))| {
+            entries.iter().for_each(|location| {
                 let vid: VaultId = location.try_into().unwrap();
                 let rid: RecordId = location.try_into().unwrap();
+
+                let key = keys.get(&vid).unwrap();
 
                 view.get_guard(key, vid, rid, |guard| {
                     let data = guard.borrow();
@@ -378,6 +415,22 @@ impl Handler<messages::CalculateShape> for Snapshot {
         });
 
         Ok(output)
+    }
+}
+
+impl Handler<ImportSnapshot> for Snapshot {
+    type Result =
+        Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, SnapshotError>;
+
+    fn handle(&mut self, msg: ImportSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+        match Snapshot::read_from_data(msg.input, msg.key, None) {
+            Ok(snapshot) => {
+                // *self = snapshot;
+
+                Ok(Box::from(snapshot.state.0))
+            }
+            Err(error) => Err(error),
+        }
     }
 }
 

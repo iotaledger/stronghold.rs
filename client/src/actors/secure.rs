@@ -30,7 +30,12 @@ use engine::{
     store::Cache,
     vault::{ClientId, DbView, Key, RecordHint, RecordId, VaultId},
 };
-use std::{cell::Cell, collections::HashMap, convert::TryFrom, rc::Rc};
+use std::{
+    cell::Cell,
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    rc::Rc,
+};
 
 use self::procedures::CallProcedure;
 // sub-modules re-exports
@@ -79,6 +84,20 @@ pub mod messages {
     use crate::{internals, Location};
     use serde::{Deserialize, Serialize};
     use std::time::Duration;
+
+    #[derive(Clone, GuardDebug)]
+    pub struct ImportData {
+        pub id: ClientId,
+        pub data: Box<(
+            HashMap<VaultId, Key<internals::Provider>>,
+            HashMap<Location, (Vec<u8>, RecordHint)>, // this MUST be a guardedVec!
+            Store,
+        )>,
+    }
+
+    impl Message for ImportData {
+        type Result = ();
+    }
 
     #[derive(Clone, GuardDebug)]
     pub struct Terminate;
@@ -534,6 +553,27 @@ impl Actor for SecureClient {
 }
 
 impl Supervised for SecureClient {}
+
+impl_handler!(messages::ImportData, (), (self, msg, _ctx), {
+    // self.keystore
+    // self.db,
+    // self.client_id,
+
+    let (keys, view, _store) = *msg.data;
+
+    keys.iter().for_each(|(k, v)| {
+        self.keystore.insert_key(*k, v.clone());
+    });
+
+    view.iter().for_each(|(location, (data, hint))| {
+        let vid: VaultId = location.try_into().unwrap();
+        let rid: RecordId = location.try_into().unwrap();
+
+        let key = keys.get(&vid).unwrap();
+
+        self.db.write(key, vid, rid, data, *hint).unwrap();
+    });
+});
 
 impl_handler!(messages::Terminate, (), (self, _msg, ctx), {
     ctx.stop();

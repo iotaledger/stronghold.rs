@@ -74,7 +74,7 @@ pub mod messages {
     pub struct GetSnapshot;
 
     impl Message for GetSnapshot {
-        type Result = Option<Addr<Snapshot>>;
+        type Result = Addr<Snapshot>;
     }
 
     pub struct GetAllClients;
@@ -188,10 +188,10 @@ impl Handler<messages::RemoveClient> for Registry {
 }
 
 impl Handler<messages::GetSnapshot> for Registry {
-    type Result = Option<Addr<Snapshot>>;
+    type Result = Addr<Snapshot>;
 
     fn handle(&mut self, _: messages::GetSnapshot, _: &mut Self::Context) -> Self::Result {
-        Some(self.snapshot.get_or_insert(Snapshot::default().start()).clone())
+        self.snapshot.get_or_insert(Snapshot::default().start()).clone()
     }
 }
 

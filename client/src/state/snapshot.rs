@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{state::secure::Store, Provider};
 use engine::{
-    snapshot::{self, read_from, write_to, Key},
+    snapshot::{self, read, read_from, write_to, Key},
     vault::{ClientId, DbView, Key as PKey, VaultId},
 };
 use std::{collections::HashMap, path::Path};
@@ -32,6 +32,9 @@ pub enum SnapshotError {
 
     #[error("Could Not Export Entries ({0})")]
     ExportError(String),
+
+    #[error("could not import snapshot ({0})")]
+    ImportFailure(String),
 
     #[error("Other Failure ({0})")]
     OtherFailure(String),
@@ -71,6 +74,13 @@ impl Snapshot {
     /// Checks to see if the [`ClientId`] exists in the snapshot hashmap.
     pub fn has_data(&self, cid: ClientId) -> bool {
         self.state.0.contains_key(&cid)
+    }
+
+    /// Reads state from provided data
+    pub fn read_from_data(data: Vec<u8>, key: Key, ad: Option<Vec<u8>>) -> Result<Self, SnapshotError> {
+        let state = read(&mut std::io::Cursor::new(data), &key, &ad.unwrap_or_default())?;
+
+        Ok(Self::new(SnapshotState::deserialize(state)?))
     }
 
     /// Reads state from the specified named snapshot or the specified path
@@ -134,14 +144,5 @@ impl SnapshotState {
     /// Deserializes the snapshot state from bytes.
     pub fn deserialize(data: Vec<u8>) -> Result<Self, SnapshotError> {
         bincode::deserialize(&data).map_err(|error| SnapshotError::SerializationFailure(error.to_string()))
-    }
-}
-
-/// unsafe implementations
-impl SnapshotState {
-    /// this function transitively converts into another
-    /// type. this function is **unsafe**!
-    pub unsafe fn convert<T>(&self) -> &'static T {
-        &*(self as *const _ as *const T)
     }
 }

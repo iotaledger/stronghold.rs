@@ -12,9 +12,7 @@ const ZAPPA_STR: &str = include_str!("zappa.txt");
 
 fn compression(s: &str) {
     let compressed = compress(s.as_bytes());
-    // println!("Compressed {} into {:?}", s, compressed);
     let decompressed = decompress(&compressed).unwrap();
-    // println!("Decompressed into {:?}", str::from_utf8(&decompressed).unwrap());
     assert_eq!(decompressed, s.as_bytes());
     println!(
         "original size: {}, compressed size: {}",
