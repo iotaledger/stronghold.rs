@@ -94,6 +94,7 @@ pub enum CryptoProcedure {
     X25519DiffieHellman(X25519DiffieHellman),
     Hash(Hashes),
     Hmac(Hmacs),
+    Pbkdf2Hmac(Pbkdf2Hmacs),
     Aead(Aeads),
 }
 
@@ -111,6 +112,7 @@ impl ProcedureStep for CryptoProcedure {
             X25519DiffieHellman(proc) => proc.execute(runner, state),
             Hash(proc) => proc.execute(runner, state),
             Hmac(proc) => proc.execute(runner, state),
+            Pbkdf2Hmac(proc) => proc.execute(runner, state),
             Aead(proc) => proc.execute(runner, state),
         }
     }
@@ -180,6 +182,9 @@ enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hash, Hashes::Blak
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac, Hmacs::Sha2_256 from Hmac<Sha256>);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac, Hmacs::Sha2_384 from Hmac<Sha384>);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Hmac, Hmacs::Sha2_512 from Hmac<Sha512>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Pbkdf2Hmac, Pbkdf2Hmacs::Sha2_256 from Pbkdf2Hmac<Sha256>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Pbkdf2Hmac, Pbkdf2Hmacs::Sha2_384 from Pbkdf2Hmac<Sha384>);
+enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Pbkdf2Hmac, Pbkdf2Hmacs::Sha2_512 from Pbkdf2Hmac<Sha512>);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::Aes256GcmEncrypt from AeadEncrypt<Aes256Gcm>);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::Aes256GcmDecrypt from AeadDecrypt<Aes256Gcm>);
 enum_from_inner!(PrimitiveProcedure::Crypto, CryptoProcedure::Aead, Aeads::XChaCha20Poly1305Encrypt from AeadEncrypt<XChaCha20Poly1305>);
@@ -653,8 +658,7 @@ impl UseSecret for Ed25519Sign {
 
 #[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
 pub struct X25519DiffieHellman {
-    #[input_data]
-    public_key: InputData<[u8; x25519::PUBLIC_KEY_LENGTH]>,
+    public_key: [u8; x25519::PUBLIC_KEY_LENGTH],
 
     #[source]
     private_key: Location,
@@ -664,12 +668,9 @@ pub struct X25519DiffieHellman {
 }
 
 impl X25519DiffieHellman {
-    pub fn new<I>(public_key: I, private_key: Location) -> Self
-    where
-        I: IntoInput<<Self as InputInfo>::Input>,
-    {
+    pub fn new(public_key: [u8; x25519::PUBLIC_KEY_LENGTH], private_key: Location) -> Self {
         Self {
-            public_key: public_key.into_input(),
+            public_key,
             private_key,
             target: TempTarget {
                 write_to: Target::random(),
@@ -681,12 +682,12 @@ impl X25519DiffieHellman {
 
 #[execute_procedure]
 impl DeriveSecret for X25519DiffieHellman {
-    type Input = [u8; x25519::PUBLIC_KEY_LENGTH];
+    type Input = ();
     type Output = ();
 
-    fn derive(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Products<()>, FatalProcedureError> {
+    fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<()>, FatalProcedureError> {
         let sk = X25519::from_guard(guard)?;
-        let public = x25519::PublicKey::from_bytes(input);
+        let public = x25519::PublicKey::from_bytes(self.public_key);
         let shared_key = sk.diffie_hellman(&public);
 
         Ok(Products {
@@ -816,6 +817,73 @@ where
         m.update(&msg);
         mac.copy_from_slice(&m.finalize().into_bytes());
         Ok(mac)
+    }
+}
+
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub enum Pbkdf2Hmacs {
+    Sha2_256(Pbkdf2Hmac<Sha256>),
+    Sha2_384(Pbkdf2Hmac<Sha384>),
+    Sha2_512(Pbkdf2Hmac<Sha512>),
+}
+
+impl ProcedureStep for Pbkdf2Hmacs {
+    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
+        match self {
+            Pbkdf2Hmacs::Sha2_256(proc) => proc.execute(runner, state),
+            Pbkdf2Hmacs::Sha2_384(proc) => proc.execute(runner, state),
+            Pbkdf2Hmacs::Sha2_512(proc) => proc.execute(runner, state),
+        }
+    }
+}
+
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub struct Pbkdf2Hmac<T> {
+    password: Vec<u8>,
+    salt: Vec<u8>,
+    count: u32,
+
+    #[target]
+    target: TempTarget,
+
+    _marker: PhantomData<T>,
+}
+
+impl<T> Pbkdf2Hmac<T> {
+    pub fn new(password: Vec<u8>, salt: Vec<u8>, count: u32) -> Self {
+        Pbkdf2Hmac {
+            password,
+            salt,
+            count,
+            target: TempTarget {
+                write_to: Target::random(),
+                is_temp: true,
+            },
+            _marker: PhantomData,
+        }
+    }
+}
+
+#[execute_procedure]
+impl<T: Digest> GenerateSecret for Pbkdf2Hmac<T> {
+    type Input = ();
+    type Output = ();
+
+    fn generate(self, _: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError> {
+        if self.count == 0 {
+            return Err(crypto::Error::InvalidArgumentError {
+                alg: "Pbkdf2",
+                expected: "non-zero iteration count",
+            }
+            .into());
+        }
+        let mut buffer = vec![0; <T as Digest>::OutputSize::USIZE];
+        pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha256>>(&self.password, &self.salt, self.count, &mut buffer);
+
+        Ok(Products {
+            secret: buffer,
+            output: (),
+        })
     }
 }
 

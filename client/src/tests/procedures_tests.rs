@@ -331,18 +331,35 @@ async fn usecase_aead() {
 #[actix::test]
 async fn usecase_diffie_hellman() {
     let (cp, sh) = setup_stronghold().await;
-    let sk1 = GenerateKey::<X25519>::default();
-    let pk1 = PublicKey::<X25519>::new(sk1.target());
-    let sk2 = GenerateKey::<X25519>::default();
-    let pk2 = PublicKey::<X25519>::new(sk2.target());
-    let key_1_2 = fresh::location();
-    let dh_1_2 =
-        X25519DiffieHellman::new(pk2.output_key(), sk1.target()).write_secret(key_1_2.clone(), fresh::record_hint());
-    let key_2_1 = fresh::location();
-    let dh_2_1 =
-        X25519DiffieHellman::new(pk1.output_key(), sk2.target()).write_secret(key_2_1.clone(), fresh::record_hint());
 
-    sh.runtime_exec(sk1.then(pk1).then(sk2).then(pk2).then(dh_1_2).then(dh_2_1))
+    let sk1_location = fresh::location();
+    let sk1 = GenerateKey::<X25519>::default().write_secret(sk1_location.clone(), fresh::record_hint());
+    let pk1 = PublicKey::<X25519>::new(sk1.target()).store_output(OutputKey::random());
+    let pub_key_1: [u8; 32] = sh
+        .runtime_exec(sk1.then(pk1))
+        .await
+        .unwrap()
+        .unwrap()
+        .single_output()
+        .unwrap();
+
+    let sk2_location = fresh::location();
+    let sk2 = GenerateKey::<X25519>::default().write_secret(sk2_location.clone(), fresh::record_hint());
+    let pk2 = PublicKey::<X25519>::new(sk2.target()).store_output(OutputKey::random());
+    let pub_key_2: [u8; 32] = sh
+        .runtime_exec(sk2.then(pk2))
+        .await
+        .unwrap()
+        .unwrap()
+        .single_output()
+        .unwrap();
+
+    let key_1_2 = fresh::location();
+    let dh_1_2 = X25519DiffieHellman::new(pub_key_2, sk1_location).write_secret(key_1_2.clone(), fresh::record_hint());
+    let key_2_1 = fresh::location();
+    let dh_2_1 = X25519DiffieHellman::new(pub_key_1, sk2_location).write_secret(key_2_1.clone(), fresh::record_hint());
+
+    sh.runtime_exec(dh_1_2.then(dh_2_1))
         .await
         .unwrap()
         .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
