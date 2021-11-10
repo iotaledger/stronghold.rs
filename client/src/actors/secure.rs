@@ -13,7 +13,7 @@ pub use crate::{
     actors::{GetSnapshot, Registry},
     internals::Provider,
     state::{key_store::KeyStore, secure::SecureClient, snapshot::Snapshot},
-    utils::StatusMessage,
+    utils::{EntryShape, StatusMessage},
     ResultMessage,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, Supervised};
@@ -84,6 +84,7 @@ pub mod messages {
     use crate::{internals, Location};
     use serde::{Deserialize, Serialize};
     use std::time::Duration;
+    use zeroize::Zeroize;
 
     #[derive(Clone, GuardDebug)]
     pub struct ImportData {
@@ -233,6 +234,23 @@ pub mod messages {
             )>,
             anyhow::Error,
         >;
+    }
+
+    #[derive(Serialize, Deserialize, Clone, Debug)]
+    // compound message for remote peer to synchronize with
+    pub struct SynchronizeRemote<K>
+    where
+        K: Zeroize + AsRef<Vec<u8>>,
+    {
+        entries: HashMap<Location, EntryShape>,
+        key: K,
+    }
+
+    impl<K> Message for SynchronizeRemote<K>
+    where
+        K: Zeroize + AsRef<Vec<u8>>,
+    {
+        type Result = Vec<u8>;
     }
 }
 
@@ -553,6 +571,10 @@ impl Actor for SecureClient {
 }
 
 impl Supervised for SecureClient {}
+
+impl_handler!(messages::SynchronizeRemote<Vec<u8>>, Vec<u8>, (self, _msg, _ctx), {
+    todo!()
+});
 
 impl_handler!(messages::ImportData, (), (self, msg, _ctx), {
     // self.keystore

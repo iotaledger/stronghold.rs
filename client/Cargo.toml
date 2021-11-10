@@ -23,7 +23,6 @@ anyhow = "1.0"
 thiserror = "1.0"
 futures = { version = "0.3", optional = true }
 actix = "0.12"
-enum_dispatch = "0.3"
 
 [dependencies.stronghold_engine]
 path = "../engine"

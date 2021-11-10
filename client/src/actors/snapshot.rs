@@ -1,9 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(clippy::type_complexity)]
+#![allow(clippy::type_complexity, unused_imports)]
 
 use actix::{Actor, Handler, Message, Supervised};
+use zeroize::Zeroize;
 
 use std::{
     convert::TryInto,
@@ -204,16 +205,6 @@ pub mod messages {
         type Result =
             Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, SnapshotError>;
     }
-
-    #[derive(Serialize, Deserialize, Clone, Debug)]
-    // compound message for remote peer to synchronize with
-    pub struct SynchronizeRemote<K>
-    where
-        K: Zeroize + AsRef<Vec<u8>>,
-    {
-        entries: HashMap<Location, EntryShape>,
-        key: K,
-    }
 }
 
 /// This struct provide file system configuration to the messages ['FullSynchronization`]
@@ -240,6 +231,17 @@ impl Actor for Snapshot {
 }
 
 impl Supervised for Snapshot {}
+
+// impl<K> Handler<SynchronizeRemote<K>> for Snapshot
+// where
+//     K: Zeroize + AsRef<Vec<u8>>,
+// {
+//     type Result = Vec<u8>;
+
+//     fn handle(&mut self, msg: SynchronizeRemote<K>, ctx: &mut Self::Context) -> Self::Result {
+//         todo!()
+//     }
+// }
 
 // snapshot synchronisation protocol
 impl Handler<messages::ExportAllEntries> for Snapshot {

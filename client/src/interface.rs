@@ -1164,7 +1164,7 @@ impl Stronghold {
 
         // let message = network_msg::SendRequest {
         //     peer,
-        //     request: SynchronizeRemote { entries: shapes, key }, // SynchronizeWith
+        //     request: SynchronizeRemote { entries: shapes, key },
         // };
 
         // // TODO implement calculate_complement message handler on network actor side
@@ -1179,7 +1179,6 @@ impl Stronghold {
         //     Ok(_) => ResultMessage::Ok(()),
         //     Err(error) => ResultMessage::Error(error.to_string()),
         // }
-
-        ResultMessage::Ok(())
+        todo!()
     }
 }
