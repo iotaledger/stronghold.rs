@@ -10,12 +10,12 @@
 use crate::{
     actors::{
         secure_messages::{
-            CheckRecord, CheckVault, ClearCache, CreateVault, DeleteFromStore, GarbageCollect, GetData, ListIds,
-            ReadFromStore, ReloadData, RevokeData, WriteToStore, WriteToVault,
+            CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
+            ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
         snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
-        GetAllClients, GetClient, GetSnapshot, GetTarget, Registry, RemoveClient, SpawnClient, SwitchTarget,
-        VaultError,
+        GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
+        SwitchTarget,
     },
     procedures::{CollectedOutput, Procedure, ProcedureError},
     state::{
@@ -98,15 +98,8 @@ pub enum SpawnNetworkError {
 #[error("fatal engine error: {0}")]
 pub struct FatalEngineError(String);
 
-impl From<VaultError> for FatalEngineError {
-    fn from(e: VaultError) -> Self {
-        FatalEngineError(e.to_string())
-    }
-}
-
-#[cfg(feature = "p2p")]
-impl From<network_messages::RemoteVaultError> for FatalEngineError {
-    fn from(e: network_messages::RemoteVaultError) -> Self {
+impl From<RecordError> for FatalEngineError {
+    fn from(e: RecordError) -> Self {
         FatalEngineError(e.to_string())
     }
 }
@@ -171,18 +164,6 @@ impl Stronghold {
         _options: Vec<VaultFlags>,
     ) -> StrongholdResult<Result<(), FatalEngineError>> {
         let target = self.target().await?;
-
-        let vault_path = location.vault_path().to_vec();
-
-        let vault_exists = target.send(CheckVault { vault_path }).await?;
-        if !vault_exists {
-            // does not exist
-            target
-                .send(CreateVault {
-                    location: location.clone(),
-                })
-                .await?;
-        }
         // write to vault
         let res = target
             .send(WriteToVault {
@@ -623,26 +604,6 @@ impl Stronghold {
         _options: Vec<VaultFlags>,
     ) -> P2pResult<Result<(), FatalEngineError>> {
         let actor = self.network_actor().await?;
-
-        let vault_path = location.vault_path().to_vec();
-
-        // check if vault exists
-        let send_request = network_messages::SendRequest {
-            peer,
-            request: CheckVault { vault_path },
-        };
-        let vault_exists = actor.send(send_request).await??;
-
-        // no vault so create new one before writing.
-        if !vault_exists {
-            let send_request = network_messages::SendRequest {
-                peer,
-                request: CreateVault {
-                    location: location.clone(),
-                },
-            };
-            actor.send(send_request).await??;
-        }
 
         // write data
         let send_request = network_messages::SendRequest {

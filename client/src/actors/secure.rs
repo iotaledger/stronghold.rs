@@ -16,15 +16,19 @@ use crate::{
 use actix::{Actor, ActorContext, Context, Handler, Message, MessageResult, Supervised};
 use engine::{
     store::Cache,
-    vault::{BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultError as EngineVaultError, VaultId},
+    vault::{
+        BoxProvider, ClientId, DbView, Key, RecordError as EngineRecordError, RecordHint, RecordId,
+        VaultError as EngineVaultError, VaultId,
+    },
 };
-use std::{collections::HashMap, convert::Infallible};
+use std::collections::HashMap;
 use stronghold_utils::GuardDebug;
 
 /// Store typedef on `engine::store::Cache`
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
-pub type VaultError<E = Infallible> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
+pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
+pub type RecordError = EngineRecordError<<Provider as BoxProvider>::Error>;
 
 /// Message types for the [`SecureClient`].
 pub mod messages {
@@ -54,16 +58,6 @@ pub mod messages {
     impl Message for ReloadData {
         type Result = ();
     }
-
-    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
-    pub struct CreateVault {
-        pub location: Location,
-    }
-
-    impl Message for CreateVault {
-        type Result = ();
-    }
-
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct WriteToVault {
         pub location: Location,
@@ -73,7 +67,7 @@ pub mod messages {
     }
 
     impl Message for WriteToVault {
-        type Result = Result<(), VaultError>;
+        type Result = Result<(), RecordError>;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -82,7 +76,7 @@ pub mod messages {
     }
 
     impl Message for RevokeData {
-        type Result = Result<(), VaultError>;
+        type Result = Result<(), RecordError>;
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
@@ -245,13 +239,6 @@ impl_handler!(messages::ClearCache, (), (self, _msg, _ctx), {
     self.db.clear();
 });
 
-impl_handler!(messages::CreateVault, (), (self, msg, _ctx), {
-    let (vault_id, _) = Self::resolve_location(msg.location);
-
-    let key = self.keystore.create_key(vault_id);
-    self.db.init_vault(key, vault_id);
-});
-
 impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
     let (vault_id, record_id) = Self::resolve_location(msg.location);
 
@@ -265,20 +252,11 @@ impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
     };
 });
 
-impl_handler!(messages::WriteToVault, Result<(), VaultError>, (self, msg, _ctx), {
-    let (vault_id, record_id) = Self::resolve_location(msg.location);
-
-    let key = self
-        .keystore
-        .take_key(vault_id)
-        .ok_or(VaultError::VaultNotFound(vault_id))?;
-
-    let res = self.db.write(&key, vault_id, record_id, &msg.payload, msg.hint);
-    self.keystore.insert_key(vault_id, key);
-    res.map_err(|e| e.into())
+impl_handler!(messages::WriteToVault, Result<(), RecordError>, (self, msg, _ctx), {
+    self.write_to_vault(&msg.location, msg.hint, msg.payload)
 });
 
-impl_handler!(messages::RevokeData, Result<(), VaultError>, (self, msg, _ctx), {
+impl_handler!(messages::RevokeData, Result<(), RecordError>, (self, msg, _ctx), {
     self.revoke_data(&msg.location)
 });
 

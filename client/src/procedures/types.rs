@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::primitives::PrimitiveProcedure;
-use crate::{actors::VaultError, state::secure::SecureClient, FatalEngineError, Location};
+use crate::{
+    actors::{RecordError, VaultError},
+    state::secure::SecureClient,
+    FatalEngineError, Location,
+};
 use actix::Message;
 use engine::{
     runtime::GuardedVec,
@@ -208,8 +212,8 @@ impl From<VaultError<FatalProcedureError>> for ProcedureError {
     }
 }
 
-impl From<VaultError> for ProcedureError {
-    fn from(e: VaultError) -> Self {
+impl From<RecordError> for ProcedureError {
+    fn from(e: RecordError) -> Self {
         ProcedureError::Engine(e.into())
     }
 }
@@ -305,9 +309,9 @@ pub trait Runner {
     where
         F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, FatalProcedureError>;
 
-    fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), VaultError>;
+    fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError>;
 
-    fn revoke_data(&mut self, location: &Location) -> Result<(), VaultError>;
+    fn revoke_data(&mut self, location: &Location) -> Result<(), RecordError>;
 
     fn garbage_collect(&mut self, vault_id: VaultId) -> bool;
 }

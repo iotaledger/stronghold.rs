@@ -19,7 +19,6 @@ use std::{
     io,
     time::Duration,
 };
-use thiserror::Error as DeriveError;
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {
@@ -41,7 +40,6 @@ macro_rules! sh_request_dispatch {
             ShRequest::WriteToStore($inner) => $body
             ShRequest::ReadFromStore($inner) => $body
             ShRequest::DeleteFromStore($inner) => $body
-            ShRequest::CreateVault($inner) => $body
             ShRequest::WriteToRemoteVault($inner) =>  {
                 let $inner: WriteToVault = $inner.into();
                 $body
@@ -322,17 +320,16 @@ impl Default for NetworkConfig {
 pub mod messages {
 
     use super::*;
-    use crate::{actors::VaultError, procedures::ProcedureError, Location, RecordHint, RecordId};
+    use crate::{actors::RecordError, procedures::ProcedureError, Location, RecordHint, RecordId};
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
     use crate::actors::secure_messages::{
-        CheckRecord, CheckVault, ClearCache, CreateVault, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore,
-        WriteToStore, WriteToVault,
+        CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore, WriteToStore,
+        WriteToVault,
     };
     #[cfg(test)]
     use crate::actors::secure_testing::ReadFromVault;
-    use engine::vault::VaultId;
 
     #[derive(Message)]
     #[rtype(result = "Result<Rq::Result, OutboundFailure>")]
@@ -465,7 +462,7 @@ pub mod messages {
     pub struct Shutdown;
 
     #[derive(Debug, Message, Clone, Serialize, Deserialize)]
-    #[rtype(result = "Result<(), RemoteVaultError>")]
+    #[rtype(result = "Result<(), RemoteRecordError>")]
     pub struct WriteToRemoteVault {
         pub location: Location,
         pub payload: Vec<u8>,
@@ -502,14 +499,7 @@ pub mod messages {
         }
     }
 
-    #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
-    pub enum RemoteVaultError {
-        #[error("vault `{0:?}` not found")]
-        VaultNotFound(VaultId),
-
-        #[error("internal record error: {0}")]
-        Record(String),
-    }
+    pub type RemoteRecordError = String;
 
     // Wrapper for Requests to a remote Secure Client
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -517,7 +507,6 @@ pub mod messages {
         CheckVault(CheckVault),
         CheckRecord(CheckRecord),
         ListIds(ListIds),
-        CreateVault(CreateVault),
         #[cfg(test)]
         ReadFromVault(ReadFromVault),
         WriteToRemoteVault(WriteToRemoteVault),
@@ -531,7 +520,6 @@ pub mod messages {
 
     enum_from_inner!(ShRequest from CheckVault);
     enum_from_inner!(ShRequest from ListIds);
-    enum_from_inner!(ShRequest from CreateVault);
     #[cfg(test)]
     enum_from_inner!(ShRequest from ReadFromVault);
     enum_from_inner!(ShRequest from WriteToRemoteVault);
@@ -542,22 +530,12 @@ pub mod messages {
     enum_from_inner!(ShRequest from ClearCache);
     enum_from_inner!(ShRequest from Procedure);
 
-    impl From<VaultError> for RemoteVaultError {
-        fn from(e: VaultError) -> Self {
-            match e {
-                VaultError::Record(_) => RemoteVaultError::Record(e.to_string()),
-                VaultError::VaultNotFound(e) => RemoteVaultError::VaultNotFound(e),
-                VaultError::Procedure(_) => unreachable!(),
-            }
-        }
-    }
-
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {
         Empty(()),
         Data(Option<Vec<u8>>),
         Bool(bool),
-        WriteRemoteVault(Result<(), RemoteVaultError>),
+        WriteRemoteVault(Result<(), RemoteRecordError>),
         ListIds(Vec<(RecordId, RecordHint)>),
         Proc(Result<CollectedOutput, ProcedureError>),
     }
@@ -568,13 +546,13 @@ pub mod messages {
     sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
     sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
 
-    impl From<Result<(), VaultError>> for ShResult {
-        fn from(inner: Result<(), VaultError>) -> Self {
-            ShResult::WriteRemoteVault(inner.map_err(RemoteVaultError::from))
+    impl From<Result<(), RecordError>> for ShResult {
+        fn from(inner: Result<(), RecordError>) -> Self {
+            ShResult::WriteRemoteVault(inner.map_err(|e| e.to_string()))
         }
     }
 
-    impl TryFrom<ShResult> for Result<(), RemoteVaultError> {
+    impl TryFrom<ShResult> for Result<(), RemoteRecordError> {
         type Error = ();
         fn try_from(t: ShResult) -> Result<Self, Self::Error> {
             if let ShResult::WriteRemoteVault(result) = t {

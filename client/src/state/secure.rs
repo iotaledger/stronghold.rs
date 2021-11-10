@@ -4,7 +4,7 @@
 //! Secure Client Actor State
 
 use crate::{
-    actors::VaultError,
+    actors::{RecordError, VaultError},
     internals,
     procedures::{FatalProcedureError, Products, Runner},
     state::key_store::KeyStore,
@@ -210,36 +210,26 @@ impl Runner for SecureClient {
         }
     }
 
-    fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), VaultError> {
+    fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError> {
         let (vault_id, record_id) = Self::resolve_location(location);
         if !self.keystore.vault_exists(vault_id) {
             let key = self.keystore.create_key(vault_id);
             self.db.init_vault(key, vault_id);
         }
-        let key = self
-            .keystore
-            .take_key(vault_id)
-            .ok_or(VaultError::VaultNotFound(vault_id))?;
+        let key = self.keystore.take_key(vault_id).unwrap();
         let res = self.db.write(&key, vault_id, record_id, &value, hint);
         self.keystore.insert_key(vault_id, key);
-        match res {
-            Ok(()) => Ok(()),
-            Err(e) => Err(VaultError::Record(e)),
-        }
+        res
     }
 
-    fn revoke_data(&mut self, location: &Location) -> Result<(), VaultError> {
+    fn revoke_data(&mut self, location: &Location) -> Result<(), RecordError> {
         let (vault_id, record_id) = Self::resolve_location(location);
-        let key = self
-            .keystore
-            .take_key(vault_id)
-            .ok_or(VaultError::VaultNotFound(vault_id))?;
-        let res = self.db.revoke_record(&key, vault_id, record_id);
-        self.keystore.insert_key(vault_id, key);
-        match res {
-            Ok(()) => Ok(()),
-            Err(e) => Err(VaultError::Record(e)),
+        if let Some(key) = self.keystore.take_key(vault_id) {
+            let res = self.db.revoke_record(&key, vault_id, record_id);
+            self.keystore.insert_key(vault_id, key);
+            res?;
         }
+        Ok(())
     }
 
     fn garbage_collect(&mut self, vault_id: VaultId) -> bool {

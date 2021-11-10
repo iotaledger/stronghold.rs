@@ -17,7 +17,7 @@ pub use self::{
         messages::{GetAllClients, GetClient, GetSnapshot, GetTarget, RemoveClient, SpawnClient, SwitchTarget},
         Registry,
     },
-    secure::{messages as secure_messages, VaultError},
+    secure::{messages as secure_messages, RecordError, VaultError},
     snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes},
 };
 #[cfg(test)]
