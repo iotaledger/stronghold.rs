@@ -5,12 +5,17 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{state::secure::Store, Provider};
+use crate::{state::secure::Store, utils::EntryShape, Location, Provider};
 use engine::{
     snapshot::{self, read, read_from, write_to, Key},
-    vault::{ClientId, DbView, Key as PKey, VaultId},
+    vault::{ClientId, DbView, Key as PKey, RecordId, VaultId},
 };
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    convert::TryInto,
+    hash::{Hash, Hasher},
+    path::Path,
+};
 use thiserror::Error as DeriveError;
 
 #[derive(Debug, DeriveError)]
@@ -58,6 +63,51 @@ pub struct Snapshot {
 pub struct SnapshotState(pub(crate) HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
 
 impl Snapshot {
+    /// Returns the entries for a ['ClientId`] as mapping between [`Location`] and [`EntryShape`]
+    pub fn as_entry_shapes<L, H>(&mut self, id: ClientId, locations: L, mut hasher: H) -> HashMap<Location, EntryShape>
+    where
+        L: AsRef<Vec<Location>>,
+        H: Hasher,
+    {
+        let (keys, mut view, _) = self.get_state(id);
+        let mut output = HashMap::new();
+        locations
+            .as_ref()
+            .iter()
+            .map(
+                |loc| -> Result<(PKey<Provider>, VaultId, RecordId, Location), Box<dyn std::error::Error>> {
+                    let vid: VaultId = loc.try_into()?;
+                    let rid: RecordId = loc.try_into()?;
+
+                    Ok((keys.get(&vid).unwrap().clone(), vid, rid, loc.clone()))
+                },
+            )
+            .filter(|result| result.is_ok())
+            .for_each(|result| {
+                let (key, vid, rid, location) = result.unwrap();
+
+                view.get_guard(&key, vid, rid, |data| {
+                    let data = data.borrow();
+
+                    data.hash(&mut hasher);
+
+                    output.insert(
+                        location.clone(),
+                        EntryShape {
+                            location,
+                            record_hash: hasher.finish(),
+                            record_size: data.len(),
+                        },
+                    );
+
+                    Ok(())
+                })
+                .unwrap();
+            });
+
+        output
+    }
+
     /// Creates a new [`Snapshot`] from a buffer of [`SnapshotState`] state.
     pub fn new(state: SnapshotState) -> Self {
         Self { state }
