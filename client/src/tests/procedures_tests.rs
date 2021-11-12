@@ -15,10 +15,11 @@ use stronghold_utils::random::{self, bytestring, string};
 use super::fresh;
 use crate::{
     procedures::{
-        crypto::ChainCode, AeadAlg, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, Ed25519Sign, GenerateKey,
-        Hash, HashType, Hkdf, KeyType, MnemonicLanguage, OutputInfo, OutputKey, ProcedureIo, ProcedureStep, PublicKey,
-        Sha2Hash, Slip10Derive, Slip10Generate, TargetInfo, WriteVault, X25519DiffieHellman,
+        AeadAlg, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, ChainCode, Ed25519Sign, GenerateKey, Hash,
+        HashType, Hkdf, KeyType, MnemonicLanguage, OutputKey, PersistOutput, PersistSecret, ProcedureIo, ProcedureStep,
+        PublicKey, Sha2Hash, Slip10Derive, Slip10Generate, X25519DiffieHellman,
     },
+    state::secure::SecureClient,
     Location, Stronghold,
 };
 
@@ -29,11 +30,13 @@ async fn setup_stronghold() -> (Vec<u8>, Stronghold) {
     (cp, s)
 }
 
-#[actix::test]
+// #[actix::test]
 async fn usecase_ed25519() {
     let (_cp, sh) = setup_stronghold().await;
 
-    let seed = fresh::location();
+    let vault_path = bytestring(1024);
+    let seed = Location::generic(vault_path.clone(), bytestring(1024));
+    let seed_hint = fresh::record_hint();
 
     if fresh::coinflip() {
         let _size_bytes = if fresh::coinflip() {
@@ -41,7 +44,7 @@ async fn usecase_ed25519() {
         } else {
             None
         };
-        let slip10_generate = Slip10Generate::default().write_secret(seed.clone(), fresh::record_hint());
+        let slip10_generate = Slip10Generate::default().write_secret(seed.clone(), seed_hint);
 
         match sh.runtime_exec(slip10_generate).await.unwrap() {
             Ok(_) => (),
@@ -57,9 +60,10 @@ async fn usecase_ed25519() {
     }
 
     let (_path, chain) = fresh::hd_path();
-    let key = fresh::location();
+    let key = Location::generic(vault_path.clone(), bytestring(1024));
+    let key_hint = fresh::record_hint();
 
-    let slip10_derive = Slip10Derive::new_from_seed(seed, chain).write_secret(key.clone(), fresh::record_hint());
+    let slip10_derive = Slip10Derive::new_from_seed(seed.clone(), chain).write_secret(key.clone(), key_hint);
     match sh.runtime_exec(slip10_derive).await.unwrap() {
         Ok(_) => (),
         Err(err) => panic!("unexpected error: {:?}", err),
@@ -73,7 +77,7 @@ async fn usecase_ed25519() {
 
     let msg = fresh::bytestring(4096);
 
-    let ed25519_sign = Ed25519Sign::new(msg.clone(), key).store_output(OutputKey::random());
+    let ed25519_sign = Ed25519Sign::new(msg.clone(), key.clone()).store_output(OutputKey::random());
     let sig: [u8; ed25519::SIGNATURE_LENGTH] = match sh.runtime_exec(ed25519_sign).await.unwrap() {
         Ok(data) => data.single_output().unwrap(),
         Err(e) => panic!("unexpected error: {:?}", e),
@@ -82,6 +86,17 @@ async fn usecase_ed25519() {
     let pk = ed25519::PublicKey::try_from_bytes(pk).unwrap();
     let sig = ed25519::Signature::from_bytes(sig);
     assert!(pk.verify(&sig, &msg));
+
+    let mut list = sh.list_hints_and_ids(vault_path).await.unwrap().into_iter();
+    assert_eq!(list.len(), 2);
+    let (_, hint) = list
+        .find(|(id, _)| *id == SecureClient::resolve_location(seed.clone()).1)
+        .unwrap();
+    assert!(hint == seed_hint);
+    let (_, hint) = list
+        .find(|(id, _)| *id == SecureClient::resolve_location(key.clone()).1)
+        .unwrap();
+    assert!(hint == key_hint);
 }
 
 #[actix::test]
@@ -174,11 +189,10 @@ async fn usecase_collection_of_data() {
 
     // write seed to vault
     let key_location = fresh::location();
-    let write_vault_proc = WriteVault::new(key.clone(), key_location.clone(), fresh::record_hint());
-    match sh.runtime_exec(write_vault_proc).await.unwrap() {
-        Ok(data) => assert!(data.into_iter().next().is_none()),
-        Err(e) => panic!("unexpected error: {:?}", e),
-    }
+    sh.write_to_vault(key_location.clone(), key.clone(), fresh::record_hint(), Vec::new())
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
 
     // test sign and hash
 

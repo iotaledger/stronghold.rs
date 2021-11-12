@@ -26,7 +26,47 @@ use thiserror::Error as DeriveError;
 // Types
 // ==========================
 
-/// Complex Procedure that chains multiple primitive procedures.
+/// Complex Procedure that for executing one or multiple [`PrimitiveProcedure`]s.
+///
+/// Example:
+/// ```
+/// # use iota_stronghold::{
+/// #    procedures::*,
+/// #    Location, RecordHint, Stronghold
+/// # };
+/// # use std::error::Error;
+/// #
+/// # async fn test() -> Result<(), Box<dyn Error>> {
+/// #
+/// let sh = Stronghold::init_stronghold_system("my-client".into(), vec![]).await?;
+///
+/// // Create a new seed, that only temporary exists during execution time
+/// let generate = Slip10Generate::default();
+///
+/// let chain = Chain::from_u32(vec![0]);
+/// // Use the newly created seed as input
+/// let derive = Slip10Derive::new_from_seed(generate.target(), chain);
+///
+/// // Identifier / Key for a procedure's output
+/// let k = OutputKey::new("chain-code");
+///
+/// // Target vault + record, in which the derived key will be written
+/// let private_key = Location::generic("my-vault", "child-key");
+///
+/// let hint = RecordHint::new("private-key").unwrap();
+/// let derive = derive
+///     .store_output(k) // Configure that the output should be returned after execution
+///     .write_secret(private_key, hint); // Set the record to be permanent in the vault
+///
+/// // Execute the procedures
+/// let output = sh.runtime_exec(generate.then(derive)).await??;
+///
+/// // Get the desired output
+/// let chain_code: ChainCode = output.single_output().unwrap();
+/// #
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub struct Procedure {
     inner: Vec<PrimitiveProcedure>,
@@ -34,7 +74,7 @@ pub struct Procedure {
 
 impl Procedure {
     /// Execute the procedure on a runner, e.g. the `SecureClient`
-    pub fn run<R: Runner>(self, runner: &mut R) -> Result<CollectedOutput, ProcedureError> {
+    pub(crate) fn run<R: Runner>(self, runner: &mut R) -> Result<CollectedOutput, ProcedureError> {
         // State that is passed to each procedure for writing their output into it.
         let mut state = State {
             aggregated: TempCollectedOutput {
@@ -96,7 +136,8 @@ where
     }
 }
 
-/// Collected permanent non-secret output of procedures.
+/// Collected non-secret output of procedures.
+/// It only contains procedure output that was explicitly persisted via [`PersistOutput::store_output`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectedOutput {
     output: HashMap<OutputKey, ProcedureIo>,
@@ -109,10 +150,10 @@ impl CollectedOutput {
     /// Conversion into `T = Vec<u8>` will never fail.
     pub fn take<T>(&mut self, key: &OutputKey) -> Option<T>
     where
-        T: TryFromProcedureIo,
+        T: TryFrom<ProcedureIo>,
     {
         let value = self.output.remove(key)?;
-        match T::try_from_procedure_io(value.clone()) {
+        match T::try_from(value.clone()) {
             Ok(v) => Some(v),
             Err(_) => {
                 self.output.insert(key.clone(), value);
@@ -126,11 +167,9 @@ impl CollectedOutput {
     /// Conversion into `T = Vec<u8>` will never fail.
     pub fn single_output<T>(self) -> Option<T>
     where
-        T: TryFromProcedureIo,
+        T: TryFrom<ProcedureIo>,
     {
-        self.into_iter()
-            .next()
-            .and_then(|(_, v)| T::try_from_procedure_io(v).ok())
+        self.into_iter().next().and_then(|(_, v)| T::try_from(v).ok())
     }
 }
 
@@ -275,7 +314,7 @@ struct TempCollectedOutput {
 // Traits
 // ==========================
 
-/// Central trait that implements a procedures logic.
+/// Central trait that implements a procedure's logic.
 pub trait ProcedureStep {
     /// Execute the procedure on a runner.
     /// The state collects the output from each procedure and writes a log of newly created records.
@@ -331,36 +370,36 @@ pub struct Products<T> {
 /// No secret is used, no new secret is created.
 pub trait ProcessData {
     // Non-secret input type.
-    type Input;
+    type Input: TryFrom<ProcedureIo>;
     // Non-secret output type.
-    type Output;
+    type Output: Into<ProcedureIo>;
     fn process(self, input: Self::Input) -> Result<Self::Output, FatalProcedureError>;
 }
 
 /// No secret is used, a new secret is created.
 pub trait GenerateSecret {
     // Non-secret input type.
-    type Input;
+    type Input: TryFrom<ProcedureIo>;
     // Non-secret output type.
-    type Output;
+    type Output: Into<ProcedureIo>;
     fn generate(self, input: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError>;
 }
 
 /// Existing secret is used, a new secret is created.
 pub trait DeriveSecret {
     // Non-secret input type.
-    type Input;
+    type Input: TryFrom<ProcedureIo>;
     // Non-secret output type.
-    type Output;
+    type Output: Into<ProcedureIo>;
     fn derive(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
 }
 
 /// Existing secret is used, no new secret is created.
 pub trait UseSecret {
     // Non-secret input type.
-    type Input;
+    type Input: TryFrom<ProcedureIo>;
     // Non-secret output type.
-    type Output;
+    type Output: Into<ProcedureIo>;
     fn use_secret(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError>;
 }
 
@@ -370,7 +409,7 @@ pub trait UseSecret {
 
 /// Non-secret input for a procedure
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum InputData<T> {
+pub enum InputData<T = Vec<u8>> {
     /// Take input dynamically from the `CollectedOutput`,
     /// i.g. use the output of a previously executed procedure as input.
     Key(OutputKey),
@@ -378,22 +417,27 @@ pub enum InputData<T> {
     Value(T),
 }
 
-pub trait IntoInput<T> {
-    fn into_input(self) -> InputData<T>;
-}
-
-impl<T> IntoInput<T> for T
-where
-    T: TryFromProcedureIo,
-{
-    fn into_input(self) -> InputData<T> {
-        InputData::Value(self)
+impl<T> From<OutputKey> for InputData<T> {
+    fn from(k: OutputKey) -> Self {
+        InputData::Key(k)
     }
 }
 
-impl<T> IntoInput<T> for OutputKey {
-    fn into_input(self) -> InputData<T> {
-        InputData::Key(self)
+impl From<Vec<u8>> for InputData {
+    fn from(v: Vec<u8>) -> Self {
+        InputData::Value(v)
+    }
+}
+
+impl From<String> for InputData<String> {
+    fn from(v: String) -> Self {
+        InputData::Value(v)
+    }
+}
+
+impl<const N: usize> From<[u8; N]> for InputData<[u8; N]> {
+    fn from(v: [u8; N]) -> Self {
+        InputData::Value(v)
     }
 }
 
@@ -420,17 +464,33 @@ pub trait SourceInfo {
     fn source_location_mut(&mut self) -> &mut Location;
 }
 
-impl SourceInfo for Location {
-    fn source_location(&self) -> &Location {
-        self
-    }
-    fn source_location_mut(&mut self) -> &mut Location {
-        self
-    }
-}
-
 /// Location into which a new secret should be written.
 pub trait TargetInfo {
+    fn target_info(&self) -> &TempTarget;
+    fn target_info_mut(&mut self) -> &mut TempTarget;
+}
+
+/// Trait that is auto-implemented for all procedures that write a new secret to the vault.
+/// Per default, a secret is only temporary and will be revoked after the whole execution of
+/// one/ many chained procedure has finished.
+/// The revocation happens **after** every primitive procedure in the chain was executed.
+/// Hence even if the secret is not persisted, it can still be used by subsequent procedures in the execution chain.
+///
+/// If the secret should be persisted after the execution, a permanent target location has to be set via
+/// [`PersistSecret::write_secret`].
+pub trait PersistSecret {
+    /// The location in the vault to which the secret will be written.
+    /// If [`PersistSecret::write_secret`] was not explicitly set, this is a random location
+    /// and the new record will be revoked after the procedure's execution.
+    ///
+    /// This location can be used as input location for other procedure.
+    fn target(&self) -> Location;
+
+    /// Permanently store the new secret in the vault and the set location.
+    fn write_secret(self, location: Location, hint: RecordHint) -> Self;
+}
+
+impl<T: TargetInfo> PersistSecret for T {
     fn target(&self) -> Location {
         self.target_info().write_to.location.clone()
     }
@@ -444,9 +504,6 @@ pub trait TargetInfo {
         target.is_temp = false;
         self
     }
-
-    fn target_info(&self) -> &TempTarget;
-    fn target_info_mut(&mut self) -> &mut TempTarget;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -463,36 +520,42 @@ impl Target {
     }
 }
 
-impl TargetInfo for TempTarget {
-    fn target_info(&self) -> &TempTarget {
-        self
-    }
-    fn target_info_mut(&mut self) -> &mut TempTarget {
-        self
-    }
-}
-
 /// Non-secret input for a procedure.
 pub trait InputInfo {
-    type Input;
+    type In;
 
-    fn input_info(&self) -> &InputData<Self::Input>;
-    fn input_info_mut(&mut self) -> &mut InputData<Self::Input>;
-}
-
-impl<T> InputInfo for InputData<T> {
-    type Input = T;
-    fn input_info(&self) -> &InputData<Self::Input> {
-        self
-    }
-
-    fn input_info_mut(&mut self) -> &mut InputData<Self::Input> {
-        self
-    }
+    fn input_info(&self) -> &InputData<Self::In>;
+    fn input_info_mut(&mut self) -> &mut InputData<Self::In>;
 }
 
 /// Specify where non-secret output should be written to.
 pub trait OutputInfo {
+    fn output_info(&self) -> &TempOutput;
+    fn output_info_mut(&mut self) -> &mut TempOutput;
+}
+
+/// Trait that is auto-implemented for all procedures that have non-secret data output.
+/// Per default, this output is only temporary and will not be in the [`CollectedOutput`]
+/// that is returned to the user.
+/// Temporary output is still cached during the procedure's execution and may be used as input for
+/// subsequent procedures in a chain.
+///
+/// If the output should be returned to the user, an [`OutputKey`] can be set via
+/// [`PersistOutput::store_output`], the same key can then be used to take the output from the
+/// [`CollectedOutput`].
+pub trait PersistOutput {
+    /// [`OutputKey`] with which the procedure's output is associated.
+    /// This key can be used to specify the input of subsequent procedures in a procedure chain.
+    ///
+    /// If [`PersistOutput::store_output`] was not set, this key is random, and the output will not be
+    /// persisted in the [`CollectedOutput`] that is returned to the user.
+    fn output_key(&self) -> OutputKey;
+
+    /// Write the procedure's non-secret output into the [`CollectedOutput`] that is returned to the user.
+    fn store_output(self, key: OutputKey) -> Self;
+}
+
+impl<T: OutputInfo + Sized> PersistOutput for T {
     fn output_key(&self) -> OutputKey {
         let o = self.output_info();
         o.write_to.clone()
@@ -507,82 +570,72 @@ pub trait OutputInfo {
         info.is_temp = false;
         self
     }
-
-    fn output_info(&self) -> &TempOutput;
-    fn output_info_mut(&mut self) -> &mut TempOutput;
 }
 
-impl OutputInfo for TempOutput {
-    fn output_info(&self) -> &TempOutput {
-        self
-    }
-    fn output_info_mut(&mut self) -> &mut TempOutput {
-        self
+impl From<()> for ProcedureIo {
+    fn from(_: ()) -> Self {
+        ProcedureIo(Vec::new())
     }
 }
 
-pub trait IntoProcedureIo {
-    fn into_procedure_io(self) -> ProcedureIo;
-}
-
-impl IntoProcedureIo for Vec<u8> {
-    fn into_procedure_io(self) -> ProcedureIo {
-        ProcedureIo(self)
+impl From<Vec<u8>> for ProcedureIo {
+    fn from(v: Vec<u8>) -> Self {
+        ProcedureIo(v)
     }
 }
 
-impl IntoProcedureIo for String {
-    fn into_procedure_io(self) -> ProcedureIo {
-        let vec = self.into_bytes();
-        vec.into_procedure_io()
-    }
-}
-impl<const N: usize> IntoProcedureIo for [u8; N] {
-    fn into_procedure_io(self) -> ProcedureIo {
-        let vec: Vec<u8> = self.into();
-        vec.into_procedure_io()
+impl From<String> for ProcedureIo {
+    fn from(s: String) -> Self {
+        s.into_bytes().into()
     }
 }
 
-pub trait TryFromProcedureIo: Sized {
-    type Error;
-    fn try_from_procedure_io(value: ProcedureIo) -> Result<Self, Self::Error>;
+impl<const N: usize> From<[u8; N]> for ProcedureIo {
+    fn from(a: [u8; N]) -> Self {
+        a.to_vec().into()
+    }
 }
 
-impl TryFromProcedureIo for Vec<u8> {
+impl TryFrom<ProcedureIo> for () {
     type Error = Infallible;
-    fn try_from_procedure_io(value: ProcedureIo) -> Result<Self, Self::Error> {
+    fn try_from(_: ProcedureIo) -> Result<Self, Self::Error> {
+        Ok(())
+    }
+}
+
+impl TryFrom<ProcedureIo> for Vec<u8> {
+    type Error = Infallible;
+    fn try_from(value: ProcedureIo) -> Result<Self, Self::Error> {
         Ok(value.0)
     }
 }
 
-impl TryFromProcedureIo for String {
+impl TryFrom<ProcedureIo> for String {
     type Error = FromUtf8Error;
-    fn try_from_procedure_io(value: ProcedureIo) -> Result<Self, Self::Error> {
+    fn try_from(value: ProcedureIo) -> Result<Self, Self::Error> {
         String::from_utf8(value.0)
     }
 }
 
-impl<const N: usize> TryFromProcedureIo for [u8; N] {
+impl<const N: usize> TryFrom<ProcedureIo> for [u8; N] {
     type Error = <[u8; N] as TryFrom<Vec<u8>>>::Error;
 
-    fn try_from_procedure_io(value: ProcedureIo) -> Result<Self, Self::Error> {
+    fn try_from(value: ProcedureIo) -> Result<Self, Self::Error> {
         value.0.try_into()
     }
 }
 
 #[cfg(test)]
 mod test {
+    use super::ProcedureIo;
+    use std::convert::{TryFrom, TryInto};
     use stronghold_utils::random;
-
-    use super::{IntoProcedureIo, TryFromProcedureIo};
-    use std::convert::TryInto;
 
     #[test]
     fn proc_io_vec() {
         let vec = random::bytestring(2048);
-        let proc_io = vec.clone().into_procedure_io();
-        let converted = Vec::try_from_procedure_io(proc_io).unwrap();
+        let proc_io: ProcedureIo = vec.clone().into();
+        let converted = Vec::try_from(proc_io).unwrap();
         assert_eq!(vec.len(), converted.len());
         assert_eq!(vec, converted);
     }
@@ -590,8 +643,8 @@ mod test {
     #[test]
     fn proc_io_string() {
         let string = random::string(2048);
-        let proc_io = string.clone().into_procedure_io();
-        let converted = String::try_from_procedure_io(proc_io).unwrap();
+        let proc_io: ProcedureIo = string.clone().into();
+        let converted = String::try_from(proc_io).unwrap();
         assert_eq!(string.len(), converted.len());
         assert_eq!(string, converted);
     }
@@ -599,8 +652,8 @@ mod test {
     #[test]
     fn proc_io_array() {
         let array: [u8; 337] = vec![random::random(); 337].try_into().unwrap();
-        let proc_io = array.into_procedure_io();
-        let converted = <[u8; 337]>::try_from_procedure_io(proc_io).unwrap();
+        let proc_io: ProcedureIo = array.into();
+        let converted = <[u8; 337]>::try_from(proc_io).unwrap();
         assert_eq!(array, converted);
     }
 }

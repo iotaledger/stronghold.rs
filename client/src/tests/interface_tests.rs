@@ -394,7 +394,7 @@ async fn test_stronghold_generics() {
 async fn test_stronghold_p2p() {
     use crate::{
         actors::NetworkConfig,
-        procedures::{Slip10Derive, Slip10Generate, TargetInfo},
+        procedures::{PersistSecret, Slip10Derive, Slip10Generate},
         tests::fresh,
     };
     use p2p::firewall::Rule;

@@ -4,8 +4,8 @@
 use proc_macro2::Ident;
 use quote::quote;
 use syn::{
-    Data, DataStruct, DeriveInput, Field, Fields, GenericParam, Generics, ImplItem, ImplItemType, ItemImpl, Path,
-    PathSegment, Type, TypePath, TypeTuple,
+    Data, DataStruct, DeriveInput, Field, Fields, GenericArgument, Generics, ImplItem, ImplItemType, ItemImpl,
+    PathArguments, PathSegment, Type, TypeTuple,
 };
 
 pub fn impl_proc_traits(derive_input: DeriveInput) -> proc_macro2::TokenStream {
@@ -37,46 +37,46 @@ fn impl_source_target(
         Some(ref i) => i,
         None => return,
     };
-    let field_type = &field.ty;
     if field
         .attrs
         .iter()
         .any(|attr| attr.path.segments.last().unwrap().ident == "source")
     {
-        impl_get_location(
-            impls,
-            IOTrait::SourceVault,
-            proc_ident,
-            field_ident,
-            field_type,
-            generics.clone(),
-        );
+        impl_get_location(impls, IOTrait::SourceVault, proc_ident, field_ident, generics.clone());
     }
     if field
         .attrs
         .iter()
         .any(|attr| attr.path.segments.last().unwrap().ident == "target")
     {
-        impl_get_location(
-            impls,
-            IOTrait::TargetVault,
-            proc_ident,
-            field_ident,
-            field_type,
-            generics.clone(),
-        );
+        impl_get_location(impls, IOTrait::TargetVault, proc_ident, field_ident, generics.clone());
     }
     if field
         .attrs
         .iter()
         .any(|attr| attr.path.segments.last().unwrap().ident == "input_data")
     {
+        let error_msg = String::from("Expect input_data to be type `InputData<T>`");
+        let in_type = match &field.ty {
+            Type::Path(tp) => {
+                let last = tp.path.segments.last().expect(&error_msg);
+                assert_eq!(format!("{}", last.ident), "InputData".to_string(), "{}", error_msg);
+                match &last.arguments {
+                    PathArguments::AngleBracketed(arg) => match arg.args.first().expect(&error_msg) {
+                        GenericArgument::Type(ty) => quote! {#ty},
+                        _ => panic!("error_msg"),
+                    },
+                    PathArguments::None => quote! {Vec<u8>},
+                    _ => panic!("{}", error_msg),
+                }
+            }
+            _ => panic!("{}", error_msg),
+        };
         impl_get_location(
             impls,
-            IOTrait::InputData(&field.ty),
+            IOTrait::InputData(in_type),
             proc_ident,
             field_ident,
-            field_type,
             generics.clone(),
         );
     }
@@ -85,21 +85,14 @@ fn impl_source_target(
         .iter()
         .any(|attr| attr.path.segments.last().unwrap().ident == "output_key")
     {
-        impl_get_location(
-            impls,
-            IOTrait::OutputKey,
-            proc_ident,
-            field_ident,
-            field_type,
-            generics.clone(),
-        );
+        impl_get_location(impls, IOTrait::OutputKey, proc_ident, field_ident, generics.clone());
     }
 }
 
-enum IOTrait<'a> {
+enum IOTrait {
     SourceVault,
     TargetVault,
-    InputData(&'a Type),
+    InputData(proc_macro2::TokenStream),
     OutputKey,
 }
 
@@ -108,7 +101,6 @@ fn impl_get_location(
     io_trait: IOTrait,
     proc_ident: &Ident,
     field_ident: &Ident,
-    field_type: &Type,
     generics: Generics,
 ) {
     let (trait_name, at, fn_name, fn_name_mut, return_type) = match io_trait {
@@ -128,10 +120,10 @@ fn impl_get_location(
         ),
         IOTrait::InputData(ty) => (
             quote! {InputInfo},
-            Some(quote! {type Input = <#ty as InputInfo>::Input; }),
+            Some(quote! {type In = #ty; }),
             quote! {input_info},
             quote! {input_info_mut},
-            quote! {InputData<Self::Input>},
+            quote! {InputData<Self::In>},
         ),
         IOTrait::OutputKey => (
             quote! {OutputInfo},
@@ -143,34 +135,14 @@ fn impl_get_location(
     };
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let mut gen_where_clause = quote! {#where_clause};
-
-    // Add trait bound in case of a generic field type.
-    if let Type::Path(TypePath {
-        path: Path { segments, .. },
-        ..
-    }) = field_type
-    {
-        if let Some(type_ident) = segments.last().map(|s| &s.ident) {
-            if generics
-                .params
-                .iter()
-                .any(|p| matches!(p, GenericParam::Type(t) if &t.ident == type_ident))
-            {
-                gen_where_clause = where_clause
-                    .map(|w| quote! {#w  #field_type: #trait_name})
-                    .unwrap_or_else(|| quote! { where #field_type: #trait_name})
-            }
-        }
-    }
     impls.push(quote! {
-        impl #impl_generics #trait_name for #proc_ident #ty_generics #gen_where_clause {
+        impl #impl_generics #trait_name for #proc_ident #ty_generics #where_clause {
             #at
             fn #fn_name(&self) -> &#return_type {
-                self.#field_ident.#fn_name()
+                &self.#field_ident
             }
             fn #fn_name_mut(&mut self) -> &mut #return_type {
-                self.#field_ident.#fn_name_mut()
+                &mut self.#field_ident
             }
         }
     })
@@ -220,7 +192,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
                 InputData::Value(v) => v.clone(),
                 InputData::Key(key) => {
                     let data = state.get_output(&key).ok_or(ProcedureError::MissingInput)?.clone();
-                    <Self as InputInfo>::Input::try_from_procedure_io(data).map_err(|_| ProcedureError::InvalidInput)?
+                    <Self as InputInfo>::In::try_from(data).map_err(|_| ProcedureError::InvalidInput)?
                 }
             };
         }
@@ -237,7 +209,7 @@ fn generate_fn_body(segment: &PathSegment, has_input: bool, returns_data: bool) 
             } = <Self as OutputInfo>::output_info(&self).clone();
         };
         gen_insert_data = quote! {
-           state.insert_output(key, output.into_procedure_io(), is_out_data_temp);
+           state.insert_output(key, output.into(), is_out_data_temp);
         }
     } else {
         gen_output_key = quote! {};
