@@ -33,7 +33,7 @@ impl KeyStore {
     }
 
     /// Inserts a key into the [`KeyStore`] by [`VaultId`].  If the [`VaultId`] already exists, it just returns the
-    /// existing [`&Key<Provider>`]
+    /// existing &[`Key<Provider>`]
     pub fn insert_key(&mut self, id: VaultId, key: Key<Provider>) -> &Key<Provider> {
         self.store.entry(id).or_insert(key)
     }

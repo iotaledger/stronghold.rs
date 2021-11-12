@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 #[cfg(feature = "p2p")]
 use super::p2p::NetworkActor;
-use crate::{actors::SecureClient, state::snapshot::Snapshot};
+use crate::state::{secure::SecureClient, snapshot::Snapshot};
 
 pub mod messages {
     use super::*;
@@ -96,7 +96,7 @@ pub mod p2p_messages {
     }
 }
 
-/// Registry [`Actor`], that owns [`Client`] actors, and manages them. The registry
+/// Registry [`Actor`], that owns [`SecureClient`] actors, and manages them. The registry
 /// can be modified
 #[derive(Default)]
 pub struct Registry {

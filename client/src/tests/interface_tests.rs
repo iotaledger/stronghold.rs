@@ -5,13 +5,6 @@ use crate::{ActorError, Location, RecordHint, Stronghold};
 
 use stronghold_utils::random::bytestring;
 
-#[cfg(feature = "p2p")]
-use crate::{
-    p2p::{NetworkConfig, Rule},
-    tests::fresh,
-    ProcResult, Procedure, ResultMessage, SLIP10DeriveInput,
-};
-
 #[actix::test]
 async fn test_stronghold() {
     let vault_path = b"path".to_vec();
@@ -399,6 +392,12 @@ async fn test_stronghold_generics() {
 #[cfg(feature = "p2p")]
 #[actix::test]
 async fn test_stronghold_p2p() {
+    use crate::{
+        actors::NetworkConfig,
+        procedures::{PersistSecret, Slip10Derive, Slip10Generate},
+        tests::fresh,
+    };
+    use p2p::firewall::Rule;
     use tokio::sync::{mpsc, oneshot};
 
     let system = actix::System::current();
@@ -478,20 +477,14 @@ async fn test_stronghold_p2p() {
         remote_ready_rx.recv().await.unwrap();
 
         let (_path, chain) = fresh::hd_path();
-        let procedure = Procedure::SLIP10Derive {
-            chain,
-            input: SLIP10DeriveInput::Seed(seed1),
-            output: fresh::location(),
-            hint: fresh::record_hint(),
-        };
 
         match local_stronghold
-            .remote_runtime_exec(peer_id, procedure)
+            .remote_runtime_exec(peer_id, Slip10Derive::new_from_seed(seed1, chain))
             .await
-            .unwrap_or_else(|e| panic!("Could not read from remote store: {}", e))
+            .unwrap_or_else(|e| panic!("Could not execute remote procedure: {}", e))
         {
-            ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => {}
-            r => panic!("unexpected result: {:?}", r),
+            Ok(out) => assert!(out.into_iter().next().is_none()),
+            Err(e) => panic!("unexpected error: {:?}", e),
         };
         res_tx.send(()).await.unwrap();
     });
@@ -539,17 +532,12 @@ async fn test_stronghold_p2p() {
 
         // test procedure execution
         match remote_stronghold
-            .runtime_exec(Procedure::SLIP10Generate {
-                size_bytes: None,
-                output: seed1_clone,
-                hint: fresh::record_hint(),
-            })
+            .runtime_exec(Slip10Generate::default().write_secret(seed1_clone, fresh::record_hint()))
             .await
             .unwrap_or_else(|e| panic!("Could not execute remote procedure: {}", e))
         {
-            ProcResult::SLIP10Generate(ResultMessage::OK) => (),
-            ProcResult::Error(err) => panic!("Procedure failed: {:?}", err),
-            r => panic!("unexpected result: {:?}", r),
+            Ok(out) => assert!(out.into_iter().next().is_none()),
+            Err(e) => panic!("unexpected error: {:?}", e),
         };
 
         remote_ready_tx.send(()).await.unwrap();

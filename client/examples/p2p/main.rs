@@ -29,7 +29,7 @@ use arguments::*;
 
 pub use clap::Parser;
 use iota_stronghold::p2p::{Multiaddr, NetworkConfig, SwarmInfo};
-pub use iota_stronghold::{ResultMessage, Stronghold};
+pub use iota_stronghold::Stronghold;
 use p2p::firewall::Rule;
 pub use std::error::Error;
 

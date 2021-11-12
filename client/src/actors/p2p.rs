@@ -1,10 +1,13 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::actors::{secure_messages::WriteToVault, GetTarget, Registry};
+use crate::{
+    actors::{secure_messages::WriteToVault, GetTarget, Registry},
+    enum_from_inner,
+    procedures::{CollectedOutput, Procedure},
+};
 use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
-pub use messages::SwarmInfo;
 use messages::*;
 use p2p::{
     firewall::{FirewallConfiguration, FirewallRules, Rule},
@@ -16,7 +19,6 @@ use std::{
     io,
     time::Duration,
 };
-use thiserror::Error as DeriveError;
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {
@@ -38,7 +40,6 @@ macro_rules! sh_request_dispatch {
             ShRequest::WriteToStore($inner) => $body
             ShRequest::ReadFromStore($inner) => $body
             ShRequest::DeleteFromStore($inner) => $body
-            ShRequest::CreateVault($inner) => $body
             ShRequest::WriteToRemoteVault($inner) =>  {
                 let $inner: WriteToVault = $inner.into();
                 $body
@@ -48,39 +49,23 @@ macro_rules! sh_request_dispatch {
             ShRequest::GarbageCollect($inner) => $body
             ShRequest::ListIds($inner) => $body
             ShRequest::ClearCache($inner) => $body
-            ShRequest::CallProcedure($inner) => $body
+            ShRequest::Procedure($inner) => $body
         }
     }
 }
 
-macro_rules! sh_request_from {
-    ($T:ident) => {
-        impl From<$T> for ShRequest {
-            fn from(t: $T) -> Self {
-                ShRequest::$T(t)
-            }
-        }
-    };
-}
-
 macro_rules! sh_result_mapping {
-    ($enum:ident::$variant:ident, $inner:ty) => {
-        sh_result_mapping!($enum::$variant, $inner, |t| $enum::$variant(t), |t| t);
-    };
-    ($enum:ident::$variant:ident, $inner:ty,
-        |$i:ident| $map_from_inner:expr,
-        |$v:ident| $map_try_from_enum:expr
-    ) => {
+    ($enum:ident::$variant:ident => $inner:ty) => {
         impl From<$inner> for $enum {
-            fn from($i: $inner) -> Self {
-                $map_from_inner
+            fn from(i: $inner) -> Self {
+                $enum::$variant(i)
             }
         }
         impl TryFrom<$enum> for $inner {
             type Error = ();
             fn try_from(t: $enum) -> Result<Self, Self::Error> {
-                if let $enum::$variant($v) = t {
-                    Ok($map_try_from_enum)
+                if let $enum::$variant(v) = t {
+                    Ok(v)
                 } else {
                     Err(())
                 }
@@ -335,21 +320,16 @@ impl Default for NetworkConfig {
 pub mod messages {
 
     use super::*;
-    use crate::{actors::VaultError, Location, ProcResult, RecordHint, RecordId};
+    use crate::{actors::RecordError, procedures::ProcedureError, Location, RecordHint, RecordId};
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
-    use engine::vault::VaultId;
-
+    use crate::actors::secure_messages::{
+        CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore, WriteToStore,
+        WriteToVault,
+    };
     #[cfg(test)]
     use crate::actors::secure_testing::ReadFromVault;
-    use crate::actors::{
-        secure_messages::{
-            CheckRecord, CheckVault, ClearCache, CreateVault, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore,
-            WriteToStore, WriteToVault,
-        },
-        secure_procedures::CallProcedure,
-    };
 
     #[derive(Message)]
     #[rtype(result = "Result<Rq::Result, OutboundFailure>")]
@@ -482,7 +462,7 @@ pub mod messages {
     pub struct Shutdown;
 
     #[derive(Debug, Message, Clone, Serialize, Deserialize)]
-    #[rtype(result = "Result<(), RemoteVaultError>")]
+    #[rtype(result = "Result<(), RemoteRecordError>")]
     pub struct WriteToRemoteVault {
         pub location: Location,
         pub payload: Vec<u8>,
@@ -519,14 +499,7 @@ pub mod messages {
         }
     }
 
-    #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
-    pub enum RemoteVaultError {
-        #[error("vault `{0:?}` not found")]
-        VaultNotFound(VaultId),
-
-        #[error("internal record error: {0}")]
-        Record(String),
-    }
+    pub type RemoteRecordError = String;
 
     // Wrapper for Requests to a remote Secure Client
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -534,7 +507,6 @@ pub mod messages {
         CheckVault(CheckVault),
         CheckRecord(CheckRecord),
         ListIds(ListIds),
-        CreateVault(CreateVault),
         #[cfg(test)]
         ReadFromVault(ReadFromVault),
         WriteToRemoteVault(WriteToRemoteVault),
@@ -543,56 +515,44 @@ pub mod messages {
         DeleteFromStore(DeleteFromStore),
         GarbageCollect(GarbageCollect),
         ClearCache(ClearCache),
-        CallProcedure(CallProcedure),
+        Procedure(Procedure),
     }
 
-    sh_request_from!(CheckVault);
-    sh_request_from!(CheckRecord);
-    sh_request_from!(ListIds);
-    sh_request_from!(CreateVault);
+    enum_from_inner!(ShRequest from CheckVault);
+    enum_from_inner!(ShRequest from ListIds);
     #[cfg(test)]
-    sh_request_from!(ReadFromVault);
-    sh_request_from!(WriteToRemoteVault);
-    sh_request_from!(ReadFromStore);
-    sh_request_from!(WriteToStore);
-    sh_request_from!(DeleteFromStore);
-    sh_request_from!(GarbageCollect);
-    sh_request_from!(ClearCache);
-    sh_request_from!(CallProcedure);
-
-    impl From<VaultError> for RemoteVaultError {
-        fn from(e: VaultError) -> Self {
-            match e {
-                VaultError::Record(_) => RemoteVaultError::Record(e.to_string()),
-                VaultError::VaultNotFound(e) => RemoteVaultError::VaultNotFound(e),
-                VaultError::Procedure(_) => unreachable!(),
-            }
-        }
-    }
+    enum_from_inner!(ShRequest from ReadFromVault);
+    enum_from_inner!(ShRequest from WriteToRemoteVault);
+    enum_from_inner!(ShRequest from ReadFromStore);
+    enum_from_inner!(ShRequest from WriteToStore);
+    enum_from_inner!(ShRequest from DeleteFromStore);
+    enum_from_inner!(ShRequest from GarbageCollect);
+    enum_from_inner!(ShRequest from ClearCache);
+    enum_from_inner!(ShRequest from Procedure);
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {
         Empty(()),
         Data(Option<Vec<u8>>),
         Bool(bool),
-        WriteRemoteVault(Result<(), RemoteVaultError>),
+        WriteRemoteVault(Result<(), RemoteRecordError>),
         ListIds(Vec<(RecordId, RecordHint)>),
-        Proc(Result<ProcResult, String>),
+        Proc(Result<CollectedOutput, ProcedureError>),
     }
 
-    sh_result_mapping!(ShResult::Empty, ());
-    sh_result_mapping!(ShResult::Bool, bool);
-    sh_result_mapping!(ShResult::Data, Option<Vec<u8>>);
-    sh_result_mapping!(ShResult::ListIds, Vec<(RecordId, RecordHint)>);
-    sh_result_mapping!(ShResult::Proc, Result<ProcResult, String>);
+    sh_result_mapping!(ShResult::Empty => ());
+    sh_result_mapping!(ShResult::Bool => bool);
+    sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
+    sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
+    sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
 
-    impl From<Result<(), VaultError>> for ShResult {
-        fn from(inner: Result<(), VaultError>) -> Self {
-            ShResult::WriteRemoteVault(inner.map_err(RemoteVaultError::from))
+    impl From<Result<(), RecordError>> for ShResult {
+        fn from(inner: Result<(), RecordError>) -> Self {
+            ShResult::WriteRemoteVault(inner.map_err(|e| e.to_string()))
         }
     }
 
-    impl TryFrom<ShResult> for Result<(), RemoteVaultError> {
+    impl TryFrom<ShResult> for Result<(), RemoteRecordError> {
         type Error = ();
         fn try_from(t: ShResult) -> Result<Self, Self::Error> {
             if let ShResult::WriteRemoteVault(result) = t {

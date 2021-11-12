@@ -3,11 +3,18 @@
 
 //! Secure Client Actor State
 
-use crate::{internals, state::key_store::KeyStore, utils::LoadFromPath, Location};
-
+use crate::{
+    actors::{RecordError, VaultError},
+    internals,
+    procedures::{FatalProcedureError, Products, Runner},
+    state::key_store::KeyStore,
+    utils::LoadFromPath,
+    Location,
+};
 use engine::{
+    runtime::GuardedVec,
     store::Cache,
-    vault::{ClientId, DbView, RecordId, VaultId},
+    vault::{ClientId, DbView, RecordHint, RecordId, VaultId},
 };
 use std::time::Duration;
 
@@ -72,19 +79,19 @@ impl SecureClient {
     }
 
     /// Resolves a location to a `VaultId` and a `RecordId`
-    pub fn resolve_location<L: AsRef<Location>>(&self, l: L) -> (VaultId, RecordId) {
+    pub fn resolve_location<L: AsRef<Location>>(l: L) -> (VaultId, RecordId) {
         match l.as_ref() {
             Location::Generic {
                 vault_path,
                 record_path,
             } => {
-                let vid = self.derive_vault_id(vault_path);
+                let vid = Self::derive_vault_id(vault_path);
                 let rid = RecordId::load_from_path(vid.as_ref(), record_path);
                 (vid, rid)
             }
             Location::Counter { vault_path, counter } => {
-                let vid = self.derive_vault_id(vault_path);
-                let rid = self.derive_record_id(vault_path, *counter);
+                let vid = Self::derive_vault_id(vault_path);
+                let rid = Self::derive_record_id(vault_path, *counter);
 
                 (vid, rid)
             }
@@ -92,12 +99,12 @@ impl SecureClient {
     }
 
     /// Gets the [`VaultId`] from a specified path.
-    pub fn derive_vault_id<P: AsRef<Vec<u8>>>(&self, path: P) -> VaultId {
+    pub fn derive_vault_id<P: AsRef<Vec<u8>>>(path: P) -> VaultId {
         VaultId::load_from_path(path.as_ref(), path.as_ref())
     }
 
     /// Derives the counter [`RecordId`] from the given vault path and the counter value.
-    pub fn derive_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, ctr: usize) -> RecordId {
+    pub fn derive_record_id<P: AsRef<Vec<u8>>>(vault_path: P, ctr: usize) -> RecordId {
         let vault_path = vault_path.as_ref();
 
         let path = if ctr == 0 {
@@ -120,7 +127,7 @@ impl SecureClient {
         let vault_path = vault_path.as_ref();
 
         while ctr <= 32_000_000 {
-            let rid = self.derive_record_id(vault_path, ctr);
+            let rid = Self::derive_record_id(vault_path, ctr);
             if record_id == rid {
                 break;
             }
@@ -128,6 +135,111 @@ impl SecureClient {
         }
 
         ctr
+    }
+}
+
+impl Runner for SecureClient {
+    fn get_guard<F, T>(&mut self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
+    where
+        F: FnOnce(GuardedVec<u8>) -> Result<T, FatalProcedureError>,
+    {
+        let (vault_id, record_id) = Self::resolve_location(location);
+        let key = self
+            .keystore
+            .take_key(vault_id)
+            .ok_or(VaultError::VaultNotFound(vault_id))?;
+
+        let mut ret = None;
+        let execute_procedure = |guard: GuardedVec<u8>| {
+            ret = Some(f(guard)?);
+            Ok(())
+        };
+        let res = self.db.get_guard(&key, vault_id, record_id, execute_procedure);
+        self.keystore.insert_key(vault_id, key);
+
+        match res {
+            Ok(()) => Ok(ret.unwrap()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn exec_proc<F, T>(
+        &mut self,
+        location0: &Location,
+        location1: &Location,
+        hint: RecordHint,
+        f: F,
+    ) -> Result<T, VaultError<FatalProcedureError>>
+    where
+        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, FatalProcedureError>,
+    {
+        let (vid0, rid0) = Self::resolve_location(location0);
+        let (vid1, rid1) = Self::resolve_location(location1);
+
+        let key0 = self.keystore.take_key(vid0).ok_or(VaultError::VaultNotFound(vid0))?;
+
+        let mut ret = None;
+        let execute_procedure = |guard: GuardedVec<u8>| {
+            let Products { output: plain, secret } = f(guard)?;
+            ret = Some(plain);
+            Ok(secret)
+        };
+
+        let res;
+        if vid0 == vid1 {
+            res = self
+                .db
+                .exec_proc(&key0, vid0, rid0, &key0, vid1, rid1, hint, execute_procedure);
+        } else {
+            if !self.keystore.vault_exists(vid1) {
+                let key1 = self.keystore.create_key(vid1);
+                self.db.init_vault(key1, vid1);
+            }
+            let key1 = self.keystore.take_key(vid1).unwrap();
+            res = self
+                .db
+                .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, execute_procedure);
+            self.keystore.insert_key(vid1, key1);
+        }
+
+        self.keystore.insert_key(vid0, key0);
+
+        match res {
+            Ok(()) => Ok(ret.unwrap()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError> {
+        let (vault_id, record_id) = Self::resolve_location(location);
+        if !self.keystore.vault_exists(vault_id) {
+            let key = self.keystore.create_key(vault_id);
+            self.db.init_vault(key, vault_id);
+        }
+        let key = self.keystore.take_key(vault_id).unwrap();
+        let res = self.db.write(&key, vault_id, record_id, &value, hint);
+        self.keystore.insert_key(vault_id, key);
+        res
+    }
+
+    fn revoke_data(&mut self, location: &Location) -> Result<(), RecordError> {
+        let (vault_id, record_id) = Self::resolve_location(location);
+        if let Some(key) = self.keystore.take_key(vault_id) {
+            let res = self.db.revoke_record(&key, vault_id, record_id);
+            self.keystore.insert_key(vault_id, key);
+            res?;
+        }
+        Ok(())
+    }
+
+    fn garbage_collect(&mut self, vault_id: VaultId) -> bool {
+        let key = match self.keystore.take_key(vault_id) {
+            Some(key) => key,
+            None => return false,
+        };
+        self.db.garbage_collect_vault(&key, vault_id);
+        self.keystore.insert_key(vault_id, key);
+        true
     }
 }
 
@@ -147,20 +259,20 @@ mod tests {
         let mut ctr = 0;
         let mut ctr2 = 0;
 
-        let _rid = client.derive_record_id(vault_path.clone(), ctr);
-        let _rid2 = client.derive_record_id(vault_path.clone(), ctr2);
+        let _rid = SecureClient::derive_record_id(vault_path.clone(), ctr);
+        let _rid2 = SecureClient::derive_record_id(vault_path.clone(), ctr2);
 
         ctr += 1;
         ctr2 += 1;
 
-        let _rid = client.derive_record_id(vault_path.clone(), ctr);
-        let _rid2 = client.derive_record_id(vault_path.clone(), ctr2);
+        let _rid = SecureClient::derive_record_id(vault_path.clone(), ctr);
+        let _rid2 = SecureClient::derive_record_id(vault_path.clone(), ctr2);
 
         ctr += 1;
 
-        let rid = client.derive_record_id(vault_path.clone(), ctr);
+        let rid = SecureClient::derive_record_id(vault_path.clone(), ctr);
 
-        let test_rid = client.derive_record_id(vault_path.clone(), 2);
+        let test_rid = SecureClient::derive_record_id(vault_path.clone(), 2);
         let ctr = client.get_index_from_record_id(vault_path, rid);
 
         assert_eq!(test_rid, rid);
@@ -169,18 +281,14 @@ mod tests {
 
     #[test]
     fn test_location_counter_api() {
-        let clientid = ClientId::random::<Provider>().unwrap();
-
         let vidlochead = Location::counter::<_, usize>("some_vault", 0);
         let vidlochead2 = Location::counter::<_, usize>("some_vault 2", 0);
 
-        let client: SecureClient = SecureClient::new(clientid);
+        let (_, rid) = SecureClient::resolve_location(&vidlochead);
+        let (_, rid2) = SecureClient::resolve_location(&vidlochead2);
 
-        let (_, rid) = client.resolve_location(vidlochead.clone());
-        let (_, rid2) = client.resolve_location(vidlochead2.clone());
-
-        let (_, rid_head) = client.resolve_location(vidlochead);
-        let (_, rid_head_2) = client.resolve_location(vidlochead2);
+        let (_, rid_head) = SecureClient::resolve_location(&vidlochead);
+        let (_, rid_head_2) = SecureClient::resolve_location(&vidlochead2);
 
         assert_eq!(rid, rid_head);
         assert_eq!(rid2, rid_head_2);

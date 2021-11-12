@@ -28,6 +28,7 @@
 mod actors;
 mod interface;
 mod internals;
+pub mod procedures;
 mod state;
 mod utils;
 
@@ -36,11 +37,10 @@ mod utils;
 mod tests;
 
 pub use crate::{
-    actors::{secure_procedures::Procedure, ProcResult, SLIP10DeriveInput},
-    interface::{ActorError, Stronghold, StrongholdResult},
+    interface::{ActorError, FatalEngineError, Stronghold, StrongholdResult},
     internals::Provider,
     state::snapshot::{ReadError, WriteError},
-    utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
+    utils::{Location, StrongholdFlags, VaultFlags},
 };
 pub use engine::{
     snapshot::{
@@ -53,11 +53,50 @@ pub use engine::{
 #[cfg(feature = "p2p")]
 pub mod p2p {
     pub use crate::{
-        actors::p2p::{NetworkConfig, SwarmInfo},
+        actors::{
+            network_messages::{ShRequest, SwarmInfo},
+            NetworkConfig,
+        },
         interface::{P2pError, P2pResult, SpawnNetworkError},
     };
     pub use p2p::{
         firewall::Rule, DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId, RelayNotSupported,
     };
 }
+
 pub use actix::MailboxError;
+
+#[macro_export]
+macro_rules! enum_from_inner {
+    ($($Enum:ident$(::<$G:ident>)?::$T:ident),+ $MEnum:ident$(::<$H:ident>)?::$MT:ident from $CEnum:ty) => {
+        impl$(<H>)? From<$CEnum> for $MEnum$(<H>)? {
+            fn from(t: $CEnum) -> Self {
+                $MEnum::$MT(t.into())
+            }
+        }
+        $(
+            impl$(<$G>)? From<$CEnum> for $Enum$(<$G>)? {
+                fn from(t: $CEnum) -> Self {
+                    let m: $MEnum$(<H>)? = t.into()
+                    $Enum::$T(m.into())
+                }
+            }
+        )*
+    };
+    ($($Enum:ident$(::<$G:ident>)?::$T:ident),+ from $CEnum:ty) => {
+        $(
+            impl$(<$G>)? From<$CEnum> for $Enum$(<$G>)? {
+                fn from(t: $CEnum) -> Self {
+                    $Enum::$T(t.into())
+                }
+            }
+        )*
+    };
+    ($Enum:ident$(<$G:ident>)? from $TInner:ident$(<$H:ident>)?) => {
+        impl$(<$G>)? From<$TInner$(<$H>)?> for $Enum$(<$G>)? {
+            fn from(t: $TInner$(<$H>)?) -> Self {
+                $Enum::$TInner(t)
+            }
+        }
+    };
+}
