@@ -455,8 +455,27 @@ pub struct TempProduct<T> {
 
 /// New Secret.
 pub type TempTarget = TempProduct<Target>;
+
+impl Default for TempTarget {
+    fn default() -> Self {
+        TempTarget {
+            write_to: Target::random(),
+            is_temp: true,
+        }
+    }
+}
+
 /// Non-Secret Output.
 pub type TempOutput = TempProduct<OutputKey>;
+
+impl Default for TempOutput {
+    fn default() -> Self {
+        TempOutput {
+            write_to: OutputKey::random(),
+            is_temp: true,
+        }
+    }
+}
 
 /// Location of an existing secret.
 pub trait SourceInfo {

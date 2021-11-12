@@ -157,14 +157,8 @@ impl BIP39Generate {
         BIP39Generate {
             passphrase,
             language,
-            mnemonic_key: TempOutput {
-                write_to: OutputKey::random(),
-                is_temp: true,
-            },
-            target: TempTarget {
-                write_to: Target::random(),
-                is_temp: true,
-            },
+            mnemonic_key: TempOutput::default(),
+            target: TempTarget::default(),
         }
     }
 }
@@ -217,10 +211,7 @@ impl BIP39Recover {
         BIP39Recover {
             passphrase,
             mnemonic: mnemonic.into(),
-            target: TempTarget {
-                write_to: Target::random(),
-                is_temp: true,
-            },
+            target: TempTarget::default(),
         }
     }
 }
@@ -257,10 +248,7 @@ pub struct Slip10Generate {
 impl Default for Slip10Generate {
     fn default() -> Self {
         Slip10Generate {
-            target: TempTarget {
-                write_to: Target::random(),
-                is_temp: true,
-            },
+            target: TempTarget::default(),
             size_bytes: 64,
         }
     }
@@ -269,10 +257,7 @@ impl Default for Slip10Generate {
 impl Slip10Generate {
     pub fn new(size_bytes: usize) -> Self {
         Slip10Generate {
-            target: TempTarget {
-                write_to: Target::random(),
-                is_temp: true,
-            },
+            target: TempTarget::default(),
             size_bytes,
         }
     }
@@ -353,14 +338,8 @@ impl Slip10Derive {
             parent_ty,
             chain,
             source,
-            target: TempTarget {
-                write_to: Target::random(),
-                is_temp: true,
-            },
-            output_key: TempOutput {
-                write_to: OutputKey::random(),
-                is_temp: true,
-            },
+            target: TempTarget::default(),
+            output_key: TempOutput::default(),
         }
     }
 }
@@ -430,10 +409,7 @@ impl GenerateKey {
     pub fn new(ty: KeyType) -> Self {
         GenerateKey {
             ty,
-            target: TempTarget {
-                write_to: Target::random(),
-                is_temp: true,
-            },
+            target: TempTarget::default(),
         }
     }
 }
@@ -470,10 +446,7 @@ impl PublicKey {
         Self {
             ty,
             private_key,
-            output_key: TempOutput {
-                write_to: OutputKey::random(),
-                is_temp: true,
-            },
+            output_key: TempOutput::default(),
         }
     }
 }
@@ -521,10 +494,7 @@ impl Ed25519Sign {
         Self {
             msg: msg.into(),
             private_key,
-            output_key: TempOutput {
-                write_to: OutputKey::random(),
-                is_temp: true,
-            },
+            output_key: TempOutput::default(),
         }
     }
 }
@@ -557,10 +527,7 @@ impl X25519DiffieHellman {
         Self {
             public_key,
             private_key,
-            target: TempTarget {
-                write_to: Target::random(),
-                is_temp: true,
-            },
+            target: TempTarget::default(),
         }
     }
 }
@@ -601,10 +568,7 @@ impl Hash {
         Hash {
             ty,
             msg: msg.into(),
-            output_key: TempOutput {
-                write_to: OutputKey::random(),
-                is_temp: true,
-            },
+            output_key: TempOutput::default(),
         }
     }
 }
@@ -663,10 +627,7 @@ impl Hmac {
             ty,
             msg: msg.into(),
             key,
-            output_key: TempOutput {
-                write_to: OutputKey::random(),
-                is_temp: true,
-            },
+            output_key: TempOutput::default(),
         }
     }
 }
@@ -718,10 +679,7 @@ impl Hkdf {
             salt,
             label,
             ikm,
-            okm: TempTarget {
-                write_to: Target::random(),
-                is_temp: true,
-            },
+            okm: TempTarget::default(),
         }
     }
 }
@@ -778,10 +736,7 @@ impl Pbkdf2Hmac {
             password,
             salt,
             count,
-            target: TempTarget {
-                write_to: Target::random(),
-                is_temp: true,
-            },
+            target: TempTarget::default(),
         }
     }
 }
@@ -838,14 +793,8 @@ impl AeadEncrypt {
         associated_data: impl Into<InputData>,
         nonce: Vec<u8>,
     ) -> Self {
-        let ciphertext = TempOutput {
-            write_to: OutputKey::random(),
-            is_temp: true,
-        };
-        let tag = TempOutput {
-            write_to: OutputKey::random(),
-            is_temp: true,
-        };
+        let ciphertext = TempOutput::default();
+        let tag = TempOutput::default();
         AeadEncrypt {
             alg,
             associated_data: associated_data.into(),
@@ -964,10 +913,7 @@ impl AeadDecrypt {
         tag: impl Into<InputData>,
         nonce: Vec<u8>,
     ) -> Self {
-        let plaintext = TempOutput {
-            write_to: OutputKey::random(),
-            is_temp: true,
-        };
+        let plaintext = TempOutput::default();
         AeadDecrypt {
             alg,
             associated_data: associated_data.into(),
