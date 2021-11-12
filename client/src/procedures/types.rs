@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     convert::{Infallible, TryFrom, TryInto},
+    fmt::Debug,
     ops::Deref,
     string::FromUtf8Error,
 };
@@ -242,10 +243,13 @@ pub enum ProcedureError {
     Procedure(#[from] FatalProcedureError),
 }
 
-impl From<VaultError<FatalProcedureError>> for ProcedureError {
-    fn from(e: VaultError<FatalProcedureError>) -> Self {
+impl<T> From<VaultError<T>> for ProcedureError
+where
+    T: Into<FatalProcedureError> + Debug,
+{
+    fn from(e: VaultError<T>) -> Self {
         match e {
-            VaultError::Procedure(e) => ProcedureError::Procedure(e),
+            VaultError::Procedure(e) => ProcedureError::Procedure(e.into()),
             other => ProcedureError::Engine(other.to_string().into()),
         }
     }
@@ -265,6 +269,12 @@ pub struct FatalProcedureError(String);
 impl From<crypto::Error> for FatalProcedureError {
     fn from(e: crypto::Error) -> Self {
         FatalProcedureError(e.to_string())
+    }
+}
+
+impl From<String> for FatalProcedureError {
+    fn from(e: String) -> Self {
+        FatalProcedureError(e)
     }
 }
 

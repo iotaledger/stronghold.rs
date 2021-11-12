@@ -6,10 +6,11 @@ mod libp2p_reexport {
     pub use libp2p::{
         core::{connection::ConnectionLimits, Executor},
         identity::Keypair,
-        noise::{AuthenticKeypair, Keypair as NoiseKeypair},
         swarm::DialError,
         Multiaddr, PeerId,
     };
+    pub type AuthenticKeypair = libp2p::noise::AuthenticKeypair<libp2p::noise::X25519Spec>;
+    pub type NoiseKeypair = libp2p::noise::Keypair<libp2p::noise::X25519Spec>;
 }
 pub use libp2p_reexport::*;
 mod interface;

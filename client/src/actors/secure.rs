@@ -21,6 +21,11 @@ use engine::{
         VaultError as EngineVaultError, VaultId,
     },
 };
+
+#[cfg(feature = "p2p")]
+use engine::runtime::GuardedVec;
+#[cfg(feature = "p2p")]
+use p2p::{AuthenticKeypair, Keypair, NoiseKeypair, PeerId};
 use std::collections::HashMap;
 use stronghold_utils::GuardDebug;
 
@@ -159,6 +164,47 @@ pub mod messages {
             DbView<internals::Provider>,
             Store,
         )>;
+    }
+}
+
+#[cfg(feature = "p2p")]
+mod p2p_messages {
+
+    use crate::Location;
+
+    use super::*;
+
+    // Generate new keypair to use for `StrongholdP2p`.
+    pub struct GenerateP2pKeypair {
+        pub location: Location,
+        pub hint: RecordHint,
+    }
+
+    impl Message for GenerateP2pKeypair {
+        type Result = Result<(), ProcedureError>;
+    }
+
+    pub struct WriteP2pKeypair {
+        pub keypair: Keypair,
+        pub location: Location,
+        pub hint: RecordHint,
+    }
+
+    impl Message for WriteP2pKeypair {
+        type Result = Result<(), ProcedureError>;
+    }
+
+    // Derive a new noise keypair from a stored p2p-keypair.
+    // Returns the new keypair and the `PeerId` that is derived from the public
+    // key of the stored keypair.
+    // **Note**: The keypair differs for each new derivation, the `PeerId`
+    // is consistent.
+    pub struct DeriveNoiseKeypair {
+        pub p2p_keypair: Location,
+    }
+
+    impl Message for DeriveNoiseKeypair {
+        type Result = Result<(PeerId, AuthenticKeypair), ProcedureError>;
     }
 }
 
@@ -314,14 +360,59 @@ impl_handler!(
     }
 );
 
-// ----
-// impl for procedures
-// ---
-
 impl Handler<Procedure> for SecureClient {
     type Result = Result<CollectedOutput, ProcedureError>;
 
     fn handle(&mut self, proc: Procedure, _: &mut Self::Context) -> Self::Result {
         proc.run(self)
+    }
+}
+
+#[cfg(feature = "p2p")]
+impl Handler<p2p_messages::GenerateP2pKeypair> for SecureClient {
+    type Result = Result<(), ProcedureError>;
+
+    fn handle(&mut self, msg: p2p_messages::GenerateP2pKeypair, _ctx: &mut Self::Context) -> Self::Result {
+        let keypair = Keypair::generate_ed25519();
+        let bytes = keypair
+            .to_protobuf_encoding()
+            .map_err(|e| ProcedureError::Procedure(e.to_string().into()))?;
+        self.write_to_vault(&msg.location, msg.hint, bytes)?;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "p2p")]
+impl Handler<p2p_messages::WriteP2pKeypair> for SecureClient {
+    type Result = Result<(), ProcedureError>;
+
+    fn handle(&mut self, msg: p2p_messages::WriteP2pKeypair, _ctx: &mut Self::Context) -> Self::Result {
+        let bytes = msg
+            .keypair
+            .to_protobuf_encoding()
+            .map_err(|e| ProcedureError::Procedure(e.to_string().into()))?;
+        self.write_to_vault(&msg.location, msg.hint, bytes)?;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "p2p")]
+impl Handler<p2p_messages::DeriveNoiseKeypair> for SecureClient {
+    type Result = Result<(PeerId, AuthenticKeypair), ProcedureError>;
+
+    fn handle(&mut self, msg: p2p_messages::DeriveNoiseKeypair, _ctx: &mut Self::Context) -> Self::Result {
+        let mut id_keys = None;
+        let f = |guard: GuardedVec<u8>| {
+            let keys = Keypair::from_protobuf_encoding(&*guard.borrow()).map_err(|e| e.to_string())?;
+            let _ = id_keys.insert(keys);
+            Ok(())
+        };
+        self.get_guard(&msg.p2p_keypair, f)?;
+        let id_keys = id_keys.unwrap();
+        let keypair = NoiseKeypair::new()
+            .into_authentic(&id_keys)
+            .map_err(|e| ProcedureError::Procedure(e.to_string().into()))?;
+        let peer_id = PeerId::from_public_key(&id_keys.public());
+        Ok((peer_id, keypair))
     }
 }
