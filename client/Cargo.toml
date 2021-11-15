@@ -31,17 +31,19 @@ path = "../engine"
 version = "0.4"
 
 [dependencies.iota-crypto]
-version = "0.7.0"
+version = "0.8.0"
 features = [
 "aes",
 "random",
 "ed25519",
 "sha",
 "hmac",
+"blake2b",
 "bip39-en",
 "bip39-jp",
 "slip10",
-"chacha"
+"chacha",
+"x25519",
 ]
 
 [dependencies.stronghold-p2p]
