@@ -23,11 +23,7 @@ use futures::{
     AsyncRead, AsyncWrite, FutureExt,
 };
 use libp2p::{
-    core::{
-        connection::{ConnectionLimits, ListenerId},
-        transport::Transport,
-        upgrade, Executor, Multiaddr, PeerId,
-    },
+    core::{connection::ListenerId, transport::Transport, upgrade, Executor, Multiaddr, PeerId},
     mdns::{Mdns, MdnsConfig},
     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
     relay::{new_transport_and_behaviour, RelayConfig},
@@ -379,7 +375,7 @@ where
     // Export the firewall configuration and address info.
     pub async fn export_state(&mut self) -> BehaviourState<TRq> {
         let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::ExportState { tx_yield };
+        let command = SwarmOperation::ExportConfig { tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -649,7 +645,7 @@ where
         let mut swarm_builder =
             SwarmBuilder::new(boxed_transport, behaviour, peer_id).executor(Box::new(executor.clone()));
         if let Some(limit) = self.connections_limit {
-            swarm_builder = swarm_builder.connection_limits(limit);
+            swarm_builder = swarm_builder.connection_limits(limit.into());
         }
         let swarm = swarm_builder.build();
         let local_peer_id = *swarm.local_peer_id();

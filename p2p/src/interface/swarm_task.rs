@@ -140,7 +140,7 @@ pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
         tx_yield: oneshot::Sender<Ack>,
     },
 
-    ExportState {
+    ExportConfig {
         tx_yield: oneshot::Sender<BehaviourState<TRq>>,
     },
 }
@@ -508,7 +508,7 @@ where
                 self.swarm.unban_peer_id(peer);
                 let _ = tx_yield.send(());
             }
-            SwarmOperation::ExportState { tx_yield } => {
+            SwarmOperation::ExportConfig { tx_yield } => {
                 let state = self.swarm.behaviour_mut().export_state();
                 let _ = tx_yield.send(state);
             }

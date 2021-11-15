@@ -90,8 +90,23 @@ pub enum SpawnNetworkError {
     #[error("network already running")]
     AlreadySpawned,
 
+    #[error("no client found for loading the config")]
+    ClientNotFound,
+
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
+
+    #[error("Error loading network config: {0}")]
+    LoadConfig(String),
+}
+
+impl From<ActorError> for SpawnNetworkError {
+    fn from(e: ActorError) -> Self {
+        match e {
+            ActorError::Mailbox(e) => SpawnNetworkError::ActorMailbox(e),
+            ActorError::TargetNotFound => SpawnNetworkError::ClientNotFound,
+        }
+    }
 }
 
 #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
@@ -447,9 +462,23 @@ impl Stronghold {
         if self.registry.send(GetNetwork).await?.is_some() {
             return Err(SpawnNetworkError::AlreadySpawned);
         }
-        let addr = NetworkActor::new(self.registry.clone(), network_config, None, None)
+        let addr = NetworkActor::new(self.registry.clone(), network_config).await?.start();
+        self.registry.send(InsertNetwork { addr }).await?;
+        Ok(())
+    }
+
+    /// Spawn the p2p-network actor and swarm, with config that is stored in the store at the given Key.
+    pub async fn spawn_p2p_load_config(&mut self, config_key: Vec<u8>) -> Result<(), SpawnNetworkError> {
+        if self.registry.send(GetNetwork).await?.is_some() {
+            return Err(SpawnNetworkError::AlreadySpawned);
+        }
+        let config_bytes = self
+            .read_from_store(config_key.clone())
             .await?
-            .start();
+            .ok_or_else(|| SpawnNetworkError::LoadConfig(format!("No config found at key {:?}", config_key)))?;
+        let config = bincode::deserialize(&config_bytes)
+            .map_err(|e| SpawnNetworkError::LoadConfig(format!("Deserializing state failed: {}", e.to_string())))?;
+        let addr = NetworkActor::new(self.registry.clone(), config).await?.start();
         self.registry.send(InsertNetwork { addr }).await?;
         Ok(())
     }
@@ -463,8 +492,8 @@ impl Stronghold {
             .await?
             .ok_or(ActorError::TargetNotFound)?;
         if let Some(key) = write_config {
-            let state = actor.send(network_messages::ExportState).await?;
-            let payload = match bincode::serialize(&state) {
+            let config = actor.send(network_messages::ExportConfig).await?;
+            let payload = match bincode::serialize(&config) {
                 Ok(bytes) => bytes,
                 Err(e) => return Ok(Err(e)),
             };

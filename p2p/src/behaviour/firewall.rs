@@ -91,7 +91,7 @@ impl RuleDirection {
 }
 
 /// Rule configuration for inbound and outbound requests.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FirewallRules<TRq: Clone> {
     /// Rule for inbound requests.
     pub inbound: Option<Rule<TRq>>,
@@ -133,7 +133,7 @@ impl<TRq: Clone> FirewallRules<TRq> {
 /// If there are neither default rules, nor a peer specific rule for a request from/ to a peer,
 /// a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel that is passed to
 /// `StrongholdP2p`.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "SerdeFirewallConfig")]
 #[serde(into = "SerdeFirewallConfig")]
 pub struct FirewallConfiguration<TRq: Clone> {

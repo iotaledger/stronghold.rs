@@ -1033,7 +1033,7 @@ where
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BehaviourState<TRq: Clone> {
     pub firewall: FirewallConfiguration<TRq>,
     pub address_info: AddressInfo,

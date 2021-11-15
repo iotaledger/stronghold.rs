@@ -11,9 +11,10 @@ use futures::{channel::mpsc, FutureExt, TryFutureExt};
 use messages::*;
 use p2p::{
     firewall::{FirewallRules, Rule},
-    BehaviourState, ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr,
-    Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
+    BehaviourState, ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, ListenErr, ListenRelayErr, Multiaddr,
+    OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     io,
@@ -82,24 +83,16 @@ pub struct NetworkActor {
 }
 
 impl NetworkActor {
-    pub async fn new(
-        registry: Addr<Registry>,
-        network_config: NetworkConfig,
-        former_state: Option<BehaviourState<ShRequest>>,
-        keypair: Option<InitKeypair>,
-    ) -> Result<Self, io::Error> {
+    pub async fn new(registry: Addr<Registry>, mut network_config: NetworkConfig) -> Result<Self, io::Error> {
         let (firewall_tx, _) = mpsc::channel(0);
         let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
         let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None)
             .with_mdns_support(network_config.enable_mdns)
             .with_relay_support(network_config.enable_relay);
-        if let Some(state) = former_state {
+        if let Some(state) = network_config.state.take() {
             builder = builder.load_state(state);
         } else {
             builder = builder.with_firewall_default(FirewallRules::allow_all())
-        }
-        if let Some(keypair) = keypair {
-            builder = builder.with_keys(keypair)
         }
         if let Some(timeout) = network_config.request_timeout {
             builder = builder.with_request_timeout(timeout)
@@ -167,6 +160,21 @@ where
                 let res: Rq::Result = wrapper.try_into().unwrap();
                 res
             })
+        }
+        .into_actor(self)
+        .boxed_local()
+    }
+}
+
+impl Handler<ExportConfig> for NetworkActor {
+    type Result = ResponseActFuture<Self, NetworkConfig>;
+
+    fn handle(&mut self, _: ExportConfig, _: &mut Self::Context) -> Self::Result {
+        let mut network = self.network.clone();
+        let config = self.config.clone();
+        async move {
+            let state = network.export_state().await;
+            config.load_state(state)
         }
         .into_actor(self)
         .boxed_local()
@@ -249,10 +257,6 @@ impl_handler!(RemoveDialingRelay => bool, |network, msg| {
     network.remove_dialing_relay(msg.relay).await
 });
 
-impl_handler!(ExportState => BehaviourState<ShRequest>, |network, _msg| {
-    network.export_state().await
-});
-
 // Config for the new network.
 /// Default behaviour:
 /// - No limit for simultaneous connections.
@@ -260,12 +264,14 @@ impl_handler!(ExportState => BehaviourState<ShRequest>, |network, _msg| {
 /// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id to
 ///   the local network.
 /// - [`Relay`][`libp2p::relay`] functionality is disabled.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
     connections_limit: Option<ConnectionLimits>,
     enable_mdns: bool,
     enable_relay: bool,
+    state: Option<BehaviourState<ShRequest>>,
 }
 
 impl NetworkConfig {
@@ -303,6 +309,12 @@ impl NetworkConfig {
         self.enable_relay = is_enabled;
         self
     }
+
+    /// Import state exported from a past network actor.
+    pub fn load_state(mut self, state: BehaviourState<ShRequest>) -> Self {
+        self.state = Some(state);
+        self
+    }
 }
 
 impl Default for NetworkConfig {
@@ -313,6 +325,7 @@ impl Default for NetworkConfig {
             connections_limit: None,
             enable_mdns: false,
             enable_relay: false,
+            state: None,
         }
     }
 }
@@ -458,8 +471,8 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "BehaviourState<ShRequest>")]
-    pub struct ExportState;
+    #[rtype(result = "NetworkConfig")]
+    pub struct ExportConfig;
 
     #[derive(Debug, Message, Clone, Serialize, Deserialize)]
     #[rtype(result = "Result<(), RemoteRecordError>")]
