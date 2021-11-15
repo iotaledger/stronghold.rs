@@ -431,7 +431,7 @@ async fn test_stronghold_p2p() {
             .await
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
         local_stronghold
-            .spawn_p2p(NetworkConfig::default())
+            .spawn_p2p(NetworkConfig::default(), None)
             .await
             .unwrap_or_else(|e| panic!("Could not spawn p2p: {}", e));
 
@@ -495,7 +495,7 @@ async fn test_stronghold_p2p() {
             .await
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
         remote_stronghold
-            .spawn_p2p(NetworkConfig::default())
+            .spawn_p2p(NetworkConfig::default(), None)
             .await
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
 

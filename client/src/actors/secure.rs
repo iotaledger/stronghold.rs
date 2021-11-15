@@ -168,7 +168,7 @@ pub mod messages {
 }
 
 #[cfg(feature = "p2p")]
-mod p2p_messages {
+pub mod p2p_messages {
 
     use crate::Location;
 

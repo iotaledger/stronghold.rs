@@ -51,7 +51,7 @@ pub async fn list_peers_command(stronghold: &mut iota_stronghold::Stronghold) ->
 
 /// Displays the swarm info of this stronghold instance
 pub async fn show_swarm_info_command(stronghold: &mut iota_stronghold::Stronghold) -> Result<(), Box<dyn Error>> {
-    stronghold.spawn_p2p(NetworkConfig::default()).await?;
+    stronghold.spawn_p2p(NetworkConfig::default(), None).await?;
 
     let SwarmInfo {
         local_peer_id,
@@ -76,7 +76,7 @@ pub async fn start_listening_command(
     let multiaddress: Multiaddr = multiaddr.parse()?;
 
     // spawn network actor
-    let network = stronghold.spawn_p2p(NetworkConfig::default()).await;
+    let network = stronghold.spawn_p2p(NetworkConfig::default(), None).await;
     println!("Network actor spawned: {:?}", network);
 
     // start listening

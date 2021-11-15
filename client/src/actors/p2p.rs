@@ -11,8 +11,8 @@ use futures::{channel::mpsc, FutureExt, TryFutureExt};
 use messages::*;
 use p2p::{
     firewall::{FirewallRules, Rule},
-    BehaviourState, ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, ListenErr, ListenRelayErr, Multiaddr,
-    OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
+    BehaviourState, ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr,
+    Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -83,7 +83,11 @@ pub struct NetworkActor {
 }
 
 impl NetworkActor {
-    pub async fn new(registry: Addr<Registry>, mut network_config: NetworkConfig) -> Result<Self, io::Error> {
+    pub async fn new(
+        registry: Addr<Registry>,
+        mut network_config: NetworkConfig,
+        keypair: Option<InitKeypair>,
+    ) -> Result<Self, io::Error> {
         let (firewall_tx, _) = mpsc::channel(0);
         let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
         let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None)
@@ -102,6 +106,9 @@ impl NetworkActor {
         }
         if let Some(ref limit) = network_config.connections_limit {
             builder = builder.with_connections_limit(limit.clone())
+        }
+        if let Some(keypair) = keypair {
+            builder = builder.with_keys(keypair);
         }
 
         let network = builder.build().await?;
