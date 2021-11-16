@@ -75,11 +75,21 @@ macro_rules! sh_result_mapping {
     };
 }
 
+/// Actor that handles all network interaction.
+///
+/// On [`NetworkActor::new`] a new [`StrongholdP2p`] is created, which will spawn
+/// a libp2p Swarm and continuously poll it.
 pub struct NetworkActor {
+    // Interface of stronghold-p2p for all network interaction.
     network: StrongholdP2p<ShRequest, ShResult>,
-    inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
+    // Actor registry from which the address of the target client and snapshot actor can be queried.
     registry: Addr<Registry>,
-    config: NetworkConfig,
+    // Channel through which inbound requests are received.
+    // This channel is only inserted temporary on [`NetworkActor::new`], and is handed
+    // to the stream handler in `<Self as Actor>::started`.
+    _inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
+    // Cache the network config so it can be returned on `ExportConfig`.
+    _config: NetworkConfig,
 }
 
 impl NetworkActor {
@@ -114,9 +124,9 @@ impl NetworkActor {
         let network = builder.build().await?;
         let actor = Self {
             network,
-            inbound_request_rx: Some(inbound_request_rx),
+            _inbound_request_rx: Some(inbound_request_rx),
             registry,
-            config: network_config,
+            _config: network_config,
         };
         Ok(actor)
     }
@@ -126,7 +136,7 @@ impl Actor for NetworkActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        let inbound_request_rx = self.inbound_request_rx.take().unwrap();
+        let inbound_request_rx = self._inbound_request_rx.take().unwrap();
         Self::add_stream(inbound_request_rx, ctx);
     }
 }
@@ -178,7 +188,7 @@ impl Handler<ExportConfig> for NetworkActor {
 
     fn handle(&mut self, _: ExportConfig, _: &mut Self::Context) -> Self::Result {
         let mut network = self.network.clone();
-        let config = self.config.clone();
+        let config = self._config.clone();
         async move {
             let state = network.export_state().await;
             config.load_state(state)

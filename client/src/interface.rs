@@ -465,6 +465,12 @@ impl Stronghold {
 #[cfg(feature = "p2p")]
 impl Stronghold {
     /// Spawn the p2p-network actor and swarm.
+    /// The `keypair`parameter can be provided as location in which a keypair is stored,
+    /// (either via [`Stronghold::generate_p2p_keypair`] or [`Stronghold::write_p2p_keypair`]).
+    /// A new noise [`AuthenticKeypair`] and the [`PeerId`] will be derived from this keypair and used
+    /// for authentication and encryption on the transport layer.
+    ///
+    /// **Note**: The noise keypair differs for each derivation, the [`PeerId`] is consistent.
     pub async fn spawn_p2p(
         &mut self,
         network_config: NetworkConfig,
@@ -491,7 +497,12 @@ impl Stronghold {
         Ok(())
     }
 
-    /// Spawn the p2p-network actor and swarm, with config that is stored in the specified client at at the given key.
+    /// Spawn the p2p-network actor and swarm, load the config from a former running network-actor.
+    /// The `key` parameter species the location in which in the config is stored, i.g.
+    /// the key that was set on [`Stronghold::stop_p2p`].
+    ///
+    /// **Note**: Firewall rules with [`Rule::Restricted`] can not be serialized / deserialized, hence
+    /// they will be skipped and have to be added manually.
     pub async fn spawn_p2p_load_config(
         &mut self,
         key: Vec<u8>,
@@ -509,7 +520,6 @@ impl Stronghold {
     /// Generate a new p2p-keypair in the vault.
     /// This keypair can be used with [`Stronghold::spawn_p2p`] and [`Stronghold::spawn_p2p_load_config`] to derive a
     /// new noise-keypair and peer id for encryption and authentication on the p2p transport layer.
-    /// **Note**: The keypair differs for each new derivation, the `PeerId` is consistent.
     pub async fn generate_p2p_keypair(
         &mut self,
         location: Location,
@@ -523,6 +533,9 @@ impl Stronghold {
         Ok(res)
     }
 
+    /// Write an existing [`Keypair`] into the vault.
+    /// This keypair can then be used with [`Stronghold::spawn_p2p`] and [`Stronghold::spawn_p2p_load_config`] to derive
+    /// a new noise-keypair and peer id for encryption and authentication on the p2p transport layer.
     pub async fn write_p2p_keypair(
         &mut self,
         keypair: Keypair,
@@ -543,6 +556,11 @@ impl Stronghold {
 
     /// Gracefully stop the network actor and swarm.
     /// Return `false` if there is no active network actor.
+    /// Optionally store the current config (known addresses of remote peers and firewall rules) in the store
+    /// at the specified `key`.
+    ///
+    /// **Note**: Firewall rules with [`Rule::Restricted`] can not be serialized / deserialized, hence
+    /// they will be skipped and have to be added manually again after init.
     pub async fn stop_p2p(&mut self, write_config: Option<Vec<u8>>) -> StrongholdResult<bincode::Result<()>> {
         let actor = self
             .registry
@@ -558,6 +576,13 @@ impl Stronghold {
             self.write_to_store(key, payload, None).await?;
         }
         Ok(Ok(()))
+    }
+
+    // Export the config and state of the p2p-layer.
+    pub async fn export_config(&mut self) -> StrongholdResult<NetworkConfig> {
+        let actor = self.network_actor().await?;
+        let config = actor.send(network_messages::ExportConfig).await?;
+        Ok(config)
     }
 
     /// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.
