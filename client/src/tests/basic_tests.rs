@@ -3,7 +3,7 @@
 
 use crate::{
     line_error,
-    utils::{into_map, LoadFromPath},
+    utils::{complement, into_map, LoadFromPath},
     Location, RecordHint, Stronghold,
 };
 
@@ -390,4 +390,15 @@ fn test_into_map() {
     assert!(m.contains_key(&1));
     assert!(m.contains_key(&3));
     assert!(m.contains_key(&5));
+}
+
+#[test]
+fn test_completement() {
+    let a = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let b = vec![2, 3, 4, 7, 8, 9, 10, 11];
+
+    let expected = vec![1, 5, 6];
+
+    let actual = complement(a, b);
+    assert_eq!(actual, expected);
 }

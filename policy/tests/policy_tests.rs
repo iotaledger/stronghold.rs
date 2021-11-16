@@ -1,16 +1,94 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use core::panic;
-use policyengine::types::AnyMap;
+mod supply;
 
-#[derive(Default, PartialEq, Clone)]
-pub struct Entity {
-    id: usize,
-    name: String,
-    allowed: Vec<String>,
+use std::collections::HashMap;
+
+use policyengine::{
+    types::{access::Access, anymap::AnyMap, Cardinality},
+    Engine, Policy,
+};
+
+use stronghold_utils::random as rnd;
+
+use self::supply::*;
+use macros::Cardinality;
+use rand::Rng;
+
+#[test]
+#[allow(dead_code)]
+fn test_enum_cardinality() {
+    #[derive(Cardinality)]
+    enum LocalA {
+        A,
+        B,
+        C,
+    }
+
+    #[derive(Cardinality)]
+    enum LocalB<T>
+    where
+        T: Clone + Default,
+    {
+        A,
+        Random,
+        SomeValue(usize),
+        StructVariant { name: String },
+        Generic(T),
+    }
+
+    assert_eq!(LocalA::cardinality(), 3);
+    assert_eq!(LocalB::<usize>::cardinality(), 5);
+    assert_eq!(Access::cardinality(), 5);
 }
 
+#[test]
+fn test_policy() {
+    // set up
+    let mut engine: Engine<PeerId, ClientId, Location> = Engine::default();
+    let mut rng = rand::thread_rng();
+
+    let runs = 40;
+    let max_locations = 30;
+
+    for _ in 0..runs {
+        let peer_id: PeerId = rnd::bytestring(64).into();
+        let client_id: ClientId = rnd::bytestring(64).into();
+
+        engine.context(peer_id.clone(), client_id.clone());
+
+        let num_locations = rng.gen_range(1usize..max_locations);
+
+        // create map of expected values
+        let expected: HashMap<_, Access> = std::iter::repeat_with(|| (Location::random(), rng.gen()))
+            .take(num_locations)
+            .collect();
+
+        // configure
+        expected.iter().for_each(|(location, access)| {
+            engine.insert(client_id.clone(), access.clone(), location.clone());
+        });
+
+        // go over locations
+        expected.iter().for_each(|(location, access)| {
+            // test
+            match engine.check_access(&peer_id, location) {
+                Ok(ref inner) => {
+                    assert_eq!(access, inner);
+                }
+                Err(_) => {
+                    panic!("Location has no access defined")
+                }
+            }
+        });
+
+        // tear down
+        engine.clear_all();
+    }
+}
+
+// todo move to types
 #[test]
 fn test_any_map() {
     let mut data = AnyMap::default();

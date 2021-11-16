@@ -211,6 +211,7 @@ pub mod messages {
 /// and [`PartialSynchronization`] it optionally expects a `path` or a `filename`, either
 /// the stronghold snapshot resides at another place than the default, or the latter, if
 /// the name of the snapshot is known.
+/// TODO: move to types(?)
 #[derive(Clone)]
 pub struct SnapshotConfig {
     // the filename of the snapshot file in the default snapshot directory
@@ -381,42 +382,42 @@ impl Handler<messages::CalculateShape> for Snapshot {
     type Result = Result<HashMap<Location, EntryShape>, SnapshotError>;
 
     #[allow(unused_variables)]
-    fn handle(&mut self, mut message: messages::CalculateShape, _ctx: &mut Self::Context) -> Self::Result {
-        let entries = message.entries.take().unwrap();
+    fn handle(&mut self, message: messages::CalculateShape, _ctx: &mut Self::Context) -> Self::Result {
+        // let entries = message.entries.take().unwrap();
 
-        let inner = &mut self.state.0;
-        let mut hasher = message.hasher.take().unwrap();
-        let mut output = HashMap::new();
+        // let inner = &mut self.state.0;
+        // let mut hasher = message.hasher.take().unwrap();
+        // let mut output = HashMap::new();
 
-        inner.iter_mut().for_each(|(_, (keys, view, store))| {
-            entries.iter().for_each(|location| {
-                let vid: VaultId = location.try_into().unwrap();
-                let rid: RecordId = location.try_into().unwrap();
+        // inner.iter_mut().for_each(|(_, (keys, view, store))| {
+        //     entries.iter().for_each(|location| {
+        //         let vid: VaultId = location.try_into().unwrap();
+        //         let rid: RecordId = location.try_into().unwrap();
 
-                let key = keys.get(&vid).unwrap();
+        //         let key = keys.get(&vid).unwrap();
 
-                view.get_guard(key, vid, rid, |guard| {
-                    let data = guard.borrow();
+        //         view.get_guard(key, vid, rid, |guard| {
+        //             let data = guard.borrow();
 
-                    data.hash(&mut hasher);
+        //             data.hash(&mut hasher);
 
-                    // create EntryShape
-                    let entry_shape = EntryShape {
-                        location: location.clone(),
-                        record_hash: hasher.finish(),
-                        record_size: data.len(),
-                    };
+        //             // create EntryShape
+        //             let entry_shape = EntryShape {
+        //                 location: location.clone(),
+        //                 record_hash: hasher.finish(),
+        //                 record_size: data.len(),
+        //             };
 
-                    // and store it in output
-                    output.insert(location.clone(), entry_shape);
+        //             // and store it in output
+        //             output.insert(location.clone(), entry_shape);
 
-                    Ok(())
-                })
-                .unwrap();
-            });
-        });
+        //             Ok(())
+        //         })
+        //         .unwrap();
+        //     });
+        // });
 
-        Ok(output)
+        Ok(HashMap::new())
     }
 }
 

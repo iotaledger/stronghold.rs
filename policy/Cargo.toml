@@ -12,6 +12,10 @@ repository = "https://github.com/iotaledger/stronghold.rs"
 [lib]
 name = "policyengine"
 
+[dependencies.stronghold-utils]
+path    = "../utils"
+version = "0.3"
+
 [dependencies.stronghold-policy-macros]
 path    = "macros"
 version = "0.1"
