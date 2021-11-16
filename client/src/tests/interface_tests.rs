@@ -1,9 +1,16 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ActorError, Location, RecordHint, Stronghold};
-
+#[cfg(feature = "p2p")]
+use crate::{
+    actors::NetworkConfig,
+    p2p::{identity::Keypair, PeerId, SwarmInfo},
+    procedures::{PersistSecret, Slip10Derive, Slip10Generate},
+};
+use crate::{tests::fresh, ActorError, Location, RecordHint, Stronghold};
 use stronghold_utils::random::bytestring;
+#[cfg(feature = "p2p")]
+use tokio::sync::{mpsc, oneshot};
 
 #[actix::test]
 async fn test_stronghold() {
@@ -392,13 +399,6 @@ async fn test_stronghold_generics() {
 #[cfg(feature = "p2p")]
 #[actix::test]
 async fn test_stronghold_p2p() {
-    use crate::{
-        actors::NetworkConfig,
-        procedures::{PersistSecret, Slip10Derive, Slip10Generate},
-        tests::fresh,
-    };
-    use tokio::sync::{mpsc, oneshot};
-
     let system = actix::System::current();
     let arbiter = system.arbiter();
 
@@ -547,4 +547,128 @@ async fn test_stronghold_p2p() {
     // wait for both threads to return
     res_rx.recv().await.unwrap();
     res_rx.recv().await.unwrap();
+}
+
+#[cfg(feature = "p2p")]
+#[actix::test]
+async fn test_p2p_config() {
+    use p2p::{firewall::Rule, OutboundFailure};
+
+    use crate::p2p::P2pError;
+
+    // Start remote stronghold and start listening
+    let mut remote_sh = Stronghold::init_stronghold_system(bytestring(4096), vec![])
+        .await
+        .unwrap();
+    match remote_sh
+        .spawn_p2p(NetworkConfig::default().with_mdns_enabled(false), None)
+        .await
+    {
+        Ok(()) => {}
+        Err(e) => panic!("Unexpected error {}", e.to_string()),
+    }
+    let remote_addr = match remote_sh.start_listening(None).await.unwrap() {
+        Ok(a) => a,
+        Err(e) => panic!("Unexpected error {}", e.to_string()),
+    };
+    let SwarmInfo {
+        local_peer_id: remote_id,
+        ..
+    } = remote_sh.get_swarm_info().await.unwrap();
+
+    // Start (local) stronghold.
+    let client_path = fresh::bytestring(4096);
+    let mut stronghold = Stronghold::init_stronghold_system(client_path.clone(), vec![])
+        .await
+        .unwrap();
+    // Generate a new Keypair and write it to the vault
+    let keypair = Keypair::generate_ed25519();
+    let peer_id = PeerId::from_public_key(&keypair.public());
+    let keys_location = fresh::location();
+    match stronghold
+        .write_p2p_keypair(keypair, keys_location.clone(), fresh::record_hint())
+        .await
+        .unwrap()
+    {
+        Ok(()) => {}
+        Err(e) => panic!("Unexpected error {}", e.to_string()),
+    }
+    // Spawn p2p that uses the new keypair
+    match stronghold
+        .spawn_p2p(
+            NetworkConfig::default().with_mdns_enabled(false),
+            Some(keys_location.clone()),
+        )
+        .await
+    {
+        Ok(()) => {}
+        Err(e) => panic!("Unexpected error {}", e.to_string()),
+    }
+
+    // Start listening
+    let addr = match stronghold.start_listening(None).await.unwrap() {
+        Ok(addr) => addr,
+        Err(e) => panic!("Unexpected error {}", e.to_string()),
+    };
+    let SwarmInfo {
+        local_peer_id,
+        listeners,
+        ..
+    } = stronghold.get_swarm_info().await.unwrap();
+    assert_eq!(local_peer_id, peer_id);
+    assert!(listeners.first().unwrap().addrs.contains(&addr));
+    // Set a firewall rule
+    stronghold
+        .set_firewall_rule(Rule::RejectAll, vec![remote_id], false)
+        .await
+        .unwrap();
+    // Add the remote's address info
+    match stronghold.add_peer(remote_id, Some(remote_addr.clone())).await.unwrap() {
+        Ok(_) => {}
+        Err(e) => panic!("Unexpected error {}", e.to_string()),
+    }
+    // Test that the firewall rule is effective
+    let res = remote_sh.read_from_remote_store(peer_id, bytestring(10)).await;
+    match res {
+        Ok(_) => panic!("Request should be rejected."),
+        Err(P2pError::Local(e)) => panic!("Unexpected error {}", e.to_string()),
+        Err(P2pError::SendRequest(OutboundFailure::NotPermitted))
+        | Err(P2pError::SendRequest(OutboundFailure::DialFailure))
+        | Err(P2pError::SendRequest(OutboundFailure::Shutdown))
+        | Err(P2pError::SendRequest(OutboundFailure::Timeout)) => panic!("Unexpected error {:?}", res),
+        Err(_) => {}
+    }
+
+    // Stop p2p and store the config in the stronghold store.
+    // This should persist firewall configuration and the collected address info about the remote.
+    let store = bytestring(1024);
+    match stronghold.stop_p2p(Some(store.clone())).await.unwrap() {
+        Ok(()) => {}
+        Err(e) => panic!("Unexpected error {}", e.to_string()),
+    }
+
+    // Spawn p2p again and load the config. Use the same keypair to keep the same peer-id.
+    match stronghold.spawn_p2p_load_config(store, Some(keys_location)).await {
+        Ok(()) => {}
+        Err(e) => panic!("Unexpected error {}", e.to_string()),
+    }
+    let SwarmInfo { local_peer_id, .. } = stronghold.get_swarm_info().await.unwrap();
+
+    // Test if the local peer still has the remote's address info.
+    assert_eq!(local_peer_id, peer_id);
+    match stronghold.add_peer(remote_id, None).await.unwrap() {
+        Ok(_) => {}
+        Err(e) => panic!("Unexpected error {}", e.to_string()),
+    }
+    // Test that the firewall rule is still effective
+    let res = remote_sh.read_from_remote_store(peer_id, bytestring(10)).await;
+    match res {
+        Ok(_) => panic!("Request should be rejected."),
+        Err(P2pError::Local(e)) => panic!("Unexpected error {}", e.to_string()),
+        Err(P2pError::SendRequest(OutboundFailure::NotPermitted))
+        | Err(P2pError::SendRequest(OutboundFailure::DialFailure))
+        | Err(P2pError::SendRequest(OutboundFailure::Shutdown))
+        | Err(P2pError::SendRequest(OutboundFailure::Timeout)) => panic!("Unexpected error {:?}", res),
+        Err(_) => {}
+    }
 }

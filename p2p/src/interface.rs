@@ -14,7 +14,7 @@ pub use types::*;
 use crate::{
     behaviour::{BehaviourEvent, BehaviourState, EstablishedConnections, NetBehaviour, NetBehaviourConfig},
     firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection},
-    Keypair, RelayNotSupported,
+    RelayNotSupported,
 };
 
 use futures::{
@@ -24,6 +24,7 @@ use futures::{
 };
 use libp2p::{
     core::{connection::ListenerId, transport::Transport, upgrade, Executor, Multiaddr, PeerId},
+    identity::Keypair,
     mdns::{Mdns, MdnsConfig},
     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
     relay::{new_transport_and_behaviour, RelayConfig},

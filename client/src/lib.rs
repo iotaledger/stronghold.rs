@@ -60,7 +60,8 @@ pub mod p2p {
         interface::{P2pError, P2pResult, SpawnNetworkError},
     };
     pub use p2p::{
-        firewall::Rule, DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId, RelayNotSupported,
+        firewall::Rule, identity, DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId,
+        RelayNotSupported,
     };
 }
 

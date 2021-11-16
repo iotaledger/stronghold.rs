@@ -25,7 +25,7 @@ use engine::{
 #[cfg(feature = "p2p")]
 use engine::runtime::GuardedVec;
 #[cfg(feature = "p2p")]
-use p2p::{AuthenticKeypair, Keypair, NoiseKeypair, PeerId};
+use p2p::{identity::Keypair, AuthenticKeypair, NoiseKeypair, PeerId};
 use std::collections::HashMap;
 use stronghold_utils::GuardDebug;
 

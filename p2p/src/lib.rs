@@ -3,7 +3,7 @@
 
 mod behaviour;
 mod libp2p_reexport {
-    pub use libp2p::{core::Executor, identity::Keypair, swarm::DialError, Multiaddr, PeerId};
+    pub use libp2p::{core::Executor, identity, swarm::DialError, Multiaddr, PeerId};
     pub type AuthenticKeypair = libp2p::noise::AuthenticKeypair<libp2p::noise::X25519Spec>;
     pub type NoiseKeypair = libp2p::noise::Keypair<libp2p::noise::X25519Spec>;
 }

@@ -29,7 +29,7 @@ use crate::{
 };
 use engine::vault::{ClientId, RecordHint, RecordId};
 #[cfg(feature = "p2p")]
-use p2p::{DialErr, InitKeypair, Keypair, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
+use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
 
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
