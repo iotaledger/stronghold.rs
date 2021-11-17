@@ -3,12 +3,14 @@
 
 //! Policy Engine
 //!
-//! A dynamic policy engine for stronghold.
-//!
-//! use cases for a dynamic policy engine are
-//! - configuring diverse type of snapshot synchronization (local full/partial, remote)
-//! - setting firewall policies ( this peer with this address allow procs x y z)
-//! - creating actors according to remote peer addresses, and their set conditions
+//! A dynamic policy engine for stronghold. A policy consists
+//! of a context for which a mapping for an inner type is present. This
+//! deviates a bit from a pure policy engine implementation, but enables
+//! the user to create a more lose coupling across remote peers. In
+//! Stronghold parlance a context may represent a [`PeerId`] that is
+//! mapped to an arbitrary [`ClientId`], and each client (eg. a client actor
+//! with a state) has some fine grained access control that can be checked with
+//! the policy engine.
 
 #![allow(clippy::all)]
 #![allow(dead_code, unused_variables)]
@@ -21,7 +23,7 @@ use types::{access::Access, Count};
 
 // impl tuple count fn
 // todo move into other crate
-macros::impl_count_tuples!(26);
+policy_macros::impl_count_tuples!(26);
 
 #[derive(Default)]
 pub struct Engine<
@@ -48,7 +50,7 @@ where
     /// creates a new policy with ctx - a context to map an outer type, and
     /// a mapping to an internal type
     pub fn context(&mut self, ctx: T, internal: U) {
-        self.target.insert(ctx, internal);
+        self.target.insert(ctx, internal.clone());
     }
 }
 
@@ -66,10 +68,19 @@ pub trait Policy {
     fn check(&self, input: &Self::Context, access: Option<Access>) -> Self::Result;
 
     /// Checks the access type for a [`Self::Value`], and returns and an optional [`Access`] type
-    fn check_access(&self, input: &Self::Context, value: &Self::Value) -> Result<Access, Self::Error>;
+    fn check_access<I>(&self, input: &Self::Context, value: I) -> Result<Access, Self::Error>
+    where
+        I: Into<Self::Value>;
 
     /// Insert a new policy for mapped U to access Type
-    fn insert(&mut self, id: Self::Mapped, access: Access, value: Self::Value);
+    fn insert<I>(&mut self, id: Self::Mapped, access: Access, value: I)
+    where
+        I: Into<Self::Value>;
+
+    /// Inserts a new policy for many values
+    fn insert_all<I>(&mut self, id: Self::Mapped, access: Access, values: Vec<I>)
+    where
+        I: Into<Self::Value>;
 
     /// Removes a mapping
     fn remove(&mut self, id: Self::Mapped);
@@ -114,7 +125,12 @@ where
     }
 
     /// Checks the access type for a [`Self::Value`], and returns and optional access type
-    fn check_access(&self, input: &Self::Context, value: &Self::Value) -> Result<Access, Self::Error> {
+    fn check_access<I>(&self, input: &Self::Context, value: I) -> Result<Access, Self::Error>
+    where
+        I: Into<Self::Value>,
+    {
+        let value = value.into();
+
         // (1) get mapped type
         let key = match self.target.get(input) {
             Some(mapped) => mapped,
@@ -130,17 +146,28 @@ where
         map.get(&value).map(Clone::clone).ok_or(())
     }
 
-    fn insert(&mut self, id: Self::Mapped, access: Access, value: Self::Value) {
-        let previous = self.access.get(&id).cloned();
-        let previous = self.access.entry(id.clone()).or_insert(HashMap::new());
+    fn insert<I>(&mut self, id: Self::Mapped, access: Access, value: I)
+    where
+        I: Into<Self::Value>,
+    {
+        let new_value = value.into();
 
-        let p = previous.entry(access.clone()).or_insert(Vec::new());
-        p.push(value.clone());
+        // reverse mapping
+        let a = self.access.entry(id.clone()).or_insert(HashMap::new());
+        a.entry(access.clone()).or_insert(Vec::new()).push(new_value.clone());
 
-        let previous = self.values.get(&id).cloned();
-        let previous = self.values.entry(id).or_insert(HashMap::new());
+        // forward mapping
+        let b = self.values.entry(id).or_insert(HashMap::new());
+        b.entry(new_value).or_insert(access);
+    }
 
-        previous.entry(value).or_insert(access);
+    fn insert_all<I>(&mut self, id: Self::Mapped, access: Access, values: Vec<I>)
+    where
+        I: Into<Self::Value>,
+    {
+        for value in values {
+            self.insert(id.clone(), access.clone(), value)
+        }
     }
 
     fn remove(&mut self, id: Self::Mapped) {

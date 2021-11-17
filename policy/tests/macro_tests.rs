@@ -1,6 +1,6 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-use macros::{impl_count_tuples, map};
+use policy_macros::{impl_count_tuples, map};
 use std::collections::HashMap;
 
 /// Local type that will be implemented by the trait

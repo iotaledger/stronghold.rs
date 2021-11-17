@@ -14,12 +14,6 @@ pub struct PeerId {
     pub id: Vec<u8>,
 }
 
-impl AsRef<PeerId> for PeerId {
-    fn as_ref(&self) -> &PeerId {
-        self
-    }
-}
-
 #[derive(PartialEq, Eq, Hash, Default, Clone)]
 pub struct ClientId {
     pub id: Vec<u8>,
@@ -29,6 +23,14 @@ pub struct ClientId {
 pub struct Location {
     pub chain_id: Vec<u8>,
     pub record_id: Vec<u8>,
+}
+
+// impl
+
+impl AsRef<PeerId> for PeerId {
+    fn as_ref(&self) -> &PeerId {
+        self
+    }
 }
 
 impl From<Vec<u8>> for PeerId {
@@ -43,6 +45,23 @@ impl From<Vec<u8>> for ClientId {
     }
 }
 
+impl From<Vec<u8>> for Location {
+    fn from(id: Vec<u8>) -> Self {
+        Location {
+            chain_id: id.clone(),
+            record_id: id,
+        }
+    }
+}
+
+impl<const N: usize> From<&[u8; N]> for Location {
+    fn from(id: &[u8; N]) -> Self {
+        Location {
+            chain_id: id.to_vec(),
+            record_id: id.to_vec(),
+        }
+    }
+}
 impl<const N: usize> From<&[u8; N]> for PeerId {
     fn from(data: &[u8; N]) -> Self {
         PeerId { id: data.to_vec() }

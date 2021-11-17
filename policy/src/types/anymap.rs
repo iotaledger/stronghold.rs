@@ -11,7 +11,7 @@
 ///
 /// # Example
 /// ```
-/// use policyengine::types::AnyMap;
+/// use policyengine::types::anymap::AnyMap;
 ///
 /// let mut map = AnyMap::default();
 /// map.insert("key0", Box::new(0usize));

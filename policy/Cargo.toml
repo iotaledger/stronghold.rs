@@ -20,6 +20,10 @@ version = "0.3"
 path    = "macros"
 version = "0.1"
 
+[dependencies.stronghold-policy-derive]
+path    = "derive"
+version = "0.1"
+
 [dependencies.thiserror]
 version = "1.0"
 

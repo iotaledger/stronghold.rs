@@ -13,7 +13,6 @@ use policyengine::{
 use stronghold_utils::random as rnd;
 
 use self::supply::*;
-use macros::Cardinality;
 use rand::Rng;
 
 #[test]
@@ -41,6 +40,84 @@ fn test_enum_cardinality() {
     assert_eq!(LocalA::cardinality(), 3);
     assert_eq!(LocalB::<usize>::cardinality(), 5);
     assert_eq!(Access::cardinality(), 5);
+}
+
+#[test]
+fn test_policy_check_forward() {
+    let mut engine: Engine<PeerId, ClientId, Location> = Engine::default();
+
+    let peer_a: PeerId = b"peer_a".into();
+    let client_a: ClientId = b"client_a".into();
+
+    let peer_b: PeerId = b"peer_b".into();
+    let client_b: ClientId = b"client_b".into();
+
+    engine.context(peer_a.clone(), client_a.clone());
+    engine.context(peer_b.clone(), client_b.clone());
+
+    // create some access rules
+    engine.insert(client_a.clone(), Access::Read, b"loc:kljkslaj");
+    engine.insert(client_a.clone(), Access::Read, b"loc:kljkslajsaxsa");
+    engine.insert(client_a.clone(), Access::Write, b"loc:abc");
+    engine.insert(client_a, Access::Execute, b"loc:de-fgff");
+    engine.insert(client_b.clone(), Access::Write, b"loc:15262537648");
+    engine.insert(client_b, Access::Read, b"loc:5454");
+
+    // forward check for access rules
+    assert_eq!(engine.check_access(&peer_a, b"loc:kljkslaj"), Ok(Access::Read));
+    assert_eq!(engine.check_access(&peer_a, b"loc:kljkslajsaxsa"), Ok(Access::Read));
+    assert_eq!(engine.check_access(&peer_a, b"loc:abc"), Ok(Access::Write));
+    assert_eq!(engine.check_access(&peer_a, b"loc:de-fgff"), Ok(Access::Execute));
+    assert_eq!(engine.check_access(&peer_b, b"loc:15262537648"), Ok(Access::Write));
+    assert_eq!(engine.check_access(&peer_b, b"loc:5454"), Ok(Access::Read));
+}
+
+#[test]
+fn test_policy_check_reverse() {
+    let mut engine: Engine<PeerId, ClientId, Location> = Engine::default();
+
+    let peer_a: PeerId = b"peer_a".into();
+    let client_a: ClientId = b"client_a".into();
+
+    let peer_b: PeerId = b"peer_b".into();
+    let client_b: ClientId = b"client_b".into();
+
+    engine.context(peer_a.clone(), client_a.clone());
+    engine.context(peer_b.clone(), client_b.clone());
+
+    // create some access rules
+    engine.insert(client_a.clone(), Access::Read, b"loc:kljkslaj");
+    engine.insert(client_a.clone(), Access::Read, b"loc:kljkslajsaxsa");
+    engine.insert(client_a.clone(), Access::Write, b"loc:abc");
+    engine.insert(client_a, Access::Execute, b"loc:de-fgff");
+    engine.insert(client_b.clone(), Access::Write, b"loc:15262537648");
+    engine.insert(client_b, Access::Read, b"loc:5454");
+
+    // reverse checks
+    assert_eq!(
+        engine.check(&peer_a, Some(Access::Read)),
+        Some(vec![b"loc:kljkslaj".into(), b"loc:kljkslajsaxsa".into()])
+    );
+
+    assert_eq!(
+        engine.check(&peer_a, Some(Access::Write)),
+        Some(vec![b"loc:abc".into()])
+    );
+
+    assert_eq!(
+        engine.check(&peer_a, Some(Access::Execute)),
+        Some(vec![b"loc:de-fgff".into()])
+    );
+
+    assert_eq!(
+        engine.check(&peer_b, Some(Access::Write)),
+        Some(vec![b"loc:15262537648".into()])
+    );
+
+    assert_eq!(
+        engine.check(&peer_b, Some(Access::Read)),
+        Some(vec![b"loc:5454".into()])
+    );
 }
 
 #[test]
@@ -73,7 +150,7 @@ fn test_policy() {
         // go over locations
         expected.iter().for_each(|(location, access)| {
             // test
-            match engine.check_access(&peer_id, location) {
+            match engine.check_access(&peer_id, location.clone()) {
                 Ok(ref inner) => {
                     assert_eq!(access, inner);
                 }

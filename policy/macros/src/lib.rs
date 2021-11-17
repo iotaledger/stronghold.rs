@@ -3,94 +3,18 @@
 
 //! macro crate for policy engine
 //!
-//! the macro to implement policies is `#[policy(..)]` with two mandatory (`allow=[".."]`, and `deny=[""]`),
+//! ~the macro to implement policies is `#[policy(..)]` with two mandatory (`allow=[".."]`, and `deny=[""]`),
 //! and one optional (`name=""`) attribute. This macro can be used to either decorate structs or function-calls.
 //! decorating types with the attribute macro allows the user to disallow execution of certain types,
 //! as their function calls will be intercepted and resulting in an error, but not in a runtime panic.
 //! Functions may also be decorated allowing, or disallowing certain input types (TODO DEFINE!), as well as
-//! passing a function for more finegrained control, on what values are allowed and what not.
+//! passing a function for more finegrained control, on what values are allowed and what not.~
+//!
+//! All impl. should be moved to somewhere else, since the macros implemented here are more of general use
 
 use proc_macro::*;
 use quote::quote;
-use std::{collections::HashMap, str::FromStr};
-use syn::{spanned::Spanned, ItemEnum, ItemFn, ItemStruct, Meta};
-
-#[proc_macro_attribute]
-/// Policy decorator attribute macro
-///
-/// This macro enables policy checking for functions. (Behavioral) Types can be
-/// annotated with this macro to control their behavior, allowing or denying
-/// certain types of behavior (eg. execution of functions on certain type specific states).
-/// TODO: put example
-pub fn policy(attributes: proc_macro::TokenStream, input: proc_macro::TokenStream) -> TokenStream {
-    // macro attributes can be "allow", or "deny"
-    let nested_attr = syn::parse_str(attributes.to_string().as_str());
-
-    let mut _attr: HashMap<String, Vec<String>> = HashMap::new();
-
-    if let Ok(ref nested_meta) = nested_attr {
-        match nested_meta {
-            syn::NestedMeta::Meta(meta) => match meta {
-                Meta::NameValue(_nv) => {
-
-                    // attr.insert(nv.path., v)
-                    // todo read attribute pairs
-                }
-                _ => {
-                    return syn::Error::new(
-                        meta.span(),
-                        r#"No valid attribute. Allowed #[policy(name="", allow=[""], deny=[""])]"#,
-                    )
-                    .to_compile_error()
-                    .into()
-                }
-            },
-            _ => {
-                return syn::Error::new(
-                    nested_meta.span(),
-                    r#"No valid attribute. Allowed #[policy(name="", allow=[""], deny=[""])]"#,
-                )
-                .to_compile_error()
-                .into()
-            }
-        };
-    }
-
-    // the decorated type
-    // could be a function `fn`, or a specific type `struct`, `enum`
-    // let item = syn::parse_macro_input!(input as Item);
-
-    // match item {
-    //     syn::Item::Struct(item) => item.handle(_attr),
-    //     syn::Item::Enum(item) => item.handle(_attr),
-    //     syn::Item::Fn(item) => item.handle(_attr),
-    //     _ => syn::Error::new(item.span(), "No valid type").to_compile_error().into(),
-    // };
-
-    input
-}
-
-trait PolicyHandler {
-    fn handle(&self, attributes: HashMap<String, Vec<String>>) -> TokenStream;
-}
-
-impl PolicyHandler for ItemStruct {
-    fn handle(&self, _attributes: HashMap<String, Vec<String>>) -> TokenStream {
-        todo!()
-    }
-}
-
-impl PolicyHandler for ItemEnum {
-    fn handle(&self, _attributes: HashMap<String, Vec<String>>) -> TokenStream {
-        todo!()
-    }
-}
-
-impl PolicyHandler for ItemFn {
-    fn handle(&self, _attributes: HashMap<String, Vec<String>>) -> TokenStream {
-        todo!()
-    }
-}
+use std::str::FromStr;
 
 /// Creates a Hashmap
 ///
@@ -137,7 +61,7 @@ pub fn impl_count_tuples(input: proc_macro::TokenStream) -> TokenStream {
 }
 
 /// Returns an iterator of [`String`]s of the alphabet (A-Z). If the last character
-/// is 'Z', the next string returned will be 'AA'.
+/// is 'Z', the next string returned will be 'AA' and so on..
 fn alphabetical(count: usize) -> impl Iterator<Item = String> {
     let radix = 26;
     let end = ('A' as usize + radix) as u8 as char;
@@ -162,30 +86,6 @@ fn alphabetical(count: usize) -> impl Iterator<Item = String> {
 
         result.iter().collect::<String>()
     })
-}
-
-/// Derives [`Cardinality`] for enum types
-#[proc_macro_derive(Cardinality)]
-pub fn derive_enum_cardinality(input: TokenStream) -> TokenStream {
-    let item: syn::DeriveInput = syn::parse(input).unwrap();
-
-    let name = item.clone().ident;
-    let generics = item.clone().generics;
-    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
-
-    let size = match item.data {
-        syn::Data::Enum(enum_item) => enum_item.variants.len(),
-        _ => panic!("Deriving the `Cardinality` trait only works on enums so far"),
-    };
-
-    let expanded = quote! {
-        impl #impl_generics Cardinality for #name #type_generics #where_clause {
-            fn cardinality() -> usize {
-                #size
-            }
-        }
-    };
-    expanded.into()
 }
 
 /// todo move outside

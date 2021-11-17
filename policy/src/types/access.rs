@@ -1,11 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::hash::Hash;
-
 use crate::types::Cardinality;
-use macros::Cardinality;
-pub use rand::{distributions::Standard, prelude::Distribution};
+use rand::{distributions::Standard, prelude::Distribution};
+use std::hash::Hash;
 
 /// This enum defines a list of access variants to be used inside a policy
 #[derive(Clone, Cardinality, PartialEq, Eq, Hash, Debug)]

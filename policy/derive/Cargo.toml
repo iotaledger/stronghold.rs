@@ -1,15 +1,15 @@
 [package]
-name = "stronghold-policy-macros"
+name = "stronghold-policy-derive"
 version = "0.1.0"
 authors = ["IOTA Stiftung"]
 edition = "2018"
 license = "Apache-2.0"
-description = "Macros for building policies"
+description = "Derive macros for building policies"
 homepage = "https://stronghold.docs.iota.org"
 repository = "https://github.com/iotaledger/stronghold.rs"
 
 [lib]
-name = "policy_macros"
+name = "policy_derive"
 proc-macro = true
 path = "src/lib.rs"
 
@@ -22,4 +22,3 @@ version = "1.0"
 
 [dependencies.proc-macro2]
 version = "1.0"
-

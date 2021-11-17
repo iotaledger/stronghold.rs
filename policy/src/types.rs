@@ -6,6 +6,8 @@
 pub mod access;
 pub mod anymap;
 
+pub use policy_derive::Cardinality;
+
 /// Count trait for types that hold a number of items
 /// Is being used to count the number of items inside a tuple
 pub trait Count {
