@@ -42,7 +42,7 @@ We describe two major contexts where synchronization may be used and where a dif
 
 > **_Notes_**
 > 
-> ¹ local  synchronization is always related to a snapshot file
+> ¹ local  synchronization is always related to a snapshot file \
 > ² remote synchronization is always related to an interaction between two parties > A and B
 
 
