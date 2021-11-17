@@ -25,8 +25,6 @@ pub struct Location {
     pub record_id: Vec<u8>,
 }
 
-// impl
-
 impl AsRef<PeerId> for PeerId {
     fn as_ref(&self) -> &PeerId {
         self
@@ -74,6 +72,9 @@ impl<const N: usize> From<&[u8; N]> for ClientId {
     }
 }
 
+// clippy throws an error, because this implementation is only used
+// inside a test context, but nowhere else.
+#[allow(dead_code)]
 impl Location {
     pub fn random() -> Self {
         Location {

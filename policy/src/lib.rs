@@ -7,8 +7,8 @@
 //! of a context for which a mapping for an inner type is present. This
 //! deviates a bit from a pure policy engine implementation, but enables
 //! the user to create a more lose coupling across remote peers. In
-//! Stronghold parlance a context may represent a [`PeerId`] that is
-//! mapped to an arbitrary [`ClientId`], and each client (eg. a client actor
+//! Stronghold parlance a context may represent a peer id that is
+//! mapped to an arbitrary client id, and each client (eg. a client actor
 //! with a state) has some fine grained access control that can be checked with
 //! the policy engine.
 
@@ -19,11 +19,7 @@ pub mod types;
 
 use std::{collections::HashMap, hash::Hash};
 
-use types::{access::Access, Count};
-
-// impl tuple count fn
-// todo move into other crate
-policy_macros::impl_count_tuples!(26);
+use types::access::Access;
 
 #[derive(Default)]
 pub struct Engine<
