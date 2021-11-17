@@ -1,7 +1,3 @@
 # Stronghold Policy Engine
 
-The policy engine for Stronghold is being used for setting up forward chaining policy being applied
-at runtime to allow / disallow certain types of actions. One such scenario within the context of 
-stronghold is defining a synchronization policy between two Stronghold snapshots. 
-The policy engine offers the flexibility to work on certain states of stronghold
-and store them in a consise manner to control the behavior from a central point. 
+A dynamic policy engine for stronghold. A policy consists of a context for which a mapping for an inner type is present. Thisdeviates a bit from a pure policy engine implementation, but enables the user to create a more lose coupling across remote peers. In Stronghold parlance a context may represent a peer id that is mapped to an arbitrary client id, and each client (eg. a client actor with a state) has some fine grained access control that can be checked with the policy engine.
