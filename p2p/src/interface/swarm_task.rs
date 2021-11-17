@@ -361,7 +361,7 @@ where
                 let request_id = self.swarm.behaviour_mut().send_request(peer, request);
                 self.await_response.insert(request_id, tx_yield);
             }
-            SwarmOperation::ConnectPeer { peer, tx_yield } => match self.swarm.dial(&peer) {
+            SwarmOperation::ConnectPeer { peer, tx_yield } => match self.swarm.dial(peer) {
                 Ok(_) => {
                     self.await_connection.insert(peer, tx_yield);
                 }
