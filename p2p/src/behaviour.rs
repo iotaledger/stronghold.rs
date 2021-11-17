@@ -47,9 +47,10 @@ use libp2p::{
     mdns::Mdns,
     relay::Relay,
     swarm::{
-        protocols_handler::either::IntoEitherHandler, DialPeerCondition, IntoProtocolsHandler,
-        IntoProtocolsHandlerSelect, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters,
-        ProtocolsHandler,
+        dial_opts::{DialOpts, PeerCondition},
+        protocols_handler::either::IntoEitherHandler,
+        IntoProtocolsHandler, IntoProtocolsHandlerSelect, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler,
+        PollParameters, ProtocolsHandler,
     },
 };
 use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
@@ -618,12 +619,8 @@ where
         if let Some(relay) = self.relay.as_mut() {
             if let Poll::Ready(action) = relay.poll(cx, _params) {
                 match action {
-                    NetworkBehaviourAction::DialPeer {
-                        peer_id,
-                        condition,
-                        handler,
-                    } => {
-                        let first = self.new_request_response_handler(Some(peer_id));
+                    NetworkBehaviourAction::Dial { opts, handler } => {
+                        let first = self.new_request_response_handler(opts.get_peer_id());
                         let handler = match self.mdns.as_mut() {
                             Some(mdns) => {
                                 let into_protocols = IntoProtocolsHandler::select(
@@ -637,11 +634,7 @@ where
                                 IntoEitherHandler::Right(IntoEitherHandler::Right(into_protocols))
                             }
                         };
-                        return Poll::Ready(NetworkBehaviourAction::DialPeer {
-                            peer_id,
-                            condition,
-                            handler,
-                        });
+                        return Poll::Ready(NetworkBehaviourAction::Dial { opts, handler });
                     }
                     NetworkBehaviourAction::NotifyHandler {
                         peer_id,
@@ -732,10 +725,9 @@ where
                     request_id,
                     response,
                 }),
-                BehaviourAction::RequireDialAttempt(peer) => NetworkBehaviourAction::DialPeer {
+                BehaviourAction::RequireDialAttempt(peer) => NetworkBehaviourAction::Dial {
                     handler: self.new_handler_for_peer(Some(peer)),
-                    peer_id: peer,
-                    condition: DialPeerCondition::Disconnected,
+                    opts: DialOpts::peer_id(peer).condition(PeerCondition::Disconnected).build(),
                 },
                 BehaviourAction::SetProtocolSupport {
                     peer,
