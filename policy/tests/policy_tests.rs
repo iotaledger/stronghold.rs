@@ -13,7 +13,7 @@ use stronghold_utils::random as rnd;
 
 #[test]
 fn test_policy_check_forward() {
-    let mut engine: Engine<PeerId, ClientId, Location> = Engine::default();
+    let mut engine: Engine<PeerId, ClientId, Location> = Engine::new();
 
     let peer_a: PeerId = b"peer_a".into();
     let client_a: ClientId = b"client_a".into();
@@ -43,7 +43,7 @@ fn test_policy_check_forward() {
 
 #[test]
 fn test_policy_check_reverse() {
-    let mut engine: Engine<PeerId, ClientId, Location> = Engine::default();
+    let mut engine: Engine<PeerId, ClientId, Location> = Engine::new();
 
     let peer_a: PeerId = b"peer_a".into();
     let client_a: ClientId = b"client_a".into();
@@ -92,7 +92,7 @@ fn test_policy_check_reverse() {
 #[test]
 fn test_policy() {
     // set up
-    let mut engine: Engine<PeerId, ClientId, Location> = Engine::default();
+    let mut engine: Engine<PeerId, ClientId, Location> = Engine::new();
     let mut rng = rand::thread_rng();
 
     let runs = 40;

@@ -480,8 +480,8 @@ impl Handler<messages::FullSynchronization> for Snapshot {
 
                 let (map, view, store) = data;
                 output_map.extend((map.clone()).into_iter());
-                output_view.vaults.extend(view.vaults.clone().into_iter());
                 output_store = output_store.merge(store.clone());
+                output_view.vaults.extend(view.vaults.clone().into_iter());
             }
         }
 

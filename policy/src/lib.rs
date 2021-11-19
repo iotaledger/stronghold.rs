@@ -21,7 +21,7 @@ use std::{collections::HashMap, hash::Hash};
 
 use types::access::Access;
 
-#[derive(Default)]
+// #[derive(Default)]
 pub struct Engine<
     T, // this could be the general context
     U, // this could be an associated mapping
@@ -43,6 +43,14 @@ where
     U: Clone + Hash + PartialEq + Eq,
     V: Clone + Hash + Eq,
 {
+    pub fn new() -> Self {
+        Self {
+            target: HashMap::new(),
+            access: HashMap::new(),
+            values: HashMap::new(),
+        }
+    }
+
     /// creates a new policy with ctx - a context to map an outer type, and
     /// a mapping to an internal type
     pub fn context(&mut self, ctx: T, internal: U) {
@@ -67,6 +75,9 @@ pub trait Policy {
     fn check_access<I>(&self, input: &Self::Context, value: I) -> Result<Access, Self::Error>
     where
         I: Into<Self::Value>;
+
+    /// Sets a default policy, of no policy for a given value is present
+    fn set_default(&mut self, id: Self::Mapped, access: Access);
 
     /// Insert a new policy for mapped U to access Type
     fn insert<I>(&mut self, id: Self::Mapped, access: Access, value: I)
@@ -140,6 +151,10 @@ where
         };
 
         map.get(&value).map(Clone::clone).ok_or(())
+    }
+
+    fn set_default(&mut self, id: Self::Mapped, access: Access) {
+        // todo how to handle default rules
     }
 
     fn insert<I>(&mut self, id: Self::Mapped, access: Access, value: I)

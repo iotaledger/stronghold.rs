@@ -49,6 +49,10 @@ optional = true
 path = "../utils"
 version = "0.3"
 
+[dependencies.stronghold-policy]
+path    = "../policy"
+version = "0.1"
+
 [features]
 p2p = ["stronghold-p2p", "futures"]
 

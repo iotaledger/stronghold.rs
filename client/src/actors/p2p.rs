@@ -3,20 +3,26 @@
 
 #[allow(unused_imports)]
 use crate::actors::{GetSnapshot, GetTarget, Registry};
+use crate::Location;
 use actix::prelude::*;
+use engine::vault::ClientId;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
 pub use messages::SwarmInfo;
 use messages::*;
 use p2p::{
     firewall::{FirewallConfiguration, FirewallRules, Rule},
     ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr, Multiaddr,
-    OutboundFailure, ReceiveRequest, StrongholdP2p, StrongholdP2pBuilder,
+    OutboundFailure, PeerId, ReceiveRequest, StrongholdP2p, StrongholdP2pBuilder,
 };
 use std::{
     convert::{TryFrom, TryInto},
     io,
     time::Duration,
 };
+
+// policy handler
+use policy::{types::access::Access, Engine, Policy};
+use policyengine as policy;
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {
@@ -99,6 +105,9 @@ pub struct NetworkActor {
     network: StrongholdP2p<ShRequest, ShResult>,
     inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
     registry: Addr<Registry>,
+
+    // policy engine
+    policy_engine: Engine<PeerId, ClientId, Location>,
 }
 
 impl NetworkActor {
@@ -125,12 +134,36 @@ impl NetworkActor {
             builder = builder.with_connections_limit(limit)
         }
         let network = builder.build().await?;
+
+        // policy engine initialization
+        let policy_engine = Engine::new();
+
         let actor = Self {
             network,
             inbound_request_rx: Some(inbound_request_rx),
             registry,
+            policy_engine,
         };
         Ok(actor)
+    }
+}
+
+/// Policy engine related implementation
+impl NetworkActor {
+    pub async fn set_policy_context(&mut self, peer: PeerId, client: ClientId) {
+        self.policy_engine.context(peer, client);
+    }
+
+    pub async fn access(&mut self, client: ClientId, access: Access, value: Location) {
+        self.policy_engine.insert(client, access, value);
+    }
+
+    pub async fn allow(&mut self, client: ClientId, value: Location) {
+        self.policy_engine.insert(client, Access::All, value);
+    }
+
+    pub async fn deny(&mut self, client: ClientId, value: Location) {
+        self.policy_engine.insert(client, Access::NoAccess, value);
     }
 }
 
