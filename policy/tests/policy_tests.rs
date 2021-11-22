@@ -33,12 +33,18 @@ fn test_policy_check_forward() {
     engine.insert(client_b, Access::Read, b"loc:5454");
 
     // forward check for access rules
-    assert_eq!(engine.check_access(&peer_a, b"loc:kljkslaj"), Ok(Access::Read));
-    assert_eq!(engine.check_access(&peer_a, b"loc:kljkslajsaxsa"), Ok(Access::Read));
-    assert_eq!(engine.check_access(&peer_a, b"loc:abc"), Ok(Access::Write));
-    assert_eq!(engine.check_access(&peer_a, b"loc:de-fgff"), Ok(Access::Execute));
-    assert_eq!(engine.check_access(&peer_b, b"loc:15262537648"), Ok(Access::Write));
-    assert_eq!(engine.check_access(&peer_b, b"loc:5454"), Ok(Access::Read));
+    assert_eq!(engine.check_access(&peer_a, Some(b"loc:kljkslaj")), Ok(Access::Read));
+    assert_eq!(
+        engine.check_access(&peer_a, Some(b"loc:kljkslajsaxsa")),
+        Ok(Access::Read)
+    );
+    assert_eq!(engine.check_access(&peer_a, Some(b"loc:abc")), Ok(Access::Write));
+    assert_eq!(engine.check_access(&peer_a, Some(b"loc:de-fgff")), Ok(Access::Execute));
+    assert_eq!(
+        engine.check_access(&peer_b, Some(b"loc:15262537648")),
+        Ok(Access::Write)
+    );
+    assert_eq!(engine.check_access(&peer_b, Some(b"loc:5454")), Ok(Access::Read));
 }
 
 #[test]
@@ -90,6 +96,70 @@ fn test_policy_check_reverse() {
 }
 
 #[test]
+fn test_with_default() {
+    let mut engine: Engine<PeerId, ClientId, Location> = Engine::new_with_default(Access::All);
+
+    let peer_a: PeerId = b"peer_a".into();
+    let client_a: ClientId = b"client_a".into();
+
+    let peer_b: PeerId = b"peer_b".into();
+    let client_b: ClientId = b"client_b".into();
+
+    let peer_c: PeerId = b"peer_c".into();
+
+    engine.context(peer_a, client_a.clone());
+    engine.context(peer_b, client_b.clone());
+
+    // create some access rules
+    engine.insert(client_a.clone(), Access::Read, b"loc:kljkslaj");
+    engine.insert(client_a.clone(), Access::Read, b"loc:kljkslajsaxsa");
+    engine.insert(client_a.clone(), Access::Write, b"loc:abc");
+    engine.insert(client_a, Access::Execute, b"loc:de-fgff");
+    engine.insert(client_b.clone(), Access::Write, b"loc:15262537648");
+    engine.insert(client_b, Access::Read, b"loc:5454");
+
+    // forward check for access rules
+    assert_eq!(engine.check_access(&peer_c, None::<Location>), Ok(Access::All));
+}
+
+#[test]
+fn test_with_default_reset() {
+    let mut engine: Engine<PeerId, ClientId, Location> = Engine::new_with_default(Access::All);
+
+    let peer_a: PeerId = b"peer_a".into();
+    let client_a: ClientId = b"client_a".into();
+
+    let peer_b: PeerId = b"peer_b".into();
+    let client_b: ClientId = b"client_b".into();
+
+    let peer_c: PeerId = b"peer_c".into();
+
+    engine.context(peer_a.clone(), client_a.clone());
+    engine.context(peer_b.clone(), client_b.clone());
+
+    // create some access rules
+    engine.insert(client_a.clone(), Access::Read, b"loc:kljkslaj");
+    engine.insert(client_a.clone(), Access::Read, b"loc:kljkslajsaxsa");
+    engine.insert(client_a.clone(), Access::Write, b"loc:abc");
+    engine.insert(client_a, Access::Execute, b"loc:de-fgff");
+    engine.insert(client_b.clone(), Access::Write, b"loc:15262537648");
+    engine.insert(client_b, Access::Read, b"loc:5454");
+
+    // forward check for access rules
+    assert_eq!(engine.check_access(&peer_c, None::<Location>), Ok(Access::All));
+
+    // reset all
+    engine.clear_all();
+
+    // set default
+    engine.set_default(Access::NoAccess);
+
+    // check if default access is set
+    assert_eq!(engine.check_access(&peer_a, None::<Location>), Ok(Access::NoAccess));
+    assert_eq!(engine.check_access(&peer_b, None::<Location>), Ok(Access::NoAccess));
+}
+
+#[test]
 fn test_policy() {
     // set up
     let mut engine: Engine<PeerId, ClientId, Location> = Engine::new();
@@ -119,7 +189,7 @@ fn test_policy() {
         // go over locations
         expected.iter().for_each(|(location, access)| {
             // test
-            match engine.check_access(&peer_id, location.clone()) {
+            match engine.check_access(&peer_id, Some(location.clone())) {
                 Ok(ref inner) => {
                     assert_eq!(access, inner);
                 }

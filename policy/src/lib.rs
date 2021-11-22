@@ -35,6 +35,7 @@ pub struct Engine<
 
     access: HashMap<U, HashMap<Access, Vec<V>>>, // the access type mapping
     values: HashMap<U, HashMap<V, Access>>,      // the direct mapping of value and access type
+    default: Option<Access>,
 }
 
 impl<T, U, V> Engine<T, U, V>
@@ -43,12 +44,27 @@ where
     U: Clone + Hash + PartialEq + Eq,
     V: Clone + Hash + Eq,
 {
+    /// Creates a new [`Engine`] instance
     pub fn new() -> Self {
         Self {
             target: HashMap::new(),
             access: HashMap::new(),
             values: HashMap::new(),
+            default: None,
         }
+    }
+
+    /// Creates a new [`Engine`] instance with a default [`Access`] policy for a context
+    pub fn new_with_default(access: Access) -> Self {
+        let mut engine = Engine::new();
+        engine.default = Some(access);
+
+        engine
+    }
+
+    /// Sets the default [`Access`] level
+    pub fn set_default(&mut self, access: Access) {
+        self.default = Some(access);
     }
 
     /// creates a new policy with ctx - a context to map an outer type, and
@@ -72,12 +88,9 @@ pub trait Policy {
     fn check(&self, input: &Self::Context, access: Option<Access>) -> Self::Result;
 
     /// Checks the access type for a [`Self::Value`], and returns and an optional [`Access`] type
-    fn check_access<I>(&self, input: &Self::Context, value: I) -> Result<Access, Self::Error>
+    fn check_access<I>(&self, input: &Self::Context, value: Option<I>) -> Result<Access, Self::Error>
     where
         I: Into<Self::Value>;
-
-    /// Sets a default policy, of no policy for a given value is present
-    fn set_default(&mut self, id: Self::Mapped, access: Access);
 
     /// Insert a new policy for mapped U to access Type
     fn insert<I>(&mut self, id: Self::Mapped, access: Access, value: I)
@@ -105,7 +118,7 @@ where
     U: Clone + Hash + Eq,
     V: Clone + Hash + Eq,
 {
-    type Error = ();
+    type Error = (); // define specific error type
     type Context = T;
     type Mapped = U;
     type Value = V;
@@ -131,30 +144,33 @@ where
         }
     }
 
-    /// Checks the access type for a [`Self::Value`], and returns and optional access type
-    fn check_access<I>(&self, input: &Self::Context, value: I) -> Result<Access, Self::Error>
+    /// Checks the access type for an optional [`Self::Value`], and returns the access level, or the default access
+    /// level
+    fn check_access<I>(&self, input: &Self::Context, value: Option<I>) -> Result<Access, Self::Error>
     where
         I: Into<Self::Value>,
     {
-        let value = value.into();
-
         // (1) get mapped type
         let key = match self.target.get(input) {
             Some(mapped) => mapped,
-            None => return Err(()), // error should be : no mapping present
+            None => match &self.default {
+                Some(access) => return Ok(access.clone()),
+                _ => return Err(()),
+            },
         };
 
         // (2) get access mapping
         let map = match self.values.get(&key) {
             Some(mapping) => mapping,
-            None => return Err(()), // error should be : no mapping present
+            None => return Err(()),
         };
 
-        map.get(&value).map(Clone::clone).ok_or(())
-    }
+        let v = match value {
+            Some(v) => v.into(),
+            None => return Err(()),
+        };
 
-    fn set_default(&mut self, id: Self::Mapped, access: Access) {
-        // todo how to handle default rules
+        map.get(&v).map(Clone::clone).ok_or(())
     }
 
     fn insert<I>(&mut self, id: Self::Mapped, access: Access, value: I)
@@ -192,5 +208,6 @@ where
     fn clear_all(&mut self) {
         self.target.clear();
         self.access.clear();
+        self.default.take();
     }
 }
