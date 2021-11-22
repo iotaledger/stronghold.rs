@@ -8,7 +8,7 @@
 //! actor's system [`SystemRunner`].
 
 use actix::prelude::*;
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::Duration};
 use zeroize::Zeroize;
 
 use crate::{
@@ -19,14 +19,12 @@ use crate::{
         },
         secure_procedures::{CallProcedure, ProcResult, Procedure},
         snapshot_messages::{
-            CalculateComplement, CalculateShape, ExportAllEntries, ExportSnapshot, FillSnapshot, FullSynchronization,
-            ImportSnapshot, PartialSynchronization, ReadFromSnapshot, WriteSnapshot,
+            FillSnapshot, FullSynchronization, PartialSynchronization, ReadFromSnapshot, WriteSnapshot,
         },
         GetAllClients, GetClient, GetSnapshot, GetTarget, Registry, RegistryError, RemoveClient, SecureClient,
         SnapshotConfig, SpawnClient, SwitchTarget,
     },
     line_error,
-    state::snapshot::SnapshotError,
     utils::{EntryShape, LoadFromPath, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -128,7 +126,7 @@ impl Stronghold {
     /// 1 + 2 are a trivial implementation of comparing two snapshots according to their client paths ( extension to
     /// fine-grained control over records is possible). while 3 + 4 need some extra layer of security to not expose
     /// secrets, even though they might be encrypted.
-    pub async fn synchronize_partial(
+    pub async fn synchronize_local_partial(
         &self,
         id: ClientId,
         source: SnapshotConfig,
@@ -178,7 +176,7 @@ impl Stronghold {
     }
 
     /// Fully synchronizes the current snapshot state with another snapshot, write the result eventually to disk.
-    pub async fn synchronize_full(
+    pub async fn synchronize_local_full(
         &self,
         id: ClientId,
         source: SnapshotConfig,
@@ -225,161 +223,51 @@ impl Stronghold {
         ResultMessage::Error(RegistryError::NoClientPresentById(format!("{:?}", id)).to_string())
     }
 
-    // /// Exports selected entries from the current state
-    // pub async fn synchronize_with_remote(&self) {
-    //     // accept the locations to be exported, alongside the old and new keys
-    // }
-
-    // pub async fn synchronized_from_remote(&self) {
-    //     // accept
-    // }
-
-    /// Exports all locations across all [`ClientId`]s from their respective vaults.
-    pub(crate) async fn snapshot_protocol_export_shapes(
-        &self,
-        entries: Vec<Location>,
-    ) -> Result<HashMap<Location, EntryShape>, SnapshotError> {
-        // CalculateComplement, CalculateShape, ExportAllEntries, ExportSnapshot
-        // get the snapshot actor
-        let actor = match self.registry.send(GetSnapshot {}).await {
-            Ok(actor) => actor,
-            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
-        };
-
-        // get export data
-        let _data = match actor.send(ExportAllEntries { entries }).await {
-            Ok(result) => match result {
-                Ok(result) => result,
-                Err(error) => return Err(error),
-            },
-            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
-        };
-
-        // calculate shape
-        // TODO: set data
-        match actor
-            .send(CalculateShape {
-                entries: None,
-                // data: None,
-                hasher: None,
-            })
-            .await
-        {
-            Ok(shapes) => shapes,
-            Err(error) => Err(SnapshotError::ExportError(error.to_string())),
-        }
-    }
-
-    /// Calculates the complement set for B (receiver) from A (sender). The complement set
-    /// consists of all parts that are missing inside B and should be send from A.
-    pub(crate) async fn snapshot_protocol_calculate_complement(
-        &self,
-        input: HashMap<Location, EntryShape>,
-    ) -> Result<Vec<Location>, SnapshotError> {
-        // get the snapshot actor
-        let actor = match self.registry.send(GetSnapshot {}).await {
-            Ok(actor) => actor,
-            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
-        };
-
-        let complement = match actor.send(CalculateComplement { input }).await {
-            Ok(result) => match result {
-                Ok(entries) => entries,
-                Err(error) => return Err(error),
-            },
-            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
-        };
-
-        Ok(complement)
-    }
-
-    pub(crate) async fn snapshot_protocol_export_snapshot(
-        &self,
-        input: Vec<Location>,
-        public_key: Vec<u8>,
-        client_id: ClientId,
-    ) -> Result<Vec<u8>, SnapshotError> {
-        // get the snapshot actor
-        let actor = match self.registry.send(GetSnapshot {}).await {
-            Ok(actor) => actor,
-            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
-        };
-
-        // export the snapshot
-        let snapshot = match actor
-            .send(ExportSnapshot {
-                input,
-                public_key,
-                client_id,
-            })
-            .await
-        {
-            Ok(result) => match result {
-                Ok(snapshot) => snapshot,
-                Err(error) => return Err(error),
-            },
-            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
-        };
-
-        Ok(snapshot)
-    }
-
-    /// Imports the snapshot from bytes into the current actor
-    pub(crate) async fn snapshot_protocol_import_snapshot<K>(
-        &self,
-        input: Vec<u8>,
-        key_data: &K,
-
-        _id: ClientId,
-    ) -> Result<(), SnapshotError>
+    /// Requests full synchronization from a remote peer. The local peer must have full access rights
+    /// on the remote side as defined by the policy checks. This function also requires a target [`ClientId`]
+    /// to load the remote snapshot state into.
+    ///
+    /// - the `peer_id` is used to connect to the remote peer
+    /// - the `key` will be used to encrypt the snapshot
+    /// - the `target` is the target [`ClientId`] to spawn a new actor, and load the inner state
+    #[cfg(feature = "p2p")]
+    #[allow(unused_variables)]
+    pub async fn synchronize_full_remote<K>(&self, peer_id: PeerId, key: K, target: ClientId)
     where
         K: Zeroize + AsRef<Vec<u8>>,
     {
-        // get the snapshot actor
-        let actor = match self.registry.send(GetSnapshot {}).await {
-            Ok(actor) => actor,
-            Err(error) => return Err(SnapshotError::ExportError(error.to_string())),
-        };
+        todo!()
+    }
 
-        // create key
-        let mut key = [0u8; 32];
-        key.copy_from_slice(key_data.as_ref());
+    /// Requests synchronization from a remote peer. The peer will return an [`EntryShape`] encoded list.
+    /// This function call is the first part of the implicit state synchronization protocol.
+    #[cfg(feature = "p2p")]
+    #[allow(unused_variables)]
+    pub async fn synchronize_partial_request_remote(&self, peer_id: PeerId) -> Result<Vec<EntryShape>, ()> {
+        todo!()
+    }
 
-        // import the snapshot
-        if let Err(error) = actor.send(ImportSnapshot { input, key }).await {
-            return Err(SnapshotError::ImportFailure(error.to_string()));
-        };
+    /// Sends selected entries for synchronization from a remote peer. The peer will return an encrypted
+    /// snapshot with `key`. This function call is the second part of the implicit state synchronization protocol.
+    #[cfg(feature = "p2p")]
+    #[allow(unused_variables)]
+    pub async fn synchronize_partial_select_remote<K>(&self, peer_id: PeerId, entries: Vec<Location>, key: K)
+    where
+        K: Zeroize + AsRef<Vec<u8>>,
+    {
+        todo!()
+    }
 
-        // // get target actor
-        // let target = match self.registry.send(GetTarget {}).await {
-        //     Ok(target) => target,
-        //     Err(error) => return Err(SnapshotError::OtherFailure(error.to_string())),
-        // };
-
-        // reload snapshot
-
-        // merge with current state
-        // self.synchronize_full(id, source, sync_with, destination);
-
-        // // unwrapping the target might induce an error
-        // match target.unwrap().send(ReloadData { data, id }).await {
-        //     Ok(_) => {}
-        //     Err(_) => {}
-        // };
-
-        // match target
-        //     .send(ImportData {
-        //         data: result.data,
-        //         id: result.id,
-        //     })
-        //     .await
-        // {
-        //     Ok(_) => StatusMessage::OK,
-        //     Err(e) => StatusMessage::Error(format!("Error requestion Reload Data: {}", e)),
-        // }
-
-        // this may be remove
-        Ok(())
+    /// Sends the current actors accessible entries as encoded message to the remote peer, which in turn
+    /// returns an with `key` encrypted snapshot containing the complementary entries. Remote access
+    /// control applies. The internally returned snapshot will be imported into the current target actor.
+    #[cfg(feature = "p2p")]
+    #[allow(unused_variables)]
+    pub async fn synchronize_complementary_request_remote<K>(&self, peer_id: PeerId, key: K)
+    where
+        K: Zeroize + AsRef<Vec<u8>>,
+    {
+        todo!()
     }
 
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified

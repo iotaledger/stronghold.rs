@@ -135,14 +135,11 @@ impl NetworkActor {
         }
         let network = builder.build().await?;
 
-        // policy engine initialization
-        let policy_engine = Engine::new();
-
         let actor = Self {
             network,
             inbound_request_rx: Some(inbound_request_rx),
             registry,
-            policy_engine,
+            policy_engine: Engine::new_with_default(Access::NoAccess),
         };
         Ok(actor)
     }
@@ -150,11 +147,11 @@ impl NetworkActor {
 
 /// Policy engine related implementation
 impl NetworkActor {
-    pub async fn set_policy_context(&mut self, peer: PeerId, client: ClientId) {
+    pub async fn insert_policy_context(&mut self, peer: PeerId, client: ClientId) {
         self.policy_engine.context(peer, client);
     }
 
-    pub async fn access(&mut self, client: ClientId, access: Access, value: Location) {
+    pub async fn insert_access(&mut self, client: ClientId, access: Access, value: Location) {
         self.policy_engine.insert(client, access, value);
     }
 
@@ -164,6 +161,14 @@ impl NetworkActor {
 
     pub async fn deny(&mut self, client: ClientId, value: Location) {
         self.policy_engine.insert(client, Access::NoAccess, value);
+    }
+
+    pub async fn check(&mut self, peer: &PeerId, access: Access) -> Option<Vec<Location>> {
+        self.policy_engine.check(peer, Some(access))
+    }
+
+    pub async fn check_access(&mut self, peer: &PeerId, location: Option<Location>) -> Result<Access, ()> {
+        self.policy_engine.check_access(peer, location)
     }
 }
 

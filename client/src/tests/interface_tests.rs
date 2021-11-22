@@ -368,7 +368,7 @@ async fn test_fully_synchronize_snapshot() {
 
     // partially synchronize with other snapshot
     stronghold
-        .synchronize_full(
+        .synchronize_local_full(
             ClientId::load_from_path(&client_path0.clone(), &client_path0.clone()).unwrap(),
             SnapshotConfig {
                 filename: None,
@@ -648,7 +648,7 @@ async fn test_partially_synchronize_snapshot() {
 
     // partially synchronize with other snapshot
     stronghold
-        .synchronize_partial(
+        .synchronize_local_partial(
             ClientId::load_from_path(&client_path0.clone(), &client_path0.clone()).unwrap(),
             SnapshotConfig {
                 filename: None,

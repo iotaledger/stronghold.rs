@@ -21,7 +21,6 @@ use std::{collections::HashMap, hash::Hash};
 
 use types::access::Access;
 
-// #[derive(Default)]
 pub struct Engine<
     T, // this could be the general context
     U, // this could be an associated mapping
