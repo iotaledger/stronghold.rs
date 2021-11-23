@@ -256,7 +256,10 @@ async fn test_aead(sh: &mut Stronghold, key_location: Location, key: &[u8], alg:
         AeadAlg::Aes256Gcm => Aes256Gcm::NONCE_LENGTH,
         AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::NONCE_LENGTH,
     };
-    let test_nonce = vec![random::random(); nonce_len];
+    let mut test_nonce = Vec::with_capacity(nonce_len);
+    for _ in 0..test_nonce.capacity() {
+        test_nonce.push(random::random())
+    }
 
     // test encryption
     let ctx_key = OutputKey::new("ctx");

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod errors;
-mod msg_channel;
+mod event_channel;
 mod swarm_task;
 mod types;
 
 pub use errors::*;
-pub use msg_channel::{ChannelSinkConfig, EventChannel};
+pub use event_channel::{ChannelSinkConfig, EventChannel};
 use swarm_task::{SwarmOperation, SwarmTask};
 pub use types::*;
 

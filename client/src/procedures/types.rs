@@ -680,7 +680,11 @@ mod test {
 
     #[test]
     fn proc_io_array() {
-        let array: [u8; 337] = vec![random::random(); 337].try_into().unwrap();
+        let mut test_vec = Vec::with_capacity(337);
+        for _ in 0..test_vec.capacity() {
+            test_vec.push(random::random())
+        }
+        let array: [u8; 337] = test_vec.try_into().unwrap();
         let proc_io: ProcedureIo = array.into();
         let converted = <[u8; 337]>::try_from(proc_io).unwrap();
         assert_eq!(array, converted);
