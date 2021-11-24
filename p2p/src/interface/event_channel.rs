@@ -28,7 +28,11 @@ pub enum ChannelSinkConfig {
 }
 
 /// Wrapper of a [`mpsc::channel`][futures::channel::mpsc::channel] for sending events.
-/// The [`EventChannel`] cen be configure its behaviour e capacity of the channel is reached.
+/// On top of the underlying channel it allows configuration of the `Sink` behaviour if the channel
+/// is full.
+///
+/// **Note** in case of [`ChannelSinkConfig::Block`] the [`mpsc::Receiver`] returned in [`EventChannel::new`]
+/// has to be polled continuously, otherwise `StrongholdP2p` will block while the channel is full.
 #[pin_project]
 pub struct EventChannel<T> {
     // Actual channel
