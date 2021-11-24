@@ -19,7 +19,8 @@ use crate::{
         },
         secure_procedures::{CallProcedure, ProcResult, Procedure},
         snapshot_messages::{
-            FillSnapshot, FullSynchronization, PartialSynchronization, ReadFromSnapshot, WriteSnapshot,
+            CalculateShape, DeserializeSnapshot, FillSnapshot, FullSynchronization, ImportSnapshot,
+            PartialSynchronization, ReadFromSnapshot, WriteSnapshot,
         },
         GetAllClients, GetClient, GetSnapshot, GetTarget, Registry, RegistryError, RemoveClient, SecureClient,
         SnapshotConfig, SpawnClient, SwitchTarget,
@@ -47,6 +48,8 @@ use p2p::{
     firewall::{Rule, RuleDirection},
     Multiaddr, PeerId,
 };
+
+use std::collections::HashMap;
 
 #[derive(Clone)]
 /// The main type for the Stronghold System.  Used as the entry point for the actor model.  Contains various pieces of
@@ -221,53 +224,6 @@ impl Stronghold {
         }
 
         ResultMessage::Error(RegistryError::NoClientPresentById(format!("{:?}", id)).to_string())
-    }
-
-    /// Requests full synchronization from a remote peer. The local peer must have full access rights
-    /// on the remote side as defined by the policy checks. This function also requires a target [`ClientId`]
-    /// to load the remote snapshot state into.
-    ///
-    /// - the `peer_id` is used to connect to the remote peer
-    /// - the `key` will be used to encrypt the snapshot
-    /// - the `target` is the target [`ClientId`] to spawn a new actor, and load the inner state
-    #[cfg(feature = "p2p")]
-    #[allow(unused_variables)]
-    pub async fn synchronize_full_remote<K>(&self, peer_id: PeerId, key: K, target: ClientId)
-    where
-        K: Zeroize + AsRef<Vec<u8>>,
-    {
-        todo!()
-    }
-
-    /// Requests synchronization from a remote peer. The peer will return an [`EntryShape`] encoded list.
-    /// This function call is the first part of the implicit state synchronization protocol.
-    #[cfg(feature = "p2p")]
-    #[allow(unused_variables)]
-    pub async fn synchronize_partial_request_remote(&self, peer_id: PeerId) -> Result<Vec<EntryShape>, ()> {
-        todo!()
-    }
-
-    /// Sends selected entries for synchronization from a remote peer. The peer will return an encrypted
-    /// snapshot with `key`. This function call is the second part of the implicit state synchronization protocol.
-    #[cfg(feature = "p2p")]
-    #[allow(unused_variables)]
-    pub async fn synchronize_partial_select_remote<K>(&self, peer_id: PeerId, entries: Vec<Location>, key: K)
-    where
-        K: Zeroize + AsRef<Vec<u8>>,
-    {
-        todo!()
-    }
-
-    /// Sends the current actors accessible entries as encoded message to the remote peer, which in turn
-    /// returns an with `key` encrypted snapshot containing the complementary entries. Remote access
-    /// control applies. The internally returned snapshot will be imported into the current target actor.
-    #[cfg(feature = "p2p")]
-    #[allow(unused_variables)]
-    pub async fn synchronize_complementary_request_remote<K>(&self, peer_id: PeerId, key: K)
-    where
-        K: Zeroize + AsRef<Vec<u8>>,
-    {
-        todo!()
     }
 
     /// Writes data into the Stronghold. Uses the current target actor as the client and writes to the specified
@@ -1022,51 +978,274 @@ impl Stronghold {
 
 /// Implementation for remote synchronization on top of p2p.
 #[cfg(feature = "p2p")]
-
 impl Stronghold {
-    /// Synchronizes with a remote peer
+    /// Requests full synchronization from a remote peer. The local peer must have full access rights
+    /// on the remote side as defined by the policy checks. This function also requires a target [`ClientId`]
+    /// to load the remote snapshot state into.
     ///
-    /// This call runs through the synchronization protocol:
-    /// All vault entries will be taken to calculate a shape of each entry, that consists of its
-    /// size, location and hash value.
-    pub async fn synchronize_with_remote<K>(
-        &mut self,
-        _peer: PeerId,
-        _entries: Vec<Location>,
-        _key: K,
-        _client_id: ClientId,
-    ) -> ResultMessage<()>
+    /// - the `peer_id` is used to connect to the remote peer
+    /// - the `key` will be used to encrypt the snapshotc
+    /// - the `target` is the target [`ClientId`] to spawn a new actor, and load the inner state
+    #[allow(unused_variables)]
+    pub async fn synchronize_full_remote<K>(&self, peer_id: PeerId, keydata: K) -> Result<(), String>
     where
         K: Zeroize + AsRef<Vec<u8>>,
     {
-        // let network_actor = match self.registry.send(GetNetwork).await.unwrap() {
-        //     Some(a) => a,
-        //     None => return ResultMessage::Error("No network actor spawned.".into()),
-        // };
+        // this should be inside logic
+        let mut key: [u8; 32] = [0u8; 32];
+        key.copy_from_slice(keydata.as_ref());
 
-        // // calculate shapes
-        // let shapes = match self.snapshot_protocol_export_shapes(entries).await {
-        //     Ok(s) => s,
-        //     Err(error) => return ResultMessage::Error(error.to_string()),
-        // };
+        let network = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return Err("No network actor spawned.".to_string()),
+        };
 
-        // let message = network_msg::SendRequest {
-        //     peer,
-        //     request: SynchronizeRemote { entries: shapes, key },
-        // };
+        let snapshot = match self.registry.send(GetSnapshot).await {
+            Ok(addr) => addr,
+            Err(error) => return Err("".to_string()), // change! introduce proper return type
+        };
 
-        // // TODO implement calculate_complement message handler on network actor side
-        // // the expected return value should be the encrypted messae
-        // let input: Vec<u8> = match network_actor.send(message).await {
-        //     Ok(result) => result,
-        //     Err(error) => return ResultMessage::Error(error.to_string()),
-        // };
+        // (1) request full export
+        let result = match network
+            .send(network_msg::FullExport {
+                key: keydata.as_ref().clone(),
+            })
+            .await
+        {
+            Ok(result) => match result {
+                Ok(result) => result,
+                Err(error) => return Err(error),
+            },
+            Err(error) => return Err("".to_string()),
+        };
 
-        // // import the remote entries
-        // match self.snapshot_protocol_import_snapshot(input, &key, client_id).await {
-        //     Ok(_) => ResultMessage::Ok(()),
-        //     Err(error) => ResultMessage::Error(error.to_string()),
-        // }
-        todo!()
+        // (2) spawn actor with given id
+        let remote_client_id = result.0;
+
+        let client = match self.registry.send(SpawnClient { id: remote_client_id }).await {
+            Ok(result_actor) => result_actor.unwrap(),
+            Err(error) => return Err("Error! Cannot get actor".to_string()), // change! introduce proper return type
+        };
+
+        // (3) send encrypted snapshot data
+        let data = result.1;
+        let snapshot_data = match snapshot.send(ImportSnapshot { input: data, key }).await {
+            Ok(r) => match r {
+                Ok(result) => result,
+                Err(error) => return Err("".to_string()), // change! introduce proper return type
+            },
+            Err(error) => return Err("".to_string()), // change! introduce proper return type
+        };
+
+        // (4) extract client_id specific data
+        let data = match snapshot_data.get(&remote_client_id) {
+            Some(d) => Box::new(d.clone()),
+            None => return Err("No snapshot data for client_id present".to_string()), // change! proper return type
+        };
+
+        // (5) reload data for client
+        match client
+            .send(ReloadData {
+                id: remote_client_id,
+                data,
+            })
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    /// Requests synchronization from a remote peer. The peer will return an [`EntryShape`] encoded list.
+    /// This function call is the first part of the implicit state synchronization protocol.
+    ///
+    /// - the `peer_id` is used to connect to a remote peer.
+    #[allow(unused_variables)]
+    pub async fn synchronize_partial_request_remote(
+        &self,
+        peer_id: PeerId,
+    ) -> Result<HashMap<Location, EntryShape>, String> {
+        let network = match self.registry.send(GetNetwork).await.unwrap() {
+            Some(a) => a,
+            None => return Err("No network actor spawned.".to_string()), // change! introduce proper return type
+        };
+
+        // (1) request the remote entry shapes
+        match network.send(network_msg::CalculateShape).await {
+            Ok(result) => result,
+            Err(error) => Err(error.to_string()), // fix error type
+        }
+    }
+
+    /// Sends selected entries for synchronization from a remote peer. The peer will return an encrypted
+    /// snapshot with `keydata`. This function call is the second part of the implicit state synchronization protocol.
+    ///
+    /// - the `peer_id` is used to connect to a remote peer.
+    /// - the `locations` are used for the remote peer
+    #[allow(unused_variables)]
+    pub async fn synchronize_partial_select_remote<K>(
+        &self,
+        peer_id: PeerId,
+        locations: Vec<Location>,
+        keydata: K,
+    ) -> Result<(), String>
+    where
+        K: Zeroize + AsRef<Vec<u8>>,
+    {
+        // (1) load the current target
+        if let Some(target) = match self.registry.send(GetTarget {}).await {
+            Ok(current) => current,
+            Err(error) => return Err(error.to_string()),
+        } {
+            // this should be inside logic
+            let mut key: [u8; 32] = [0u8; 32];
+            key.copy_from_slice(keydata.as_ref());
+
+            // get the snapshot actor
+            let snapshot = match self.registry.send(GetSnapshot).await {
+                Ok(r) => r,
+                Err(error) => return Err(error.to_string()),
+            };
+
+            let network = match self.registry.send(GetNetwork).await.unwrap() {
+                Some(a) => a,
+                None => return Err("No network actor spawned.".to_string()), // change! introduce proper return type
+            };
+
+            // (2) request remote snapshot data
+            let raw_snapshot = match network
+                .send(network_msg::ExportSnapshot {
+                    input: locations,
+                    key: keydata.as_ref().clone(), // check: is there a better way
+                })
+                .await
+            {
+                Ok(sd) => match sd {
+                    Ok(sd) => sd,
+                    Err(error) => return Err(error),
+                },
+                Err(error) => return Err(error.to_string()),
+            };
+
+            // (3) deserialize data
+            let result = match snapshot
+                .send(DeserializeSnapshot {
+                    data: raw_snapshot,
+                    key,
+                })
+                .await
+            {
+                Ok(r) => match r {
+                    Ok(result) => result,
+                    Err(error) => return Err(error.to_string()),
+                },
+                Err(error) => return Err(error.to_string()),
+            };
+
+            // (4) send data to secure actor and reload
+            return match target
+                .send(ReloadData {
+                    data: result.data,
+                    id: result.id,
+                })
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => Err("Error requestion Reload Data".to_string()), // change! introduce proper return type
+            };
+        }
+
+        // no actor found
+        Err("No target actor found".to_string()) // change! introduce proper return type
+    }
+
+    /// Sends the current actors accessible entries as encoded message to the remote peer, which in turn
+    /// returns an with `key` encrypted snapshot containing the complementary entries. Remote access
+    /// control applies. The internally returned snapshot will be imported into the current target actor.
+    #[allow(unused_variables)]
+    pub async fn synchronize_complementary_request_remote<K>(
+        &self,
+        peer_id: PeerId,
+        keydata: K,
+        client_id: ClientId,
+    ) -> Result<(), String>
+    where
+        K: Zeroize + AsRef<Vec<u8>>,
+    {
+        // (1) load the current target
+        if let Some(target) = match self.registry.send(GetTarget {}).await {
+            Ok(current) => current,
+            Err(error) => return Err(error.to_string()),
+        } {
+            // this should be inside logic
+            let mut key: [u8; 32] = [0u8; 32];
+            key.copy_from_slice(keydata.as_ref());
+
+            // todo: explicit handling of possible registry error
+            let network = match self.registry.send(GetNetwork).await.unwrap() {
+                Some(a) => a,
+                None => return Err("No network actor spawned.".to_string()), // change! introduce proper return type
+            };
+
+            // get the snapshot actor
+            let snapshot = match self.registry.send(GetSnapshot).await {
+                Ok(r) => r,
+                Err(error) => return Err(error.to_string()),
+            };
+
+            // (2) calculate local shape
+            let input = match snapshot.send(CalculateShape { id: client_id }).await {
+                Ok(r) => match r {
+                    Ok(result) => result,
+                    Err(error) => return Err(error.to_string()),
+                },
+                Err(error) => return Err(error.to_string()),
+            };
+
+            // (3) request remote snapshot data
+            let raw_snapshot = match network
+                .send(network_msg::ExportComplement {
+                    input,
+                    key: keydata.as_ref().clone(), // check: could this be done better?
+                })
+                .await
+            {
+                Ok(sd) => match sd {
+                    Ok(sd) => sd,
+                    Err(error) => return Err(error),
+                },
+                Err(error) => return Err(error.to_string()),
+            };
+
+            // (4) deserialize data
+            let result = match snapshot
+                .send(DeserializeSnapshot {
+                    data: raw_snapshot,
+                    key,
+                })
+                .await
+            {
+                Ok(r) => match r {
+                    Ok(result) => result,
+                    Err(error) => return Err(error.to_string()),
+                },
+                Err(error) => return Err(error.to_string()),
+            };
+
+            // (5) reload state for current target and return
+            return match target
+                .send(ReloadData {
+                    data: result.data,
+                    id: result.id,
+                })
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => Err("Error requestion Reload Data".to_string()), // change! introduce proper return type
+            };
+        }
+
+        // no actor found
+        Err("No target actor found".to_string()) // change! introduce proper return type
     }
 }

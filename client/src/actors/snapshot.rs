@@ -161,10 +161,10 @@ pub mod messages {
     }
 
     /// Exports the complete snapshot as vector of bytes. Part of the snapshot protocol
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct ExportSnapshot {
+        pub id: ClientId,
         pub input: Vec<Location>,
-        // pub state: HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>,
-        pub client_id: ClientId,
         pub public_key: Vec<u8>,
     }
 
@@ -174,27 +174,44 @@ pub mod messages {
 
     /// Returns a representation of the selected locations and their shape.
     /// Part of the snapshot protocol
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct CalculateShape {
-        pub entries: Option<Vec<Location>>,
-        // pub data: Option<HashMap<ClientId, DbView<Provider>>>,
-        pub hasher: Option<Box<dyn Hasher + Send>>,
+        pub id: ClientId,
     }
 
     impl Message for CalculateShape {
-        type Result = Result<HashMap<Location, EntryShape>, SnapshotError>;
+        type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, SnapshotError>;
     }
 
-    /// Returns the complement set of the side to be synchronized with. Part of the snapshot protocol
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct CalculateComplement {
         pub input: HashMap<Location, EntryShape>,
-        // pub b: HashMap<Location, EntryShape>,
     }
 
     impl Message for CalculateComplement {
-        type Result = Result<Vec<Location>, SnapshotError>;
+        type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, SnapshotError>;
     }
 
-    // maybe import as message ?
+    /// Returns the complement set of the side to be synchronized with. Part of the snapshot protocol
+    pub struct ExportComplement {
+        pub input: HashMap<Location, EntryShape>,
+        pub key: Key,
+        pub id: ClientId,
+    }
+
+    impl Message for ExportComplement {
+        type Result = Result<Vec<u8>, SnapshotError>;
+    }
+
+    pub struct SerializeSnapshot {
+        pub input: HashMap<Location, EntryShape>,
+        pub key: Key,
+        pub id: ClientId,
+    }
+
+    impl Message for SerializeSnapshot {
+        type Result = Result<Vec<u8>, SnapshotError>;
+    }
 
     pub struct ImportSnapshot {
         pub input: Vec<u8>,
@@ -204,6 +221,15 @@ pub mod messages {
     impl Message for ImportSnapshot {
         type Result =
             Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, SnapshotError>;
+    }
+
+    pub struct DeserializeSnapshot {
+        pub data: Vec<u8>,
+        pub key: Key,
+    }
+
+    impl Message for DeserializeSnapshot {
+        type Result = Result<ReturnReadSnapshot, SnapshotError>;
     }
 }
 
@@ -233,16 +259,32 @@ impl Actor for Snapshot {
 
 impl Supervised for Snapshot {}
 
-// impl<K> Handler<SynchronizeRemote<K>> for Snapshot
-// where
-//     K: Zeroize + AsRef<Vec<u8>>,
-// {
-//     type Result = Vec<u8>;
+impl Handler<DeserializeSnapshot> for Snapshot {
+    type Result = Result<ReturnReadSnapshot, SnapshotError>;
 
-//     fn handle(&mut self, msg: SynchronizeRemote<K>, ctx: &mut Self::Context) -> Self::Result {
-//         todo!()
-//     }
-// }
+    #[allow(unused_variables)]
+    fn handle(&mut self, msg: DeserializeSnapshot, ctx: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
+}
+
+impl Handler<messages::CalculateComplement> for Snapshot {
+    type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, SnapshotError>;
+
+    #[allow(unused_variables)]
+    fn handle(&mut self, msg: messages::CalculateComplement, ctx: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
+}
+
+impl Handler<messages::SerializeSnapshot> for Snapshot {
+    type Result = Result<Vec<u8>, SnapshotError>;
+
+    #[allow(unused_variables)]
+    fn handle(&mut self, msg: messages::SerializeSnapshot, ctx: &mut Self::Context) -> Self::Result {
+        todo!()
+    }
+}
 
 // snapshot synchronisation protocol
 impl Handler<messages::ExportAllEntries> for Snapshot {
@@ -351,73 +393,82 @@ impl Handler<messages::ExportSnapshot> for Snapshot {
         }
 
         // create new snapshot by serializing the state
-        let state = SnapshotState::new(message.client_id, (result_maps, result_view, Store::default()));
+        let state = SnapshotState::new(message.id, (result_maps, result_view, Store::default()));
 
         // serialize and return
         state.serialize()
     }
 }
 
-// snapshot synchronisation protocol
-impl Handler<messages::CalculateComplement> for Snapshot {
-    type Result = Result<Vec<Location>, SnapshotError>;
+/// returns the complentary set of entries
+impl Handler<messages::ExportComplement> for Snapshot {
+    type Result = Result<Vec<u8>, SnapshotError>;
 
-    fn handle(&mut self, message: messages::CalculateComplement, _ctx: &mut Self::Context) -> Self::Result {
-        // TODO: fill b, which is the self state
-        let b: HashMap<Location, EntryShape> = HashMap::new();
+    #[allow(unused_variables)]
+    fn handle(&mut self, message: messages::ExportComplement, ctx: &mut Self::Context) -> Self::Result {
+        // (1) calc shape internally
+        let shape_internal =
+            <Self as Handler<messages::CalculateShape>>::handle(self, CalculateShape { id: message.id }, ctx);
 
-        let result = message
-            .input
-            .iter()
-            .filter(|(location, _)| !b.contains_key(location))
-            .map(|(a, _)| a.clone())
-            .collect();
+        // (2) calculate complement internally
+        let complement = <Self as Handler<messages::CalculateComplement>>::handle(
+            self,
+            CalculateComplement {
+                input: message.input.clone(),
+            },
+            ctx,
+        );
 
-        Ok(result)
+        // (3) create snapshot with provided key and return
+        <Self as Handler<messages::SerializeSnapshot>>::handle(
+            self,
+            SerializeSnapshot {
+                id: message.id,
+                input: message.input,
+                key: message.key,
+            },
+            ctx,
+        )
     }
 }
 
 // snapshot synchronisation protocol
 impl Handler<messages::CalculateShape> for Snapshot {
-    type Result = Result<HashMap<Location, EntryShape>, SnapshotError>;
+    type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, SnapshotError>;
 
     #[allow(unused_variables)]
     fn handle(&mut self, message: messages::CalculateShape, _ctx: &mut Self::Context) -> Self::Result {
-        // let entries = message.entries.take().unwrap();
+        let inner = &mut self.state.0;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let mut output = HashMap::new();
 
-        // let inner = &mut self.state.0;
-        // let mut hasher = message.hasher.take().unwrap();
-        // let mut output = HashMap::new();
+        inner.iter_mut().for_each(|(_, (vaultkeys, view, store))| {
+            vaultkeys.iter().for_each(|(vid, key)| {
+                view.list_hints_and_ids(key, *vid).iter().for_each(|(rid, _)| {
+                    view.get_guard(key, *vid, *rid, |guard| {
+                        let data = guard.borrow();
 
-        // inner.iter_mut().for_each(|(_, (keys, view, store))| {
-        //     entries.iter().for_each(|location| {
-        //         let vid: VaultId = location.try_into().unwrap();
-        //         let rid: RecordId = location.try_into().unwrap();
+                        data.hash(&mut hasher);
 
-        //         let key = keys.get(&vid).unwrap();
+                        // create EntryShape
+                        let entry_shape = EntryShape {
+                            vid: *vid,
+                            rid: *rid,
+                            record_hash: hasher.finish(),
+                            record_size: data.len(),
+                        };
 
-        //         view.get_guard(key, vid, rid, |guard| {
-        //             let data = guard.borrow();
+                        // and store it in output
+                        output.insert((*vid, *rid), entry_shape);
 
-        //             data.hash(&mut hasher);
+                        Ok(())
+                    })
+                    .unwrap();
+                })
+            });
+        });
 
-        //             // create EntryShape
-        //             let entry_shape = EntryShape {
-        //                 location: location.clone(),
-        //                 record_hash: hasher.finish(),
-        //                 record_size: data.len(),
-        //             };
-
-        //             // and store it in output
-        //             output.insert(location.clone(), entry_shape);
-
-        //             Ok(())
-        //         })
-        //         .unwrap();
-        //     });
-        // });
-
-        Ok(HashMap::new())
+        Ok(output)
     }
 }
 

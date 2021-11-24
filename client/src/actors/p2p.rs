@@ -52,6 +52,8 @@ macro_rules! sh_request_dispatch {
             ShRequest::ListIds($inner) => $body
             ShRequest::ClearCache($inner) => $body
             ShRequest::CallProcedure($inner) => $body
+
+            // todo: adding special cases, that need to be handled differently
         }
     }
 }
@@ -147,28 +149,38 @@ impl NetworkActor {
 
 /// Policy engine related implementation
 impl NetworkActor {
-    pub async fn insert_policy_context(&mut self, peer: PeerId, client: ClientId) {
+    pub fn insert_policy_context(&mut self, peer: PeerId, client: ClientId) {
         self.policy_engine.context(peer, client);
     }
 
-    pub async fn insert_access(&mut self, client: ClientId, access: Access, value: Location) {
+    pub fn insert_access(&mut self, client: ClientId, access: Access, value: Location) {
         self.policy_engine.insert(client, access, value);
     }
 
-    pub async fn allow(&mut self, client: ClientId, value: Location) {
+    pub fn allow(&mut self, client: ClientId, value: Location) {
         self.policy_engine.insert(client, Access::All, value);
     }
 
-    pub async fn deny(&mut self, client: ClientId, value: Location) {
+    pub fn deny(&mut self, client: ClientId, value: Location) {
         self.policy_engine.insert(client, Access::NoAccess, value);
     }
 
-    pub async fn check(&mut self, peer: &PeerId, access: Access) -> Option<Vec<Location>> {
+    pub fn check(&mut self, peer: &PeerId, access: Access) -> Option<Vec<Location>> {
         self.policy_engine.check(peer, Some(access))
     }
 
-    pub async fn check_access(&mut self, peer: &PeerId, location: Option<Location>) -> Result<Access, ()> {
+    pub fn check_access(&mut self, peer: &PeerId, location: Option<Location>) -> Result<Access, ()> {
         self.policy_engine.check_access(peer, location)
+    }
+
+    #[allow(unused_variables)]
+    pub fn has_read_access(&self, peer: &PeerId, location: Option<Location>) -> bool {
+        todo!()
+    }
+
+    #[allow(unused_variables)]
+    pub fn has_write_access(&self, peer: &PeerId, location: Option<Location>) -> bool {
+        todo!()
     }
 }
 
@@ -202,6 +214,67 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for NetworkActor {
         });
     }
 }
+
+// impl<K> StreamHandler<ReceiveRequest<SnapshotRequest<K>, ShResult>> for NetworkActor
+// where
+//     K: Zeroize + AsRef<Vec<u8>>,
+// {
+//     // todo maybe merge with the [`ShRequest`] ?
+//     fn handle(&mut self, item: ReceiveRequest<SnapshotRequest<K>, ShResult>, ctx: &mut Self::Context) {
+//         // de-sugar request
+//         let ReceiveRequest {
+//             request_id,
+//             peer,
+//             request,
+//             response_tx,
+//         } = item;
+
+//         // get mapping
+//         let client_id = self
+//             .policy_engine
+//             .inner(&peer)
+//             .expect("No peer to client mapping present");
+
+//         match request {
+//             SnapshotRequest::CalculateShape if self.has_read_access(&peer, None::<Location>) => {
+//                 let snapshot_future = self
+//                     .registry
+//                     .send(GetSnapshot)
+//                     .and_then(|snapshot| async { snapshot.send(CalculateShape { id: client_id }).await })
+//                     // todo result mapping, and send into channel
+//                     .map(|_| ())
+//                     .into_actor(self);
+
+//                 // execute snapshot future
+//                 ctx.wait(snapshot_future);
+//             }
+//             SnapshotRequest::ExportSnapshot { input, key } if self.has_read_access(&peer, None::<Location>) => {
+//                 let snapshot_future = self
+//                     .registry
+//                     .send(GetSnapshot)
+//                     .and_then(|snapshot| async {
+//                         snapshot
+//                             .send(ExportSnapshot {
+//                                 id: client_id,
+//                                 input,
+//                                 public_key: key,
+//                             })
+//                             .await
+//                     })
+//                     // todo result mapping, and send into channel
+//                     .map(|_| ())
+//                     .into_actor(self);
+
+//                 // execute snapshot future
+//                 ctx.wait(snapshot_future);
+//             }
+//             SnapshotRequest::FullExport { key } => {
+//                 //
+//             }
+//             _ => {}
+//         };
+//     }
+// }
 
 impl<Rq> Handler<SendRequest<Rq>> for NetworkActor
 where
@@ -301,6 +374,9 @@ impl_handler!(RemoveDialingRelay => (), |network, msg| {
     network.remove_dialing_relay(msg.relay).await
 });
 
+/// Snapshot handler
+// impl<K> Handler<SnapshotRequest<K>> for NetworkActor where K: Zeroize + AsRef<Vec<u8>> {}
+
 // Config for the new network.
 /// Default behaviour:
 /// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
@@ -355,8 +431,11 @@ impl Default for NetworkConfig {
 }
 
 pub mod messages {
+    use std::collections::HashMap;
+
     use super::*;
-    use crate::{ProcResult, RecordHint, RecordId};
+    use crate::{actors::secure::EntryShape, ProcResult, RecordHint, RecordId};
+    use engine::vault::VaultId;
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
@@ -499,7 +578,80 @@ pub mod messages {
     #[rtype(result = "()")]
     pub struct Shutdown;
 
-    // Wrapper for Requests to a remote Secure Client
+    // -------- snapshot related messages
+
+    pub struct CalculateShape;
+
+    impl Message for CalculateShape {
+        type Result = Result<HashMap<Location, EntryShape>, String>;
+    }
+
+    pub struct FullExport {
+        pub key: Vec<u8>,
+    }
+
+    impl Message for FullExport {
+        type Result = Result<(ClientId, Vec<u8>), String>; // proper error type
+    }
+
+    pub struct ExportSnapshot {
+        pub input: Vec<Location>,
+        pub key: Vec<u8>,
+    }
+
+    impl Message for ExportSnapshot {
+        type Result = Result<Vec<u8>, String>; // proper error type
+    }
+
+    pub struct ExportComplement {
+        pub input: HashMap<(VaultId, RecordId), EntryShape>,
+        pub key: Vec<u8>,
+    }
+
+    impl Message for ExportComplement {
+        type Result = Result<Vec<u8>, String>;
+    }
+
+    // move to top
+    impl Handler<FullExport> for NetworkActor {
+        type Result = Result<(ClientId, Vec<u8>), String>;
+
+        #[allow(unused_variables)]
+        fn handle(&mut self, msg: FullExport, ctx: &mut Self::Context) -> Self::Result {
+            todo!()
+        }
+    }
+
+    impl Handler<ExportComplement> for NetworkActor {
+        type Result = Result<Vec<u8>, String>; // proper error type!
+
+        #[allow(unused_variables)]
+        fn handle(&mut self, msg: ExportComplement, ctx: &mut Self::Context) -> Self::Result {
+            todo!()
+        }
+    }
+
+    impl Handler<CalculateShape> for NetworkActor {
+        type Result = Result<HashMap<Location, EntryShape>, String>; // proper error type!
+
+        #[allow(unused_variables)]
+        fn handle(&mut self, msg: CalculateShape, ctx: &mut Self::Context) -> Self::Result {
+            todo!()
+        }
+    }
+
+    impl Handler<ExportSnapshot> for NetworkActor {
+        type Result = Result<Vec<u8>, String>; // proper error type
+
+        #[allow(unused_variables)]
+        fn handle(&mut self, msg: ExportSnapshot, ctx: &mut Self::Context) -> Self::Result {
+            todo!()
+        }
+    }
+
+    // ---- end snapshot related network actor implementation
+
+    /// Wrapper for Requests to a remote Secure Client
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShRequest {
         CheckVault(CheckVault),
@@ -515,6 +667,8 @@ pub mod messages {
         GarbageCollect(GarbageCollect),
         ClearCache(ClearCache),
         CallProcedure(CallProcedure),
+        /* todo: maybe add the snapshot types also here, route them
+         * through the secure client. */
     }
 
     sh_request_from!(CheckVault);

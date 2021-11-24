@@ -94,7 +94,8 @@ impl Snapshot {
                     output.insert(
                         location.clone(),
                         EntryShape {
-                            location,
+                            vid,
+                            rid,
                             record_hash: hasher.finish(),
                             record_size: data.len(),
                         },

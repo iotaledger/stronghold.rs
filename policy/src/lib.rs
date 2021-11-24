@@ -101,6 +101,9 @@ pub trait Policy {
     where
         I: Into<Self::Value>;
 
+    /// Returns the inner mapping of a context
+    fn inner(&self, context: &Self::Context) -> Result<Self::Mapped, Self::Error>;
+
     /// Removes a mapping
     fn remove(&mut self, id: Self::Mapped);
 
@@ -194,6 +197,10 @@ where
         for value in values {
             self.insert(id.clone(), access.clone(), value)
         }
+    }
+
+    fn inner(&self, context: &Self::Context) -> Result<Self::Mapped, Self::Error> {
+        self.target.get(&context).map(|a| a.clone()).ok_or(())
     }
 
     fn remove(&mut self, id: Self::Mapped) {

@@ -235,8 +235,11 @@ pub enum VaultFlags {}
 /// is to enable calculating differences between two Stronghold instances.
 #[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
 pub struct EntryShape {
-    // the location of the difference
-    pub location: Location,
+    // the the vault id
+    pub vid: VaultId,
+
+    // the record id
+    pub rid: RecordId,
 
     // the hash of the record
     pub record_hash: u64,
