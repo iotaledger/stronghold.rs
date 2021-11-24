@@ -18,6 +18,7 @@ name = "p2p"
 either = "1.6"
 futures = "0.3"
 libp2p = { version = "0.41.0", default-features = false, features = ["noise", "yamux", "mdns", "relay"] }
+pin-project = "1.0.8"
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 smallvec = "1.6.1"

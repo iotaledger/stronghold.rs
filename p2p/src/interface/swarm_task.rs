@@ -227,9 +227,9 @@ where
                             break;
                         }
                     },
-                    // Forward inbound requests if the channel is ready
+                    // Drive request channel to forward inbound requests.
                     _ = self.request_channel.next().fuse() => {}
-                    // Forward network events if the channel is ready
+                    // Drive events channel to forward network events.
                     _ = event_channel.next().fuse() => {}
                 }
             } else {
