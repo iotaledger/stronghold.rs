@@ -398,6 +398,12 @@ impl Debug for VaultId {
     }
 }
 
+impl Display for VaultId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self.0.as_ref().base64())
+    }
+}
+
 impl Into<Vec<u8>> for VaultId {
     fn into(self) -> Vec<u8> {
         self.0 .0.to_vec()

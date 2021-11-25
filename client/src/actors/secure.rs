@@ -9,11 +9,13 @@
 #![allow(clippy::type_complexity)]
 
 use crate::{
-    internals::Provider,
     procedures::{CollectedOutput, Procedure, ProcedureError, Runner},
     state::secure::SecureClient,
+    Provider,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, MessageResult, Supervised};
+#[cfg(feature = "p2p")]
+use engine::runtime::GuardedVec;
 use engine::{
     store::Cache,
     vault::{
@@ -21,25 +23,22 @@ use engine::{
         VaultError as EngineVaultError, VaultId,
     },
 };
-
-#[cfg(feature = "p2p")]
-use engine::runtime::GuardedVec;
 #[cfg(feature = "p2p")]
 use p2p::{identity::Keypair, AuthenticKeypair, NoiseKeypair, PeerId};
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::Infallible};
 use stronghold_utils::GuardDebug;
 
 /// Store typedef on `engine::store::Cache`
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
-pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
+pub type VaultError<E = Infallible> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
 pub type RecordError = EngineRecordError<<Provider as BoxProvider>::Error>;
 
 /// Message types for the [`SecureClient`].
 pub mod messages {
 
     use super::*;
-    use crate::{internals, Location};
+    use crate::Location;
     use serde::{Deserialize, Serialize};
     use std::time::Duration;
 
@@ -53,11 +52,7 @@ pub mod messages {
     #[derive(Clone, GuardDebug)]
     pub struct ReloadData {
         pub id: ClientId,
-        pub data: Box<(
-            HashMap<VaultId, Key<internals::Provider>>,
-            DbView<internals::Provider>,
-            Store,
-        )>,
+        pub data: Box<(HashMap<VaultId, Key<Provider>>, DbView<Provider>, Store)>,
     }
 
     impl Message for ReloadData {
@@ -159,11 +154,7 @@ pub mod messages {
     pub struct GetData {}
 
     impl Message for GetData {
-        type Result = Box<(
-            HashMap<VaultId, Key<internals::Provider>>,
-            DbView<internals::Provider>,
-            Store,
-        )>;
+        type Result = Box<(HashMap<VaultId, Key<Provider>>, DbView<Provider>, Store)>;
     }
 }
 

@@ -15,7 +15,7 @@ use crate::{
             CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
             ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
-        snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
+        snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot, WriteSnapshotStoredKey},
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
@@ -27,7 +27,7 @@ use crate::{
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
 };
-use engine::vault::{ClientId, RecordHint, RecordId};
+use engine::vault::{ChainId, ClientId, RecordHint, RecordId, VaultId};
 #[cfg(feature = "p2p")]
 use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
 
@@ -116,7 +116,7 @@ impl From<ActorError> for SpawnNetworkError {
     }
 }
 
-#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
+#[derive(DeriveError, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[error("fatal engine error: {0}")]
 pub struct FatalEngineError(String);
 
@@ -130,6 +130,20 @@ impl From<String> for FatalEngineError {
     fn from(e: String) -> Self {
         FatalEngineError(e)
     }
+}
+
+#[derive(DeriveError, Debug)]
+pub enum WriteSnapshotWithKeyError {
+    #[error("write snapshot failed: {0}")]
+    WriteSnapshot(#[from] WriteError),
+    #[error("fatal engine error: {0}")]
+    Engine(#[from] FatalEngineError),
+    #[error("vault not found: {0}")]
+    VaultNotFound(VaultId),
+    #[error("record not found: {0:?}")]
+    RecordNotFound(ChainId),
+    #[error("invalid key: {0}")]
+    InvalidKey(String),
 }
 
 #[derive(Clone)]
@@ -406,6 +420,38 @@ impl Stronghold {
 
         // write snapshot
         let res = snapshot.send(WriteSnapshot { key, filename, path }).await?;
+        Ok(res)
+    }
+
+    /// [`Stronghold::write_all_to_snapshot`] using a key for encryption that is stored in at the specified client and
+    /// location.
+    pub async fn write_snapshot_with_stored_key(
+        &mut self,
+        key: Location,
+        client_path: Vec<u8>,
+        filename: Option<String>,
+        path: Option<PathBuf>,
+    ) -> StrongholdResult<Result<(), WriteSnapshotWithKeyError>> {
+        let client_id = ClientId::load_from_path(&client_path, &client_path);
+
+        let clients: Vec<(ClientId, Addr<SecureClient>)> = self.registry.send(GetAllClients).await?;
+
+        let snapshot = self.registry.send(GetSnapshot {}).await?;
+
+        for (id, client) in clients {
+            let data = client.send(GetData {}).await?;
+            snapshot.send(FillSnapshot { data, id }).await?;
+        }
+
+        let res = snapshot
+            .send(WriteSnapshotStoredKey {
+                filename,
+                path,
+                key_location: key,
+                key_client: client_id,
+            })
+            .await?
+            .map_err(|e| e.into());
         Ok(res)
     }
 

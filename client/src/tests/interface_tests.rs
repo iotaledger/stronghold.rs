@@ -6,8 +6,9 @@ use crate::{
     actors::NetworkConfig,
     p2p::{identity::Keypair, PeerId, SwarmInfo},
     procedures::{PersistSecret, Slip10Derive, Slip10Generate},
+    tests::fresh,
 };
-use crate::{tests::fresh, ActorError, Location, RecordHint, Stronghold};
+use crate::{ActorError, Location, RecordHint, Stronghold};
 use stronghold_utils::random::bytestring;
 #[cfg(feature = "p2p")]
 use tokio::sync::{mpsc, oneshot};

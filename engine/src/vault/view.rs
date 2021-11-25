@@ -18,7 +18,7 @@ use super::{crypto_box::DecryptError, types::transactions::Transaction};
 
 #[derive(DeriveError, Debug)]
 pub enum VaultError<TProvErr: Debug, TProcErr: Debug = Infallible> {
-    #[error("vault `{0:?}` does not exist")]
+    #[error("vault `{0}` does not exist")]
     VaultNotFound(VaultId),
 
     #[error("record error: `{0:?}`")]

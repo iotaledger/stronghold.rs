@@ -3,7 +3,7 @@
 
 #![allow(clippy::type_complexity)]
 
-use crate::{state::secure::Store, Provider};
+use crate::{state::secure::Store, Location, Provider};
 
 use engine::{
     snapshot::{self, read_from, write_to, Key, ReadError as EngineReadError, WriteError as EngineWriteError},
@@ -11,8 +11,15 @@ use engine::{
 };
 
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, io, path::Path};
+use std::{
+    collections::HashMap,
+    convert::{Infallible, TryInto},
+    io,
+    path::Path,
+};
 use thiserror::Error as DeriveError;
+
+use super::secure::SecureClient;
 
 /// Wrapper for the [`SnapshotState`] data structure.
 #[derive(Default)]
@@ -64,6 +71,43 @@ impl Snapshot {
             .state
             .serialize()
             .map_err(|_| WriteError::CorruptedData("Serialization failed.".into()))?;
+
+        // TODO: This is a hack and probably should be removed when we add proper error handling.
+        let f = move || match path {
+            Some(p) => write_to(&data, p, &key, &[]),
+            None => write_to(&data, &snapshot::files::get_path(name)?, &key, &[]),
+        };
+
+        match f() {
+            Ok(()) => Ok(()),
+            Err(_) => f().map_err(|e| e.into()),
+        }
+    }
+
+    pub fn write_snapshot_with_stored_key(
+        &self,
+        name: Option<&str>,
+        path: Option<&Path>,
+        key_location: Location,
+        key_client: ClientId,
+    ) -> Result<(), WriteError> {
+        let (vid, rid) = SecureClient::resolve_location(key_location);
+        let mut state = self.state.0.clone();
+        let client_data = state.get_mut(&key_client).unwrap();
+        let k = client_data.0.get(&vid).unwrap();
+        // Get snapshot key from vault.
+        let mut key = Vec::new();
+        client_data
+            .1
+            .get_guard::<Infallible, _>(k, vid, rid, |guard| {
+                let key_bytes = guard.borrow();
+                key.extend_from_slice(&*key_bytes);
+                Ok(())
+            })
+            .unwrap();
+        let key: [u8; 32] = key.try_into().unwrap();
+
+        let data = self.state.serialize().unwrap();
 
         // TODO: This is a hack and probably should be removed when we add proper error handling.
         let f = move || match path {

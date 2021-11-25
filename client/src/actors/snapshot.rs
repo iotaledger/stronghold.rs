@@ -44,6 +44,8 @@ pub mod returntypes {
 
 pub mod messages {
 
+    use crate::Location;
+
     use super::*;
 
     pub struct WriteSnapshot {
@@ -53,6 +55,17 @@ pub mod messages {
     }
 
     impl Message for WriteSnapshot {
+        type Result = Result<(), WriteError>;
+    }
+
+    pub struct WriteSnapshotStoredKey {
+        pub filename: Option<String>,
+        pub path: Option<PathBuf>,
+        pub key_location: Location,
+        pub key_client: ClientId,
+    }
+
+    impl Message for WriteSnapshotStoredKey {
         type Result = Result<(), WriteError>;
     }
 
@@ -131,6 +144,21 @@ impl Handler<messages::WriteSnapshot> for Snapshot {
 
         self.state = SnapshotState::default();
 
+        Ok(())
+    }
+}
+
+impl Handler<messages::WriteSnapshotStoredKey> for Snapshot {
+    type Result = Result<(), WriteError>;
+
+    fn handle(&mut self, msg: messages::WriteSnapshotStoredKey, _ctx: &mut Self::Context) -> Self::Result {
+        self.write_snapshot_with_stored_key(
+            msg.filename.as_deref(),
+            msg.path.as_deref(),
+            msg.key_location,
+            msg.key_client,
+        )?;
+        self.state = SnapshotState::default();
         Ok(())
     }
 }

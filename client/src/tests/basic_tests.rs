@@ -5,7 +5,9 @@ use crate::{utils::LoadFromPath, Location, RecordHint, Stronghold};
 use crypto::macs::hmac::HMAC_SHA512;
 
 use engine::vault::{ClientId, VaultId};
-use stronghold_utils::random::bytestring;
+use stronghold_utils::random::{self, bytestring};
+
+use super::fresh;
 
 async fn setup_stronghold() -> Stronghold {
     let client_path = b"test".to_vec();
@@ -284,6 +286,93 @@ async fn test_write_read_multi_snapshot() {
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));
     }
+}
+
+#[actix::test]
+async fn write_snapshot_with_stored_key() {
+    let client_path = bytestring(1024);
+    let key = random::random::<[u8; 32]>().to_vec();
+    let key_location = fresh::location();
+    let key_hint = fresh::record_hint();
+    let mut stronghold = Stronghold::init_stronghold_system(client_path.clone(), vec![])
+        .await
+        .unwrap();
+
+    // Write key to stronghold
+    stronghold
+        .write_to_vault(key_location.clone(), key.clone(), key_hint, vec![])
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write vault error: {}", e));
+
+    // Write some other data
+    let other_client = bytestring(1024);
+    let other_location = fresh::location();
+    let other_hint = fresh::record_hint();
+    stronghold
+        .spawn_stronghold_actor(other_client.clone(), vec![])
+        .await
+        .unwrap();
+    stronghold
+        .write_to_vault(other_location.clone(), bytestring(1024), other_hint, vec![])
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write vault error: {}", e));
+
+    // Test write with stored key.
+    stronghold
+        .write_snapshot_with_stored_key(key_location.clone(), client_path.clone(), None, None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot: {}", e));
+
+    // Test that write with stored key can be executed multiple times.
+    stronghold
+        .write_snapshot_with_stored_key(key_location.clone(), client_path.clone(), None, None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot: {}", e));
+
+    drop(stronghold);
+
+    // Start new stronghold.
+    let mut stronghold = Stronghold::init_stronghold_system(client_path.clone(), vec![])
+        .await
+        .unwrap();
+
+    // Reload snapshot and check that the encryption key was written into it
+    stronghold
+        .read_snapshot(client_path, None, &key.clone(), None, None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
+    let list = stronghold
+        .list_hints_and_ids(key_location.vault_path())
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e));
+    assert!(list.into_iter().any(|(_, hint)| hint == key_hint));
+    let record_exists = stronghold
+        .record_exists(key_location)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e));
+    assert!(record_exists);
+
+    // Reload snapshot and check that the other data exists
+    stronghold
+        .read_snapshot(other_client, None, &key.clone(), None, None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
+    let list = stronghold
+        .list_hints_and_ids(other_location.vault_path())
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e));
+    assert!(list.into_iter().any(|(_, hint)| hint == other_hint));
+    let record_exists = stronghold
+        .record_exists(other_location)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e));
+    assert!(record_exists);
 }
 
 #[actix::test]
