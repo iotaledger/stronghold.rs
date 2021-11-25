@@ -1,14 +1,16 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
+use crate::serde::SerdeAddressInfo;
 
+use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
 
 // Known addresses and relay config of a remote peer
-#[derive(Debug, Clone)]
-struct PeerAddress {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerAddress {
     // Known addresses e.g. that have been explicitly added or already connected.
     known: VecDeque<Multiaddr>,
 
@@ -27,24 +29,27 @@ impl Default for PeerAddress {
 }
 
 // Known relays and peer addresses.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "SerdeAddressInfo")]
+#[serde(into = "SerdeAddressInfo")]
 pub struct AddressInfo {
     // Addresses and relay config for each peer.
-    peers: HashMap<PeerId, PeerAddress>,
+    pub peers: HashMap<PeerId, PeerAddress>,
 
     // Known relays to use as fallback for dialing.
-    relays: SmallVec<[PeerId; 10]>,
+    pub relays: SmallVec<[PeerId; 10]>,
 }
 
-impl AddressInfo {
-    pub fn new() -> Self {
+impl Default for AddressInfo {
+    fn default() -> Self {
         AddressInfo {
             peers: HashMap::new(),
-
             relays: SmallVec::new(),
         }
     }
+}
 
+impl AddressInfo {
     // Known addresses of a peer ordered based on likeliness to be reachable.
     // Optionally includes a relayed target address for each known dialing relay.
     pub fn get_addrs(&self, target: &PeerId) -> Vec<Multiaddr> {

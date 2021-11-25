@@ -5,8 +5,7 @@ use futures::{channel::mpsc, future::join, StreamExt};
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
 use p2p::{
-    firewall::FirewallConfiguration, ChannelSinkConfig, EventChannel, ReceiveRequest, StrongholdP2p,
-    StrongholdP2pBuilder,
+    firewall::FirewallRules, ChannelSinkConfig, EventChannel, ReceiveRequest, StrongholdP2p, StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -33,7 +32,7 @@ async fn init_peer() -> (
     let builder = StrongholdP2pBuilder::new(dummy_tx, request_channel, None)
         .with_connection_timeout(Duration::from_secs(1))
         .with_request_timeout(Duration::from_secs(1))
-        .with_firewall_config(FirewallConfiguration::allow_all());
+        .with_firewall_default(FirewallRules::allow_all());
     #[cfg(not(feature = "tcp-transport"))]
     let peer = builder
         .build_with_transport(TokioTcpConfig::new(), |fut| {

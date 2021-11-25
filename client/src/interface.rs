@@ -7,6 +7,8 @@
 //! are provided in an asynchronous way, and should be run by the
 //! actor's system [`SystemRunner`].
 
+#[cfg(feature = "p2p")]
+use crate::procedures::FatalProcedureError;
 use crate::{
     actors::{
         secure_messages::{
@@ -27,7 +29,7 @@ use crate::{
 };
 use engine::vault::{ClientId, RecordHint, RecordId};
 #[cfg(feature = "p2p")]
-use p2p::{DialErr, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
+use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
 
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -40,9 +42,10 @@ use crate::actors::secure_testing::ReadFromVault;
 
 #[cfg(feature = "p2p")]
 use crate::actors::{
+    client_p2p_messages::{DeriveNoiseKeypair, GenerateP2pKeypair, WriteP2pKeypair},
     network_messages,
     network_messages::{ShRequest, SwarmInfo},
-    GetNetwork, InsertNetwork, NetworkActor, NetworkConfig, StopNetwork,
+    GetNetwork, InsertNetwork, NetworkActor, NetworkConfig, RemoveNetwork,
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -90,8 +93,27 @@ pub enum SpawnNetworkError {
     #[error("network already running")]
     AlreadySpawned,
 
+    #[error("no client found for loading the config")]
+    ClientNotFound,
+
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
+
+    #[error("Error loading network config: {0}")]
+    LoadConfig(String),
+
+    #[error("Error deriving noise-keypair: {0}")]
+    DeriveKeypair(String),
+}
+
+#[cfg(feature = "p2p")]
+impl From<ActorError> for SpawnNetworkError {
+    fn from(e: ActorError) -> Self {
+        match e {
+            ActorError::Mailbox(e) => SpawnNetworkError::ActorMailbox(e),
+            ActorError::TargetNotFound => SpawnNetworkError::ClientNotFound,
+        }
+    }
 }
 
 #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
@@ -443,28 +465,124 @@ impl Stronghold {
 #[cfg(feature = "p2p")]
 impl Stronghold {
     /// Spawn the p2p-network actor and swarm.
+    /// The `keypair`parameter can be provided as location in which a keypair is stored,
+    /// (either via [`Stronghold::generate_p2p_keypair`] or [`Stronghold::write_p2p_keypair`]).
+    /// A new noise [`AuthenticKeypair`] and the [`PeerId`] will be derived from this keypair and used
+    /// for authentication and encryption on the transport layer.
+    ///
+    /// **Note**: The noise keypair differs for each derivation, the [`PeerId`] is consistent.
     pub async fn spawn_p2p(
         &mut self,
-        firewall_rule: Rule<ShRequest>,
         network_config: NetworkConfig,
+        keypair: Option<Location>,
     ) -> Result<(), SpawnNetworkError> {
         if self.registry.send(GetNetwork).await?.is_some() {
             return Err(SpawnNetworkError::AlreadySpawned);
         }
-        let addr = NetworkActor::new(self.registry.clone(), firewall_rule, network_config)
+        let keypair = match keypair {
+            Some(location) => {
+                let target = self.target().await?;
+                let (peer_id, noise_keypair) = target
+                    .send(DeriveNoiseKeypair { p2p_keypair: location })
+                    .await?
+                    .map_err(|e| SpawnNetworkError::DeriveKeypair(e.to_string()))?;
+                Some(InitKeypair::Authenticated { peer_id, noise_keypair })
+            }
+            None => None,
+        };
+        let addr = NetworkActor::new(self.registry.clone(), network_config, keypair)
             .await?
             .start();
         self.registry.send(InsertNetwork { addr }).await?;
         Ok(())
     }
 
+    /// Spawn the p2p-network actor and swarm, load the config from a former running network-actor.
+    /// The `key` parameter species the location in which in the config is stored, i.g.
+    /// the key that was set on [`Stronghold::stop_p2p`].
+    ///
+    /// **Note**: Firewall rules with [`Rule::Restricted`] can not be serialized / deserialized, hence
+    /// they will be skipped and have to be added manually.
+    pub async fn spawn_p2p_load_config(
+        &mut self,
+        key: Vec<u8>,
+        keypair: Option<Location>,
+    ) -> Result<(), SpawnNetworkError> {
+        let config_bytes = self
+            .read_from_store(key.clone())
+            .await?
+            .ok_or_else(|| SpawnNetworkError::LoadConfig(format!("No config found at key {:?}", key)))?;
+        let config = bincode::deserialize(&config_bytes)
+            .map_err(|e| SpawnNetworkError::LoadConfig(format!("Deserializing state failed: {}", e.to_string())))?;
+        self.spawn_p2p(config, keypair).await
+    }
+
+    /// Generate a new p2p-keypair in the vault.
+    /// This keypair can be used with [`Stronghold::spawn_p2p`] and [`Stronghold::spawn_p2p_load_config`] to derive a
+    /// new noise-keypair and peer id for encryption and authentication on the p2p transport layer.
+    pub async fn generate_p2p_keypair(
+        &mut self,
+        location: Location,
+        hint: RecordHint,
+    ) -> StrongholdResult<Result<(), FatalProcedureError>> {
+        let target = self.target().await?;
+        let res = target
+            .send(GenerateP2pKeypair { location, hint })
+            .await?
+            .map_err(|e| e.to_string().into());
+        Ok(res)
+    }
+
+    /// Write an existing [`Keypair`] into the vault.
+    /// This keypair can then be used with [`Stronghold::spawn_p2p`] and [`Stronghold::spawn_p2p_load_config`] to derive
+    /// a new noise-keypair and peer id for encryption and authentication on the p2p transport layer.
+    pub async fn write_p2p_keypair(
+        &mut self,
+        keypair: Keypair,
+        location: Location,
+        hint: RecordHint,
+    ) -> StrongholdResult<Result<(), FatalProcedureError>> {
+        let target = self.target().await?;
+        let res = target
+            .send(WriteP2pKeypair {
+                keypair,
+                location,
+                hint,
+            })
+            .await?
+            .map_err(|e| e.to_string().into());
+        Ok(res)
+    }
+
     /// Gracefully stop the network actor and swarm.
     /// Return `false` if there is no active network actor.
-    pub async fn stop_p2p(&mut self) -> StrongholdResult<()> {
-        match self.registry.send(StopNetwork).await? {
-            true => Ok(()),
-            false => Err(ActorError::TargetNotFound),
+    /// Optionally store the current config (known addresses of remote peers and firewall rules) in the store
+    /// at the specified `key`.
+    ///
+    /// **Note**: Firewall rules with [`Rule::Restricted`] can not be serialized / deserialized, hence
+    /// they will be skipped and have to be added manually again after init.
+    pub async fn stop_p2p(&mut self, write_config: Option<Vec<u8>>) -> StrongholdResult<bincode::Result<()>> {
+        let actor = self
+            .registry
+            .send(RemoveNetwork)
+            .await?
+            .ok_or(ActorError::TargetNotFound)?;
+        if let Some(key) = write_config {
+            let config = actor.send(network_messages::ExportConfig).await?;
+            let payload = match bincode::serialize(&config) {
+                Ok(bytes) => bytes,
+                Err(e) => return Ok(Err(e)),
+            };
+            self.write_to_store(key, payload, None).await?;
         }
+        Ok(Ok(()))
+    }
+
+    // Export the config and state of the p2p-layer.
+    pub async fn export_config(&mut self) -> StrongholdResult<NetworkConfig> {
+        let actor = self.network_actor().await?;
+        let config = actor.send(network_messages::ExportConfig).await?;
+        Ok(config)
     }
 
     /// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.

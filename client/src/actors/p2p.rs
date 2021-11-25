@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{secure_messages::WriteToVault, GetTarget, Registry},
+    actors::{secure_messages::WriteToVault, GetTarget, RecordError, Registry},
     enum_from_inner,
     procedures::{CollectedOutput, Procedure},
 };
@@ -10,10 +10,11 @@ use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
 use messages::*;
 use p2p::{
-    firewall::{FirewallConfiguration, FirewallRules, Rule},
-    ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr, Multiaddr,
-    OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
+    firewall::{FirewallRules, Rule},
+    BehaviourState, ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr,
+    Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     io,
@@ -74,27 +75,38 @@ macro_rules! sh_result_mapping {
     };
 }
 
+/// Actor that handles all network interaction.
+///
+/// On [`NetworkActor::new`] a new [`StrongholdP2p`] is created, which will spawn
+/// a libp2p Swarm and continuously poll it.
 pub struct NetworkActor {
+    // Interface of stronghold-p2p for all network interaction.
     network: StrongholdP2p<ShRequest, ShResult>,
-    inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
+    // Actor registry from which the address of the target client and snapshot actor can be queried.
     registry: Addr<Registry>,
+    // Channel through which inbound requests are received.
+    // This channel is only inserted temporary on [`NetworkActor::new`], and is handed
+    // to the stream handler in `<Self as Actor>::started`.
+    _inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
+    // Cache the network config so it can be returned on `ExportConfig`.
+    _config: NetworkConfig,
 }
 
 impl NetworkActor {
     pub async fn new(
         registry: Addr<Registry>,
-        firewall_rule: Rule<ShRequest>,
-        network_config: NetworkConfig,
+        mut network_config: NetworkConfig,
+        keypair: Option<InitKeypair>,
     ) -> Result<Self, io::Error> {
         let (firewall_tx, _) = mpsc::channel(0);
         let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
-        let firewall_config = FirewallConfiguration::new(Some(firewall_rule), Some(Rule::AllowAll));
         let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None)
-            .with_firewall_config(firewall_config)
             .with_mdns_support(network_config.enable_mdns)
             .with_relay_support(network_config.enable_relay);
-        if let Some(keypair) = network_config.keypair {
-            builder = builder.with_keys(keypair)
+        if let Some(state) = network_config.state.take() {
+            builder = builder.load_state(state);
+        } else {
+            builder = builder.with_firewall_default(FirewallRules::allow_all())
         }
         if let Some(timeout) = network_config.request_timeout {
             builder = builder.with_request_timeout(timeout)
@@ -102,15 +114,19 @@ impl NetworkActor {
         if let Some(timeout) = network_config.connection_timeout {
             builder = builder.with_connection_timeout(timeout)
         }
-        if let Some(limit) = network_config.connections_limit {
-            builder = builder.with_connections_limit(limit)
+        if let Some(ref limit) = network_config.connections_limit {
+            builder = builder.with_connections_limit(limit.clone())
+        }
+        if let Some(keypair) = keypair {
+            builder = builder.with_keys(keypair);
         }
 
         let network = builder.build().await?;
         let actor = Self {
             network,
-            inbound_request_rx: Some(inbound_request_rx),
+            _inbound_request_rx: Some(inbound_request_rx),
             registry,
+            _config: network_config,
         };
         Ok(actor)
     }
@@ -120,7 +136,7 @@ impl Actor for NetworkActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        let inbound_request_rx = self.inbound_request_rx.take().unwrap();
+        let inbound_request_rx = self._inbound_request_rx.take().unwrap();
         Self::add_stream(inbound_request_rx, ctx);
     }
 }
@@ -161,6 +177,21 @@ where
                 let res: Rq::Result = wrapper.try_into().unwrap();
                 res
             })
+        }
+        .into_actor(self)
+        .boxed_local()
+    }
+}
+
+impl Handler<ExportConfig> for NetworkActor {
+    type Result = ResponseActFuture<Self, NetworkConfig>;
+
+    fn handle(&mut self, _: ExportConfig, _: &mut Self::Context) -> Self::Result {
+        let mut network = self.network.clone();
+        let config = self._config.clone();
+        async move {
+            let state = network.export_state().await;
+            config.load_state(state)
         }
         .into_actor(self)
         .boxed_local()
@@ -245,29 +276,22 @@ impl_handler!(RemoveDialingRelay => bool, |network, msg| {
 
 // Config for the new network.
 /// Default behaviour:
-/// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
 /// - No limit for simultaneous connections.
 /// - Request-timeout and Connection-timeout are 10s.
 /// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id to
 ///   the local network.
 /// - [`Relay`][`libp2p::relay`] functionality is disabled.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
-    keypair: Option<InitKeypair>,
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
     connections_limit: Option<ConnectionLimits>,
     enable_mdns: bool,
     enable_relay: bool,
+    state: Option<BehaviourState<ShRequest>>,
 }
 
 impl NetworkConfig {
-    /// Set the keypair that is used for authenticating the traffic on the transport layer.
-    /// The local [`PeerId`] is derived from the keypair.
-    pub fn with_keypair(mut self, keypair: InitKeypair) -> Self {
-        self.keypair = Some(keypair);
-        self
-    }
-
     /// Set a timeout for receiving a response after a request was sent.
     ///
     /// This applies for inbound and outbound requests.
@@ -302,17 +326,23 @@ impl NetworkConfig {
         self.enable_relay = is_enabled;
         self
     }
+
+    /// Import state exported from a past network actor.
+    pub fn load_state(mut self, state: BehaviourState<ShRequest>) -> Self {
+        self.state = Some(state);
+        self
+    }
 }
 
 impl Default for NetworkConfig {
     fn default() -> Self {
         NetworkConfig {
-            keypair: None,
             request_timeout: None,
             connection_timeout: None,
             connections_limit: None,
             enable_mdns: false,
             enable_relay: false,
+            state: None,
         }
     }
 }
@@ -320,7 +350,7 @@ impl Default for NetworkConfig {
 pub mod messages {
 
     use super::*;
-    use crate::{actors::RecordError, procedures::ProcedureError, Location, RecordHint, RecordId};
+    use crate::{procedures::ProcedureError, Location, RecordHint, RecordId};
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
@@ -458,8 +488,8 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
-    pub struct Shutdown;
+    #[rtype(result = "NetworkConfig")]
+    pub struct ExportConfig;
 
     #[derive(Debug, Message, Clone, Serialize, Deserialize)]
     #[rtype(result = "Result<(), RemoteRecordError>")]

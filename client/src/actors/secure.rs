@@ -25,7 +25,7 @@ use engine::{
 #[cfg(feature = "p2p")]
 use engine::runtime::GuardedVec;
 #[cfg(feature = "p2p")]
-use p2p::{AuthenticKeypair, Keypair, NoiseKeypair, PeerId};
+use p2p::{identity::Keypair, AuthenticKeypair, NoiseKeypair, PeerId};
 use std::collections::HashMap;
 use stronghold_utils::GuardDebug;
 
@@ -168,7 +168,7 @@ pub mod messages {
 }
 
 #[cfg(feature = "p2p")]
-mod p2p_messages {
+pub mod p2p_messages {
 
     use crate::Location;
 
