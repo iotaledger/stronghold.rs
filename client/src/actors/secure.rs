@@ -121,6 +121,20 @@ pub mod messages {
         type Result = ();
     }
 
+    #[derive(Clone, GuardDebug)]
+    pub struct MergeData {
+        pub id: ClientId,
+        pub data: Box<(
+            HashMap<VaultId, Key<internals::Provider>>,
+            DbView<internals::Provider>,
+            Store,
+        )>,
+    }
+
+    impl Message for MergeData {
+        type Result = ();
+    }
+
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct CreateVault {
         pub location: Location,
@@ -681,6 +695,14 @@ impl_handler!(messages::ReloadData, (), (self, msg, _ctx), {
     self.keystore.rebuild_keystore(keystore);
     self.db = state;
     self.rebuild_cache(self.client_id, store);
+});
+
+impl_handler!(messages::MergeData, (), (self, msg, _ctx), {
+    let (keystore, state, store) = *msg.data;
+
+    self.db.merge(state);
+    self.keystore.merge(keystore);
+    self.store.merge(store);
 });
 
 impl_handler!(messages::CheckVault, bool, (self, msg, _ctx), {

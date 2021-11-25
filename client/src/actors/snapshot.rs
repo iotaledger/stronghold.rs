@@ -213,23 +213,33 @@ pub mod messages {
         type Result = Result<Vec<u8>, SnapshotError>;
     }
 
-    pub struct ImportSnapshot {
+    pub struct DeserializeSnapshot {
         pub input: Vec<u8>,
         pub key: Key,
     }
 
-    impl Message for ImportSnapshot {
+    impl Message for DeserializeSnapshot {
         type Result =
             Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, SnapshotError>;
     }
 
-    pub struct DeserializeSnapshot {
+    pub struct UnpackSnapshotData {
+        /// Contains the serialize snapshot with a virtual [`ClientId`]
         pub data: Vec<u8>,
+
+        /// The key to decrypt the snapshot data
         pub key: Key,
     }
 
-    impl Message for DeserializeSnapshot {
-        type Result = Result<ReturnReadSnapshot, SnapshotError>;
+    impl Message for UnpackSnapshotData {
+        type Result = Result<
+            Box<(
+                HashMap<VaultId, PKey<internals::Provider>>,
+                DbView<internals::Provider>,
+                Store,
+            )>,
+            SnapshotError,
+        >;
     }
 }
 
@@ -259,12 +269,35 @@ impl Actor for Snapshot {
 
 impl Supervised for Snapshot {}
 
-impl Handler<DeserializeSnapshot> for Snapshot {
-    type Result = Result<ReturnReadSnapshot, SnapshotError>;
+impl Handler<UnpackSnapshotData> for Snapshot {
+    type Result = Result<
+        Box<(
+            HashMap<VaultId, PKey<internals::Provider>>,
+            DbView<internals::Provider>,
+            Store,
+        )>,
+        SnapshotError,
+    >;
 
     #[allow(unused_variables)]
-    fn handle(&mut self, msg: DeserializeSnapshot, ctx: &mut Self::Context) -> Self::Result {
-        todo!()
+    fn handle(&mut self, msg: UnpackSnapshotData, ctx: &mut Self::Context) -> Self::Result {
+        // todo: move the virtual client_id to top as constant
+        let client_id_virtual = ClientId::load(b"virtual-import-synchronization").unwrap();
+
+        match <Self as Handler<DeserializeSnapshot>>::handle(
+            self,
+            DeserializeSnapshot {
+                input: msg.data,
+                key: msg.key,
+            },
+            ctx,
+        ) {
+            Ok(mut result) => match result.remove(&client_id_virtual) {
+                Some(to_boxed) => Ok(Box::new(to_boxed)),
+                None => Err(SnapshotError::LoadFailure),
+            },
+            Err(error) => Err(error),
+        }
     }
 }
 
@@ -472,17 +505,13 @@ impl Handler<messages::CalculateShape> for Snapshot {
     }
 }
 
-impl Handler<ImportSnapshot> for Snapshot {
+impl Handler<DeserializeSnapshot> for Snapshot {
     type Result =
         Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, SnapshotError>;
 
-    fn handle(&mut self, msg: ImportSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: DeserializeSnapshot, _ctx: &mut Self::Context) -> Self::Result {
         match Snapshot::read_from_data(msg.input, msg.key, None) {
-            Ok(snapshot) => {
-                // *self = snapshot;
-
-                Ok(Box::from(snapshot.state.0))
-            }
+            Ok(snapshot) => Ok(Box::from(snapshot.state.0)),
             Err(error) => Err(error),
         }
     }
@@ -531,7 +560,9 @@ impl Handler<messages::FullSynchronization> for Snapshot {
 
                 let (map, view, store) = data;
                 output_map.extend((map.clone()).into_iter());
-                output_store = output_store.merge(store.clone());
+
+                // changed api
+                output_store.merge(store.clone());
                 output_view.vaults.extend(view.vaults.clone().into_iter());
             }
         }
@@ -545,7 +576,8 @@ impl Handler<messages::FullSynchronization> for Snapshot {
                 output_map.extend((map.clone()).into_iter());
                 output_view.vaults.extend(view.vaults.clone().into_iter());
 
-                output_store = output_store.merge(store.clone());
+                // changed api
+                output_store.merge(store.clone());
             }
         }
 
@@ -622,7 +654,9 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
                         let (map, view, store) = data;
                         output_map.extend((map.clone()).into_iter());
                         output_view.vaults.extend(view.vaults.clone().into_iter());
-                        output_store = output_store.merge(store.clone());
+
+                        // changed api
+                        output_store.merge(store.clone());
                     }
                 }
 
@@ -634,7 +668,9 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
                         let (map, view, store) = data;
                         output_map.extend((map.clone()).into_iter());
                         output_view.vaults.extend(view.vaults.clone().into_iter());
-                        output_store = output_store.merge(store.clone());
+
+                        // changed api
+                        output_store.merge(store.clone());
                     }
                 }
 

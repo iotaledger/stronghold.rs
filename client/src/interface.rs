@@ -15,12 +15,12 @@ use crate::{
     actors::{
         secure_messages::{
             CheckRecord, CheckVault, ClearCache, CreateVault, DeleteFromStore, GarbageCollect, GetData, ListIds,
-            ReadFromStore, ReloadData, RevokeData, WriteToStore, WriteToVault,
+            MergeData, ReadFromStore, ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
         secure_procedures::{CallProcedure, ProcResult, Procedure},
         snapshot_messages::{
-            CalculateShape, DeserializeSnapshot, FillSnapshot, FullSynchronization, ImportSnapshot,
-            PartialSynchronization, ReadFromSnapshot, WriteSnapshot,
+            CalculateShape, DeserializeSnapshot, FillSnapshot, FullSynchronization, PartialSynchronization,
+            ReadFromSnapshot, UnpackSnapshotData, WriteSnapshot,
         },
         GetAllClients, GetClient, GetSnapshot, GetTarget, Registry, RegistryError, RemoveClient, SecureClient,
         SnapshotConfig, SpawnClient, SwitchTarget,
@@ -1029,7 +1029,7 @@ impl Stronghold {
 
         // (3) send encrypted snapshot data
         let data = result.1;
-        let snapshot_data = match snapshot.send(ImportSnapshot { input: data, key }).await {
+        let snapshot_data = match snapshot.send(DeserializeSnapshot { input: data, key }).await {
             Ok(r) => match r {
                 Ok(result) => result,
                 Err(error) => return Err("".to_string()), // change! introduce proper return type
@@ -1086,6 +1086,7 @@ impl Stronghold {
     pub async fn synchronize_partial_select_remote<K>(
         &self,
         peer_id: PeerId,
+        id: ClientId,
         locations: Vec<Location>,
         keydata: K,
     ) -> Result<(), String>
@@ -1101,6 +1102,8 @@ impl Stronghold {
             let mut key: [u8; 32] = [0u8; 32];
             key.copy_from_slice(keydata.as_ref());
 
+            // (0) do we need to write everything into local snapshot?
+
             // get the snapshot actor
             let snapshot = match self.registry.send(GetSnapshot).await {
                 Ok(r) => r,
@@ -1113,7 +1116,9 @@ impl Stronghold {
             };
 
             // (2) request remote snapshot data
-            let raw_snapshot = match network
+            // the return value will be a fully serialize snapshot, with one virtual client_id
+            // to import into the local state
+            let data = match network
                 .send(network_msg::ExportSnapshot {
                     input: locations,
                     key: keydata.as_ref().clone(), // check: is there a better way
@@ -1127,14 +1132,8 @@ impl Stronghold {
                 Err(error) => return Err(error.to_string()),
             };
 
-            // (3) deserialize data
-            let result = match snapshot
-                .send(DeserializeSnapshot {
-                    data: raw_snapshot,
-                    key,
-                })
-                .await
-            {
+            // (3) deserialize data and unpack it
+            let data = match snapshot.send(UnpackSnapshotData { data, key }).await {
                 Ok(r) => match r {
                     Ok(result) => result,
                     Err(error) => return Err(error.to_string()),
@@ -1143,13 +1142,7 @@ impl Stronghold {
             };
 
             // (4) send data to secure actor and reload
-            return match target
-                .send(ReloadData {
-                    data: result.data,
-                    id: result.id,
-                })
-                .await
-            {
+            return match target.send(MergeData { data, id }).await {
                 Ok(_) => Ok(()),
                 Err(e) => Err("Error requestion Reload Data".to_string()), // change! introduce proper return type
             };
@@ -1166,6 +1159,7 @@ impl Stronghold {
     pub async fn synchronize_complementary_request_remote<K>(
         &self,
         peer_id: PeerId,
+        id: ClientId,
         keydata: K,
         client_id: ClientId,
     ) -> Result<(), String>
@@ -1203,7 +1197,7 @@ impl Stronghold {
             };
 
             // (3) request remote snapshot data
-            let raw_snapshot = match network
+            let data = match network
                 .send(network_msg::ExportComplement {
                     input,
                     key: keydata.as_ref().clone(), // check: could this be done better?
@@ -1218,13 +1212,7 @@ impl Stronghold {
             };
 
             // (4) deserialize data
-            let result = match snapshot
-                .send(DeserializeSnapshot {
-                    data: raw_snapshot,
-                    key,
-                })
-                .await
-            {
+            let data = match snapshot.send(UnpackSnapshotData { data, key }).await {
                 Ok(r) => match r {
                     Ok(result) => result,
                     Err(error) => return Err(error.to_string()),
@@ -1233,13 +1221,7 @@ impl Stronghold {
             };
 
             // (5) reload state for current target and return
-            return match target
-                .send(ReloadData {
-                    data: result.data,
-                    id: result.id,
-                })
-                .await
-            {
+            return match target.send(MergeData { data, id }).await {
                 Ok(_) => Ok(()),
                 Err(e) => Err("Error requestion Reload Data".to_string()), // change! introduce proper return type
             };

@@ -168,6 +168,11 @@ impl<P: BoxProvider> DbView<P> {
 
         Ok(())
     }
+
+    /// Merges another [`DbView`] with this one
+    pub fn merge(&mut self, other: Self) {
+        self.vaults.extend(other.vaults.into_iter())
+    }
 }
 
 impl<P: BoxProvider> Vault<P> {

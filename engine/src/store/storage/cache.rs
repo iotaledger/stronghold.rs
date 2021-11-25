@@ -54,8 +54,7 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
         }
     }
 
-    /// merges this store with another. This operation consumes the
-    /// the [`Cache`]
+    /// merges this store with another. Overwrites existing entries with same key
     /// #Example
     /// ```
     /// use engine::store::Cache;
@@ -69,21 +68,13 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
     /// a.insert(key_a.clone(), value_a.clone(), None);
     /// b.insert(key_b.clone(), value_b.clone(), None);
     ///
-    /// let merged = a.merge(b);
+    /// a.merge(b);
     ///
-    /// assert_eq!(merged.get(&key_a), Some(&value_a));
-    /// assert_eq!(merged.get(&key_b), Some(&value_b));
+    /// assert_eq!(a.get(&key_a), Some(&value_a));
+    /// assert_eq!(a.get(&key_b), Some(&value_b));
     /// ```
-    pub fn merge(self, other: Self) -> Self {
-        let mut output = Self::new();
-
-        output.scan_freq = self.scan_freq;
-        output.last_scan_at = self.last_scan_at;
-        output.created_at = self.created_at;
-        output.table.extend((self.table).into_iter());
-        output.table.extend(other.table.into_iter());
-
-        output
+    pub fn merge(&mut self, other: Self) {
+        self.table.extend(other.table.into_iter());
     }
 
     /// creates an empty [`Cache`] with a periodic scanner which identifies expired entries.

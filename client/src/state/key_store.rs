@@ -61,6 +61,11 @@ impl KeyStore {
         key_store
     }
 
+    /// Merges another [`KeyStore`] with this one.
+    pub fn merge(&mut self, other: HashMap<VaultId, Key<Provider>>) {
+        self.store.extend(other.into_iter())
+    }
+
     /// Clear the key store.
     pub fn clear_keys(&mut self) {
         self.store.clear();
