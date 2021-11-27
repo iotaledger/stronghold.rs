@@ -14,6 +14,7 @@ use stronghold_utils::random::{self, bytestring, string};
 
 use super::fresh;
 use crate::{
+    interface::Stronghold2,
     procedures::{
         AeadAlg, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, ChainCode, Ed25519Sign, GenerateKey, Hash,
         HashType, Hkdf, KeyType, MnemonicLanguage, OutputKey, PersistOutput, PersistSecret, ProcedureIo, ProcedureStep,
@@ -101,12 +102,15 @@ async fn usecase_ed25519() {
 
 #[actix::test]
 async fn usecase_Slip10Derive_intermediate_keys() {
-    let (_cp, sh) = setup_stronghold().await;
+    let cp = fresh::bytestring(u8::MAX.into());
+    let sh = Stronghold2::new();
+
+    let client = sh.client(&cp).await.unwrap();
 
     let seed = fresh::location();
 
     let slip10_generate = Slip10Generate::default().write_secret(seed.clone(), fresh::record_hint());
-    match sh.runtime_exec(slip10_generate).await.unwrap() {
+    match client.execute_procedure(slip10_generate).await.unwrap() {
         Ok(_) => (),
         Err(e) => panic!("unexpected error: {:?}", e),
     };
@@ -118,7 +122,7 @@ async fn usecase_Slip10Derive_intermediate_keys() {
         let slip10_derive =
             Slip10Derive::new_from_seed(seed.clone(), chain0.join(&chain1)).store_output(OutputKey::random());
 
-        match sh.runtime_exec(slip10_derive).await.unwrap() {
+        match client.execute_procedure(slip10_derive).await.unwrap() {
             Ok(data) => data.single_output().unwrap(),
             Err(e) => panic!("unexpected error: {:?}", e),
         }
@@ -130,14 +134,14 @@ async fn usecase_Slip10Derive_intermediate_keys() {
         let slip10_derive_intermediate =
             Slip10Derive::new_from_seed(seed, chain0).write_secret(intermediate.clone(), fresh::record_hint());
 
-        match sh.runtime_exec(slip10_derive_intermediate).await.unwrap() {
+        match client.execute_procedure(slip10_derive_intermediate).await.unwrap() {
             Ok(_) => (),
             Err(e) => panic!("unexpected error: {:?}", e),
         };
 
         let slip10_derive_child = Slip10Derive::new_from_key(intermediate, chain1).store_output(OutputKey::random());
 
-        match sh.runtime_exec(slip10_derive_child).await.unwrap() {
+        match client.execute_procedure(slip10_derive_child).await.unwrap() {
             Ok(data) => data.single_output().unwrap(),
             Err(e) => panic!("unexpected error: {:?}", e),
         }

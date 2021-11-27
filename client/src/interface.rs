@@ -15,14 +15,14 @@ use crate::{
             CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
             ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
-        snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
-        GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
-        SwitchTarget,
+        snapshot_messages::{ActorStateFromSnapshot, FillSnapshot, LoadFromDisk, WriteSnapshot},
+        GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, Registry2, RemoveClient,
+        SetAllClients, SpawnClient, SwitchTarget,
     },
     procedures::{CollectedOutput, Procedure, ProcedureError},
     state::{
         secure::SecureClient,
-        snapshot::{ReadError, WriteError},
+        snapshot::{ReadError, Snapshot, SnapshotFile, WriteError},
     },
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
@@ -31,7 +31,7 @@ use engine::vault::{ClientId, RecordHint, RecordId};
 #[cfg(feature = "p2p")]
 use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
 
-use actix::prelude::*;
+use actix::{prelude::*, WeakAddr};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use thiserror::Error as DeriveError;
@@ -324,56 +324,13 @@ impl Stronghold {
     /// should implement and use Zeroize.
     pub async fn read_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
-        client_path: Vec<u8>,
-        former_client_path: Option<Vec<u8>>,
-        keydata: &T,
-        filename: Option<String>,
-        path: Option<PathBuf>,
+        _client_path: Vec<u8>,
+        _former_client_path: Option<Vec<u8>>,
+        _keydata: &T,
+        _filename: Option<String>,
+        _path: Option<PathBuf>,
     ) -> StrongholdResult<Result<(), ReadError>> {
-        let client_id = ClientId::load_from_path(&client_path, &client_path);
-        let former_client_id = former_client_path.map(|cp| ClientId::load_from_path(&cp, &cp));
-
-        // this feature resembles the functionality given by the former riker
-        // system dependence. if there is a former client id path present,
-        // the new actor is being changed into the former one ( see old ReloadData impl.)
-        let target;
-        if let Some(id) = former_client_id {
-            target = self.switch_client(id).await?;
-        } else {
-            target = self.target().await?;
-        }
-
-        let mut key: [u8; 32] = [0u8; 32];
-        let keydata = keydata.as_ref();
-
-        key.copy_from_slice(keydata);
-
-        // get address of snapshot actor
-        let snapshot_actor = self.registry.send(GetSnapshot {}).await?;
-
-        // read the snapshots contents
-        let result = snapshot_actor
-            .send(ReadFromSnapshot {
-                key,
-                filename,
-                path,
-                id: client_id,
-                fid: former_client_id,
-            })
-            .await?;
-        let content = match result {
-            Ok(content) => content,
-            Err(e) => return Ok(Err(e)),
-        };
-
-        // send data to secure actor and reload
-        target
-            .send(ReloadData {
-                data: content.data,
-                id: content.id,
-            })
-            .await?;
-        Ok(Ok(()))
+        unimplemented!();
     }
 
     /// Writes the entire state of the [`Stronghold`] into a snapshot.  All Actors and their associated data will be
@@ -381,32 +338,11 @@ impl Stronghold {
     /// specified. The Keydata should implement and use Zeroize.
     pub async fn write_all_to_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
-        keydata: &T,
-        filename: Option<String>,
-        path: Option<PathBuf>,
+        _keydata: &T,
+        _filename: Option<String>,
+        _path: Option<PathBuf>,
     ) -> StrongholdResult<Result<(), WriteError>> {
-        // this should be delegated to the secure client actor
-        // wrapping the interior functionality inside it.
-        let clients: Vec<(ClientId, Addr<SecureClient>)> = self.registry.send(GetAllClients).await?;
-
-        let mut key: [u8; 32] = [0u8; 32];
-        let keydata = keydata.as_ref();
-        key.copy_from_slice(keydata);
-
-        // get snapshot actor
-        let snapshot = self.registry.send(GetSnapshot {}).await?;
-
-        for (id, client) in clients {
-            // get data from secure actor
-            let data = client.send(GetData {}).await?;
-
-            // fill into snapshot
-            snapshot.send(FillSnapshot { data, id }).await?;
-        } // end loop
-
-        // write snapshot
-        let res = snapshot.send(WriteSnapshot { key, filename, path }).await?;
-        Ok(res)
+        unimplemented!()
     }
 
     /// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If
@@ -459,6 +395,344 @@ impl Stronghold {
 
     async fn target(&self) -> StrongholdResult<Addr<SecureClient>> {
         self.registry.send(GetTarget).await?.ok_or(ActorError::TargetNotFound)
+    }
+}
+
+/// Represents the in-memory version of an encrypted snapshot file. The [`Vault`] can be used to
+/// securely store key material and operate on said material. An unencrypted HashMap-like [`Store`]
+/// can be used to store miscellaneous data.
+// Note: This is no longer `Clone`, because `write_snapshot`
+// needs to operate on the stronghold in a mutually exclusive manner.
+pub struct Stronghold2 {
+    registry: Addr<Registry2>,
+}
+
+impl Stronghold2 {
+    /// Initializes a new Stronghold.
+    pub fn new() -> Self {
+        let registry = Registry2::default().start();
+
+        Self { registry }
+    }
+
+    /// Returns the [`Client`] identified by `client_path`.
+    ///
+    /// A client has a corresponding actix actor that is either reused if it exists,
+    /// or newly spawned. This method can be called with the same `client_path` multiple
+    /// times to get the same client. Alternatively, the returned client can be cloned.
+    pub async fn client<C: AsRef<[u8]>>(&self, client_path: &C) -> StrongholdResult<Client> {
+        let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
+
+        let get_client = self.registry.send(GetClient { id: client_id }).await?;
+
+        let secure_client = match get_client {
+            Some(secure_client) => Ok(secure_client),
+            None => self.registry.send(SpawnClient { id: client_id }).await,
+        }?;
+
+        let snapshot_actor = self.registry.send(GetSnapshot {}).await?;
+
+        Ok(Client::new(client_id, secure_client, snapshot_actor))
+    }
+
+    /// Loads the snapshot from disk identified by TODO. The given `key_data` is used to
+    /// attempt decryption of the file. After this method is called, `key_data` should be zeroized.
+    // TODO: Can we take owned key_data and zeroize ourselves?
+    pub async fn read_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
+        &mut self,
+        key_data: &T,
+        snapshot_file: SnapshotFile,
+    ) -> StrongholdResult<Result<(), ReadError>> {
+        let mut key: [u8; 32] = [0u8; 32];
+        let keydata = key_data.as_ref();
+
+        key.copy_from_slice(keydata);
+
+        let snapshot_actor = self.registry.send(GetSnapshot {}).await?;
+
+        let result = snapshot_actor.send(LoadFromDisk { key, snapshot_file }).await?;
+
+        if let Err(e) = result {
+            return Ok(Err(e));
+        }
+
+        Ok(Ok(()))
+    }
+
+    pub async fn write_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
+        &mut self,
+        keydata: &T,
+        snapshot_file: SnapshotFile,
+    ) -> StrongholdResult<Result<(), WriteError>> {
+        let mut key: [u8; 32] = [0u8; 32];
+        let keydata = keydata.as_ref();
+        key.copy_from_slice(keydata);
+
+        let clients: Vec<(ClientId, Addr<SecureClient>)> = self.registry.send(GetAllClients).await?;
+        let snapshot = self.registry.send(GetSnapshot {}).await?;
+
+        for (id, client) in clients.iter() {
+            let data = client.send(GetData {}).await?;
+
+            snapshot.send(FillSnapshot { data, id: *id }).await?;
+        }
+
+        let weak_addrs: Vec<(ClientId, WeakAddr<SecureClient>)> =
+            clients.into_iter().map(|(id, addr)| (id, addr.downgrade())).collect();
+
+        let previous_len = weak_addrs.len();
+
+        // Don't short-circuit, as that would get rid of all clients.
+        let res = snapshot.send(WriteSnapshot { key, snapshot_file }).await;
+
+        // It's important that the actor task/thread gets a chance to run, in order to
+        // drop the actors whose references have now gone away.
+        // A yield_now (tokio or thread) seems to already be good enough.
+        // Here, putting the `WriteSnapshot` in between is more than good enough.
+        let clients: Vec<(ClientId, Addr<SecureClient>)> = weak_addrs
+            .into_iter()
+            .filter_map(|(id, addr)| {
+                if let Some(addr) = addr.upgrade() {
+                    Some((id, addr))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        println!("[write_snapshot] removed {} clients", previous_len - clients.len());
+
+        self.registry.send(SetAllClients(clients)).await?;
+
+        Ok(res?)
+    }
+}
+
+/// A client is a wrapper around a stronghold actor that can be obtained through [`Stronghold2::client`].
+/// A client can be cloned and used from different tasks or threads.
+#[derive(Clone)]
+pub struct Client {
+    id: ClientId,
+    secure_client: Addr<SecureClient>,
+    snapshot_actor: Addr<Snapshot>,
+}
+
+impl Client {
+    fn new(id: ClientId, secure_client: Addr<SecureClient>, snapshot_actor: Addr<Snapshot>) -> Client {
+        Client {
+            id,
+            secure_client,
+            snapshot_actor,
+        }
+    }
+
+    /// Returns the underlying actor.
+    fn actor(&self) -> &Addr<SecureClient> {
+        &self.secure_client
+    }
+
+    pub async fn restore_state(&self) -> StrongholdResult<()> {
+        let content = self.snapshot_actor.send(ActorStateFromSnapshot { id: self.id }).await?;
+
+        self.actor()
+            .send(ReloadData {
+                data: content.data,
+                id: content.id,
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    /// Saves the client's state into the stronghold in-memory snapshot.
+    pub async fn save_state(&self) -> StrongholdResult<()> {
+        let data = self.secure_client.send(GetData {}).await?;
+        // self.secure_client.do_send(msg)
+        self.snapshot_actor.send(FillSnapshot { data, id: self.id }).await?;
+
+        Ok(())
+    }
+
+    pub fn vault<V: Into<Vec<u8>>>(&self, vault_path: V) -> Vault {
+        Vault::new(self, vault_path.into())
+    }
+
+    pub fn store(&self) -> Store {
+        Store::new(self)
+    }
+
+    // Should this live in `Vault`?
+    pub async fn execute_procedure<P>(
+        &self,
+        control_request: P,
+    ) -> StrongholdResult<Result<CollectedOutput, ProcedureError>>
+    where
+        P: Into<Procedure>,
+    {
+        let result = self.secure_client.send::<Procedure>(control_request.into()).await?;
+        Ok(result)
+    }
+}
+
+pub struct Store<'client> {
+    client: &'client Client,
+}
+
+impl<'client> Store<'client> {
+    fn new(client: &'client Client) -> Self {
+        Self { client }
+    }
+
+    pub async fn write(
+        &self,
+        key: Vec<u8>,
+        payload: Vec<u8>,
+        lifetime: Option<Duration>,
+    ) -> StrongholdResult<Option<Vec<u8>>> {
+        let existing = self
+            .client
+            .actor()
+            .send(WriteToStore { key, payload, lifetime })
+            .await?;
+        Ok(existing)
+    }
+
+    pub async fn read(&self, key: Vec<u8>) -> StrongholdResult<Option<Vec<u8>>> {
+        let data = self.client.actor().send(ReadFromStore { key }).await?;
+        Ok(data)
+    }
+
+    pub async fn delete(&self, key: Vec<u8>) -> StrongholdResult<()> {
+        self.client.actor().send(DeleteFromStore { key }).await?;
+        Ok(())
+    }
+}
+
+pub struct Vault<'client> {
+    vault_path: Vec<u8>,
+    client: &'client Client,
+}
+
+impl<'client> Vault<'client> {
+    fn new(client: &'client Client, vault_path: Vec<u8>) -> Self {
+        Self { vault_path, client }
+    }
+
+    pub async fn write(
+        &self,
+        vault_location: VaultLocation,
+        payload: Vec<u8>,
+        hint: RecordHint,
+    ) -> StrongholdResult<Result<(), FatalEngineError>> {
+        let res = self
+            .client
+            .actor()
+            .send(WriteToVault {
+                location: vault_location.into_location(self.vault_path.clone()),
+                payload,
+                hint,
+            })
+            .await?
+            .map_err(FatalEngineError::from);
+
+        Ok(res)
+    }
+
+    pub async fn revoke(
+        &self,
+        vault_location: VaultLocation,
+        collect_garbage: bool,
+    ) -> StrongholdResult<Result<(), FatalEngineError>> {
+        let location: Location = vault_location.into_location(self.vault_path.clone());
+        let res = self
+            .client
+            .actor()
+            .send(RevokeData {
+                location: location.clone(),
+            })
+            .await?;
+        match res {
+            Ok(_) => {}
+            Err(e) => return Ok(Err(FatalEngineError::from(e))),
+        };
+
+        if collect_garbage {
+            self.client.actor().send(GarbageCollect { location }).await?;
+        }
+
+        Ok(Ok(()))
+    }
+
+    pub async fn collect_garbage(&self) -> StrongholdResult<bool> {
+        let vault_exists = self
+            .client
+            .actor()
+            .send(GarbageCollect {
+                location: Location::Generic {
+                    vault_path: self.vault_path.clone(),
+                    record_path: Vec::new(),
+                },
+            })
+            .await?;
+        Ok(vault_exists)
+    }
+
+    pub async fn exists(&self) -> StrongholdResult<bool> {
+        let exists = self
+            .client
+            .actor()
+            .send(CheckVault {
+                vault_path: self.vault_path.clone(),
+            })
+            .await?;
+        Ok(exists)
+    }
+
+    // TODO: Is this useful for users? Should this be behind #[cfg(test)]?
+    pub async fn list(&self) -> StrongholdResult<Vec<(RecordId, RecordHint)>> {
+        let list = self
+            .client
+            .actor()
+            .send(ListIds {
+                vault_path: self.vault_path.clone(),
+            })
+            .await?;
+        Ok(list)
+    }
+
+    #[cfg(test)]
+    pub async fn read_secret(&self, location: VaultLocation) -> StrongholdResult<Option<Vec<u8>>> {
+        let secret = self
+            .client
+            .actor()
+            .send(ReadFromVault {
+                location: location.into_location(self.vault_path.clone()),
+            })
+            .await?;
+        Ok(secret)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum VaultLocation {
+    Generic(Vec<u8>),
+    Counter(usize),
+}
+
+impl VaultLocation {
+    pub fn generic<V: Into<Vec<u8>>>(record_path: V) -> Self {
+        Self::Generic(record_path.into())
+    }
+
+    pub const fn counter(counter: usize) -> Self {
+        Self::Counter(counter)
+    }
+
+    pub fn into_location(self, vault_path: Vec<u8>) -> Location {
+        match self {
+            VaultLocation::Generic(name) => Location::generic(vault_path, name),
+            VaultLocation::Counter(counter) => Location::counter(vault_path, counter),
+        }
     }
 }
 

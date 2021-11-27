@@ -15,8 +15,10 @@ pub use self::{
 };
 pub use self::{
     registry::{
-        messages::{GetAllClients, GetClient, GetSnapshot, GetTarget, RemoveClient, SpawnClient, SwitchTarget},
-        Registry,
+        messages::{
+            GetAllClients, GetClient, GetSnapshot, GetTarget, RemoveClient, SetAllClients, SpawnClient, SwitchTarget,
+        },
+        Registry, Registry2,
     },
     secure::{messages as secure_messages, RecordError, VaultError},
     snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes},

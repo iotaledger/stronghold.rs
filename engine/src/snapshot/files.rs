@@ -45,6 +45,6 @@ fn verify_or_create(dir: &Path) -> io::Result<()> {
 
 /// Construct the path to a snapshot file with the specifed name (defaults to `main`) under
 /// the directory specified by the (`snapshot_dir`)[fn.snapshot_dir.html] function.
-pub fn get_path(name: Option<&str>) -> io::Result<PathBuf> {
-    snapshot_dir().map(|p| p.join(format!("{}.stronghold", name.unwrap_or("main"))))
+pub fn get_path(name: &str) -> io::Result<PathBuf> {
+    snapshot_dir().map(|p| p.join(format!("{}.stronghold", name)))
 }

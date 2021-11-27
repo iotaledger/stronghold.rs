@@ -39,7 +39,7 @@ mod tests;
 pub use crate::{
     interface::{ActorError, FatalEngineError, Stronghold, StrongholdResult},
     internals::Provider,
-    state::snapshot::{ReadError, WriteError},
+    state::snapshot::{ReadError, SnapshotFile, WriteError},
     utils::{Location, StrongholdFlags, VaultFlags},
 };
 pub use engine::{

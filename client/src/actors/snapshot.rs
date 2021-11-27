@@ -3,9 +3,7 @@
 
 #![allow(clippy::type_complexity)]
 
-use actix::{Actor, Handler, Message, Supervised};
-
-use std::path::PathBuf;
+use actix::{dev::MessageResponse, Actor, Handler, Message, Supervised};
 
 use engine::{
     snapshot,
@@ -31,6 +29,7 @@ pub mod returntypes {
     use super::*;
 
     /// Return type for loaded snapshot file
+    #[derive(MessageResponse)]
     pub struct ReturnReadSnapshot {
         pub id: ClientId,
 
@@ -44,12 +43,13 @@ pub mod returntypes {
 
 pub mod messages {
 
+    use crate::state::snapshot::SnapshotFile;
+
     use super::*;
 
     pub struct WriteSnapshot {
         pub key: snapshot::Key,
-        pub filename: Option<String>,
-        pub path: Option<PathBuf>,
+        pub snapshot_file: SnapshotFile,
     }
 
     impl Message for WriteSnapshot {
@@ -68,14 +68,32 @@ pub mod messages {
     #[derive(Default)]
     pub struct ReadFromSnapshot {
         pub key: snapshot::Key,
-        pub filename: Option<String>,
-        pub path: Option<PathBuf>,
+        pub snapshot_file: SnapshotFile,
         pub id: ClientId,
         pub fid: Option<ClientId>,
     }
 
     impl Message for ReadFromSnapshot {
         type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
+    }
+
+    #[derive(Default)]
+    pub struct ActorStateFromSnapshot {
+        pub id: ClientId,
+    }
+
+    impl Message for ActorStateFromSnapshot {
+        type Result = returntypes::ReturnReadSnapshot;
+    }
+
+    #[derive(Default)]
+    pub struct LoadFromDisk {
+        pub key: snapshot::Key,
+        pub snapshot_file: SnapshotFile,
+    }
+
+    impl Message for LoadFromDisk {
+        type Result = Result<(), ReadError>;
     }
 }
 
@@ -111,7 +129,7 @@ impl Handler<messages::ReadFromSnapshot> for Snapshot {
                 data: Box::new(data),
             })
         } else {
-            let mut snapshot = Snapshot::read_from_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;
+            let mut snapshot = Snapshot::read_from_snapshot(msg.snapshot_file, msg.key)?;
             let data = snapshot.get_state(id);
             *self = snapshot;
 
@@ -123,11 +141,35 @@ impl Handler<messages::ReadFromSnapshot> for Snapshot {
     }
 }
 
+impl Handler<messages::LoadFromDisk> for Snapshot {
+    type Result = Result<(), ReadError>;
+
+    fn handle(&mut self, msg: messages::LoadFromDisk, _ctx: &mut Self::Context) -> Self::Result {
+        let snapshot = Snapshot::read_from_snapshot(msg.snapshot_file, msg.key)?;
+        *self = snapshot;
+
+        Ok(())
+    }
+}
+
+impl Handler<messages::ActorStateFromSnapshot> for Snapshot {
+    type Result = returntypes::ReturnReadSnapshot;
+
+    fn handle(&mut self, msg: messages::ActorStateFromSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+        let data = self.get_state(msg.id);
+
+        ReturnReadSnapshot {
+            id: msg.id,
+            data: Box::new(data),
+        }
+    }
+}
+
 impl Handler<messages::WriteSnapshot> for Snapshot {
     type Result = Result<(), WriteError>;
 
     fn handle(&mut self, msg: messages::WriteSnapshot, _ctx: &mut Self::Context) -> Self::Result {
-        self.write_to_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;
+        self.write_to_snapshot(msg.snapshot_file, msg.key)?;
 
         self.state = SnapshotState::default();
 

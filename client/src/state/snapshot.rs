@@ -11,7 +11,7 @@ use engine::{
 };
 
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, io, path::Path};
+use std::{collections::HashMap, io, path::PathBuf};
 use thiserror::Error as DeriveError;
 
 /// Wrapper for the [`SnapshotState`] data structure.
@@ -43,13 +43,18 @@ impl Snapshot {
         self.state.0.contains_key(&cid)
     }
 
+    pub fn print_data(&self) {
+        for entry in self.state.0.keys() {
+            println!("client_id: {:?}", entry);
+        }
+    }
+
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> Result<Self, ReadError> {
-        let state = match path {
-            Some(p) => read_from(p, &key, &[])?,
-            None => read_from(&snapshot::files::get_path(name)?, &key, &[])?,
-        };
+    pub fn read_from_snapshot(snapshot_file: SnapshotFile, key: Key) -> Result<Self, ReadError> {
+        let path = snapshot_file.to_path()?;
+
+        let state = read_from(path.as_ref(), &key, &[])?;
 
         let data =
             SnapshotState::deserialize(state).map_err(|_| ReadError::CorruptedContent("Decryption failed.".into()))?;
@@ -59,17 +64,16 @@ impl Snapshot {
 
     /// Writes state to the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn write_to_snapshot(&self, name: Option<&str>, path: Option<&Path>, key: Key) -> Result<(), WriteError> {
+    pub fn write_to_snapshot(&self, snapshot_file: SnapshotFile, key: Key) -> Result<(), WriteError> {
         let data = self
             .state
             .serialize()
             .map_err(|_| WriteError::CorruptedData("Serialization failed.".into()))?;
 
+        let path = snapshot_file.to_path()?;
+
         // TODO: This is a hack and probably should be removed when we add proper error handling.
-        let f = move || match path {
-            Some(p) => write_to(&data, p, &key, &[]),
-            None => write_to(&data, &snapshot::files::get_path(name)?, &key, &[]),
-        };
+        let f = move || write_to(&data, path.as_ref(), &key, &[]);
 
         match f() {
             Ok(()) => Ok(()),
@@ -100,6 +104,35 @@ impl SnapshotState {
     /// Deserializes the snapshot state from bytes.
     pub fn deserialize(data: Vec<u8>) -> bincode::Result<Self> {
         bincode::deserialize(&data)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum SnapshotFile {
+    Named(String),
+    Path(PathBuf),
+}
+
+impl SnapshotFile {
+    pub fn named(name: impl Into<String>) -> Self {
+        Self::Named(name.into())
+    }
+
+    pub fn path(path: impl Into<PathBuf>) -> Self {
+        Self::Path(path.into())
+    }
+
+    fn to_path(self) -> std::io::Result<PathBuf> {
+        match self {
+            SnapshotFile::Named(name) => snapshot::files::get_path(&name),
+            SnapshotFile::Path(path) => Ok(path),
+        }
+    }
+}
+
+impl Default for SnapshotFile {
+    fn default() -> Self {
+        Self::Named("main".to_owned())
     }
 }
 

@@ -10,7 +10,7 @@
 
 use actix::{Actor, Addr, Context, Handler, Message, Supervised};
 use engine::vault::ClientId;
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::FromIterator};
 
 #[cfg(feature = "p2p")]
 use super::p2p::NetworkActor;
@@ -67,6 +67,12 @@ pub mod messages {
 
     impl Message for GetAllClients {
         type Result = Vec<(ClientId, Addr<SecureClient>)>;
+    }
+
+    pub struct SetAllClients(pub Vec<(ClientId, Addr<SecureClient>)>);
+
+    impl Message for SetAllClients {
+        type Result = ();
     }
 }
 
@@ -207,5 +213,69 @@ impl Handler<p2p_messages::RemoveNetwork> for Registry {
         // Dropping the only address of the network actor will stop the actor.
         // Upon stopping the actor, its `StrongholdP2p` instance will be dropped, which results in a graceful shutdown.
         self.network.take()
+    }
+}
+
+#[derive(Default)]
+pub struct Registry2 {
+    clients: HashMap<ClientId, Addr<SecureClient>>,
+    snapshot: Option<Addr<Snapshot>>,
+    #[cfg(feature = "p2p")]
+    network: Option<Addr<NetworkActor>>,
+}
+
+impl Supervised for Registry2 {}
+
+impl Actor for Registry2 {
+    type Context = Context<Self>;
+}
+
+impl Handler<messages::SpawnClient> for Registry2 {
+    type Result = Addr<SecureClient>;
+
+    fn handle(&mut self, msg: messages::SpawnClient, _ctx: &mut Self::Context) -> Self::Result {
+        if let Some(addr) = self.clients.get(&msg.id) {
+            return addr.clone();
+        }
+
+        let addr = SecureClient::new(msg.id).start();
+        self.clients.insert(msg.id, addr.clone());
+
+        addr
+    }
+}
+
+impl Handler<messages::GetClient> for Registry2 {
+    type Result = Option<Addr<SecureClient>>;
+
+    fn handle(&mut self, msg: messages::GetClient, _ctx: &mut Self::Context) -> Self::Result {
+        self.clients.get(&msg.id).cloned()
+    }
+}
+
+impl Handler<messages::GetSnapshot> for Registry2 {
+    type Result = Addr<Snapshot>;
+
+    fn handle(&mut self, _: messages::GetSnapshot, _: &mut Self::Context) -> Self::Result {
+        self.snapshot.get_or_insert(Snapshot::default().start()).clone()
+    }
+}
+
+impl Handler<messages::GetAllClients> for Registry2 {
+    type Result = Vec<(ClientId, Addr<SecureClient>)>;
+
+    fn handle(&mut self, _: messages::GetAllClients, _: &mut Self::Context) -> Self::Result {
+        let empty = HashMap::default();
+        let clients = std::mem::replace(&mut self.clients, empty);
+
+        clients.into_iter().collect()
+    }
+}
+
+impl Handler<messages::SetAllClients> for Registry2 {
+    type Result = ();
+
+    fn handle(&mut self, msg: messages::SetAllClients, _: &mut Self::Context) -> Self::Result {
+        let _ = std::mem::replace(&mut self.clients, FromIterator::from_iter(msg.0));
     }
 }
