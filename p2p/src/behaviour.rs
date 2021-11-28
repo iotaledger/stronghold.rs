@@ -23,7 +23,6 @@ mod request_manager;
 pub use self::request_manager::EstablishedConnections;
 use crate::{InboundFailure, OutboundFailure, RequestDirection, RequestId, RqRsMessage};
 pub use addresses::{assemble_relayed_addr, AddressInfo, PeerAddress};
-use either::Either;
 use firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection};
 use futures::{
     channel::{
@@ -47,7 +46,7 @@ use libp2p::{
     relay::Relay,
     swarm::{
         dial_opts::{DialOpts, PeerCondition},
-        protocols_handler::either::IntoEitherHandler,
+        toggle::Toggle,
         IntoProtocolsHandler, IntoProtocolsHandlerSelect, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler,
         PollParameters, ProtocolsHandler,
     },
@@ -61,20 +60,11 @@ use std::{
     time::Duration,
 };
 
-type ProtoHandler<Rq, Rs> = IntoEitherHandler<
-    IntoEitherHandler<
-        ConnectionHandler<Rq, Rs>,
-        IntoProtocolsHandlerSelect<
-            ConnectionHandler<Rq, Rs>,
-            IntoProtocolsHandlerSelect<
-                <Mdns as NetworkBehaviour>::ProtocolsHandler,
-                <Relay as NetworkBehaviour>::ProtocolsHandler,
-            >,
-        >,
-    >,
-    IntoEitherHandler<
-        IntoProtocolsHandlerSelect<ConnectionHandler<Rq, Rs>, <Mdns as NetworkBehaviour>::ProtocolsHandler>,
-        IntoProtocolsHandlerSelect<ConnectionHandler<Rq, Rs>, <Relay as NetworkBehaviour>::ProtocolsHandler>,
+type ProtoHandler<Rq, Rs> = IntoProtocolsHandlerSelect<
+    ConnectionHandler<Rq, Rs>,
+    IntoProtocolsHandlerSelect<
+        <Toggle<Mdns> as NetworkBehaviour>::ProtocolsHandler,
+        <Toggle<Relay> as NetworkBehaviour>::ProtocolsHandler,
     >,
 >;
 
@@ -157,10 +147,10 @@ where
     TRq: Clone + Send + 'static,
 {
     // integrate Mdns protocol
-    mdns: Option<Mdns>,
+    mdns: Toggle<Mdns>,
 
     // integrate Relay protocol
-    relay: Option<Relay>,
+    relay: Toggle<Relay>,
 
     // List of supported protocol versions.
     supported_protocols: SmallVec<[MessageProtocol; 2]>,
@@ -209,8 +199,8 @@ where
         address_info: Option<AddressInfo>,
     ) -> Self {
         NetBehaviour {
-            mdns,
-            relay,
+            mdns: mdns.into(),
+            relay: relay.into(),
             supported_protocols: config.supported_protocols,
             request_timeout: config.request_timeout,
             connection_timeout: config.connection_timeout,
@@ -315,7 +305,7 @@ where
 
     // Whether the relay protocol is enabled.
     pub fn is_relay_enabled(&self) -> bool {
-        self.relay.is_some()
+        self.relay.is_enabled()
     }
 
     /// Add a relay to the list of relays that may be tried to use if a remote peer can not be reached directly.
@@ -324,7 +314,7 @@ where
         peer: PeerId,
         address: Option<Multiaddr>,
     ) -> Result<Option<Multiaddr>, RelayNotSupported> {
-        if self.relay.is_none() {
+        if !self.is_relay_enabled() {
             return Err(RelayNotSupported);
         }
         Ok(self.addresses.add_relay(peer, address))
@@ -341,7 +331,7 @@ where
     /// Configure whether it should be attempted to reach the remote via known relays, if it can not be reached via
     /// known addresses.
     pub fn set_relay_fallback(&mut self, peer: PeerId, use_relay_fallback: bool) -> Result<(), RelayNotSupported> {
-        if self.relay.is_none() {
+        if !self.is_relay_enabled() {
             return Err(RelayNotSupported);
         }
         self.addresses.set_relay_fallback(peer, use_relay_fallback);
@@ -360,7 +350,7 @@ where
         relay: PeerId,
         is_exclusive: bool,
     ) -> Result<Option<Multiaddr>, RelayNotSupported> {
-        if self.relay.is_none() {
+        if !self.is_relay_enabled() {
             return Err(RelayNotSupported);
         }
         Ok(self.addresses.use_relay(target, relay, is_exclusive))
@@ -433,23 +423,9 @@ where
 
     fn new_handler_for_peer(&mut self, peer: Option<PeerId>) -> <Self as NetworkBehaviour>::ProtocolsHandler {
         let handler = self.new_request_response_handler(peer);
-        let mdns_handler = self.mdns.as_mut().map(|mdns| mdns.new_handler());
-        let relay_handler = self.relay.as_mut().map(|relay| relay.new_handler());
-        match mdns_handler {
-            Some(mh) => match relay_handler {
-                Some(rh) => IntoEitherHandler::Left(IntoEitherHandler::Right(IntoProtocolsHandler::select(
-                    handler,
-                    IntoProtocolsHandler::select(mh, rh),
-                ))),
-                None => IntoEitherHandler::Right(IntoEitherHandler::Left(IntoProtocolsHandler::select(handler, mh))),
-            },
-            None => match relay_handler {
-                Some(rh) => {
-                    IntoEitherHandler::Right(IntoEitherHandler::Right(IntoProtocolsHandler::select(handler, rh)))
-                }
-                None => IntoEitherHandler::Left(IntoEitherHandler::Left(handler)),
-            },
-        }
+        let mdns_handler = self.mdns.new_handler();
+        let relay_handler = self.relay.new_handler();
+        IntoProtocolsHandler::select(handler, IntoProtocolsHandler::select(mdns_handler, relay_handler))
     }
 
     // Handle new [`HandlerOutEvent`] emitted by the [`ConnectionHandler`].
@@ -575,20 +551,9 @@ where
         event: <<Self::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
     ) {
         match event {
-            Either::Left(Either::Left(ev))
-            | Either::Left(Either::Right(EitherOutput::First(ev)))
-            | Either::Right(Either::Left(EitherOutput::First(ev)))
-            | Either::Right(Either::Right(EitherOutput::First(ev))) => self.handle_handler_event(peer, connection, ev),
-            Either::Left(Either::Right(EitherOutput::Second(EitherOutput::First(ev))))
-            | Either::Right(Either::Left(EitherOutput::Second(ev))) => {
-                // Event can only occur if mdns is not `None`
-                self.mdns.as_mut().unwrap().inject_event(peer, connection, ev)
-            }
-            Either::Left(Either::Right(EitherOutput::Second(EitherOutput::Second(ev))))
-            | Either::Right(Either::Right(EitherOutput::Second(ev))) => {
-                // Event can only occur if relay is not `None`
-                self.relay.as_mut().unwrap().inject_event(peer, connection, ev)
-            }
+            EitherOutput::First(ev) => self.handle_handler_event(peer, connection, ev),
+            EitherOutput::Second(EitherOutput::First(ev)) => self.mdns.inject_event(peer, connection, ev),
+            EitherOutput::Second(EitherOutput::Second(ev)) => self.relay.inject_event(peer, connection, ev),
         };
     }
 
@@ -598,9 +563,7 @@ where
         _params: &mut impl PollParameters,
     ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ProtocolsHandler>> {
         // Drive mdns.
-        if let Some(mdns) = self.mdns.as_mut() {
-            let _ = mdns.poll(cx, _params);
-        }
+        let _ = self.mdns.poll(cx, _params);
 
         // Update firewall rules if a peer specific rule was return after a [`FirewallRequest::PeerSpecificRule`] query.
         while let Poll::Ready(Some((peer, rules))) = self.pending_rule_rqs.poll_next_unpin(cx) {
@@ -622,49 +585,33 @@ where
         }
 
         // Handle events from the relay protocol.
-        if let Some(relay) = self.relay.as_mut() {
-            if let Poll::Ready(action) = relay.poll(cx, _params) {
-                match action {
-                    NetworkBehaviourAction::Dial { opts, handler } => {
-                        let first = self.new_request_response_handler(opts.get_peer_id());
-                        let handler = match self.mdns.as_mut() {
-                            Some(mdns) => {
-                                let into_protocols = IntoProtocolsHandler::select(
-                                    first,
-                                    IntoProtocolsHandler::select(mdns.new_handler(), handler),
-                                );
-                                IntoEitherHandler::Left(IntoEitherHandler::Right(into_protocols))
-                            }
-                            None => {
-                                let into_protocols = IntoProtocolsHandler::select(first, handler);
-                                IntoEitherHandler::Right(IntoEitherHandler::Right(into_protocols))
-                            }
-                        };
-                        return Poll::Ready(NetworkBehaviourAction::Dial { opts, handler });
-                    }
-                    NetworkBehaviourAction::NotifyHandler {
+        if let Poll::Ready(action) = self.relay.poll(cx, _params) {
+            match action {
+                NetworkBehaviourAction::Dial {
+                    opts,
+                    handler: relay_handler,
+                } => {
+                    let rq_rs_handler = self.new_request_response_handler(opts.get_peer_id());
+                    let mdns_handler = self.mdns.new_handler();
+                    let handler = IntoProtocolsHandler::select(
+                        rq_rs_handler,
+                        IntoProtocolsHandler::select(mdns_handler, relay_handler),
+                    );
+                    return Poll::Ready(NetworkBehaviourAction::Dial { opts, handler });
+                }
+                NetworkBehaviourAction::NotifyHandler {
+                    peer_id,
+                    handler,
+                    event,
+                } => {
+                    let event = EitherOutput::Second(EitherOutput::Second(event));
+                    return Poll::Ready(NetworkBehaviourAction::NotifyHandler {
                         peer_id,
                         handler,
                         event,
-                    } => {
-                        let event = match self.mdns {
-                            Some(_) => {
-                                let event = EitherOutput::Second(EitherOutput::Second(event));
-                                Either::Left(Either::Right(event))
-                            }
-                            None => {
-                                let event = EitherOutput::Second(event);
-                                Either::Right(Either::Right(event))
-                            }
-                        };
-                        return Poll::Ready(NetworkBehaviourAction::NotifyHandler {
-                            peer_id,
-                            handler,
-                            event,
-                        });
-                    }
-                    _ => {}
+                    });
                 }
+                _ => {}
             }
         }
         // Emit events for pending requests and required dial attempts.
@@ -697,20 +644,10 @@ where
                     connection,
                 } => {
                     let event = HandlerInEvent::SendRequest { request_id, request };
-                    let event = match self.mdns {
-                        Some(_) => match self.relay {
-                            Some(_) => Either::Left(Either::Right(EitherOutput::First(event))),
-                            None => Either::Right(Either::Left(EitherOutput::First(event))),
-                        },
-                        None => match self.relay {
-                            Some(_) => Either::Right(Either::Right(EitherOutput::First(event))),
-                            None => Either::Left(Either::Left(event)),
-                        },
-                    };
                     NetworkBehaviourAction::NotifyHandler {
                         peer_id: peer,
                         handler: NotifyHandler::One(connection),
-                        event,
+                        event: EitherOutput::First(event),
                     }
                 }
                 BehaviourAction::OutboundFailure {
@@ -741,20 +678,10 @@ where
                     support,
                 } => {
                     let event = HandlerInEvent::SetProtocolSupport(support);
-                    let event = match self.mdns {
-                        Some(_) => match self.relay {
-                            Some(_) => Either::Left(Either::Right(EitherOutput::First(event))),
-                            None => Either::Right(Either::Left(EitherOutput::First(event))),
-                        },
-                        None => match self.relay {
-                            Some(_) => Either::Right(Either::Right(EitherOutput::First(event))),
-                            None => Either::Left(Either::Left(event)),
-                        },
-                    };
                     NetworkBehaviourAction::NotifyHandler {
                         peer_id: peer,
                         handler: NotifyHandler::One(connection),
-                        event,
+                        event: EitherOutput::First(event),
                     }
                 }
             };
@@ -840,36 +767,12 @@ where
         _handler: <Self::ProtocolsHandler as IntoProtocolsHandler>::Handler,
     ) {
         self.request_manager.on_connection_closed(*peer, connection);
-        let (mdns_handler, relay_handler) = match _handler {
-            Either::Left(Either::Left(_)) => (None, None),
-            Either::Left(Either::Right(handler)) => {
-                let (_, select) = handler.into_inner();
-                let (mdns_handler, relay_handler) = select.into_inner();
-                (Some(mdns_handler), Some(relay_handler))
-            }
-            Either::Right(Either::Left(handler)) => {
-                let (_, mdns_handler) = handler.into_inner();
-                (Some(mdns_handler), None)
-            }
-            Either::Right(Either::Right(handler)) => {
-                let (_, relay_handler) = handler.into_inner();
-                (None, Some(relay_handler))
-            }
-        };
-        if let Some(mh) = mdns_handler {
-            // Event can only occur if mdns is not `None`
-            self.mdns
-                .as_mut()
-                .unwrap()
-                .inject_connection_closed(peer, connection, _endpoint, mh);
-        }
-        if let Some(rh) = relay_handler {
-            // Event can only occur if relay is not `None`
-            self.relay
-                .as_mut()
-                .unwrap()
-                .inject_connection_closed(peer, connection, _endpoint, rh);
-        }
+        let (_, select) = _handler.into_inner();
+        let (mdns_handler, relay_handler) = select.into_inner();
+        self.mdns
+            .inject_connection_closed(peer, connection, _endpoint, mdns_handler);
+        self.relay
+            .inject_connection_closed(peer, connection, _endpoint, relay_handler);
     }
 
     fn inject_address_change(
@@ -891,83 +794,35 @@ where
     fn inject_dial_failure(
         &mut self,
         peer_id: Option<PeerId>,
-        handler: Self::ProtocolsHandler,
-        error: &libp2p::swarm::DialError,
+        _handler: Self::ProtocolsHandler,
+        _error: &libp2p::swarm::DialError,
     ) {
         if let Some(peer) = peer_id {
             self.request_manager.on_dial_failure(peer);
         }
-        let (mdns_handler, relay_handler) = match handler {
-            IntoEitherHandler::Left(IntoEitherHandler::Left(_)) => (None, None),
-            IntoEitherHandler::Left(IntoEitherHandler::Right(handler)) => {
-                let (_, select) = handler.into_inner();
-                let (mdns_handler, relay_handler) = select.into_inner();
-                (Some(mdns_handler), Some(relay_handler))
-            }
-            IntoEitherHandler::Right(IntoEitherHandler::Left(handler)) => {
-                let (_, mdns_handler) = handler.into_inner();
-                (Some(mdns_handler), None)
-            }
-            IntoEitherHandler::Right(IntoEitherHandler::Right(handler)) => {
-                let (_, relay_handler) = handler.into_inner();
-                (None, Some(relay_handler))
-            }
-        };
-        if let Some(mh) = mdns_handler {
-            // Event can only occur if mdns is not `None`
-            self.mdns.as_mut().unwrap().inject_dial_failure(peer_id, mh, error);
-        }
-        if let Some(rh) = relay_handler {
-            // Event can only occur if relay is not `None`
-            self.relay.as_mut().unwrap().inject_dial_failure(peer_id, rh, error);
-        }
+        let (_, select) = _handler.into_inner();
+        let (mdns_handler, relay_handler) = select.into_inner();
+        self.mdns.inject_dial_failure(peer_id, mdns_handler, _error);
+        self.relay.inject_dial_failure(peer_id, relay_handler, _error);
     }
 
     fn inject_listen_failure(
         &mut self,
-        local_addr: &Multiaddr,
-        send_back_addr: &Multiaddr,
-        handler: Self::ProtocolsHandler,
+        _local_addr: &Multiaddr,
+        _send_back_addr: &Multiaddr,
+        _handler: Self::ProtocolsHandler,
     ) {
-        let (mdns_handler, relay_handler) = match handler {
-            IntoEitherHandler::Left(IntoEitherHandler::Left(_)) => (None, None),
-            IntoEitherHandler::Left(IntoEitherHandler::Right(handler)) => {
-                let (_, select) = handler.into_inner();
-                let (mdns_handler, relay_handler) = select.into_inner();
-                (Some(mdns_handler), Some(relay_handler))
-            }
-            IntoEitherHandler::Right(IntoEitherHandler::Left(handler)) => {
-                let (_, mdns_handler) = handler.into_inner();
-                (Some(mdns_handler), None)
-            }
-            IntoEitherHandler::Right(IntoEitherHandler::Right(handler)) => {
-                let (_, relay_handler) = handler.into_inner();
-                (None, Some(relay_handler))
-            }
-        };
-        if let Some(mh) = mdns_handler {
-            // Event can only occur if mdns is not `None`
-            self.mdns
-                .as_mut()
-                .unwrap()
-                .inject_listen_failure(local_addr, send_back_addr, mh)
-        }
-        if let Some(rh) = relay_handler {
-            // Event can only occur if relay is not `None`
-            self.relay
-                .as_mut()
-                .unwrap()
-                .inject_listen_failure(local_addr, send_back_addr, rh)
-        }
+        let (_, select) = _handler.into_inner();
+        let (mdns_handler, relay_handler) = select.into_inner();
+        self.mdns
+            .inject_listen_failure(_local_addr, _send_back_addr, mdns_handler);
+        self.relay
+            .inject_listen_failure(_local_addr, _send_back_addr, relay_handler);
     }
 
     fn inject_new_listener(&mut self, id: ListenerId) {
-        if let Some(mdns) = self.mdns.as_mut() {
-            mdns.inject_new_listener(id)
-        }
-        if let Some(relay) = self.relay.as_mut() {
-            relay.inject_new_listener(id)
-        }
+        self.mdns.inject_new_listener(id);
+        self.relay.inject_new_listener(id);
     }
 
     fn inject_new_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {
