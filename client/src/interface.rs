@@ -29,6 +29,8 @@ use crate::{
     utils::{EntryShape, LoadFromPath, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
     Location,
 };
+use crypto::{hashes::blake2b, keys::x25519};
+use digest::Digest;
 use engine::vault::{ClientId, RecordHint, RecordId};
 
 #[cfg(feature = "p2p")]
@@ -979,6 +981,26 @@ impl Stronghold {
 /// Implementation for remote synchronization on top of p2p.
 #[cfg(feature = "p2p")]
 impl Stronghold {
+    /// Creates a temporary X25519 public / private key pair, hashes it with [`Blake2b`] and
+    /// returns the public and private key as hashed values respectively
+    async fn create_temporary_keys(
+        &self,
+    ) -> Result<(impl Zeroize + AsRef<Vec<u8>>, impl Zeroize + AsRef<Vec<u8>>), String> {
+        let sec_key = match x25519::SecretKey::generate() {
+            Ok(secret) => secret,
+            Err(error) => return Err(error.to_string()),
+        };
+
+        let pub_key_bytes = sec_key.public_key().to_bytes();
+        let sec_key_bytes = sec_key.to_bytes();
+
+        // hashed pub / private key
+        Ok((
+            blake2b::Blake2b256::digest(&pub_key_bytes).to_vec(),
+            blake2b::Blake2b256::digest(&sec_key_bytes).to_vec(),
+        ))
+    }
+
     /// Requests full synchronization from a remote peer. The local peer must have full access rights
     /// on the remote side as defined by the policy checks. This function also requires a target [`ClientId`]
     /// to load the remote snapshot state into.
@@ -987,13 +1009,12 @@ impl Stronghold {
     /// - the `key` will be used to encrypt the snapshotc
     /// - the `target` is the target [`ClientId`] to spawn a new actor, and load the inner state
     #[allow(unused_variables)]
-    pub async fn synchronize_full_remote<K>(&self, peer_id: PeerId, keydata: K) -> Result<(), String>
-    where
-        K: Zeroize + AsRef<Vec<u8>>,
-    {
-        // this should be inside logic
-        let mut key: [u8; 32] = [0u8; 32];
-        key.copy_from_slice(keydata.as_ref());
+    pub async fn synchronize_full_remote(&self, peer_id: PeerId) -> Result<(), String> {
+        // hashed pub / private key
+        let (pub_key_vec, sec_key_vec) = match self.create_temporary_keys().await {
+            Ok((public, private)) => (public, private),
+            Err(error) => return Err(error),
+        };
 
         let network = match self.registry.send(GetNetwork).await.unwrap() {
             Some(a) => a,
@@ -1008,7 +1029,7 @@ impl Stronghold {
         // (1) request full export
         let result = match network
             .send(network_msg::FullExport {
-                key: keydata.as_ref().clone(),
+                key: pub_key_vec.as_ref().clone(),
             })
             .await
         {
@@ -1029,7 +1050,13 @@ impl Stronghold {
 
         // (3) send encrypted snapshot data
         let data = result.1;
-        let snapshot_data = match snapshot.send(DeserializeSnapshot { input: data, key }).await {
+        let snapshot_data = match snapshot
+            .send(DeserializeSnapshot {
+                input: data,
+                key: sec_key_vec.as_ref().clone(),
+            })
+            .await
+        {
             Ok(r) => match r {
                 Ok(result) => result,
                 Err(error) => return Err("".to_string()), // change! introduce proper return type
@@ -1083,25 +1110,23 @@ impl Stronghold {
     /// - the `peer_id` is used to connect to a remote peer.
     /// - the `locations` are used for the remote peer
     #[allow(unused_variables)]
-    pub async fn synchronize_partial_select_remote<K>(
+    pub async fn synchronize_partial_select_remote(
         &self,
         peer_id: PeerId,
         id: ClientId,
         locations: Vec<Location>,
-        keydata: K,
-    ) -> Result<(), String>
-    where
-        K: Zeroize + AsRef<Vec<u8>>,
-    {
+    ) -> Result<(), String> {
+        // hashed pub / private key
+        let (pub_key_vec, sec_key_vec) = match self.create_temporary_keys().await {
+            Ok((public, private)) => (public, private),
+            Err(error) => return Err(error),
+        };
+
         // (1) load the current target
         if let Some(target) = match self.registry.send(GetTarget {}).await {
             Ok(current) => current,
             Err(error) => return Err(error.to_string()),
         } {
-            // this should be inside logic
-            let mut key: [u8; 32] = [0u8; 32];
-            key.copy_from_slice(keydata.as_ref());
-
             // (0) do we need to write everything into local snapshot?
 
             // get the snapshot actor
@@ -1121,7 +1146,7 @@ impl Stronghold {
             let data = match network
                 .send(network_msg::ExportSnapshot {
                     input: locations,
-                    key: keydata.as_ref().clone(), // check: is there a better way
+                    key: pub_key_vec.as_ref().clone(), // check: is there a better way
                 })
                 .await
             {
@@ -1133,7 +1158,13 @@ impl Stronghold {
             };
 
             // (3) deserialize data and unpack it
-            let data = match snapshot.send(UnpackSnapshotData { data, key }).await {
+            let data = match snapshot
+                .send(UnpackSnapshotData {
+                    data,
+                    key: sec_key_vec.as_ref().clone(),
+                })
+                .await
+            {
                 Ok(r) => match r {
                     Ok(result) => result,
                     Err(error) => return Err(error.to_string()),
@@ -1156,25 +1187,23 @@ impl Stronghold {
     /// returns an with `key` encrypted snapshot containing the complementary entries. Remote access
     /// control applies. The internally returned snapshot will be imported into the current target actor.
     #[allow(unused_variables)]
-    pub async fn synchronize_complementary_request_remote<K>(
+    pub async fn synchronize_complementary_request_remote(
         &self,
         peer_id: PeerId,
         id: ClientId,
-        keydata: K,
         client_id: ClientId,
-    ) -> Result<(), String>
-    where
-        K: Zeroize + AsRef<Vec<u8>>,
-    {
+    ) -> Result<(), String> {
+        // hashed pub / private key
+        let (pub_key_vec, sec_key_vec) = match self.create_temporary_keys().await {
+            Ok((public, private)) => (public, private),
+            Err(error) => return Err(error),
+        };
+
         // (1) load the current target
         if let Some(target) = match self.registry.send(GetTarget {}).await {
             Ok(current) => current,
             Err(error) => return Err(error.to_string()),
         } {
-            // this should be inside logic
-            let mut key: [u8; 32] = [0u8; 32];
-            key.copy_from_slice(keydata.as_ref());
-
             // todo: explicit handling of possible registry error
             let network = match self.registry.send(GetNetwork).await.unwrap() {
                 Some(a) => a,
@@ -1200,7 +1229,7 @@ impl Stronghold {
             let data = match network
                 .send(network_msg::ExportComplement {
                     input,
-                    key: keydata.as_ref().clone(), // check: could this be done better?
+                    key: pub_key_vec.as_ref().clone(), // check: could this be done better?
                 })
                 .await
             {
@@ -1212,7 +1241,13 @@ impl Stronghold {
             };
 
             // (4) deserialize data
-            let data = match snapshot.send(UnpackSnapshotData { data, key }).await {
+            let data = match snapshot
+                .send(UnpackSnapshotData {
+                    data,
+                    key: sec_key_vec.as_ref().clone(),
+                })
+                .await
+            {
                 Ok(r) => match r {
                     Ok(result) => result,
                     Err(error) => return Err(error.to_string()),

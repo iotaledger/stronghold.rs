@@ -186,6 +186,7 @@ pub mod messages {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct CalculateComplement {
         pub input: HashMap<Location, EntryShape>,
+        pub id: ClientId,
     }
 
     impl Message for CalculateComplement {
@@ -215,7 +216,7 @@ pub mod messages {
 
     pub struct DeserializeSnapshot {
         pub input: Vec<u8>,
-        pub key: Key,
+        pub key: Vec<u8>,
     }
 
     impl Message for DeserializeSnapshot {
@@ -228,7 +229,7 @@ pub mod messages {
         pub data: Vec<u8>,
 
         /// The key to decrypt the snapshot data
-        pub key: Key,
+        pub key: Vec<u8>,
     }
 
     impl Message for UnpackSnapshotData {
@@ -306,7 +307,18 @@ impl Handler<messages::CalculateComplement> for Snapshot {
 
     #[allow(unused_variables)]
     fn handle(&mut self, msg: messages::CalculateComplement, ctx: &mut Self::Context) -> Self::Result {
-        todo!()
+        let output = HashMap::new();
+
+        let local_shapes = match <Self as Handler<CalculateShape>>::handle(self, CalculateShape { id: msg.id }, ctx) {
+            Ok(shapes) => shapes,
+            Err(error) => return Err(error),
+        };
+
+        for (a, b) in msg.input.iter() {
+            // let vid_remote = a.try_into();
+        }
+
+        Ok(output)
     }
 }
 
@@ -448,6 +460,7 @@ impl Handler<messages::ExportComplement> for Snapshot {
             self,
             CalculateComplement {
                 input: message.input.clone(),
+                id: message.id,
             },
             ctx,
         );
@@ -510,7 +523,10 @@ impl Handler<DeserializeSnapshot> for Snapshot {
         Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, SnapshotError>;
 
     fn handle(&mut self, msg: DeserializeSnapshot, _ctx: &mut Self::Context) -> Self::Result {
-        match Snapshot::read_from_data(msg.input, msg.key, None) {
+        let mut key = [0u8; 32];
+        key.clone_from_slice(&msg.key);
+
+        match Snapshot::read_from_data(msg.input, key, None) {
             Ok(snapshot) => Ok(Box::from(snapshot.state.0)),
             Err(error) => Err(error),
         }

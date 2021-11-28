@@ -1,7 +1,7 @@
 ---
 "stronghold-engine": minor
 "stronghold-policy": minor
-"iota_stronghold" : minor
+"iota-stronghold" : minor
 ---
 
 - engine:   Add Longest Common Sequence (LSC) as diff
