@@ -28,6 +28,7 @@ pub mod messages {
     /// encrypted data. The `key` fields contains
     /// an encrypted key by a public key, provided
     /// by the requesting peer.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct EncryptedData {
         pub key: Vec<u8>,
         pub data: Vec<u8>,

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{secure_messages::WriteToVault, GetTarget, RecordError, Registry},
+    actors::{
+        registry::messages::GetSynchronizationActor, secure_messages::WriteToVault, GetTarget, RecordError, Registry,
+    },
     enum_from_inner,
-    procedures::{CollectedOutput, Procedure},
+    procedures::CollectedOutput,
 };
 use actix::prelude::*;
 // use engine::vault::ClientId;
@@ -39,23 +41,34 @@ macro_rules! impl_handler {
 }
 
 macro_rules! sh_request_dispatch {
-    ($request:ident => |$inner: ident| $body:block) => {
+    (client, $request:ident => |$inner: ident| $body:block) => {
         match $request {
-            ShRequest::CheckVault($inner) => $body
-            ShRequest::CheckRecord($inner) => $body
-            ShRequest::WriteToStore($inner) => $body
-            ShRequest::ReadFromStore($inner) => $body
-            ShRequest::DeleteFromStore($inner) => $body
-            ShRequest::WriteToRemoteVault($inner) =>  {
+            ClientRequest::CheckVault($inner) => $body
+            ClientRequest::CheckRecord($inner) => $body
+            ClientRequest::WriteToStore($inner) => $body
+            ClientRequest::ReadFromStore($inner) => $body
+            ClientRequest::DeleteFromStore($inner) => $body
+            ClientRequest::WriteToVault($inner) => $body
+            ClientRequest::GarbageCollect($inner) => $body
+            ClientRequest::ListIds($inner) => $body
+            ClientRequest::ClearCache($inner) => $body
+            ClientRequest::WriteToRemoteVault($inner) =>  {
                 let $inner: WriteToVault = $inner.into();
                 $body
             }
+
             #[cfg(test)]
-            ShRequest::ReadFromVault($inner) => $body
-            ShRequest::GarbageCollect($inner) => $body
-            ShRequest::ListIds($inner) => $body
-            ShRequest::ClearCache($inner) => $body
-            ShRequest::Procedure($inner) => $body
+            ClientRequest::ReadFromVault($inner) => $body
+            ClientRequest::Procedure($inner) => $body
+        }
+    };
+    (sync, $request:ident => |$inner: ident| $body:block) => {
+        match $request {
+            SynchronizationRequest::CalculateShapeRemote($inner) => $body
+            SynchronizationRequest::CalculateShapeLocal($inner) => $body
+            SynchronizationRequest::ComplementSynchronization($inner) => $body
+            SynchronizationRequest::FullSynchronization($inner) => $body
+            SynchronizationRequest::PartialSynchronization($inner) => $body
         }
     }
 }
@@ -153,82 +166,39 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for NetworkActor {
             request, response_tx, ..
         } = item;
 
-        // handle calls to SecureClient
-        sh_request_dispatch!(request => |inner| {
-            let fut = self.registry
-                .send(GetTarget)
-                .and_then(|client| async { match client {
-                    Some(client) => client.send(inner).await,
-                    _ => Err(MailboxError::Closed)
-                }})
-                .map_ok(|response| response_tx.send(response.into()))
-                .map(|_| ())
-                .into_actor(self);
-            ctx.wait(fut);
-        });
+        match request {
+            ShRequest::ClientRequest(client) => {
+                // handle calls to SecureClient
+                sh_request_dispatch!(client, client => |inner| {
+                    let fut = self.registry
+                        .send(GetTarget)
+                        .and_then(|client| async { match client {
+                            Some(client) => client.send(inner).await,
+                            _ => Err(MailboxError::Closed)
+                        }})
+                        .map_ok(|response| response_tx.send(response.into()))
+                        .map(|_| ())
+                        .into_actor(self);
+                    ctx.wait(fut);
+                })
+            }
+            ShRequest::SynchronizationRequest(sync) => {
+                // handle calls to SynchronizationActor
+                sh_request_dispatch!(sync, sync => |inner| {
+                    let fut = self.registry
+                        .send(GetSynchronizationActor)
+                        .and_then(|sync| async move {
+                            sync.send(inner).await
+                        })
+                        .map_ok(|response| response_tx.send(response.into()))
+                        .map(|_| ())
+                        .into_actor(self);
+                    ctx.wait(fut);
+                });
+            }
+        }
     }
 }
-
-// impl<K> StreamHandler<ReceiveRequest<SnapshotRequest<K>, ShResult>> for NetworkActor
-// where
-//     K: Zeroize + AsRef<Vec<u8>>,
-// {
-//     // todo maybe merge with the [`ShRequest`] ?
-//     fn handle(&mut self, item: ReceiveRequest<SnapshotRequest<K>, ShResult>, ctx: &mut Self::Context) {
-//         // de-sugar request
-//         let ReceiveRequest {
-//             request_id,
-//             peer,
-//             request,
-//             response_tx,
-//         } = item;
-
-//         // get mapping
-//         let client_id = self
-//             .policy_engine
-//             .inner(&peer)
-//             .expect("No peer to client mapping present");
-
-//         match request {
-//             SnapshotRequest::CalculateShape if self.has_read_access(&peer, None::<Location>) => {
-//                 let snapshot_future = self
-//                     .registry
-//                     .send(GetSnapshot)
-//                     .and_then(|snapshot| async { snapshot.send(CalculateShape { id: client_id }).await })
-//                     // todo result mapping, and send into channel
-//                     .map(|_| ())
-//                     .into_actor(self);
-
-//                 // execute snapshot future
-//                 ctx.wait(snapshot_future);
-//             }
-//             SnapshotRequest::ExportSnapshot { input, key } if self.has_read_access(&peer, None::<Location>) => {
-//                 let snapshot_future = self
-//                     .registry
-//                     .send(GetSnapshot)
-//                     .and_then(|snapshot| async {
-//                         snapshot
-//                             .send(ExportSnapshot {
-//                                 id: client_id,
-//                                 input,
-//                                 public_key: key,
-//                             })
-//                             .await
-//                     })
-//                     // todo result mapping, and send into channel
-//                     .map(|_| ())
-//                     .into_actor(self);
-
-//                 // execute snapshot future
-//                 ctx.wait(snapshot_future);
-//             }
-//             SnapshotRequest::FullExport { key } => {
-//                 //
-//             }
-//             _ => {}
-//         };
-//     }
-// }
 
 impl<Rq> Handler<SendRequest<Rq>> for NetworkActor
 where
@@ -422,9 +392,22 @@ impl Default for NetworkConfig {
 pub mod messages {
 
     use super::*;
-    use crate::{procedures::ProcedureError, Location, RecordHint, RecordId};
+    use crate::{
+        actors::sync::{
+            messages::{
+                CalculateShapeLocal, CalculateShapeRemote, ComplementSynchronization, EncryptedData,
+                FullSynchronizationRemote, PartialSynchronizationRemote,
+            },
+            SynchronizationError,
+        },
+        procedures::{Procedure, ProcedureError},
+        utils::EntryShape,
+        Location, RecordHint, RecordId,
+    };
+    use engine::vault::ClientId;
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
 
     use crate::actors::secure_messages::{
         CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore, WriteToStore,
@@ -603,14 +586,12 @@ pub mod messages {
 
     pub type RemoteRecordError = String;
 
-    /// Wrapper for Requests to a remote Secure Client
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub enum ShRequest {
+    pub enum ClientRequest {
         CheckVault(CheckVault),
         CheckRecord(CheckRecord),
         ListIds(ListIds),
-        #[cfg(test)]
-        ReadFromVault(ReadFromVault),
+        WriteToVault(WriteToVault),
         WriteToRemoteVault(WriteToRemoteVault),
         ReadFromStore(ReadFromStore),
         WriteToStore(WriteToStore),
@@ -618,19 +599,47 @@ pub mod messages {
         GarbageCollect(GarbageCollect),
         ClearCache(ClearCache),
         Procedure(Procedure),
+
+        #[cfg(test)]
+        ReadFromVault(ReadFromVault),
     }
 
-    enum_from_inner!(ShRequest from CheckVault);
-    enum_from_inner!(ShRequest from ListIds);
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum SynchronizationRequest {
+        CalculateShapeRemote(CalculateShapeRemote),
+        CalculateShapeLocal(CalculateShapeLocal),
+        ComplementSynchronization(ComplementSynchronization),
+        FullSynchronization(FullSynchronizationRemote),
+        PartialSynchronization(PartialSynchronizationRemote),
+    }
+
+    /// Wrapper for Requests to a remote Secure Client
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum ShRequest {
+        ClientRequest(ClientRequest),
+        SynchronizationRequest(SynchronizationRequest),
+    }
+
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::CheckVault from CheckVault);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::CheckRecord from CheckRecord);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::ListIds from ListIds);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::WriteToVault from WriteToVault);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::WriteToRemoteVault from WriteToRemoteVault);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::ReadFromStore from ReadFromStore);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::WriteToStore from WriteToStore);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::DeleteFromStore from DeleteFromStore);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::GarbageCollect from GarbageCollect);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::ClearCache from ClearCache);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::Procedure from Procedure);
+
     #[cfg(test)]
-    enum_from_inner!(ShRequest from ReadFromVault);
-    enum_from_inner!(ShRequest from WriteToRemoteVault);
-    enum_from_inner!(ShRequest from ReadFromStore);
-    enum_from_inner!(ShRequest from WriteToStore);
-    enum_from_inner!(ShRequest from DeleteFromStore);
-    enum_from_inner!(ShRequest from GarbageCollect);
-    enum_from_inner!(ShRequest from ClearCache);
-    enum_from_inner!(ShRequest from Procedure);
+    enum_from_inner!(ShRequest::ClientRequest, ClientRequest::ReadFromVault from ReadFromVault);
+
+    enum_from_inner!(ShRequest::SynchronizationRequest, SynchronizationRequest::CalculateShapeRemote from CalculateShapeRemote);
+    enum_from_inner!(ShRequest::SynchronizationRequest, SynchronizationRequest::CalculateShapeLocal from CalculateShapeLocal);
+    enum_from_inner!(ShRequest::SynchronizationRequest, SynchronizationRequest::ComplementSynchronization from ComplementSynchronization);
+    enum_from_inner!(ShRequest::SynchronizationRequest, SynchronizationRequest::FullSynchronization from FullSynchronizationRemote);
+    enum_from_inner!(ShRequest::SynchronizationRequest, SynchronizationRequest::PartialSynchronization from PartialSynchronizationRemote);
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {
@@ -640,6 +649,10 @@ pub mod messages {
         WriteRemoteVault(Result<(), RemoteRecordError>),
         ListIds(Vec<(RecordId, RecordHint)>),
         Proc(Result<CollectedOutput, ProcedureError>),
+        Shape(Result<HashMap<Location, EntryShape>, SynchronizationError>),
+
+        Encrypted(Result<EncryptedData, SynchronizationError>),
+        FullSynchronization(Result<(ClientId, EncryptedData), SynchronizationError>),
     }
 
     sh_result_mapping!(ShResult::Empty => ());
@@ -647,6 +660,10 @@ pub mod messages {
     sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
     sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
     sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
+
+    sh_result_mapping!(ShResult::Shape =>  Result<HashMap<Location, EntryShape>, SynchronizationError>);
+    sh_result_mapping!(ShResult::Encrypted =>  Result<EncryptedData, SynchronizationError>);
+    sh_result_mapping!(ShResult::FullSynchronization => Result<(ClientId, EncryptedData), SynchronizationError>);
 
     impl From<Result<(), RecordError>> for ShResult {
         fn from(inner: Result<(), RecordError>) -> Self {

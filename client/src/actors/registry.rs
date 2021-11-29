@@ -8,12 +8,13 @@
 //! be added, removed or queried for their [`actix::Addr`].
 //! The registry can also be queried for the snapshot actor.
 
-use actix::{Actor, Addr, Context, Handler, Message, Supervised};
+use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, Supervised};
 use engine::vault::ClientId;
 use std::collections::HashMap;
 
 #[cfg(feature = "p2p")]
 use super::p2p::NetworkActor;
+use super::sync::SynchronizationActor;
 use crate::state::{secure::SecureClient, snapshot::Snapshot};
 
 pub mod messages {
@@ -69,11 +70,11 @@ pub mod messages {
         type Result = Vec<(ClientId, Addr<SecureClient>)>;
     }
 
-    // pub struct Initialize;
+    pub struct GetSynchronizationActor;
 
-    // impl Message for Initialize {
-    //     type Result = ();
-    // }
+    impl Message for GetSynchronizationActor {
+        type Result = Addr<SynchronizationActor>;
+    }
 }
 
 #[cfg(feature = "p2p")]
@@ -109,6 +110,7 @@ pub struct Registry {
     clients: HashMap<ClientId, Addr<SecureClient>>,
     current_target: Option<ClientId>,
     snapshot: Option<Addr<Snapshot>>,
+    synchronization: Option<Addr<SynchronizationActor>>,
     #[cfg(feature = "p2p")]
     network: Option<Addr<NetworkActor>>,
 }
@@ -185,6 +187,16 @@ impl Handler<messages::GetAllClients> for Registry {
             result.push((*id, addr.clone()));
         }
         result
+    }
+}
+
+impl Handler<messages::GetSynchronizationActor> for Registry {
+    type Result = Addr<SynchronizationActor>;
+
+    fn handle(&mut self, _msg: messages::GetSynchronizationActor, ctx: &mut Self::Context) -> Self::Result {
+        self.synchronization
+            .get_or_insert(SynchronizationActor::new(ctx.address()).start())
+            .clone()
     }
 }
 
