@@ -22,12 +22,12 @@ use crate::{
     procedures::{CollectedOutput, Procedure, ProcedureError},
     state::{
         secure::SecureClient,
-        snapshot::{ReadError, WriteError},
+        snapshot::{ReadError, WriteError, WriteWithKeyError},
     },
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
 };
-use engine::vault::{ChainId, ClientId, RecordHint, RecordId, VaultId};
+use engine::vault::{ClientId, RecordHint, RecordId};
 #[cfg(feature = "p2p")]
 use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
 
@@ -130,20 +130,6 @@ impl From<String> for FatalEngineError {
     fn from(e: String) -> Self {
         FatalEngineError(e)
     }
-}
-
-#[derive(DeriveError, Debug)]
-pub enum WriteSnapshotWithKeyError {
-    #[error("write snapshot failed: {0}")]
-    WriteSnapshot(#[from] WriteError),
-    #[error("fatal engine error: {0}")]
-    Engine(#[from] FatalEngineError),
-    #[error("vault not found: {0}")]
-    VaultNotFound(VaultId),
-    #[error("record not found: {0:?}")]
-    RecordNotFound(ChainId),
-    #[error("invalid key: {0}")]
-    InvalidKey(String),
 }
 
 #[derive(Clone)]
@@ -431,7 +417,7 @@ impl Stronghold {
         client_path: Vec<u8>,
         filename: Option<String>,
         path: Option<PathBuf>,
-    ) -> StrongholdResult<Result<(), WriteSnapshotWithKeyError>> {
+    ) -> StrongholdResult<Result<(), WriteWithKeyError>> {
         let client_id = ClientId::load_from_path(&client_path, &client_path);
 
         let clients: Vec<(ClientId, Addr<SecureClient>)> = self.registry.send(GetAllClients).await?;
@@ -450,8 +436,7 @@ impl Stronghold {
                 key_location: key,
                 key_client: client_id,
             })
-            .await?
-            .map_err(|e| e.into());
+            .await?;
         Ok(res)
     }
 

@@ -16,9 +16,9 @@ use crate::{
     internals,
     state::{
         secure::Store,
-        snapshot::{ReadError, Snapshot, SnapshotState, WriteError},
+        snapshot::{Snapshot, SnapshotState},
     },
-    Provider,
+    Provider, ReadError, WriteError, WriteWithKeyError,
 };
 use std::collections::HashMap;
 
@@ -66,7 +66,7 @@ pub mod messages {
     }
 
     impl Message for WriteSnapshotStoredKey {
-        type Result = Result<(), WriteError>;
+        type Result = Result<(), WriteWithKeyError>;
     }
 
     pub struct FillSnapshot {
@@ -149,7 +149,7 @@ impl Handler<messages::WriteSnapshot> for Snapshot {
 }
 
 impl Handler<messages::WriteSnapshotStoredKey> for Snapshot {
-    type Result = Result<(), WriteError>;
+    type Result = Result<(), WriteWithKeyError>;
 
     fn handle(&mut self, msg: messages::WriteSnapshotStoredKey, _ctx: &mut Self::Context) -> Self::Result {
         self.write_snapshot_with_stored_key(
