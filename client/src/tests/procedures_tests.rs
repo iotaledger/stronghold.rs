@@ -15,9 +15,9 @@ use stronghold_utils::random::{self, bytestring, string};
 use super::fresh;
 use crate::{
     procedures::{
-        AeadAlg, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, ChainCode, Ed25519Sign, GenerateKey, Hash,
-        HashType, Hkdf, KeyType, MnemonicLanguage, OutputKey, PersistOutput, PersistSecret, ProcedureIo, ProcedureStep,
-        PublicKey, Sha2Hash, Slip10Derive, Slip10Generate, X25519DiffieHellman,
+        AeadAlg, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, ChainCode, CopyRecord, Ed25519Sign,
+        GenerateKey, Hash, HashType, Hkdf, KeyType, MnemonicLanguage, OutputKey, PersistOutput, PersistSecret,
+        ProcedureIo, ProcedureStep, PublicKey, Sha2Hash, Slip10Derive, Slip10Generate, X25519DiffieHellman,
     },
     state::secure::SecureClient,
     Location, Stronghold,
@@ -446,4 +446,52 @@ async fn usecase_recover_bip39() {
     let with_original: Vec<u8> = output.take(&signed_with_original).unwrap();
     let with_recovered: Vec<u8> = output.take(&signed_with_recovered).unwrap();
     assert_eq!(with_original, with_recovered);
+}
+
+#[actix::test]
+async fn usecase_move_record() {
+    let (_cp, sh) = setup_stronghold().await;
+    let test_msg = random::bytestring(4096);
+
+    let first_location = fresh::location();
+    let generate_key = GenerateKey::new(KeyType::Ed25519).write_secret(first_location.clone(), fresh::record_hint());
+    let pub_key = PublicKey::new(KeyType::Ed25519, first_location.clone()).store_output(OutputKey::new("pub-key"));
+    let sign_message =
+        Ed25519Sign::new(test_msg.clone(), first_location.clone()).store_output(OutputKey::new("signed"));
+    let mut output = sh
+        .runtime_exec(generate_key.then(pub_key).then(sign_message))
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
+    // signed message used for validation further in the test
+    let signed_with_original: Vec<u8> = output.take(&OutputKey::new("signed")).unwrap();
+
+    // pub-key used to derive the new location for the private key
+    let public_key = output.take(&OutputKey::new("pub-key")).unwrap();
+    let mut first: Vec<u8> = public_key;
+    let second: Vec<u8> = first.drain(first.len() % 2..).collect();
+
+    // Copy record to new location derived from the pub-key
+    let new_location = Location::generic(first, second);
+    let copy_record = CopyRecord::new(first_location.clone()).write_secret(new_location.clone(), fresh::record_hint());
+    sh.runtime_exec(copy_record)
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
+    // Remove record from old location
+    sh.delete_data(first_location, true)
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| panic!("Unexpected error: {}", e));
+
+    // Validate by signing the message from the new location
+    let sign_message = Ed25519Sign::new(test_msg, new_location).store_output(OutputKey::new("signed"));
+    let signed_with_moved: Vec<u8> = sh
+        .runtime_exec(sign_message)
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| panic!("Unexpected error: {}", e))
+        .single_output()
+        .unwrap();
+    assert_eq!(signed_with_original, signed_with_moved);
 }
