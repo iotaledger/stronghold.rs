@@ -6,6 +6,7 @@ mod p2p;
 mod registry;
 mod secure;
 mod snapshot;
+mod sync;
 
 #[cfg(feature = "p2p")]
 pub use self::{
@@ -20,6 +21,10 @@ pub use self::{
     },
     secure::{messages as secure_messages, RecordError, VaultError},
     snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes, SnapshotConfig},
+    sync::messages::{
+        CalculateShapeLocal, CalculateShapeRemote, ComplementSynchronization, EncryptedData, FullSynchronizationRemote,
+        PartialSynchronizationRemote,
+    },
 };
 #[cfg(test)]
 pub use secure::testing as secure_testing;
