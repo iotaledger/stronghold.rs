@@ -101,15 +101,15 @@
         "stronghold-utils"
       ]
     },
-    "stronghold-rules": {
-      "path": "./rules/",
+    "stronghold-policy": {
+      "path": "./policy/",
       "manager": "rust",
       "dependencies": [
-        "rules-macros"
+        "policy-macros"
       ]
     },
-    "stronghold-rules-macros": {
-      "path": "./rules/macros",
+    "stronghold-policy-macros": {
+      "path": "./policy/macros",
       "manager": "rust"
     },
     "iota-stronghold": {
