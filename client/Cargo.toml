@@ -24,27 +24,38 @@ thiserror = "1.0"
 futures = { version = "0.3", optional = true }
 actix = "0.12"
 digest = "0.9.0"
+rand = "0.8.3"
+hkdf = "0.11"
 
 [dependencies.stronghold_engine]
 path = "../engine"
 version = "0.4"
 
 [dependencies.iota-crypto]
-version = "0.7.0"
+version = "0.8.0"
 features = [
+"aes",
 "random",
 "ed25519",
 "sha",
 "hmac",
+"blake2b",
 "bip39-en",
+"bip39-jp",
 "slip10",
-"chacha"
+"chacha",
+"x25519",
 ]
 
 [dependencies.stronghold-p2p]
 path = "../p2p"
 version = "0.3"
 optional = true
+
+
+[dependencies.stronghold-derive]
+path = "../derive"
+version = "0.2"
 
 [dependencies.stronghold-utils]
 path = "../utils"

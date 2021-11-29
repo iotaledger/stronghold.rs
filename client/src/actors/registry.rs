@@ -8,27 +8,13 @@
 //! be added, removed or queried for their [`actix::Addr`].
 //! The registry can also be queried for the snapshot actor.
 
-#![allow(clippy::redundant_pattern_matching)]
 use actix::{Actor, Addr, Context, Handler, Message, Supervised};
 use engine::vault::ClientId;
 use std::collections::HashMap;
-use thiserror::Error as ErrorType;
 
 #[cfg(feature = "p2p")]
 use super::p2p::NetworkActor;
-use crate::{actors::SecureClient, state::snapshot::Snapshot};
-
-#[derive(Debug, ErrorType)]
-pub enum RegistryError {
-    #[error("No Client Present By Id ({0})")]
-    NoClientPresentById(String),
-
-    #[error("Client Already Present By Id ({0})")]
-    ClientAlreadyPresentById(String),
-
-    #[error("Network actor was already spawned")]
-    NetworkAlreadySpawned,
-}
+use crate::state::{secure::SecureClient, snapshot::Snapshot};
 
 pub mod messages {
     use super::*;
@@ -38,7 +24,7 @@ pub mod messages {
     }
 
     impl Message for SpawnClient {
-        type Result = Result<Addr<SecureClient>, RegistryError>;
+        type Result = Addr<SecureClient>;
     }
 
     pub struct SwitchTarget {
@@ -46,7 +32,7 @@ pub mod messages {
     }
 
     impl Message for SwitchTarget {
-        type Result = Result<Addr<SecureClient>, RegistryError>;
+        type Result = Option<Addr<SecureClient>>;
     }
 
     pub struct RemoveClient {
@@ -54,7 +40,7 @@ pub mod messages {
     }
 
     impl Message for RemoveClient {
-        type Result = Result<(), RegistryError>;
+        type Result = Option<Addr<SecureClient>>;
     }
 
     pub struct GetTarget;
@@ -109,10 +95,10 @@ pub mod p2p_messages {
         type Result = Option<Addr<NetworkActor>>;
     }
 
-    pub struct StopNetwork;
+    pub struct RemoveNetwork;
 
-    impl Message for StopNetwork {
-        type Result = bool;
+    impl Message for RemoveNetwork {
+        type Result = Option<Addr<NetworkActor>>;
     }
 }
 
@@ -134,16 +120,16 @@ impl Actor for Registry {
 }
 
 impl Handler<messages::SpawnClient> for Registry {
-    type Result = Result<Addr<SecureClient>, RegistryError>;
+    type Result = Addr<SecureClient>;
 
     fn handle(&mut self, msg: messages::SpawnClient, ctx: &mut Self::Context) -> Self::Result {
-        if let Some(_) = self.clients.get(&msg.id) {
-            return Err(RegistryError::ClientAlreadyPresentById(msg.id.into()));
+        if let Some(addr) = self.clients.get(&msg.id) {
+            return addr.clone();
         }
         let addr = SecureClient::new(msg.id).start();
         self.clients.insert(msg.id, addr);
 
-        <Self as Handler<messages::SwitchTarget>>::handle(self, messages::SwitchTarget { id: msg.id }, ctx)
+        Self::handle(self, messages::SwitchTarget { id: msg.id }, ctx).unwrap()
     }
 }
 
@@ -164,26 +150,20 @@ impl Handler<messages::GetClient> for Registry {
 }
 
 impl Handler<messages::SwitchTarget> for Registry {
-    type Result = Result<Addr<SecureClient>, RegistryError>;
+    type Result = Option<Addr<SecureClient>>;
 
     fn handle(&mut self, msg: messages::SwitchTarget, _ctx: &mut Self::Context) -> Self::Result {
-        let addr = self
-            .clients
-            .get(&msg.id)
-            .ok_or_else(|| RegistryError::NoClientPresentById(msg.id.into()))?;
+        let addr = self.clients.get(&msg.id)?;
         self.current_target = Some(msg.id);
-        Ok(addr.clone())
+        Some(addr.clone())
     }
 }
 
 impl Handler<messages::RemoveClient> for Registry {
-    type Result = Result<(), RegistryError>;
+    type Result = Option<Addr<SecureClient>>;
 
     fn handle(&mut self, msg: messages::RemoveClient, _ctx: &mut Self::Context) -> Self::Result {
-        match self.clients.remove(&msg.id) {
-            Some(_) => Ok(()),
-            None => Err(RegistryError::NoClientPresentById(msg.id.into())),
-        }
+        self.clients.remove(&msg.id)
     }
 }
 
@@ -226,12 +206,12 @@ impl Handler<p2p_messages::GetNetwork> for Registry {
 }
 
 #[cfg(feature = "p2p")]
-impl Handler<p2p_messages::StopNetwork> for Registry {
-    type Result = bool;
+impl Handler<p2p_messages::RemoveNetwork> for Registry {
+    type Result = Option<Addr<NetworkActor>>;
 
-    fn handle(&mut self, _: p2p_messages::StopNetwork, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: p2p_messages::RemoveNetwork, _: &mut Self::Context) -> Self::Result {
         // Dropping the only address of the network actor will stop the actor.
         // Upon stopping the actor, its `StrongholdP2p` instance will be dropped, which results in a graceful shutdown.
-        self.network.take().is_some()
+        self.network.take()
     }
 }

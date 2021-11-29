@@ -3,7 +3,6 @@
 
 use std::{
     any::Any,
-    convert::TryInto,
     hash::{Hash, Hasher},
 };
 
@@ -12,50 +11,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error as DeriveError;
 
 use super::LoadFromPath;
-
-/// A type alias for the empty `ResultMessage<()>` type.
-pub type StatusMessage = ResultMessage<()>;
-
-/// Return value used for Actor Messages.  Can specify an `Error` or an `Ok` result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ResultMessage<T> {
-    Ok(T),
-    Error(String),
-}
-
-impl ResultMessage<()> {
-    pub const OK: Self = ResultMessage::Ok(());
-}
-
-impl<T> ResultMessage<T> {
-    /// Returns true, if the [`ResultMessage`] contains an `Ok` value
-    pub fn is_ok(&self) -> bool {
-        matches!(self, ResultMessage::Ok(_))
-    }
-
-    /// Returns true, if the [`ResultMessage`] contains an `Error`
-    pub fn is_err(&self) -> bool {
-        !self.is_ok()
-    }
-}
-
-impl<T> From<Result<T, String>> for ResultMessage<T> {
-    fn from(result: Result<T, String>) -> Self {
-        match result {
-            Ok(t) => ResultMessage::Ok(t),
-            Err(s) => ResultMessage::Error(s),
-        }
-    }
-}
-
-impl<T> From<Result<T, anyhow::Error>> for ResultMessage<T> {
-    fn from(result: Result<T, anyhow::Error>) -> Self {
-        match result {
-            Ok(t) => ResultMessage::Ok(t),
-            Err(e) => ResultMessage::Error(format!("{:?}", e)),
-        }
-    }
-}
 
 #[derive(DeriveError, Debug)]
 pub enum LocationError {
@@ -130,29 +85,22 @@ impl PartialEq for Location {
     }
 }
 
-impl TryInto<VaultId> for &Location {
-    type Error = LocationError;
-
-    fn try_into(self) -> Result<VaultId, Self::Error> {
+impl Into<VaultId> for &Location {
+    fn into(self) -> VaultId {
         VaultId::load_from_path(self.vault_path(), self.vault_path())
-            .map_err(|error| LocationError::ConversionError(error.to_string()))
     }
 }
 
-impl TryInto<RecordId> for &Location {
-    type Error = LocationError;
-
-    fn try_into(self) -> Result<RecordId, Self::Error> {
+impl Into<RecordId> for &Location {
+    fn into(self) -> RecordId {
         match self {
             Location::Generic {
                 vault_path,
                 record_path,
             } => {
-                let vid = VaultId::load_from_path(vault_path, vault_path)
-                    .map_err(|error| LocationError::ConversionError(error.to_string()))?;
+                let vid = VaultId::load_from_path(vault_path, vault_path);
 
                 RecordId::load_from_path(vid.as_ref(), record_path)
-                    .map_err(|error| LocationError::ConversionError(error.to_string()))
             }
 
             Location::Counter { vault_path, counter } => {
@@ -164,7 +112,6 @@ impl TryInto<RecordId> for &Location {
                 };
 
                 RecordId::load_from_path(path.as_bytes(), path.as_bytes())
-                    .map_err(|error| LocationError::ConversionError(error.to_string()))
             }
         }
     }
@@ -246,14 +193,6 @@ pub struct EntryShape {
 
     // the size of the record in bytes
     pub record_size: usize,
-}
-
-/// Returns the complement items from A not in B
-pub fn complement<T>(a: Vec<T>, b: Vec<T>) -> Vec<T>
-where
-    T: PartialEq + Clone,
-{
-    a.into_iter().filter(|item| !b.contains(item)).collect()
 }
 
 #[cfg(test)]

@@ -1,19 +1,21 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-#[allow(unused_imports)]
-use crate::actors::{GetSnapshot, GetTarget, Registry};
-use crate::Location;
+use crate::{
+    actors::{secure_messages::WriteToVault, GetTarget, RecordError, Registry},
+    enum_from_inner,
+    procedures::{CollectedOutput, Procedure},
+};
 use actix::prelude::*;
-use engine::vault::ClientId;
+// use engine::vault::ClientId;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
-pub use messages::SwarmInfo;
 use messages::*;
 use p2p::{
-    firewall::{FirewallConfiguration, FirewallRules, Rule},
-    ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr, Multiaddr,
-    OutboundFailure, PeerId, ReceiveRequest, StrongholdP2p, StrongholdP2pBuilder,
+    firewall::{FirewallRules, Rule},
+    BehaviourState, ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr,
+    Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     io,
@@ -21,8 +23,8 @@ use std::{
 };
 
 // policy handler
-use policy::{types::access::Access, Engine, Policy};
-use policyengine as policy;
+// use policy::{types::access::Access, Engine, Policy};
+// use policyengine as policy;
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {
@@ -44,87 +46,72 @@ macro_rules! sh_request_dispatch {
             ShRequest::WriteToStore($inner) => $body
             ShRequest::ReadFromStore($inner) => $body
             ShRequest::DeleteFromStore($inner) => $body
-            ShRequest::CreateVault($inner) => $body
-            ShRequest::WriteToVault($inner) => $body
+            ShRequest::WriteToRemoteVault($inner) =>  {
+                let $inner: WriteToVault = $inner.into();
+                $body
+            }
             #[cfg(test)]
             ShRequest::ReadFromVault($inner) => $body
             ShRequest::GarbageCollect($inner) => $body
             ShRequest::ListIds($inner) => $body
             ShRequest::ClearCache($inner) => $body
-            ShRequest::CallProcedure($inner) => $body
-
-            // todo: adding special cases, that need to be handled differently
+            ShRequest::Procedure($inner) => $body
         }
     }
 }
 
-macro_rules! sh_request_from {
-    ($T:ident) => {
-        impl From<$T> for ShRequest {
-            fn from(t: $T) -> Self {
-                ShRequest::$T(t)
-            }
-        }
-    };
-}
-
 macro_rules! sh_result_mapping {
-    ($enum:ident::$variant:ident, Result<$ok:ty, anyhow::Error>) => {
-        sh_result_mapping!($enum::$variant, Result<$ok, anyhow::Error>,
-            |i| $enum::$variant(i.map_err(|e| e.to_string())),
-            |v| v.map_err(anyhow::Error::msg)
-        );
-    };
-    ($enum:ident::$variant:ident, $inner:ty) => {
-        sh_result_mapping!($enum::$variant, $inner,
-            |t| $enum::$variant(t),
-            |t| t
-        );
-    };
-    ($enum:ident::$variant:ident, $inner:ty,
-        |$i:ident| $map_from_inner:expr,
-        |$v:ident| $map_try_from_enum:expr
-    ) => {
+    ($enum:ident::$variant:ident => $inner:ty) => {
         impl From<$inner> for $enum {
-            fn from($i: $inner) -> Self {
-                $map_from_inner
+            fn from(i: $inner) -> Self {
+                $enum::$variant(i)
             }
         }
         impl TryFrom<$enum> for $inner {
             type Error = ();
             fn try_from(t: $enum) -> Result<Self, Self::Error> {
-                if let $enum::$variant($v) = t {
-                    Ok($map_try_from_enum)
+                if let $enum::$variant(v) = t {
+                    Ok(v)
                 } else {
                     Err(())
                 }
             }
         }
-    }
+    };
 }
 
+/// Actor that handles all network interaction.
+///
+/// On [`NetworkActor::new`] a new [`StrongholdP2p`] is created, which will spawn
+/// a libp2p Swarm and continuously poll it.
 pub struct NetworkActor {
+    // Interface of stronghold-p2p for all network interaction.
     network: StrongholdP2p<ShRequest, ShResult>,
-    inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
+    // Actor registry from which the address of the target client and snapshot actor can be queried.
     registry: Addr<Registry>,
-
-    // policy engine
-    policy_engine: Engine<PeerId, ClientId, Location>,
+    // Channel through which inbound requests are received.
+    // This channel is only inserted temporary on [`NetworkActor::new`], and is handed
+    // to the stream handler in `<Self as Actor>::started`.
+    _inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
+    // Cache the network config so it can be returned on `ExportConfig`.
+    _config: NetworkConfig,
 }
 
 impl NetworkActor {
     pub async fn new(
         registry: Addr<Registry>,
-        firewall_rule: Rule<ShRequest>,
-        network_config: NetworkConfig,
+        mut network_config: NetworkConfig,
+        keypair: Option<InitKeypair>,
     ) -> Result<Self, io::Error> {
         let (firewall_tx, _) = mpsc::channel(0);
         let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
-        let firewall_config = FirewallConfiguration::new(Some(firewall_rule), Some(Rule::AllowAll));
-        let mut builder =
-            StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None).with_firewall_config(firewall_config);
-        if let Some(keypair) = network_config.keypair {
-            builder = builder.with_keys(keypair)
+        let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None)
+            .with_mdns_support(network_config.enable_mdns)
+            .with_relay_support(network_config.enable_relay);
+        if let Some(state) = network_config.state.take() {
+            builder = builder.load_state(state);
+        } else {
+            builder = builder.with_firewall_default(FirewallRules::allow_all())
         }
         if let Some(timeout) = network_config.request_timeout {
             builder = builder.with_request_timeout(timeout)
@@ -132,55 +119,22 @@ impl NetworkActor {
         if let Some(timeout) = network_config.connection_timeout {
             builder = builder.with_connection_timeout(timeout)
         }
-        if let Some(limit) = network_config.connections_limit {
-            builder = builder.with_connections_limit(limit)
+        if let Some(ref limit) = network_config.connections_limit {
+            builder = builder.with_connections_limit(limit.clone())
         }
+        if let Some(keypair) = keypair {
+            builder = builder.with_keys(keypair);
+        }
+
         let network = builder.build().await?;
 
         let actor = Self {
             network,
-            inbound_request_rx: Some(inbound_request_rx),
+            _inbound_request_rx: Some(inbound_request_rx),
             registry,
-            policy_engine: Engine::new_with_default(Access::NoAccess),
+            _config: network_config,
         };
         Ok(actor)
-    }
-}
-
-/// Policy engine related implementation
-impl NetworkActor {
-    pub fn insert_policy_context(&mut self, peer: PeerId, client: ClientId) {
-        self.policy_engine.context(peer, client);
-    }
-
-    pub fn insert_access(&mut self, client: ClientId, access: Access, value: Location) {
-        self.policy_engine.insert(client, access, value);
-    }
-
-    pub fn allow(&mut self, client: ClientId, value: Location) {
-        self.policy_engine.insert(client, Access::All, value);
-    }
-
-    pub fn deny(&mut self, client: ClientId, value: Location) {
-        self.policy_engine.insert(client, Access::NoAccess, value);
-    }
-
-    pub fn check(&mut self, peer: &PeerId, access: Access) -> Option<Vec<Location>> {
-        self.policy_engine.check(peer, Some(access))
-    }
-
-    pub fn check_access(&mut self, peer: &PeerId, location: Option<Location>) -> Result<Access, ()> {
-        self.policy_engine.check_access(peer, location)
-    }
-
-    #[allow(unused_variables)]
-    pub fn has_read_access(&self, peer: &PeerId, location: Option<Location>) -> bool {
-        todo!()
-    }
-
-    #[allow(unused_variables)]
-    pub fn has_write_access(&self, peer: &PeerId, location: Option<Location>) -> bool {
-        todo!()
     }
 }
 
@@ -188,7 +142,7 @@ impl Actor for NetworkActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        let inbound_request_rx = self.inbound_request_rx.take().unwrap();
+        let inbound_request_rx = self._inbound_request_rx.take().unwrap();
         Self::add_stream(inbound_request_rx, ctx);
     }
 }
@@ -298,9 +252,24 @@ where
     }
 }
 
+impl Handler<ExportConfig> for NetworkActor {
+    type Result = ResponseActFuture<Self, NetworkConfig>;
+
+    fn handle(&mut self, _: ExportConfig, _: &mut Self::Context) -> Self::Result {
+        let mut network = self.network.clone();
+        let config = self._config.clone();
+        async move {
+            let state = network.export_state().await;
+            config.load_state(state)
+        }
+        .into_actor(self)
+        .boxed_local()
+    }
+}
+
 impl_handler!(GetSwarmInfo => SwarmInfo, |network, _msg| {
     let listeners = network.get_listeners().await;
-    let local_peer_id = network.get_peer_id();
+    let local_peer_id = network.peer_id();
     let connections = network.get_connections().await;
     SwarmInfo { local_peer_id, listeners, connections}
 });
@@ -322,7 +291,7 @@ impl_handler!(StopListeningAddr => (), |network, msg| {
     network.stop_listening_addr(msg.address).await
 });
 
-impl_handler!(StopListeningRelay => (), |network, msg| {
+impl_handler!(StopListeningRelay => bool, |network, msg| {
     network.stop_listening_relay(msg.relay).await
 });
 
@@ -366,11 +335,11 @@ impl_handler!(RemovePeerAddr => (), |network, msg| {
     network.add_address(msg.peer, msg.address).await
 });
 
-impl_handler!(AddDialingRelay => Option<Multiaddr>, |network, msg| {
-    network.add_dialing_relay(msg.relay, None).await
+impl_handler!(AddDialingRelay => Result<Option<Multiaddr>, RelayNotSupported>, |network, msg| {
+    network.add_dialing_relay(msg.relay, msg.relay_addr).await
 });
 
-impl_handler!(RemoveDialingRelay => (), |network, msg| {
+impl_handler!(RemoveDialingRelay => bool, |network, msg| {
     network.remove_dialing_relay(msg.relay).await
 });
 
@@ -379,24 +348,22 @@ impl_handler!(RemoveDialingRelay => (), |network, msg| {
 
 // Config for the new network.
 /// Default behaviour:
-/// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
 /// - No limit for simultaneous connections.
 /// - Request-timeout and Connection-timeout are 10s.
+/// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id to
+///   the local network.
+/// - [`Relay`][`libp2p::relay`] functionality is disabled.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
-    keypair: Option<InitKeypair>,
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
     connections_limit: Option<ConnectionLimits>,
+    enable_mdns: bool,
+    enable_relay: bool,
+    state: Option<BehaviourState<ShRequest>>,
 }
 
 impl NetworkConfig {
-    /// Set the keypair that is used for authenticating the traffic on the transport layer.
-    /// The local [`PeerId`] is derived from the keypair.
-    pub fn with_keypair(mut self, keypair: InitKeypair) -> Self {
-        self.keypair = Some(keypair);
-        self
-    }
-
     /// Set a timeout for receiving a response after a request was sent.
     ///
     /// This applies for inbound and outbound requests.
@@ -417,37 +384,54 @@ impl NetworkConfig {
         self.connection_timeout = Some(t);
         self
     }
+
+    /// Enable / Disable [`Mdns`][`libp2p::mdns`] protocol.
+    /// **Note**: Enabling mdns will broadcast our own address and id to the local network.
+    pub fn with_mdns_enabled(mut self, is_enabled: bool) -> Self {
+        self.enable_mdns = is_enabled;
+        self
+    }
+
+    /// Enable / Disable [`Relay`][`libp2p::relay`] functionality.
+    /// This also means that other peers can use us as relay/
+    pub fn with_relay_enabled(mut self, is_enabled: bool) -> Self {
+        self.enable_relay = is_enabled;
+        self
+    }
+
+    /// Import state exported from a past network actor.
+    pub fn load_state(mut self, state: BehaviourState<ShRequest>) -> Self {
+        self.state = Some(state);
+        self
+    }
 }
 
 impl Default for NetworkConfig {
     fn default() -> Self {
         NetworkConfig {
-            keypair: None,
             request_timeout: None,
             connection_timeout: None,
             connections_limit: None,
+            enable_mdns: false,
+            enable_relay: false,
+            state: None,
         }
     }
 }
 
 pub mod messages {
-    use std::collections::HashMap;
 
     use super::*;
-    use crate::{actors::secure::EntryShape, ProcResult, RecordHint, RecordId};
-    use engine::vault::VaultId;
+    use crate::{procedures::ProcedureError, Location, RecordHint, RecordId};
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
+    use crate::actors::secure_messages::{
+        CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore, WriteToStore,
+        WriteToVault,
+    };
     #[cfg(test)]
     use crate::actors::secure_testing::ReadFromVault;
-    use crate::actors::{
-        secure_messages::{
-            CheckRecord, CheckVault, ClearCache, CreateVault, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore,
-            WriteToStore, WriteToVault,
-        },
-        secure_procedures::CallProcedure,
-    };
 
     #[derive(Message)]
     #[rtype(result = "Result<Rq::Result, OutboundFailure>")]
@@ -493,7 +477,7 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
+    #[rtype(result = "bool")]
     pub struct StopListeningRelay {
         pub relay: PeerId,
     }
@@ -563,93 +547,61 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "Option<Multiaddr>")]
+    #[rtype(result = "Result<Option<Multiaddr>, RelayNotSupported>")]
     pub struct AddDialingRelay {
         pub relay: PeerId,
+        pub relay_addr: Option<Multiaddr>,
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
+    #[rtype(result = "bool")]
     pub struct RemoveDialingRelay {
         pub relay: PeerId,
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
-    pub struct Shutdown;
+    #[rtype(result = "NetworkConfig")]
+    pub struct ExportConfig;
 
-    // -------- snapshot related messages
-
-    pub struct CalculateShape;
-
-    impl Message for CalculateShape {
-        type Result = Result<HashMap<Location, EntryShape>, String>;
+    #[derive(Debug, Message, Clone, Serialize, Deserialize)]
+    #[rtype(result = "Result<(), RemoteRecordError>")]
+    pub struct WriteToRemoteVault {
+        pub location: Location,
+        pub payload: Vec<u8>,
+        pub hint: RecordHint,
     }
 
-    pub struct FullExport {
-        pub key: Vec<u8>,
-    }
-
-    impl Message for FullExport {
-        type Result = Result<(ClientId, Vec<u8>), String>; // proper error type
-    }
-
-    pub struct ExportSnapshot {
-        pub input: Vec<Location>,
-        pub key: Vec<u8>,
-    }
-
-    impl Message for ExportSnapshot {
-        type Result = Result<Vec<u8>, String>; // proper error type
-    }
-
-    pub struct ExportComplement {
-        pub input: HashMap<(VaultId, RecordId), EntryShape>,
-        pub key: Vec<u8>,
-    }
-
-    impl Message for ExportComplement {
-        type Result = Result<Vec<u8>, String>;
-    }
-
-    // move to top
-    impl Handler<FullExport> for NetworkActor {
-        type Result = Result<(ClientId, Vec<u8>), String>;
-
-        #[allow(unused_variables)]
-        fn handle(&mut self, msg: FullExport, ctx: &mut Self::Context) -> Self::Result {
-            todo!()
+    impl From<WriteToRemoteVault> for WriteToVault {
+        fn from(t: WriteToRemoteVault) -> Self {
+            let WriteToRemoteVault {
+                location,
+                payload,
+                hint,
+            } = t;
+            WriteToVault {
+                location,
+                payload,
+                hint,
+            }
         }
     }
 
-    impl Handler<ExportComplement> for NetworkActor {
-        type Result = Result<Vec<u8>, String>; // proper error type!
-
-        #[allow(unused_variables)]
-        fn handle(&mut self, msg: ExportComplement, ctx: &mut Self::Context) -> Self::Result {
-            todo!()
+    impl From<WriteToVault> for WriteToRemoteVault {
+        fn from(t: WriteToVault) -> Self {
+            let WriteToVault {
+                location,
+                payload,
+                hint,
+            } = t;
+            WriteToRemoteVault {
+                location,
+                payload,
+                hint,
+            }
         }
     }
 
-    impl Handler<CalculateShape> for NetworkActor {
-        type Result = Result<HashMap<Location, EntryShape>, String>; // proper error type!
-
-        #[allow(unused_variables)]
-        fn handle(&mut self, msg: CalculateShape, ctx: &mut Self::Context) -> Self::Result {
-            todo!()
-        }
-    }
-
-    impl Handler<ExportSnapshot> for NetworkActor {
-        type Result = Result<Vec<u8>, String>; // proper error type
-
-        #[allow(unused_variables)]
-        fn handle(&mut self, msg: ExportSnapshot, ctx: &mut Self::Context) -> Self::Result {
-            todo!()
-        }
-    }
-
-    // ---- end snapshot related network actor implementation
+    pub type RemoteRecordError = String;
 
     /// Wrapper for Requests to a remote Secure Client
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -657,48 +609,59 @@ pub mod messages {
         CheckVault(CheckVault),
         CheckRecord(CheckRecord),
         ListIds(ListIds),
-        CreateVault(CreateVault),
         #[cfg(test)]
         ReadFromVault(ReadFromVault),
-        WriteToVault(WriteToVault),
+        WriteToRemoteVault(WriteToRemoteVault),
         ReadFromStore(ReadFromStore),
         WriteToStore(WriteToStore),
         DeleteFromStore(DeleteFromStore),
         GarbageCollect(GarbageCollect),
         ClearCache(ClearCache),
-        CallProcedure(CallProcedure),
-        /* todo: maybe add the snapshot types also here, route them
-         * through the secure client. */
+        Procedure(Procedure),
     }
 
-    sh_request_from!(CheckVault);
-    sh_request_from!(CheckRecord);
-    sh_request_from!(ListIds);
-    sh_request_from!(CreateVault);
+    enum_from_inner!(ShRequest from CheckVault);
+    enum_from_inner!(ShRequest from ListIds);
     #[cfg(test)]
-    sh_request_from!(ReadFromVault);
-    sh_request_from!(WriteToVault);
-    sh_request_from!(ReadFromStore);
-    sh_request_from!(WriteToStore);
-    sh_request_from!(DeleteFromStore);
-    sh_request_from!(GarbageCollect);
-    sh_request_from!(ClearCache);
-    sh_request_from!(CallProcedure);
+    enum_from_inner!(ShRequest from ReadFromVault);
+    enum_from_inner!(ShRequest from WriteToRemoteVault);
+    enum_from_inner!(ShRequest from ReadFromStore);
+    enum_from_inner!(ShRequest from WriteToStore);
+    enum_from_inner!(ShRequest from DeleteFromStore);
+    enum_from_inner!(ShRequest from GarbageCollect);
+    enum_from_inner!(ShRequest from ClearCache);
+    enum_from_inner!(ShRequest from Procedure);
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {
         Empty(()),
+        Data(Option<Vec<u8>>),
         Bool(bool),
-        Status(Result<(), String>),
-        Vector(Result<Vec<u8>, String>),
-        List(Result<Vec<(RecordId, RecordHint)>, String>),
-        Proc(Result<ProcResult, String>),
+        WriteRemoteVault(Result<(), RemoteRecordError>),
+        ListIds(Vec<(RecordId, RecordHint)>),
+        Proc(Result<CollectedOutput, ProcedureError>),
     }
 
-    sh_result_mapping!(ShResult::Empty, ());
-    sh_result_mapping!(ShResult::Bool, bool);
-    sh_result_mapping!(ShResult::Status, Result<(), anyhow::Error>);
-    sh_result_mapping!(ShResult::Vector, Result<Vec<u8>, anyhow::Error>);
-    sh_result_mapping!(ShResult::List, Result<Vec<(RecordId, RecordHint)>, anyhow::Error>);
-    sh_result_mapping!(ShResult::Proc, Result<ProcResult, anyhow::Error>);
+    sh_result_mapping!(ShResult::Empty => ());
+    sh_result_mapping!(ShResult::Bool => bool);
+    sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
+    sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
+    sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
+
+    impl From<Result<(), RecordError>> for ShResult {
+        fn from(inner: Result<(), RecordError>) -> Self {
+            ShResult::WriteRemoteVault(inner.map_err(|e| e.to_string()))
+        }
+    }
+
+    impl TryFrom<ShResult> for Result<(), RemoteRecordError> {
+        type Error = ();
+        fn try_from(t: ShResult) -> Result<Self, Self::Error> {
+            if let ShResult::WriteRemoteVault(result) = t {
+                Ok(result)
+            } else {
+                Err(())
+            }
+        }
+    }
 }

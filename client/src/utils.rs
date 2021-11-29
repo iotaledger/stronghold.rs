@@ -6,11 +6,12 @@ mod types;
 
 use std::{collections::HashMap, hash::Hash};
 
+// use engine::vault::{RecordId, VaultId};
+// use serde::{Deserialize, Serialize};
+
 pub use self::{
     ids::LoadFromPath,
-    types::{
-        complement, EntryShape, Location, LocationError, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags,
-    },
+    types::{EntryShape, Location, StrongholdFlags, VaultFlags},
 };
 
 /// Gets the index of a slice.
@@ -33,4 +34,12 @@ where
         map.insert(k, v);
     });
     map
+}
+
+/// Returns the complement items from A not in B
+pub fn complement<T>(a: Vec<T>, b: Vec<T>) -> Vec<T>
+where
+    T: PartialEq + Clone,
+{
+    a.into_iter().filter(|item| !b.contains(item)).collect()
 }

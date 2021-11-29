@@ -16,11 +16,11 @@
 use crate::{behaviour::BehaviourEvent, ConnectionErr};
 use futures::channel::oneshot;
 use libp2p::{
-    core::connection::{ConnectedPoint, ConnectionError},
+    core::connection::{ConnectedPoint, ConnectionError, ConnectionLimits as Libp2pConnectionLimits},
     swarm::SwarmEvent,
     Multiaddr, PeerId,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::{convert::TryFrom, fmt, io, num::NonZeroU32};
 
@@ -265,7 +265,7 @@ impl fmt::Display for OutboundFailure {
 
 /// Possible failures occurring in the context of receiving an inbound request and sending a response.
 ///
-/// Note: If the firewall is configured to block per se all requests from the remote peer, the protocol for inbound
+/// **Note**: If the firewall is configured to block per se all requests from the remote peer, the protocol for inbound
 /// requests will not be supported in the first place, and inbound requests are rejected without emitting a failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InboundFailure {
@@ -291,3 +291,69 @@ impl fmt::Display for InboundFailure {
 }
 
 impl std::error::Error for OutboundFailure {}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConnectionLimits {
+    max_pending_incoming: Option<u32>,
+    max_pending_outgoing: Option<u32>,
+    max_established_incoming: Option<u32>,
+    max_established_outgoing: Option<u32>,
+    max_established_per_peer: Option<u32>,
+    max_established_total: Option<u32>,
+}
+
+impl From<ConnectionLimits> for Libp2pConnectionLimits {
+    fn from(l: ConnectionLimits) -> Self {
+        Libp2pConnectionLimits::default()
+            .with_max_pending_incoming(l.max_pending_incoming)
+            .with_max_pending_outgoing(l.max_pending_outgoing)
+            .with_max_established_incoming(l.max_established_incoming)
+            .with_max_established_outgoing(l.max_established_outgoing)
+            .with_max_established_per_peer(l.max_established_per_peer)
+            .with_max_established(l.max_established_total)
+    }
+}
+
+impl ConnectionLimits {
+    /// Configures the maximum number of concurrently incoming connections being established.
+    pub fn with_max_pending_incoming(mut self, limit: Option<u32>) -> Self {
+        self.max_pending_incoming = limit;
+        self
+    }
+
+    /// Configures the maximum number of concurrently outgoing connections being established.
+    pub fn with_max_pending_outgoing(mut self, limit: Option<u32>) -> Self {
+        self.max_pending_outgoing = limit;
+        self
+    }
+
+    /// Configures the maximum number of concurrent established inbound connections.
+    pub fn with_max_established_incoming(mut self, limit: Option<u32>) -> Self {
+        self.max_established_incoming = limit;
+        self
+    }
+
+    /// Configures the maximum number of concurrent established outbound connections.
+    pub fn with_max_established_outgoing(mut self, limit: Option<u32>) -> Self {
+        self.max_established_outgoing = limit;
+        self
+    }
+
+    /// Configures the maximum number of concurrent established connections (both
+    /// inbound and outbound).
+    ///
+    /// Note: This should be used in conjunction with
+    /// [`ConnectionLimits::with_max_established_incoming`] to prevent possible
+    /// eclipse attacks (all connections being inbound).
+    pub fn with_max_established(mut self, limit: Option<u32>) -> Self {
+        self.max_established_total = limit;
+        self
+    }
+
+    /// Configures the maximum number of concurrent established connections per peer,
+    /// regardless of direction (incoming or outgoing).
+    pub fn with_max_established_per_peer(mut self, limit: Option<u32>) -> Self {
+        self.max_established_per_peer = limit;
+        self
+    }
+}

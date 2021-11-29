@@ -9,21 +9,22 @@ use zeroize::Zeroize;
 use std::{
     convert::TryInto,
     hash::{Hash, Hasher},
+    io::Read,
     path::PathBuf,
 };
 
 use engine::{
     snapshot::Key,
-    vault::{ClientId, DbView, Key as PKey, RecordId, VaultId},
+    vault::{ClientId, DbView, Key as PKey, RecordId, VaultError, VaultId},
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    internals, line_error,
+    internals,
     state::{
         secure::Store,
-        snapshot::{Snapshot, SnapshotError, SnapshotState},
+        snapshot::{ReadError, Snapshot, SnapshotState, WriteError},
     },
     utils::EntryShape,
     Location, Provider,
@@ -72,7 +73,7 @@ pub mod messages {
     }
 
     impl Message for WriteSnapshot {
-        type Result = Result<(), SnapshotError>;
+        type Result = Result<(), WriteError>;
     }
 
     pub struct FillSnapshot {
@@ -81,7 +82,7 @@ pub mod messages {
     }
 
     impl Message for FillSnapshot {
-        type Result = Result<(), anyhow::Error>;
+        type Result = ();
     }
 
     #[derive(Default)]
@@ -94,7 +95,7 @@ pub mod messages {
     }
 
     impl Message for ReadFromSnapshot {
-        type Result = Result<returntypes::ReturnReadSnapshot, anyhow::Error>;
+        type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
     }
 
     /// Message for [`Snapshot`] to create a partially synchronized snapshot.
@@ -122,7 +123,7 @@ pub mod messages {
     }
 
     impl Message for PartialSynchronization {
-        type Result = Result<returntypes::ReturnReadSnapshot, SnapshotError>;
+        type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
     }
 
     /// Message for [`Snapshot`] to create a fully synchronized snapshot.
@@ -144,7 +145,7 @@ pub mod messages {
     }
 
     impl Message for FullSynchronization {
-        type Result = Result<returntypes::ReturnReadSnapshot, SnapshotError>;
+        type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
     }
 
     /// Exports all entries given their prior keys, and re-encrypted
@@ -157,7 +158,7 @@ pub mod messages {
     }
 
     impl Message for ExportAllEntries {
-        type Result = Result<(HashMap<VaultId, PKey<Provider>>, DbView<Provider>), SnapshotError>;
+        type Result = Result<(HashMap<VaultId, PKey<Provider>>, DbView<Provider>), ReadError>;
     }
 
     /// Exports the complete snapshot as vector of bytes. Part of the snapshot protocol
@@ -169,7 +170,7 @@ pub mod messages {
     }
 
     impl Message for ExportSnapshot {
-        type Result = Result<Vec<u8>, SnapshotError>;
+        type Result = Result<Vec<u8>, ReadError>;
     }
 
     /// Returns a representation of the selected locations and their shape.
@@ -180,7 +181,7 @@ pub mod messages {
     }
 
     impl Message for CalculateShape {
-        type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, SnapshotError>;
+        type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, ReadError>;
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,7 +191,7 @@ pub mod messages {
     }
 
     impl Message for CalculateComplement {
-        type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, SnapshotError>;
+        type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, ReadError>;
     }
 
     /// Returns the complement set of the side to be synchronized with. Part of the snapshot protocol
@@ -201,7 +202,7 @@ pub mod messages {
     }
 
     impl Message for ExportComplement {
-        type Result = Result<Vec<u8>, SnapshotError>;
+        type Result = Result<Vec<u8>, WriteError>;
     }
 
     pub struct SerializeSnapshot {
@@ -211,7 +212,7 @@ pub mod messages {
     }
 
     impl Message for SerializeSnapshot {
-        type Result = Result<Vec<u8>, SnapshotError>;
+        type Result = Result<Vec<u8>, WriteError>;
     }
 
     pub struct DeserializeSnapshot {
@@ -221,7 +222,7 @@ pub mod messages {
 
     impl Message for DeserializeSnapshot {
         type Result =
-            Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, SnapshotError>;
+            Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, ReadError>;
     }
 
     pub struct UnpackSnapshotData {
@@ -239,7 +240,7 @@ pub mod messages {
                 DbView<internals::Provider>,
                 Store,
             )>,
-            SnapshotError,
+            ReadError,
         >;
     }
 }
@@ -277,7 +278,7 @@ impl Handler<UnpackSnapshotData> for Snapshot {
             DbView<internals::Provider>,
             Store,
         )>,
-        SnapshotError,
+        ReadError,
     >;
 
     #[allow(unused_variables)]
@@ -295,7 +296,7 @@ impl Handler<UnpackSnapshotData> for Snapshot {
         ) {
             Ok(mut result) => match result.remove(&client_id_virtual) {
                 Some(to_boxed) => Ok(Box::new(to_boxed)),
-                None => Err(SnapshotError::LoadFailure),
+                None => Err(ReadError::InvalidFile("No data for Clientid present".to_string())),
             },
             Err(error) => Err(error),
         }
@@ -303,7 +304,7 @@ impl Handler<UnpackSnapshotData> for Snapshot {
 }
 
 impl Handler<messages::CalculateComplement> for Snapshot {
-    type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, SnapshotError>;
+    type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, ReadError>;
 
     #[allow(unused_variables)]
     fn handle(&mut self, msg: messages::CalculateComplement, ctx: &mut Self::Context) -> Self::Result {
@@ -323,7 +324,7 @@ impl Handler<messages::CalculateComplement> for Snapshot {
 }
 
 impl Handler<messages::SerializeSnapshot> for Snapshot {
-    type Result = Result<Vec<u8>, SnapshotError>;
+    type Result = Result<Vec<u8>, WriteError>;
 
     #[allow(unused_variables)]
     fn handle(&mut self, msg: messages::SerializeSnapshot, ctx: &mut Self::Context) -> Self::Result {
@@ -333,7 +334,7 @@ impl Handler<messages::SerializeSnapshot> for Snapshot {
 
 // snapshot synchronisation protocol
 impl Handler<messages::ExportAllEntries> for Snapshot {
-    type Result = Result<(HashMap<VaultId, PKey<Provider>>, DbView<Provider>), SnapshotError>;
+    type Result = Result<(HashMap<VaultId, PKey<Provider>>, DbView<Provider>), ReadError>;
 
     fn handle(&mut self, message: messages::ExportAllEntries, _ctx: &mut Self::Context) -> Self::Result {
         let mut result_view: DbView<Provider> = DbView::new();
@@ -362,14 +363,16 @@ impl Handler<messages::ExportAllEntries> for Snapshot {
                 view.get_guard(key, vid, rid, |guarded_data| {
                     let record_hint = id_hint
                         .get(&rid)
-                        .ok_or_else(|| engine::Error::ValueError("No RecordHint Present".to_string()))?;
+                        .ok_or_else(|| ReadError::InvalidFile("No RecordHint Present".to_string()))?;
 
-                    result_view.write(key, vid, rid, &guarded_data.borrow(), *record_hint)?;
+                    result_view
+                        .write(key, vid, rid, &guarded_data.borrow(), *record_hint)
+                        .map_err(|error| ReadError::InvalidFile(error.to_string()))?;
                     result_map.insert(vid, key.clone());
 
                     Ok(())
                 })
-                .map_err(|error| SnapshotError::ExportError(error.to_string()))?;
+                .map_err(|error: VaultError<_, ReadError>| ReadError::InvalidFile(error.to_string()))?;
             }
         }
 
@@ -378,7 +381,7 @@ impl Handler<messages::ExportAllEntries> for Snapshot {
 }
 // snapshot synchronisation protocol
 impl Handler<messages::ExportSnapshot> for Snapshot {
-    type Result = Result<Vec<u8>, SnapshotError>;
+    type Result = Result<Vec<u8>, ReadError>;
 
     fn handle(&mut self, message: messages::ExportSnapshot, _ctx: &mut Self::Context) -> Self::Result {
         // (1) create empty map, view, and store
@@ -415,15 +418,17 @@ impl Handler<messages::ExportSnapshot> for Snapshot {
                             .get_guard(key, vid, rid, |guarded_data| {
                                 let record_hint = id_hint
                                     .get(&rid)
-                                    .ok_or_else(|| engine::Error::ValueError("No RecordHint Present".to_string()))?;
+                                    .ok_or_else(|| ReadError::InvalidFile("No RecordHint Present".to_string()))?;
 
                                 // this will reuse the old key
-                                result_view.write(key, vid, rid, &guarded_data.borrow(), *record_hint)?;
+                                result_view
+                                    .write(key, vid, rid, &guarded_data.borrow(), *record_hint)
+                                    .map_err(|error| ReadError::InvalidFile(error.to_string()))?;
                                 result_maps.insert(vid, key.clone());
 
                                 Ok(())
                             })
-                            .map_err(|error| SnapshotError::ExportError(error.to_string()))?;
+                            .map_err(|error: VaultError<_, ReadError>| ReadError::InvalidFile(error.to_string()))?;
 
                         // process next entry
                         continue;
@@ -441,13 +446,15 @@ impl Handler<messages::ExportSnapshot> for Snapshot {
         let state = SnapshotState::new(message.id, (result_maps, result_view, Store::default()));
 
         // serialize and return
-        state.serialize()
+        state
+            .serialize()
+            .map_err(|error| ReadError::CorruptedContent(error.to_string()))
     }
 }
 
 /// returns the complentary set of entries
 impl Handler<messages::ExportComplement> for Snapshot {
-    type Result = Result<Vec<u8>, SnapshotError>;
+    type Result = Result<Vec<u8>, WriteError>;
 
     #[allow(unused_variables)]
     fn handle(&mut self, message: messages::ExportComplement, ctx: &mut Self::Context) -> Self::Result {
@@ -480,7 +487,7 @@ impl Handler<messages::ExportComplement> for Snapshot {
 
 // snapshot synchronisation protocol
 impl Handler<messages::CalculateShape> for Snapshot {
-    type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, SnapshotError>;
+    type Result = Result<HashMap<(VaultId, RecordId), EntryShape>, ReadError>;
 
     #[allow(unused_variables)]
     fn handle(&mut self, message: messages::CalculateShape, _ctx: &mut Self::Context) -> Self::Result {
@@ -491,7 +498,7 @@ impl Handler<messages::CalculateShape> for Snapshot {
         inner.iter_mut().for_each(|(_, (vaultkeys, view, store))| {
             vaultkeys.iter().for_each(|(vid, key)| {
                 view.list_hints_and_ids(key, *vid).iter().for_each(|(rid, _)| {
-                    view.get_guard(key, *vid, *rid, |guard| {
+                    view.get_guard::<String, _>(key, *vid, *rid, |guard| {
                         let data = guard.borrow();
 
                         data.hash(&mut hasher);
@@ -520,7 +527,7 @@ impl Handler<messages::CalculateShape> for Snapshot {
 
 impl Handler<DeserializeSnapshot> for Snapshot {
     type Result =
-        Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, SnapshotError>;
+        Result<Box<HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>>, ReadError>;
 
     fn handle(&mut self, msg: DeserializeSnapshot, _ctx: &mut Self::Context) -> Self::Result {
         let mut key = [0u8; 32];
@@ -534,7 +541,7 @@ impl Handler<DeserializeSnapshot> for Snapshot {
 }
 
 impl Handler<messages::FullSynchronization> for Snapshot {
-    type Result = Result<ReturnReadSnapshot, SnapshotError>;
+    type Result = Result<ReturnReadSnapshot, ReadError>;
 
     fn handle(&mut self, msg: messages::FullSynchronization, ctx: &mut Self::Context) -> Self::Result {
         let merge_config = msg.merge;
@@ -542,25 +549,23 @@ impl Handler<messages::FullSynchronization> for Snapshot {
             merge_config.filename.as_deref(),
             merge_config.path.as_deref(),
             merge_config.key,
-        )
-        .map_err(|error| SnapshotError::SerializationFailure(error.to_string()))?;
+        )?;
 
         let local_config = msg.source;
         let snapshot_data_local = Snapshot::read_from_name_or_path(
             local_config.filename.as_deref(),
             local_config.path.as_deref(),
             local_config.key,
-        )
-        .map_err(|error| SnapshotError::SerializationFailure(error.to_string()))?;
+        )?;
 
         let dst_config = msg.destination;
 
         let snapshot_local = bincode::deserialize::<SnapshotState>(&snapshot_data_local)
-            .map_err(|error| SnapshotError::SynchronizationFailure(error.to_string()))?;
+            .map_err(|error| ReadError::InvalidFile(error.to_string()))?;
 
         // merge this state into current state
         let snapshot_merge = bincode::deserialize::<SnapshotState>(&snapshot_data_merge)
-            .map_err(|error| SnapshotError::SynchronizationFailure(error.to_string()))?;
+            .map_err(|error| ReadError::InvalidFile(error.to_string()))?;
 
         // this is the actual output of the handler
         let mut output_map: HashMap<VaultId, PKey<Provider>> = HashMap::new();
@@ -606,7 +611,8 @@ impl Handler<messages::FullSynchronization> for Snapshot {
         };
 
         // write the new state to disk
-        <Self as Handler<WriteSnapshot>>::handle(self, write_msg, ctx)?;
+        <Self as Handler<WriteSnapshot>>::handle(self, write_msg, ctx)
+            .map_err(|error| ReadError::InvalidFile(error.to_string()))?;
 
         // return read state to reload on current actor
         Ok(ReturnReadSnapshot {
@@ -617,7 +623,7 @@ impl Handler<messages::FullSynchronization> for Snapshot {
 }
 
 impl Handler<messages::PartialSynchronization> for Snapshot {
-    type Result = Result<ReturnReadSnapshot, SnapshotError>;
+    type Result = Result<ReturnReadSnapshot, ReadError>;
 
     fn handle(&mut self, msg: messages::PartialSynchronization, ctx: &mut Self::Context) -> Self::Result {
         // load associated system snapshot
@@ -626,8 +632,7 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
             src_config.filename.as_deref(),
             src_config.path.as_deref(),
             src_config.key,
-        )
-        .map_err(|err| SnapshotError::SynchronizationFailure(err.to_string()))?;
+        )?;
 
         // load snapshot file for comparison
         // FIXME: this should be the current state of the secure actor
@@ -636,15 +641,14 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
             cmp_config.filename.as_deref(),
             cmp_config.path.as_deref(),
             cmp_config.key,
-        )
-        .map_err(|err| SnapshotError::SynchronizationFailure(err.to_string()))?;
+        )?;
 
         // set snapshot file to be synchronized with
         let dst_config = msg.destination;
 
         // load the local state (or TODO: refill from current state)
-        let local_state: SnapshotState = bincode::deserialize(&snapshot_data_source)
-            .map_err(|err| SnapshotError::DeserializationFailure(err.to_string()))?;
+        let local_state: SnapshotState =
+            bincode::deserialize(&snapshot_data_source).map_err(|error| ReadError::InvalidFile(error.to_string()))?;
 
         // load comparison snapshot and handle partial synchronization
         match bincode::deserialize::<SnapshotState>(&snapshot_data_compare) {
@@ -700,7 +704,8 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
                 };
 
                 // write the new state to disk
-                <Self as Handler<WriteSnapshot>>::handle(self, write_msg, ctx)?;
+                <Self as Handler<WriteSnapshot>>::handle(self, write_msg, ctx)
+                    .map_err(|error| ReadError::InvalidFile(error.to_string()))?;
 
                 // return Ok(self.state.serialize());
                 Ok(ReturnReadSnapshot {
@@ -708,23 +713,21 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
                     id: msg.id,
                 })
             }
-            Err(e) => Err(SnapshotError::SynchronizationFailure(e.to_string())),
+            Err(error) => Err(ReadError::InvalidFile(error.to_string())),
         }
     }
 }
 
 impl Handler<messages::FillSnapshot> for Snapshot {
-    type Result = Result<(), anyhow::Error>;
+    type Result = ();
 
     fn handle(&mut self, msg: messages::FillSnapshot, _ctx: &mut Self::Context) -> Self::Result {
         self.state.add_data(msg.id, *msg.data);
-
-        Ok(())
     }
 }
 
 impl Handler<messages::ReadFromSnapshot> for Snapshot {
-    type Result = Result<returntypes::ReturnReadSnapshot, anyhow::Error>;
+    type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
 
     /// This will try to read from a snapshot on disk, otherwise load from a local snapshot
     /// in memory. Returns the loaded snapshot data, that must be loaded inside the client
@@ -740,28 +743,23 @@ impl Handler<messages::ReadFromSnapshot> for Snapshot {
                 data: Box::new(data),
             })
         } else {
-            match Snapshot::read_from_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key) {
-                Ok(mut snapshot) => {
-                    let data = snapshot.get_state(id);
-                    *self = snapshot;
+            let mut snapshot = Snapshot::read_from_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;
+            let data = snapshot.get_state(id);
+            *self = snapshot;
 
-                    Ok(ReturnReadSnapshot {
-                        id,
-                        data: Box::new(data),
-                    })
-                }
-                Err(_) => Err(anyhow::anyhow!(SnapshotError::LoadFailure)),
-            }
+            Ok(ReturnReadSnapshot {
+                id,
+                data: Box::new(data),
+            })
         }
     }
 }
 
 impl Handler<messages::WriteSnapshot> for Snapshot {
-    type Result = Result<(), SnapshotError>;
+    type Result = Result<(), WriteError>;
 
     fn handle(&mut self, msg: messages::WriteSnapshot, _ctx: &mut Self::Context) -> Self::Result {
-        self.write_to_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)
-            .expect(line_error!());
+        self.write_to_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;
 
         self.state = SnapshotState::default();
 

@@ -28,5 +28,5 @@ pub mod diff;
 pub mod files;
 pub mod kdf;
 mod logic;
-pub use compression::{compress, decompress};
+pub use compression::{compress, decompress, Lz4DecodeError};
 pub use logic::*;

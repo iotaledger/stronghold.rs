@@ -14,6 +14,7 @@ use crypto::{
     keys::x25519,
     utils::rand,
 };
+use thiserror::Error as DeriveError;
 
 use crate::snapshot::{compress, decompress};
 
@@ -34,15 +35,42 @@ const NONCE_SIZE: usize = XChaCha20Poly1305::NONCE_LENGTH;
 /// Nonce type alias
 pub type Nonce = [u8; NONCE_SIZE];
 
+#[derive(Debug, DeriveError)]
+pub enum ReadError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("corrupted file: {0}")]
+    CorruptedContent(String),
+
+    #[error("invalid File: not a snapshot")]
+    InvalidFile,
+
+    #[error("unsupported version: expected `{expected:?}`, found `{found:?}`")]
+    UnsupportedVersion { expected: [u8; 2], found: [u8; 2] },
+}
+
+#[derive(Debug, DeriveError)]
+pub enum WriteError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("generating random bytes failed: {0}")]
+    GenerateRandom(String),
+
+    #[error("corrupted data: {0}")]
+    CorruptedData(String),
+}
+
 /// Encrypt the opaque plaintext bytestring using the specified [`Key`] and optional associated data
 /// and writes the ciphertext to the specifed output
-pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
+pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
     // write magic and version bytes
     output.write_all(&MAGIC)?;
     output.write_all(&VERSION)?;
 
     // create ephemeral key pair.
-    let ephemeral_key = x25519::SecretKey::generate()?;
+    let ephemeral_key = x25519::SecretKey::generate().map_err(|e| WriteError::GenerateRandom(format!("{}", e)))?;
 
     // get public key.
     let ephemeral_pk = ephemeral_key.public_key();
@@ -78,7 +106,10 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
 
     // creates the ciphertext.
     let mut ct = vec![0; plain.len()];
-    XChaCha20Poly1305::try_encrypt(&shared.to_bytes(), &nonce, associated_data, plain, &mut ct, &mut tag)?;
+
+    // decrypt the plain text into the ciphertext buffer.
+    XChaCha20Poly1305::try_encrypt(&shared.to_bytes(), &nonce, associated_data, plain, &mut ct, &mut tag)
+        .map_err(|e| WriteError::CorruptedData(format!("Encryption failed: {}", e)))?;
 
     // write tag and ciphertext into the output.
     output.write_all(&tag)?;
@@ -89,7 +120,7 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
 
 /// Read ciphertext from the input, decrypts it using the specified key and the associated data
 /// specified during encryption and returns the plaintext
-pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate::Result<Vec<u8>> {
+pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
     // check the header for structure.
     check_header(input)?;
 
@@ -132,8 +163,10 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
 
     // create plain text buffer.
     let mut pt = vec![0; ct.len()];
-    // attempt to decrypt the ciphertext into the plain text buffer.
-    XChaCha20Poly1305::try_decrypt(&shared.to_bytes(), &nonce, associated_data, &mut pt, &ct, &tag)?;
+
+    // decrypt the ciphertext into the plain text buffer.
+    XChaCha20Poly1305::try_decrypt(&shared.to_bytes(), &nonce, associated_data, &mut pt, &ct, &tag)
+        .map_err(|e| ReadError::CorruptedContent(format!("Decryption failed: {}", e)))?;
 
     Ok(pt)
 }
@@ -143,14 +176,14 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> crate:
 /// This is achieved by creating a temporary file in the same directory as the specified path (same
 /// filename with a salted suffix). This is currently known to be problematic if the path is a
 /// symlink and/or if the target path resides in a directory without user write permission.
-pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<()> {
+pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
     // TODO: if path exists and is a symlink, resolve it and then append the salt
     // TODO: if the sibling tempfile isn't writeable (e.g. directory permissions), write to
 
     let compressed_plain = compress(plain);
 
     let mut salt = [0u8; 6];
-    rand::fill(&mut salt)?;
+    rand::fill(&mut salt).map_err(|e| WriteError::GenerateRandom(format!("{}", e)))?;
 
     let mut s = path.as_os_str().to_os_string();
     s.push(".");
@@ -167,32 +200,30 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
 }
 
 /// [`read`](fn.read.html) and decrypt the ciphertext from the specified path
-pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> crate::Result<Vec<u8>> {
+pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
     check_min_file_len(&mut f)?;
     let pt = read(&mut f, key, associated_data)?;
 
-    decompress(&pt)
+    decompress(&pt).map_err(|e| ReadError::CorruptedContent(format!("Decompression failed: {}", e)))
 }
 
-fn check_min_file_len(input: &mut File) -> crate::Result<()> {
+fn check_min_file_len(input: &mut File) -> Result<(), ReadError> {
     let min = MAGIC.len() + VERSION.len() + x25519::PUBLIC_KEY_LENGTH + XChaCha20Poly1305::TAG_LENGTH;
     if input.metadata()?.len() >= min as u64 {
         Ok(())
     } else {
-        Err(crate::Error::SnapshotError("Snapshot is too short to be valid".into()))
+        Err(ReadError::InvalidFile)
     }
 }
 
 /// Checks the header for a specific structure; explicitly the magic and version bytes.
-fn check_header<I: Read>(input: &mut I) -> crate::Result<()> {
+fn check_header<I: Read>(input: &mut I) -> Result<(), ReadError> {
     // check the magic bytes
     let mut magic = [0u8; 5];
     input.read_exact(&mut magic)?;
     if magic != MAGIC {
-        return Err(crate::Error::SnapshotError(
-            "magic bytes mismatch, is this really a snapshot file?".into(),
-        ));
+        return Err(ReadError::InvalidFile);
     }
 
     // check the version
@@ -200,7 +231,10 @@ fn check_header<I: Read>(input: &mut I) -> crate::Result<()> {
     input.read_exact(&mut version)?;
 
     if version != VERSION {
-        return Err(crate::Error::SnapshotError("snapshot version is incorrect".into()));
+        return Err(ReadError::UnsupportedVersion {
+            expected: VERSION,
+            found: version,
+        });
     }
 
     Ok(())
@@ -227,15 +261,13 @@ mod test {
     }
 
     #[test]
-    fn test_write_read() -> crate::Result<()> {
+    fn test_write_read() {
         let key: Key = random_key();
         let bs0 = random_bytestring();
         let ad = random_bytestring();
 
         let mut buf = Vec::new();
-        write(&bs0, &mut buf, &key, &ad)?;
-
-        Ok(())
+        write(&bs0, &mut buf, &key, &ad).unwrap();
     }
 
     #[test]
@@ -252,7 +284,7 @@ mod test {
     }
 
     #[test]
-    fn test_snapshot() -> crate::Result<()> {
+    fn test_snapshot() {
         let f = tempfile::tempdir().unwrap();
         let mut pb = f.into_path();
         pb.push("snapshot");
@@ -261,11 +293,9 @@ mod test {
         let bs0 = random_bytestring();
         let ad = random_bytestring();
 
-        write_to(&bs0, &pb, &key, &ad)?;
-        let bs1 = read_from(&pb, &key, &ad)?;
+        write_to(&bs0, &pb, &key, &ad).unwrap();
+        let bs1 = read_from(&pb, &key, &ad).unwrap();
         assert_eq!(bs0, bs1);
-
-        Ok(())
     }
 
     #[test]
@@ -285,21 +315,19 @@ mod test {
     }
 
     #[test]
-    fn test_snapshot_overwrite() -> crate::Result<()> {
+    fn test_snapshot_overwrite() {
         let f = tempfile::tempdir().unwrap();
         let mut pb = f.into_path();
         pb.push("snapshot");
 
-        write_to(&random_bytestring(), &pb, &random_key(), &random_bytestring())?;
+        write_to(&random_bytestring(), &pb, &random_key(), &random_bytestring()).unwrap();
 
         let key: Key = random_key();
         let bs0 = random_bytestring();
         let ad = random_bytestring();
         write_to(&bs0, &pb, &key, &ad).unwrap();
-        let bs1 = read_from(&pb, &key, &ad)?;
+        let bs1 = read_from(&pb, &key, &ad).unwrap();
         assert_eq!(bs0, bs1);
-
-        Ok(())
     }
 
     struct TestVector {
@@ -310,7 +338,7 @@ mod test {
     }
 
     #[test]
-    fn test_vectors() -> crate::Result<()> {
+    fn test_vectors() {
         let tvs = [
             TestVector {
                 key: "f6eafe6482445269d3228b3647001c283102116362e870644ba3bfc7f8f109e6",
@@ -345,11 +373,9 @@ mod test {
             let data = hex::decode(tv.data).unwrap();
             let snapshot = hex::decode(tv.snapshot).unwrap();
 
-            let pt = read(&mut snapshot.as_slice(), &key, &ad)?;
+            let pt = read(&mut snapshot.as_slice(), &key, &ad).unwrap();
 
             assert_eq!(pt, data);
         }
-
-        Ok(())
     }
 }

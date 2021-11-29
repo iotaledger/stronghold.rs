@@ -72,7 +72,7 @@ async fn test_remove_client() {
         })
         .await
     {
-        assert!(result.is_ok())
+        assert!(result.is_some())
     }
 }
 

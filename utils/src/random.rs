@@ -15,7 +15,7 @@ where
 pub fn bytestring(max_len: usize) -> Vec<u8> {
     let s = (random::<usize>() % (max_len - 1)) + 1;
     let mut bs = Vec::with_capacity(s);
-    for _ in 1..s {
+    for _ in 0..s {
         bs.push(random());
     }
     bs

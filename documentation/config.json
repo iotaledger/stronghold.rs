@@ -1,0 +1,6 @@
+{
+  "repoName": "stronghold.rs",
+  "contentFolder": "documentation",
+  "localWikiFolder": "local-wiki",
+  "excludeList": ["node_modules", "target", ".git/", "local-wiki"]
+}

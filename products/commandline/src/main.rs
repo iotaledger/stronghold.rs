@@ -1,13 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, StatusMessage, Stronghold};
-
-use futures::executor::block_on;
-
 use clap::{load_yaml, App, ArgMatches};
-
 use core::panic;
+use futures::executor::block_on;
+use iota_stronghold::{home_dir, naive_kdf, Location, RecordHint, Stronghold};
 use std::path::{Path, PathBuf};
 
 // create a line error with the file and the line number
@@ -30,32 +27,42 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
                 if let Some(rid) = matches.value_of("rpath") {
                     let mut key = [0u8; 32];
                     let salt = [0u8; 32];
-                    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+                    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
                     let home_dir = home_dir().expect(line_error!());
                     let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                     if snapshot.exists() {
-                        if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
+                        let result = block_on(stronghold.read_snapshot(
                             client_path,
                             None,
                             &key.to_vec(),
                             Some("commandline".to_string()),
                             None,
-                        )) {
-                            panic!("{:?}", e);
+                        ))
+                        .unwrap();
+                        if let Err(e) = result {
+                            println!("[Error] Reading snapshot failed: {}", e);
+                            return;
                         }
                     }
 
-                    let status = block_on(stronghold.write_to_store(
-                        Location::generic(rid, rid),
-                        plain.as_bytes().to_vec(),
+                    let old_value =
+                        block_on(stronghold.write_to_store(rid.into(), plain.as_bytes().to_vec(), None)).unwrap();
+                    match old_value {
+                        Some(v) => println!("Wrote to store. Overwrote old data: {:?}", v),
+                        None => println!("Wrote to store."),
+                    }
+
+                    let result = block_on(stronghold.write_all_to_snapshot(
+                        &key.to_vec(),
+                        Some("commandline".to_string()),
                         None,
-                    ));
-
-                    println!("{:?}", status);
-
-                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
+                    ))
+                    .unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Writing snapshot failed: {}", e);
+                    }
                 };
             };
         };
@@ -71,33 +78,50 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                 if let Some(rid) = matches.value_of("rpath") {
                     let mut key = [0u8; 32];
                     let salt = [0u8; 32];
-                    naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+                    naive_kdf(pass.as_bytes(), &salt, &mut key);
 
                     let home_dir = home_dir().expect(line_error!());
                     let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                     if snapshot.exists() {
-                        if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
+                        let result = block_on(stronghold.read_snapshot(
                             client_path,
                             None,
                             &key.to_vec(),
                             Some("commandline".to_string()),
                             None,
-                        )) {
-                            panic!("{:?}", e);
+                        ))
+                        .unwrap();
+                        if let Err(e) = result {
+                            println!("[Error] Reading snapshot failed: {}", e);
+                            return;
                         }
                     }
 
-                    let status = block_on(stronghold.write_to_vault(
+                    let result = block_on(stronghold.write_to_vault(
                         Location::generic(rid, rid),
                         plain.as_bytes().to_vec(),
                         RecordHint::new("some hint").expect(line_error!()),
                         vec![],
-                    ));
+                    ))
+                    .unwrap();
+                    match result {
+                        Ok(()) => println!("Wrote to vault."),
+                        Err(e) => {
+                            println!("[Error] Writing to vault failed: {}", e);
+                            return;
+                        }
+                    }
 
-                    println!("{:?}", status);
-
-                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
+                    let result = block_on(stronghold.write_all_to_snapshot(
+                        &key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ))
+                    .unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Writing snapshot failed: {}", e);
+                    }
                 };
             };
         };
@@ -111,7 +135,7 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
             if let Some(ref path) = matches.value_of("path") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
-                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+                naive_kdf(pass.as_bytes(), &salt, &mut key);
 
                 let path = Path::new(path);
 
@@ -123,20 +147,31 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
                 out.push(Path::new("recompute.stronghold"));
 
                 if input.exists() {
-                    let status =
-                        block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), None, Some(input)));
+                    let result =
+                        block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), None, Some(input)))
+                            .unwrap();
+                    match result {
+                        Ok(()) => println!("Read snapshot"),
+                        Err(e) => {
+                            println!("[Error] Reading snapshot failed: {}", e);
+                            return;
+                        }
+                    }
 
-                    if let StatusMessage::Error(error) = status {
-                        println!("{:?}", error);
-                    } else {
-                        block_on(stronghold.write_all_to_snapshot(
-                            &key.to_vec(),
-                            Some("commandline".to_string()),
-                            None,
-                        ));
+                    let result = block_on(stronghold.write_all_to_snapshot(
+                        &key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ))
+                    .unwrap();
+                    match result {
+                        Ok(()) => println!("Wrote to snapshot."),
+                        Err(e) => {
+                            println!("[Error] Writing snapshot failed: {}", e);
+                        }
                     }
                 } else {
-                    println!("The path you entered does not contain a valid snapshot");
+                    println!("[Error] The path you entered does not contain a valid snapshot");
                 }
             }
         }
@@ -150,31 +185,34 @@ fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongho
             if let Some(path) = matches.value_of("rpath") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
-                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+                naive_kdf(pass.as_bytes(), &salt, &mut key);
 
                 let home_dir = home_dir().expect(line_error!());
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
+                    let result = block_on(stronghold.read_snapshot(
                         client_path,
                         None,
                         &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
-                    )) {
-                        panic!("{:?}", e);
+                    ))
+                    .unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Reading snapshot failed: {}", e);
+                        return;
                     }
 
-                    println!("reading");
-
-                    let (list, status) =
-                        block_on(stronghold.list_hints_and_ids(Location::generic(path, path).vault_path().to_vec()));
-
-                    println!("{:?}", status);
-                    println!("{:?}", list);
+                    let list =
+                        block_on(stronghold.list_hints_and_ids(Location::generic(path, path).vault_path().to_vec()))
+                            .unwrap();
+                    println!("Hints and Ids:");
+                    for (id, hint) in list {
+                        println!("{}: {:?}", id, hint);
+                    }
                 } else {
-                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+                    println!("[Error] Could not find a snapshot at the home path. Try writing first.");
                 }
             }
         }
@@ -188,28 +226,32 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
             if let Some(rpath) = matches.value_of("rpath") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
-                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+                naive_kdf(pass.as_bytes(), &salt, &mut key);
 
                 let home_dir = home_dir().expect(line_error!());
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
+                    let result = block_on(stronghold.read_snapshot(
                         client_path,
                         None,
                         &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
-                    )) {
-                        panic!("{:?}", e);
+                    ))
+                    .unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Reading snapshot failed: {}", e);
+                        return;
                     }
 
-                    let (data, status) = block_on(stronghold.read_from_store(Location::generic(rpath, rpath)));
-
-                    println!("{:?}", status);
-                    println!("Data: {:?}", std::str::from_utf8(&data).unwrap());
+                    let data = block_on(stronghold.read_from_store(rpath.into())).unwrap();
+                    match data {
+                        Some(data) => println!("Data: {:?}", std::str::from_utf8(&data).unwrap()),
+                        None => println!("No Data in the store for this key."),
+                    }
                 } else {
-                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+                    println!("[Error] Could not find a snapshot at the home path. Try writing first.");
                 }
             }
         }
@@ -224,29 +266,45 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
             if let Some(id) = matches.value_of("rpath") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
-                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+                naive_kdf(pass.as_bytes(), &salt, &mut key);
 
                 let home_dir = home_dir().expect(line_error!());
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
+                    let result = block_on(stronghold.read_snapshot(
                         client_path,
                         None,
                         &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
-                    )) {
-                        panic!("{:?}", e);
+                    ))
+                    .unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Reading snapshot failed: {}", e);
+                        return;
                     }
 
-                    let status = block_on(stronghold.delete_data(Location::generic(id, id), false));
+                    let result = block_on(stronghold.delete_data(Location::generic(id, id), false)).unwrap();
+                    match result {
+                        Ok(()) => println!("Deleted data."),
+                        Err(e) => {
+                            println!("[Error] Deleting data failed: {}", e);
+                            return;
+                        }
+                    }
 
-                    println!("{:?}", status);
-
-                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
+                    let result = block_on(stronghold.write_all_to_snapshot(
+                        &key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ))
+                    .unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Writing snapshot failed: {}", e);
+                    }
                 } else {
-                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+                    println!("[Error] Could not find a snapshot at the home path. Try writing first.");
                 }
             }
         }
@@ -264,33 +322,50 @@ fn garbage_collect_vault_command(
             if let Some(id) = matches.value_of("rpath") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
-                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+                naive_kdf(pass.as_bytes(), &salt, &mut key);
 
                 let home_dir = home_dir().expect(line_error!());
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
+                    let result = block_on(stronghold.read_snapshot(
                         client_path,
                         None,
                         &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
-                    )) {
-                        panic!("{:?}", e);
+                    ))
+                    .unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Reading snapshot failed: {}", e);
+                        return;
                     }
 
-                    let status = block_on(stronghold.garbage_collect(Location::generic(id, id).vault_path().to_vec()));
+                    let result =
+                        block_on(stronghold.garbage_collect(Location::generic(id, id).vault_path().to_vec())).unwrap();
+                    match result {
+                        true => println!("Garbage collected."),
+                        false => println!("[Error] Vault does not exist."),
+                    }
 
-                    let (list, _) =
-                        block_on(stronghold.list_hints_and_ids(Location::generic(id, id).vault_path().to_vec()));
+                    let list = block_on(stronghold.list_hints_and_ids(Location::generic(id, id).vault_path().to_vec()))
+                        .unwrap();
+                    println!("Hints and Ids:");
+                    for (id, hint) in list {
+                        println!("{}: {:?}", id, hint);
+                    }
 
-                    println!("{:?}", status);
-                    println!("{:?}", list);
-
-                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
+                    let result = block_on(stronghold.write_all_to_snapshot(
+                        &key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ))
+                    .unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Writing snapshot failed: {}", e);
+                    }
                 } else {
-                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+                    println!("[Error] Could not find a snapshot at the home path. Try writing first.");
                 }
             }
         }
@@ -305,29 +380,40 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
             if let Some(id) = matches.value_of("id") {
                 let mut key = [0u8; 32];
                 let salt = [0u8; 32];
-                naive_kdf(pass.as_bytes(), &salt, &mut key).expect(line_error!());
+                naive_kdf(pass.as_bytes(), &salt, &mut key);
 
                 let home_dir = home_dir().expect(line_error!());
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    if let StatusMessage::Error(e) = block_on(stronghold.read_snapshot(
+                    let result = block_on(stronghold.read_snapshot(
                         client_path,
                         None,
                         &key.to_vec(),
                         Some("commandline".to_string()),
                         None,
-                    )) {
-                        panic!("{:?}", e);
+                    ))
+                    .unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Reading snapshot failed: {}", e);
+                        return;
                     }
 
-                    let status = block_on(stronghold.delete_data(Location::generic(id, id), true));
+                    let result = block_on(stronghold.delete_data(Location::generic(id, id), true)).unwrap();
 
-                    println!("{:?}", status);
+                    println!("Delete Data: {:?}", result);
 
-                    block_on(stronghold.write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None));
+                    let result = block_on(stronghold.write_all_to_snapshot(
+                        &key.to_vec(),
+                        Some("commandline".to_string()),
+                        None,
+                    ))
+                    .unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Writing snapshot failed: {}", e);
+                    }
                 } else {
-                    println!("Could not find a snapshot at the home path.  Try writing first. ");
+                    println!("[Error] Could not find a snapshot at the home path. Try writing first.");
                 }
             }
         }

@@ -5,12 +5,14 @@
 #![warn(missing_docs)]
 
 mod comm;
+mod procs;
+
 use comm::{build_plain, impl_permission, impl_to_permissioned};
-
 use proc_macro::TokenStream;
-
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput};
+use syn::{parse_macro_input, Data, DeriveInput, ItemImpl};
+
+use crate::procs::{impl_proc_traits, impl_procedure_step};
 
 /// A version of the derive [`Debug`] trait that blocks parsing the data inside of a struct or enum.
 /// Use [`GuardDebug`] to block reading and inspection of a data structure via the [`Debug`] trait.
@@ -70,4 +72,97 @@ pub fn permissions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
     };
     gen.into()
+}
+
+/// _Internal macro to help implementation of primitive procedures in `iota-stronghold`_.
+///
+/// Auto-implement the traits `SourceInfo`, `TargetInfo`, `InputInfo` and `OutputInfo` that are required to
+/// derive the `ProcedureStep` trait with the [`execute_procedure`] attribute macro.
+/// To derive a traits, annotate the structure's field that contains the information.
+/// It is required that the annotated type itself implements the trait.
+/// E.g. in case of
+/// ```compile_fail
+/// #[derive(Procedure)]
+/// struct PublicKey {
+///     #[source]
+///     source: Location,
+///
+///     #[output_key]
+///     output_key: TempOutput,
+/// }
+/// ```
+/// the macro generates
+/// ```compile_fail
+/// impl SourceInfo for PublicKey {
+///     fn source_location(&self) -> &Location {
+///         self.source.source_location()
+///     }
+///
+///     fn source_location_mut(&mut self) -> &mut Location {
+///         self.source.source_location_mut()
+///     }
+/// }
+///
+/// impl OutputInfo for PublicKey {
+///     fn output_info(&self) -> &TempOutput {
+///         self.output_key.output_info()
+///     }
+///     fn output_info_mut(&mut self) -> &mut TempOutput {
+///         self.output_key.output_info_mut()
+///     }
+/// }
+/// ```
+#[proc_macro_derive(Procedure, attributes(source, target, input_data, output_key))]
+pub fn derive_procedure(input: TokenStream) -> proc_macro::TokenStream {
+    let derive_input = syn::parse_macro_input!(input as DeriveInput);
+    let tokens = impl_proc_traits(derive_input);
+    tokens.into()
+}
+
+/// _Internal macro to help implementation of primitive procedures in `iota-stronghold`_.
+///
+/// Implements the `ProcedureStep` trait.
+///
+/// To be placed at the impl block of one of the following traits:
+/// `ProcessData`, `GenerateSecret`, `DeriveSecret`, `UseSecret`.
+/// The macro implements the logic for fetching the source secret and input type, and writing the output into the
+/// `CollectedOutput` and new secrets into the vault.
+///
+/// For `GenerateSecret` & `DeriveSecret` it is expected that the `TargetInfo` trait is implemented to describe
+/// where the new secret should be written, and for `DeriveSecret` & `UseSecret` the `SourceInfo` trait is required to
+/// specify the location of the existing secret that should be used.
+/// Each of the 4 traits defines associated types to set the type of non-secret Input and Output.
+/// If the `Input` type is **not** (), is is expected that the `InputInfo` trait is implemented to set where the input
+/// data should be gathered from, analogous for `Output` that is **not** (), `OutputInfo` has to be implemented.
+///
+/// `TargetInfo`, `SourceInfo`, `InputInfo` and `OutputInfo` can be derived with the [`Procedure`] proc macro.
+///
+/// ## Example
+/// ```compile_fail
+/// #[derive(Procedure)]
+/// pub struct PublicKey {
+///     #[source]
+///     private_key: Location,
+///
+///     #[output_key]
+///     write_output: TempOutput,
+/// }
+///
+/// #[execute_procedure]
+/// impl UseSecret for PublicKey {
+///     type Input = ();
+///     type Output = Vec<u8>;
+///
+///     fn use_secret(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
+///         todo!("Implement the procedure's actual logic.")
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn execute_procedure(_attr: proc_macro::TokenStream, mut item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let item_clone = item.clone();
+    let item_impl = syn::parse_macro_input!(item_clone as ItemImpl);
+    let gen: proc_macro::TokenStream = impl_procedure_step(item_impl).into();
+    item.extend(gen);
+    item
 }

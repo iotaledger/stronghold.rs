@@ -103,58 +103,66 @@ async fn test_fully_synchronize_snapshot() {
             .unwrap();
 
         // write into vault for a
-        stronghold
+        assert!(stronghold
             .write_to_vault(
                 loc_a0.clone(),
                 b"payload_a0".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
-        stronghold
+        assert!(stronghold
             .spawn_stronghold_actor(client_path1.clone(), Vec::new())
-            .await;
-        stronghold.switch_actor_target(client_path1.clone()).await;
-        stronghold
+            .await
+            .is_ok());
+        assert!(stronghold.switch_actor_target(client_path1.clone()).await.is_ok());
+        assert!(stronghold
             .write_to_vault(
                 loc_a1.clone(),
                 b"payload_a1".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
-        stronghold
+        assert!(stronghold
             .spawn_stronghold_actor(client_path2.clone(), Vec::new())
-            .await;
-        stronghold.switch_actor_target(client_path2.clone()).await;
-        stronghold
+            .await
+            .is_ok());
+        assert!(stronghold.switch_actor_target(client_path2.clone()).await.is_ok());
+        assert!(stronghold
             .write_to_vault(
                 loc_a2.clone(),
                 b"payload_a2".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
-        stronghold
+        assert!(stronghold
             .spawn_stronghold_actor(client_path3.clone(), Vec::new())
-            .await;
-        stronghold.switch_actor_target(client_path3.clone()).await;
-        stronghold
+            .await
+            .is_ok());
+        assert!(stronghold.switch_actor_target(client_path3.clone()).await.is_ok());
+        assert!(stronghold
             .write_to_vault(
                 loc_a3.clone(),
                 b"payload_a3".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
         // write local snapshot
-        stronghold
+        assert!(stronghold
             .write_all_to_snapshot(&key_a, None, Some(storage_path_a.into()))
-            .await;
+            .await
+            .is_ok());
     }
 
     {
@@ -165,31 +173,35 @@ async fn test_fully_synchronize_snapshot() {
             .await
             .unwrap();
 
-        stronghold
+        assert!(stronghold
             .write_to_vault(
                 loc_b0.clone(),
                 b"payload_a0".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
-        stronghold
+        assert!(stronghold
             .spawn_stronghold_actor(client_path5.clone(), Vec::new())
-            .await;
-        stronghold.switch_actor_target(client_path5.clone()).await;
-        stronghold
+            .await
+            .is_ok());
+        assert!(stronghold.switch_actor_target(client_path5.clone()).await.is_ok());
+        assert!(stronghold
             .write_to_vault(
                 loc_b1.clone(),
                 b"payload_a0".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
-        stronghold
+        assert!(stronghold
             .write_all_to_snapshot(&key_b, None, Some(storage_path_b.into()))
-            .await;
+            .await
+            .is_ok());
     }
 
     // load A, partially synchronize with B, test partial entries from A and B
@@ -210,7 +222,7 @@ async fn test_fully_synchronize_snapshot() {
     // keep the reference to the current client id
     // synchronize the other client_path with this snapshot
     for client_path in all_paths {
-        stronghold
+        assert!(stronghold
             .read_snapshot(
                 client_path.clone(),
                 Some(former.clone()),
@@ -218,7 +230,8 @@ async fn test_fully_synchronize_snapshot() {
                 None,
                 Some(storage_path_a.into()),
             )
-            .await;
+            .await
+            .is_ok());
     }
 
     let mut key_a_static = [0u8; 32];
@@ -231,9 +244,9 @@ async fn test_fully_synchronize_snapshot() {
     key_destination_static.clone_from_slice(&key_destination);
 
     // partially synchronize with other snapshot
-    stronghold
+    assert!(stronghold
         .synchronize_local_full(
-            ClientId::load_from_path(&client_path0.clone(), &client_path0.clone()).unwrap(),
+            ClientId::load_from_path(&client_path0.clone(), &client_path0.clone()),
             SnapshotConfig {
                 filename: None,
                 path: Some(storage_path_a.into()),
@@ -253,15 +266,16 @@ async fn test_fully_synchronize_snapshot() {
                 generates_output: false,
             },
         )
-        .await;
+        .await
+        .is_ok());
 
     // check for existing locations
-    assert!(stronghold.vault_exists(loc_a0).await);
-    assert!(stronghold.vault_exists(loc_a1).await);
-    assert!(stronghold.vault_exists(loc_a2).await);
-    assert!(stronghold.vault_exists(loc_a3).await);
-    assert!(stronghold.vault_exists(loc_b0).await);
-    assert!(stronghold.vault_exists(loc_b1).await);
+    assert!(stronghold.vault_exists("vault_a0").await.unwrap());
+    assert!(stronghold.vault_exists("vault_a1").await.unwrap());
+    assert!(stronghold.vault_exists("vault_a2").await.unwrap());
+    assert!(stronghold.vault_exists("vault_a3").await.unwrap());
+    assert!(stronghold.vault_exists("vault_b0").await.unwrap());
+    assert!(stronghold.vault_exists("vault_b1").await.unwrap());
 }
 
 #[actix::test]
@@ -307,7 +321,7 @@ async fn test_partially_synchronize_snapshot() {
     };
 
     // allowed entries from B
-    let allowed = vec![ClientId::load_from_path(&client_path5.clone(), &client_path5.clone()).unwrap()];
+    let allowed = vec![ClientId::load_from_path(&client_path5.clone(), &client_path5.clone())];
 
     // path A
     let mut tf = std::env::temp_dir();
@@ -341,58 +355,66 @@ async fn test_partially_synchronize_snapshot() {
             .unwrap();
 
         // write into vault for a
-        stronghold
+        assert!(stronghold
             .write_to_vault(
                 loc_a0.clone(),
                 b"payload_a0".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
-        stronghold
+        assert!(stronghold
             .spawn_stronghold_actor(client_path1.clone(), Vec::new())
-            .await;
-        stronghold.switch_actor_target(client_path1.clone()).await;
-        stronghold
+            .await
+            .is_ok());
+        assert!(stronghold.switch_actor_target(client_path1.clone()).await.is_ok());
+        assert!(stronghold
             .write_to_vault(
                 loc_a1.clone(),
                 b"payload_a1".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
-        stronghold
+        assert!(stronghold
             .spawn_stronghold_actor(client_path2.clone(), Vec::new())
-            .await;
-        stronghold.switch_actor_target(client_path2.clone()).await;
-        stronghold
+            .await
+            .is_ok());
+        assert!(stronghold.switch_actor_target(client_path2.clone()).await.is_ok());
+        assert!(stronghold
             .write_to_vault(
                 loc_a2.clone(),
                 b"payload_a2".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
-        stronghold
+        assert!(stronghold
             .spawn_stronghold_actor(client_path3.clone(), Vec::new())
-            .await;
-        stronghold.switch_actor_target(client_path3.clone()).await;
-        stronghold
+            .await
+            .is_ok());
+        assert!(stronghold.switch_actor_target(client_path3.clone()).await.is_ok());
+        assert!(stronghold
             .write_to_vault(
                 loc_a3.clone(),
                 b"payload_a3".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
         // write local snapshot
-        stronghold
+        assert!(stronghold
             .write_all_to_snapshot(&key_a, None, Some(storage_path_a.into()))
-            .await;
+            .await
+            .is_ok());
     }
 
     {
@@ -403,31 +425,35 @@ async fn test_partially_synchronize_snapshot() {
             .await
             .unwrap();
 
-        stronghold
+        assert!(stronghold
             .write_to_vault(
                 loc_b0.clone(),
                 b"payload_b0".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
-        stronghold
+        assert!(stronghold
             .spawn_stronghold_actor(client_path5.clone(), Vec::new())
-            .await;
-        stronghold.switch_actor_target(client_path5.clone()).await;
-        stronghold
+            .await
+            .is_ok());
+        assert!(stronghold.switch_actor_target(client_path5.clone()).await.is_ok());
+        assert!(stronghold
             .write_to_vault(
                 loc_b1.clone(),
                 b"payload_b0".to_vec(),
                 RecordHint::new(b"record_hint_a0".to_vec()).unwrap(),
                 vec![],
             )
-            .await;
+            .await
+            .is_ok());
 
-        stronghold
+        assert!(stronghold
             .write_all_to_snapshot(&key_b, None, Some(storage_path_b.into()))
-            .await;
+            .await
+            .is_ok());
     }
 
     // load A, partially synchronize with B, test partial entries from A and B
@@ -448,7 +474,7 @@ async fn test_partially_synchronize_snapshot() {
     // keep the reference to the current client id
     // synchronize the other client_path with this snapshot
     for client_path in all_paths {
-        stronghold
+        assert!(stronghold
             .read_snapshot(
                 client_path.clone(),
                 Some(former.clone()),
@@ -456,7 +482,8 @@ async fn test_partially_synchronize_snapshot() {
                 None,
                 Some(storage_path_a.into()),
             )
-            .await;
+            .await
+            .is_ok());
     }
 
     let mut key_a_static = [0u8; 32];
@@ -469,9 +496,9 @@ async fn test_partially_synchronize_snapshot() {
     key_destination_static.clone_from_slice(&key_destination);
 
     // partially synchronize with other snapshot
-    stronghold
+    assert!(stronghold
         .synchronize_local_partial(
-            ClientId::load_from_path(&client_path0.clone(), &client_path0.clone()).unwrap(),
+            ClientId::load_from_path(&client_path0.clone(), &client_path0.clone()),
             SnapshotConfig {
                 filename: None,
                 path: Some(storage_path_a.into()),
@@ -492,8 +519,9 @@ async fn test_partially_synchronize_snapshot() {
             },
             allowed,
         )
-        .await;
+        .await
+        .is_ok());
 
-    assert!(!stronghold.vault_exists(loc_b0).await);
-    assert!(stronghold.vault_exists(loc_b1).await);
+    assert!(!stronghold.vault_exists("vault_b0").await.unwrap());
+    assert!(stronghold.vault_exists("vault_b1").await.unwrap());
 }
