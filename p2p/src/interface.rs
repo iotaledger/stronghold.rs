@@ -43,6 +43,64 @@ use std::{borrow::Borrow, io, time::Duration};
 /// operations on the swarm.
 ///
 /// Refer to [`StrongholdP2pBuilder`] for more information on the default configuration.
+///
+/// ```
+/// # use serde::{Serialize, Deserialize};
+/// # use p2p::{ChannelSinkConfig, EventChannel, StrongholdP2p};
+/// # use futures::channel::mpsc;
+/// # use std::borrow::Borrow;
+/// #
+/// // Type of the requests send to the remote.
+/// #[derive(Debug, PartialEq, Serialize, Deserialize)]
+/// enum Request {
+///     Ping,
+///     Message(String),
+/// }
+///
+/// // Trimmed version of the request that is used for validation in the firewall.
+/// // In case of `Rule::Ask` this is the message that is bubbled up through the
+/// // firewall channel.
+/// //
+/// // This type is optional but may be needed because e.g. the actual request can not
+/// // be cloned, or shouldn't expose details to the receiving side of the firewall-channel.
+/// #[derive(Debug, Clone)]
+/// enum RequestType {
+///     Ping,
+///     Message,
+/// }
+///
+/// impl Borrow<RequestType> for Request {
+///     fn borrow(&self) -> &RequestType {
+///         match self {
+///             Request::Ping => &RequestType::Ping,
+///             Request::Message(..) => &RequestType::Message,
+///         }
+///     }
+/// }
+///
+/// // Type of the response send back.
+/// #[derive(Debug, PartialEq, Serialize, Deserialize)]
+/// enum Response {
+///     Pong,
+///     Message(String),
+/// }
+///
+/// // Channel used for dynamic rules:
+/// // - If a peer connected for which no rules are present (no default & not peer-specific):
+/// //   Allows the user to send back the rules that should be set for this peer.
+/// // - If the firewall `Rule` is set to `Rule::Ask`:
+/// //   Asks for individual approval for this specific request.
+/// let (firewall_tx, firewall_rx) = mpsc::channel(10);
+///
+/// // Channel trough which inbound requests are forwarded.
+/// let (request_tx, request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
+///
+/// // Optional channel through which current events in the network are sent, e.g.
+/// // peers connecting / disconnecting, listener events or non-fatal failures.
+/// let (events_tx, events_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
+///
+/// let p2p = StrongholdP2p::<Request, Response, RequestType>::new(firewall_tx, request_tx, Some(events_tx));
+/// ```
 pub struct StrongholdP2p<Rq, Rs, TRq = Rq>
 where
     // Request message type
@@ -88,7 +146,7 @@ where
 
     /// Send a new request to a remote peer.
     ///
-    /// This will attempt to establish a connection to the remote via one of the known addresses, if there is no active
+    /// This will attempt to establish a connection to the remote via one of the known addresses if there is no active
     /// connection.
     pub async fn send_request(&mut self, peer: PeerId, request: Rq) -> Result<Rs, OutboundFailure> {
         let (tx_yield, rx_yield) = oneshot::channel();
@@ -390,12 +448,15 @@ where
 /// Use existing keypair for authentication on the transport layer.
 ///
 /// The local [`PeerId`] is derived from public key of the IdKeys.
-/// If this is not the case, remote Peers will reject the communication.
 pub enum InitKeypair {
     /// Identity Keys that are used to derive the noise keypair and peer id.
     IdKeys(Keypair),
     /// Use authenticated noise-keypair.
-    /// **Note**: The peer-id has to be derived from the same keypair that is used to create the noise-keypair.
+    ///
+    /// **Note**:
+    /// The `peer_id` has to be derived from the same keypair that is used to create the noise-keypair.
+    /// Remote Peers will always observe us from the derived [`PeerId`], even if we set a different one
+    /// here.
     Authenticated {
         peer_id: PeerId,
         noise_keypair: AuthenticKeypair<X25519Spec>,
@@ -580,6 +641,30 @@ where
     /// operations on the swarm-task.
     /// Additionally, the executor is used to configure the
     /// [`SwarmBuilder::executor`][libp2p::swarm::SwarmBuilder::executor].
+    ///
+    /// ```
+    /// # use p2p::{
+    ///     firewall::FirewallRules,
+    ///     ChannelSinkConfig, EventChannel,  StrongholdP2p, StrongholdP2pBuilder
+    /// };
+    /// # use futures::channel::mpsc;
+    /// # use std::error::Error;
+    /// use libp2p::tcp::TokioTcpConfig;
+    /// #
+    /// # async fn test() -> Result<(), Box<dyn Error>> {
+    /// let (firewall_tx, firewall_rx) = mpsc::channel(10);
+    /// let (request_tx, request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
+    ///
+    /// let builder = StrongholdP2pBuilder::new(firewall_tx, request_tx, None)
+    ///     .with_firewall_default(FirewallRules::allow_all());
+    /// let p2p: StrongholdP2p<String, String> = builder
+    ///     .build_with_transport(TokioTcpConfig::new(), |fut| {
+    ///          tokio::spawn(fut);
+    ///     })
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn build_with_transport<Tp, E>(
         self,
         transport: Tp,

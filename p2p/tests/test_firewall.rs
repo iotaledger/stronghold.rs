@@ -11,8 +11,8 @@ use futures::{
 use libp2p::tcp::TokioTcpConfig;
 use p2p::{
     firewall::{
-        FirewallPermission, FirewallRequest, FirewallRules, PermissionValue, RequestPermissions, Rule, RuleDirection,
-        VariantPermission,
+        permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
+        FirewallRequest, FirewallRules, Rule, RuleDirection,
     },
     ChannelSinkConfig, EventChannel, InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest,
     RequestDirection, StrongholdP2p, StrongholdP2pBuilder,
