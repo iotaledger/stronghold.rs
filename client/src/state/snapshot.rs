@@ -43,12 +43,6 @@ impl Snapshot {
         self.state.0.contains_key(&cid)
     }
 
-    pub fn print_data(&self) {
-        for entry in self.state.0.keys() {
-            println!("client_id: {:?}", entry);
-        }
-    }
-
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
     pub fn read_from_snapshot(snapshot_file: SnapshotFile, key: Key) -> Result<Self, ReadError> {
@@ -122,7 +116,7 @@ impl SnapshotFile {
         Self::Path(path.into())
     }
 
-    fn to_path(self) -> std::io::Result<PathBuf> {
+    pub fn to_path(self) -> std::io::Result<PathBuf> {
         match self {
             SnapshotFile::Named(name) => snapshot::files::get_path(&name),
             SnapshotFile::Path(path) => Ok(path),
@@ -133,6 +127,12 @@ impl SnapshotFile {
 impl Default for SnapshotFile {
     fn default() -> Self {
         Self::Named("main".to_owned())
+    }
+}
+
+impl From<PathBuf> for SnapshotFile {
+    fn from(path: PathBuf) -> Self {
+        Self::Path(path)
     }
 }
 

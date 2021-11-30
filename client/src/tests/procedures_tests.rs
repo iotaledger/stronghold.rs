@@ -14,14 +14,14 @@ use stronghold_utils::random::{self, bytestring, string};
 
 use super::fresh;
 use crate::{
-    interface::Stronghold2,
+    interface::Snapshot,
     procedures::{
         AeadAlg, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, ChainCode, Ed25519Sign, GenerateKey, Hash,
         HashType, Hkdf, KeyType, MnemonicLanguage, OutputKey, PersistOutput, PersistSecret, ProcedureIo, ProcedureStep,
         PublicKey, Sha2Hash, Slip10Derive, Slip10Generate, X25519DiffieHellman,
     },
     state::secure::SecureClient,
-    Location, Stronghold,
+    Location, SnapshotFile, Stronghold,
 };
 
 async fn setup_stronghold() -> (Vec<u8>, Stronghold) {
@@ -103,7 +103,7 @@ async fn usecase_ed25519() {
 #[actix::test]
 async fn usecase_Slip10Derive_intermediate_keys() {
     let cp = fresh::bytestring(u8::MAX.into());
-    let sh = Stronghold2::new();
+    let sh = Snapshot::new(SnapshotFile::default());
 
     let client = sh.client(&cp).await.unwrap();
 

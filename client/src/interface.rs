@@ -22,7 +22,7 @@ use crate::{
     procedures::{CollectedOutput, Procedure, ProcedureError},
     state::{
         secure::SecureClient,
-        snapshot::{ReadError, Snapshot, SnapshotFile, WriteError},
+        snapshot::{ReadError, Snapshot as SnapshotActor, SnapshotFile, WriteError},
     },
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
@@ -398,21 +398,36 @@ impl Stronghold {
     }
 }
 
-/// Represents the in-memory version of an encrypted snapshot file. The [`Vault`] can be used to
-/// securely store key material and operate on said material. An unencrypted HashMap-like [`Store`]
-/// can be used to store miscellaneous data.
 // Note: This is no longer `Clone`, because `write_snapshot`
 // needs to operate on the stronghold in a mutually exclusive manner.
-pub struct Stronghold2 {
+pub struct Snapshot {
+    file: SnapshotFile,
     registry: Addr<Registry2>,
 }
 
-impl Stronghold2 {
-    /// Initializes a new Stronghold.
-    pub fn new() -> Self {
+impl Snapshot {
+    pub fn new(file: impl Into<SnapshotFile>) -> Self {
         let registry = Registry2::default().start();
 
-        Self { registry }
+        Self {
+            file: file.into(),
+            registry,
+        }
+    }
+
+    /// Convenience wrapper to create a named snapshot in a OS-dependent default directory.
+    pub fn new_named(name: impl AsRef<str>) -> Self {
+        Self::new(SnapshotFile::named(name.as_ref()))
+    }
+
+    /// Convenience wrapper to create a snapshot from a path.
+    pub fn new_path(path: impl Into<PathBuf>) -> Self {
+        Self::new(SnapshotFile::path(path.into()))
+    }
+
+    /// Convenience wrapper to create a named snapshot with a default name.
+    pub fn new_main() -> Self {
+        Self::new(SnapshotFile::default())
     }
 
     /// Returns the [`Client`] identified by `client_path`.
@@ -435,14 +450,10 @@ impl Stronghold2 {
         Ok(Client::new(client_id, secure_client, snapshot_actor))
     }
 
-    /// Loads the snapshot from disk identified by TODO. The given `key_data` is used to
+    /// Loads the snapshot from the file system. The given `key_data` is used to
     /// attempt decryption of the file. After this method is called, `key_data` should be zeroized.
     // TODO: Can we take owned key_data and zeroize ourselves?
-    pub async fn read_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
-        &mut self,
-        key_data: &T,
-        snapshot_file: SnapshotFile,
-    ) -> StrongholdResult<Result<(), ReadError>> {
+    pub async fn read<T: Zeroize + AsRef<Vec<u8>>>(&mut self, key_data: &T) -> StrongholdResult<Result<(), ReadError>> {
         let mut key: [u8; 32] = [0u8; 32];
         let keydata = key_data.as_ref();
 
@@ -450,7 +461,12 @@ impl Stronghold2 {
 
         let snapshot_actor = self.registry.send(GetSnapshot {}).await?;
 
-        let result = snapshot_actor.send(LoadFromDisk { key, snapshot_file }).await?;
+        let result = snapshot_actor
+            .send(LoadFromDisk {
+                key,
+                snapshot_file: self.file.clone(),
+            })
+            .await?;
 
         if let Err(e) = result {
             return Ok(Err(e));
@@ -459,10 +475,10 @@ impl Stronghold2 {
         Ok(Ok(()))
     }
 
-    pub async fn write_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
+    /// Write the snapshot to the path contained in the snapshot.
+    pub async fn write<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
         keydata: &T,
-        snapshot_file: SnapshotFile,
     ) -> StrongholdResult<Result<(), WriteError>> {
         let mut key: [u8; 32] = [0u8; 32];
         let keydata = keydata.as_ref();
@@ -483,7 +499,12 @@ impl Stronghold2 {
         let previous_len = weak_addrs.len();
 
         // Don't short-circuit, as that would get rid of all clients.
-        let res = snapshot.send(WriteSnapshot { key, snapshot_file }).await;
+        let res = snapshot
+            .send(WriteSnapshot {
+                key,
+                snapshot_file: self.file.clone(),
+            })
+            .await;
 
         // It's important that the actor task/thread gets a chance to run, in order to
         // drop the actors whose references have now gone away.
@@ -514,11 +535,11 @@ impl Stronghold2 {
 pub struct Client {
     id: ClientId,
     secure_client: Addr<SecureClient>,
-    snapshot_actor: Addr<Snapshot>,
+    snapshot_actor: Addr<SnapshotActor>,
 }
 
 impl Client {
-    fn new(id: ClientId, secure_client: Addr<SecureClient>, snapshot_actor: Addr<Snapshot>) -> Client {
+    fn new(id: ClientId, secure_client: Addr<SecureClient>, snapshot_actor: Addr<SnapshotActor>) -> Client {
         Client {
             id,
             secure_client,

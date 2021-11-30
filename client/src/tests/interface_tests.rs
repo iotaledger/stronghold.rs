@@ -8,7 +8,7 @@ use crate::{
     procedures::{PersistSecret, Slip10Derive, Slip10Generate},
 };
 use crate::{
-    interface::{Client, Store, Stronghold2, Vault, VaultLocation},
+    interface::{Client, Snapshot, Store, Vault, VaultLocation},
     tests::fresh,
     RecordHint, SnapshotFile, Stronghold,
 };
@@ -22,14 +22,14 @@ async fn stronghold_interface_example() -> Result<(), Box<dyn std::error::Error>
     let vault_path = b"vault".to_vec();
     let client_path = b"client";
     let key_data = [0xff; 32].to_vec();
+    let file = SnapshotFile::named("testfile");
 
     let record_location = VaultLocation::counter(0);
 
     let store_loc = bytestring(4096);
 
-    let mut stronghold = Stronghold2::new();
-
-    let client: Client = stronghold.client(client_path).await?;
+    let mut snapshot: Snapshot = Snapshot::new(file.clone());
+    let client: Client = snapshot.client(client_path).await?;
     let vault: Vault = client.vault(vault_path.clone());
     let store: Store = client.store();
 
@@ -43,20 +43,15 @@ async fn stronghold_interface_example() -> Result<(), Box<dyn std::error::Error>
 
     store.write(store_loc.clone(), b"test".to_vec(), None).await?;
 
-    stronghold
-        .write_snapshot(&key_data, SnapshotFile::named("test0"))
-        .await??;
+    snapshot.write(&key_data).await??;
 
     std::mem::drop(client);
-    std::mem::drop(stronghold);
+    std::mem::drop(snapshot);
 
-    let mut stronghold = Stronghold2::new();
+    let mut snapshot = Snapshot::new(file.clone());
+    snapshot.read(&key_data).await??;
 
-    stronghold
-        .read_snapshot(&key_data, SnapshotFile::named("test0"))
-        .await??;
-
-    let client: Client = stronghold.client(client_path).await?;
+    let client: Client = snapshot.client(client_path).await?;
     client.restore_state().await?;
 
     let store_data = client.store().read(store_loc.clone()).await?.unwrap();
@@ -85,9 +80,9 @@ async fn test_stronghold_x() {
 
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
-    let mut stronghold = Stronghold2::new();
+    let mut snapshot = Snapshot::new(SnapshotFile::named("test0"));
 
-    let client: Client = stronghold.client(client_path).await.unwrap();
+    let client: Client = snapshot.client(client_path).await.unwrap();
     let vault: Vault = client.vault(vault_path);
     let store: Store = client.store();
 
@@ -178,14 +173,14 @@ async fn test_stronghold_x() {
 
     vault.collect_garbage().await.unwrap();
 
-    stronghold
-        .write_snapshot(&key_data, SnapshotFile::named("test0"))
+    snapshot
+        .write(&key_data)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
-    stronghold
-        .read_snapshot(&key_data, SnapshotFile::named("test0"))
+    snapshot
+        .read(&key_data)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
@@ -223,10 +218,10 @@ async fn stronghold_discard_inactive_clients() {
     let vault_path0: &[u8] = b"123";
     let vault_path1: &[u8] = b"456";
     {
-        let mut stronghold = Stronghold2::new();
+        let mut snapshot = Snapshot::new(path.clone());
         {
-            let client0 = stronghold.client(client_path0).await.unwrap();
-            let client1 = stronghold.client(client_path1).await.unwrap();
+            let client0 = snapshot.client(client_path0).await.unwrap();
+            let client1 = snapshot.client(client_path1).await.unwrap();
 
             client0
                 .vault(vault_path0)
@@ -254,23 +249,15 @@ async fn stronghold_discard_inactive_clients() {
             assert!(client1.vault(vault_path1).exists().await.unwrap());
         } // <-- clients are dropped here, removing their references to their respective actors.
 
-        stronghold
-            .write_snapshot(&password, SnapshotFile::path(path.clone()))
-            .await
-            .unwrap()
-            .unwrap();
+        snapshot.write(&password).await.unwrap().unwrap();
     }
 
-    let mut stronghold = Stronghold2::new();
+    let mut snapshot = Snapshot::new(path.clone());
 
-    stronghold
-        .read_snapshot(&password, SnapshotFile::path(path.clone()))
-        .await
-        .unwrap()
-        .unwrap();
+    snapshot.read(&password).await.unwrap().unwrap();
 
-    let client0 = stronghold.client(client_path0).await.unwrap();
-    let client1 = stronghold.client(client_path1).await.unwrap();
+    let client0 = snapshot.client(client_path0).await.unwrap();
+    let client1 = snapshot.client(client_path1).await.unwrap();
 
     // State is not loaded into actors; expect vaults to *not* exist.
     assert!(!client0.vault(vault_path0).exists().await.unwrap());
@@ -289,6 +276,7 @@ async fn stronghold_discard_inactive_clients() {
 async fn run_stronghold_multi_actors() {
     let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
 
+    let file = SnapshotFile::named("megasnap");
     let client_path0 = b"test a";
     let client_path1 = b"test b";
     // let client_path2 = b"test c".to_vec();
@@ -301,9 +289,9 @@ async fn run_stronghold_multi_actors() {
     let loc3 = VaultLocation::counter(3);
     let loc4 = VaultLocation::counter(4);
 
-    let mut stronghold = Stronghold2::new();
+    let mut snapshot = Snapshot::new(file.clone());
 
-    let client0: Client = stronghold.client(client_path0).await.unwrap();
+    let client0: Client = snapshot.client(client_path0).await.unwrap();
     let vault0: Vault = client0.vault(vault_path.clone());
 
     assert!(vault0
@@ -318,7 +306,7 @@ async fn run_stronghold_multi_actors() {
 
     // stronghold.switch_actor_target(client_path1.clone()).await.unwrap();
 
-    let client1: Client = stronghold.client(client_path1).await.unwrap();
+    let client1: Client = snapshot.client(client_path1).await.unwrap();
     let vault1: Vault = client1.vault(vault_path.clone());
 
     // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
@@ -350,29 +338,17 @@ async fn run_stronghold_multi_actors() {
     let ids = vault0.list().await.unwrap();
     println!("actor 0: {:?}", ids);
 
-    stronghold
-        .write_snapshot(&key_data.to_vec(), SnapshotFile::named("megasnap"))
+    snapshot
+        .write(&key_data.to_vec())
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
-    // stronghold.switch_actor_target(client_path1.clone()).await.unwrap();
-
     let ids = vault1.list().await.unwrap();
     println!("actor 1: {:?}", ids);
 
-    // stronghold
-    //     .spawn_stronghold_actor(client_path2.clone(), vec![])
-    //     .await
-    //     .unwrap();
-
-    stronghold
-        .read_snapshot(
-            // client_path2.clone(),
-            // Some(client_path1.clone()),
-            &key_data,
-            SnapshotFile::named("megasnap"),
-        )
+    snapshot
+        .read(&key_data)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
@@ -445,9 +421,9 @@ async fn test_stronghold_generics() {
     let client_path = b"test a".to_vec();
     let seed_location = VaultLocation::generic("seed");
 
-    let mut stronghold = Stronghold2::new();
+    let mut snapshot = Snapshot::new(SnapshotFile::named("generic"));
 
-    let client0: Client = stronghold.client(&client_path).await.unwrap();
+    let client0: Client = snapshot.client(&client_path).await.unwrap();
     let vault0: Vault = client0.vault("slip10");
 
     assert!(vault0
@@ -462,8 +438,8 @@ async fn test_stronghold_generics() {
     let p = vault0.read_secret(seed_location).await.unwrap();
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
-    stronghold
-        .write_snapshot(&key_data.to_vec(), SnapshotFile::named("generic"))
+    snapshot
+        .write(&key_data.to_vec())
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
