@@ -29,10 +29,9 @@ use crate::{
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
 };
-// use crypto::{hashes::blake2b, keys::x25519};
-// use digest::Digest;
-// use std::collections::HashMap;
+
 use actix::prelude::*;
+#[cfg(feature = "p2p")]
 use crypto::keys::x25519;
 use engine::vault::{ClientId, RecordHint, RecordId};
 #[cfg(feature = "p2p")]
