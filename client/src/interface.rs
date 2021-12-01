@@ -33,6 +33,7 @@ use crate::{
 // use digest::Digest;
 // use std::collections::HashMap;
 use actix::prelude::*;
+use crypto::keys::x25519;
 use engine::vault::{ClientId, RecordHint, RecordId};
 #[cfg(feature = "p2p")]
 use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
@@ -914,291 +915,281 @@ impl Stronghold {
 }
 
 // Implementation for remote synchronization on top of p2p.
-// #[cfg(feature = "p2p")]
-// impl Stronghold {
-//     /// Creates a temporary X25519 public / private key pair, hashes it with [`Blake2b`] and
-//     /// returns the public and private key as hashed values respectively
-//     async fn create_temporary_keys(
-//         &self,
-//     ) -> Result<(impl Zeroize + AsRef<Vec<u8>>, impl Zeroize + AsRef<Vec<u8>>), String> {
-//         let sec_key = match x25519::SecretKey::generate() {
-//             Ok(secret) => secret,
-//             Err(error) => return Err(error.to_string()),
-//         };
+#[cfg(feature = "p2p")]
+impl Stronghold {
+    /// Creates a temporary X25519 public / private key pair
+    async fn create_temporary_keys(&self) -> Result<(x25519::PublicKey, x25519::SecretKey), String> {
+        let sec_key = match x25519::SecretKey::generate() {
+            Ok(secret) => secret,
+            Err(error) => return Err(error.to_string()),
+        };
 
-//         let pub_key_bytes = sec_key.public_key().to_bytes();
-//         let sec_key_bytes = sec_key.to_bytes();
+        Ok((sec_key.public_key(), sec_key))
+    }
 
-//         // hashed pub / private key
-//         Ok((
-//             blake2b::Blake2b256::digest(&pub_key_bytes).to_vec(),
-//             blake2b::Blake2b256::digest(&sec_key_bytes).to_vec(),
-//         ))
-//     }
+    //     /// Requests full synchronization from a remote peer. The local peer must have full access rights
+    //     /// on the remote side as defined by the policy checks. This function also requires a target [`ClientId`]
+    //     /// to load the remote snapshot state into.
+    //     ///
+    //     /// - the `peer_id` is used to connect to the remote peer
+    //     /// - the `key` will be used to encrypt the snapshotc
+    //     /// - the `target` is the target [`ClientId`] to spawn a new actor, and load the inner state
+    //     #[allow(unused_variables)]
+    //     pub async fn synchronize_full_remote(&self, peer_id: PeerId) -> Result<(), String> {
+    //         // hashed pub / private key
+    //         let (pub_key_vec, sec_key_vec) = match self.create_temporary_keys().await {
+    //             Ok((public, private)) => (public, private),
+    //             Err(error) => return Err(error),
+    //         };
 
-//     /// Requests full synchronization from a remote peer. The local peer must have full access rights
-//     /// on the remote side as defined by the policy checks. This function also requires a target [`ClientId`]
-//     /// to load the remote snapshot state into.
-//     ///
-//     /// - the `peer_id` is used to connect to the remote peer
-//     /// - the `key` will be used to encrypt the snapshotc
-//     /// - the `target` is the target [`ClientId`] to spawn a new actor, and load the inner state
-//     #[allow(unused_variables)]
-//     pub async fn synchronize_full_remote(&self, peer_id: PeerId) -> Result<(), String> {
-//         // hashed pub / private key
-//         let (pub_key_vec, sec_key_vec) = match self.create_temporary_keys().await {
-//             Ok((public, private)) => (public, private),
-//             Err(error) => return Err(error),
-//         };
+    //         let network = match self.registry.send(GetNetwork).await.unwrap() {
+    //             Some(a) => a,
+    //             None => return Err("No network actor spawned.".to_string()),
+    //         };
 
-//         let network = match self.registry.send(GetNetwork).await.unwrap() {
-//             Some(a) => a,
-//             None => return Err("No network actor spawned.".to_string()),
-//         };
+    //         let snapshot = match self.registry.send(GetSnapshot).await {
+    //             Ok(addr) => addr,
+    //             Err(error) => return Err("".to_string()),
+    //         };
 
-//         let snapshot = match self.registry.send(GetSnapshot).await {
-//             Ok(addr) => addr,
-//             Err(error) => return Err("".to_string()), // change! introduce proper return type
-//         };
+    //         // (1) request full export
+    //         let result = match network
+    //             .send(network_msg::FullExport {
+    //                 key: pub_key_vec.as_ref().clone(),
+    //             })
+    //             .await
+    //         {
+    //             Ok(result) => match result {
+    //                 Ok(result) => result,
+    //                 Err(error) => return Err(error),
+    //             },
+    //             Err(error) => return Err("".to_string()),
+    //         };
 
-//         // (1) request full export
-//         let result = match network
-//             .send(network_msg::FullExport {
-//                 key: pub_key_vec.as_ref().clone(),
-//             })
-//             .await
-//         {
-//             Ok(result) => match result {
-//                 Ok(result) => result,
-//                 Err(error) => return Err(error),
-//             },
-//             Err(error) => return Err("".to_string()),
-//         };
+    //         // (2) spawn actor with given id
+    //         let remote_client_id = result.0;
 
-//         // (2) spawn actor with given id
-//         let remote_client_id = result.0;
+    //         let client = match self.registry.send(SpawnClient { id: remote_client_id }).await {
+    //             Ok(result_actor) => result_actor.unwrap(),
+    //             Err(error) => return Err("Error! Cannot get actor".to_string()),
+    //         };
 
-//         let client = match self.registry.send(SpawnClient { id: remote_client_id }).await {
-//             Ok(result_actor) => result_actor.unwrap(),
-//             Err(error) => return Err("Error! Cannot get actor".to_string()), // change! introduce proper return type
-//         };
+    //         // (3) send encrypted snapshot data
+    //         let data = result.1;
+    //         let snapshot_data = match snapshot
+    //             .send(DeserializeSnapshot {
+    //                 input: data,
+    //                 key: sec_key_vec.as_ref().clone(),
+    //             })
+    //             .await
+    //         {
+    //             Ok(r) => match r {
+    //                 Ok(result) => result,
+    //                 Err(error) => return Err("".to_string()),
+    //             },
+    //             Err(error) => return Err("".to_string()),
+    //         };
 
-//         // (3) send encrypted snapshot data
-//         let data = result.1;
-//         let snapshot_data = match snapshot
-//             .send(DeserializeSnapshot {
-//                 input: data,
-//                 key: sec_key_vec.as_ref().clone(),
-//             })
-//             .await
-//         {
-//             Ok(r) => match r {
-//                 Ok(result) => result,
-//                 Err(error) => return Err("".to_string()), // change! introduce proper return type
-//             },
-//             Err(error) => return Err("".to_string()), // change! introduce proper return type
-//         };
+    //         // (4) extract client_id specific data
+    //         let data = match snapshot_data.get(&remote_client_id) {
+    //             Some(d) => Box::new(d.clone()),
+    //             None => return Err("No snapshot data for client_id present".to_string()),
+    //         };
 
-//         // (4) extract client_id specific data
-//         let data = match snapshot_data.get(&remote_client_id) {
-//             Some(d) => Box::new(d.clone()),
-//             None => return Err("No snapshot data for client_id present".to_string()), // change! proper return type
-//         };
+    //         // (5) reload data for client
+    //         match client
+    //             .send(ReloadData {
+    //                 id: remote_client_id,
+    //                 data,
+    //             })
+    //             .await
+    //         {
+    //             Ok(_) => Ok(()),
+    //             Err(error) => Err(error.to_string()),
+    //         }
+    //     }
 
-//         // (5) reload data for client
-//         match client
-//             .send(ReloadData {
-//                 id: remote_client_id,
-//                 data,
-//             })
-//             .await
-//         {
-//             Ok(_) => Ok(()),
-//             Err(error) => Err(error.to_string()),
-//         }
-//     }
+    //     /// Requests synchronization from a remote peer. The peer will return an [`EntryShape`] encoded list.
+    //     /// This function call is the first part of the implicit state synchronization protocol.
+    //     ///
+    //     /// - the `peer_id` is used to connect to a remote peer.
+    //     #[allow(unused_variables)]
+    //     pub async fn synchronize_partial_request_remote(
+    //         &self,
+    //         peer_id: PeerId,
+    //     ) -> Result<HashMap<Location, EntryShape>, String> {
+    //         let network = match self.registry.send(GetNetwork).await.unwrap() {
+    //             Some(a) => a,
+    //             None => return Err("No network actor spawned.".to_string()),
+    //         };
 
-//     /// Requests synchronization from a remote peer. The peer will return an [`EntryShape`] encoded list.
-//     /// This function call is the first part of the implicit state synchronization protocol.
-//     ///
-//     /// - the `peer_id` is used to connect to a remote peer.
-//     #[allow(unused_variables)]
-//     pub async fn synchronize_partial_request_remote(
-//         &self,
-//         peer_id: PeerId,
-//     ) -> Result<HashMap<Location, EntryShape>, String> {
-//         let network = match self.registry.send(GetNetwork).await.unwrap() {
-//             Some(a) => a,
-//             None => return Err("No network actor spawned.".to_string()), // change! introduce proper return type
-//         };
+    //         // (1) request the remote entry shapes
+    //         match network.send(network_msg::CalculateShape).await {
+    //             Ok(result) => result,
+    //             Err(error) => Err(error.to_string()), // fix error type
+    //         }
+    //     }
 
-//         // (1) request the remote entry shapes
-//         match network.send(network_msg::CalculateShape).await {
-//             Ok(result) => result,
-//             Err(error) => Err(error.to_string()), // fix error type
-//         }
-//     }
+    //     /// Sends selected entries for synchronization from a remote peer. The peer will return an encrypted
+    //     /// snapshot with `keydata`. This function call is the second part of the implicit state synchronization
+    //     /// protocol.
+    //     ///
+    //     /// - the `peer_id` is used to connect to a remote peer.
+    //     /// - the `locations` are used for the remote peer
+    //     #[allow(unused_variables)]
+    //     pub async fn synchronize_partial_select_remote(
+    //         &self,
+    //         peer_id: PeerId,
+    //         id: ClientId,
+    //         locations: Vec<Location>,
+    //     ) -> Result<(), String> {
+    //         // hashed pub / private key
+    //         let (pub_key_vec, sec_key_vec) = match self.create_temporary_keys().await {
+    //             Ok((public, private)) => (public, private),
+    //             Err(error) => return Err(error),
+    //         };
 
-//     /// Sends selected entries for synchronization from a remote peer. The peer will return an encrypted
-//     /// snapshot with `keydata`. This function call is the second part of the implicit state synchronization
-//     /// protocol.
-//     ///
-//     /// - the `peer_id` is used to connect to a remote peer.
-//     /// - the `locations` are used for the remote peer
-//     #[allow(unused_variables)]
-//     pub async fn synchronize_partial_select_remote(
-//         &self,
-//         peer_id: PeerId,
-//         id: ClientId,
-//         locations: Vec<Location>,
-//     ) -> Result<(), String> {
-//         // hashed pub / private key
-//         let (pub_key_vec, sec_key_vec) = match self.create_temporary_keys().await {
-//             Ok((public, private)) => (public, private),
-//             Err(error) => return Err(error),
-//         };
+    //         // (1) load the current target
+    //         if let Some(target) = match self.registry.send(GetTarget {}).await {
+    //             Ok(current) => current,
+    //             Err(error) => return Err(error.to_string()),
+    //         } {
+    //             // (0) do we need to write everything into local snapshot?
 
-//         // (1) load the current target
-//         if let Some(target) = match self.registry.send(GetTarget {}).await {
-//             Ok(current) => current,
-//             Err(error) => return Err(error.to_string()),
-//         } {
-//             // (0) do we need to write everything into local snapshot?
+    //             // get the snapshot actor
+    //             let snapshot = match self.registry.send(GetSnapshot).await {
+    //                 Ok(r) => r,
+    //                 Err(error) => return Err(error.to_string()),
+    //             };
 
-//             // get the snapshot actor
-//             let snapshot = match self.registry.send(GetSnapshot).await {
-//                 Ok(r) => r,
-//                 Err(error) => return Err(error.to_string()),
-//             };
+    //             let network = match self.registry.send(GetNetwork).await.unwrap() {
+    //                 Some(a) => a,
+    //                 None => return Err("No network actor spawned.".to_string()),
+    //             };
 
-//             let network = match self.registry.send(GetNetwork).await.unwrap() {
-//                 Some(a) => a,
-//                 None => return Err("No network actor spawned.".to_string()), // change! introduce proper return type
-//             };
+    //             // (2) request remote snapshot data
+    //             // the return value will be a fully serialize snapshot, with one virtual client_id
+    //             // to import into the local state
+    //             let data = match network
+    //                 .send(network_msg::ExportSnapshot {
+    //                     input: locations,
+    //                     key: pub_key_vec.as_ref().clone(), // check: is there a better way
+    //                 })
+    //                 .await
+    //             {
+    //                 Ok(sd) => match sd {
+    //                     Ok(sd) => sd,
+    //                     Err(error) => return Err(error),
+    //                 },
+    //                 Err(error) => return Err(error.to_string()),
+    //             };
 
-//             // (2) request remote snapshot data
-//             // the return value will be a fully serialize snapshot, with one virtual client_id
-//             // to import into the local state
-//             let data = match network
-//                 .send(network_msg::ExportSnapshot {
-//                     input: locations,
-//                     key: pub_key_vec.as_ref().clone(), // check: is there a better way
-//                 })
-//                 .await
-//             {
-//                 Ok(sd) => match sd {
-//                     Ok(sd) => sd,
-//                     Err(error) => return Err(error),
-//                 },
-//                 Err(error) => return Err(error.to_string()),
-//             };
+    //             // (3) deserialize data and unpack it
+    //             let data = match snapshot
+    //                 .send(UnpackSnapshotData {
+    //                     data,
+    //                     key: sec_key_vec.as_ref().clone(),
+    //                 })
+    //                 .await
+    //             {
+    //                 Ok(r) => match r {
+    //                     Ok(result) => result,
+    //                     Err(error) => return Err(error.to_string()),
+    //                 },
+    //                 Err(error) => return Err(error.to_string()),
+    //             };
 
-//             // (3) deserialize data and unpack it
-//             let data = match snapshot
-//                 .send(UnpackSnapshotData {
-//                     data,
-//                     key: sec_key_vec.as_ref().clone(),
-//                 })
-//                 .await
-//             {
-//                 Ok(r) => match r {
-//                     Ok(result) => result,
-//                     Err(error) => return Err(error.to_string()),
-//                 },
-//                 Err(error) => return Err(error.to_string()),
-//             };
+    //             // (4) send data to secure actor and reload
+    //             return match target.send(MergeData { data, id }).await {
+    //                 Ok(_) => Ok(()),
+    //                 Err(e) => Err("Error requestion Reload Data".to_string()),
+    //             };
+    //         }
 
-//             // (4) send data to secure actor and reload
-//             return match target.send(MergeData { data, id }).await {
-//                 Ok(_) => Ok(()),
-//                 Err(e) => Err("Error requestion Reload Data".to_string()), // change! introduce proper return type
-//             };
-//         }
+    //         // no actor found
+    //         Err("No target actor found".to_string()) // change! introduce proper return type
+    //     }
 
-//         // no actor found
-//         Err("No target actor found".to_string()) // change! introduce proper return type
-//     }
+    //     /// Sends the current actors accessible entries as encoded message to the remote peer, which in turn
+    //     /// returns an with `key` encrypted snapshot containing the complementary entries. Remote access
+    //     /// control applies. The internally returned snapshot will be imported into the current target actor.
+    //     #[allow(unused_variables)]
+    //     pub async fn synchronize_complementary_request_remote(
+    //         &self,
+    //         peer_id: PeerId,
+    //         id: ClientId,
+    //         client_id: ClientId,
+    //     ) -> Result<(), String> {
+    //         // hashed pub / private key
+    //         let (pub_key_vec, sec_key_vec) = match self.create_temporary_keys().await {
+    //             Ok((public, private)) => (public, private),
+    //             Err(error) => return Err(error),
+    //         };
 
-//     /// Sends the current actors accessible entries as encoded message to the remote peer, which in turn
-//     /// returns an with `key` encrypted snapshot containing the complementary entries. Remote access
-//     /// control applies. The internally returned snapshot will be imported into the current target actor.
-//     #[allow(unused_variables)]
-//     pub async fn synchronize_complementary_request_remote(
-//         &self,
-//         peer_id: PeerId,
-//         id: ClientId,
-//         client_id: ClientId,
-//     ) -> Result<(), String> {
-//         // hashed pub / private key
-//         let (pub_key_vec, sec_key_vec) = match self.create_temporary_keys().await {
-//             Ok((public, private)) => (public, private),
-//             Err(error) => return Err(error),
-//         };
+    //         // (1) load the current target
+    //         if let Some(target) = match self.registry.send(GetTarget {}).await {
+    //             Ok(current) => current,
+    //             Err(error) => return Err(error.to_string()),
+    //         } {
+    //             // todo: explicit handling of possible registry error
+    //             let network = match self.registry.send(GetNetwork).await.unwrap() {
+    //                 Some(a) => a,
+    //                 None => return Err("No network actor spawned.".to_string()),
+    //             };
 
-//         // (1) load the current target
-//         if let Some(target) = match self.registry.send(GetTarget {}).await {
-//             Ok(current) => current,
-//             Err(error) => return Err(error.to_string()),
-//         } {
-//             // todo: explicit handling of possible registry error
-//             let network = match self.registry.send(GetNetwork).await.unwrap() {
-//                 Some(a) => a,
-//                 None => return Err("No network actor spawned.".to_string()), // change! introduce proper return type
-//             };
+    //             // get the snapshot actor
+    //             let snapshot = match self.registry.send(GetSnapshot).await {
+    //                 Ok(r) => r,
+    //                 Err(error) => return Err(error.to_string()),
+    //             };
 
-//             // get the snapshot actor
-//             let snapshot = match self.registry.send(GetSnapshot).await {
-//                 Ok(r) => r,
-//                 Err(error) => return Err(error.to_string()),
-//             };
+    //             // (2) calculate local shape
+    //             let input = match snapshot.send(CalculateShape { id: client_id }).await {
+    //                 Ok(r) => match r {
+    //                     Ok(result) => result,
+    //                     Err(error) => return Err(error.to_string()),
+    //                 },
+    //                 Err(error) => return Err(error.to_string()),
+    //             };
 
-//             // (2) calculate local shape
-//             let input = match snapshot.send(CalculateShape { id: client_id }).await {
-//                 Ok(r) => match r {
-//                     Ok(result) => result,
-//                     Err(error) => return Err(error.to_string()),
-//                 },
-//                 Err(error) => return Err(error.to_string()),
-//             };
+    //             // (3) request remote snapshot data
+    //             let data = match network
+    //                 .send(network_msg::ExportComplement {
+    //                     input,
+    //                     key: pub_key_vec.as_ref().clone(), // check: could this be done better?
+    //                 })
+    //                 .await
+    //             {
+    //                 Ok(sd) => match sd {
+    //                     Ok(sd) => sd,
+    //                     Err(error) => return Err(error),
+    //                 },
+    //                 Err(error) => return Err(error.to_string()),
+    //             };
 
-//             // (3) request remote snapshot data
-//             let data = match network
-//                 .send(network_msg::ExportComplement {
-//                     input,
-//                     key: pub_key_vec.as_ref().clone(), // check: could this be done better?
-//                 })
-//                 .await
-//             {
-//                 Ok(sd) => match sd {
-//                     Ok(sd) => sd,
-//                     Err(error) => return Err(error),
-//                 },
-//                 Err(error) => return Err(error.to_string()),
-//             };
+    //             // (4) deserialize data
+    //             let data = match snapshot
+    //                 .send(UnpackSnapshotData {
+    //                     data,
+    //                     key: sec_key_vec.as_ref().clone(),
+    //                 })
+    //                 .await
+    //             {
+    //                 Ok(r) => match r {
+    //                     Ok(result) => result,
+    //                     Err(error) => return Err(error.to_string()),
+    //                 },
+    //                 Err(error) => return Err(error.to_string()),
+    //             };
 
-//             // (4) deserialize data
-//             let data = match snapshot
-//                 .send(UnpackSnapshotData {
-//                     data,
-//                     key: sec_key_vec.as_ref().clone(),
-//                 })
-//                 .await
-//             {
-//                 Ok(r) => match r {
-//                     Ok(result) => result,
-//                     Err(error) => return Err(error.to_string()),
-//                 },
-//                 Err(error) => return Err(error.to_string()),
-//             };
+    //             // (5) reload state for current target and return
+    //             return match target.send(MergeData { data, id }).await {
+    //                 Ok(_) => Ok(()),
+    //                 Err(e) => Err("Error requestion Reload Data".to_string()),
+    //             };
+    //         }
 
-//             // (5) reload state for current target and return
-//             return match target.send(MergeData { data, id }).await {
-//                 Ok(_) => Ok(()),
-//                 Err(e) => Err("Error requestion Reload Data".to_string()), // change! introduce proper return type
-//             };
-//         }
-
-//         // no actor found
-//         Err("No target actor found".to_string()) // change! introduce proper return type
-//     }
-// }
+    //         // no actor found
+    //         Err("No target actor found".to_string()) // change! introduce proper return type
+    //     }
+}

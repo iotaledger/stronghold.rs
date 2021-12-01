@@ -8,14 +8,15 @@
 //! be added, removed or queried for their [`actix::Addr`].
 //! The registry can also be queried for the snapshot actor.
 
-use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, Supervised};
-use engine::vault::ClientId;
-use std::collections::HashMap;
-
 #[cfg(feature = "p2p")]
 use super::p2p::NetworkActor;
 use super::sync::SynchronizationActor;
 use crate::state::{secure::SecureClient, snapshot::Snapshot};
+use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, Supervised};
+use engine::vault::ClientId;
+#[cfg(feature = "p2p")]
+use p2p::PeerId;
+use std::collections::HashMap;
 
 pub mod messages {
     use super::*;
@@ -80,6 +81,8 @@ pub mod messages {
 #[cfg(feature = "p2p")]
 pub mod p2p_messages {
 
+    use p2p::PeerId;
+
     use super::*;
 
     pub struct InsertNetwork {
@@ -101,10 +104,27 @@ pub mod p2p_messages {
     impl Message for RemoveNetwork {
         type Result = Option<Addr<NetworkActor>>;
     }
+
+    pub struct GetClientIdForPeerId {
+        pub peer_id: PeerId,
+    }
+
+    impl Message for GetClientIdForPeerId {
+        type Result = Option<ClientId>;
+    }
+
+    pub struct SetClientIdForPeerId {
+        pub client_id: ClientId,
+        pub peer_id: PeerId,
+    }
+
+    impl Message for SetClientIdForPeerId {
+        type Result = ();
+    }
 }
 
-/// Registry [`Actor`], that owns [`SecureClient`] actors, and manages them. The registry
-/// can be modified
+/// Registry [`Actor`], that owns [`SecureClient`] actors and manages them. The registry
+/// can be modified.
 #[derive(Default)]
 pub struct Registry {
     clients: HashMap<ClientId, Addr<SecureClient>>,
@@ -113,6 +133,8 @@ pub struct Registry {
     synchronization: Option<Addr<SynchronizationActor>>,
     #[cfg(feature = "p2p")]
     network: Option<Addr<NetworkActor>>,
+    #[cfg(feature = "p2p")]
+    peer_client_mapping: HashMap<PeerId, ClientId>,
 }
 
 impl Supervised for Registry {}
@@ -225,5 +247,23 @@ impl Handler<p2p_messages::RemoveNetwork> for Registry {
         // Dropping the only address of the network actor will stop the actor.
         // Upon stopping the actor, its `StrongholdP2p` instance will be dropped, which results in a graceful shutdown.
         self.network.take()
+    }
+}
+
+#[cfg(feature = "p2p")]
+impl Handler<p2p_messages::GetClientIdForPeerId> for Registry {
+    type Result = Option<ClientId>;
+
+    fn handle(&mut self, msg: p2p_messages::GetClientIdForPeerId, _: &mut Self::Context) -> Self::Result {
+        self.peer_client_mapping.get(&msg.peer_id).cloned()
+    }
+}
+
+#[cfg(feature = "p2p")]
+impl Handler<p2p_messages::SetClientIdForPeerId> for Registry {
+    type Result = ();
+
+    fn handle(&mut self, msg: p2p_messages::SetClientIdForPeerId, _: &mut Self::Context) -> Self::Result {
+        self.peer_client_mapping.insert(msg.peer_id, msg.client_id);
     }
 }

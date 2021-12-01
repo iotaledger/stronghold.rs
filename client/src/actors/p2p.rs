@@ -9,7 +9,6 @@ use crate::{
     procedures::CollectedOutput,
 };
 use actix::prelude::*;
-// use engine::vault::ClientId;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
 use messages::*;
 use p2p::{
@@ -23,10 +22,6 @@ use std::{
     io,
     time::Duration,
 };
-
-// policy handler
-// use policy::{types::access::Access, Engine, Policy};
-// use policyengine as policy;
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {

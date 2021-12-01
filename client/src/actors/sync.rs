@@ -36,6 +36,7 @@ pub mod messages {
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct FullSynchronizationRemote {
+        pub peer: Option<Vec<u8>>,
         // pub id: ClientId,
         pub key: Vec<u8>,
     }
@@ -47,12 +48,14 @@ pub mod messages {
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct PartialSynchronizationRemote {
+        pub peer: Option<Vec<u8>>,
         // pub id: ClientId,
         pub key: Vec<u8>,
         pub sync_with: HashMap<Location, EntryShape>,
     }
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct ComplementSynchronization {
+        pub peer: Option<Vec<u8>>,
         // pub id: ClientId,
         pub key: Vec<u8>,
     }
