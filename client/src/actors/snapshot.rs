@@ -265,11 +265,61 @@ pub struct SnapshotConfig {
     pub generates_output: bool,
 }
 
+impl Supervised for Snapshot {}
 impl Actor for Snapshot {
     type Context = actix::Context<Self>;
 }
 
-impl Supervised for Snapshot {}
+impl Handler<messages::FillSnapshot> for Snapshot {
+    type Result = ();
+
+    fn handle(&mut self, msg: messages::FillSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+        self.state.add_data(msg.id, *msg.data);
+    }
+}
+
+impl Handler<messages::ReadFromSnapshot> for Snapshot {
+    type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
+
+    /// This will try to read from a snapshot on disk, otherwise load from a local snapshot
+    /// in memory. Returns the loaded snapshot data, that must be loaded inside the client
+    /// for access.
+    fn handle(&mut self, msg: messages::ReadFromSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+        let id = msg.fid.unwrap_or(msg.id);
+
+        if self.has_data(id) {
+            let data = self.get_state(id);
+
+            Ok(ReturnReadSnapshot {
+                id,
+                data: Box::new(data),
+            })
+        } else {
+            let mut snapshot = Snapshot::read_from_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;
+            let data = snapshot.get_state(id);
+            *self = snapshot;
+
+            Ok(ReturnReadSnapshot {
+                id,
+                data: Box::new(data),
+            })
+        }
+    }
+}
+
+impl Handler<messages::WriteSnapshot> for Snapshot {
+    type Result = Result<(), WriteError>;
+
+    fn handle(&mut self, msg: messages::WriteSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+        self.write_to_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;
+
+        self.state = SnapshotState::default();
+
+        Ok(())
+    }
+}
+
+// --- synchronization handlers
 
 impl Handler<UnpackSnapshotData> for Snapshot {
     type Result = Result<
@@ -715,54 +765,5 @@ impl Handler<messages::PartialSynchronization> for Snapshot {
             }
             Err(error) => Err(ReadError::InvalidFile(error.to_string())),
         }
-    }
-}
-
-impl Handler<messages::FillSnapshot> for Snapshot {
-    type Result = ();
-
-    fn handle(&mut self, msg: messages::FillSnapshot, _ctx: &mut Self::Context) -> Self::Result {
-        self.state.add_data(msg.id, *msg.data);
-    }
-}
-
-impl Handler<messages::ReadFromSnapshot> for Snapshot {
-    type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
-
-    /// This will try to read from a snapshot on disk, otherwise load from a local snapshot
-    /// in memory. Returns the loaded snapshot data, that must be loaded inside the client
-    /// for access.
-    fn handle(&mut self, msg: messages::ReadFromSnapshot, _ctx: &mut Self::Context) -> Self::Result {
-        let id = msg.fid.unwrap_or(msg.id);
-
-        if self.has_data(id) {
-            let data = self.get_state(id);
-
-            Ok(ReturnReadSnapshot {
-                id,
-                data: Box::new(data),
-            })
-        } else {
-            let mut snapshot = Snapshot::read_from_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;
-            let data = snapshot.get_state(id);
-            *self = snapshot;
-
-            Ok(ReturnReadSnapshot {
-                id,
-                data: Box::new(data),
-            })
-        }
-    }
-}
-
-impl Handler<messages::WriteSnapshot> for Snapshot {
-    type Result = Result<(), WriteError>;
-
-    fn handle(&mut self, msg: messages::WriteSnapshot, _ctx: &mut Self::Context) -> Self::Result {
-        self.write_to_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;
-
-        self.state = SnapshotState::default();
-
-        Ok(())
     }
 }

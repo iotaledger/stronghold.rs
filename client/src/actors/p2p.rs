@@ -390,7 +390,7 @@ pub mod messages {
     use crate::{
         actors::sync::{
             messages::{
-                CalculateShapeLocal, CalculateShapeRemote, ComplementSynchronization, EncryptedData,
+                CalculateShapeLocal, CalculateShapeRemote, ComplementSynchronization, EncryptedDataResult,
                 FullSynchronizationRemote, PartialSynchronizationRemote,
             },
             SynchronizationError,
@@ -646,8 +646,8 @@ pub mod messages {
         Proc(Result<CollectedOutput, ProcedureError>),
         Shape(Result<HashMap<Location, EntryShape>, SynchronizationError>),
 
-        Encrypted(Result<EncryptedData, SynchronizationError>),
-        FullSynchronization(Result<(ClientId, EncryptedData), SynchronizationError>),
+        Encrypted(Result<EncryptedDataResult, SynchronizationError>),
+        FullSynchronization(Result<(ClientId, EncryptedDataResult), SynchronizationError>),
     }
 
     sh_result_mapping!(ShResult::Empty => ());
@@ -657,8 +657,8 @@ pub mod messages {
     sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
 
     sh_result_mapping!(ShResult::Shape =>  Result<HashMap<Location, EntryShape>, SynchronizationError>);
-    sh_result_mapping!(ShResult::Encrypted =>  Result<EncryptedData, SynchronizationError>);
-    sh_result_mapping!(ShResult::FullSynchronization => Result<(ClientId, EncryptedData), SynchronizationError>);
+    sh_result_mapping!(ShResult::Encrypted =>  Result<EncryptedDataResult, SynchronizationError>);
+    sh_result_mapping!(ShResult::FullSynchronization => Result<(ClientId, EncryptedDataResult), SynchronizationError>);
 
     impl From<Result<(), RecordError>> for ShResult {
         fn from(inner: Result<(), RecordError>) -> Self {

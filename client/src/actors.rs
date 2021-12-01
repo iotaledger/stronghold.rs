@@ -22,8 +22,8 @@ pub use self::{
     secure::{messages as secure_messages, RecordError, VaultError},
     snapshot::{messages as snapshot_messages, returntypes as snapshot_returntypes, SnapshotConfig},
     sync::messages::{
-        CalculateShapeLocal, CalculateShapeRemote, ComplementSynchronization, EncryptedData, FullSynchronizationRemote,
-        PartialSynchronizationRemote,
+        CalculateShapeLocal, CalculateShapeRemote, ComplementSynchronization, EncryptedDataResult,
+        FullSynchronizationRemote, PartialSynchronizationRemote,
     },
 };
 #[cfg(test)]

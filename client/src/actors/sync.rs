@@ -4,8 +4,8 @@
 //! Synchronization Actor.
 //!
 //! The synchronization actor acts as a logical mediator between the network actor,
-//! the snapshot actor and the registry and is stateless by default, querying the registry
-//! for current values.
+//! the snapshot actor and the registry and is stateless by default. The synchronization
+//! actor can be used in local and remote contexts.
 
 use actix::{Actor, Context, Handler, Message};
 use serde::{Deserialize, Serialize};
@@ -24,21 +24,31 @@ pub mod messages {
 
     use super::*;
 
-    /// Container object for public / private key
-    /// encrypted data. The `key` fields contains
-    /// an encrypted key by a public key, provided
-    /// by the requesting peer.
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct EncryptedData {
+    /// this is the public key for dh key exchange
+    /// send by the requesting peer (A)
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
+    pub struct RequestPublicKey {
         pub key: Vec<u8>,
+    }
+
+    /// this is the public key for dh key exchange
+    /// send by the encrypting peer (B)
+    #[derive(Clone, GuardDebug, Serialize, Deserialize)]
+    pub struct ResponsePublicKey {
+        pub key: Vec<u8>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct EncryptedDataResult {
         pub data: Vec<u8>,
+        pub key: ResponsePublicKey,
     }
 
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct FullSynchronizationRemote {
         pub peer: Option<Vec<u8>>,
-        // pub id: ClientId,
-        pub key: Vec<u8>,
+
+        pub key: RequestPublicKey,
     }
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct CalculateShapeLocal {}
@@ -49,19 +59,17 @@ pub mod messages {
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct PartialSynchronizationRemote {
         pub peer: Option<Vec<u8>>,
-        // pub id: ClientId,
         pub key: Vec<u8>,
         pub sync_with: HashMap<Location, EntryShape>,
     }
     #[derive(Clone, GuardDebug, Serialize, Deserialize)]
     pub struct ComplementSynchronization {
         pub peer: Option<Vec<u8>>,
-        // pub id: ClientId,
         pub key: Vec<u8>,
     }
 
     impl Message for FullSynchronizationRemote {
-        type Result = Result<(ClientId, EncryptedData), SynchronizationError>;
+        type Result = Result<(ClientId, EncryptedDataResult), SynchronizationError>;
     }
 
     impl Message for CalculateShapeRemote {
@@ -69,7 +77,7 @@ pub mod messages {
     }
 
     impl Message for PartialSynchronizationRemote {
-        type Result = Result<EncryptedData, SynchronizationError>;
+        type Result = Result<EncryptedDataResult, SynchronizationError>;
     }
 
     impl Message for CalculateShapeLocal {
@@ -77,12 +85,15 @@ pub mod messages {
     }
 
     impl Message for ComplementSynchronization {
-        type Result = Result<EncryptedData, SynchronizationError>;
+        type Result = Result<EncryptedDataResult, SynchronizationError>;
     }
 
-    impl EncryptedData {
+    impl EncryptedDataResult {
         pub fn from(key: Vec<u8>, data: Vec<u8>) -> Self {
-            Self { data, key }
+            Self {
+                data,
+                key: ResponsePublicKey { key },
+            }
         }
     }
 }
@@ -110,7 +121,7 @@ impl SynchronizationActor {
 }
 
 impl Handler<FullSynchronizationRemote> for SynchronizationActor {
-    type Result = Result<(ClientId, EncryptedData), SynchronizationError>;
+    type Result = Result<(ClientId, EncryptedDataResult), SynchronizationError>;
 
     #[allow(unused_variables)]
     fn handle(&mut self, msg: FullSynchronizationRemote, ctx: &mut Self::Context) -> Self::Result {
@@ -139,7 +150,7 @@ impl Handler<CalculateShapeRemote> for SynchronizationActor {
 }
 #[allow(unused_variables)]
 impl Handler<PartialSynchronizationRemote> for SynchronizationActor {
-    type Result = Result<EncryptedData, SynchronizationError>;
+    type Result = Result<EncryptedDataResult, SynchronizationError>;
 
     fn handle(&mut self, msg: PartialSynchronizationRemote, ctx: &mut Self::Context) -> Self::Result {
         // get current peer_id for client_id mapping
@@ -149,7 +160,7 @@ impl Handler<PartialSynchronizationRemote> for SynchronizationActor {
 }
 #[allow(unused_variables)]
 impl Handler<ComplementSynchronization> for SynchronizationActor {
-    type Result = Result<EncryptedData, SynchronizationError>;
+    type Result = Result<EncryptedDataResult, SynchronizationError>;
 
     fn handle(&mut self, msg: ComplementSynchronization, ctx: &mut Self::Context) -> Self::Result {
         // get current peer_id for client_id mapping
