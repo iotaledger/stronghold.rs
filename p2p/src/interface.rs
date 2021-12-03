@@ -85,7 +85,7 @@ use std::{borrow::Borrow, io, time::Duration};
 ///     Message(String),
 /// }
 ///
-/// // Channel used for dynamic rules:
+/// // Channel used for dynamic firewall rules:
 /// // - If a peer connected for which no rules are present (no default & not peer-specific):
 /// //   Allows the user to send back the rules that should be set for this peer.
 /// // - If the firewall `Rule` is set to `Rule::Ask`:
@@ -466,8 +466,10 @@ pub enum InitKeypair {
 /// Builder for new `StrongholdP2p`.
 ///
 /// Default behaviour:
-/// - No firewall rules are set. In case of inbound / outbound requests, a [`FirewallRequest::PeerSpecificRule`] request
-///   is sent through the `firewall_channel` to specify the rules for this peer.
+/// - All outbound requests are permitted
+/// - No firewall rules for inbound requests are set. In case of an inbound requests, a
+///   [`FirewallRequest::PeerSpecificRule`] request is sent through the `firewall_channel` to specify the rules for this
+///   peer.
 /// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
 /// - No limit for simultaneous connections.
 /// - Request-timeout and Connection-timeout are 10s.
@@ -531,6 +533,7 @@ where
         requests_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
         events_channel: Option<EventChannel<NetworkEvent>>,
     ) -> Self {
+        let default_rules = FirewallRules::new(None, Some(Rule::AllowAll));
         StrongholdP2pBuilder {
             firewall_channel,
             requests_channel,
@@ -538,7 +541,7 @@ where
             ident: None,
             behaviour_config: Default::default(),
             connections_limit: None,
-            default_rules: None,
+            default_rules: Some(default_rules),
             support_mdns: true,
             support_relay: true,
             state: None,
