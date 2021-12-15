@@ -10,7 +10,7 @@ subcommands:
             short: p
             long: plain
             value_name: plaintext
-            about: a plaintext value that you want to encrypt.
+            help: a plaintext value that you want to encrypt.
             required: true
             takes_value: true
         - rpath:
@@ -23,7 +23,7 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password you want to use to encrypt/decrypt the snapshot.
+            help: the password you want to use to encrypt/decrypt the snapshot.
             required: true
             takes_value: true
   - write:
@@ -33,7 +33,7 @@ subcommands:
             short: p
             long: plain
             value_name: plaintext
-            about: a value you want to store. 
+            help: a value you want to store. 
             required: true
             takes_value: true
         - rpath:
@@ -46,7 +46,7 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password you want to use to encrypt/decrypt the snapshot.
+            help: the password you want to use to encrypt/decrypt the snapshot.
             required: true
             takes_value: true
   - snapshot:
@@ -61,7 +61,7 @@ subcommands:
         - password:
             short: w
             long: pass
-            about: the password for the snapshot you want to load.
+            help: the password for the snapshot you want to load.
             required: true
             takes_value: true
   - list:
@@ -71,7 +71,7 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password for the snapshot.
+            help: the password for the snapshot.
             required: true
             takes_value: true
         - rpath:
@@ -88,7 +88,7 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password for the snapshot.
+            help: the password for the snapshot.
             required: true
             takes_value: true
         - rpath:
@@ -104,14 +104,14 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password for the snapshot.
+            help: the password for the snapshot.
             required: true
             takes_value: true
         - rpath:
             short: rid
             long: record_path
             value_name: id
-            about: the id of the entry
+            help: the id of the entry
             required: true
             takes_value: true
   - garbage_collect:
@@ -121,14 +121,14 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password for the snapshot.
+            help: the password for the snapshot.
             required: true
             takes_value: true
         - rpath:
             short: rid
             long: record_path
             value_name: id
-            about: the id of the entry
+            help: the id of the entry
             required: true
             takes_value: true
   - purge:
@@ -138,13 +138,13 @@ subcommands:
             short: w
             long: pass
             value_name: password
-            about: the password for the snapshot.
+            help: the password for the snapshot.
             required: true
             takes_value: true
         - id:
             short: i
             long: id
             value_name: id
-            about: the id of the entry
+            help: the id of the entry
             required: true
             takes_value: true
