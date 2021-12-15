@@ -3,7 +3,7 @@
 use core::fmt;
 use futures::{
     channel::mpsc::{self, Receiver},
-    future, StreamExt,
+    future, FutureExt, StreamExt,
 };
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
@@ -14,7 +14,7 @@ use p2p::{
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use stronghold_utils::random::random;
-use tokio::runtime::Builder;
+use tokio::time::sleep;
 
 type TestPeer = StrongholdP2p<Request, Response>;
 
@@ -328,9 +328,9 @@ impl TestConfig {
     }
 }
 
-#[test]
-fn test_dialing() {
-    let task = async {
+#[tokio::test]
+async fn test_dialing() {
+    let run_test = async {
         let (_, mut relay_peer) = init_peer().await;
         let relay_id = relay_peer.peer_id();
         let relay_addr = relay_peer
@@ -349,6 +349,9 @@ fn test_dialing() {
             test.test_dial().await;
         }
     };
-    let rt = Builder::new_current_thread().enable_all().build().unwrap();
-    rt.block_on(task);
+
+    futures::select! {
+        _ = run_test.fuse() => {},
+        _ = sleep(Duration::from_secs(60)).fuse() => panic!("Test timed out"),
+    }
 }

@@ -19,7 +19,6 @@ either = "1.6"
 futures = "0.3"
 libp2p = { version = "0.41.0", default-features = false, features = ["noise", "yamux", "mdns", "relay"] }
 pin-project = "1.0.8"
-regex = "1.5"
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 smallvec = "1.6.1"
@@ -35,6 +34,7 @@ tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
 [dev-dependencies]
 actix-rt = "2.5"
 iota_stronghold = { path = "../client" , features = ["p2p"] }
+regex = "1.5"
 stronghold-utils = { path = "../utils", version = "0.3.0" }
 tokio = {version = "1.10", features = ["time", "macros", "io-std", "io-util"] }
 libp2p = { version = "0.41.0", default-features = false, features = ["tcp-tokio"] }

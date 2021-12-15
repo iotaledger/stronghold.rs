@@ -97,7 +97,7 @@ fn allow_only_ping(request: &RequestPermission) -> bool {
 // - `-p <peer-id>`: Send a ping
 // - `-p <peer-id> -m <message>`: Send a message
 async fn on_user_input(
-    stronghold: &mut StrongholdP2p<Request, Response, RequestPermission>,
+    network: &mut StrongholdP2p<Request, Response, RequestPermission>,
     input: String,
 ) -> Result<(), Box<dyn Error>> {
     let peer_regex = "-p\\s+(?P<target>[[:alnum:]]{32,64})";
@@ -126,7 +126,7 @@ async fn on_user_input(
         None => Request::Ping,
     };
     // Send request and wait for response
-    match stronghold.send_request(peer, request).await {
+    match network.send_request(peer, request).await {
         Ok(res) => match res {
             Response::Pong => println!("Pong"),
             Response::Message(msg) => println!("Response: {}", msg),
@@ -256,15 +256,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Channel through which approved inbound requests are forwarded.
     let (request_tx, mut request_rx) = EventChannel::new(10, ChannelSinkConfig::Block);
 
-    let mut stronghold = StrongholdP2p::new(firewall_tx, request_tx, None).await?;
-    stronghold.start_listening("/ip4/0.0.0.0/tcp/0".parse()?).await?;
-    println!("Local Peer Id: {}", stronghold.peer_id());
+    let mut network = StrongholdP2p::new(firewall_tx, request_tx, None).await?;
+
+    network.start_listening("/ip4/0.0.0.0/tcp/0".parse()?).await?;
+    println!("\nLocal Peer Id: {}", network.peer_id());
+
+    println!("\nPing or message a remote peer:\n`-p <peer-id>`\t\t\t# Send a ping\n`-p <peer-id> -m <message>`\t# Send a message\n");
 
     let mut stdin = BufReader::new(stdin()).lines();
     loop {
         futures::select! {
             stdin_input = stdin.next_line().fuse() => match stdin_input? {
-                Some(line) => on_user_input(&mut stronghold, line).await?,
+                Some(line) => on_user_input(&mut network, line).await?,
                 None => break,
             },
             request = request_rx.select_next_some() => {

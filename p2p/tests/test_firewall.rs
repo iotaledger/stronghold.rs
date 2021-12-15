@@ -285,22 +285,30 @@ impl<'a> RulesTestConfig<'a> {
 
 #[tokio::test]
 async fn firewall_permissions() {
-    let (_, _, _, mut peer_a) = init_peer().await;
-    let (_, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
-    let peer_b_id = peer_b.peer_id();
+    let iterations = 100;
+    let run_test = async {
+        let (_, _, _, mut peer_a) = init_peer().await;
+        let (_, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
+        let peer_b_id = peer_b.peer_id();
 
-    let peer_b_addr = peer_b
-        .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
-        .await
-        .unwrap();
-    peer_a.add_address(peer_b_id, peer_b_addr).await;
+        let peer_b_addr = peer_b
+            .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+            .await
+            .unwrap();
+        peer_a.add_address(peer_b_id, peer_b_addr).await;
 
-    for _ in 0..100 {
-        let mut test = RulesTestConfig::new_test_case(&mut peer_a, &mut peer_b, &mut b_event_rx, &mut b_rq_rx);
-        test.configure_firewall().await;
-        sleep(Duration::from_millis(10)).await;
-        test.test_request().await;
-        test.clean().await;
+        for _ in 0..iterations {
+            let mut test = RulesTestConfig::new_test_case(&mut peer_a, &mut peer_b, &mut b_event_rx, &mut b_rq_rx);
+            test.configure_firewall().await;
+            sleep(Duration::from_millis(10)).await;
+            test.test_request().await;
+            test.clean().await;
+        }
+    };
+
+    futures::select! {
+        _ = run_test.fuse() => {},
+        _ = sleep(Duration::from_secs(iterations)).fuse() => panic!("Test timed out"),
     }
 }
 
@@ -570,27 +578,40 @@ impl<'a> AskTestConfig<'a> {
 
 #[tokio::test]
 async fn firewall_ask() {
-    let (mut firewall_a, _, _, mut peer_a) = init_peer().await;
-    let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
-    let peer_b_id = peer_b.peer_id();
+    let iterations = 100;
+    let run_test = async {
+        let (mut firewall_a, _, _, mut peer_a) = init_peer().await;
+        let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
 
-    let peer_b_addr = peer_b
-        .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
-        .await
-        .unwrap();
-    peer_a.add_address(peer_b_id, peer_b_addr).await;
+        // Firewall should have no rules per default and ask each time a peer connects.
+        peer_a.remove_firewall_default(RuleDirection::Both).await;
+        peer_b.remove_firewall_default(RuleDirection::Both).await;
 
-    for _ in 0..100 {
-        let mut test = AskTestConfig::new_test_case(
-            &mut peer_a,
-            &mut firewall_a,
-            &mut peer_b,
-            &mut firewall_b,
-            &mut b_event_rx,
-            &mut b_rq_rx,
-        );
-        test.test_request_with_ask().await;
-        test.clean().await;
-        sleep(Duration::from_millis(10)).await;
+        let peer_b_id = peer_b.peer_id();
+        let peer_b_addr = peer_b
+            .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+            .await
+            .unwrap();
+
+        peer_a.add_address(peer_b_id, peer_b_addr).await;
+
+        for _ in 0..iterations {
+            let mut test = AskTestConfig::new_test_case(
+                &mut peer_a,
+                &mut firewall_a,
+                &mut peer_b,
+                &mut firewall_b,
+                &mut b_event_rx,
+                &mut b_rq_rx,
+            );
+            test.test_request_with_ask().await;
+            test.clean().await;
+            sleep(Duration::from_millis(10)).await;
+        }
+    };
+
+    futures::select! {
+        _ = run_test.fuse() => {},
+        _ = sleep(Duration::from_secs(iterations)).fuse() => panic!("Test timed out"),
     }
 }
