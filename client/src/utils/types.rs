@@ -8,6 +8,12 @@ use serde::{Deserialize, Serialize};
 /// be used to get the head of the version chain by passing in `None` as the counter index. Otherwise, counter records
 /// are referenced through their associated index.  On Read, the `None` location is the latest record in the version
 /// chain while on Write, the `None` location is the next record in the version chain.
+///
+/// **Note: For each used vault an encryption key is created and protected through the [libsodium](https://doc.libsodium.org/memory_management)
+/// memory protection API. Many systems place limits on the amount of memory that may be locked by a process, which may
+/// result in the system panicking if the upper bound is reached!
+/// For users that write a large number of secrets into Stronghold, we strongly advise against writing each record in a
+/// separate vault, but instead group them into a limited number of different vaults.**
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Location {
     Generic { vault_path: Vec<u8>, record_path: Vec<u8> },
