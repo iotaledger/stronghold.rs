@@ -34,7 +34,7 @@ tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
 
 [dev-dependencies]
 actix-rt = "2.5"
-iota_stronghold = { path = "../client" , features = ["p2p"]}
-stronghold-utils = { path = "../utils"}
-tokio = {version = "1.10", features = ["time", "macros", "io-std", "io-util"]}
+iota_stronghold = { path = "../client" , features = ["p2p"] }
+stronghold-utils = { path = "../utils", version = "0.3.0" }
+tokio = {version = "1.10", features = ["time", "macros", "io-std", "io-util"] }
 libp2p = { version = "0.41.0", default-features = false, features = ["tcp-tokio"] }
