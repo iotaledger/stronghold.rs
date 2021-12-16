@@ -29,7 +29,7 @@ impl Default for PeerAddress {
 }
 
 // Known relays and peer addresses.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(try_from = "SerdeAddressInfo")]
 #[serde(into = "SerdeAddressInfo")]
 pub struct AddressInfo {
@@ -38,15 +38,6 @@ pub struct AddressInfo {
 
     // Known relays to use as fallback for dialing.
     pub relays: SmallVec<[PeerId; 10]>,
-}
-
-impl Default for AddressInfo {
-    fn default() -> Self {
-        AddressInfo {
-            peers: HashMap::new(),
-            relays: SmallVec::new(),
-        }
-    }
 }
 
 impl AddressInfo {

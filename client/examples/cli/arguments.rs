@@ -20,7 +20,7 @@ pub struct ExampleApp {
 pub enum Commands {
     #[clap(about = "Write data to the unencrypted cache store")]
     Write {
-        #[clap(long, short = 'p', required = true, about = "the value you want to store.")]
+        #[clap(long, short = 'p', required = true, help = "the value you want to store.")]
         plain: String,
 
         #[clap(long, short = 'r', required = true)]
@@ -30,7 +30,7 @@ pub enum Commands {
             long,
             short = 'w',
             required = true,
-            about = "the password you want to use to encrypt/decrypt the snapshot."
+            help = "the password you want to use to encrypt/decrypt the snapshot."
         )]
         pass: String,
     },
@@ -46,7 +46,7 @@ pub enum Commands {
             long,
             short = 'w',
             required = true,
-            about = "the password you want to use to encrypt/decrypt the snapshot."
+            help = "the password you want to use to encrypt/decrypt the snapshot."
         )]
         pass: String,
     },
@@ -59,7 +59,7 @@ pub enum Commands {
             long,
             short = 'w',
             required = true,
-            about = "the password for the snapshot you want to load."
+            help = "the password for the snapshot you want to load."
         )]
         pass: String,
     },
@@ -67,7 +67,7 @@ pub enum Commands {
         about = "Lists the ids of the records inside of your stronghold's vault; lists the record path and the hint hash."
     )]
     List {
-        #[clap(long, short = 'w', required = true, about = "the password for the snapshot.")]
+        #[clap(long, short = 'w', required = true, help = "the password for the snapshot.")]
         pass: String,
 
         #[clap(long, short = 'r', required = true)]
@@ -75,7 +75,7 @@ pub enum Commands {
     },
     #[clap(about = "Read the data from a record in the unencrypted store.")]
     Read {
-        #[clap(long, short = 'w', required = true, about = "The password for the snapshot.")]
+        #[clap(long, short = 'w', required = true, help = "The password for the snapshot.")]
         pass: String,
 
         #[clap(long, short = 'r', required = true)]
@@ -91,10 +91,10 @@ pub enum Commands {
     },
     #[clap(about = "Revoke a record from the vault.")]
     Revoke {
-        #[clap(long = "pass", short = 'w', required = true, about = "The password for the snapshot")]
+        #[clap(long = "pass", short = 'w', required = true, help = "The password for the snapshot")]
         password: String,
 
-        #[clap(long = "record_path", short = 'i', required = true, about = "The id of the entry")]
+        #[clap(long = "record_path", short = 'i', required = true, help = "The id of the entry")]
         id: String,
     },
 
@@ -103,23 +103,18 @@ pub enum Commands {
         about = "Garbage collect the vault and remove revoked records."
     )]
     GarbageCollect {
-        #[clap(long, short = 'w', required = true, about = "The password for the snapshot.")]
+        #[clap(long, short = 'w', required = true, help = "The password for the snapshot.")]
         pass: String,
 
-        #[clap(long, short = 'i', required = true, about = "The id of the entry")]
+        #[clap(long, short = 'i', required = true, help = "The id of the entry")]
         id: String,
     },
     #[clap(about = "Revoke a record by id and perform a gargbage collect.")]
     Purge {
-        #[clap(long = "id", short = 'i', required = true, about = "The id of the entry")]
+        #[clap(long = "id", short = 'i', required = true, help = "The id of the entry")]
         id: String,
 
-        #[clap(
-            long = "pass",
-            short = 'w',
-            required = true,
-            about = "The password for the snapshot."
-        )]
+        #[clap(long = "pass", short = 'w', required = true, help = "The password for the snapshot.")]
         password: String,
     },
 
@@ -128,7 +123,7 @@ pub enum Commands {
         about = "Take ownership of an existing chain to give it to a new user."
     )]
     TakeOwnership {
-        #[clap(long = "pass", short = 'w', required = true, about = "The password for the snapshot")]
+        #[clap(long = "pass", short = 'w', required = true, help = "The password for the snapshot")]
         password: String,
     },
 }

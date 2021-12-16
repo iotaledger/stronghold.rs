@@ -281,7 +281,7 @@ impl_handler!(RemoveDialingRelay => bool, |network, msg| {
 /// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id to
 ///   the local network.
 /// - [`Relay`][`libp2p::relay`] functionality is disabled.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
@@ -331,19 +331,6 @@ impl NetworkConfig {
     pub fn load_state(mut self, state: BehaviourState<ShRequest>) -> Self {
         self.state = Some(state);
         self
-    }
-}
-
-impl Default for NetworkConfig {
-    fn default() -> Self {
-        NetworkConfig {
-            request_timeout: None,
-            connection_timeout: None,
-            connections_limit: None,
-            enable_mdns: false,
-            enable_relay: false,
-            state: None,
-        }
     }
 }
 

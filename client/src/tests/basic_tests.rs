@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{utils::LoadFromPath, Location, RecordHint, Stronghold};
+use crate::{state::secure::SecureClient, utils::LoadFromPath, Location, RecordHint, Stronghold};
 use crypto::macs::hmac::HMAC_SHA512;
 
 use engine::vault::{ClientId, VaultId};
@@ -187,6 +187,16 @@ async fn test_write_read_snapshot() {
             .await
             .unwrap_or_else(|e| panic!("Actor error: {}", e))
             .unwrap_or_else(|e| panic!("Write vault error: {}", e));
+    }
+
+    let ids = stronghold.list_hints_and_ids("path").await.unwrap();
+
+    for i in 0..20 {
+        let loc = Location::counter::<_, usize>("path", i);
+        let expect_id = SecureClient::resolve_location(loc).1;
+        let (_, hint) = ids.iter().find(|(id, _)| *id == expect_id).unwrap();
+        let expect_hint = RecordHint::new(format!("test {:?}", i)).unwrap();
+        assert_eq!(*hint, expect_hint);
     }
 
     stronghold
