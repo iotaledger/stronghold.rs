@@ -6,6 +6,11 @@
 //! This example provides a basic PoC that shows how stronghold-p2p can be used to communicate with a remote
 //! Stronghold server, without a local Stronghold running.
 //!
+//! We are spawning a new client on each operations, to simulate multiple independent clients that could
+//! also run in different systems.
+//! In case of multiple operations from a singe application, it is recommended to only setup the network once and re-use
+//! the client.
+//!
 //! Note: because we are also mocking the remote stronghold, we need to use `actix_rt` as runtime. If the remote
 //! stronghold would actually run on a different system, the network of the local_client could use a any
 //! runtime.
@@ -113,28 +118,26 @@ mod local_client {
     }
 }
 
+async fn run_local(info_rx: oneshot::Receiver<(PeerId, Multiaddr)>) -> Result<(), Box<dyn Error>> {
+    let (stronghold_id, stronghold_addr) = info_rx.await.unwrap();
+    let key_location = Location::generic("v0", "r0");
+    // Write a new key into the remote vault
+    local_client::generate_key(stronghold_id, stronghold_addr.clone(), key_location.clone()).await?;
+    // Run multiple clients that use the created key to sing a message.
+    for i in 0..3 {
+        let message = format!("message {}", i);
+        local_client::sign_message(stronghold_id, stronghold_addr.clone(), key_location.clone(), message).await?;
+    }
+    Ok(())
+}
+
 #[actix_rt::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let (info_tx, info_rx) = oneshot::channel::<(PeerId, Multiaddr)>();
-    let local = async {
-        let (stronghold_id, stronghold_addr) = info_rx.await.unwrap();
-        let key_location = Location::generic("v0", "r0");
-        // Write a new key into the remote vault
-        local_client::generate_key(stronghold_id, stronghold_addr.clone(), key_location.clone())
-            .await
-            .unwrap();
-        // Use the generated key to sign multiple messages.
-        // In this example it is spawning a new client on each operations to demonstrate that they are stateless.
-        for i in 0..3 {
-            let message = format!("message {}", i);
-            local_client::sign_message(stronghold_id, stronghold_addr.clone(), key_location.clone(), message)
-                .await
-                .unwrap();
-        }
-    };
+
     futures::select! {
         // Run the local clients
-        _ = local.fuse() => {},
+        _ = run_local(info_rx).fuse() => {},
         // Run the remote Stronghold
         _ = remote_stronghold::run(info_tx).fuse() => {}
     }
