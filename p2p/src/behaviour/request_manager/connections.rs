@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{RequestDirection, RequestId};
+use instant::Instant;
 use libp2p::core::{connection::ConnectionId, ConnectedPoint, PeerId};
 use std::collections::{hash_map::HashMap, HashSet};
-use wasm_timer::Instant;
 
 // Sent requests that have not yet received a response.
 #[derive(Debug)]

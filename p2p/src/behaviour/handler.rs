@@ -20,6 +20,7 @@ use crate::{
     RequestId, RqRsMessage,
 };
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
+use instant::Instant;
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},
     swarm::{
@@ -40,7 +41,6 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use wasm_timer::Instant;
 
 type ProtocolsHandlerEventType<Rq, Rs> = ProtocolsHandlerEvent<
     RequestProtocol<Rq, Rs>,
