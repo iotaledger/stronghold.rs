@@ -22,10 +22,11 @@ use futures::{
     future::poll_fn,
     AsyncRead, AsyncWrite, FutureExt,
 };
+#[cfg(feature = "mdns")]
+use libp2p::mdns::{Mdns, MdnsConfig};
 use libp2p::{
     core::{connection::ListenerId, transport::Transport, upgrade, Executor, Multiaddr, PeerId},
     identity::Keypair,
-    mdns::{Mdns, MdnsConfig},
     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
     relay::{new_transport_and_behaviour, RelayConfig},
     swarm::SwarmBuilder,
@@ -620,12 +621,14 @@ where
                 .boxed();
             relay = None;
         }
-        let mdns;
-        if self.support_mdns {
-            mdns = Some(Mdns::new(MdnsConfig::default()).await?);
+
+        #[cfg(feature = "mdns")]
+        let mdns: Option<Mdns> = if self.support_mdns {
+            Some(Mdns::new(MdnsConfig::default()).await?)
         } else {
-            mdns = None
+            None
         };
+
         let (address_info, mut firewall) = match self.state {
             Some(state) => (Some(state.address_info), state.firewall),
             None => (None, FirewallConfiguration::default()),
@@ -636,6 +639,7 @@ where
 
         let behaviour = NetBehaviour::new(
             self.behaviour_config,
+            #[cfg(feature = "mdns")]
             mdns,
             relay,
             self.firewall_channel,

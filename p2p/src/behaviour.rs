@@ -36,13 +36,14 @@ use futures::{
 };
 pub use handler::MessageProtocol;
 use handler::{ConnectionHandler, HandlerInEvent, HandlerOutEvent, ProtocolSupport};
+#[cfg(feature = "mdns")]
+use libp2p::mdns::Mdns;
 use libp2p::{
     core::{
         connection::{ConnectionId, ListenerId},
         either::EitherOutput,
         ConnectedPoint, Multiaddr, PeerId,
     },
-    mdns::Mdns,
     relay::Relay,
     swarm::{
         dial_opts::{DialOpts, PeerCondition},
@@ -60,6 +61,7 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "mdns")]
 type ProtoHandler<Rq, Rs> = IntoProtocolsHandlerSelect<
     ConnectionHandler<Rq, Rs>,
     IntoProtocolsHandlerSelect<
@@ -67,6 +69,10 @@ type ProtoHandler<Rq, Rs> = IntoProtocolsHandlerSelect<
         <Toggle<Relay> as NetworkBehaviour>::ProtocolsHandler,
     >,
 >;
+
+#[cfg(not(feature = "mdns"))]
+type ProtoHandler<Rq, Rs> =
+    IntoProtocolsHandlerSelect<ConnectionHandler<Rq, Rs>, <Toggle<Relay> as NetworkBehaviour>::ProtocolsHandler>;
 
 // Future for a pending response to a sent [`FirewallRequest::PeerSpecificRule`].
 type PendingPeerRuleRequest<TRq> = BoxFuture<'static, (PeerId, Option<FirewallRules<TRq>>)>;
@@ -146,6 +152,7 @@ where
     Rs: RqRsMessage,
     TRq: Clone + Send + 'static,
 {
+    #[cfg(feature = "mdns")]
     // integrate Mdns protocol
     mdns: Toggle<Mdns>,
 
@@ -192,13 +199,14 @@ where
     /// Create a new instance of a NetBehaviour to customize the [`Swarm`][libp2p::Swarm].
     pub fn new(
         config: NetBehaviourConfig,
-        mdns: Option<Mdns>,
+        #[cfg(feature = "mdns")] mdns: Option<Mdns>,
         relay: Option<Relay>,
         permission_req_channel: mpsc::Sender<FirewallRequest<TRq>>,
         firewall: FirewallConfiguration<TRq>,
         address_info: Option<AddressInfo>,
     ) -> Self {
         NetBehaviour {
+            #[cfg(feature = "mdns")]
             mdns: mdns.into(),
             relay: relay.into(),
             supported_protocols: config.supported_protocols,
@@ -423,9 +431,17 @@ where
 
     fn new_handler_for_peer(&mut self, peer: Option<PeerId>) -> <Self as NetworkBehaviour>::ProtocolsHandler {
         let handler = self.new_request_response_handler(peer);
-        let mdns_handler = self.mdns.new_handler();
         let relay_handler = self.relay.new_handler();
-        IntoProtocolsHandler::select(handler, IntoProtocolsHandler::select(mdns_handler, relay_handler))
+
+        #[cfg(feature = "mdns")]
+        let handler = {
+            let mdns_handler = self.mdns.new_handler();
+            IntoProtocolsHandler::select(handler, IntoProtocolsHandler::select(mdns_handler, relay_handler))
+        };
+
+        #[cfg(not(feature = "mdns"))]
+        let handler = IntoProtocolsHandler::select(handler, relay_handler);
+        handler
     }
 
     // Handle new [`HandlerOutEvent`] emitted by the [`ConnectionHandler`].
@@ -552,8 +568,12 @@ where
     ) {
         match event {
             EitherOutput::First(ev) => self.handle_handler_event(peer, connection, ev),
+            #[cfg(feature = "mdns")]
             EitherOutput::Second(EitherOutput::First(ev)) => self.mdns.inject_event(peer, connection, ev),
+            #[cfg(feature = "mdns")]
             EitherOutput::Second(EitherOutput::Second(ev)) => self.relay.inject_event(peer, connection, ev),
+            #[cfg(not(feature = "mdns"))]
+            EitherOutput::Second(ev) => self.relay.inject_event(peer, connection, ev),
         };
     }
 
@@ -563,6 +583,7 @@ where
         _params: &mut impl PollParameters,
     ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ProtocolsHandler>> {
         // Drive mdns.
+        #[cfg(feature = "mdns")]
         let _ = self.mdns.poll(cx, _params);
 
         // Update firewall rules if a peer specific rule was return after a [`FirewallRequest::PeerSpecificRule`] query.
@@ -592,11 +613,18 @@ where
                     handler: relay_handler,
                 } => {
                     let rq_rs_handler = self.new_request_response_handler(opts.get_peer_id());
+                    #[cfg(feature = "mdns")]
                     let mdns_handler = self.mdns.new_handler();
+
+                    #[cfg(feature = "mdns")]
                     let handler = IntoProtocolsHandler::select(
                         rq_rs_handler,
                         IntoProtocolsHandler::select(mdns_handler, relay_handler),
                     );
+
+                    #[cfg(not(feature = "mdns"))]
+                    let handler = IntoProtocolsHandler::select(rq_rs_handler, relay_handler);
+
                     return Poll::Ready(NetworkBehaviourAction::Dial { opts, handler });
                 }
                 NetworkBehaviourAction::NotifyHandler {
@@ -604,7 +632,11 @@ where
                     handler,
                     event,
                 } => {
+                    #[cfg(feature = "mdns")]
                     let event = EitherOutput::Second(EitherOutput::Second(event));
+                    #[cfg(not(feature = "mdns"))]
+                    let event = EitherOutput::Second(event);
+
                     return Poll::Ready(NetworkBehaviourAction::NotifyHandler {
                         peer_id,
                         handler,
@@ -696,6 +728,8 @@ where
         if let Some(relay) = self.relay.as_mut() {
             addresses.extend(relay.addresses_of_peer(peer));
         }
+
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             addresses.extend(mdns.addresses_of_peer(peer));
         }
@@ -706,6 +740,8 @@ where
         if let Some(relay) = self.relay.as_mut() {
             relay.inject_connected(peer);
         }
+
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             mdns.inject_connected(peer);
         }
@@ -717,6 +753,7 @@ where
             relay.inject_disconnected(peer);
         }
 
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             mdns.inject_disconnected(peer);
         }
@@ -754,6 +791,7 @@ where
             relay.inject_connection_established(peer, connection, endpoint, failed_addresses);
         }
 
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             mdns.inject_connection_established(peer, connection, endpoint, failed_addresses);
         }
@@ -768,11 +806,22 @@ where
     ) {
         self.request_manager.on_connection_closed(*peer, connection);
         let (_, select) = _handler.into_inner();
-        let (mdns_handler, relay_handler) = select.into_inner();
-        self.mdns
-            .inject_connection_closed(peer, connection, _endpoint, mdns_handler);
-        self.relay
-            .inject_connection_closed(peer, connection, _endpoint, relay_handler);
+
+        #[cfg(feature = "mdns")]
+        {
+            let (mdns_handler, relay_handler) = select.into_inner();
+            self.mdns
+                .inject_connection_closed(peer, connection, _endpoint, mdns_handler);
+            self.relay
+                .inject_connection_closed(peer, connection, _endpoint, relay_handler);
+        }
+
+        #[cfg(not(feature = "mdns"))]
+        {
+            let relay_handler = select;
+            self.relay
+                .inject_connection_closed(peer, connection, _endpoint, relay_handler);
+        }
     }
 
     fn inject_address_change(
@@ -786,6 +835,7 @@ where
             relay.inject_address_change(_peer, _connection, _old, _new);
         }
 
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             mdns.inject_address_change(_peer, _connection, _old, _new);
         }
@@ -801,9 +851,19 @@ where
             self.request_manager.on_dial_failure(peer);
         }
         let (_, select) = _handler.into_inner();
-        let (mdns_handler, relay_handler) = select.into_inner();
-        self.mdns.inject_dial_failure(peer_id, mdns_handler, _error);
-        self.relay.inject_dial_failure(peer_id, relay_handler, _error);
+
+        #[cfg(feature = "mdns")]
+        {
+            let (mdns_handler, relay_handler) = select.into_inner();
+            self.mdns.inject_dial_failure(peer_id, mdns_handler, _error);
+            self.relay.inject_dial_failure(peer_id, relay_handler, _error);
+        }
+
+        #[cfg(not(feature = "mdns"))]
+        {
+            let relay_handler = select;
+            self.relay.inject_dial_failure(peer_id, relay_handler, _error);
+        }
     }
 
     fn inject_listen_failure(
@@ -813,19 +873,32 @@ where
         _handler: Self::ProtocolsHandler,
     ) {
         let (_, select) = _handler.into_inner();
-        let (mdns_handler, relay_handler) = select.into_inner();
-        self.mdns
-            .inject_listen_failure(_local_addr, _send_back_addr, mdns_handler);
-        self.relay
-            .inject_listen_failure(_local_addr, _send_back_addr, relay_handler);
+
+        #[cfg(feature = "mdns")]
+        {
+            let (mdns_handler, relay_handler) = select.into_inner();
+            self.mdns
+                .inject_listen_failure(_local_addr, _send_back_addr, mdns_handler);
+            self.relay
+                .inject_listen_failure(_local_addr, _send_back_addr, relay_handler);
+        }
+
+        #[cfg(not(feature = "mdns"))]
+        {
+            let relay_handler = select;
+            self.relay
+                .inject_listen_failure(_local_addr, _send_back_addr, relay_handler);
+        }
     }
 
     fn inject_new_listener(&mut self, id: ListenerId) {
+        #[cfg(feature = "mdns")]
         self.mdns.inject_new_listener(id);
         self.relay.inject_new_listener(id);
     }
 
     fn inject_new_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             mdns.inject_new_listen_addr(_id, _addr);
         }
@@ -835,6 +908,7 @@ where
     }
 
     fn inject_expired_listen_addr(&mut self, id: ListenerId, addr: &Multiaddr) {
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             mdns.inject_expired_listen_addr(id, addr);
         }
@@ -844,6 +918,7 @@ where
     }
 
     fn inject_listener_error(&mut self, id: ListenerId, err: &(dyn std::error::Error + 'static)) {
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             mdns.inject_listener_error(id, err);
         }
@@ -853,6 +928,7 @@ where
     }
 
     fn inject_listener_closed(&mut self, id: ListenerId, reason: Result<(), &std::io::Error>) {
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             mdns.inject_listener_closed(id, reason);
         }
@@ -862,6 +938,7 @@ where
     }
 
     fn inject_new_external_addr(&mut self, addr: &Multiaddr) {
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             mdns.inject_new_external_addr(addr);
         }
@@ -871,6 +948,7 @@ where
     }
 
     fn inject_expired_external_addr(&mut self, addr: &Multiaddr) {
+        #[cfg(feature = "mdns")]
         if let Some(mdns) = self.mdns.as_mut() {
             mdns.inject_expired_external_addr(addr);
         }
