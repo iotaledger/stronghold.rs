@@ -7,21 +7,12 @@ use libp2p::core::{connection::ConnectionId, ConnectedPoint, PeerId};
 use std::collections::{hash_map::HashMap, HashSet};
 
 // Sent requests that have not yet received a response.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PendingResponses {
     // Outbound request sent to remote, waiting for an inbound response.
     pub outbound_requests: HashSet<RequestId>,
     // Inbound requests received from remote, waiting for an outbound response.
     pub inbound_requests: HashSet<RequestId>,
-}
-
-impl Default for PendingResponses {
-    fn default() -> Self {
-        PendingResponses {
-            outbound_requests: Default::default(),
-            inbound_requests: Default::default(),
-        }
-    }
 }
 
 /// Information about the connection with a remote peer as maintained in the ConnectionManager.
@@ -41,7 +32,7 @@ impl Default for EstablishedConnections {
 }
 
 // Active connections to a remote peer and pending responses on each connection.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PeerConnectionManager {
     // Currently active connections for each peer.
     established: HashMap<PeerId, EstablishedConnections>,
@@ -51,10 +42,7 @@ pub struct PeerConnectionManager {
 
 impl PeerConnectionManager {
     pub fn new() -> Self {
-        PeerConnectionManager {
-            established: Default::default(),
-            pending_responses: Default::default(),
-        }
+        PeerConnectionManager::default()
     }
 
     // Check if the local peer currently has at least one active connection to the remote.

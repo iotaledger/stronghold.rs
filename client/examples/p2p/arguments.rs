@@ -33,7 +33,7 @@ pub enum Commands {
         #[clap(
             long = "multiaddr",
             short = 'm',
-            about = r#"The multiaddress to listen on. Format "(/<protoName string>/<value string>)+" "#
+            help = r#"The multiaddress to listen on. Format "(/<protoName string>/<value string>)+" "#
         )]
         multiaddr: String,
     },

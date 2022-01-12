@@ -1,6 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(clippy::missing_safety_doc)]
+
 mod bytes;
 mod const_eq;
 mod rand;

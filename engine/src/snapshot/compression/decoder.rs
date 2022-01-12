@@ -93,7 +93,7 @@ impl<'a> Lz4Decoder<'a> {
             literal += self.read_int()?;
         }
 
-        Self::output(&mut self.output, Self::take_internal(&mut self.input, literal)?);
+        Self::output(self.output, Self::take_internal(&mut self.input, literal)?);
 
         Ok(())
     }

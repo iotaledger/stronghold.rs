@@ -30,7 +30,7 @@ async fn setup_stronghold() -> (Vec<u8>, Stronghold) {
     (cp, s)
 }
 
-// #[actix::test]
+#[actix::test]
 async fn usecase_ed25519() {
     let (_cp, sh) = setup_stronghold().await;
 
@@ -51,8 +51,8 @@ async fn usecase_ed25519() {
             Err(e) => panic!("unexpected error: {:?}", e),
         }
     } else {
-        let bip32_gen = BIP39Generate::new(MnemonicLanguage::English, fresh::passphrase())
-            .write_secret(seed.clone(), fresh::record_hint());
+        let bip32_gen =
+            BIP39Generate::new(MnemonicLanguage::English, fresh::passphrase()).write_secret(seed.clone(), seed_hint);
         match sh.runtime_exec(bip32_gen).await.unwrap() {
             Ok(_) => (),
             Err(err) => panic!("unexpected error: {:?}", err),
@@ -87,16 +87,18 @@ async fn usecase_ed25519() {
     let sig = ed25519::Signature::from_bytes(sig);
     assert!(pk.verify(&sig, &msg));
 
-    let mut list = sh.list_hints_and_ids(vault_path).await.unwrap().into_iter();
+    let list = sh.list_hints_and_ids(vault_path).await.unwrap();
     assert_eq!(list.len(), 2);
     let (_, hint) = list
+        .iter()
         .find(|(id, _)| *id == SecureClient::resolve_location(seed.clone()).1)
         .unwrap();
-    assert!(hint == seed_hint);
+    assert_eq!(*hint, seed_hint);
     let (_, hint) = list
+        .iter()
         .find(|(id, _)| *id == SecureClient::resolve_location(key.clone()).1)
         .unwrap();
-    assert!(hint == key_hint);
+    assert_eq!(*hint, key_hint);
 }
 
 #[actix::test]
@@ -361,6 +363,7 @@ async fn usecase_aead() {
     test_aead(&mut sh, key_location.clone(), &key, AeadAlg::XChaCha20Poly1305).await;
 }
 
+#[actix::test]
 async fn usecase_diffie_hellman() {
     let (cp, sh) = setup_stronghold().await;
 
