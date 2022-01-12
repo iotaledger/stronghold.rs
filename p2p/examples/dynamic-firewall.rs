@@ -103,9 +103,11 @@ async fn on_user_input(
     input: String,
 ) -> Result<(), Box<dyn Error>> {
     let peer_regex = "-p\\s+(?P<target>[[:alnum:]]{32,64})";
-    let peer: PeerId = match Regex::new(peer_regex).expect("Valid regex").captures(&input) {
+    let peer: PeerId = match Regex::new(peer_regex).expect("Valid regex.").captures(&input) {
         Some(capture) => {
-            let target = capture.name("target").expect("Target was captured.");
+            let target = capture
+                .name("target")
+                .expect("Regex should only match strings with a 'target' capture group.");
             match PeerId::from_str(target.as_str()) {
                 Ok(id) => id,
                 Err(_) => {
@@ -120,9 +122,12 @@ async fn on_user_input(
         }
     };
     let type_regex = "-m (?P<msg>\"[^\"]*\"|\\S+)";
-    let request = match Regex::new(type_regex).expect("Valid regex").captures(&input) {
+    let request = match Regex::new(type_regex).expect("Valid regex.").captures(&input) {
         Some(capture) => {
-            let msg = capture.name("msg").expect("Message was captured.").as_str();
+            let msg = capture
+                .name("msg")
+                .expect("Regex should only match strings with a 'msg' capture group.")
+                .as_str();
             Request::Message(msg.into())
         }
         None => Request::Ping,
