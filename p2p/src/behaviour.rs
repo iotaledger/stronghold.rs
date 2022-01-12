@@ -971,9 +971,10 @@ mod test {
     use super::*;
     use crate::firewall::{PermissionValue, RequestPermissions, VariantPermission};
     use futures::{channel::mpsc, StreamExt};
+    #[cfg(feature = "mdns")]
+    use libp2p::mdns::{Mdns, MdnsConfig};
     use libp2p::{
         core::{identity, upgrade, PeerId, Transport},
-        mdns::{Mdns, MdnsConfig},
         noise::{Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
         relay::{new_transport_and_behaviour, RelayConfig},
         swarm::{Swarm, SwarmBuilder, SwarmEvent},
@@ -1173,13 +1174,14 @@ mod test {
             .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
             .multiplex(YamuxConfig::default())
             .boxed();
-
+        #[cfg(feature = "mdns")]
         let mdns = Mdns::new(MdnsConfig::default())
             .await
             .expect("Failed to create mdns behaviour.");
         let (dummy_tx, _) = mpsc::channel(10);
         let behaviour = NetBehaviour::new(
             NetBehaviourConfig::default(),
+            #[cfg(feature = "mdns")]
             Some(mdns),
             Some(relay_behaviour),
             dummy_tx,
