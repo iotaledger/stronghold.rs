@@ -74,6 +74,8 @@ use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, error::Error, marker::PhantomData, str::FromStr, time::Duration};
 use tokio::io::{stdin, AsyncBufReadExt, BufReader, Lines, Stdin};
 
+const RETRY_USER_INPUT_MAX: usize = 3;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RequestPermissions)]
 enum Request {
     Ping,
@@ -205,7 +207,7 @@ async fn on_firewall_request(
                     }
                     _ => {
                         tries += 1;
-                        if tries < 3 {
+                        if tries < RETRY_USER_INPUT_MAX {
                             println!("Invalid input. Please enter one of the following: yes/no/ask/ping")
                         } else {
                             println!("Invalid input. Aborting.");
@@ -235,7 +237,7 @@ async fn on_firewall_request(
                     "no" => break approval_tx.send(false).unwrap(),
                     _ => {
                         tries += 1;
-                        if tries < 3 {
+                        if tries < RETRY_USER_INPUT_MAX {
                             println!("Invalid input. Please enter one of the following: yes/no")
                         } else {
                             println!("Invalid input. Aborting.");
