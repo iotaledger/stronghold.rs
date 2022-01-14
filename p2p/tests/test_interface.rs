@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use futures::{channel::mpsc, future::join, StreamExt};
+use futures::{channel::mpsc, future::join, FutureExt, StreamExt};
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
 use p2p::{
@@ -9,6 +9,7 @@ use p2p::{
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use tokio::time::sleep;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum Request {
@@ -71,13 +72,18 @@ async fn test_send_req() {
         bob_response_tx.send(Response::Pong).unwrap();
     };
 
-    let (res, ()) = join(alice_send_req, bob_recv_req).await;
-    match res {
-        Ok(_) => {}
-        Err(e) => panic!("Unexpected error: {}", e),
-    }
+    futures::select! {
+         (res, ()) = join(alice_send_req, bob_recv_req).fuse() => {
+        match res {
+            Ok(_) => {}
+            Err(e) => panic!("Unexpected error: {}", e),
+        }
 
-    // Drop Bob, expect bob's incoming-requests channel to close
-    drop(bob);
-    assert!(bob_request_rx.next().await.is_none());
+        // Drop Bob, expect bob's incoming-requests channel to close
+        drop(bob);
+        assert!(bob_request_rx.next().await.is_none());
+
+         },
+        _ = sleep(Duration::from_secs(60)).fuse() => panic!("Test timed out"),
+    }
 }

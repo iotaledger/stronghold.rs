@@ -54,7 +54,7 @@ pub use engine::{
 pub mod p2p {
     pub use crate::{
         actors::{
-            network_messages::{ShRequest, SwarmInfo},
+            network_messages::{ShRequest, ShResult, SwarmInfo},
             NetworkConfig,
         },
         interface::{P2pError, P2pResult, SpawnNetworkError},
