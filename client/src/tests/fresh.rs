@@ -33,7 +33,7 @@ pub fn hd_path() -> (String, Chain) {
     let mut is = vec![];
     while coinflip() {
         let i = random::<u32>() & 0x7fffff;
-        s.push_str(&format!("/{}'", i.to_string()));
+        s.push_str(&format!("/{}'", i));
         is.push(i);
     }
     (s, Chain::from_u32_hardened(is))
