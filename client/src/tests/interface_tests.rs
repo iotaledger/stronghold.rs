@@ -615,11 +615,11 @@ async fn test_p2p_config() {
         .await
     {
         Ok(()) => {}
-        Err(e) => panic!("Unexpected error {}", e.to_string()),
+        Err(e) => panic!("Unexpected error {}", e),
     }
     let remote_addr = match remote_sh.start_listening(None).await.unwrap() {
         Ok(a) => a,
-        Err(e) => panic!("Unexpected error {}", e.to_string()),
+        Err(e) => panic!("Unexpected error {}", e),
     };
     let SwarmInfo {
         local_peer_id: remote_id,
@@ -641,7 +641,7 @@ async fn test_p2p_config() {
         .unwrap()
     {
         Ok(()) => {}
-        Err(e) => panic!("Unexpected error {}", e.to_string()),
+        Err(e) => panic!("Unexpected error {}", e),
     }
     // Spawn p2p that uses the new keypair
     match stronghold
@@ -652,13 +652,13 @@ async fn test_p2p_config() {
         .await
     {
         Ok(()) => {}
-        Err(e) => panic!("Unexpected error {}", e.to_string()),
+        Err(e) => panic!("Unexpected error {}", e),
     }
 
     // Start listening
     let addr = match stronghold.start_listening(None).await.unwrap() {
         Ok(addr) => addr,
-        Err(e) => panic!("Unexpected error {}", e.to_string()),
+        Err(e) => panic!("Unexpected error {}", e),
     };
     let SwarmInfo {
         local_peer_id,
@@ -675,13 +675,13 @@ async fn test_p2p_config() {
     // Add the remote's address info
     match stronghold.add_peer(remote_id, Some(remote_addr.clone())).await.unwrap() {
         Ok(_) => {}
-        Err(e) => panic!("Unexpected error {}", e.to_string()),
+        Err(e) => panic!("Unexpected error {}", e),
     }
     // Test that the firewall rule is effective
     let res = remote_sh.read_from_remote_store(peer_id, bytestring(10)).await;
     match res {
         Ok(_) => panic!("Request should be rejected."),
-        Err(P2pError::Local(e)) => panic!("Unexpected error {}", e.to_string()),
+        Err(P2pError::Local(e)) => panic!("Unexpected error {}", e),
         Err(P2pError::SendRequest(OutboundFailure::NotPermitted))
         | Err(P2pError::SendRequest(OutboundFailure::DialFailure))
         | Err(P2pError::SendRequest(OutboundFailure::Shutdown))
@@ -694,13 +694,13 @@ async fn test_p2p_config() {
     let store = bytestring(1024);
     match stronghold.stop_p2p(Some(store.clone())).await.unwrap() {
         Ok(()) => {}
-        Err(e) => panic!("Unexpected error {}", e.to_string()),
+        Err(e) => panic!("Unexpected error {}", e),
     }
 
     // Spawn p2p again and load the config. Use the same keypair to keep the same peer-id.
     match stronghold.spawn_p2p_load_config(store, Some(keys_location)).await {
         Ok(()) => {}
-        Err(e) => panic!("Unexpected error {}", e.to_string()),
+        Err(e) => panic!("Unexpected error {}", e),
     }
     let SwarmInfo { local_peer_id, .. } = stronghold.get_swarm_info().await.unwrap();
 
@@ -708,13 +708,13 @@ async fn test_p2p_config() {
     assert_eq!(local_peer_id, peer_id);
     match stronghold.add_peer(remote_id, None).await.unwrap() {
         Ok(_) => {}
-        Err(e) => panic!("Unexpected error {}", e.to_string()),
+        Err(e) => panic!("Unexpected error {}", e),
     }
     // Test that the firewall rule is still effective
     let res = remote_sh.read_from_remote_store(peer_id, bytestring(10)).await;
     match res {
         Ok(_) => panic!("Request should be rejected."),
-        Err(P2pError::Local(e)) => panic!("Unexpected error {}", e.to_string()),
+        Err(P2pError::Local(e)) => panic!("Unexpected error {}", e),
         Err(P2pError::SendRequest(OutboundFailure::NotPermitted))
         | Err(P2pError::SendRequest(OutboundFailure::DialFailure))
         | Err(P2pError::SendRequest(OutboundFailure::Shutdown))

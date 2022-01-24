@@ -7,21 +7,12 @@ use std::collections::{hash_map::HashMap, HashSet};
 use wasm_timer::Instant;
 
 // Sent requests that have not yet received a response.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PendingResponses {
     // Outbound request sent to remote, waiting for an inbound response.
     pub outbound_requests: HashSet<RequestId>,
     // Inbound requests received from remote, waiting for an outbound response.
     pub inbound_requests: HashSet<RequestId>,
-}
-
-impl Default for PendingResponses {
-    fn default() -> Self {
-        PendingResponses {
-            outbound_requests: Default::default(),
-            inbound_requests: Default::default(),
-        }
-    }
 }
 
 /// Information about the connection with a remote peer as maintained in the ConnectionManager.

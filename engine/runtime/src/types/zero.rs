@@ -6,6 +6,8 @@ use crate::types::*;
 use libsodium_sys::sodium_memzero;
 
 /// A trait for zeroing out memory on drop using [`sodium_memzero`].
+/// # Safety
+/// - todo
 pub unsafe trait Zeroed: ContiguousBytes {
     fn zero(&mut self) {
         unsafe { sodium_memzero(self.as_mut_bytes().as_mut_ptr() as *mut _, self.as_bytes().len()) }

@@ -54,7 +54,7 @@ pub struct DbView<P: BoxProvider> {
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Vault<P: BoxProvider> {
     key: Key<P>,
-    entries: HashMap<ChainId, Record>,
+    entries: HashMap<ChainId, Record>, // ChainId = RecordId
 }
 
 /// A bit of data inside of a [`Vault`].

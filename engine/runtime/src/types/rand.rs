@@ -6,6 +6,8 @@ use crate::types::*;
 use libsodium_sys::randombytes_buf;
 
 /// A trait for generating random bytes via [`randombytes_buf`].
+/// # Safety
+/// - todo
 pub unsafe trait Randomized: ContiguousBytes {
     fn randomize(&mut self) {
         unsafe { randombytes_buf(self.as_mut_bytes().as_mut_ptr() as *mut _, self.as_bytes().len()) }

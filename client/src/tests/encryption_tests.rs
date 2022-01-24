@@ -14,8 +14,8 @@ fn test_asymmetric_symmetric_encryption() {
     // initialize default hasher
     let mut blake2b = Blake2b256::default();
 
-    let plaintext = "this is some plaintext.";
-    let plaintext_bytes_len = plaintext.as_bytes().len();
+    let plaintext: Vec<u8> = (0..1024).map(|_| rand::random::<u8>()).collect();
+    let plaintext_bytes_len = plaintext.len();
 
     // create random secret keys
     let secret_a = x25519::SecretKey::generate().unwrap();
@@ -43,12 +43,12 @@ fn test_asymmetric_symmetric_encryption() {
     // encryption pass
     {
         // encryption from a
-        if let Err(error) = encrypt(&shared_a, plaintext.as_bytes(), &mut cipher_a, &mut blake2b, &mut tag_a) {
+        if let Err(error) = encrypt(&shared_a, &plaintext, &mut cipher_a, &mut blake2b, &mut tag_a) {
             panic!("Error {}", error)
         }
 
         // encryption from b
-        if let Err(error) = encrypt(&shared_b, plaintext.as_bytes(), &mut cipher_b, &mut blake2b, &mut tag_b) {
+        if let Err(error) = encrypt(&shared_b, &plaintext, &mut cipher_b, &mut blake2b, &mut tag_b) {
             panic!("Error {}", error)
         }
 
