@@ -8,6 +8,7 @@ on:
     branches:
       - main
       - dev
+      - dev-refactor
     paths:
       - '.github/workflows/test.yml'
       - '**.rs'
