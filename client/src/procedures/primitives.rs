@@ -46,6 +46,7 @@ use stronghold_utils::GuardDebug;
 /// has to be called if the procedure's output should be returned to the user.
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub enum PrimitiveProcedure {
+    CopyRecord(CopyRecord),
     Slip10Generate(Slip10Generate),
     Slip10Derive(Slip10Derive),
     BIP39Generate(BIP39Generate),
@@ -66,6 +67,7 @@ impl ProcedureStep for PrimitiveProcedure {
     fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
         use PrimitiveProcedure::*;
         match self {
+            CopyRecord(proc) => proc.execute(runner, state),
             Slip10Generate(proc) => proc.execute(runner, state),
             Slip10Derive(proc) => proc.execute(runner, state),
             BIP39Generate(proc) => proc.execute(runner, state),
@@ -86,6 +88,7 @@ impl ProcedureStep for PrimitiveProcedure {
 
 // === implement From Traits from inner types to wrapper enums
 
+enum_from_inner!(PrimitiveProcedure::CopyRecord from CopyRecord);
 enum_from_inner!(PrimitiveProcedure::Slip10Generate from Slip10Generate);
 enum_from_inner!(PrimitiveProcedure::Slip10Derive from Slip10Derive);
 enum_from_inner!(PrimitiveProcedure::BIP39Generate from BIP39Generate);
@@ -100,6 +103,46 @@ enum_from_inner!(PrimitiveProcedure::Hkdf from Hkdf);
 enum_from_inner!(PrimitiveProcedure::Pbkdf2Hmac from Pbkdf2Hmac);
 enum_from_inner!(PrimitiveProcedure::AeadEncrypt from AeadEncrypt);
 enum_from_inner!(PrimitiveProcedure::AeadDecrypt from AeadDecrypt);
+
+// ==========================
+// Helper Procedure
+// ==========================
+
+/// Copy the content of a record from one location to another.
+///
+/// Note: This does not remove the old record. Users that would like to move the record instead
+/// of just copying it, should run `Stronghold::delete_data` on the old location **after** this
+/// procedure was executed.
+#[derive(Procedure, Debug, Clone, Serialize, Deserialize)]
+pub struct CopyRecord {
+    #[source]
+    source: Location,
+    #[target]
+    target: TempTarget,
+}
+
+impl CopyRecord {
+    pub fn new(source: Location) -> Self {
+        CopyRecord {
+            source,
+            target: TempTarget::default(),
+        }
+    }
+}
+
+#[execute_procedure]
+impl DeriveSecret for CopyRecord {
+    type Input = ();
+    type Output = ();
+
+    fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<()>, FatalProcedureError> {
+        let products = Products {
+            secret: (*guard.borrow()).to_vec(),
+            output: (),
+        };
+        Ok(products)
+    }
+}
 
 // ==========================
 // Procedures for Cryptographic Primitives

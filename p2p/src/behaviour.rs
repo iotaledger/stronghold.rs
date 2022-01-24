@@ -142,11 +142,11 @@ impl Default for NetBehaviourConfig {
 /// Protocol for customization for the [`Swarm`][libp2p::Swarm].
 ///
 /// The protocol is based on the [`RequestResponse`][<https://docs.rs/libp2p-request-response>] protocol from libp2p
-/// and integrates the libp2p [`Relay`][libp2p::relay::Relay] and [`Mdns`][libp2p::mdns::Mdns] protocols.
+/// and optionally integrates the libp2p [`Relay`][libp2p::relay::Relay] and [`Mdns`][libp2p::mdns::Mdns] protocols.
 ///
 /// This allows sending request messages to remote peers, handling of inbound requests and failures, and additionally
 /// the configuration of a firewall to set permissions individually for different peers and request types.
-pub struct NetBehaviour<Rq, Rs, TRq>
+pub struct NetBehaviour<Rq, Rs, TRq = Rq>
 where
     Rq: RqRsMessage + Borrow<TRq>,
     Rs: RqRsMessage,
@@ -197,6 +197,50 @@ where
     TRq: Clone + Send + 'static,
 {
     /// Create a new instance of a NetBehaviour to customize the [`Swarm`][libp2p::Swarm].
+    ///
+    /// ```
+    /// # use std::error::Error;
+    /// use p2p::behaviour::{
+    ///     firewall::FirewallConfiguration,
+    ///     AddressInfo, NetBehaviourConfig, NetBehaviour,
+    /// };
+    ///
+    /// use futures::channel::mpsc;
+    /// use libp2p::{
+    ///     core::upgrade,
+    ///     identity::Keypair,
+    ///     mdns::{Mdns, MdnsConfig},
+    ///     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
+    ///     relay::{new_transport_and_behaviour, RelayConfig},
+    ///     tcp::TokioTcpConfig,
+    ///     yamux::YamuxConfig,
+    ///     Swarm, Transport
+    /// };
+    ///
+    /// # async fn test() -> Result<(), Box<dyn Error>> {
+    /// let keypair = Keypair::generate_ed25519();
+    /// let noise_keypair = NoiseKeypair::<X25519Spec>::new().into_authentic(&keypair)?;
+    /// let peer_id = keypair.public().to_peer_id();
+    /// let (relay_transport, relay_behaviour) = new_transport_and_behaviour(RelayConfig::default(), TokioTcpConfig::new());
+    /// let boxed_transport = relay_transport
+    ///         .upgrade(upgrade::Version::V1)
+    ///         .authenticate(NoiseConfig::xx(noise_keypair).into_authenticated())
+    ///         .multiplex(YamuxConfig::default())
+    ///         .boxed();
+    /// let (firewall_tx, firewall_rx) = mpsc::channel(10);
+    ///
+    /// let behaviour = NetBehaviour::<String, String>::new(
+    ///     NetBehaviourConfig::default(),
+    ///     None,
+    ///     Some(relay_behaviour),
+    ///     firewall_tx,
+    ///     FirewallConfiguration::default(),
+    ///     None
+    /// );
+    /// let swarm = Swarm::new(boxed_transport, behaviour, peer_id);
+    /// # Ok(())
+    /// }
+    /// ```
     pub fn new(
         config: NetBehaviourConfig,
         #[cfg(feature = "mdns")] mdns: Option<Mdns>,
@@ -969,7 +1013,7 @@ mod test {
     use core::panic;
 
     use super::*;
-    use crate::firewall::{PermissionValue, RequestPermissions, VariantPermission};
+    use crate::firewall::permissions::{PermissionValue, RequestPermissions, VariantPermission};
     use futures::{channel::mpsc, StreamExt};
     #[cfg(feature = "mdns")]
     use libp2p::mdns::{Mdns, MdnsConfig};

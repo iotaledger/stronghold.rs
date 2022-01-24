@@ -1,9 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-mod permissions;
+pub mod permissions;
 use crate::{serde::SerdeFirewallConfig, RequestDirection};
-pub use permissions::*;
 
 use core::fmt;
 use futures::channel::oneshot;
