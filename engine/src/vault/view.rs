@@ -11,7 +11,7 @@ use crate::vault::{
 
 use runtime::GuardedVec;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::Infallible, fmt::Debug};
+use std::{collections::HashMap, convert::Infallible, fmt::Debug, ops::Deref};
 use thiserror::Error as DeriveError;
 
 use super::{crypto_box::DecryptError, types::transactions::Transaction};
@@ -211,12 +211,39 @@ impl<P: BoxProvider> Vault<P> {
 
         let blob_id = BlobId::random::<P>().map_err(RecordError::Provider)?;
         if let Some(entry) = self.entries.get_mut(&id) {
-            entry.update(key, id, data)?
+            entry.update_data(key, id, data)?
         } else {
             let entry = Record::new(key, id, blob_id, data, record_hint).map_err(RecordError::Provider)?;
             self.entries.insert(id, entry);
         }
 
+        Ok(())
+    }
+
+    /// Extend entries with entries from another vault with the same key.
+    /// In case of duplicated records, the existing record is dropped in favor of the new one.
+    pub fn merge(&mut self, other: Self) -> Result<(), RecordError<P::Error>> {
+        if other.key != self.key {
+            return Err(RecordError::InvalidKey);
+        }
+        self.entries.extend(other.entries.into_iter());
+        Ok(())
+    }
+
+
+    /// Update the key and re-encrypt all records with the new key.
+    /// In case of an error during re-encryption the old state is restored.
+    pub fn update_key(&mut self, old: &Key<P>, new: &Key<P>) -> Result<(), RecordError<P::Error>> {
+        if old != &self.key {
+            return Err(RecordError::InvalidKey);
+        }
+        let mut updated = HashMap::new();
+        for (id, mut entry) in self.entries.clone() {
+            entry.update_key(old, new, id)?;
+            updated.insert(id, entry);
+        }
+        self.entries = updated;
+        self.key = new.clone();
         Ok(())
     }
 
@@ -365,7 +392,7 @@ impl Record {
     }
 
     /// Update the data in an existing [`Record`].
-    fn update<P: BoxProvider>(
+    fn update_data<P: BoxProvider>(
         &mut self,
         key: &Key<P>,
         id: ChainId,
@@ -389,6 +416,42 @@ impl Record {
 
         self.blob = blob;
         self.data = data;
+
+        Ok(())
+    }
+
+    /// Update the data in an existing [`Record`].
+    fn update_key<P: BoxProvider>(
+        &mut self,
+        old: &Key<P>,
+        new: &Key<P>,
+        id: ChainId,
+    ) -> Result<(), RecordError<P::Error>> {
+        // check if ids match
+        if self.id != id {
+            return Err(RecordError::RecordNotFound(id));
+        }
+
+        let tx = self.get_transaction(old)?;
+        let typed_tx = tx.typed::<DataTransaction>().ok_or_else(|| {
+            RecordError::CorruptedContent("Could not type decrypted transaction as data-transaction".into())
+        })?;
+
+        // Re-encrypt the blob with the new key.
+        let updated_blob = SealedBlob::from(self.blob.as_ref())
+                .decrypt(old, typed_tx.blob)
+                .map_err(|e| match e {
+                    DecryptError::Provider(e) => RecordError::Provider(e),
+                    DecryptError::Invalid => unreachable!("Vec<u8>: TryFrom<Vec<u8>> is infallible.")
+                })?
+                .encrypt(new, typed_tx.blob)
+                .map_err(RecordError::Provider)?;
+
+        // Re-encrypt meta data with new key.
+        let updated_data = tx.encrypt(new, typed_tx.id).map_err(RecordError::Provider)?;
+
+        self.blob = updated_blob;
+        self.data = updated_data;
 
         Ok(())
     }
