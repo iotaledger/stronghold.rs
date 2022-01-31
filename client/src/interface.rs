@@ -513,7 +513,7 @@ impl Stronghold {
             .await?
             .ok_or_else(|| SpawnNetworkError::LoadConfig(format!("No config found at key {:?}", key)))?;
         let config = bincode::deserialize(&config_bytes)
-            .map_err(|e| SpawnNetworkError::LoadConfig(format!("Deserializing state failed: {}", e.to_string())))?;
+            .map_err(|e| SpawnNetworkError::LoadConfig(format!("Deserializing state failed: {}", e)))?;
         self.spawn_p2p(config, keypair).await
     }
 
