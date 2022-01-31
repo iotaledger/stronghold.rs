@@ -43,7 +43,8 @@ pub struct ChainId([u8; 24]);
 #[derive(Copy, Clone, Hash, Default, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Id([u8; 24]);
 
-/// A blob identifier used to refer to a [`SealedBlob`]
+/// A blob identifier used to refer to a [`SealedBlob`].
+/// The [`BlobId`] for a record changes each time its data is updated.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BlobId([u8; 24]);
@@ -298,6 +299,12 @@ impl Debug for RecordId {
 impl Display for RecordId {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.0.as_ref().base64())
+    }
+}
+
+impl From<ChainId> for RecordId {
+    fn from(id: ChainId) -> Self {
+        RecordId(id)
     }
 }
 

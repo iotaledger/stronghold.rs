@@ -100,7 +100,7 @@ pub struct RevocationTransaction {
 
 impl DataTransaction {
     /// create a new data transaction from a [`ChainId`], a len, a [`BlobId`] and a [`RecordHint`].
-    pub fn new(id: ChainId, len: u64, blob: BlobId, record_hint: RecordHint) -> Transaction {
+    pub fn new<L: Into<Val>>(id: ChainId, len: L, blob: BlobId, record_hint: RecordHint) -> Transaction {
         let mut transaction = Transaction::default();
         let view: &mut Self = transaction.view_mut();
 
