@@ -26,13 +26,13 @@ use engine::{
 use engine::runtime::GuardedVec;
 #[cfg(feature = "p2p")]
 use p2p::{identity::Keypair, AuthenticKeypair, NoiseKeypair, PeerId};
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::Infallible};
 use stronghold_utils::GuardDebug;
 
 /// Store typedef on `engine::store::Cache`
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
 
-pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
+pub type VaultError<E = Infallible> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
 pub type RecordError = EngineRecordError<<Provider as BoxProvider>::Error>;
 
 /// Message types for the [`SecureClient`].
@@ -287,15 +287,7 @@ impl_handler!(messages::ClearCache, (), (self, _msg, _ctx), {
 
 impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
     let (vault_id, record_id) = Self::resolve_location(msg.location);
-
-    return match self.keystore.take_key(vault_id) {
-        Some(key) => {
-            let res = self.db.contains_record(&key, vault_id, record_id);
-            self.keystore.insert_key(vault_id, key);
-            res
-        }
-        None => false,
-    };
+    self.db.contains_record(vault_id, record_id)
 });
 
 impl_handler!(messages::WriteToVault, Result<(), RecordError>, (self, msg, _ctx), {

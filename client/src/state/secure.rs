@@ -14,9 +14,9 @@ use crate::{
 use engine::{
     runtime::GuardedVec,
     store::Cache,
-    vault::{ClientId, DbView, RecordHint, RecordId, VaultId},
+    vault::{BlobId, ClientId, DbView, RecordHint, RecordId, VaultId},
 };
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 /// Cache type definition
 pub type Store = Cache<Vec<u8>, Vec<u8>>;
@@ -30,6 +30,11 @@ pub struct SecureClient {
     pub client_id: ClientId,
     // Contains the Record Ids for the most recent Record in each vault.
     pub store: Store,
+}
+
+// Collect for each (source, target)-vault pair the list of records that are copied between these two vaults.
+pub struct LocationMap {
+    pub map: HashMap<VaultId, HashMap<VaultId, Vec<(RecordId, RecordId)>>>,
 }
 
 impl SecureClient {
@@ -135,6 +140,72 @@ impl SecureClient {
         }
 
         ctr
+    }
+
+    /// Collect the full hierarchy of vaults and their records in the client.
+    /// For each record, the [`RecordId`] and [`BlobId`] is listed, to allow comparison between two records.
+    pub fn get_full_hierarchy(&mut self) -> Result<HashMap<VaultId, Vec<(RecordId, BlobId)>>, VaultError> {
+        let mut map = HashMap::new();
+        for vid in self.db.list_vaults() {
+            let key = self.keystore.take_key(vid).ok_or(VaultError::VaultNotFound(vid))?;
+            let list = self.db.list_records_with_blob_id(&key, vid)?;
+            map.insert(vid, list);
+        }
+        Ok(map)
+    }
+
+    /// Compare the local vaults and records with a given map. Returns the entries from the map that does not exists in
+    /// the local hierarchy. If a record already exists, the [`BlobId`] is compared. In case of a conflict it follows
+    /// the policy set in the `replace_on_conflict` parameter.
+    pub fn get_diff(
+        &mut self,
+        other: HashMap<VaultId, Vec<(RecordId, BlobId)>>,
+        replace_on_conflict: bool,
+    ) -> Result<HashMap<VaultId, Vec<RecordId>>, RecordError> {
+        let mut diff = HashMap::new();
+        for (vid, records) in other {
+            if !self.keystore.vault_exists(vid) {
+                let records = records.into_iter().map(|(rid, _)| rid).collect();
+                diff.insert(vid, records);
+                continue;
+            }
+
+            let key = self.keystore.take_key(vid).unwrap();
+
+            let mut records_diff = Vec::new();
+            for (rid, blob_id) in records {
+                match self.db.get_blob_id(&key, vid, rid) {
+                    Ok(bid) if bid == blob_id => {}
+                    Ok(_) if !replace_on_conflict => {}
+                    Ok(_)
+                    | Err(VaultError::Record(RecordError::RecordNotFound(_)))
+                    | Err(VaultError::VaultNotFound(_)) => records_diff.push(rid),
+                    Err(VaultError::Record(e)) => return Err(e),
+                    Err(VaultError::Procedure(_)) => unreachable!("Infallible."),
+                }
+            }
+            diff.insert(vid, records_diff);
+        }
+        Ok(diff)
+    }
+
+    /// Copy records between two locations.
+    /// Note: this replaces the target location if it already exists.
+    pub fn copy_records(&mut self, loc_map: LocationMap) -> Result<(), VaultError> {
+        // This has complexity O(n), as every rid0 is only present a single time in the hierarchy.
+        for (vid0, target_mapping) in loc_map.map {
+            let key0 = self.keystore.take_key(vid0).ok_or(VaultError::VaultNotFound(vid0))?;
+            for (vid1, map_records) in target_mapping {
+                if !self.keystore.vault_exists(vid1) {
+                    let key1 = self.keystore.create_key(vid1);
+                    self.db.init_vault(key1, vid1);
+                }
+                let key1 = self.keystore.take_key(vid1).unwrap();
+                self.db
+                    .copy_records_single_vault(vid0, &key0, vid1, &key1, map_records)?;
+            }
+        }
+        Ok(())
     }
 }
 
