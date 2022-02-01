@@ -24,6 +24,6 @@ pub mod view;
 pub use crate::vault::{
     base64::{Base64Decodable, Base64Encodable},
     crypto_box::{BoxProvider, Decrypt, Encrypt, Key},
-    types::utils::{ChainId, ClientId, Id, InvalidLength, RecordHint, RecordId, VaultId},
+    types::utils::{BlobId, ChainId, ClientId, Id, InvalidLength, RecordHint, RecordId, VaultId},
     view::{DbView, RecordError, VaultError},
 };

@@ -110,12 +110,18 @@ impl<P: BoxProvider> DbView<P> {
     }
 
     /// Check to see if a [`Vault`] contains a [`Record`] through the given [`RecordId`].
-    pub fn contains_record(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId) -> bool {
+    pub fn contains_record(&mut self, vid: VaultId, rid: RecordId) -> bool {
         if let Some(vault) = self.vaults.get(&vid) {
-            vault.contains_record(key, rid)
+            vault.contains_record(rid)
         } else {
             false
         }
+    }
+
+    pub fn get_blob_id(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId) -> Result<BlobId, VaultError<P::Error>> {
+        let vault = self.vaults.get(&vid).ok_or(VaultError::VaultNotFound(vid))?;
+        let blob_id = vault.get_blob_id(key, rid.0)?;
+        Ok(blob_id)
     }
 
     /// Get access the decrypted [`GuardedVec`] of the specified [`Record`].
@@ -190,7 +196,7 @@ impl<P: BoxProvider> DbView<P> {
     }
 
     /// List [`RecordId`] and [`BlobId`] in a vault.
-    pub fn list_vault_records(
+    pub fn list_records_with_blob_id(
         &self,
         key: &Key<P>,
         vid: VaultId,
@@ -209,16 +215,16 @@ impl<P: BoxProvider> DbView<P> {
         old_key: &Key<P>,
         new_vault: VaultId,
         new_key: &Key<P>,
-        mut map_records: HashMap<RecordId, RecordId>,
+        map_records: Vec<(RecordId, RecordId)>,
     ) -> Result<(), VaultError<P::Error>> {
         let source = self
             .vaults
             .get(&old_vault)
             .ok_or(VaultError::VaultNotFound(old_vault))?;
-        let mut records = source
-            .extract_records(old_key, map_records.keys())?
+        let mut records: Vec<_> = map_records
             .into_iter()
-            .filter_map(|record| map_records.remove(&record.id.into()).map(|new_id| (new_id.0, record)));
+            .filter_map(|(old_rid, new_rid)| source.extract_record(&old_rid).map(|r| (new_rid.0, r)))
+            .collect();
 
         let target = match self.vaults.get_mut(&new_vault) {
             Some(vault) => {
@@ -231,7 +237,9 @@ impl<P: BoxProvider> DbView<P> {
             }
         };
 
-        records.try_for_each(|(new_id, mut record)| record.update_meta(old_key, record.id, new_key, new_id))?;
+        records
+            .iter_mut()
+            .try_for_each(|(new_id, record)| record.update_meta(old_key, record.id, new_key, *new_id))?;
         target.extend(new_key, records)?;
 
         Ok(())
@@ -282,16 +290,8 @@ impl<P: BoxProvider> Vault<P> {
         Ok(())
     }
 
-    pub fn extract_records<'a, I>(&self, key: &Key<P>, records: I) -> Result<Vec<Record>, RecordError<P::Error>>
-    where
-        I: IntoIterator<Item = &'a RecordId>,
-    {
-        self.check_key(key)?;
-        let records = records
-            .into_iter()
-            .filter_map(|rid| self.entries.get(&rid.0).cloned())
-            .collect();
-        Ok(records)
+    pub fn extract_record(&self, rid: &RecordId) -> Option<Record> {
+        self.entries.get(&rid.0).cloned()
     }
 
     /// List the [`RecordHint`] values and [`RecordId`] values of the specified [`Vault`].
@@ -321,12 +321,8 @@ impl<P: BoxProvider> Vault<P> {
     }
 
     /// Check if the [`Vault`] contains a [`Record`]
-    fn contains_record(&self, key: &Key<P>, rid: RecordId) -> bool {
-        if key == &self.key {
-            self.entries.values().into_iter().any(|entry| entry.check_id(rid))
-        } else {
-            false
-        }
+    fn contains_record(&self, rid: RecordId) -> bool {
+        self.entries.values().into_iter().any(|entry| entry.check_id(rid))
     }
 
     /// Revokes an [`Record`] by its [`ChainId`].  Does nothing if the [`Record`] doesn't exist.
@@ -367,6 +363,14 @@ impl<P: BoxProvider> Vault<P> {
         } else {
             Err(RecordError::InvalidKey)
         }
+    }
+
+    pub fn get_blob_id(&self, key: &Key<P>, id: ChainId) -> Result<BlobId, RecordError<P::Error>> {
+        self.check_key(key)?;
+        self.entries
+            .get(&id)
+            .ok_or(RecordError::RecordNotFound(id))
+            .and_then(|r| r.get_blob_id(key, id))
     }
 }
 
