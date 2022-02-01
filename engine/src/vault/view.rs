@@ -495,7 +495,7 @@ impl Record {
         })?;
 
         // create a new sealed blob with the new_data.
-        let blob: SealedBlob = new_data.encrypt(key, tx.blob).map_err(RecordError::Provider)?;
+        let blob: SealedBlob = new_data.encrypt(key, new_blob).map_err(RecordError::Provider)?;
 
         // create a new sealed transaction with the new_data length.
         let dtx = DataTransaction::new(tx.id, new_data.len() as u64, new_blob, tx.record_hint);
