@@ -21,7 +21,7 @@ pub enum MemoryError {
     OutOfMemory(String),
 }
 
-pub trait BoxedMemory: Zeroize + Sized {
+pub trait BoxedMemory: Zeroize + Sized + Clone {
     /// Writes the payload into a GuardedMem then locks it
     fn alloc<T>(payload: T, config: MemoryConfiguration, key: Option<Vec<u8>>) -> Result<Self, MemoryError>
     where
