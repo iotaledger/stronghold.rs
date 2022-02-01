@@ -30,6 +30,7 @@ mod interface;
 mod internals;
 pub mod procedures;
 mod state;
+mod sync;
 mod utils;
 
 // Tests exist as a sub-module because they need to be able to test internal concepts without exposing them publicly.

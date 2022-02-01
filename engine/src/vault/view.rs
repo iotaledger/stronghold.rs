@@ -195,6 +195,14 @@ impl<P: BoxProvider> DbView<P> {
         self.vaults.keys().cloned().collect()
     }
 
+    /// List the ids of all records in the vault.
+    pub fn list_records(&self, vid: &VaultId) -> Vec<RecordId> {
+        self.vaults
+            .get(vid)
+            .map(|v| v.entries.keys().map(|&c| c.into()).collect())
+            .unwrap_or_default()
+    }
+
     /// List [`RecordId`] and [`BlobId`] in a vault.
     pub fn list_records_with_blob_id(
         &self,
