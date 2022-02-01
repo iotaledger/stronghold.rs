@@ -9,7 +9,7 @@ path        = "src/lib.rs"
 
 [dependencies]
 thiserror   = "1.0.30" 
-zeroize     = "1.5.0"
+zeroize     = { version = "1.5.0", features = ["zeroize_derive"] }
 
 [dev-dependencies]
 tokio       = { version = "1.15.0", features = ["full"] }
