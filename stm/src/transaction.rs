@@ -4,6 +4,7 @@
 use crate::{boxedalloc::MemoryError, BoxedMemory, TLog, TVar, TransactionError};
 use lazy_static::*;
 use std::{
+    collections::BTreeMap,
     future::Future,
     pin::Pin,
     sync::{Arc, Mutex},
@@ -13,9 +14,21 @@ lazy_static! {
     pub(crate) static ref MANAGER: TransactionManager = TransactionManager::new();
 }
 
+/// Future generator
+type FnFuture<T> = dyn Fn() -> Pin<Box<dyn Future<Output = T> + Unpin + Send>> + Send;
+
 /// Keep track of running transaction
 pub(crate) struct TransactionManager {
-    tasks: Arc<Mutex<Vec<Pin<Box<dyn Future<Output = Result<(), TransactionError>> + Send>>>>>,
+    tasks: Arc<
+        Mutex<
+            Vec<
+                Box<
+                    //
+                    dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<(), TransactionError>>>> + Send,
+                >,
+            >,
+        >,
+    >,
 }
 
 impl TransactionManager {
@@ -25,12 +38,12 @@ impl TransactionManager {
         }
     }
 
-    pub(crate) fn insert<F>(&self, task: F) -> Result<(), TransactionError>
+    pub(crate) fn insert<F>(&self, task: Pin<Box<F>>) -> Result<(), TransactionError>
     where
         F: Future<Output = Result<(), TransactionError>> + Send + 'static,
     {
         let mut lock = self.tasks.lock().map_err(TransactionError::to_inner)?;
-        lock.push(Box::pin(task));
+        lock.push(Box::new(move || task));
 
         Ok(())
     }
@@ -71,7 +84,7 @@ where
     T: Send + Sync + BoxedMemory,
 {
     strategy: Strategy,
-    log: Mutex<Vec<TLog<T>>>,
+    log: Arc<Mutex<BTreeMap<TVar<T>, TLog<T>>>>,
 }
 
 // impl<F, T> From<F> for Transaction<F, T>
@@ -87,6 +100,17 @@ where
 //     }
 // }
 
+// impl<T> Future for Transaction<T>
+// where
+//     T: Send + Sync + BoxedMemory,
+// {
+//     type Output = Result<(), TransactionError>;
+
+//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//         todo!()
+//     }
+// }
+
 impl<T> Transaction<T>
 where
     T: Send + Sync + BoxedMemory,
@@ -94,14 +118,14 @@ where
     fn new() -> Self {
         Self {
             strategy: Strategy::Retry,
-            log: Mutex::new(Vec::new()),
+            log: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
     pub(crate) fn new_with_strategy(strategy: Strategy) -> Self {
         Self {
             strategy,
-            log: Mutex::new(Vec::new()),
+            log: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -128,43 +152,59 @@ where
             let task = program(tx.clone());
 
             // TODO: this shall be removed
-            // MANAGER
-            //     .insert(Box::pin(async {
-            //         println!("number of tasks inside manager {:?}", MANAGER.size());
+            MANAGER.insert(Box::pin(task)).expect("");
 
-            //         Ok(())
-            //     }))
-            //     .expect("");
+            // match task.await {
+            //     Ok(_) => {
+            //         if tx.commit().await.is_ok() {
+            //             return Ok(());
+            //         }
+            //     }
+            //     Err(e) => match tx.strategy {
+            //         Strategy::Abort => {
+            //             return Err(e);
+            //         }
+            //         Strategy::Retry => {
+            //             if let Err(e) = tx.clear().await {
+            //                 return Err(TransactionError::Inner(e.to_string()));
+            //             }
 
-            match task.await {
-                Ok(_) => {
-                    if tx.commit().await.is_ok() {
-                        return Ok(());
-                    }
-                }
-                Err(e) => match tx.strategy {
-                    Strategy::Abort => {
-                        return Err(e);
-                    }
-                    Strategy::Retry => {
-                        if let Err(e) = tx.clear().await {
-                            return Err(TransactionError::Inner(e.to_string()));
-                        }
-
-                        // TODO wait for a change in var
-                        tx.wait().await;
-                    }
-                },
-            }
+            //             // TODO wait for a change in var
+            //             tx.wait().await;
+            //         }
+            //     },
+            // }
         }
     }
 
+    /// Read a value from the transaction
     pub async fn read(&self, var: &TVar<T>) -> Result<T, TransactionError> {
+        // let mut log = self.log.lock().map_err(TransactionError::to_inner)?;
+
+        // // FIXME this will always create a new address
+        // match log.entry(var.clone()) {
+        //     Entry::Occupied(mut inner) => inner.get_mut().read().await,
+        //     Entry::Vacant(entry) => {
+        //         entry.insert(TLog::Read(var.read_atomic()?));
+        //         var.read_atomic()
+        //     }
+        // }
+
         todo!()
     }
 
-    ///
+    /// Write value inside transaction
     pub async fn write(&self, value: T, var: &TVar<T>) -> Result<(), TransactionError> {
+        // let mut log = self.log.lock().map_err(TransactionError::to_inner)?;
+
+        // match log.entry(var.clone()) {
+        //     Entry::Occupied(mut inner) => inner.get_mut().write(value).await,
+        //     Entry::Vacant(entry) => {
+        //         entry.insert(TLog::Write(value));
+        //         Ok(())
+        //     }
+        // }
+
         todo!()
     }
 
@@ -182,12 +222,21 @@ where
 
     /// Writes all changes into the shared memory represented by [`TVar`]
     ///
-    /// A commit compares all reads and writes
+    /// A commit compares all reads and writes with the actual value written to TVar
     async fn commit(&self) -> Result<(), TransactionError> {
-        // let entries = self
-        //     .log
-        //     .lock()
-        //     .map_err(|error| TransactionError::Inner(error.to_string()))?;
+        let txlog = std::mem::take(&mut *self.log.lock().map_err(TransactionError::to_inner).expect(""));
+
+        for (var, log_entry) in txlog.iter() {
+            match log_entry {
+                TLog::Read(ref inner) => {
+                    if !Arc::ptr_eq(&Arc::new(var.read_atomic()?), &Arc::new(inner.clone())) {
+                        return Err(TransactionError::Failed("Inconsistent state.".to_string()));
+                    }
+                }
+                TLog::Write(ref inner) => {}
+                TLog::ReadWrite(ref original, ref inner) => {}
+            }
+        }
 
         // let mut writes = Vec::new();
 
@@ -219,7 +268,7 @@ where
 
         // todo!()
 
-        todo!()
+        Ok(())
     }
 
     /// Sets this transaction to sleep until changes have been made
@@ -240,7 +289,7 @@ where
         // TODO: maybe this step is unecessary, because BoxedMemory automatically calls
         // zeroize on drop
         let mut log = self.log.lock().expect("msg");
-        for value in log.iter_mut() {
+        for (_, value) in log.iter_mut() {
             value.dealloc()?;
         }
 

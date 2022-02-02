@@ -25,7 +25,7 @@ pub use boxedalloc::BoxedMemory;
 
 /// This creates an asynchronous operation that runs atomically inside a transaction. Shared
 /// memory must be passed as [`TVar`] to read from and write to it. The transaction is retried
-/// until it succeeds. As of now, this could hang the execution if certain edge cases are being met:
+/// until it succeeds. As of now, this could hang the execution if certain edge cases are being hit:
 /// - interleaving reads and writes, blocking each other.
 ///
 /// ```

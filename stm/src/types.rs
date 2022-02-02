@@ -5,6 +5,7 @@ use zeroize::Zeroize;
 
 use crate::{BoxedMemory, TransactionError};
 use std::{
+    cmp::Ordering,
     hash::{Hash, Hasher},
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
@@ -101,7 +102,21 @@ where
     }
 }
 
-impl<T> Eq for TVar<T> where T: Send + Sync + BoxedMemory {}
+impl<T> PartialOrd for TVar<T>
+where
+    T: Send + Sync + BoxedMemory,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let a = &self as *const _ as *const usize as usize;
+        let b = &other as *const _ as *const usize as usize;
+
+        match a {
+            _ if a > b => Some(Ordering::Greater),
+            _ if a < b => Some(Ordering::Less),
+            _ => Some(Ordering::Equal),
+        }
+    }
+}
 
 impl<T> Hash for TVar<T>
 where
@@ -112,6 +127,24 @@ where
         state.finish();
     }
 }
+
+impl<T> Ord for TVar<T>
+where
+    T: Send + Sync + BoxedMemory,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        let a = &self as *const _ as *const usize as usize;
+        let b = &other as *const _ as *const usize as usize;
+
+        match a {
+            _ if a > b => Ordering::Greater,
+            _ if a < b => Ordering::Less,
+            _ => Ordering::Equal,
+        }
+    }
+}
+
+impl<T> Eq for TVar<T> where T: Send + Sync + BoxedMemory {}
 
 /// Transactional Log type. The intend of this type
 /// is to track each operation on the target value
@@ -180,6 +213,22 @@ where
 
 #[cfg(test)]
 mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_ordering() {
+        let a = 10;
+        let b = 20;
+
+        let order = match a {
+            _ if a > b => Some(Ordering::Greater),
+            _ if a < b => Some(Ordering::Less),
+            _ => Some(Ordering::Equal),
+        };
+
+        println!("Ordering :{:?}", order)
+    }
 
     #[tokio::test]
     async fn test_read() {}
