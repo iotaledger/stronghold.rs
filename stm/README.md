@@ -16,6 +16,9 @@ Software transactional memory is of high interest in researching lock-free concu
 ## TODO / Questions
 - In an extreme case two transactions want to write to the same location, which would result in a permanent dead lock of each transaction. Is there a way to detect writes to the same location, which would result in an error?
 - Could a Transaction = Future? 
+- Problem: blocking Futures while processing? How-To? Another Future could wrape the execution, block advancing until a signal has been send. Returning the internal future to advance
 
+# Issues
+- 
 
 # Resources
