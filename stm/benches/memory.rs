@@ -14,11 +14,11 @@ pub fn bnc_memory_usize(c: &mut Criterion) {
             stm::transactional(|tx| {
                 let v2 = var.clone();
 
-                async move {
+                Box::pin(async move {
                     tx.write(234, &v2).await?;
 
                     Ok(())
-                }
+                })
             })
         })
     });

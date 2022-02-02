@@ -11,11 +11,11 @@ async fn test_single_transaction() {
     assert!(transactional(|tx: Arc<Transaction<usize>>| {
         let v1 = var.clone();
 
-        async move {
+        Box::pin(async move {
             let a = tx.read(&v1).await.unwrap();
             tx.write(a + 42, &v1).await.unwrap();
             Ok(())
-        }
+        })
     })
     .await
     .is_ok());
