@@ -214,7 +214,7 @@ impl<P: BoxProvider> DbView<P> {
             .ok_or(VaultError::VaultNotFound(vid))
             .and_then(|v| v.list_entries(key).map_err(|e| e.into()))
     }
-    
+
     pub fn export_records<I>(
         &mut self,
         vid: VaultId,

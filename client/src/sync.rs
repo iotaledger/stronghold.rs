@@ -10,17 +10,31 @@ use engine::vault::{view::Record, BlobId, ClientId, Key, RecordId, VaultId};
 use std::collections::HashMap;
 
 pub struct BidiMapping<T> {
-    l2r: fn(T) -> T,
+    l2r: fn(T) -> Option<T>,
     r2l: fn(T) -> T,
 }
 
+impl<T> Default for BidiMapping<T> {
+    fn default() -> Self {
+        Self {
+            l2r: |t| Some(t),
+            r2l: |t| t,
+        }
+    }
+}
+
 impl<T> BidiMapping<T> {
-    fn map(&self, t: T, di: Di) -> T {
-        let f = match di {
-            Di::L2R => self.l2r,
-            Di::R2L => self.r2l,
-        };
-        f(t)
+    fn map(&self, t: T, di: Di) -> Option<T> {
+        match di {
+            Di::L2R => {
+                let f = self.l2r;
+                f(t)
+            }
+            Di::R2L => {
+                let f = self.r2l;
+                Some(f(t))
+            }
+        }
     }
 }
 
@@ -31,7 +45,6 @@ trait Mapper<T: Layer> {
         &self,
         old_key_provider: &T::KeyProvider,
         old_key_provider: &T::KeyProvider,
-        di: Di,
         entries: T::Exported,
     ) -> T::Exported;
 }
@@ -46,7 +59,7 @@ impl Mapper<VaultLayer> for BidiMapping<<VaultLayer as Layer>::Mapping> {
     fn map_hierarchy(&self, hierarchy: <VaultLayer as Layer>::Hierarchy, di: Di) -> <VaultLayer as Layer>::Hierarchy {
         hierarchy
             .into_iter()
-            .map(|(rid, bid)| (self.map(rid, di), bid))
+            .filter_map(|(rid0, bid)| self.map(rid0, di).map(|rid1| (rid1, bid)))
             .collect()
     }
 
@@ -54,12 +67,12 @@ impl Mapper<VaultLayer> for BidiMapping<<VaultLayer as Layer>::Mapping> {
         &self,
         old_key: &<VaultLayer as Layer>::KeyProvider,
         new_key: &<VaultLayer as Layer>::KeyProvider,
-        di: Di,
         mut entries: <VaultLayer as Layer>::Exported,
     ) -> <VaultLayer as Layer>::Exported {
+        let r2l = self.r2l;
         entries
             .iter_mut()
-            .try_for_each(|(rid, r)| r.update_meta(old_key, (*rid).into(), new_key, self.map(*rid, di).into()))
+            .try_for_each(|(rid, r)| r.update_meta(old_key, (*rid).into(), new_key, r2l(*rid).into()))
             .unwrap();
         entries
     }
@@ -70,9 +83,10 @@ impl Mapper<ClientLayer> for BidiMapping<<ClientLayer as Layer>::Mapping> {
         let mut map = HashMap::<_, Vec<_>>::new();
         for (vid0, records) in hierarchy {
             for (rid0, bid) in records {
-                let (vid1, rid1) = self.map((vid0, rid0), di);
-                let entry = map.entry(vid1).or_default();
-                entry.push((rid1, bid))
+                if let Some((vid1, rid1)) = self.map((vid0, rid0), di) {
+                    let entry = map.entry(vid1).or_default();
+                    entry.push((rid1, bid))
+                }
             }
         }
         map
@@ -82,14 +96,14 @@ impl Mapper<ClientLayer> for BidiMapping<<ClientLayer as Layer>::Mapping> {
         &self,
         old_keystore: &<ClientLayer as Layer>::KeyProvider,
         new_keystore: &<ClientLayer as Layer>::KeyProvider,
-        di: Di,
         hierarchy: <ClientLayer as Layer>::Exported,
     ) -> <ClientLayer as Layer>::Exported {
         let mut map = HashMap::<_, Vec<_>>::new();
+        let r2l = self.r2l;
         for (vid0, records) in hierarchy {
             let old_key = old_keystore.get_key(vid0).unwrap();
             for (rid0, mut r) in records {
-                let (vid1, rid1) = self.map((vid0, rid0), di);
+                let (vid1, rid1) = r2l((vid0, rid0));
                 let new_key = new_keystore.get_key(vid1).unwrap();
                 r.update_meta(old_key, rid0.into(), new_key, rid1.into()).unwrap();
                 let entry = map.entry(vid1).or_default();
@@ -99,19 +113,6 @@ impl Mapper<ClientLayer> for BidiMapping<<ClientLayer as Layer>::Mapping> {
         map
     }
 }
-
-pub struct FilterMap<T> {
-    f: fn(T) -> Option<T>,
-}
-
-impl<T> Default for BidiMapping<T> {
-    fn default() -> Self {
-        Self { l2r: |t| t, r2l: |t| t }
-    }
-}
-type RecordLayerMapping = BidiMapping<<RecordId as Layer>::Mapping>;
-type VaultLayerMapping = BidiMapping<<VaultId as Layer>::Mapping>;
-type ClientMapping = BidiMapping<<ClientId as Layer>::Mapping>;
 
 trait Layer {
     type Id;
