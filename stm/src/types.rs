@@ -125,18 +125,29 @@ where
 
     /// Indicates that a variable has been modified
     Write(T),
+
+    /// Store (original, updated)
+    ReadWrite(T, T),
 }
 
 impl<T> TLog<T>
 where
     T: Send + Sync + BoxedMemory,
 {
-    pub async fn read(&self) -> Result<T, TransactionError> {
-        todo!()
+    pub async fn read(&mut self) -> Result<T, TransactionError> {
+        match self {
+            Self::Read(ref inner) => Ok(inner.clone()),
+            Self::Write(ref inner) | Self::ReadWrite(_, ref inner) => Ok(inner.clone()),
+        }
     }
 
-    pub async fn write(&self, _: T) -> Result<(), TransactionError> {
-        todo!()
+    pub async fn write(&mut self, update: T) -> Result<(), TransactionError> {
+        *self = match self {
+            Self::Write(ref inner) => Self::Write(inner.clone()),
+            Self::Read(ref inner) | Self::ReadWrite(_, ref inner) => Self::ReadWrite(inner.clone(), update),
+        };
+
+        Ok(())
     }
 }
 
@@ -149,6 +160,7 @@ where
         match self {
             Self::Read(inner) => inner,
             Self::Write(inner) => inner,
+            Self::ReadWrite(_, inner) => inner,
         }
     }
 }
@@ -161,6 +173,7 @@ where
         match self {
             Self::Read(inner) => inner,
             Self::Write(inner) => inner,
+            Self::ReadWrite(_, inner) => inner,
         }
     }
 }

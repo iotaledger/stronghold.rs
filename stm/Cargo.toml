@@ -7,9 +7,25 @@ authors     = ["Matthias Kandora <matthias.kandora@iota.org>"]
 [lib]
 path        = "src/lib.rs"
 
+[features]
+# add "guard_mem" to enable memory protection by default, but is dependent
+# of the runtime crate
+default     = []
+guarded     = ["guardmem"]
+
 [dependencies]
 thiserror   = "1.0.30" 
+lazy_static = "1.4.0"
 zeroize     = { version = "1.5.0", features = ["zeroize_derive"] }
+guardmem    = { package = "stronghold_engine", path = "../engine", optional = true}
 
 [dev-dependencies]
 tokio       = { version = "1.15.0", features = ["full"] }
+criterion   = { version = "0.3", features = ["async_tokio"] }
+
+[[bench]]
+name        = "config"
+harness     = false 
+
+[[test]]
+name        = "integration"
