@@ -214,43 +214,34 @@ impl<P: BoxProvider> DbView<P> {
             .ok_or(VaultError::VaultNotFound(vid))
             .and_then(|v| v.list_entries(key).map_err(|e| e.into()))
     }
-
-    /// Copy records from one vault to a new location in another vault.
-    /// The copied records are re-encrypted with the target vault's key.
-    pub fn copy_records_single_vault(
+    
+    pub fn export_records<I>(
         &mut self,
-        old_vault: VaultId,
-        old_key: &Key<P>,
-        new_vault: VaultId,
-        new_key: &Key<P>,
-        map_records: Vec<(RecordId, RecordId)>,
-    ) -> Result<(), VaultError<P::Error>> {
-        let source = self
-            .vaults
-            .get(&old_vault)
-            .ok_or(VaultError::VaultNotFound(old_vault))?;
-        let mut records: Vec<_> = map_records
+        vid: VaultId,
+        records: I,
+    ) -> Result<Vec<(RecordId, Record)>, VaultError<P::Error>>
+    where
+        I: IntoIterator<Item = RecordId>,
+    {
+        let vault = self.vaults.get(&vid).ok_or(VaultError::VaultNotFound(vid))?;
+        let list = records
             .into_iter()
-            .filter_map(|(old_rid, new_rid)| source.extract_record(&old_rid).map(|r| (new_rid.0, r)))
+            .filter_map(|rid| vault.export_record(&rid).map(|r| (rid, r)))
             .collect();
+        Ok(list)
+    }
 
-        let target = match self.vaults.get_mut(&new_vault) {
-            Some(vault) => {
-                vault.check_key(new_key)?;
-                vault
-            }
-            None => {
-                self.init_vault(new_key, new_vault);
-                self.vaults.get_mut(&new_vault).expect("Vault was initiated.")
-            }
-        };
-
-        records
-            .iter_mut()
-            .try_for_each(|(new_id, record)| record.update_meta(old_key, record.id, new_key, *new_id))?;
-        target.extend(new_key, records)?;
-
-        Ok(())
+    pub fn import_records(
+        &mut self,
+        key: &Key<P>,
+        vid: VaultId,
+        records: Vec<(RecordId, Record)>,
+    ) -> Result<(), RecordError<P::Error>> {
+        if !self.vaults.contains_key(&vid) {
+            self.init_vault(key, vid);
+        }
+        let vault = self.vaults.get_mut(&vid).expect("Vault was initiated.");
+        vault.extend(key, records.into_iter().map(|(rid, r)| (rid.0, r)))
     }
 }
 
@@ -298,7 +289,7 @@ impl<P: BoxProvider> Vault<P> {
         Ok(())
     }
 
-    pub fn extract_record(&self, rid: &RecordId) -> Option<Record> {
+    pub fn export_record(&self, rid: &RecordId) -> Option<Record> {
         self.entries.get(&rid.0).cloned()
     }
 
@@ -508,7 +499,7 @@ impl Record {
     }
 
     /// Update the key and id of an existing [`Record`].
-    fn update_meta<P: BoxProvider>(
+    pub fn update_meta<P: BoxProvider>(
         &mut self,
         old_key: &Key<P>,
         old_id: ChainId,

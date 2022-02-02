@@ -224,6 +224,12 @@ impl Debug for ChainId {
     }
 }
 
+impl From<RecordId> for ChainId {
+    fn from(id: RecordId) -> Self {
+        id.0
+    }
+}
+
 impl TryFrom<&[u8]> for ChainId {
     type Error = InvalidLength;
 
