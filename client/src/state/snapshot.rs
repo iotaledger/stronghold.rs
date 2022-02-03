@@ -22,7 +22,7 @@ pub struct Snapshot {
 
 /// Data structure that is written to the snapshot.
 #[derive(Deserialize, Serialize, Default)]
-pub struct SnapshotState(HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
+pub struct SnapshotState(pub(crate) HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
 
 impl Snapshot {
     /// Creates a new [`Snapshot`] from a buffer of [`SnapshotState`] state.

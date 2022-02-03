@@ -135,25 +135,6 @@ impl SecureClient {
 
         ctr
     }
-
-    // /// Copy records between two locations.
-    // /// Note: this replaces the target location if it already exists.
-    // pub fn copy_records(&mut self, loc_map: LocationMap) -> Result<(), VaultError> {
-    //     // This has complexity O(n), as every rid0 is only present a single time in the hierarchy.
-    //     for (vid0, target_mapping) in loc_map.map {
-    //         let key0 = self.keystore.take_key(vid0).ok_or(VaultError::VaultNotFound(vid0))?;
-    //         for (vid1, map_records) in target_mapping {
-    //             if !self.keystore.vault_exists(vid1) {
-    //                 let key1 = self.keystore.create_key(vid1);
-    //                 self.db.init_vault(key1, vid1);
-    //             }
-    //             let key1 = self.keystore.take_key(vid1).unwrap();
-    //             self.db
-    //                 .copy_records_single_vault(vid0, &key0, vid1, &key1, map_records)?;
-    //         }
-    //     }
-    //     Ok(())
-    // }
 }
 
 impl Runner for SecureClient {

@@ -3,12 +3,44 @@
 
 use crate::{
     actors::{RecordError, VaultError},
-    state::{key_store::KeyStore, secure::SecureClient},
+    state::{key_store::KeyStore, secure::SecureClient, snapshot::Snapshot},
     Provider,
 };
-use engine::vault::{view::Record, BlobId, ClientId, Key, RecordId, VaultId};
+use engine::vault::{view::Record, BlobId, ClientId, DbView, RecordId, VaultId};
 use std::collections::HashMap;
 
+pub trait MergeLayer {
+    type Hierarchy;
+    type Exported;
+    type Mapping;
+    type MergePolicy;
+
+    fn get_hierarchy(&mut self) -> Self::Hierarchy;
+    fn get_diff(&mut self, other: Self::Hierarchy, merge_policy: &Self::MergePolicy) -> Self::Hierarchy;
+    fn export_entries(&mut self, hierarchy: Self::Hierarchy) -> (&KeyStore, Self::Exported);
+    fn import_entries(&mut self, key_store: &KeyStore, exported: Self::Exported);
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SelectOne {
+    KeepOld,
+    Replace,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SelectOrMerge<T> {
+    KeepOld,
+    Replace,
+    Merge(T),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Di {
+    L2R,
+    R2L,
+}
+
+#[derive(Debug, Clone)]
 pub struct BidiMapping<T> {
     l2r: fn(T) -> Option<T>,
     r2l: fn(T) -> T,
@@ -38,48 +70,95 @@ impl<T> BidiMapping<T> {
     }
 }
 
-trait Mapper<T: Layer> {
+pub trait Mapper<T: MergeLayer> {
     fn map_hierarchy(&self, hierarchy: T::Hierarchy, di: Di) -> T::Hierarchy;
 
-    fn map_exported(
-        &self,
-        old_key_provider: &T::KeyProvider,
-        old_key_provider: &T::KeyProvider,
-        entries: T::Exported,
-    ) -> T::Exported;
+    fn map_exported(&self, old_keystore: &KeyStore, new_keystore: &KeyStore, entries: T::Exported) -> T::Exported;
 }
 
-#[derive(Debug, Clone, Copy)]
-enum Di {
-    L2R,
-    R2L,
-}
+impl MergeLayer for SecureClient {
+    type Hierarchy = HashMap<VaultId, Vec<(RecordId, BlobId)>>;
+    type Exported = HashMap<VaultId, Vec<(RecordId, Record)>>;
+    type Mapping = (VaultId, RecordId);
+    type MergePolicy = SelectOrMerge<SelectOne>;
 
-impl Mapper<VaultLayer> for BidiMapping<<VaultLayer as Layer>::Mapping> {
-    fn map_hierarchy(&self, hierarchy: <VaultLayer as Layer>::Hierarchy, di: Di) -> <VaultLayer as Layer>::Hierarchy {
-        hierarchy
+    fn get_hierarchy(&mut self) -> Self::Hierarchy {
+        let mut map = HashMap::new();
+        for vid in self.db.list_vaults() {
+            let key = self.keystore.get_key(vid).unwrap();
+            let list = self.db.list_records_with_blob_id(key, vid).unwrap();
+            map.insert(vid, list);
+        }
+        map
+    }
+    fn get_diff(&mut self, other: Self::Hierarchy, merge_policy: &Self::MergePolicy) -> Self::Hierarchy {
+        let mut diff = HashMap::new();
+        for (vid, records) in other {
+            let vault_merge_policy = match merge_policy {
+                SelectOrMerge::KeepOld => continue,
+                SelectOrMerge::Replace => {
+                    diff.insert(vid, records);
+                    continue;
+                }
+                SelectOrMerge::Merge(ref p) => p,
+            };
+            let key = match self.keystore.get_key(vid) {
+                Some(k) => k,
+                None => {
+                    diff.insert(vid, records);
+                    continue;
+                }
+            };
+            let mut records_diff = Vec::new();
+            for (rid, blob_id) in records {
+                match self.db.get_blob_id(key, vid, rid) {
+                    Ok(bid) if bid == blob_id => {}
+                    Ok(_) if matches!(vault_merge_policy, SelectOne::KeepOld) => {}
+                    Ok(_)
+                    | Err(VaultError::Record(RecordError::RecordNotFound(_)))
+                    | Err(VaultError::VaultNotFound(_)) => records_diff.push((rid, blob_id)),
+                    Err(VaultError::Record(_)) => todo!(),
+                    Err(VaultError::Procedure(_)) => unreachable!("Infallible."),
+                }
+            }
+            if !records_diff.is_empty() {
+                diff.insert(vid, records_diff);
+            }
+        }
+        diff
+    }
+
+    fn export_entries(&mut self, hierarchy: Self::Hierarchy) -> (&KeyStore, Self::Exported) {
+        let map = hierarchy
             .into_iter()
-            .filter_map(|(rid0, bid)| self.map(rid0, di).map(|rid1| (rid1, bid)))
-            .collect()
+            .map(|(vid, entries)| {
+                let exported = self
+                    .db
+                    .export_records(vid, entries.into_iter().map(|(rid, _)| rid))
+                    .unwrap();
+                (vid, exported)
+            })
+            .collect();
+        (&self.keystore, map)
     }
 
-    fn map_exported(
-        &self,
-        old_key: &<VaultLayer as Layer>::KeyProvider,
-        new_key: &<VaultLayer as Layer>::KeyProvider,
-        mut entries: <VaultLayer as Layer>::Exported,
-    ) -> <VaultLayer as Layer>::Exported {
-        let r2l = self.r2l;
-        entries
-            .iter_mut()
-            .try_for_each(|(rid, r)| r.update_meta(old_key, (*rid).into(), new_key, r2l(*rid).into()))
+    fn import_entries(&mut self, key_store: &KeyStore, exported: Self::Exported) {
+        exported
+            .into_iter()
+            .try_for_each(|(vid, entries)| {
+                let key = key_store.get_key(vid).unwrap();
+                self.db.import_records(key, vid, entries)
+            })
             .unwrap();
-        entries
     }
 }
 
-impl Mapper<ClientLayer> for BidiMapping<<ClientLayer as Layer>::Mapping> {
-    fn map_hierarchy(&self, hierarchy: <ClientLayer as Layer>::Hierarchy, di: Di) -> <ClientLayer as Layer>::Hierarchy {
+impl Mapper<SecureClient> for BidiMapping<<SecureClient as MergeLayer>::Mapping> {
+    fn map_hierarchy(
+        &self,
+        hierarchy: <SecureClient as MergeLayer>::Hierarchy,
+        di: Di,
+    ) -> <SecureClient as MergeLayer>::Hierarchy {
         let mut map = HashMap::<_, Vec<_>>::new();
         for (vid0, records) in hierarchy {
             for (rid0, bid) in records {
@@ -94,10 +173,10 @@ impl Mapper<ClientLayer> for BidiMapping<<ClientLayer as Layer>::Mapping> {
 
     fn map_exported(
         &self,
-        old_keystore: &<ClientLayer as Layer>::KeyProvider,
-        new_keystore: &<ClientLayer as Layer>::KeyProvider,
-        hierarchy: <ClientLayer as Layer>::Exported,
-    ) -> <ClientLayer as Layer>::Exported {
+        old_keystore: &KeyStore,
+        new_keystore: &KeyStore,
+        hierarchy: <SecureClient as MergeLayer>::Exported,
+    ) -> <SecureClient as MergeLayer>::Exported {
         let mut map = HashMap::<_, Vec<_>>::new();
         let r2l = self.r2l;
         for (vid0, records) in hierarchy {
@@ -114,171 +193,112 @@ impl Mapper<ClientLayer> for BidiMapping<<ClientLayer as Layer>::Mapping> {
     }
 }
 
-trait Layer {
-    type Id;
-    type Hierarchy;
-    type Exported;
-    type KeyProvider;
-    type Mapping;
-    type MergePolicy;
-}
+impl MergeLayer for Snapshot {
+    type Hierarchy = HashMap<ClientId, <SecureClient as MergeLayer>::Hierarchy>;
+    type Exported = HashMap<ClientId, <SecureClient as MergeLayer>::Exported>;
+    type Mapping = (ClientId, VaultId, RecordId);
+    type MergePolicy = SelectOrMerge<<SecureClient as MergeLayer>::MergePolicy>;
 
-enum SelectOne {
-    KeepOld,
-    Replace,
-}
-
-enum SelectOrMerge<T> {
-    KeepOld,
-    Replace,
-    Merge(T),
-}
-
-struct VaultLayer;
-impl Layer for VaultLayer {
-    type Id = VaultId;
-    type Hierarchy = Vec<(RecordId, BlobId)>;
-    type Exported = Vec<(RecordId, Record)>;
-    type KeyProvider = Key<Provider>;
-    type Mapping = RecordId;
-    type MergePolicy = SelectOne;
-}
-
-struct ClientLayer;
-impl Layer for ClientLayer {
-    type Id = ClientId;
-    type Hierarchy = HashMap<VaultId, <VaultLayer as Layer>::Hierarchy>;
-    type Exported = HashMap<VaultId, Vec<(RecordId, Record)>>;
-    type KeyProvider = KeyStore;
-    type Mapping = (VaultId, RecordId);
-    type MergePolicy = SelectOrMerge<SelectOne>;
-}
-
-trait Merge<T: Layer> {
-    fn get_hierarchy(&mut self, id: T::Id) -> T::Hierarchy;
-
-    fn get_diff(&mut self, id: T::Id, other: T::Hierarchy, merge_policy: &T::MergePolicy) -> T::Hierarchy;
-
-    fn export_entries(&mut self, id: T::Id, hierarchy: T::Hierarchy) -> (&T::KeyProvider, T::Exported);
-
-    fn import_entries(&mut self, id: T::Id, key_provider: &T::KeyProvider, exported: T::Exported);
-}
-
-impl Merge<VaultLayer> for SecureClient {
-    fn get_hierarchy(&mut self, id: VaultId) -> Vec<(RecordId, BlobId)> {
-        let key = self.keystore.get_key(id).unwrap();
-        self.db.list_records_with_blob_id(key, id).unwrap()
-    }
-
-    fn get_diff(
-        &mut self,
-        id: VaultId,
-        other: Vec<(RecordId, BlobId)>,
-        merge_policy: &SelectOne,
-    ) -> Vec<(RecordId, BlobId)> {
-        if !self.keystore.vault_exists(id) {
-            return other;
-        }
-
-        let key = self.keystore.get_key(id).unwrap();
-
-        let mut records_diff = Vec::new();
-        for (rid, blob_id) in other {
-            match self.db.get_blob_id(key, id, rid) {
-                Ok(bid) if bid == blob_id => {}
-                Ok(_) if matches!(merge_policy, SelectOne::KeepOld) => {}
-                Ok(_) | Err(VaultError::Record(RecordError::RecordNotFound(_))) | Err(VaultError::VaultNotFound(_)) => {
-                    records_diff.push((rid, blob_id))
-                }
-                Err(VaultError::Record(_)) => todo!(),
-                Err(VaultError::Procedure(_)) => unreachable!("Infallible."),
-            }
-        }
-        records_diff
-    }
-
-    fn export_entries(
-        &mut self,
-        id: VaultId,
-        hierarchy: Vec<(RecordId, BlobId)>,
-    ) -> (&Key<Provider>, Vec<(RecordId, Record)>) {
-        let key = self.keystore.get_key(id).unwrap();
-        let exported = self
-            .db
-            .export_records(id, hierarchy.into_iter().map(|(rid, _)| rid))
-            .unwrap();
-        (key, exported)
-    }
-
-    fn import_entries(&mut self, id: VaultId, key: &Key<Provider>, entries: Vec<(RecordId, Record)>) {
-        self.db.import_records(key, id, entries).unwrap();
-    }
-}
-
-impl Merge<ClientLayer> for SecureClient {
-    fn get_hierarchy(&mut self, id: ClientId) -> <ClientLayer as Layer>::Hierarchy {
-        if id != self.client_id {
-            todo!("return error.");
-        }
+    fn get_hierarchy(&mut self) -> Self::Hierarchy {
         let mut map = HashMap::new();
-        for vid in self.db.list_vaults() {
-            let list = <Self as Merge<VaultLayer>>::get_hierarchy(self, vid);
-            map.insert(vid, list);
+        for (client_id, (keystore, db, _)) in &mut self.state.0 {
+            let mut vault_map = HashMap::new();
+            for vid in db.list_vaults() {
+                let key = keystore.get(&vid).unwrap();
+                let list = db.list_records_with_blob_id(key, vid).unwrap();
+                vault_map.insert(vid, list);
+            }
+            map.insert(*client_id, vault_map);
         }
         map
     }
 
-    fn get_diff(
-        &mut self,
-        id: ClientId,
-        other: <ClientLayer as Layer>::Hierarchy,
-        merge_policy: &<ClientLayer as Layer>::MergePolicy,
-    ) -> <ClientLayer as Layer>::Hierarchy {
-        if id != self.client_id {
-            todo!("return error.");
-        }
+    fn get_diff(&mut self, other: Self::Hierarchy, merge_policy: &Self::MergePolicy) -> Self::Hierarchy {
         let mut diff = HashMap::new();
-        for (vid, records) in other {
-            match merge_policy {
-                SelectOrMerge::KeepOld => {}
+        for (cid, vaults) in other {
+            let vault_merge_policy = match merge_policy {
+                SelectOrMerge::KeepOld => continue,
                 SelectOrMerge::Replace => {
-                    diff.insert(vid, records);
+                    diff.insert(cid, vaults);
+                    continue;
                 }
-                SelectOrMerge::Merge(ref p) => {
-                    let records_diff = <Self as Merge<VaultLayer>>::get_diff(self, vid, records, p);
-                    if !records_diff.is_empty() {
-                        diff.insert(vid, records_diff);
+                SelectOrMerge::Merge(ref p) => p,
+            };
+            let (keystore, db) = match self.state.0.get_mut(&cid) {
+                Some((k, db, _)) => (k, db),
+                None => {
+                    diff.insert(cid, vaults);
+                    continue;
+                }
+            };
+
+            let mut vault_diff = HashMap::new();
+            for (vid, records) in vaults {
+                let record_merge_policy = match vault_merge_policy {
+                    SelectOrMerge::KeepOld => continue,
+                    SelectOrMerge::Replace => {
+                        vault_diff.insert(vid, records);
+                        continue;
                     }
+                    SelectOrMerge::Merge(ref p) => p,
+                };
+                let key = match keystore.get(&vid) {
+                    Some(k) => k,
+                    None => {
+                        vault_diff.insert(vid, records);
+                        continue;
+                    }
+                };
+
+                let mut records_diff = Vec::new();
+                for (rid, blob_id) in records {
+                    match db.get_blob_id(key, vid, rid) {
+                        Ok(bid) if bid == blob_id => {}
+                        Ok(_) if matches!(record_merge_policy, SelectOne::KeepOld) => {}
+                        Ok(_)
+                        | Err(VaultError::Record(RecordError::RecordNotFound(_)))
+                        | Err(VaultError::VaultNotFound(_)) => records_diff.push((rid, blob_id)),
+                        Err(VaultError::Record(_)) => todo!(),
+                        Err(VaultError::Procedure(_)) => unreachable!("Infallible."),
+                    }
+                }
+                if !records_diff.is_empty() {
+                    vault_diff.insert(vid, records_diff);
                 }
             }
         }
         diff
     }
 
-    fn export_entries(
-        &mut self,
-        id: ClientId,
-        hierarchy: <ClientLayer as Layer>::Hierarchy,
-    ) -> (&<ClientLayer as Layer>::KeyProvider, <ClientLayer as Layer>::Exported) {
-        if id != self.client_id {
-            todo!("return error.");
-        }
-
+    fn export_entries(&mut self, hierarchy: Self::Hierarchy) -> (&KeyStore, Self::Exported) {
         let map = hierarchy
             .into_iter()
-            .map(|(vid, entries)| (vid, <Self as Merge<VaultLayer>>::export_entries(self, vid, entries).1))
+            .filter_map(|(cid, vaults)| {
+                let (keystore, db, _) = self.state.0.get_mut(&cid)?;
+                let vaults = vaults
+                    .into_iter()
+                    .map(|(vid, entries)| {
+                        let exported = db.export_records(vid, entries.into_iter().map(|(rid, _)| rid)).unwrap();
+                        (vid, exported)
+                    })
+                    .collect();
+                Some((cid, vaults))
+            })
             .collect();
-        (&self.keystore, map)
+        let keystore: &KeyStore = todo!();
+        (keystore, map)
     }
 
-    fn import_entries(&mut self, id: ClientId, key_store: &KeyStore, hierarchy: <ClientLayer as Layer>::Exported) {
-        if id != self.client_id {
-            todo!("return error.");
-        }
-
-        hierarchy.into_iter().for_each(|(vid, entries)| {
-            let key = key_store.get_key(vid).unwrap();
-            <Self as Merge<VaultLayer>>::import_entries(self, vid, key, entries)
-        });
+    fn import_entries(&mut self, key_store: &KeyStore, exported: Self::Exported) {
+        exported
+            .into_iter()
+            .try_for_each(|(cid, vaults)| {
+                vaults.into_iter().try_for_each(|(vid, entries)| {
+                    let key = key_store.get_key(vid).unwrap();
+                    let db: &mut DbView<Provider> = todo!();
+                    db.import_records(key, vid, entries)
+                })
+            })
+            .unwrap();
     }
 }
