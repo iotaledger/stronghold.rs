@@ -7,108 +7,87 @@ use std::{
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{Receiver, Sender},
         Arc, Mutex, Weak,
     },
     task::{Context, Poll},
 };
-use zeroize::Zeroize;
 
 /// This component takes in an executing future from a `Transaction` and
-/// blocks further progress.
-pub struct FutureBlocker<F>
+/// blocks further progress until it has been `awakened` again. [`Self::wake()`]
+/// shall be called  
+pub struct FutureBlocker<F, T>
 where
-    F: Future,
+    F: Future<Output = Result<T, TransactionError>>,
+    T: Send + Sync + BoxedMemory,
 {
-    task: Arc<Mutex<Option<F>>>,
-    tx: Arc<Mutex<Sender<bool>>>,
-    rx: Arc<Mutex<Receiver<bool>>>,
+    task: Arc<Mutex<Option<Pin<Box<F>>>>>,
     blocked: Arc<AtomicBool>,
 }
 
-impl<F> Clone for FutureBlocker<F>
+impl<F, T> Clone for FutureBlocker<F, T>
 where
-    F: Future,
+    F: Future<Output = Result<T, TransactionError>>,
+    T: Send + Sync + BoxedMemory,
 {
     fn clone(&self) -> Self {
         Self {
             task: self.task.clone(),
-            tx: self.tx.clone(),
-            rx: self.rx.clone(),
             blocked: self.blocked.clone(),
         }
     }
 }
 
-impl<F> From<F> for FutureBlocker<F>
+impl<F, T> FutureBlocker<F, T>
 where
-    F: Future,
-{
-    fn from(task: F) -> Self {
-        FutureBlocker::new(task)
-    }
-}
-
-impl<F> FutureBlocker<F>
-where
-    F: Future,
+    F: Future<Output = Result<T, TransactionError>>,
+    T: Send + Sync + BoxedMemory,
 {
     pub fn new(task: F) -> Self {
-        let (tx, rx) = std::sync::mpsc::channel();
         Self {
-            task: Arc::new(Mutex::new(Some(task))),
-            tx: Arc::new(Mutex::new(tx)),
-            rx: Arc::new(Mutex::new(rx)),
+            task: Arc::new(Mutex::new(Some(Box::pin(task)))),
             blocked: Arc::new(AtomicBool::new(true)),
         }
     }
 
     pub async fn wake(&self) {
-        self.tx.lock().expect("").send(false).expect("failed to send");
+        self.blocked.swap(false, Ordering::Release);
     }
 }
 
-impl<F> Future for FutureBlocker<F>
+impl<F, T> Future for FutureBlocker<F, T>
 where
-    F: Future,
+    F: Future<Output = Result<T, TransactionError>>,
+    T: Send + Sync + BoxedMemory,
 {
-    type Output = Result<F, TransactionError>;
+    type Output = Result<T, TransactionError>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Ok(data) = self.rx.lock().expect("").try_recv() {
-            self.blocked.swap(data, Ordering::SeqCst);
-        }
-
-        match self.blocked.load(Ordering::SeqCst) {
+        match self.blocked.load(Ordering::Acquire) {
             true => {
                 ctx.waker().to_owned().wake();
                 Poll::Pending
             }
             false => {
                 let mut lock = self.task.lock().map_err(|e| TransactionError::Inner(e.to_string()))?;
-                let task = match lock.take() {
-                    Some(inner) => inner,
-                    None => {
-                        return Poll::Ready(Err(TransactionError::Inner(
-                            "No future present in FutureBlock".to_string(),
-                        )))
-                    }
-                };
-
-                Poll::Ready(Ok(task))
+                match &mut *lock {
+                    Some(ref mut inner) => Pin::new(inner).poll(ctx),
+                    None => Poll::Ready(Err(TransactionError::Inner(
+                        "No future present in FutureBlock".to_string(),
+                    ))),
+                }
             }
         }
     }
 }
 
-#[derive(Zeroize)]
+/// The [`MemoryController`]
 pub struct MemoryController<F, T>
 where
+    F: Future<Output = Result<T, TransactionError>>,
     T: Send + Sync + BoxedMemory,
-    F: Future,
 {
     /// A list of futures observing the underlying value
-    futures: Mutex<Vec<Weak<FutureBlocker<F>>>>,
+    futures: Mutex<Vec<Weak<FutureBlocker<F, T>>>>,
 
     // the actual value to be modified
     pub(crate) value: Arc<Mutex<T>>,
@@ -116,8 +95,8 @@ where
 
 impl<F, T> MemoryController<F, T>
 where
+    F: Future<Output = Result<T, TransactionError>> + Unpin,
     T: Send + Sync + BoxedMemory,
-    F: Future,
 {
     pub fn new(value: T) -> Arc<Self> {
         let mem_ctrl = Self {
@@ -158,7 +137,7 @@ where
     }
 
     /// Adds another observing future to the vec of observers
-    pub async fn push(&self, blocker: &Arc<FutureBlocker<F>>) -> Result<(), TransactionError> {
+    pub async fn push(&self, blocker: &Arc<FutureBlocker<F, T>>) -> Result<(), TransactionError> {
         let mut futures = self
             .futures
             .lock()
@@ -176,7 +155,7 @@ where
 
 impl<F, T> PartialEq for MemoryController<F, T>
 where
-    F: Future,
+    F: Future<Output = Result<T, TransactionError>> + Unpin,
     T: Send + Sync + BoxedMemory,
 {
     fn eq(&self, other: &Self) -> bool {
@@ -186,28 +165,7 @@ where
 
 impl<F, T> Eq for MemoryController<F, T>
 where
-    F: Future,
+    F: Future<Output = Result<T, TransactionError>> + Unpin,
     T: Send + Sync + BoxedMemory,
 {
-}
-
-#[cfg(test)]
-mod tests {
-
-    use std::time::Duration;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn test_controller() {
-        let blocker = FutureBlocker::new(async {});
-
-        let r1 = tokio::spawn(blocker.clone());
-
-        tokio::time::sleep(Duration::from_millis(5000)).await;
-        let r2 = tokio::spawn(async move { blocker.wake().await });
-
-        let _ = r1.await.expect("");
-        r2.await.expect("");
-    }
 }
