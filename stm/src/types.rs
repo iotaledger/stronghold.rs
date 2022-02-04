@@ -3,12 +3,12 @@
 
 use zeroize::Zeroize;
 
-use crate::{BoxedMemory, TransactionError};
+use crate::{ctrl::MemoryController, BoxedMemory, Transaction, TransactionError};
 use std::{
     cmp::Ordering,
     hash::{Hash, Hasher},
-    ops::{Deref, DerefMut},
-    sync::{Arc, Mutex},
+    ops::Deref,
+    sync::Arc,
 };
 
 /// Represents a transactional variable, that
@@ -20,7 +20,7 @@ where
     /// this is a controller to take care of access to the
     /// underlying value.
     /// TODO: Mutex to value must be replaced
-    value: Arc<Mutex<T>>,
+    pub(crate) value: Option<MemoryController<Transaction<T>, T>>,
 }
 
 impl<T> TVar<T>
@@ -29,26 +29,40 @@ where
 {
     pub fn new(var: T) -> Self {
         Self {
-            value: Arc::new(Mutex::new(var)),
+            value: Some(MemoryController::new(var)),
         }
     }
 
     /// Reads the value of the inner value without a transaction
     /// FIXME: Do we really need this function,  or is this "only" required
     /// for tests
-    pub fn read_atomic(&self) -> Result<T, TransactionError> {
-        let value = &self.value.lock().map_err(|e| TransactionError::Inner(e.to_string()))?;
+    pub fn read_atomic(&self) -> Result<Arc<T>, TransactionError> {
+        if let Some(ctrl) = &self.value {
+            match ctrl.value.read() {
+                Ok(lock) => return Ok(lock.clone()),
+                Err(error) => return Err(TransactionError::InconsistentState),
+            }
+        }
+
+        Err(TransactionError::InconsistentState)
 
         // FIXME: this would require `BoxedMemory` to support safe cloning of memory
-        Ok((*value).clone())
+        // Ok((*value).clone())
     }
 
     pub fn write_atomic(&self, value: T) -> Result<(), TransactionError> {
-        let mut inner = self.value.lock().map_err(|e| TransactionError::Inner(e.to_string()))?;
+        if let Some(ctrl) = &self.value {
+            match ctrl.value.write() {
+                Ok(mut lock) => {
+                    *lock = Arc::new(value);
 
-        *inner = value;
+                    return Ok(());
+                }
+                Err(error) => return Err(TransactionError::InconsistentState),
+            }
+        }
 
-        Ok(())
+        Err(TransactionError::InconsistentState)
     }
 
     // /// Read the value from a transaction. This is considered the "normal" way
@@ -72,10 +86,10 @@ where
     //     }
     // }
 
-    /// Returns `true`, if the referenced values are equal
-    pub fn equals(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.value, &other.value)
-    }
+    // Returns `true`, if the referenced values are equal
+    // pub fn equals(&self, other: &Self) -> bool {
+    //     Arc::ptr_eq(&self.value, &other.value)
+    // }
 }
 
 impl<T> Clone for TVar<T>
@@ -154,30 +168,30 @@ where
     T: Send + Sync + BoxedMemory,
 {
     /// Indicates that a variable has been read
-    Read(T),
+    Read(Arc<T>),
 
     /// Indicates that a variable has been modified
-    Write(T),
+    Write(Arc<T>),
 
     /// Store (original, updated)
-    ReadWrite(T, T),
+    ReadWrite(Arc<T>, Arc<T>),
 }
 
 impl<T> TLog<T>
 where
     T: Send + Sync + BoxedMemory,
 {
-    pub async fn read(&mut self) -> Result<T, TransactionError> {
+    pub fn read(&mut self) -> Result<Arc<T>, TransactionError> {
         match self {
-            Self::Read(ref inner) => Ok(inner.clone()),
+            Self::Read(inner) => Ok(inner.clone()),
             Self::Write(ref inner) | Self::ReadWrite(_, ref inner) => Ok(inner.clone()),
         }
     }
 
-    pub async fn write(&mut self, update: T) -> Result<(), TransactionError> {
+    pub fn write(&mut self, update: T) -> Result<(), TransactionError> {
         *self = match self {
             Self::Write(ref inner) => Self::Write(inner.clone()),
-            Self::Read(ref inner) | Self::ReadWrite(_, ref inner) => Self::ReadWrite(inner.clone(), update),
+            Self::Read(ref inner) | Self::ReadWrite(_, ref inner) => Self::ReadWrite(inner.clone(), Arc::new(update)),
         };
 
         Ok(())
@@ -198,18 +212,18 @@ where
     }
 }
 
-impl<T> DerefMut for TLog<T>
-where
-    T: Send + Sync + BoxedMemory,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Self::Read(inner) => inner,
-            Self::Write(inner) => inner,
-            Self::ReadWrite(_, inner) => inner,
-        }
-    }
-}
+// impl<T> DerefMut for TLog<T>
+// where
+//     T: Send + Sync + BoxedMemory,
+// {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         match self {
+//             Self::Read(inner) => inner,
+//             Self::Write(inner) => inner,
+//             Self::ReadWrite(_, inner) => inner,
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
