@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::Provider;
 
 pub struct KeyStore {
-    store: HashMap<VaultId, Key<Provider>>,
+    pub store: HashMap<VaultId, Key<Provider>>,
 }
 
 impl KeyStore {

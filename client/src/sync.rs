@@ -3,6 +3,7 @@
 
 use crate::{
     actors::{RecordError, VaultError},
+    state::{secure::SecureClient, snapshot::Snapshot},
     Provider,
 };
 use engine::vault::{view::Record, BlobId, ClientId, DbView, Key, RecordId, VaultId};
@@ -156,6 +157,15 @@ pub struct ClientState<'a> {
     pub keystore: &'a HashMap<VaultId, Key<Provider>>,
 }
 
+impl<'a> From<&'a mut SecureClient> for ClientState<'a> {
+    fn from(client: &'a mut SecureClient) -> Self {
+        ClientState {
+            db: &mut client.db,
+            keystore: &client.keystore.store,
+        }
+    }
+}
+
 /// Merge two client states.
 impl<'a> MergeLayer for ClientState<'a> {
     type Hierarchy = HashMap<VaultId, Vec<(RecordId, BlobId)>>;
@@ -285,6 +295,21 @@ pub struct SnapshotState<'a> {
     pub client_states: HashMap<ClientId, ClientState<'a>>,
 }
 
+impl<'a> From<&'a mut Snapshot> for SnapshotState<'a> {
+    fn from(snapshot: &'a mut Snapshot) -> Self {
+        let client_states = snapshot
+            .state
+            .0
+            .iter_mut()
+            .map(|(&cid, (keystore, db, _))| {
+                let state = ClientState { keystore, db };
+                (cid, state)
+            })
+            .collect();
+        SnapshotState { client_states }
+    }
+}
+
 /// Merge two snapshot states.
 /// Apart from merging the state from another snapshot file into the already loaded snapshot state, this also allows
 /// to import the state from remote snapshots partially or fully.
@@ -402,5 +427,92 @@ impl<'a> Mapper<SnapshotState<'a>> for BidiMapping<<SnapshotState<'a> as MergeLa
             }
         }
         map
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use stronghold_utils::random;
+
+    use crate::{procedures::Runner, state::secure::SecureClient, Location};
+
+    use super::*;
+
+    #[test]
+    fn test_get_hierarchy() {
+        let cid_a = ClientId::random::<Provider>().unwrap();
+        let mut client_a = SecureClient::new(cid_a);
+        let hierarchy = ClientState::from(&mut client_a).get_hierarchy();
+        assert!(hierarchy.is_empty());
+
+        let v_path_1 = random::bytestring(4096);
+        let r_path_1 = random::bytestring(4096);
+        let location_1 = Location::generic(v_path_1, r_path_1);
+        let (vid1, rid1) = SecureClient::resolve_location(location_1.clone());
+        let test_hint_1 = random::random::<[u8; 24]>().into();
+        let test_value_1 = random::bytestring(4096);
+        client_a.write_to_vault(&location_1, test_hint_1, test_value_1).unwrap();
+
+        let v_path_2 = random::bytestring(4096);
+        let r_path_2 = random::bytestring(4096);
+        let location_2 = Location::generic(v_path_2.clone(), r_path_2);
+        let (vid2, rid2) = SecureClient::resolve_location(location_2.clone());
+        let test_hint_2 = random::random::<[u8; 24]>().into();
+        let test_value_2 = random::bytestring(4096);
+        client_a.write_to_vault(&location_2, test_hint_2, test_value_2).unwrap();
+
+        let r_path_3 = random::bytestring(4096);
+        let location_3 = Location::generic(v_path_2, r_path_3);
+        let (vid23, rid3) = SecureClient::resolve_location(location_3.clone());
+        assert_eq!(vid2, vid23);
+        let test_hint_3 = random::random::<[u8; 24]>().into();
+        let test_value_3 = random::bytestring(4096);
+        client_a.write_to_vault(&location_3, test_hint_3, test_value_3).unwrap();
+
+        let hierarchy = ClientState::from(&mut client_a).get_hierarchy();
+
+        assert_eq!(hierarchy.len(), 2);
+        let records_1 = hierarchy.iter().find(|(k, _)| **k == vid1).unwrap().1;
+        assert_eq!(records_1.len(), 1);
+        assert_eq!(records_1[0].0, rid1);
+
+        let records_2 = hierarchy.iter().find(|(k, _)| **k == vid2).unwrap().1;
+        assert_eq!(records_2.len(), 2);
+        assert!(records_2.iter().any(|(rid, _)| rid == &rid2));
+        assert!(records_2.iter().any(|(rid, _)| rid == &rid3));
+    }
+
+    #[test]
+    fn test_map_hierarchy() {
+        let vid1 = VaultId::random::<Provider>().unwrap();
+        let rid1 = RecordId::random::<Provider>().unwrap();
+        let bid1 = BlobId::random::<Provider>().unwrap();
+
+        let vid2 = VaultId::random::<Provider>().unwrap();
+        let rid2 = RecordId::random::<Provider>().unwrap();
+        let bid2 = BlobId::random::<Provider>().unwrap();
+
+        let vid3 = VaultId::random::<Provider>().unwrap();
+        let rid3 = RecordId::random::<Provider>().unwrap();
+        let bid3 = BlobId::random::<Provider>().unwrap();
+
+        let mut hierarchy = HashMap::new();
+        hierarchy.insert(vid1, vec![(rid1, bid1)]);
+        hierarchy.insert(vid2, vec![(rid2, bid2)]);
+        hierarchy.insert(vid3, vec![(rid3, bid3)]);
+
+        // Map all records into same vault.
+        let l2r = |(_, rid)| (SecureClient::derive_vault_id("test".as_bytes().to_vec()), rid);
+
+        let mapper = BidiMapping::<(VaultId, RecordId)> { l2r, r2l: |_| None };
+        let mut mapped = mapper.map_hierarchy(hierarchy, MappingDirection::L2R);
+        let expect_vault = SecureClient::derive_vault_id("test".as_bytes().to_vec());
+        let records = mapped.remove(&expect_vault).unwrap();
+        assert_eq!(records.len(), 3);
+        assert!(records.contains(&(rid1, bid1)));
+        assert!(records.contains(&(rid2, bid2)));
+        assert!(records.contains(&(rid3, bid3)));
+        assert!(mapped.is_empty());
     }
 }
