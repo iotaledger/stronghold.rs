@@ -1,7 +1,8 @@
 // No std maybe for later
 #![no_std]
 
-mod boxed_memory;
+mod locked_memory;
+mod buffer;
 mod ram_memory;
 mod file_memory;
 mod noncontiguous_memory;

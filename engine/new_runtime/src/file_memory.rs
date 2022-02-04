@@ -1,4 +1,4 @@
-use crate::boxed_memory::MemoryConfiguration;
+use crate::locked_memory::MemoryConfiguration;
 
 const FILENAME_SIZE: usize = 16;
 

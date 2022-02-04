@@ -1,6 +1,6 @@
 use crate::file_memory::FileMemory;
 use crate::ram_memory::RamMemory;
-use crate::boxed_memory::MemoryConfiguration;
+use crate::locked_memory::MemoryConfiguration;
 use crate::types::Bytes;
 use zeroize::Zeroize;
 
