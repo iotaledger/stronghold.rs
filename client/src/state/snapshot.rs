@@ -5,7 +5,7 @@
 
 use crate::{
     state::secure::Store,
-    sync::{self, BidiMapping, Di, Mapper, MergeLayer, SelectOne, SelectOrMerge},
+    sync::{self, BidiMapping, Mapper, MappingDirection, MergeLayer, SelectOne, SelectOrMerge},
     Provider,
 };
 
@@ -81,7 +81,7 @@ impl Snapshot {
         }
     }
 
-    // Sync two client states
+    // Sync two client states.
     pub fn sync_clients(
         &mut self,
         cid0: ClientId,
@@ -91,11 +91,11 @@ impl Snapshot {
     ) {
         let mut source = self.get_client_state(cid0).unwrap();
         let hierarchy = source.get_hierarchy();
-        let mapped_hierarchy = mapper.map_hierarchy(hierarchy, Di::R2L);
+        let mapped_hierarchy = mapper.map_hierarchy(hierarchy, MappingDirection::R2L);
 
         let mut target = self.get_client_state(cid1).unwrap();
         let diff = target.get_diff(mapped_hierarchy, &merge_policy);
-        let mapped_diff = mapper.map_hierarchy(diff, Di::L2R);
+        let mapped_diff = mapper.map_hierarchy(diff, MappingDirection::L2R);
 
         let mut source = self.get_client_state(cid0).unwrap();
         let exported = source.export_entries(mapped_diff);
@@ -108,7 +108,8 @@ impl Snapshot {
         target.import_entries(mapped_exported);
     }
 
-    pub fn import_snapshot(
+    /// Sync the local state with another snapshot, which imports the entries from `other` to `local`.
+    pub fn sync_with_snapshot(
         &mut self,
         other: &mut Self,
         mapper: BidiMapping<(ClientId, VaultId, RecordId)>,
@@ -116,11 +117,11 @@ impl Snapshot {
     ) {
         let mut source = other.as_snapshot_state();
         let hierarchy = source.get_hierarchy();
-        let mapped_hierarchy = mapper.map_hierarchy(hierarchy, Di::R2L);
+        let mapped_hierarchy = mapper.map_hierarchy(hierarchy, MappingDirection::R2L);
 
         let mut target = self.as_snapshot_state();
         let diff = target.get_diff(mapped_hierarchy, &merge_policy);
-        let mapped_diff = mapper.map_hierarchy(diff, Di::L2R);
+        let mapped_diff = mapper.map_hierarchy(diff, MappingDirection::L2R);
 
         let mut source = other.as_snapshot_state();
         let exported = source.export_entries(mapped_diff);
