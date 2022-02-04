@@ -3,11 +3,15 @@
 
 #![allow(clippy::type_complexity)]
 
-use crate::{state::secure::Store, Provider};
+use crate::{
+    state::secure::Store,
+    sync::{self, BidiMapping, Di, Mapper, MergeLayer, SelectOne, SelectOrMerge},
+    Provider,
+};
 
 use engine::{
     snapshot::{self, read_from, write_to, Key, ReadError as EngineReadError, WriteError as EngineWriteError},
-    vault::{ClientId, DbView, Key as PKey, VaultId},
+    vault::{ClientId, DbView, Key as PKey, RecordId, VaultId},
 };
 
 use serde::{Deserialize, Serialize};
@@ -75,6 +79,87 @@ impl Snapshot {
             Ok(()) => Ok(()),
             Err(_) => f().map_err(|e| e.into()),
         }
+    }
+
+    // Sync two client states
+    pub fn sync_clients(
+        &mut self,
+        cid0: ClientId,
+        cid1: ClientId,
+        mapper: BidiMapping<(VaultId, RecordId)>,
+        merge_policy: SelectOrMerge<SelectOne>,
+    ) {
+        let mut source = self.get_client_state(cid0).unwrap();
+        let hierarchy = source.get_hierarchy();
+        let mapped_hierarchy = mapper.map_hierarchy(hierarchy, Di::R2L);
+
+        let mut target = self.get_client_state(cid1).unwrap();
+        let diff = target.get_diff(mapped_hierarchy, &merge_policy);
+        let mapped_diff = mapper.map_hierarchy(diff, Di::L2R);
+
+        let mut source = self.get_client_state(cid0).unwrap();
+        let exported = source.export_entries(mapped_diff);
+
+        let source_keystore = &self.state.0.get(&cid0).unwrap().0;
+        let target_keystore = &self.state.0.get(&cid1).unwrap().0;
+        let mapped_exported = mapper.map_exported(source_keystore, target_keystore, exported);
+
+        let mut target = self.get_client_state(cid1).unwrap();
+        target.import_entries(mapped_exported);
+    }
+
+    pub fn import_snapshot(
+        &mut self,
+        other: &mut Self,
+        mapper: BidiMapping<(ClientId, VaultId, RecordId)>,
+        merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
+    ) {
+        let mut source = other.as_snapshot_state();
+        let hierarchy = source.get_hierarchy();
+        let mapped_hierarchy = mapper.map_hierarchy(hierarchy, Di::R2L);
+
+        let mut target = self.as_snapshot_state();
+        let diff = target.get_diff(mapped_hierarchy, &merge_policy);
+        let mapped_diff = mapper.map_hierarchy(diff, Di::L2R);
+
+        let mut source = other.as_snapshot_state();
+        let exported = source.export_entries(mapped_diff);
+
+        let source_keystore = other.get_key_provider();
+        let target_keystore = self.get_key_provider();
+        let mapped_exported = mapper.map_exported(source_keystore, target_keystore, exported);
+
+        let mut target = self.as_snapshot_state();
+        target.import_entries(mapped_exported);
+    }
+
+    fn as_snapshot_state(&mut self) -> sync::SnapshotState {
+        let client_states = self
+            .state
+            .0
+            .iter_mut()
+            .map(|(&cid, (keystore, db, _))| {
+                let state = sync::ClientState { keystore, db };
+                (cid, state)
+            })
+            .collect();
+        sync::SnapshotState { client_states }
+    }
+
+    fn get_key_provider(&self) -> HashMap<ClientId, &HashMap<VaultId, PKey<Provider>>> {
+        self.state
+            .0
+            .iter()
+            .map(|(&cid, (keystore, _, _))| (cid, keystore))
+            .collect()
+    }
+
+    fn get_client_state(&mut self, id: ClientId) -> Option<sync::ClientState> {
+        let state = self.state.0.get_mut(&id)?;
+        Some(sync::ClientState {
+            keystore: &state.0,
+            db: &mut state.1,
+        })
     }
 }
 
