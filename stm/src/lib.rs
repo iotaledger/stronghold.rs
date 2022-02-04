@@ -27,7 +27,7 @@ pub use boxedalloc::BoxedMemory;
 /// until it succeeds. As of now, this could hang the execution if certain edge cases are being hit:
 /// - interleaving reads and writes, blocking each other.
 ///
-/// ```
+///
 /// # use stronghold_stm::*;
 ///
 /// #[tokio::main]
@@ -45,7 +45,6 @@ pub use boxedalloc::BoxedMemory;
 ///     .await;
 ///     assert_eq!(var.read_atomic().expect(""), 10);
 /// }
-/// ```
 pub async fn transactional<T, F>(program: F) -> Result<(), TransactionError>
 where
     T: Send + Sync + BoxedMemory,

@@ -4,6 +4,7 @@
 use zeroize::Zeroize;
 
 use crate::{ctrl::MemoryController, BoxedMemory, Transaction, TransactionError};
+use log::*;
 use std::{
     cmp::Ordering,
     hash::{Hash, Hasher},
@@ -162,7 +163,7 @@ impl<T> Eq for TVar<T> where T: Send + Sync + BoxedMemory {}
 
 /// Transactional Log type. The intend of this type
 /// is to track each operation on the target value
-#[derive(Zeroize)]
+#[derive(Zeroize, Debug)]
 pub enum TLog<T>
 where
     T: Send + Sync + BoxedMemory,
@@ -189,9 +190,16 @@ where
     }
 
     pub fn write(&mut self, update: T) -> Result<(), TransactionError> {
+        info!("Update Tlog With Value: '{:?}'", update);
         *self = match self {
-            Self::Write(ref inner) => Self::Write(inner.clone()),
-            Self::Read(ref inner) | Self::ReadWrite(_, ref inner) => Self::ReadWrite(inner.clone(), Arc::new(update)),
+            Self::Write(ref inner) => {
+                info!("Update Tlog::Write With Value: '{:?}'", inner);
+                Self::Write(Arc::new(update))
+            }
+            Self::Read(ref inner) | Self::ReadWrite(_, ref inner) => {
+                info!("Update Tlog::Read|ReadWrite With Value: '{:?}'", inner);
+                Self::ReadWrite(inner.clone(), Arc::new(update))
+            }
         };
 
         Ok(())

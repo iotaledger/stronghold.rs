@@ -3,6 +3,7 @@
 
 use crate::{ctrl::MemoryController, BoxedMemory, TLog, TVar, TransactionError};
 // use lazy_static::*;
+use log::*;
 use std::{
     collections::{btree_map::Entry, BTreeMap},
     future::Future,
@@ -137,14 +138,23 @@ where
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.blocking.load(std::sync::atomic::Ordering::Acquire) {
-            true => Poll::Pending,
+            true => {
+                info!("Executing transaction paused...");
+                Poll::Pending
+            }
             false => {
+                info!("Running transaction");
                 let program = &self.program.lock().unwrap();
                 match program(&self) {
                     Ok(_) => {
+                        info!("Committing transaction");
                         if self.commit().is_ok() {
+                            info!("Transaction committed successfully");
                             return Poll::Ready(Ok(()));
                         }
+
+                        info!("Running commit failed");
+
                         // inform waker, over re-check
                         ctx.waker().to_owned().wake();
                         Poll::Pending
@@ -220,6 +230,8 @@ where
         // TODO: we need some protection, as nested transaction are not allowed
         // tx.await;
 
+        info!("Creating transaction");
+
         // we keep calling the transaction until it suceeds, or fails.
         // depending on the internally set strategy
         Self {
@@ -249,15 +261,20 @@ where
 
     /// Write value inside transaction
     pub fn write(&self, value: T, var: &TVar<T>) -> Result<(), TransactionError> {
+        info!("Write value into transaction: '{:?}'", value);
         match self
             .log
             .lock()
             .map_err(TransactionError::to_inner)?
             .entry(var.value.clone().unwrap())
         {
-            Entry::Occupied(mut inner) => return inner.get_mut().write(value),
+            Entry::Occupied(mut inner) => {
+                info!("Write value into Log: '{:?}'", value);
+                return inner.get_mut().write(value);
+            }
             Entry::Vacant(entry) => {
-                entry.insert(TLog::Write(var.read_atomic()?));
+                info!("Write value into new Log Entry: '{:?}'", value);
+                entry.insert(TLog::Write(Arc::new(value)));
                 Ok(())
             }
         }
@@ -281,38 +298,63 @@ where
     fn commit(&self) -> Result<(), TransactionError> {
         let txlog = &self.log.lock().map_err(TransactionError::to_inner)?;
 
-        let mut reads = Vec::new();
+        // let mut reads = Vec::new();
+        // let mut writes = Vec::new();
         let mut waking = Vec::new();
 
+        info!("Validate transaction");
         for (var, log_entry) in txlog.iter() {
+            info!("Check TLog Entry {:?}", log_entry);
             match log_entry {
-                TLog::Write(ref inner) => match var.value.write() {
-                    Ok(mut lock) => {
-                        *lock = inner.clone();
-                        waking.push(var);
+                TLog::Write(ref inner) => {
+                    info!("Check Write");
+                    match var.value.write() {
+                        Ok(mut lock) => {
+                            // writes.push((lock, inner.clone()));
+                            *lock = inner.clone();
+                            waking.push(var);
+                        }
+                        Err(err) => {
+                            info!("Could not get Write lock");
+                            return Err(TransactionError::to_inner(err));
+                        }
                     }
-                    Err(err) => return Err(TransactionError::to_inner(err)),
-                },
+                }
                 TLog::Read(ref inner) => {
                     if let Ok(lock) = var.value.read() {
+                        info!("Check Read");
                         if !Arc::ptr_eq(inner, &lock) {
                             return Err(TransactionError::InconsistentState);
                         }
 
-                        reads.push(lock);
+                        info!("Store read lock");
+                        // reads.push(lock);
                     }
                 }
 
-                TLog::ReadWrite(ref original, update) => match var.value.write() {
-                    Ok(mut lock) if Arc::ptr_eq(original, &lock) => {
-                        *lock = update.clone();
-                        waking.push(var);
+                TLog::ReadWrite(ref original, update) => {
+                    info!("Check ReadWrite");
+                    match var.value.write() {
+                        Ok(mut lock) if Arc::ptr_eq(original, &lock) => {
+                            // writes.push((lock, update.clone()));
+                            *lock = update.clone();
+                            waking.push(var);
+                        }
+                        _ => return Err(TransactionError::InconsistentState),
                     }
-                    _ => return Err(TransactionError::InconsistentState),
-                },
+                }
             }
         }
 
+        // info!("Write changes");
+        // for (mut lock, var) in writes {
+        //     *lock = var;
+        // }
+
+        info!("Dropping read locks");
+        // drop(reads);
+
+        info!("Wake all sleeping transaction");
         for w in waking {
             w.wake_all()?;
         }
