@@ -12,6 +12,12 @@ pub enum TransactionError {
 
     #[error("Inner error occured {0}")]
     Inner(String),
+
+    #[error("Transactional state is inconsistent")]
+    InconsistentState,
+
+    #[error("Transaction has been aborted")]
+    Aborted,
 }
 
 impl TransactionError {

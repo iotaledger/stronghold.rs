@@ -14,9 +14,8 @@ pub mod types;
 /// TODO: This mod should be replaced by the upcoming memory features in the runtime!
 pub mod boxedalloc;
 
-use std::{future::Future, sync::Arc};
-
 pub use errors::TransactionError;
+use transaction::Strategy;
 pub use transaction::Transaction;
 pub use types::{TLog, TVar};
 
@@ -47,44 +46,43 @@ pub use boxedalloc::BoxedMemory;
 ///     assert_eq!(var.read_atomic().expect(""), 10);
 /// }
 /// ```
-pub async fn transactional<W, T, F>(program: F) -> Result<(), TransactionError>
+pub async fn transactional<T, F>(program: F) -> Result<(), TransactionError>
 where
-    W: Future<Output = Result<(), TransactionError>> + Send + 'static,
     T: Send + Sync + BoxedMemory,
-    F: Fn(Arc<Transaction<T>>) -> W,
+    F: Fn(&Transaction<T>) -> Result<(), TransactionError> + Send + 'static,
 {
-    Transaction::with_func(program).await
+    Transaction::with_func_strategy(program, Strategy::Retry).await
 }
 
-/// This creates an asynchronous operation that runs atomically inside a transaction. Shared
-/// memory must be passed as [`TVar`] to read from and write to it. The transaction is aborted
-/// if the commit to shared memory fails
-///
-/// ```
-/// # use stronghold_stm::*;
-///
-/// #[tokio::main]
-/// async fn main() {
-///     let var = TVar::new(0);
-///     assert!(single(|tx| {
-///         let v2 = var.clone();
-///         async move {
-///             let mut inner = tx.read(&v2).await?;
-///             inner = inner + 10;
-///             tx.write(inner, &v2).await?;
-///             Ok(())
-///         }
-///     })
-///     .await
-///     .is_ok());
-///     assert_eq!(var.read_atomic().expect(""), 10);
-/// }
-/// ```
-pub async fn single<W, T, F>(program: F) -> Result<(), TransactionError>
-where
-    W: Future<Output = Result<(), TransactionError>> + Send + 'static,
-    T: Send + Sync + BoxedMemory,
-    F: Fn(Arc<Transaction<T>>) -> W,
-{
-    Transaction::with_func_strategy(program, transaction::Strategy::Abort).await
-}
+// /// This creates an asynchronous operation that runs atomically inside a transaction. Shared
+// /// memory must be passed as [`TVar`] to read from and write to it. The transaction is aborted
+// /// if the commit to shared memory fails
+// ///
+// /// ```
+// /// # use stronghold_stm::*;
+// ///
+// /// #[tokio::main]
+// /// async fn main() {
+// ///     let var = TVar::new(0);
+// ///     assert!(single(|tx| {
+// ///         let v2 = var.clone();
+// ///         async move {
+// ///             let mut inner = tx.read(&v2).await?;
+// ///             inner = inner + 10;
+// ///             tx.write(inner, &v2).await?;
+// ///             Ok(())
+// ///         }
+// ///     })
+// ///     .await
+// ///     .is_ok());
+// ///     assert_eq!(var.read_atomic().expect(""), 10);
+// /// }
+// /// ```
+// pub async fn single<W, T, F>(program: F) -> Result<(), TransactionError>
+// where
+//     W: Future<Output = Result<T, TransactionError>> + Send + 'static,
+//     T: Send + Sync + BoxedMemory,
+//     F: Fn(Arc<Transaction<T>>) -> W,
+// {
+//     Transaction::with_func_strategy(program, transaction::Strategy::Abort).await
+// }
