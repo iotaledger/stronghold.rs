@@ -15,7 +15,6 @@ guarded     = ["guardmem"]
 
 [dependencies]
 thiserror   = "1.0.30" 
-lazy_static = "1.4.0"
 log         = "0.4.14"
 zeroize     = { version = "1.5.0", features = ["zeroize_derive"] }
 guardmem    = { package = "stronghold_engine", path = "../engine", optional = true}

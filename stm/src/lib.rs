@@ -53,35 +53,32 @@ where
     Transaction::with_func_strategy(program, Strategy::Retry).await
 }
 
-// /// This creates an asynchronous operation that runs atomically inside a transaction. Shared
-// /// memory must be passed as [`TVar`] to read from and write to it. The transaction is aborted
-// /// if the commit to shared memory fails
-// ///
-// /// ```
-// /// # use stronghold_stm::*;
-// ///
-// /// #[tokio::main]
-// /// async fn main() {
-// ///     let var = TVar::new(0);
-// ///     assert!(single(|tx| {
-// ///         let v2 = var.clone();
-// ///         async move {
-// ///             let mut inner = tx.read(&v2).await?;
-// ///             inner = inner + 10;
-// ///             tx.write(inner, &v2).await?;
-// ///             Ok(())
-// ///         }
-// ///     })
-// ///     .await
-// ///     .is_ok());
-// ///     assert_eq!(var.read_atomic().expect(""), 10);
-// /// }
-// /// ```
-// pub async fn single<W, T, F>(program: F) -> Result<(), TransactionError>
-// where
-//     W: Future<Output = Result<T, TransactionError>> + Send + 'static,
-//     T: Send + Sync + BoxedMemory,
-//     F: Fn(Arc<Transaction<T>>) -> W,
-// {
-//     Transaction::with_func_strategy(program, transaction::Strategy::Abort).await
-// }
+/// This creates an asynchronous operation that runs atomically inside a transaction. Shared
+/// memory must be passed as [`TVar`] to read from and write to it. The transaction is aborted
+/// if the commit to shared memory fails
+///
+/// ```
+/// # use stronghold_stm::*;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let var = TVar::new(0);
+///     single(|tx| {
+///         let v2 = var.clone();
+///         async move {
+///             let mut inner = tx.read(&v2).await?;
+///             inner = inner + 10;
+///             tx.write(inner, &v2).await?;
+///             Ok(())
+///         }
+///     })
+///     .await;
+///     assert_eq!(var.read_atomic().expect(""), 10);
+/// }``
+pub async fn single<T, F>(program: F) -> Result<(), TransactionError>
+where
+    T: Send + Sync + BoxedMemory,
+    F: Fn(&Transaction<T>) -> Result<(), TransactionError> + Send + 'static,
+{
+    Transaction::with_func_strategy(program, Strategy::Abort).await
+}

@@ -15,37 +15,6 @@ use std::{
     task::{Context, Poll},
 };
 
-// lazy_static! {
-//     pub(crate) static ref MANAGER: TransactionManager = TransactionManager::new();
-// }
-
-// // /// Future generator
-// // type FnFuture = dyn Fn() -> Pin<Box<dyn Future + Unpin + Send>> + Send;
-
-// //  Keep track of running transaction
-// pub(crate) struct TransactionManager {
-//     tasks: Arc<Mutex<BTreeMap<usize, Transaction<BoxedMemory>>>>,
-// }
-
-// impl TransactionManager {
-//     pub(crate) fn new() -> Self {
-//         Self {
-//             tasks: Arc::new(Mutex::new(BTreeMap::new())),
-//         }
-//     }
-// }
-
-//     pub(crate) fn insert<F>(&self, task: Pin<Box<F>>) -> Result<(), TransactionError>
-//     where
-//         F: Future + Send + 'static,
-//     {
-//         let mut lock = self.tasks.lock().map_err(TransactionError::to_inner)?;
-//         lock.push(Box::new(move || Box::pin(task)));
-
-//         Ok(())
-//     }
-// }
-
 /// Defines a transaction strategy. Strategies vary
 /// how transactions should be handled in case the commit
 /// to memory fails.
@@ -68,41 +37,6 @@ pub trait TransactionControl {
     /// Wakes the current transaction to continue
     fn wake(&self);
 }
-
-// impl<F, T> From<F> for Transaction<F, T>
-// where
-//     F: Future,
-//     T: Send + Sync + BoxedMemory,
-// {
-//     fn from(task: F) -> Self {
-//         Self {
-//             strategy: Strategy::Retry,
-//             log: Mutex::new(BTreeMap::new()),
-//         }
-//     }
-// }
-
-// impl<T> Future for Transaction<T>
-// where
-//     T: Send + Sync + BoxedMemory,
-// {
-//     type Output = Result<(), TransactionError>;
-
-//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//         todo!()
-//     }
-// }
-
-// pub trait Transactional {
-//     type Error;
-//     type Output;
-//     type Type: Send + Sync + BoxedMemory;
-
-//     ///
-//     fn read(&self, var: &TVar<Self::Type>) -> Result<Self::Output, Self::Error>;
-
-//     fn write(&self, value: Self::Type, var: &TVar<Self::Type>) -> Result<(), Self::Error>;
-// }
 
 /// A transaction describes the intended operation on some shared memory
 /// in concurrent / asynchronous setups. Each transaction writes a log off
@@ -203,26 +137,6 @@ impl<T> Transaction<T>
 where
     T: Send + Sync + BoxedMemory,
 {
-    // fn new() -> Self {
-    //     Self::new_with_strategy(Strategy::Retry)
-    // }
-
-    // pub(crate) fn new_with_strategy(strategy: Strategy) -> Self {
-    //     Self {
-    //         strategy,
-    //         log: BTreeMap::new(),
-    //         blocking: AtomicBool::new(false),
-    //         program: Box::new(|tx| Ok(())),
-    //     }
-    // }
-
-    // pub async fn with_func<P>(program: P) -> Result<(), TransactionError>
-    // where
-    //     P: Fn(&Self) -> Result<(), TransactionError> + 'static,
-    // {
-    //     Self::with_func_strategy(program, Strategy::Retry).await
-    // }
-
     pub async fn with_func_strategy<P>(program: P, strategy: Strategy) -> Result<(), TransactionError>
     where
         P: Fn(&Self) -> Result<(), TransactionError> + Send + 'static,
@@ -253,8 +167,8 @@ where
         match self.log.lock().map_err(TransactionError::to_inner)?.entry(key) {
             Entry::Occupied(mut inner) => return inner.get_mut().read(),
             Entry::Vacant(entry) => {
-                entry.insert(TLog::Read(var.read_atomic()?));
-                Ok(var.read_atomic().unwrap())
+                entry.insert(TLog::Read(var.read()?));
+                Ok(var.read().unwrap())
             }
         }
     }
@@ -311,6 +225,9 @@ where
                     match var.value.write() {
                         Ok(mut lock) => {
                             // writes.push((lock, inner.clone()));
+                            // TODO: shall we directly commit the value into memory, without checking
+                            // first ?
+
                             *lock = inner.clone();
                             waking.push(var);
                         }
@@ -346,13 +263,10 @@ where
             }
         }
 
-        // info!("Write changes");
+        // info!("Commiting writes");
         // for (mut lock, var) in writes {
         //     *lock = var;
         // }
-
-        info!("Dropping read locks");
-        // drop(reads);
 
         info!("Wake all sleeping transaction");
         for w in waking {
