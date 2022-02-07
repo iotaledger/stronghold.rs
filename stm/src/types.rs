@@ -37,7 +37,7 @@ where
     /// Reads the value of the inner value without a transaction
     /// FIXME: Do we really need this function,  or is this "only" required
     /// for tests
-    pub fn read_atomic(&self) -> Result<Arc<T>, TransactionError> {
+    pub fn read(&self) -> Result<Arc<T>, TransactionError> {
         if let Some(ctrl) = &self.value {
             match ctrl.value.read() {
                 Ok(lock) => return Ok(lock.clone()),
@@ -51,7 +51,7 @@ where
         // Ok((*value).clone())
     }
 
-    pub fn write_atomic(&self, value: T) -> Result<(), TransactionError> {
+    pub fn write(&self, value: T) -> Result<(), TransactionError> {
         if let Some(ctrl) = &self.value {
             match ctrl.value.write() {
                 Ok(mut lock) => {
@@ -65,32 +65,6 @@ where
 
         Err(TransactionError::InconsistentState)
     }
-
-    // /// Read the value from a transaction. This is considered the "normal" way
-    // pub async fn read(&self, tx: &Transaction<T>) -> Result<T, TransactionError> {
-    //     tx.read(self).await
-    // }
-
-    // /// Write a value into the transaction
-    // pub async fn write(&self, value: T, tx: &Transaction<F, T>) -> Result<(), TransactionError> {
-    //     tx.write(value, self).await
-    // }
-
-    // /// Applies a function to change the value inside a transaction
-    // pub async fn apply<P>(&self, func: P, tx: &Transaction<F, T>) -> Result<(), TransactionError>
-    // where
-    //     P: FnOnce(T) -> T,
-    // {
-    //     match self.read(tx).await {
-    //         Ok(value) => self.write(func(value), tx).await,
-    //         Err(error) => Err(error),
-    //     }
-    // }
-
-    // Returns `true`, if the referenced values are equal
-    // pub fn equals(&self, other: &Self) -> bool {
-    //     Arc::ptr_eq(&self.value, &other.value)
-    // }
 }
 
 impl<T> Clone for TVar<T>
@@ -219,19 +193,6 @@ where
         }
     }
 }
-
-// impl<T> DerefMut for TLog<T>
-// where
-//     T: Send + Sync + BoxedMemory,
-// {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         match self {
-//             Self::Read(inner) => inner,
-//             Self::Write(inner) => inner,
-//             Self::ReadWrite(_, inner) => inner,
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {

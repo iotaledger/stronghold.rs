@@ -7,90 +7,10 @@ use std::{
     sync::{Arc, Mutex, RwLock, Weak},
 };
 
-// / This component takes in an executing future from a `Transaction` and
-// / blocks further progress until it has been `awakened` again. [`Self::wake()`]
-// / shall be called to  unblock the inner future.
-// /
-// / Since [`FutureBlocker`] is itself a future, the execution itself is non-blocking,
-// / but "blocks" the inner future to make progress.
-// pub struct FutureBlocker<F, T>
-// where
-//     F: Future,
-//     T: Send + Sync + BoxedMemory,
-// {
-//     task: Arc<Mutex<Option<Pin<Box<F>>>>>,
-//     blocked: Arc<AtomicBool>,
-//     _phantom: PhantomData<T>,
-// }
-
-// impl<F, T> Clone for FutureBlocker<F, T>
-// where
-//     F: Future,
-//     T: Send + Sync + BoxedMemory,
-// {
-//     fn clone(&self) -> Self {
-//         Self {
-//             task: self.task.clone(),
-//             blocked: self.blocked.clone(),
-//             _phantom: PhantomData,
-//         }
-//     }
-// }
-
-// impl<F, T> FutureBlocker<F, T>
-// where
-//     F: Future,
-//     T: Send + Sync + BoxedMemory,
-// {
-//     pub fn new(task: F) -> Self {
-//         Self {
-//             task: Arc::new(Mutex::new(Some(Box::pin(task)))),
-//             blocked: Arc::new(AtomicBool::new(true)),
-//             _phantom: PhantomData,
-//         }
-//     }
-
-//     /// Releases the underlying gate, and "wakes" the inner future
-//     /// to make progress.
-//     pub async fn wake(&self) {
-//         self.blocked.swap(false, Ordering::Release);
-//     }
-// }
-
-// impl<F, T> Future for FutureBlocker<F, T>
-// where
-//     F: Future<Output = Result<T, TransactionError>>,
-//     T: Send + Sync + BoxedMemory,
-// {
-//     type Output = Result<T, TransactionError>;
-
-//     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-//         match self.blocked.load(Ordering::Acquire) {
-//             true => {
-//                 ctx.waker().to_owned().wake();
-//                 Poll::Pending
-//             }
-//             false => {
-//                 let mut lock = self.task.lock().map_err(|e| TransactionError::Inner(e.to_string()))?;
-//                 match &mut *lock {
-//                     Some(ref mut inner) => {
-//                         // we still need to call the waker again, until the
-//                         // inner future has completed their task
-//                         ctx.waker().to_owned().wake();
-//                         Pin::new(inner).poll(ctx)
-//                     }
-//                     None => Poll::Ready(Err(TransactionError::Inner(
-//                         "No future present in FutureBlock".to_string(),
-//                     ))),
-//                 }
-//             }
-//         }
-//     }
-// }
-
-/// The [`MemoryController`] is being used to manage
-/// many futures working on the same shared memory.
-pub struct MemoryController<F, T>
+/// The [`MemoryController`] weakly tracks futures,
+/// that observe the oringal value. The [`MemoryController`]
+/// will not be used directly, but is employed by [`Transaction`]
+pub(crate) struct MemoryController<F, T>
 where
     F: Future,
     T: Send + Sync + BoxedMemory,
@@ -102,6 +22,8 @@ where
     pub(crate) value: Arc<RwLock<Arc<T>>>,
 }
 
+/// Provide an implementation of [`Clone`], that returns
+/// a copy of the pointers, but not the values
 impl<F, T> Clone for MemoryController<F, T>
 where
     F: Future,
@@ -125,8 +47,6 @@ where
             futures: Arc::new(Mutex::new(Vec::new())),
             value: Arc::new(RwLock::new(Arc::new(value))),
         }
-
-        // Arc::new(mem_ctrl)
     }
 
     /// Garbage collect all inactive / dropped observers and keep
