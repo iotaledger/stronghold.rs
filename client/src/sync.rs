@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{RecordError, VaultError},
     state::{secure::SecureClient, snapshot::Snapshot},
     Provider,
 };
@@ -21,18 +20,18 @@ use std::collections::HashMap;
 /// use [`Mapper::map_exported`] to update the encryption key with which the exported records are encrypted.
 /// Furthermore, if the [`MergeLayer::Path`] generally differ between A and B for the same record,
 /// [`Mapper::map_hierarchy`] allows to map one [`MergeLayer::Path`] to another.
-/// [`BidiMapping`] implements [`Mapper`] on a client and snapshot layer, with mapping left-2-right (A to B),
+/// [`Mapper`] implements [`Mapper`] on a client and snapshot layer, with mapping left-2-right (A to B),
 /// and right-2-left (B to A). The latter returns an `Option`, with which `None` can be returned for specific entries in
 /// case of a partial sync (e.g. only import a single client).
 ///
 /// Including the mapping steps, the full flow between A and B with different [`MergeLayer::Path`] and
 /// [`MergeLayer::KeyProvider`] would be:
 /// 1. `B::get_hierarchy`
-/// 2. `BidiMapping::map_hierarchy`, with MappingDirection::R2L
+/// 2. `Mapper::map_hierarchy`, with MappingDirection::R2L
 /// 3. `A::get_diff`
-/// 4. `BidiMapping::map_hierarchy`, with MappingDirection::L2R
+/// 4. `Mapper::map_hierarchy`, with MappingDirection::L2R
 /// 5. `B::export_entries`
-/// 6. `BidiMapping::map_exported`; always MappingDirection::R2L
+/// 6. `Mapper::map_exported`; always MappingDirection::R2L
 /// 7. `A::import_entries`
 ///
 /// In case of a remote sync, the mapping is done on the initiators side (= "A").
@@ -56,22 +55,40 @@ pub trait MergeLayer {
     /// Compare a hierarchy of entries with the local hierarchy.
     /// Returns the entries from `other` that self does not have.
     /// If a path exists both, in `self` and `other`, include the entry depending on the [`MergePolicy`].
-    fn get_diff(&mut self, other: Self::Hierarchy, merge_policy: &Self::MergePolicy) -> Self::Hierarchy;
+    /// If the [`MergeLayer::Path`] differs between `self` and `other` for the same record, a mapper has to be provided
+    /// to enable proper comparison.
+    fn get_diff(
+        &mut self,
+        other: Self::Hierarchy,
+        mapper: Option<&Mapper<Self::Path>>,
+        merge_policy: &Self::MergePolicy,
+    ) -> Self::Hierarchy;
 
     /// Export the encrypted entries that are specified in `hierarchy`.
-    /// If the entries are exported to a different location with different encryption key,
-    /// [`Mapper::map_exported`] allows map the hierarchy of entries and re-encrypt the records with the correct key.
-    fn export_entries(&mut self, hierarchy: Self::Hierarchy) -> Self::Exported;
+    /// Optionally re_encrypt the entries with new keys. This is mostly relevant in a remote-sync setting, where we
+    /// don't want to share out encryption keys with the remote stronghold. In this case, we can create a temporary
+    /// key_provider, encrypt the records with its keys, and send this key_provider to the remote alongside with the
+    /// encrypted records.
+    fn export_entries(
+        &mut self,
+        hierarchy: Self::Hierarchy,
+        new_key_provider: Option<Self::KeyProvider>,
+    ) -> Self::Exported;
 
     /// Import the entries from another instance. This overwrites the local locations if they already exists, therefore
     /// [`MergeLayer::get_hierarchy`] and [`MergeLayer::get_diff`] should be used beforehand to select only the entries
     /// that do not exists yet.
     ///
-    /// **Note**: This expects that the records are encrypted with the correct vault-key as it is stored in the local
-    /// `KeyStore`, and that [`RecordId`] that is encrypted within the Record blob is correct.
-    /// If either the encryption key differs or the record was moved to a different [`RecordId`],
-    /// [`Mapper::map_exported`] has to be called before importing the entries.
-    fn import_entries(&mut self, exported: Self::Exported);
+    /// **Note**: If the ids in the hierarchy of the exported records differs from the local ids, a mapper has to be
+    /// provided in order to import each record into the correct location. Furthermore, if the vault-encryption key
+    /// differs for a record (e.g. because it was stored in a different vault), the old key provider has to be
+    /// provided so that the record can be decrypted and re-encrypted with the correct key.
+    fn import_entries(
+        &mut self,
+        exported: Self::Exported,
+        mapper: Option<&Mapper<Self::Path>>,
+        old_key_provider: Option<Self::KeyProvider>,
+    );
 }
 
 /// Policy for deciding between two records on the same location, with different [`BlobId`]s.
@@ -90,25 +107,6 @@ pub enum SelectOrMerge<T> {
     Merge(T),
 }
 
-/// Map the hierarchy and exported entries between two instances that synchronize, for the records the
-/// path or encryption key differs.
-pub trait Mapper<T: MergeLayer> {
-    /// Map the hierarchy stored in one instance before calculating the diff to another ([`MappingDirection::R2L`]),
-    /// or after calculation the diff before exporting the entries ([`MappingDirection::L2R`]).
-    fn map_hierarchy(&self, hierarchy: T::Hierarchy, di: MappingDirection) -> T::Hierarchy;
-
-    /// Map and re-encrypt the exported entries before importing them at the target.
-    /// In case of a sync with a remote [`Stronghold`], this may even be done twice: Before sending them over the wire,
-    /// with an ephemeral `KeyProvider` that is send to the remove alongside with the records, and then again at the
-    /// remote to the encrypt them correctly with the keys of the local `KeyProvider`.
-    fn map_exported(
-        &self,
-        old_key_provider: T::KeyProvider,
-        new_key_provider: T::KeyProvider,
-        entries: T::Exported,
-    ) -> T::Exported;
-}
-
 /// Direction for mapping the hierarchy from one instance to another.
 #[derive(Debug, Clone, Copy)]
 pub enum MappingDirection {
@@ -116,52 +114,36 @@ pub enum MappingDirection {
     R2L,
 }
 
-/// Bidirectional function for mapping the hierarchy of one [`MergeLayer`] instance to another.
-/// Typically if an instance A would like to synchronize with an instance B  (i.g. A would like to import all records
-/// from B that it does not have yet) the direction would be:
-/// - A -> B: L2R ("left-to-right")
-/// - B -> A: R2L ("right-to-left")
-/// In case of a partial sync, direction R2L can return [`None`], so that this entry is skipped.
+/// Function for mapping the hierarchy of one [`MergeLayer`] instance to another.
+/// In case of a partial sync, this function can return [`None`], so that this entry is skipped.
 #[derive(Debug, Clone)]
-pub struct BidiMapping<T> {
-    l2r: fn(T) -> T,
-    r2l: fn(T) -> Option<T>,
+pub struct Mapper<T> {
+    f: fn(T) -> Option<T>,
 }
 
-impl<T> Default for BidiMapping<T> {
+impl<T> Default for Mapper<T> {
     fn default() -> Self {
-        Self {
-            l2r: |t| t,
-            r2l: |t| Some(t),
-        }
+        Self { f: |t| Some(t) }
     }
 }
 
-impl<T> BidiMapping<T> {
-    fn map(&self, t: T, di: MappingDirection) -> Option<T> {
-        match di {
-            MappingDirection::L2R => {
-                let f = self.l2r;
-                Some(f(t))
-            }
-            MappingDirection::R2L => {
-                let f = self.r2l;
-                f(t)
-            }
-        }
+impl<T> Mapper<T> {
+    fn map(&self, t: T) -> Option<T> {
+        let f = self.f;
+        f(t)
     }
 }
 
 pub struct ClientState<'a> {
     pub db: &'a mut DbView<Provider>,
-    pub keystore: &'a HashMap<VaultId, Key<Provider>>,
+    pub keystore: &'a mut HashMap<VaultId, Key<Provider>>,
 }
 
 impl<'a> From<&'a mut SecureClient> for ClientState<'a> {
     fn from(client: &'a mut SecureClient) -> Self {
         ClientState {
             db: &mut client.db,
-            keystore: &client.keystore.store,
+            keystore: &mut client.keystore.store,
         }
     }
 }
@@ -172,7 +154,7 @@ impl<'a> MergeLayer for ClientState<'a> {
     type Exported = HashMap<VaultId, Vec<(RecordId, Record)>>;
     type Path = (VaultId, RecordId);
     type MergePolicy = SelectOrMerge<SelectOne>;
-    type KeyProvider = &'a HashMap<VaultId, Key<Provider>>;
+    type KeyProvider = &'a mut HashMap<VaultId, Key<Provider>>;
 
     fn get_hierarchy(&mut self) -> Self::Hierarchy {
         let mut map = HashMap::new();
@@ -183,111 +165,109 @@ impl<'a> MergeLayer for ClientState<'a> {
         }
         map
     }
-    fn get_diff(&mut self, other: Self::Hierarchy, merge_policy: &Self::MergePolicy) -> Self::Hierarchy {
-        let mut diff = HashMap::new();
-        for (vid, records) in other {
-            let vault_merge_policy = match merge_policy {
-                SelectOrMerge::KeepOld => continue,
-                SelectOrMerge::Replace => {
-                    diff.insert(vid, records);
-                    continue;
+    fn get_diff(
+        &mut self,
+        other: Self::Hierarchy,
+        mapper: Option<&Mapper<Self::Path>>,
+        merge_policy: &Self::MergePolicy,
+    ) -> Self::Hierarchy {
+        let mut diff = HashMap::<VaultId, Vec<_>>::new();
+        for (vid0, records) in other {
+            for (rid0, bid) in records {
+                let (vid1, rid1) = match mapper {
+                    Some(mapper) => match mapper.map((vid0, rid0)) {
+                        Some(ids) => ids,
+                        None => continue,
+                    },
+                    None => (vid0, rid0),
+                };
+                match merge_policy {
+                    SelectOrMerge::KeepOld if self.db.contains_vault(&vid1) => continue,
+                    SelectOrMerge::Merge(SelectOne::KeepOld) if self.db.contains_record(vid1, rid1) => continue,
+                    _ => {
+                        if let Some(key) = self.keystore.get(&vid1) {
+                            if self.db.get_blob_id(key, vid1, rid1).unwrap() == bid {
+                                continue;
+                            }
+                        }
+                    }
                 }
-                SelectOrMerge::Merge(ref p) => p,
-            };
-            let key = match self.keystore.get(&vid) {
-                Some(k) => k,
-                None => {
-                    diff.insert(vid, records);
-                    continue;
-                }
-            };
-            let mut records_diff = Vec::new();
-            for (rid, blob_id) in records {
-                match self.db.get_blob_id(key, vid, rid) {
-                    Ok(bid) if bid == blob_id => {}
-                    Ok(_) if matches!(vault_merge_policy, SelectOne::KeepOld) => {}
-                    Ok(_)
-                    | Err(VaultError::Record(RecordError::RecordNotFound(_)))
-                    | Err(VaultError::VaultNotFound(_)) => records_diff.push((rid, blob_id)),
-                    Err(VaultError::Record(_)) => todo!(),
-                    Err(VaultError::Procedure(_)) => unreachable!("Infallible."),
-                }
-            }
-            if !records_diff.is_empty() {
-                diff.insert(vid, records_diff);
+                let vault_entry = diff.entry(vid0).or_default();
+                vault_entry.push((rid0, bid));
             }
         }
         diff
     }
 
-    fn export_entries(&mut self, hierarchy: Self::Hierarchy) -> Self::Exported {
+    fn export_entries(
+        &mut self,
+        hierarchy: Self::Hierarchy,
+        mut new_key_provider: Option<Self::KeyProvider>,
+    ) -> Self::Exported {
         hierarchy
             .into_iter()
             .map(|(vid, entries)| {
-                let exported = self
+                let mut exported = self
                     .db
                     .export_records(vid, entries.into_iter().map(|(rid, _)| rid))
                     .unwrap();
+                if let Some(new_key_provider) = new_key_provider.as_mut() {
+                    let key = self.keystore.get(&vid).unwrap();
+                    let new_key = new_key_provider.entry(vid).or_insert_with(Key::random);
+                    exported
+                        .iter_mut()
+                        .try_for_each(|(rid, r)| r.update_meta(key, (*rid).into(), new_key, (*rid).into()))
+                        .unwrap();
+                }
                 (vid, exported)
             })
             .collect()
     }
 
-    fn import_entries(&mut self, exported: Self::Exported) {
-        exported
-            .into_iter()
-            .try_for_each(|(vid, entries)| {
-                let key = self.keystore.get(&vid).unwrap();
-                self.db.import_records(key, vid, entries)
-            })
-            .unwrap();
-    }
-}
-
-impl<'a> Mapper<ClientState<'a>> for BidiMapping<<ClientState<'a> as MergeLayer>::Path> {
-    fn map_hierarchy(
-        &self,
-        hierarchy: <ClientState<'a> as MergeLayer>::Hierarchy,
-        di: MappingDirection,
-    ) -> <ClientState<'a> as MergeLayer>::Hierarchy {
-        let mut map = HashMap::<_, Vec<_>>::new();
-        for (vid0, records) in hierarchy {
-            for (rid0, bid) in records {
-                let (vid1, rid1) = match self.map((vid0, rid0), di) {
-                    Some(ids) => ids,
-                    None => continue,
-                };
-                let entry = map.entry(vid1).or_default();
-                entry.push((rid1, bid))
-            }
-        }
-        map
-    }
-
-    fn map_exported(
-        &self,
-        old_keystore: <ClientState<'a> as MergeLayer>::KeyProvider,
-        new_keystore: <ClientState<'a> as MergeLayer>::KeyProvider,
-        hierarchy: <ClientState<'a> as MergeLayer>::Exported,
-    ) -> <ClientState<'a> as MergeLayer>::Exported {
-        let mut map = HashMap::<_, Vec<_>>::new();
-        let r2l = self.r2l;
-        for (vid0, records) in hierarchy {
-            let old_key = old_keystore.get(&vid0).unwrap();
-            for (rid0, mut r) in records {
-                let (vid1, rid1) = match r2l((vid0, rid0)) {
-                    Some(ids) => ids,
-                    None => continue,
-                };
-                let new_key = new_keystore.get(&vid1).unwrap();
-                if old_key != new_key || rid0 != rid1 {
-                    r.update_meta(old_key, rid0.into(), new_key, rid1.into()).unwrap();
+    fn import_entries(
+        &mut self,
+        exported: Self::Exported,
+        mapper: Option<&Mapper<Self::Path>>,
+        old_key_provider: Option<Self::KeyProvider>,
+    ) {
+        let mapper = match mapper {
+            Some(m) => m,
+            None => {
+                for (vid, mut entries) in exported {
+                    let key = self.keystore.get(&vid).unwrap();
+                    if let Some(old_key_provider) = old_key_provider.as_ref() {
+                        let old_key = old_key_provider.get(&vid).unwrap();
+                        if old_key != key {
+                            entries
+                                .iter_mut()
+                                .try_for_each(|(rid, r)| r.update_meta(old_key, (*rid).into(), key, (*rid).into()))
+                                .unwrap();
+                        }
+                    }
+                    self.db.import_records(key, vid, entries).unwrap();
                 }
-                let entry = map.entry(vid1).or_default();
-                entry.push((rid1, r))
+                return;
+            }
+        };
+        for (vid0, entries) in exported {
+            for (rid0, mut record) in entries {
+                let (vid1, rid1) = match mapper.map((vid0, rid0)) {
+                    Some(ids) => ids,
+                    None => continue,
+                };
+                let key = self.keystore.entry(vid1).or_insert_with(Key::random);
+                if rid0 != rid1 {
+                    let old_key = old_key_provider.as_ref().map(|k| k.get(&vid0).unwrap()).unwrap_or(key);
+                    record.update_meta(old_key, rid0.into(), key, rid1.into()).unwrap();
+                } else if let Some(old_key_provider) = old_key_provider.as_ref() {
+                    let old_key = old_key_provider.get(&vid0).unwrap();
+                    if old_key != key {
+                        record.update_meta(old_key, rid0.into(), key, rid1.into()).unwrap();
+                    }
+                }
+                self.db.import_records(key, vid1, vec![(rid1, record)]).unwrap();
             }
         }
-        map
     }
 }
 
@@ -329,104 +309,114 @@ impl<'a> MergeLayer for SnapshotState<'a> {
         map
     }
 
-    fn get_diff(&mut self, other: Self::Hierarchy, merge_policy: &Self::MergePolicy) -> Self::Hierarchy {
-        let mut diff = HashMap::new();
-        for (cid, vaults) in other {
-            let vault_merge_policy = match merge_policy {
-                SelectOrMerge::KeepOld => continue,
-                SelectOrMerge::Replace => {
-                    diff.insert(cid, vaults);
-                    continue;
+    fn get_diff(
+        &mut self,
+        other: Self::Hierarchy,
+        mapper: Option<&Mapper<Self::Path>>,
+        merge_policy: &Self::MergePolicy,
+    ) -> Self::Hierarchy {
+        let mut diff = HashMap::<ClientId, HashMap<VaultId, Vec<_>>>::new();
+        for (cid0, vaults) in other {
+            for (vid0, records) in vaults {
+                for (rid0, bid) in records {
+                    let (cid1, vid1, rid1) = match mapper {
+                        Some(mapper) => match mapper.map((cid0, vid0, rid0)) {
+                            Some(ids) => ids,
+                            None => continue,
+                        },
+                        None => (cid0, vid0, rid0),
+                    };
+                    match (self.client_states.get_mut(&cid1), merge_policy) {
+                        (Some(_), SelectOrMerge::KeepOld) => continue,
+                        (Some(state), SelectOrMerge::Merge(SelectOrMerge::KeepOld))
+                            if state.db.contains_vault(&vid1) =>
+                        {
+                            continue
+                        }
+                        (Some(state), SelectOrMerge::Merge(SelectOrMerge::Merge(SelectOne::KeepOld)))
+                            if state.db.contains_record(vid1, rid1) =>
+                        {
+                            continue
+                        }
+                        (Some(state), _) => {
+                            if let Some(key) = state.keystore.get(&vid1) {
+                                if state.db.get_blob_id(key, vid1, rid1).unwrap() == bid {
+                                    continue;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                    let client_entry = diff.entry(cid0).or_default();
+                    let vault_entry = client_entry.entry(vid0).or_default();
+                    vault_entry.push((rid0, bid));
                 }
-                SelectOrMerge::Merge(ref p) => p,
-            };
-            let state = match self.client_states.get_mut(&cid) {
-                Some(state) => state,
-                None => {
-                    diff.insert(cid, vaults);
-                    continue;
-                }
-            };
-
-            let vault_diff = <ClientState as MergeLayer>::get_diff(state, vaults, vault_merge_policy);
-            if !vault_diff.is_empty() {
-                diff.insert(cid, vault_diff);
             }
         }
         diff
     }
 
-    fn export_entries(&mut self, hierarchy: Self::Hierarchy) -> Self::Exported {
+    fn export_entries(
+        &mut self,
+        hierarchy: Self::Hierarchy,
+        mut new_key_provider: Option<Self::KeyProvider>,
+    ) -> Self::Exported {
         hierarchy
             .into_iter()
             .map(|(cid, vaults)| {
                 let state = self.client_states.get_mut(&cid).unwrap();
-                let vaults = <ClientState as MergeLayer>::export_entries(state, vaults);
+                let keystore = new_key_provider
+                    .as_mut()
+                    .map(|key_provider| key_provider.remove(&cid).unwrap());
+                let vaults = <ClientState as MergeLayer>::export_entries(state, vaults, keystore);
                 (cid, vaults)
             })
             .collect()
     }
 
-    fn import_entries(&mut self, exported: Self::Exported) {
-        exported.into_iter().for_each(|(cid, vaults)| {
-            let state = self.client_states.get_mut(&cid).unwrap();
-            <ClientState as MergeLayer>::import_entries(state, vaults);
-        });
-    }
-}
-
-impl<'a> Mapper<SnapshotState<'a>> for BidiMapping<<SnapshotState<'a> as MergeLayer>::Path> {
-    fn map_hierarchy(
-        &self,
-        hierarchy: <SnapshotState<'a> as MergeLayer>::Hierarchy,
-        di: MappingDirection,
-    ) -> <SnapshotState<'a> as MergeLayer>::Hierarchy {
-        let mut map = HashMap::<_, HashMap<_, Vec<_>>>::new();
-        for (cid0, vaults) in hierarchy {
-            for (vid0, records) in vaults {
-                for (rid0, bid) in records {
-                    let (cid1, vid1, rid1) = match self.map((cid0, vid0, rid0), di) {
-                        Some(ids) => ids,
-                        None => continue,
-                    };
-                    let entry = map.entry(cid1).or_default();
-                    let vault_entry = entry.entry(vid1).or_default();
-                    vault_entry.push((rid1, bid))
-                }
+    fn import_entries(
+        &mut self,
+        exported: Self::Exported,
+        mapper: Option<&Mapper<Self::Path>>,
+        mut old_key_provider: Option<Self::KeyProvider>,
+    ) {
+        let mapper = match mapper {
+            Some(m) => m,
+            None => {
+                return exported.into_iter().for_each(|(cid, vaults)| {
+                    let state = self.client_states.get_mut(&cid).unwrap();
+                    let keystore = old_key_provider
+                        .as_mut()
+                        .map(|key_provider| key_provider.remove(&cid).unwrap());
+                    <ClientState as MergeLayer>::import_entries(state, vaults, None, keystore)
+                })
             }
-        }
-        map
-    }
-
-    fn map_exported(
-        &self,
-        old_key_provider: <SnapshotState<'a> as MergeLayer>::KeyProvider,
-        new_key_provider: <SnapshotState<'a> as MergeLayer>::KeyProvider,
-        entries: <SnapshotState<'a> as MergeLayer>::Exported,
-    ) -> <SnapshotState<'a> as MergeLayer>::Exported {
-        let mut map = HashMap::<_, HashMap<_, Vec<_>>>::new();
-        let r2l = self.r2l;
-        for (cid0, vaults) in entries {
-            let old_keystore = old_key_provider.get(&cid0).unwrap();
+        };
+        // Map and re-encrypt the records to the actual location and encryption key before importing them.
+        for (cid0, vaults) in exported {
+            let old_keystore = old_key_provider.as_ref().map(|kp| kp.get(&cid0).unwrap());
             for (vid0, records) in vaults {
-                let old_key = old_keystore.get(&vid0).unwrap();
+                let old_key = old_keystore.map(|ks| ks.get(&vid0).unwrap());
                 for (rid0, mut r) in records {
-                    let (cid1, vid1, rid1) = match r2l((cid0, vid0, rid0)) {
+                    let (cid1, vid1, rid1) = match mapper.map((cid0, vid0, rid0)) {
                         Some(ids) => ids,
                         None => continue,
                     };
-                    let new_keystore = new_key_provider.get(&cid0).unwrap();
-                    let new_key = new_keystore.get(&vid1).unwrap();
-                    if old_key != new_key || rid0 != rid1 {
+                    // TODO: spawn new client if it does not exists yet
+                    let state = self.client_states.get_mut(&cid1).unwrap();
+                    let new_key = state.keystore.entry(vid1).or_insert_with(Key::random);
+                    if rid0 != rid1 {
+                        let old_key = old_key.unwrap_or(new_key);
                         r.update_meta(old_key, rid0.into(), new_key, rid1.into()).unwrap();
+                    } else if let Some(old_key) = old_key {
+                        if old_key != new_key {
+                            r.update_meta(old_key, rid0.into(), new_key, rid1.into()).unwrap();
+                        }
                     }
-                    let entry = map.entry(cid1).or_default();
-                    let vault_entry = entry.entry(vid1).or_default();
-                    vault_entry.push((rid1, r))
+                    state.db.import_records(new_key, vid1, vec![(rid1, r)]).unwrap();
                 }
             }
         }
-        map
     }
 }
 
@@ -481,38 +471,5 @@ mod test {
         assert_eq!(records_2.len(), 2);
         assert!(records_2.iter().any(|(rid, _)| rid == &rid2));
         assert!(records_2.iter().any(|(rid, _)| rid == &rid3));
-    }
-
-    #[test]
-    fn test_map_hierarchy() {
-        let vid1 = VaultId::random::<Provider>().unwrap();
-        let rid1 = RecordId::random::<Provider>().unwrap();
-        let bid1 = BlobId::random::<Provider>().unwrap();
-
-        let vid2 = VaultId::random::<Provider>().unwrap();
-        let rid2 = RecordId::random::<Provider>().unwrap();
-        let bid2 = BlobId::random::<Provider>().unwrap();
-
-        let vid3 = VaultId::random::<Provider>().unwrap();
-        let rid3 = RecordId::random::<Provider>().unwrap();
-        let bid3 = BlobId::random::<Provider>().unwrap();
-
-        let mut hierarchy = HashMap::new();
-        hierarchy.insert(vid1, vec![(rid1, bid1)]);
-        hierarchy.insert(vid2, vec![(rid2, bid2)]);
-        hierarchy.insert(vid3, vec![(rid3, bid3)]);
-
-        // Map all records into same vault.
-        let l2r = |(_, rid)| (SecureClient::derive_vault_id("test".as_bytes().to_vec()), rid);
-
-        let mapper = BidiMapping::<(VaultId, RecordId)> { l2r, r2l: |_| None };
-        let mut mapped = mapper.map_hierarchy(hierarchy, MappingDirection::L2R);
-        let expect_vault = SecureClient::derive_vault_id("test".as_bytes().to_vec());
-        let records = mapped.remove(&expect_vault).unwrap();
-        assert_eq!(records.len(), 3);
-        assert!(records.contains(&(rid1, bid1)));
-        assert!(records.contains(&(rid2, bid2)));
-        assert!(records.contains(&(rid3, bid3)));
-        assert!(mapped.is_empty());
     }
 }

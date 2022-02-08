@@ -109,8 +109,13 @@ impl<P: BoxProvider> DbView<P> {
         }
     }
 
+    /// Check to see if a vault with the given [`VaultId`] is present.
+    pub fn contains_vault(&self, vid: &VaultId) -> bool {
+        self.vaults.contains_key(vid)
+    }
+
     /// Check to see if a [`Vault`] contains a [`Record`] through the given [`RecordId`].
-    pub fn contains_record(&mut self, vid: VaultId, rid: RecordId) -> bool {
+    pub fn contains_record(&self, vid: VaultId, rid: RecordId) -> bool {
         if let Some(vault) = self.vaults.get(&vid) {
             vault.contains_record(rid)
         } else {

@@ -5,7 +5,7 @@
 
 use crate::{
     state::secure::Store,
-    sync::{self, BidiMapping, Mapper, MappingDirection, MergeLayer, SelectOne, SelectOrMerge},
+    sync::{self, Mapper, MergeLayer, SelectOne, SelectOrMerge},
     Provider,
 };
 
@@ -86,52 +86,52 @@ impl Snapshot {
         &mut self,
         cid0: ClientId,
         cid1: ClientId,
-        mapper: BidiMapping<(VaultId, RecordId)>,
+        mapper: Option<Mapper<(VaultId, RecordId)>>,
         merge_policy: SelectOrMerge<SelectOne>,
     ) {
-        let mut source = self.get_client_state(cid0).unwrap();
+        let mut state0 = self.state.0.remove(&cid0).unwrap();
+        let mut state1 = self.state.0.remove(&cid1).unwrap();
+
+        let mut source = sync::ClientState {
+            keystore: &mut state0.0,
+            db: &mut state0.1,
+        };
+        let mut target = sync::ClientState {
+            keystore: &mut state1.0,
+            db: &mut state1.1,
+        };
+
         let hierarchy = source.get_hierarchy();
-        let mapped_hierarchy = mapper.map_hierarchy(hierarchy, MappingDirection::R2L);
 
-        let mut target = self.get_client_state(cid1).unwrap();
-        let diff = target.get_diff(mapped_hierarchy, &merge_policy);
-        let mapped_diff = mapper.map_hierarchy(diff, MappingDirection::L2R);
+        let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy);
 
-        let mut source = self.get_client_state(cid0).unwrap();
-        let exported = source.export_entries(mapped_diff);
+        let exported = source.export_entries(diff, None);
 
-        let source_keystore = &self.state.0.get(&cid0).unwrap().0;
-        let target_keystore = &self.state.0.get(&cid1).unwrap().0;
-        let mapped_exported = mapper.map_exported(source_keystore, target_keystore, exported);
+        target.import_entries(exported, mapper.as_ref(), Some(source.keystore));
 
-        let mut target = self.get_client_state(cid1).unwrap();
-        target.import_entries(mapped_exported);
+        self.state.0.insert(cid0, state0);
+        self.state.0.insert(cid1, state1);
     }
 
     /// Sync the local state with another snapshot, which imports the entries from `other` to `local`.
     pub fn sync_with_snapshot(
         &mut self,
         other: &mut Self,
-        mapper: BidiMapping<(ClientId, VaultId, RecordId)>,
+        mapper: Option<Mapper<(ClientId, VaultId, RecordId)>>,
         merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
     ) {
         let mut source = other.as_snapshot_state();
         let hierarchy = source.get_hierarchy();
-        let mapped_hierarchy = mapper.map_hierarchy(hierarchy, MappingDirection::R2L);
 
         let mut target = self.as_snapshot_state();
-        let diff = target.get_diff(mapped_hierarchy, &merge_policy);
-        let mapped_diff = mapper.map_hierarchy(diff, MappingDirection::L2R);
+        let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy);
 
         let mut source = other.as_snapshot_state();
-        let exported = source.export_entries(mapped_diff);
+        let exported = source.export_entries(diff, None);
 
         let source_keystore = other.get_key_provider();
-        let target_keystore = self.get_key_provider();
-        let mapped_exported = mapper.map_exported(source_keystore, target_keystore, exported);
-
         let mut target = self.as_snapshot_state();
-        target.import_entries(mapped_exported);
+        target.import_entries(exported, mapper.as_ref(), Some(source_keystore));
     }
 
     fn as_snapshot_state(&mut self) -> sync::SnapshotState {
@@ -147,10 +147,10 @@ impl Snapshot {
         sync::SnapshotState { client_states }
     }
 
-    fn get_key_provider(&self) -> HashMap<ClientId, &HashMap<VaultId, PKey<Provider>>> {
+    fn get_key_provider(&mut self) -> HashMap<ClientId, &mut HashMap<VaultId, PKey<Provider>>> {
         self.state
             .0
-            .iter()
+            .iter_mut()
             .map(|(&cid, (keystore, _, _))| (cid, keystore))
             .collect()
     }
@@ -158,7 +158,7 @@ impl Snapshot {
     fn get_client_state(&mut self, id: ClientId) -> Option<sync::ClientState> {
         let state = self.state.0.get_mut(&id)?;
         Some(sync::ClientState {
-            keystore: &state.0,
+            keystore: &mut state.0,
             db: &mut state.1,
         })
     }
