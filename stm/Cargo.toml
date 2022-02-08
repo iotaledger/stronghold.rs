@@ -22,7 +22,8 @@ guardmem    = { package = "stronghold_engine", path = "../engine", optional = tr
 [dev-dependencies]
 tokio       = { version = "1.15.0", features = ["full"] }
 criterion   = { version = "0.3", features = ["async_tokio"] }
-env_logger  = { version = "0.9.0"}
+env_logger  = { version = "0.9.0" }
+ctor        = { version = "0.1.21"}
 
 [[bench]]
 name        = "config"

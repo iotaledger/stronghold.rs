@@ -26,25 +26,6 @@ pub use boxedalloc::BoxedMemory;
 /// memory must be passed as [`TVar`] to read from and write to it. The transaction is retried
 /// until it succeeds. As of now, this could hang the execution if certain edge cases are being hit:
 /// - interleaving reads and writes, blocking each other.
-///
-///
-/// # use stronghold_stm::*;
-///
-/// #[tokio::main]
-/// async fn main() {
-///     let var = TVar::new(0);
-///     transactional(|tx| {
-///         let v2 = var.clone();
-///         async move {
-///             let mut inner = tx.read(&v2).await?;
-///             inner = inner + 10;
-///             tx.write(inner, &v2).await?;
-///             Ok(())
-///         }
-///     })
-///     .await;
-///     assert_eq!(var.read_atomic().expect(""), 10);
-/// }
 pub async fn transactional<T, F>(program: F) -> Result<(), TransactionError>
 where
     T: Send + Sync + BoxedMemory,
@@ -56,25 +37,6 @@ where
 /// This creates an asynchronous operation that runs atomically inside a transaction. Shared
 /// memory must be passed as [`TVar`] to read from and write to it. The transaction is aborted
 /// if the commit to shared memory fails
-///
-/// ```
-/// # use stronghold_stm::*;
-///
-/// #[tokio::main]
-/// async fn main() {
-///     let var = TVar::new(0);
-///     single(|tx| {
-///         let v2 = var.clone();
-///         async move {
-///             let mut inner = tx.read(&v2).await?;
-///             inner = inner + 10;
-///             tx.write(inner, &v2).await?;
-///             Ok(())
-///         }
-///     })
-///     .await;
-///     assert_eq!(var.read_atomic().expect(""), 10);
-/// }``
 pub async fn single<T, F>(program: F) -> Result<(), TransactionError>
 where
     T: Send + Sync + BoxedMemory,
