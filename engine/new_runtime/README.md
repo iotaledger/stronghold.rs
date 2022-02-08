@@ -32,8 +32,8 @@ We currently have multiple kind of locks on `LockedMemory`:
 `LockedMemory` possesses `alloc()`, `dealloc`, `lock()` and `unlock()`.
 To use a `LockedMemory` one needs to unlock it before.
 
-# Ideas 
-- Instead of having to lock() then unlock() `LockedMemory` every time, we could have a single function `exec_on_unlock()` to which we provide a closure manipulating "unlocked" memory
+## Ideas 
+- Instead of having to unlock then lock `LockedMemory` every time, we could have a single function `exec_on_unlock()` to which we provide a closure manipulating "unlocked" memory. This is closer to the current `GuardedVec`.
   + Pros: the unlocking is done automatically at the end of the closure
   + Cons: we have some data which is encrypted and those keys are also `LockedMemory`. Therefore unlocking multiple layers of `LockedMemory` would force us to have nested closures which could be ugly. 
   + we could also provide a function `exec_on_unlock_encrypted()` that may take one/multiple `LockedMemory` keys arguments to decrypt the data
@@ -41,3 +41,14 @@ To use a `LockedMemory` one needs to unlock it before.
   - Currently very close to `GuardedVec` using `Ref` and `RefMut`
   - Maybe get values directly by implementing `AsRef` and `AsMut` traits
     
+
+# Objectives 
+- [] Stable `LockedMemory` API
+- [] Implementation 
+  - [ x ] `Buffer`
+  - [] `EncryptedRam`
+  - [] `EncryptedFile`
+  - [] `NonContiguousMemory` 
+- [] Tests
+  - [] Security tests for `ProtectedMemory` and `LockedMemory`
+  - [] Tests specific to new memory types

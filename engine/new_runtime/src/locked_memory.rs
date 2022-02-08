@@ -1,5 +1,5 @@
 use crate::types::Bytes;
-use crate::buffer::*;
+use crate::memories::buffer::Buffer;
 use core::fmt::Debug;
 
 
