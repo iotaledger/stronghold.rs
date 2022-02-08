@@ -21,7 +21,6 @@ pub struct Ref<'a, T: Bytes> {
     boxed: &'a Boxed<T>,
 }
 
-// We don't pass a mutable reference to the memory configuration it shall not be mutable
 pub struct RefMut<'a, T: Bytes> {
     boxed: &'a mut Boxed<T>,
 }

@@ -47,5 +47,4 @@ pub trait LockedMemory<T: Bytes>: ProtectedMemory<T> {
     /// Unlocks the memory and returns an unlocked Buffer
     fn unlock(&self, config: MemoryConfiguration)
         -> Result<Buffer<T>, MemoryError>;
-
 }
