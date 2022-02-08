@@ -78,7 +78,7 @@ where
         Ok(())
     }
 
-    /// Adds another [`FutureBlocker`]
+    /// Adds a [`Future`] for monitoring
     pub fn push(&self, blocker: &Arc<F>) -> Result<(), TransactionError> {
         let mut futures = self
             .futures
