@@ -534,6 +534,7 @@ impl Record {
 
         self.blob = updated_blob;
         self.data = updated_data;
+        self.id = new_id;
 
         Ok(())
     }
