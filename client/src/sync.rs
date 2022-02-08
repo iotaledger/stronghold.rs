@@ -16,26 +16,6 @@ use std::collections::HashMap;
 /// 2. `A::get_diff` compares the hierarchy from step 1 with the local one, and selects the paths that A does not have.
 /// 3. `B::export_entries` exports the entries from B that A selected in step 2.
 /// 4. `A::import_entries` extends the entries in A with the entries from B.
-///
-/// Note: A and B usually have different [`MergeLayer::KeyProvider`]s, therefore it is required between step 3 and 4 to
-/// use [`Mapper::map_exported`] to update the encryption key with which the exported records are encrypted.
-/// Furthermore, if the [`MergeLayer::Path`] generally differ between A and B for the same record,
-/// [`Mapper::map_hierarchy`] allows to map one [`MergeLayer::Path`] to another.
-/// [`Mapper`] implements [`Mapper`] on a client and snapshot layer, with mapping left-2-right (A to B),
-/// and right-2-left (B to A). The latter returns an `Option`, with which `None` can be returned for specific entries in
-/// case of a partial sync (e.g. only import a single client).
-///
-/// Including the mapping steps, the full flow between A and B with different [`MergeLayer::Path`] and
-/// [`MergeLayer::KeyProvider`] would be:
-/// 1. `B::get_hierarchy`
-/// 2. `Mapper::map_hierarchy`, with MappingDirection::R2L
-/// 3. `A::get_diff`
-/// 4. `Mapper::map_hierarchy`, with MappingDirection::L2R
-/// 5. `B::export_entries`
-/// 6. `Mapper::map_exported`; always MappingDirection::R2L
-/// 7. `A::import_entries`
-///
-/// In case of a remote sync, the mapping is done on the initiators side (= "A").
 pub trait MergeLayer {
     /// Full hierarchy of entries with Ids.
     type Hierarchy;
@@ -49,15 +29,13 @@ pub trait MergeLayer {
     type KeyProvider;
 
     /// Get the full hierarchy with the ids of all stored entries.
-    /// If this hierarchy should be compared with another instances with different Ids,
-    /// [`Mapper::map_hierarchy`] can be used to map the hierarchy to match the target's structure.
     fn get_hierarchy(&self) -> Self::Hierarchy;
 
     /// Compare a hierarchy of entries with the local hierarchy.
     /// Returns the entries from `other` that self does not have.
     /// If a path exists both, in `self` and `other`, include the entry depending on the [`MergePolicy`].
     /// If the [`MergeLayer::Path`] differs between `self` and `other` for the same record, a mapper has to be provided
-    /// to enable proper comparison.
+    /// to allow proper comparison.
     fn get_diff(
         &self,
         other: Self::Hierarchy,
@@ -108,15 +86,8 @@ pub enum SelectOrMerge<T> {
     Merge(T),
 }
 
-/// Direction for mapping the hierarchy from one instance to another.
-#[derive(Debug, Clone, Copy)]
-pub enum MappingDirection {
-    L2R,
-    R2L,
-}
-
 /// Function for mapping the hierarchy of one [`MergeLayer`] instance to another.
-/// In case of a partial sync, this function can return [`None`], so that this entry is skipped.
+/// In case of a partial sync, this function can return [`None`] so that this entry is skipped.
 #[derive(Debug, Clone)]
 pub struct Mapper<T> {
     f: fn(T) -> Option<T>,
@@ -443,13 +414,11 @@ impl<'a> MergeLayer for SnapshotState<'a> {
 
 #[cfg(test)]
 mod test {
-
-    use engine::vault::RecordHint;
-    use stronghold_utils::random;
+    use super::*;
 
     use crate::{procedures::Runner, state::secure::SecureClient, Location};
-
-    use super::*;
+    use engine::vault::RecordHint;
+    use stronghold_utils::random;
 
     fn test_hint() -> RecordHint {
         random::random::<[u8; 24]>().into()
