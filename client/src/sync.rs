@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    actors::VaultError,
     state::{secure::SecureClient, snapshot::Snapshot},
     Provider,
 };
@@ -166,8 +167,13 @@ impl<'a> MergeLayer for ClientState<'a> {
         let mut map = HashMap::new();
         for vid in self.db.list_vaults() {
             let key = self.keystore.get(&vid).unwrap();
-            let list = self.db.list_records_with_blob_id(key, vid).unwrap();
-            map.insert(vid, list);
+            match self.db.list_records_with_blob_id(key, vid) {
+                Ok(list) => {
+                    map.insert(vid, list);
+                }
+                Err(VaultError::VaultNotFound(_)) => {}
+                e => panic!("{:?}", e),
+            }
         }
         map
     }
@@ -438,44 +444,60 @@ impl<'a> MergeLayer for SnapshotState<'a> {
 #[cfg(test)]
 mod test {
 
+    use engine::vault::RecordHint;
     use stronghold_utils::random;
 
     use crate::{procedures::Runner, state::secure::SecureClient, Location};
 
     use super::*;
 
+    fn test_hint() -> RecordHint {
+        random::random::<[u8; 24]>().into()
+    }
+
+    fn test_value() -> Vec<u8> {
+        random::bytestring(4096)
+    }
+
+    fn test_location() -> Location {
+        let v_path = random::bytestring(4096);
+        let r_path = random::bytestring(4096);
+        Location::generic(v_path, r_path)
+    }
+
+    fn vault_path_to_id(path: &str) -> VaultId {
+        SecureClient::derive_vault_id(path.as_bytes().to_vec())
+    }
+
+    fn record_ctr_to_id(vault_path: &str, ctr: usize) -> RecordId {
+        SecureClient::derive_record_id(vault_path.as_bytes().to_vec(), ctr)
+    }
+
     #[test]
     fn test_get_hierarchy() {
-        let cid_a = ClientId::random::<Provider>().unwrap();
-        let mut client_a = SecureClient::new(cid_a);
-        let hierarchy = ClientState::from(&mut client_a).get_hierarchy();
+        let cid = ClientId::random::<Provider>().unwrap();
+        let mut client = SecureClient::new(cid);
+        let hierarchy = ClientState::from(&mut client).get_hierarchy();
         assert!(hierarchy.is_empty());
 
-        let v_path_1 = random::bytestring(4096);
-        let r_path_1 = random::bytestring(4096);
-        let location_1 = Location::generic(v_path_1, r_path_1);
+        let location_1 = test_location();
         let (vid1, rid1) = SecureClient::resolve_location(location_1.clone());
-        let test_hint_1 = random::random::<[u8; 24]>().into();
-        let test_value_1 = random::bytestring(4096);
-        client_a.write_to_vault(&location_1, test_hint_1, test_value_1).unwrap();
+        client.write_to_vault(&location_1, test_hint(), test_value()).unwrap();
 
         let v_path_2 = random::bytestring(4096);
         let r_path_2 = random::bytestring(4096);
         let location_2 = Location::generic(v_path_2.clone(), r_path_2);
         let (vid2, rid2) = SecureClient::resolve_location(location_2.clone());
-        let test_hint_2 = random::random::<[u8; 24]>().into();
-        let test_value_2 = random::bytestring(4096);
-        client_a.write_to_vault(&location_2, test_hint_2, test_value_2).unwrap();
+        client.write_to_vault(&location_2, test_hint(), test_value()).unwrap();
 
+        // Same vault as value nr 2.
         let r_path_3 = random::bytestring(4096);
         let location_3 = Location::generic(v_path_2, r_path_3);
         let (vid23, rid3) = SecureClient::resolve_location(location_3.clone());
         assert_eq!(vid2, vid23);
-        let test_hint_3 = random::random::<[u8; 24]>().into();
-        let test_value_3 = random::bytestring(4096);
-        client_a.write_to_vault(&location_3, test_hint_3, test_value_3).unwrap();
+        client.write_to_vault(&location_3, test_hint(), test_value()).unwrap();
 
-        let hierarchy = ClientState::from(&mut client_a).get_hierarchy();
+        let hierarchy = ClientState::from(&mut client).get_hierarchy();
 
         assert_eq!(hierarchy.len(), 2);
         let records_1 = hierarchy.iter().find(|(k, _)| **k == vid1).unwrap().1;
@@ -486,5 +508,115 @@ mod test {
         assert_eq!(records_2.len(), 2);
         assert!(records_2.iter().any(|(rid, _)| rid == &rid2));
         assert!(records_2.iter().any(|(rid, _)| rid == &rid3));
+    }
+
+    #[test]
+    fn test_export_with_mapping() {
+        let mapping = |(vid, rid)| {
+            if vid == vault_path_to_id("vault_1") {
+                if rid == record_ctr_to_id("vault_1", 11) {
+                    // Map record in same vault to new record id.
+                    Some((vid, record_ctr_to_id("vault_1", 111)))
+                } else if rid == record_ctr_to_id("vault_1", 12) {
+                    // Map record to a vault that we skipped in the sources hierarchy.
+                    Some((vault_path_to_id("vault_3"), record_ctr_to_id("vault_3", 121)))
+                } else if rid == record_ctr_to_id("vault_1", 13) {
+                    // Map record to an entirely new vault.
+                    Some((vault_path_to_id("vault_4"), record_ctr_to_id("vault_4", 13)))
+                } else {
+                    // Keep at same location.
+                    Some((vid, rid))
+                }
+            } else if vid == vault_path_to_id("vault_2") {
+                // Move whole vault.
+                Some((vault_path_to_id("vault_5"), rid))
+            } else {
+                // Skip record from any source vault with path != vault_1 || vault_2.
+                None
+            }
+        };
+        let mapper = Mapper { f: mapping };
+
+        let cid0 = ClientId::random::<Provider>().unwrap();
+        let mut source = SecureClient::new(cid0);
+
+        // Fill test vaults.
+        for i in 1..4usize {
+            for j in 1..5usize {
+                let vault_path = format!("vault_{}", i);
+                let location = Location::counter(vault_path, i * 10 + j);
+                source.write_to_vault(&location, test_hint(), test_value()).unwrap();
+            }
+        }
+
+        let mut target = SecureClient::new(cid0);
+
+        let source_state = ClientState::from(&mut source);
+        let mut target_state = ClientState::from(&mut target);
+        let merge_policy = match random::random::<u8>() % 4 {
+            0 => SelectOrMerge::KeepOld,
+            1 => SelectOrMerge::Replace,
+            2 => SelectOrMerge::Merge(SelectOne::KeepOld),
+            3 => SelectOrMerge::Merge(SelectOne::Replace),
+            _ => unreachable!("0 <= n % 4 <= 3"),
+        };
+
+        let target_hierarchy = target_state.get_hierarchy();
+        assert!(target_hierarchy.is_empty());
+
+        let hierarchy = source_state.get_hierarchy();
+        let diff = target_state.get_diff(hierarchy.clone(), Some(&mapper), &merge_policy);
+        let exported = source_state.export_entries(diff, None);
+        target_state.import_entries(exported, Some(&mapper), Some(&source_state.keystore));
+
+        // Check that old state still contains all values
+        let check_hierarchy = source_state.get_hierarchy();
+        assert_eq!(hierarchy, check_hierarchy);
+
+        let mut target_hierarchy = target_state.get_hierarchy();
+        assert_eq!(target_hierarchy.keys().len(), 4);
+
+        // Vault-1 was partly mapped.
+        let vault_1_entries = target_hierarchy.remove(&vault_path_to_id("vault_1")).unwrap();
+        assert_eq!(vault_1_entries.len(), 2);
+        // Record-14 was not moved.
+        assert!(vault_1_entries
+            .iter()
+            .any(|(rid, _)| rid == &record_ctr_to_id("vault_1", 14)));
+        // Record-11 was moved to counter 111.
+        assert!(vault_1_entries
+            .iter()
+            .any(|(rid, _)| rid == &record_ctr_to_id("vault_1", 111)));
+
+        // All records from Vault-2 were moved to Vault-5.
+        assert!(!target_hierarchy.contains_key(&vault_path_to_id("vault_2")));
+        let vault_5_entries = target_hierarchy.remove(&vault_path_to_id("vault_5")).unwrap();
+        assert_eq!(vault_5_entries.len(), 4);
+        assert!(vault_5_entries
+            .iter()
+            .any(|(rid, _)| rid == &record_ctr_to_id("vault_2", 21)));
+        assert!(vault_5_entries
+            .iter()
+            .any(|(rid, _)| rid == &record_ctr_to_id("vault_2", 22)));
+        assert!(vault_5_entries
+            .iter()
+            .any(|(rid, _)| rid == &record_ctr_to_id("vault_2", 23)));
+        assert!(vault_5_entries
+            .iter()
+            .any(|(rid, _)| rid == &record_ctr_to_id("vault_2", 24)));
+
+        // Vault-3 from source was skipped, but Record-12 from Vault-1 was moved to Vault-3 Record-121.
+        let vault_3_entries = target_hierarchy.remove(&vault_path_to_id("vault_3")).unwrap();
+        assert_eq!(vault_3_entries.len(), 1);
+        assert!(vault_3_entries
+            .iter()
+            .any(|(rid, _)| rid == &record_ctr_to_id("vault_3", 121)));
+
+        // Record-13 from Vault-1 was moved to new Vault-4.
+        let vault_4_entries = target_hierarchy.remove(&vault_path_to_id("vault_4")).unwrap();
+        assert_eq!(vault_4_entries.len(), 1);
+        assert!(vault_4_entries
+            .iter()
+            .any(|(rid, _)| rid == &record_ctr_to_id("vault_4", 13)));
     }
 }
