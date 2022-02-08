@@ -50,7 +50,7 @@ pub trait MergeLayer {
     /// Get the full hierarchy with the ids of all stored entries.
     /// If this hierarchy should be compared with another instances with different Ids,
     /// [`Mapper::map_hierarchy`] can be used to map the hierarchy to match the target's structure.
-    fn get_hierarchy(&mut self) -> Self::Hierarchy;
+    fn get_hierarchy(&self) -> Self::Hierarchy;
 
     /// Compare a hierarchy of entries with the local hierarchy.
     /// Returns the entries from `other` that self does not have.
@@ -58,7 +58,7 @@ pub trait MergeLayer {
     /// If the [`MergeLayer::Path`] differs between `self` and `other` for the same record, a mapper has to be provided
     /// to enable proper comparison.
     fn get_diff(
-        &mut self,
+        &self,
         other: Self::Hierarchy,
         mapper: Option<&Mapper<Self::Path>>,
         merge_policy: &Self::MergePolicy,
@@ -70,9 +70,9 @@ pub trait MergeLayer {
     /// key_provider, encrypt the records with its keys, and send this key_provider to the remote alongside with the
     /// encrypted records.
     fn export_entries(
-        &mut self,
+        &self,
         hierarchy: Self::Hierarchy,
-        new_key_provider: Option<Self::KeyProvider>,
+        new_key_provider: Option<&mut Self::KeyProvider>,
     ) -> Self::Exported;
 
     /// Import the entries from another instance. This overwrites the local locations if they already exists, therefore
@@ -87,7 +87,7 @@ pub trait MergeLayer {
         &mut self,
         exported: Self::Exported,
         mapper: Option<&Mapper<Self::Path>>,
-        old_key_provider: Option<Self::KeyProvider>,
+        old_key_provider: Option<&Self::KeyProvider>,
     );
 }
 
@@ -148,6 +148,12 @@ impl<'a> From<&'a mut SecureClient> for ClientState<'a> {
     }
 }
 
+impl<'a, T> From<&'a mut (HashMap<VaultId, Key<Provider>>, DbView<Provider>, T)> for ClientState<'a> {
+    fn from((keystore, db, _): &'a mut (HashMap<VaultId, Key<Provider>>, DbView<Provider>, T)) -> Self {
+        ClientState { db, keystore }
+    }
+}
+
 /// Merge two client states.
 impl<'a> MergeLayer for ClientState<'a> {
     type Hierarchy = HashMap<VaultId, Vec<(RecordId, BlobId)>>;
@@ -156,7 +162,7 @@ impl<'a> MergeLayer for ClientState<'a> {
     type MergePolicy = SelectOrMerge<SelectOne>;
     type KeyProvider = &'a mut HashMap<VaultId, Key<Provider>>;
 
-    fn get_hierarchy(&mut self) -> Self::Hierarchy {
+    fn get_hierarchy(&self) -> Self::Hierarchy {
         let mut map = HashMap::new();
         for vid in self.db.list_vaults() {
             let key = self.keystore.get(&vid).unwrap();
@@ -166,7 +172,7 @@ impl<'a> MergeLayer for ClientState<'a> {
         map
     }
     fn get_diff(
-        &mut self,
+        &self,
         other: Self::Hierarchy,
         mapper: Option<&Mapper<Self::Path>>,
         merge_policy: &Self::MergePolicy,
@@ -200,9 +206,9 @@ impl<'a> MergeLayer for ClientState<'a> {
     }
 
     fn export_entries(
-        &mut self,
+        &self,
         hierarchy: Self::Hierarchy,
-        mut new_key_provider: Option<Self::KeyProvider>,
+        mut new_key_provider: Option<&mut Self::KeyProvider>,
     ) -> Self::Exported {
         hierarchy
             .into_iter()
@@ -228,7 +234,7 @@ impl<'a> MergeLayer for ClientState<'a> {
         &mut self,
         exported: Self::Exported,
         mapper: Option<&Mapper<Self::Path>>,
-        old_key_provider: Option<Self::KeyProvider>,
+        old_key_provider: Option<&Self::KeyProvider>,
     ) {
         let mapper = match mapper {
             Some(m) => m,
@@ -290,6 +296,15 @@ impl<'a> From<&'a mut Snapshot> for SnapshotState<'a> {
     }
 }
 
+impl<'a> SnapshotState<'a> {
+    pub fn into_key_provider(self) -> HashMap<ClientId, &'a mut HashMap<VaultId, Key<Provider>>> {
+        self.client_states
+            .into_iter()
+            .map(|(cid, ClientState { keystore, .. })| (cid, keystore))
+            .collect()
+    }
+}
+
 /// Merge two snapshot states.
 /// Apart from merging the state from another snapshot file into the already loaded snapshot state, this also allows
 /// to import the state from remote snapshots partially or fully.
@@ -300,9 +315,9 @@ impl<'a> MergeLayer for SnapshotState<'a> {
     type MergePolicy = SelectOrMerge<<ClientState<'a> as MergeLayer>::MergePolicy>;
     type KeyProvider = HashMap<ClientId, <ClientState<'a> as MergeLayer>::KeyProvider>;
 
-    fn get_hierarchy(&mut self) -> Self::Hierarchy {
+    fn get_hierarchy(&self) -> Self::Hierarchy {
         let mut map = HashMap::new();
-        for (client_id, state) in &mut self.client_states {
+        for (client_id, state) in &self.client_states {
             let vault_map = <ClientState as MergeLayer>::get_hierarchy(state);
             map.insert(*client_id, vault_map);
         }
@@ -310,7 +325,7 @@ impl<'a> MergeLayer for SnapshotState<'a> {
     }
 
     fn get_diff(
-        &mut self,
+        &self,
         other: Self::Hierarchy,
         mapper: Option<&Mapper<Self::Path>>,
         merge_policy: &Self::MergePolicy,
@@ -326,7 +341,7 @@ impl<'a> MergeLayer for SnapshotState<'a> {
                         },
                         None => (cid0, vid0, rid0),
                     };
-                    match (self.client_states.get_mut(&cid1), merge_policy) {
+                    match (self.client_states.get(&cid1), merge_policy) {
                         (Some(_), SelectOrMerge::KeepOld) => continue,
                         (Some(state), SelectOrMerge::Merge(SelectOrMerge::KeepOld))
                             if state.db.contains_vault(&vid1) =>
@@ -357,17 +372,17 @@ impl<'a> MergeLayer for SnapshotState<'a> {
     }
 
     fn export_entries(
-        &mut self,
+        &self,
         hierarchy: Self::Hierarchy,
-        mut new_key_provider: Option<Self::KeyProvider>,
+        mut new_key_provider: Option<&mut Self::KeyProvider>,
     ) -> Self::Exported {
         hierarchy
             .into_iter()
             .map(|(cid, vaults)| {
-                let state = self.client_states.get_mut(&cid).unwrap();
+                let state = self.client_states.get(&cid).unwrap();
                 let keystore = new_key_provider
                     .as_mut()
-                    .map(|key_provider| key_provider.remove(&cid).unwrap());
+                    .map(|key_provider| key_provider.get_mut(&cid).unwrap());
                 let vaults = <ClientState as MergeLayer>::export_entries(state, vaults, keystore);
                 (cid, vaults)
             })
@@ -378,7 +393,7 @@ impl<'a> MergeLayer for SnapshotState<'a> {
         &mut self,
         exported: Self::Exported,
         mapper: Option<&Mapper<Self::Path>>,
-        mut old_key_provider: Option<Self::KeyProvider>,
+        mut old_key_provider: Option<&Self::KeyProvider>,
     ) {
         let mapper = match mapper {
             Some(m) => m,
@@ -387,7 +402,7 @@ impl<'a> MergeLayer for SnapshotState<'a> {
                     let state = self.client_states.get_mut(&cid).unwrap();
                     let keystore = old_key_provider
                         .as_mut()
-                        .map(|key_provider| key_provider.remove(&cid).unwrap());
+                        .map(|key_provider| key_provider.get(&cid).unwrap());
                     <ClientState as MergeLayer>::import_entries(state, vaults, None, keystore)
                 })
             }

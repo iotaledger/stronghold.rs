@@ -123,7 +123,7 @@ impl<P: BoxProvider> DbView<P> {
         }
     }
 
-    pub fn get_blob_id(&mut self, key: &Key<P>, vid: VaultId, rid: RecordId) -> Result<BlobId, VaultError<P::Error>> {
+    pub fn get_blob_id(&self, key: &Key<P>, vid: VaultId, rid: RecordId) -> Result<BlobId, VaultError<P::Error>> {
         let vault = self.vaults.get(&vid).ok_or(VaultError::VaultNotFound(vid))?;
         let blob_id = vault.get_blob_id(key, rid.0)?;
         Ok(blob_id)
@@ -220,11 +220,7 @@ impl<P: BoxProvider> DbView<P> {
             .and_then(|v| v.list_entries(key).map_err(|e| e.into()))
     }
 
-    pub fn export_records<I>(
-        &mut self,
-        vid: VaultId,
-        records: I,
-    ) -> Result<Vec<(RecordId, Record)>, VaultError<P::Error>>
+    pub fn export_records<I>(&self, vid: VaultId, records: I) -> Result<Vec<(RecordId, Record)>, VaultError<P::Error>>
     where
         I: IntoIterator<Item = RecordId>,
     {

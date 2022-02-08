@@ -92,22 +92,13 @@ impl Snapshot {
         let mut state0 = self.state.0.remove(&cid0).unwrap();
         let mut state1 = self.state.0.remove(&cid1).unwrap();
 
-        let mut source = sync::ClientState {
-            keystore: &mut state0.0,
-            db: &mut state0.1,
-        };
-        let mut target = sync::ClientState {
-            keystore: &mut state1.0,
-            db: &mut state1.1,
-        };
+        let source: sync::ClientState = (&mut state0).into();
+        let mut target: sync::ClientState = (&mut state1).into();
 
         let hierarchy = source.get_hierarchy();
-
         let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy);
-
         let exported = source.export_entries(diff, None);
-
-        target.import_entries(exported, mapper.as_ref(), Some(source.keystore));
+        target.import_entries(exported, mapper.as_ref(), Some(&source.keystore));
 
         self.state.0.insert(cid0, state0);
         self.state.0.insert(cid1, state1);
@@ -120,18 +111,14 @@ impl Snapshot {
         mapper: Option<Mapper<(ClientId, VaultId, RecordId)>>,
         merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
     ) {
-        let mut source = other.as_snapshot_state();
+        let source: sync::SnapshotState = other.into();
+        let mut target: sync::SnapshotState = self.into();
+
         let hierarchy = source.get_hierarchy();
-
-        let mut target = self.as_snapshot_state();
         let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy);
-
-        let mut source = other.as_snapshot_state();
         let exported = source.export_entries(diff, None);
 
-        let source_keystore = other.get_key_provider();
-        let mut target = self.as_snapshot_state();
-        target.import_entries(exported, mapper.as_ref(), Some(source_keystore));
+        target.import_entries(exported, mapper.as_ref(), Some(&source.into_key_provider()));
     }
 
     fn as_snapshot_state(&mut self) -> sync::SnapshotState {
@@ -145,14 +132,6 @@ impl Snapshot {
             })
             .collect();
         sync::SnapshotState { client_states }
-    }
-
-    fn get_key_provider(&mut self) -> HashMap<ClientId, &mut HashMap<VaultId, PKey<Provider>>> {
-        self.state
-            .0
-            .iter_mut()
-            .map(|(&cid, (keystore, _, _))| (cid, keystore))
-            .collect()
     }
 
     fn get_client_state(&mut self, id: ClientId) -> Option<sync::ClientState> {
