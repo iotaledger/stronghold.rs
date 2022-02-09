@@ -1,6 +1,6 @@
 use crate::types::Bytes;
 use crate::memories::buffer::Buffer;
-use crate::crypto_box::{BoxProvider, Key};
+use crate::crypto_utils::crypto_box::{BoxProvider, Key};
 use core::fmt::Debug;
 
 
@@ -8,6 +8,7 @@ use core::fmt::Debug;
 pub enum MemoryError {
     EncryptionError,
     DecryptionError,
+    SizeNeededForAllocation,
     ConfigurationNotAllowed,
 }
 
@@ -22,8 +23,10 @@ pub enum ProtectedConfiguration {
 pub enum LockedConfiguration<P: BoxProvider> {
     // Default configuration when zeroed out
     ZeroedConfig(),
-    // Encrypted ram memory, needs a key and size of non encrypted data
-    EncryptedRamConfig(Key<P>, usize),
+    // Encrypted ram memory
+    // Needs a key for encryption/decryption
+    // Needs size for allocation but not for unlocking 
+    EncryptedRamConfig(Key<P>, Option<usize>),
     // Encrypted file memory, needs a key and size of non encrypted data
     EncryptedFileConfig(Key<P>, usize),
     // Non contiguous memory in ram and disk

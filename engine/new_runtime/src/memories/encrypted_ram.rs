@@ -1,22 +1,22 @@
 
 use crate::locked_memory::{*, LockedConfiguration::*, MemoryError::*, ProtectedConfiguration::*};
 use crate::memories::buffer::Buffer;
-use crate::types::{Bytes};
 use core::fmt::{self, Debug, Formatter};
 use core::marker::PhantomData;
-use crate::crypto_box::{BoxProvider, Key};
+use crate::crypto_utils::crypto_box::{BoxProvider, Key};
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
     ser::{Serialize, Serializer},
 };
 
-const AD_SIZE : usize = 16;
 
 /// GuardedMemory is used when we want to store sensitive non encrypted data
 /// This shall always be short lived
-pub struct EncryptedRam<T: Bytes, P: BoxProvider> {
-    pub cypher : Buffer<T>,
+pub struct EncryptedRam<P: BoxProvider, const AD_SIZE: usize> {
+    // Visibility within crate is for testing purpose
+    // We currently only implement for u8 because our encryption functions only returns Vec[u8], therefore our cypher is Buffer<u8>
+    cypher : Buffer<u8>,
     // Configuration, we should only allow EncryptedRamConfig for this struct
     // We do not store the key in the struct config, just random data for security
     config: LockedConfiguration<P>,
@@ -25,21 +25,29 @@ pub struct EncryptedRam<T: Bytes, P: BoxProvider> {
 }
 
 
-// We currently implement for u8 because our encryption functions return Vec<u8>
-impl<P: BoxProvider> LockedMemory<u8, P> for EncryptedRam<u8, P> {
+// We currently only implement for u8 because our encryption functions only returns Vec[u8], therefore our cypher is Buffer<u8>
+impl<P: BoxProvider, const AD_SIZE: usize> LockedMemory<u8, P> for
+    EncryptedRam<P, AD_SIZE> {
 
     fn alloc(payload: &[u8], config: LockedConfiguration<P>)
              -> Result<Self, MemoryError> {
         match config {
             // For encrypted memory we don't store the key itself.
             EncryptedRamConfig(key, size) => {
+                if size.is_none() { return Err(SizeNeededForAllocation) ;}
                 let mut ad: [u8; AD_SIZE] = [0u8; AD_SIZE];
                 P::random_buf(&mut ad).or(Err(EncryptionError))?;
                 Ok(EncryptedRam {
                     // Encrypt the payload before storing it
                     cypher: {
-                        let encrypted_payload = P::box_seal(&key, &ad, payload).or(Err(EncryptionError))?;
-                        Buffer::alloc(&encrypted_payload, BufferConfig(encrypted_payload.len()))
+                        let encrypted_payload =
+                            P::box_seal(&key,
+                                        &ad,
+                                        payload)
+                            .or(Err(EncryptionError))?;
+                        Buffer::alloc(
+                            &encrypted_payload,
+                            BufferConfig(encrypted_payload.len()))
                             .expect("Failed to generate buffer")
                     },
                     // Don't put the actual key value, put random values, we don't want to store the key
@@ -49,7 +57,7 @@ impl<P: BoxProvider> LockedMemory<u8, P> for EncryptedRam<u8, P> {
                 })
             },
 
-            // We don't allow any other configurations for RamMemory
+            // We don't allow any other configurations for EncryptedRam
             _ => Err(ConfigurationNotAllowed)
         }
     }
@@ -61,12 +69,12 @@ impl<P: BoxProvider> LockedMemory<u8, P> for EncryptedRam<u8, P> {
     }
 
     /// Locks the memory and possibly reallocates
-    // Currently we reallocate a new RamMemory at each lock
+    // Currently we reallocate a new EncryptedRam at each lock
     // This improves security but decreases performance
     fn lock(self, payload: Buffer<u8>, config: LockedConfiguration<P>)
             -> Result<Self, MemoryError> {
         match config {
-            EncryptedRamConfig(_, _) => EncryptedRam::alloc(&payload.borrow(), config),
+            EncryptedRamConfig(_, _) => EncryptedRam::<P, AD_SIZE>::alloc(&payload.borrow(), config),
             _ => Err(ConfigurationNotAllowed)
         }
     }
@@ -77,28 +85,30 @@ impl<P: BoxProvider> LockedMemory<u8, P> for EncryptedRam<u8, P> {
         // assert_matches!(self.config, EncryptedRamConfig(_,_));
 
         // Decrypt and store the value in a Buffer
-        if let EncryptedRamConfig(key, size) = config {
+        if let EncryptedRamConfig(key, None) = config {
             // Note: data is not in the protected buffer here, change box_open to return a Buffer type?
             let data = P::box_open(&key, &self.ad, &*self.cypher.borrow()).or(Err(DecryptionError))?;
-            Buffer::alloc(&data, BufferConfig(size))
+            if let EncryptedRamConfig(_, Some(size)) = self.config {
+                Buffer::alloc(&data, BufferConfig(size))
+            } else {
+                panic!("This should not happen if EncryptedRam has been allocated properly")
+            }
         } else {
             return Err(ConfigurationNotAllowed);
         }
     }
 }
 
-impl<T: Bytes, P: BoxProvider> Debug for EncryptedRam<T, P> {
+impl<P: BoxProvider, const AD_SIZE: usize> Debug for EncryptedRam<P, AD_SIZE> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.cypher.fmt(f)
     }
 }
 
-unsafe impl<T: Bytes + Send, P: BoxProvider> Send for EncryptedRam<T, P> {}
-unsafe impl<T: Bytes + Sync, P: BoxProvider> Sync for EncryptedRam<T, P> {}
+unsafe impl<P: BoxProvider, const AD_SIZE: usize> Send for EncryptedRam<P, AD_SIZE> {}
+unsafe impl<P: BoxProvider, const AD_SIZE: usize> Sync for EncryptedRam<P, AD_SIZE> {}
 
-impl<T: Bytes, P: BoxProvider> Serialize for EncryptedRam<T, P>
-where
-    T: Serialize,
+impl<P: BoxProvider, const AD_SIZE: usize> Serialize for EncryptedRam<P, AD_SIZE>
 {
     fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -113,21 +123,19 @@ where
     }
 }
 
-struct RamMemoryVisitor<T: Bytes, P: BoxProvider> {
-    marker: PhantomData<fn() -> EncryptedRam<T, P>>,
+struct EncryptedRamVisitor<P: BoxProvider, const AD_SIZE: usize> {
+    marker: PhantomData<fn() -> EncryptedRam<P, AD_SIZE>>,
 }
 
-impl<T: Bytes, P: BoxProvider> RamMemoryVisitor<T, P> {
+impl<P: BoxProvider, const AD_SIZE: usize> EncryptedRamVisitor<P, AD_SIZE> {
     fn new() -> Self {
-        RamMemoryVisitor { marker: PhantomData }
+        EncryptedRamVisitor { marker: PhantomData }
     }
 }
 
-impl<'de, T: Bytes, P: BoxProvider> Visitor<'de> for RamMemoryVisitor<T, P>
-where
-    T: Deserialize<'de>,
+impl<'de, P: BoxProvider, const AD_SIZE: usize> Visitor<'de> for EncryptedRamVisitor<P, AD_SIZE>
 {
-    type Value = EncryptedRam<T, P>;
+    type Value = EncryptedRam<P, AD_SIZE>;
 
     fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter.write_str("GuardedVec not found")
@@ -147,21 +155,56 @@ where
         //     seq.push(e);
         // }
 
-        // let seq = RamMemory::new(seq.len(), |s| s.copy_from_slice(seq.as_slice()));
+        // let seq = EncryptedRam::new(seq.len(), |s| s.copy_from_slice(seq.as_slice()));
 
         // Ok(seq)
     }
 }
 
-impl<'de, T: Bytes, P: BoxProvider> Deserialize<'de> for EncryptedRam<T, P>
-where
-    T: Deserialize<'de>,
+impl<'de, P: BoxProvider, const AD_SIZE: usize> Deserialize<'de> for EncryptedRam<P, AD_SIZE>
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_seq(RamMemoryVisitor::new())
+        deserializer.deserialize_seq(EncryptedRamVisitor::new())
     }
+}
+
+mod tests {
+    extern crate alloc;
+    use super::*;
+    use crate::crypto_utils::provider::Provider;
+    use crate::locked_memory::*;
+
+    use alloc::format;
+
+    #[test]
+    fn test_lock_unlock() {
+        let key = Key::random();
+        let ram = EncryptedRam::<Provider, 16>::alloc(&[1, 2, 3, 4, 5, 6][..], EncryptedRamConfig(key.clone(), Some(6)));
+        assert!(ram.is_ok());
+        let ram = ram.unwrap();
+        let buf = ram.unlock(EncryptedRamConfig(key.clone(), None)); 
+        assert!(buf.is_ok());
+        let buf = buf.unwrap();
+        assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
+        let ram = ram.lock(buf, EncryptedRamConfig(key.clone(), Some(6)));
+        assert!(ram.is_ok());
+    }
+
+    #[test]
+    fn test_crypto() {
+        let key = Key::random();
+        let ram = EncryptedRam::<Provider, 16>::alloc(&[1, 2, 3, 4, 5, 6][..], EncryptedRamConfig(key.clone(), Some(6)));
+        assert!(ram.is_ok());
+        let ram = ram.unwrap();
+        let cypher = ram.cypher;
+        assert_ne!(*cypher.borrow(), [1, 2, 3, 4, 5, 6]);
+    }
+
+
+    #[test]
+    fn test_moving_and_cloning() {}
 }
 
