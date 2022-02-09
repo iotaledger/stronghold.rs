@@ -220,6 +220,20 @@ impl<P: BoxProvider> DbView<P> {
             .and_then(|v| v.list_entries(key).map_err(|e| e.into()))
     }
 
+    pub fn export_all(&self) -> HashMap<VaultId, Vec<(RecordId, Record)>> {
+        self.vaults
+            .iter()
+            .map(|(vid, vault)| {
+                let entries = vault
+                    .entries
+                    .iter()
+                    .map(|(id, record)| (RecordId(*id), record.clone()))
+                    .collect();
+                (*vid, entries)
+            })
+            .collect()
+    }
+
     pub fn export_records<I>(&self, vid: VaultId, records: I) -> Result<Vec<(RecordId, Record)>, VaultError<P::Error>>
     where
         I: IntoIterator<Item = RecordId>,

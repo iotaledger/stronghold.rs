@@ -81,7 +81,7 @@ impl Snapshot {
         }
     }
 
-    // Sync two client states.
+    /// Sync two client states.
     pub fn sync_clients(
         &mut self,
         cid0: ClientId,
@@ -97,7 +97,7 @@ impl Snapshot {
 
         let hierarchy = source.get_hierarchy();
         let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy);
-        let exported = source.export_entries(diff, None);
+        let exported = source.export_entries(Some(diff));
         target.import_entries(exported, &merge_policy, mapper.as_ref(), Some(source.keystore));
 
         self.state.0.insert(cid0, state0);
@@ -107,44 +107,73 @@ impl Snapshot {
     /// Sync the local state with another snapshot, which imports the entries from `other` to `local`.
     pub fn sync_with_snapshot(
         &mut self,
-        other: &mut Self,
+        other: &mut SnapshotState,
         mapper: Option<Mapper<(ClientId, VaultId, RecordId)>>,
         merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
     ) {
         let source: sync::SnapshotState = other.into();
-        let mut target: sync::SnapshotState = self.into();
+        let mut target: sync::SnapshotState = (&mut self.state).into();
 
         let hierarchy = source.get_hierarchy();
         let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy);
-        let exported = source.export_entries(diff, None);
+        let exported = source.export_entries(Some(diff));
 
         target.import_entries(
             exported,
             &merge_policy,
             mapper.as_ref(),
-            Some(&mut source.into_key_provider()),
+            Some(&source.into_key_provider()),
         );
     }
 
-    fn as_snapshot_state(&mut self) -> sync::SnapshotState {
-        let client_states = self
-            .state
-            .0
-            .iter_mut()
-            .map(|(&cid, (keystore, db, _))| {
-                let state = sync::ClientState { keystore, db };
-                (cid, state)
-            })
-            .collect();
-        sync::SnapshotState { client_states }
+    /// Export the entries specified in the diff to a blank snapshot state.
+    /// This re-encrypts the entries with new vault-keys that are inserted in the new
+    /// snapshot state alongside with the exported records.
+    ///
+    /// Deserialize, encrypt and compress the new state to a bytestring.
+    pub fn export_to_serialized_state(
+        &mut self,
+        diff: <sync::SnapshotState as MergeLayer>::Hierarchy,
+        key: Key,
+    ) -> Vec<u8> {
+        let exported = sync::SnapshotState::from(&mut self.state).export_entries(Some(diff));
+        let mut blank_state = SnapshotState(HashMap::default());
+        let old_key_store = self.state.0.iter().map(|(cid, state)| (*cid, &state.0)).collect();
+        sync::SnapshotState::from(&mut blank_state).import_entries(
+            exported,
+            &SelectOrMerge::Replace,
+            None,
+            Some(&old_key_store),
+        );
+        let data = self.state.serialize().unwrap();
+        let compressed_plain = engine::snapshot::compress(data.as_slice());
+        let mut buffer = Vec::new();
+        engine::snapshot::write(&compressed_plain, &mut buffer, &key, &[]).unwrap();
+        buffer
     }
 
-    fn get_client_state(&mut self, id: ClientId) -> Option<sync::ClientState> {
-        let state = self.state.0.get_mut(&id)?;
-        Some(sync::ClientState {
-            keystore: &mut state.0,
-            db: &mut state.1,
-        })
+    /// Import from serialized snapshot state.
+    pub fn import_from_serialized_state(
+        &mut self,
+        bytes: Vec<u8>,
+        key: Key,
+        mapper: Option<Mapper<(ClientId, VaultId, RecordId)>>,
+        merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
+    ) {
+        let pt = engine::snapshot::read(&mut bytes.as_slice(), &key, &[]).unwrap();
+        let data = engine::snapshot::decompress(&pt).unwrap();
+        let other_snapshot = &mut SnapshotState::deserialize(data).unwrap();
+        let other_state: sync::SnapshotState = other_snapshot.into();
+        let exported = other_state.export_entries(None);
+
+        let mut self_state: sync::SnapshotState = (&mut self.state).into();
+
+        self_state.import_entries(
+            exported,
+            &merge_policy,
+            mapper.as_ref(),
+            Some(&other_state.into_key_provider()),
+        );
     }
 }
 
