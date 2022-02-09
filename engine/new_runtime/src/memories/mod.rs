@@ -1,4 +1,4 @@
 pub mod buffer;
-pub mod ram_memory;
+pub mod encrypted_ram;
 pub mod file_memory;
 pub mod noncontiguous_memory;

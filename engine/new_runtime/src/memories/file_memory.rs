@@ -1,4 +1,4 @@
-use crate::locked_memory::MemoryConfiguration;
+use crate::locked_memory::ProtectedConfiguration;
 
 const FILENAME_SIZE: usize = 16;
 
@@ -6,5 +6,5 @@ const FILENAME_SIZE: usize = 16;
 pub struct FileMemory {
     // Filename are random string of 16 characters
     fname: [u8; FILENAME_SIZE],
-    config: MemoryConfiguration
+    config: ProtectedConfiguration
 }

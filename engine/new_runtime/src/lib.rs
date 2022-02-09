@@ -5,6 +5,6 @@ mod locked_memory;
 mod memories;
 mod boxed;
 mod types;
-// mod crypto_box;
+mod crypto_box;
 
 pub use types::Bytes;
