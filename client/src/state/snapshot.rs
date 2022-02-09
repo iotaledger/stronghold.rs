@@ -98,7 +98,7 @@ impl Snapshot {
         let hierarchy = source.get_hierarchy();
         let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy);
         let exported = source.export_entries(diff, None);
-        target.import_entries(exported, mapper.as_ref(), Some(&source.keystore));
+        target.import_entries(exported, &merge_policy, mapper.as_ref(), Some(source.keystore));
 
         self.state.0.insert(cid0, state0);
         self.state.0.insert(cid1, state1);
@@ -118,7 +118,12 @@ impl Snapshot {
         let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy);
         let exported = source.export_entries(diff, None);
 
-        target.import_entries(exported, mapper.as_ref(), Some(&source.into_key_provider()));
+        target.import_entries(
+            exported,
+            &merge_policy,
+            mapper.as_ref(),
+            Some(&mut source.into_key_provider()),
+        );
     }
 
     fn as_snapshot_state(&mut self) -> sync::SnapshotState {

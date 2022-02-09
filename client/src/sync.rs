@@ -65,8 +65,9 @@ pub trait MergeLayer {
     fn import_entries(
         &mut self,
         exported: Self::Exported,
+        merge_policy: &Self::MergePolicy,
         mapper: Option<&Mapper<Self::Path>>,
-        old_key_provider: Option<&Self::KeyProvider>,
+        old_key_provider: Option<&mut Self::KeyProvider>,
     );
 }
 
@@ -132,7 +133,7 @@ impl<'a> MergeLayer for ClientState<'a> {
     type Exported = HashMap<VaultId, Vec<(RecordId, Record)>>;
     type Path = (VaultId, RecordId);
     type MergePolicy = SelectOrMerge<SelectOne>;
-    type KeyProvider = &'a mut HashMap<VaultId, Key<Provider>>;
+    type KeyProvider = HashMap<VaultId, Key<Provider>>;
 
     fn get_hierarchy(&self) -> Self::Hierarchy {
         let mut map = HashMap::new();
@@ -168,7 +169,8 @@ impl<'a> MergeLayer for ClientState<'a> {
                     SelectOrMerge::KeepOld if self.db.contains_vault(&vid1) => continue,
                     SelectOrMerge::Merge(SelectOne::KeepOld) if self.db.contains_record(vid1, rid1) => continue,
                     _ => {
-                        if let Some(key) = self.keystore.get(&vid1) {
+                        if self.db.contains_record(vid1, rid1) {
+                            let key = self.keystore.get(&vid1).unwrap();
                             if self.db.get_blob_id(key, vid1, rid1).unwrap() == bid {
                                 continue;
                             }
@@ -210,46 +212,84 @@ impl<'a> MergeLayer for ClientState<'a> {
     fn import_entries(
         &mut self,
         exported: Self::Exported,
+        merge_policy: &Self::MergePolicy,
         mapper: Option<&Mapper<Self::Path>>,
-        old_key_provider: Option<&Self::KeyProvider>,
+        old_key_provider: Option<&mut Self::KeyProvider>,
     ) {
-        let mapper = match mapper {
-            Some(m) => m,
-            None => {
-                for (vid, mut entries) in exported {
-                    let key = self.keystore.get(&vid).unwrap();
-                    if let Some(old_key_provider) = old_key_provider.as_ref() {
-                        let old_key = old_key_provider.get(&vid).unwrap();
-                        if old_key != key {
-                            entries
-                                .iter_mut()
-                                .try_for_each(|(rid, r)| r.update_meta(old_key, (*rid).into(), key, (*rid).into()))
-                                .unwrap();
+        let mut mapped: HashMap<VaultId, Vec<_>> = HashMap::new();
+        match mapper {
+            Some(mapper) => {
+                for (vid0, entries) in exported {
+                    for (rid0, mut record) in entries {
+                        let (vid1, rid1) = match mapper.map((vid0, rid0)) {
+                            Some(ids) => ids,
+                            None => continue,
+                        };
+                        match merge_policy {
+                            SelectOrMerge::KeepOld if self.db.contains_vault(&vid1) => continue,
+                            SelectOrMerge::Merge(SelectOne::KeepOld) if self.db.contains_record(vid1, rid1) => continue,
+                            _ => {}
                         }
-                    }
-                    self.db.import_records(key, vid, entries).unwrap();
-                }
-                return;
-            }
-        };
-        for (vid0, entries) in exported {
-            for (rid0, mut record) in entries {
-                let (vid1, rid1) = match mapper.map((vid0, rid0)) {
-                    Some(ids) => ids,
-                    None => continue,
-                };
-                let key = self.keystore.entry(vid1).or_insert_with(Key::random);
-                if rid0 != rid1 {
-                    let old_key = old_key_provider.as_ref().map(|k| k.get(&vid0).unwrap()).unwrap_or(key);
-                    record.update_meta(old_key, rid0.into(), key, rid1.into()).unwrap();
-                } else if let Some(old_key_provider) = old_key_provider.as_ref() {
-                    let old_key = old_key_provider.get(&vid0).unwrap();
-                    if old_key != key {
-                        record.update_meta(old_key, rid0.into(), key, rid1.into()).unwrap();
+
+                        // Re-encrypt record if record-id or encryption key changed.
+                        let key = self.keystore.entry(vid1).or_insert_with(Key::random);
+                        if rid0 != rid1 {
+                            let old_key = old_key_provider.as_ref().map(|k| k.get(&vid0).unwrap()).unwrap_or(key);
+                            record.update_meta(old_key, rid0.into(), key, rid1.into()).unwrap();
+                        } else if let Some(old_key_provider) = old_key_provider.as_ref() {
+                            let old_key = old_key_provider.get(&vid0).unwrap();
+                            if old_key != key {
+                                record.update_meta(old_key, rid0.into(), key, rid1.into()).unwrap();
+                            }
+                        }
+                        let vault_entry = mapped.entry(vid1).or_default();
+                        vault_entry.push((rid1, record));
                     }
                 }
-                self.db.import_records(key, vid1, vec![(rid1, record)]).unwrap();
             }
+            None => {
+                mapped = exported
+                    .into_iter()
+                    .filter_map(|(vid, entries)| {
+                        // Skip entries according to merge policy if the vault already exists.
+                        match merge_policy {
+                            SelectOrMerge::KeepOld if self.db.contains_vault(&vid) => return None,
+                            _ => {}
+                        }
+                        self.keystore.entry(vid).or_insert_with(Key::random);
+                        let new_key = self.keystore.remove(&vid).unwrap();
+                        let mut old_key = old_key_provider.as_ref().map(|ks| ks.get(&vid).unwrap());
+                        if old_key == Some(&new_key) {
+                            old_key = None
+                        }
+                        let entries = entries
+                            .into_iter()
+                            .filter_map(|(rid, mut record)| {
+                                // Skip entry according to merge policy if the record already exists.
+                                match merge_policy {
+                                    SelectOrMerge::Merge(SelectOne::KeepOld) if self.db.contains_record(vid, rid) => {
+                                        return None;
+                                    }
+                                    _ => {}
+                                }
+                                // Update encryption key if it has changed.
+                                if let Some(old_key) = old_key {
+                                    record.update_meta(old_key, rid.into(), &new_key, rid.into()).unwrap();
+                                }
+                                Some((rid, record))
+                            })
+                            .collect();
+                        self.keystore.insert(vid, new_key);
+                        Some((vid, entries))
+                    })
+                    .collect();
+            }
+        }
+        for (vid, entries) in mapped {
+            let key = self.keystore.entry(vid).or_insert_with(Key::random);
+            self.db
+                .import_records(key, vid, entries, matches!(merge_policy, SelectOrMerge::Replace))
+                .unwrap();
         }
     }
 }
@@ -290,7 +330,7 @@ impl<'a> MergeLayer for SnapshotState<'a> {
     type Exported = HashMap<ClientId, <ClientState<'a> as MergeLayer>::Exported>;
     type Path = (ClientId, VaultId, RecordId);
     type MergePolicy = SelectOrMerge<<ClientState<'a> as MergeLayer>::MergePolicy>;
-    type KeyProvider = HashMap<ClientId, <ClientState<'a> as MergeLayer>::KeyProvider>;
+    type KeyProvider = HashMap<ClientId, &'a mut <ClientState<'a> as MergeLayer>::KeyProvider>;
 
     fn get_hierarchy(&self) -> Self::Hierarchy {
         let mut map = HashMap::new();
@@ -314,10 +354,12 @@ impl<'a> MergeLayer for SnapshotState<'a> {
                     let (cid1, vid1, rid1) = match mapper {
                         Some(mapper) => match mapper.map((cid0, vid0, rid0)) {
                             Some(ids) => ids,
+                            // Skip entries that are filtered by the mapper.
                             None => continue,
                         },
                         None => (cid0, vid0, rid0),
                     };
+                    // Skip entries that already exists according to the merge policy.
                     match (self.client_states.get(&cid1), merge_policy) {
                         (Some(_), SelectOrMerge::KeepOld) => continue,
                         (Some(state), SelectOrMerge::Merge(SelectOrMerge::KeepOld))
@@ -359,7 +401,7 @@ impl<'a> MergeLayer for SnapshotState<'a> {
                 let state = self.client_states.get(&cid).unwrap();
                 let keystore = new_key_provider
                     .as_mut()
-                    .map(|key_provider| key_provider.get_mut(&cid).unwrap());
+                    .map(|key_provider| key_provider.remove(&cid).unwrap());
                 let vaults = <ClientState as MergeLayer>::export_entries(state, vaults, keystore);
                 (cid, vaults)
             })
@@ -369,45 +411,80 @@ impl<'a> MergeLayer for SnapshotState<'a> {
     fn import_entries(
         &mut self,
         exported: Self::Exported,
+        merge_policy: &Self::MergePolicy,
         mapper: Option<&Mapper<Self::Path>>,
-        mut old_key_provider: Option<&Self::KeyProvider>,
+        mut old_key_provider: Option<&mut Self::KeyProvider>,
     ) {
-        let mapper = match mapper {
-            Some(m) => m,
-            None => {
-                return exported.into_iter().for_each(|(cid, vaults)| {
-                    let state = self.client_states.get_mut(&cid).unwrap();
-                    let keystore = old_key_provider
-                        .as_mut()
-                        .map(|key_provider| key_provider.get(&cid).unwrap());
-                    <ClientState as MergeLayer>::import_entries(state, vaults, None, keystore)
-                })
-            }
-        };
-        // Map and re-encrypt the records to the actual location and encryption key before importing them.
-        for (cid0, vaults) in exported {
-            let old_keystore = old_key_provider.as_ref().map(|kp| kp.get(&cid0).unwrap());
-            for (vid0, records) in vaults {
-                let old_key = old_keystore.map(|ks| ks.get(&vid0).unwrap());
-                for (rid0, mut r) in records {
-                    let (cid1, vid1, rid1) = match mapper.map((cid0, vid0, rid0)) {
-                        Some(ids) => ids,
-                        None => continue,
-                    };
-                    // TODO: spawn new client if it does not exists yet
-                    let state = self.client_states.get_mut(&cid1).unwrap();
-                    let new_key = state.keystore.entry(vid1).or_insert_with(Key::random);
-                    if rid0 != rid1 {
-                        let old_key = old_key.unwrap_or(new_key);
-                        r.update_meta(old_key, rid0.into(), new_key, rid1.into()).unwrap();
-                    } else if let Some(old_key) = old_key {
-                        if old_key != new_key {
-                            r.update_meta(old_key, rid0.into(), new_key, rid1.into()).unwrap();
+        let mut mapped: HashMap<ClientId, HashMap<VaultId, Vec<_>>> = HashMap::new();
+        match mapper {
+            Some(mapper) => {
+                for (cid0, vaults) in exported {
+                    for (vid0, entries) in vaults {
+                        for (rid0, mut record) in entries {
+                            let (cid1, vid1, rid1) = match mapper.map((cid0, vid0, rid0)) {
+                                Some(ids) => ids,
+                                None => continue,
+                            };
+                            // Check for each layer (client, vault, record) the merge policy and if the entry already
+                            // exists.
+                            match (self.client_states.get(&cid1), merge_policy) {
+                                (Some(_), SelectOrMerge::KeepOld) => continue,
+                                (Some(state), SelectOrMerge::Merge(SelectOrMerge::KeepOld))
+                                    if state.db.contains_vault(&vid1) =>
+                                {
+                                    continue
+                                }
+                                (Some(state), SelectOrMerge::Merge(SelectOrMerge::Merge(SelectOne::KeepOld)))
+                                    if state.db.contains_record(vid1, rid1) =>
+                                {
+                                    continue
+                                }
+                                _ => {}
+                            }
+                            let state = self.client_states.get_mut(&cid1).unwrap();
+                            let new_key = state.keystore.entry(vid1).or_insert_with(Key::random);
+                            let old_key = old_key_provider
+                                .as_ref()
+                                .and_then(|kp| kp.get(&cid0))
+                                .map(|ks| ks.get(&vid0).unwrap());
+
+                            // Re-encrypt record if record-id or encryption key changed.
+                            if rid0 != rid1 {
+                                let old_key = old_key.unwrap_or(new_key);
+                                record.update_meta(old_key, rid0.into(), new_key, rid1.into()).unwrap();
+                            } else if let Some(old_key) = old_key {
+                                if old_key != new_key {
+                                    record.update_meta(old_key, rid0.into(), new_key, rid1.into()).unwrap();
+                                }
+                            }
+                            let client_entry = mapped.entry(cid1).or_default();
+                            let vault_entry = client_entry.entry(vid1).or_default();
+                            vault_entry.push((rid1, record));
                         }
                     }
-                    state.db.import_records(new_key, vid1, vec![(rid1, r)]).unwrap();
                 }
+                // Already re-encrypted all records, therefore no re-encryption needed in recursion anymore.
+                old_key_provider = None
             }
+            None => {
+                mapped = exported
+                    .into_iter()
+                    .filter_map(|(cid, vaults)| match merge_policy {
+                        SelectOrMerge::KeepOld if self.client_states.contains_key(&cid) => None,
+                        _ => Some((cid, vaults)),
+                    })
+                    .collect();
+            }
+        };
+        let merge_policy = match merge_policy {
+            SelectOrMerge::Merge(inner) => inner,
+            // In case of policy SelectOrMerge::KeepOld we have already filtered out all clients that already exist.
+            _ => &SelectOrMerge::Replace,
+        };
+        for (cid, vaults) in mapped {
+            let state = self.client_states.get_mut(&cid).unwrap();
+            let old_keystore = old_key_provider.as_mut().map(|kp| kp.remove(&cid).unwrap());
+            <ClientState as MergeLayer>::import_entries(state, vaults, merge_policy, None, old_keystore);
         }
     }
 }
@@ -438,8 +515,20 @@ mod test {
         SecureClient::derive_vault_id(path.as_bytes().to_vec())
     }
 
-    fn record_ctr_to_id(vault_path: &str, ctr: usize) -> RecordId {
+    fn r_ctr_to_id(vault_path: &str, ctr: usize) -> RecordId {
         SecureClient::derive_record_id(vault_path.as_bytes().to_vec(), ctr)
+    }
+
+    fn perform_sync(
+        source: &mut ClientState,
+        target: &mut ClientState,
+        mapper: Option<&Mapper<(VaultId, RecordId)>>,
+        merge_policy: SelectOrMerge<SelectOne>,
+    ) {
+        let hierarchy = source.get_hierarchy();
+        let diff = target.get_diff(hierarchy, mapper, &merge_policy);
+        let exported = source.export_entries(diff, None);
+        target.import_entries(exported, &merge_policy, mapper, Some(source.keystore))
     }
 
     #[test]
@@ -483,15 +572,15 @@ mod test {
     fn test_export_with_mapping() {
         let mapping = |(vid, rid)| {
             if vid == vault_path_to_id("vault_1") {
-                if rid == record_ctr_to_id("vault_1", 11) {
+                if rid == r_ctr_to_id("vault_1", 11) {
                     // Map record in same vault to new record id.
-                    Some((vid, record_ctr_to_id("vault_1", 111)))
-                } else if rid == record_ctr_to_id("vault_1", 12) {
+                    Some((vid, r_ctr_to_id("vault_1", 111)))
+                } else if rid == r_ctr_to_id("vault_1", 12) {
                     // Map record to a vault that we skipped in the sources hierarchy.
-                    Some((vault_path_to_id("vault_3"), record_ctr_to_id("vault_3", 121)))
-                } else if rid == record_ctr_to_id("vault_1", 13) {
+                    Some((vault_path_to_id("vault_3"), r_ctr_to_id("vault_3", 121)))
+                } else if rid == r_ctr_to_id("vault_1", 13) {
                     // Map record to an entirely new vault.
-                    Some((vault_path_to_id("vault_4"), record_ctr_to_id("vault_4", 13)))
+                    Some((vault_path_to_id("vault_4"), r_ctr_to_id("vault_4", 13)))
                 } else {
                     // Keep at same location.
                     Some((vid, rid))
@@ -507,21 +596,23 @@ mod test {
         let mapper = Mapper { f: mapping };
 
         let cid0 = ClientId::random::<Provider>().unwrap();
-        let mut source = SecureClient::new(cid0);
+        let mut source_client = SecureClient::new(cid0);
 
         // Fill test vaults.
         for i in 1..4usize {
             for j in 1..5usize {
                 let vault_path = format!("vault_{}", i);
                 let location = Location::counter(vault_path, i * 10 + j);
-                source.write_to_vault(&location, test_hint(), test_value()).unwrap();
+                source_client
+                    .write_to_vault(&location, test_hint(), test_value())
+                    .unwrap();
             }
         }
 
-        let mut target = SecureClient::new(cid0);
+        let mut target_client = SecureClient::new(cid0);
 
-        let source_state = ClientState::from(&mut source);
-        let mut target_state = ClientState::from(&mut target);
+        let mut source = ClientState::from(&mut source_client);
+        let mut target = ClientState::from(&mut target_client);
         let merge_policy = match random::random::<u8>() % 4 {
             0 => SelectOrMerge::KeepOld,
             1 => SelectOrMerge::Replace,
@@ -530,62 +621,184 @@ mod test {
             _ => unreachable!("0 <= n % 4 <= 3"),
         };
 
-        let target_hierarchy = target_state.get_hierarchy();
+        let source_hierarchy = source.get_hierarchy();
+        let target_hierarchy = target.get_hierarchy();
         assert!(target_hierarchy.is_empty());
 
-        let hierarchy = source_state.get_hierarchy();
-        let diff = target_state.get_diff(hierarchy.clone(), Some(&mapper), &merge_policy);
-        let exported = source_state.export_entries(diff, None);
-        target_state.import_entries(exported, Some(&mapper), Some(&source_state.keystore));
+        // Do sync.
+        perform_sync(&mut source, &mut target, Some(&mapper), merge_policy);
 
         // Check that old state still contains all values
-        let check_hierarchy = source_state.get_hierarchy();
-        assert_eq!(hierarchy, check_hierarchy);
+        let check_hierarchy = source.get_hierarchy();
+        assert_eq!(source_hierarchy, check_hierarchy);
 
-        let mut target_hierarchy = target_state.get_hierarchy();
+        let mut target_hierarchy = target.get_hierarchy();
         assert_eq!(target_hierarchy.keys().len(), 4);
 
         // Vault-1 was partly mapped.
-        let vault_1_entries = target_hierarchy.remove(&vault_path_to_id("vault_1")).unwrap();
-        assert_eq!(vault_1_entries.len(), 2);
+        let v_1_entries = target_hierarchy.remove(&vault_path_to_id("vault_1")).unwrap();
+        assert_eq!(v_1_entries.len(), 2);
         // Record-14 was not moved.
-        assert!(vault_1_entries
-            .iter()
-            .any(|(rid, _)| rid == &record_ctr_to_id("vault_1", 14)));
+        assert!(v_1_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_1", 14)));
         // Record-11 was moved to counter 111.
-        assert!(vault_1_entries
-            .iter()
-            .any(|(rid, _)| rid == &record_ctr_to_id("vault_1", 111)));
+        assert!(v_1_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_1", 111)));
 
         // All records from Vault-2 were moved to Vault-5.
         assert!(!target_hierarchy.contains_key(&vault_path_to_id("vault_2")));
-        let vault_5_entries = target_hierarchy.remove(&vault_path_to_id("vault_5")).unwrap();
-        assert_eq!(vault_5_entries.len(), 4);
-        assert!(vault_5_entries
-            .iter()
-            .any(|(rid, _)| rid == &record_ctr_to_id("vault_2", 21)));
-        assert!(vault_5_entries
-            .iter()
-            .any(|(rid, _)| rid == &record_ctr_to_id("vault_2", 22)));
-        assert!(vault_5_entries
-            .iter()
-            .any(|(rid, _)| rid == &record_ctr_to_id("vault_2", 23)));
-        assert!(vault_5_entries
-            .iter()
-            .any(|(rid, _)| rid == &record_ctr_to_id("vault_2", 24)));
+        let v_5_entries = target_hierarchy.remove(&vault_path_to_id("vault_5")).unwrap();
+        assert_eq!(v_5_entries.len(), 4);
+        assert!(v_5_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 21)));
+        assert!(v_5_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22)));
+        assert!(v_5_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 23)));
+        assert!(v_5_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 24)));
 
         // Vault-3 from source was skipped, but Record-12 from Vault-1 was moved to Vault-3 Record-121.
-        let vault_3_entries = target_hierarchy.remove(&vault_path_to_id("vault_3")).unwrap();
-        assert_eq!(vault_3_entries.len(), 1);
-        assert!(vault_3_entries
-            .iter()
-            .any(|(rid, _)| rid == &record_ctr_to_id("vault_3", 121)));
+        let v_3_entries = target_hierarchy.remove(&vault_path_to_id("vault_3")).unwrap();
+        assert_eq!(v_3_entries.len(), 1);
+        assert!(v_3_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_3", 121)));
 
         // Record-13 from Vault-1 was moved to new Vault-4.
-        let vault_4_entries = target_hierarchy.remove(&vault_path_to_id("vault_4")).unwrap();
-        assert_eq!(vault_4_entries.len(), 1);
-        assert!(vault_4_entries
+        let v_4_entries = target_hierarchy.remove(&vault_path_to_id("vault_4")).unwrap();
+        assert_eq!(v_4_entries.len(), 1);
+        assert!(v_4_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_4", 13)));
+    }
+
+    #[test]
+    fn test_merge_policy() {
+        let cid0 = ClientId::random::<Provider>().unwrap();
+        let mut source_client = SecureClient::new(cid0);
+
+        // Fill test vaults.
+        for i in 1..3usize {
+            for j in 1..3usize {
+                let vault_path = format!("vault_{}", i);
+                let location = Location::counter(vault_path, i * 10 + j);
+                source_client
+                    .write_to_vault(&location, test_hint(), test_value())
+                    .unwrap();
+            }
+        }
+
+        let mut source = ClientState::from(&mut source_client);
+        let mut source_vault_2_hierarchy = source.get_hierarchy().remove(&vault_path_to_id("vault_2")).unwrap();
+        source_vault_2_hierarchy.sort();
+        let source_v2_r2_bid = source_vault_2_hierarchy
             .iter()
-            .any(|(rid, _)| rid == &record_ctr_to_id("vault_4", 13)));
+            .find(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22))
+            .map(|(_, bid)| *bid)
+            .unwrap();
+
+        let set_up_target = || {
+            let mut target_client = SecureClient::new(cid0);
+            for i in 2..4usize {
+                for j in 2..4usize {
+                    let vault_path = format!("vault_{}", i);
+                    let location = Location::counter(vault_path, i * 10 + j);
+                    target_client
+                        .write_to_vault(&location, test_hint(), test_value())
+                        .unwrap();
+                }
+            }
+            target_client
+        };
+
+        let assert_for_distinct_vaults = |hierarchy: &mut HashMap<VaultId, Vec<(RecordId, BlobId)>>| {
+            // Imported full vault-1;
+            assert_eq!(hierarchy.keys().len(), 3);
+            let v_1_entries = hierarchy.remove(&vault_path_to_id("vault_1")).unwrap();
+            assert_eq!(v_1_entries.len(), 2);
+            assert!(v_1_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_1", 11)));
+            assert!(v_1_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_1", 12)));
+
+            // Kept old vault-3;
+            let v_3_entries = hierarchy.remove(&vault_path_to_id("vault_3")).unwrap();
+            assert_eq!(v_3_entries.len(), 2);
+            assert!(v_3_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_3", 32)));
+            assert!(v_3_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_3", 33)));
+        };
+
+        // == Test merge policy SelectOrMerge::KeepOld
+
+        let mut target_client_1 = set_up_target();
+        let mut target_1 = ClientState::from(&mut target_client_1);
+        let mut old_vault_2_hierarchy = target_1.get_hierarchy().remove(&vault_path_to_id("vault_2")).unwrap();
+        old_vault_2_hierarchy.sort();
+        let merge_policy = SelectOrMerge::KeepOld;
+
+        perform_sync(&mut source, &mut target_1, None, merge_policy);
+
+        let mut hierarchy_1 = target_1.get_hierarchy();
+
+        assert_for_distinct_vaults(&mut hierarchy_1);
+
+        // Kept old vault-2.
+        let mut v_2_entries = hierarchy_1.remove(&vault_path_to_id("vault_2")).unwrap();
+        v_2_entries.sort();
+        assert_eq!(v_2_entries, old_vault_2_hierarchy);
+
+        // == Test merge policy SelectOrMerge::Replace
+
+        let mut target_client_2 = set_up_target();
+        let mut target_2 = ClientState::from(&mut target_client_2);
+        let merge_policy = SelectOrMerge::Replace;
+        perform_sync(&mut source, &mut target_2, None, merge_policy);
+        let mut hierarchy_2 = target_2.get_hierarchy();
+
+        assert_for_distinct_vaults(&mut hierarchy_2);
+
+        // Replace vault-2 completely with imported one;
+        let mut v_2_entries = hierarchy_2.remove(&vault_path_to_id("vault_2")).unwrap();
+        v_2_entries.sort();
+        assert_eq!(v_2_entries, source_vault_2_hierarchy);
+
+        // == Test merge policy SelectOrMerge::Merge(SelectOne::KeepOld)
+
+        let mut target_client_3 = set_up_target();
+        let mut target_3 = ClientState::from(&mut target_client_3);
+        let old_v2_r2_bid = target_3
+            .get_hierarchy()
+            .remove(&vault_path_to_id("vault_2"))
+            .and_then(|vec| vec.into_iter().find(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22)))
+            .map(|(_, bid)| bid)
+            .unwrap();
+        let merge_policy = SelectOrMerge::Merge(SelectOne::KeepOld);
+        perform_sync(&mut source, &mut target_3, None, merge_policy);
+        let mut hierarchy_3 = target_3.get_hierarchy();
+
+        assert_for_distinct_vaults(&mut hierarchy_3);
+
+        // Merge vault-2 with imported one, keep old record on conflict.
+        let v_2_entries = hierarchy_3.remove(&vault_path_to_id("vault_2")).unwrap();
+        assert_eq!(v_2_entries.len(), 3);
+        assert!(v_2_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 21)));
+        assert!(v_2_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 23)));
+        let v2_r2_bid = v_2_entries
+            .into_iter()
+            .find(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22))
+            .map(|(_, bid)| bid)
+            .unwrap();
+        assert_eq!(v2_r2_bid, old_v2_r2_bid);
+
+        // == Test merge policy SelectOrMerge::Merge(SelectOne::Replace)
+
+        let mut target_client_4 = set_up_target();
+        let mut target_4 = ClientState::from(&mut target_client_4);
+        let merge_policy = SelectOrMerge::Merge(SelectOne::Replace);
+        perform_sync(&mut source, &mut target_4, None, merge_policy);
+        let mut hierarchy_4 = target_4.get_hierarchy();
+
+        assert_for_distinct_vaults(&mut hierarchy_4);
+
+        // Merge vault-2 with imported one, keep old record on conflict.
+        let v_2_entries = hierarchy_4.remove(&vault_path_to_id("vault_2")).unwrap();
+        assert_eq!(v_2_entries.len(), 3);
+        assert!(v_2_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 21)));
+        assert!(v_2_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 23)));
+        let v2_r2_bid = v_2_entries
+            .into_iter()
+            .find(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22))
+            .map(|(_, bid)| bid)
+            .unwrap();
+        assert_eq!(v2_r2_bid, source_v2_r2_bid);
     }
 }

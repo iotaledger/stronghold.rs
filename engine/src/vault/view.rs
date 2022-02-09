@@ -237,10 +237,15 @@ impl<P: BoxProvider> DbView<P> {
         key: &Key<P>,
         vid: VaultId,
         records: Vec<(RecordId, Record)>,
+        is_replacing: bool,
     ) -> Result<(), RecordError<P::Error>> {
+        if is_replacing {
+            self.vaults.remove(&vid);
+        }
         if !self.vaults.contains_key(&vid) {
             self.init_vault(key, vid);
         }
+
         let vault = self.vaults.get_mut(&vid).expect("Vault was initiated.");
         vault.extend(key, records.into_iter().map(|(rid, r)| (rid.0, r)))
     }
