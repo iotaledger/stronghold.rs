@@ -21,6 +21,8 @@ use std::{
     time::Duration,
 };
 
+use super::GetSnapshot;
+
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {
         impl Handler<$mty> for NetworkActor {
@@ -34,23 +36,29 @@ macro_rules! impl_handler {
 }
 
 macro_rules! sh_request_dispatch {
-    ($request:ident => |$inner: ident| $body:block) => {
+    (client, $request:ident => |$inner: ident| $body:block) => {
         match $request {
-            ShRequest::CheckVault($inner) => $body
-            ShRequest::CheckRecord($inner) => $body
-            ShRequest::WriteToStore($inner) => $body
-            ShRequest::ReadFromStore($inner) => $body
-            ShRequest::DeleteFromStore($inner) => $body
-            ShRequest::WriteToRemoteVault($inner) =>  {
+            ClientRequest::CheckVault($inner) => $body
+            ClientRequest::CheckRecord($inner) => $body
+            ClientRequest::WriteToStore($inner) => $body
+            ClientRequest::ReadFromStore($inner) => $body
+            ClientRequest::DeleteFromStore($inner) => $body
+            ClientRequest::WriteToRemoteVault($inner) =>  {
                 let $inner: WriteToVault = $inner.into();
                 $body
             }
             #[cfg(test)]
-            ShRequest::ReadFromVault($inner) => $body
-            ShRequest::GarbageCollect($inner) => $body
-            ShRequest::ListIds($inner) => $body
-            ShRequest::ClearCache($inner) => $body
-            ShRequest::Procedure($inner) => $body
+            ClientRequest::ReadFromVault($inner) => $body
+            ClientRequest::GarbageCollect($inner) => $body
+            ClientRequest::ListIds($inner) => $body
+            ClientRequest::ClearCache($inner) => $body
+            ClientRequest::Procedure($inner) => $body
+        }
+    };
+    (snapshot, $request:ident => |$inner: ident| $body:block) => {
+        match $request {
+            SnapshotRequest::GetHierarchy($inner) => $body
+            SnapshotRequest::ExportDiff($inner) => $body
         }
     }
 }
@@ -146,18 +154,29 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for NetworkActor {
         let ReceiveRequest {
             request, response_tx, ..
         } = item;
-        sh_request_dispatch!(request => |inner| {
+        match request {
+            ShRequest::Client(request) => sh_request_dispatch!(client, request => |inner| {
+                let fut = self.registry
+                    .send(GetTarget)
+                    .and_then(|client| async { match client {
+                        Some(client) => client.send(inner).await,
+                        _ => Err(MailboxError::Closed)
+                    }})
+                    .map_ok(|response| response_tx.send(response.into()))
+                    .map(|_| ())
+                    .into_actor(self);
+                ctx.wait(fut);
+            }),
+            ShRequest::Snapshot(request) => sh_request_dispatch!(snapshot, request => |inner| {
             let fut = self.registry
-                .send(GetTarget)
-                .and_then(|client| async { match client {
-                    Some(client) => client.send(inner).await,
-                    _ => Err(MailboxError::Closed)
-                }})
+                .send(GetSnapshot)
+                .and_then(|snapshot| snapshot.send(inner))
                 .map_ok(|response| response_tx.send(response.into()))
                 .map(|_| ())
                 .into_actor(self);
             ctx.wait(fut);
-        });
+            }),
+        }
     }
 }
 
@@ -336,8 +355,15 @@ impl NetworkConfig {
 
 pub mod messages {
 
+    use std::collections::HashMap;
+
     use super::*;
-    use crate::{procedures::ProcedureError, Location, RecordHint, RecordId};
+    use crate::{
+        actors::snapshot_messages::{ExportDiff, GetHierarchy},
+        procedures::ProcedureError,
+        Location, RecordHint, RecordId,
+    };
+    use engine::vault::{BlobId, ClientId, VaultId};
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
@@ -521,31 +547,9 @@ pub mod messages {
     // Wrapper for Requests to a remote Secure Client
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShRequest {
-        CheckVault(CheckVault),
-        CheckRecord(CheckRecord),
-        ListIds(ListIds),
-        #[cfg(test)]
-        ReadFromVault(ReadFromVault),
-        WriteToRemoteVault(WriteToRemoteVault),
-        ReadFromStore(ReadFromStore),
-        WriteToStore(WriteToStore),
-        DeleteFromStore(DeleteFromStore),
-        GarbageCollect(GarbageCollect),
-        ClearCache(ClearCache),
-        Procedure(Procedure),
+        Client(ClientRequest),
+        Snapshot(SnapshotRequest),
     }
-
-    enum_from_inner!(ShRequest from CheckVault);
-    enum_from_inner!(ShRequest from ListIds);
-    #[cfg(test)]
-    enum_from_inner!(ShRequest from ReadFromVault);
-    enum_from_inner!(ShRequest from WriteToRemoteVault);
-    enum_from_inner!(ShRequest from ReadFromStore);
-    enum_from_inner!(ShRequest from WriteToStore);
-    enum_from_inner!(ShRequest from DeleteFromStore);
-    enum_from_inner!(ShRequest from GarbageCollect);
-    enum_from_inner!(ShRequest from ClearCache);
-    enum_from_inner!(ShRequest from Procedure);
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {
@@ -555,6 +559,8 @@ pub mod messages {
         WriteRemoteVault(Result<(), RemoteRecordError>),
         ListIds(Vec<(RecordId, RecordHint)>),
         Proc(Result<CollectedOutput, ProcedureError>),
+        Vec(Vec<u8>),
+        Diff(HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>),
     }
 
     sh_result_mapping!(ShResult::Empty => ());
@@ -562,6 +568,8 @@ pub mod messages {
     sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
     sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
     sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
+    sh_result_mapping!(ShResult::Vec => Vec<u8>);
+    sh_result_mapping!(ShResult::Diff => HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>);
 
     impl From<Result<(), RecordError>> for ShResult {
         fn from(inner: Result<(), RecordError>) -> Self {
@@ -579,4 +587,41 @@ pub mod messages {
             }
         }
     }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum ClientRequest {
+        CheckVault(CheckVault),
+        CheckRecord(CheckRecord),
+        ListIds(ListIds),
+        #[cfg(test)]
+        ReadFromVault(ReadFromVault),
+        WriteToRemoteVault(WriteToRemoteVault),
+        ReadFromStore(ReadFromStore),
+        WriteToStore(WriteToStore),
+        DeleteFromStore(DeleteFromStore),
+        GarbageCollect(GarbageCollect),
+        ClearCache(ClearCache),
+        Procedure(Procedure),
+    }
+
+    enum_from_inner!(ShRequest::Client, ClientRequest::CheckVault from CheckVault);
+    enum_from_inner!(ShRequest::Client, ClientRequest::ListIds from ListIds);
+    #[cfg(test)]
+    enum_from_inner!(ShRequest::Client, ClientRequest::ReadFromVault from ReadFromVault);
+    enum_from_inner!(ShRequest::Client, ClientRequest::WriteToRemoteVault from WriteToRemoteVault);
+    enum_from_inner!(ShRequest::Client, ClientRequest::ReadFromStore from ReadFromStore);
+    enum_from_inner!(ShRequest::Client, ClientRequest::WriteToStore from WriteToStore);
+    enum_from_inner!(ShRequest::Client, ClientRequest::DeleteFromStore from DeleteFromStore);
+    enum_from_inner!(ShRequest::Client, ClientRequest::GarbageCollect from GarbageCollect);
+    enum_from_inner!(ShRequest::Client, ClientRequest::ClearCache from ClearCache);
+    enum_from_inner!(ShRequest::Client, ClientRequest::Procedure from Procedure);
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum SnapshotRequest {
+        GetHierarchy(GetHierarchy),
+        ExportDiff(ExportDiff),
+    }
+
+    enum_from_inner!(ShRequest::Snapshot, SnapshotRequest::GetHierarchy from GetHierarchy);
+    enum_from_inner!(ShRequest::Snapshot, SnapshotRequest::ExportDiff from ExportDiff);
 }

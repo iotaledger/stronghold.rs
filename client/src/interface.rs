@@ -15,7 +15,10 @@ use crate::{
             CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
             ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
-        snapshot_messages::{FillSnapshot, MergeClients, ReadFromSnapshot, WriteSnapshot},
+        snapshot_messages::{
+            ExportDiff, FillSnapshot, GetDiff, GetHierarchy, ImportSnapshot, MergeClients, ReadFromSnapshot,
+            WriteSnapshot,
+        },
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
@@ -24,7 +27,7 @@ use crate::{
         secure::SecureClient,
         snapshot::{ReadError, WriteError},
     },
-    sync::{MergeClientsMapper, SelectOne, SelectOrMerge},
+    sync::{MergeClientsMapper, MergeSnapshotsMapper, SelectOne, SelectOrMerge},
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -35,6 +38,7 @@ use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, Ou
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
+use stronghold_utils::random;
 use thiserror::Error as DeriveError;
 use zeroize::Zeroize;
 
@@ -864,5 +868,50 @@ impl Stronghold {
 
     async fn network_actor(&self) -> StrongholdResult<Addr<NetworkActor>> {
         self.registry.send(GetNetwork).await?.ok_or(ActorError::TargetNotFound)
+    }
+
+    /// Sync the local stronghold with a remote one.
+    pub async fn sync_with(
+        &self,
+        peer: PeerId,
+        merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
+        mapper: Option<MergeSnapshotsMapper>,
+    ) -> P2pResult<()> {
+        let network_actor = self.network_actor().await?;
+        // Get hierarchy from remote.
+        let send_request = network_messages::SendRequest {
+            peer,
+            request: GetHierarchy,
+        };
+        let hierarchy = network_actor.send(send_request).await??;
+        let snapshot = self.registry.send(GetSnapshot {}).await?;
+        // Calculate diff compared to local hierarchy.
+        let diff = snapshot
+            .send(GetDiff {
+                other: hierarchy,
+                mapper: mapper.clone(),
+                merge_policy,
+            })
+            .await?;
+
+        // TODO: wrap key.
+        let key: [u8; 32] = random::random();
+        // Get serialized snapshot with exported data from remote.
+        let send_request = network_messages::SendRequest {
+            peer,
+            request: ExportDiff { diff, key },
+        };
+
+        let blob = network_actor.send(send_request).await??;
+        // Import data
+        snapshot
+            .send(ImportSnapshot {
+                blob,
+                key,
+                mapper,
+                merge_policy,
+            })
+            .await?;
+        Ok(())
     }
 }

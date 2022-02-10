@@ -3,13 +3,13 @@
 
 #![allow(clippy::type_complexity)]
 
-use actix::{Actor, Handler, Message, Supervised};
+use actix::{Actor, Handler, Message, MessageResult, Supervised};
 
 use std::path::PathBuf;
 
 use engine::{
     snapshot,
-    vault::{ClientId, DbView, Key, VaultId},
+    vault::{BlobId, ClientId, DbView, Key, RecordId, VaultId},
 };
 
 use crate::{
@@ -44,7 +44,9 @@ pub mod returntypes {
 
 pub mod messages {
 
-    use crate::sync::{MergeClientsMapper, SelectOne, SelectOrMerge};
+    use serde::{Deserialize, Serialize};
+
+    use crate::sync::{MergeClientsMapper, MergeSnapshotsMapper, SelectOne, SelectOrMerge};
 
     use super::*;
 
@@ -86,6 +88,34 @@ pub mod messages {
         pub target: ClientId,
         pub mapper: Option<MergeClientsMapper>,
         pub merge_policy: SelectOrMerge<SelectOne>,
+    }
+
+    #[derive(Message, Debug, Clone, Serialize, Deserialize)]
+    #[rtype(result = "HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>")]
+    pub struct GetHierarchy;
+
+    #[derive(Message, Debug, Clone)]
+    #[rtype(result = "HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>")]
+    pub struct GetDiff {
+        pub other: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>,
+        pub mapper: Option<MergeSnapshotsMapper>,
+        pub merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
+    }
+
+    #[derive(Message, Debug, Clone, Serialize, Deserialize)]
+    #[rtype(result = "Vec<u8>")]
+    pub struct ExportDiff {
+        pub key: snapshot::Key,
+        pub diff: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>,
+    }
+
+    #[derive(Message, Debug, Clone)]
+    #[rtype(result = "()")]
+    pub struct ImportSnapshot {
+        pub key: snapshot::Key,
+        pub blob: Vec<u8>,
+        pub mapper: Option<MergeSnapshotsMapper>,
+        pub merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
     }
 }
 
@@ -150,5 +180,39 @@ impl Handler<messages::MergeClients> for Snapshot {
 
     fn handle(&mut self, msg: messages::MergeClients, _ctx: &mut Self::Context) -> Self::Result {
         self.sync_clients(msg.source, msg.target, msg.mapper, msg.merge_policy)
+    }
+}
+
+impl Handler<messages::GetHierarchy> for Snapshot {
+    type Result = MessageResult<messages::GetHierarchy>;
+
+    fn handle(&mut self, _: messages::GetHierarchy, _ctx: &mut Self::Context) -> Self::Result {
+        let hierarchy = self.get_hierarchy();
+        MessageResult(hierarchy)
+    }
+}
+
+impl Handler<messages::GetDiff> for Snapshot {
+    type Result = MessageResult<messages::GetDiff>;
+
+    fn handle(&mut self, msg: messages::GetDiff, _ctx: &mut Self::Context) -> Self::Result {
+        let diff = self.get_diff(msg.other, msg.mapper.as_ref(), &msg.merge_policy);
+        MessageResult(diff)
+    }
+}
+
+impl Handler<messages::ExportDiff> for Snapshot {
+    type Result = Vec<u8>;
+
+    fn handle(&mut self, msg: messages::ExportDiff, _ctx: &mut Self::Context) -> Self::Result {
+        self.export_to_serialized_state(msg.diff, msg.key)
+    }
+}
+
+impl Handler<messages::ImportSnapshot> for Snapshot {
+    type Result = ();
+
+    fn handle(&mut self, msg: messages::ImportSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+        self.import_from_serialized_state(msg.blob, msg.key, msg.mapper.as_ref(), &msg.merge_policy)
     }
 }

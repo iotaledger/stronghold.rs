@@ -110,22 +110,17 @@ impl Snapshot {
     pub fn sync_with_snapshot(
         &mut self,
         other: &mut SnapshotState,
-        mapper: Option<MergeSnapshotsMapper>,
-        merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
+        mapper: Option<&MergeSnapshotsMapper>,
+        merge_policy: &SelectOrMerge<SelectOrMerge<SelectOne>>,
     ) {
-        let source: sync::SnapshotState = other.into();
-        let mut target: sync::SnapshotState = (&mut self.state).into();
+        let source = sync::SnapshotState::from(other);
+        let mut target = sync::SnapshotState::from(&mut self.state);
 
         let hierarchy = source.get_hierarchy();
-        let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy);
+        let diff = target.get_diff(hierarchy, mapper, merge_policy);
         let exported = source.export_entries(Some(diff));
 
-        target.import_entries(
-            exported,
-            &merge_policy,
-            mapper.as_ref(),
-            Some(&source.into_key_provider()),
-        );
+        target.import_entries(exported, merge_policy, mapper, Some(&source.into_key_provider()));
     }
 
     /// Export the entries specified in the diff to a blank snapshot state.
@@ -159,8 +154,8 @@ impl Snapshot {
         &mut self,
         bytes: Vec<u8>,
         key: Key,
-        mapper: Option<MergeSnapshotsMapper>,
-        merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
+        mapper: Option<&MergeSnapshotsMapper>,
+        merge_policy: &SelectOrMerge<SelectOrMerge<SelectOne>>,
     ) {
         let pt = engine::snapshot::read(&mut bytes.as_slice(), &key, &[]).unwrap();
         let data = engine::snapshot::decompress(&pt).unwrap();
@@ -170,12 +165,22 @@ impl Snapshot {
 
         let mut self_state: sync::SnapshotState = (&mut self.state).into();
 
-        self_state.import_entries(
-            exported,
-            &merge_policy,
-            mapper.as_ref(),
-            Some(&other_state.into_key_provider()),
-        );
+        self_state.import_entries(exported, merge_policy, mapper, Some(&other_state.into_key_provider()));
+    }
+
+    /// Export local hierarchy.
+    pub fn get_hierarchy(&mut self) -> <sync::SnapshotState as MergeLayer>::Hierarchy {
+        sync::SnapshotState::from(&mut self.state).get_hierarchy()
+    }
+
+    /// Calculate diff between local hierarchy and the given one.
+    pub fn get_diff(
+        &mut self,
+        other: <sync::SnapshotState as MergeLayer>::Hierarchy,
+        mapper: Option<&MergeSnapshotsMapper>,
+        merge_policy: &SelectOrMerge<SelectOrMerge<SelectOne>>,
+    ) -> <sync::SnapshotState as MergeLayer>::Hierarchy {
+        sync::SnapshotState::from(&mut self.state).get_diff(other, mapper, merge_policy)
     }
 }
 
