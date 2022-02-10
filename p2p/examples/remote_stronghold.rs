@@ -49,7 +49,7 @@ mod remote_stronghold {
 mod local_client {
     use super::*;
     use iota_stronghold::{
-        p2p::{ShRequest, ShResult},
+        p2p::{ClientRequest, ShRequest, ShResult},
         procedures::{Ed25519Sign, GenerateKey, KeyType, OutputKey, PersistOutput, PersistSecret},
         Location, RecordHint,
     };
@@ -79,7 +79,10 @@ mod local_client {
         let key_hint = RecordHint::new("key").unwrap();
         let generate_key = GenerateKey::new(KeyType::Ed25519).write_secret(location, key_hint);
         let res = network
-            .send_request(stronghold_id, ShRequest::Procedure(generate_key.into()))
+            .send_request(
+                stronghold_id,
+                ShRequest::Client(ClientRequest::Procedure(generate_key.into())),
+            )
             .await?;
         match res {
             ShResult::Proc(res) => {
@@ -105,7 +108,10 @@ mod local_client {
         let msg_bytes: Vec<u8> = message.into();
         let sign_message = Ed25519Sign::new(msg_bytes, location).store_output(OutputKey::new("signed"));
         let res = network
-            .send_request(stronghold_id, ShRequest::Procedure(sign_message.into()))
+            .send_request(
+                stronghold_id,
+                ShRequest::Client(ClientRequest::Procedure(sign_message.into())),
+            )
             .await?;
         match res {
             ShResult::Proc(res) => {

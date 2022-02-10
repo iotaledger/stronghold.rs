@@ -15,10 +15,7 @@ use crate::{
             CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
             ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
-        snapshot_messages::{
-            ExportDiff, FillSnapshot, GetDiff, GetHierarchy, ImportSnapshot, MergeClients, ReadFromSnapshot,
-            WriteSnapshot,
-        },
+        snapshot_messages::{FillSnapshot, MergeClients, ReadFromSnapshot, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
@@ -27,7 +24,7 @@ use crate::{
         secure::SecureClient,
         snapshot::{ReadError, WriteError},
     },
-    sync::{MergeClientsMapper, MergeSnapshotsMapper, SelectOne, SelectOrMerge},
+    sync::{MergeClientsMapper, SelectOne, SelectOrMerge},
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -38,7 +35,6 @@ use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, Ou
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
-use stronghold_utils::random;
 use thiserror::Error as DeriveError;
 use zeroize::Zeroize;
 
@@ -46,11 +42,15 @@ use zeroize::Zeroize;
 use crate::actors::secure_testing::ReadFromVault;
 
 #[cfg(feature = "p2p")]
-use crate::actors::{
-    client_p2p_messages::{DeriveNoiseKeypair, GenerateP2pKeypair, WriteP2pKeypair},
-    network_messages,
-    network_messages::{ShRequest, SwarmInfo},
-    GetNetwork, InsertNetwork, NetworkActor, NetworkConfig, RemoveNetwork,
+use crate::{
+    actors::{
+        client_p2p_messages::{DeriveNoiseKeypair, GenerateP2pKeypair, WriteP2pKeypair},
+        network_messages,
+        network_messages::{ShRequest, SwarmInfo},
+        snapshot_messages::{ExportDiff, GetDiff, GetHierarchy, ImportSnapshot},
+        GetNetwork, InsertNetwork, NetworkActor, NetworkConfig, RemoveNetwork,
+    },
+    sync::MergeSnapshotsMapper,
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -59,6 +59,8 @@ use p2p::{
 };
 #[cfg(feature = "p2p")]
 use std::io;
+#[cfg(feature = "p2p")]
+use stronghold_utils::random;
 
 pub type StrongholdResult<T> = Result<T, ActorError>;
 
