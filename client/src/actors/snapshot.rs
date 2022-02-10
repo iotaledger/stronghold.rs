@@ -44,6 +44,8 @@ pub mod returntypes {
 
 pub mod messages {
 
+    use crate::sync::{MergeClientsMapper, SelectOne, SelectOrMerge};
+
     use super::*;
 
     pub struct WriteSnapshot {
@@ -65,7 +67,6 @@ pub mod messages {
         type Result = ();
     }
 
-    #[derive(Default)]
     pub struct ReadFromSnapshot {
         pub key: snapshot::Key,
         pub filename: Option<String>,
@@ -76,6 +77,15 @@ pub mod messages {
 
     impl Message for ReadFromSnapshot {
         type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
+    }
+
+    #[derive(Message)]
+    #[rtype(result = "()")]
+    pub struct MergeClients {
+        pub source: ClientId,
+        pub target: ClientId,
+        pub mapper: Option<MergeClientsMapper>,
+        pub merge_policy: SelectOrMerge<SelectOne>,
     }
 }
 
@@ -132,5 +142,13 @@ impl Handler<messages::WriteSnapshot> for Snapshot {
         self.state = SnapshotState::default();
 
         Ok(())
+    }
+}
+
+impl Handler<messages::MergeClients> for Snapshot {
+    type Result = ();
+
+    fn handle(&mut self, msg: messages::MergeClients, _ctx: &mut Self::Context) -> Self::Result {
+        self.sync_clients(msg.source, msg.target, msg.mapper, msg.merge_policy)
     }
 }

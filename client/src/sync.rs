@@ -99,6 +99,9 @@ impl<T> Mapper<T> {
     }
 }
 
+pub type MergeClientsMapper = Mapper<(VaultId, RecordId)>;
+pub type MergeSnapshotsMapper = Mapper<(ClientId, VaultId, RecordId)>;
+
 pub struct ClientState<'a> {
     pub db: &'a mut DbView<Provider>,
     pub keystore: &'a mut HashMap<VaultId, Key<Provider>>,

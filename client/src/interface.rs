@@ -15,7 +15,7 @@ use crate::{
             CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
             ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
-        snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
+        snapshot_messages::{FillSnapshot, MergeClients, ReadFromSnapshot, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
@@ -24,6 +24,7 @@ use crate::{
         secure::SecureClient,
         snapshot::{ReadError, WriteError},
     },
+    sync::{MergeClientsMapper, SelectOne, SelectOrMerge},
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
 };
@@ -407,6 +408,64 @@ impl Stronghold {
         // write snapshot
         let res = snapshot.send(WriteSnapshot { key, filename, path }).await?;
         Ok(res)
+    }
+
+    /// Merge the state of a *source* client into a *target* client, following the specified merge
+    /// policy on conflict.
+    pub async fn sync_clients(
+        &mut self,
+        source_client_path: Vec<u8>,
+        target_client_path: Vec<u8>,
+        merge_policy: SelectOrMerge<SelectOne>,
+        mapper: Option<MergeClientsMapper>,
+    ) -> StrongholdResult<()> {
+        let source = ClientId::load_from_path(&source_client_path.clone(), &source_client_path);
+        let target = ClientId::load_from_path(&target_client_path.clone(), &target_client_path);
+
+        let snapshot = self.registry.send(GetSnapshot {}).await?;
+
+        let source_client = self.registry.send(GetClient { id: source }).await?;
+        let target_client = self.registry.send(GetClient { id: target }).await?;
+
+        // Persist current state in snapshot
+        for (id, client) in [(source, &source_client), (target, &target_client)] {
+            if let Some(client) = client {
+                let data = client.send(GetData {}).await?;
+                snapshot.send(FillSnapshot { data, id }).await?;
+            }
+        }
+
+        snapshot
+            .send(MergeClients {
+                source,
+                target,
+                merge_policy,
+                mapper,
+            })
+            .await?;
+
+        if let Some(client) = target_client {
+            let content = snapshot
+                // TODO: This is a hack for loading client states from the snapshot state.
+                // It will be solved with the upcoming refactoring.
+                .send(ReadFromSnapshot {
+                    key: [0; 32],
+                    filename: None,
+                    path: None,
+                    id: target,
+                    fid: None,
+                })
+                .await?
+                .unwrap();
+            client
+                .send(ReloadData {
+                    data: content.data,
+                    id: content.id,
+                })
+                .await?;
+        }
+
+        Ok(())
     }
 
     /// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If

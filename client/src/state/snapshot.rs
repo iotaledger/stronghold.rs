@@ -5,13 +5,13 @@
 
 use crate::{
     state::secure::Store,
-    sync::{self, Mapper, MergeLayer, SelectOne, SelectOrMerge},
+    sync::{self, MergeClientsMapper, MergeLayer, MergeSnapshotsMapper, SelectOne, SelectOrMerge},
     Provider,
 };
 
 use engine::{
     snapshot::{self, read_from, write_to, Key, ReadError as EngineReadError, WriteError as EngineWriteError},
-    vault::{ClientId, DbView, Key as PKey, RecordId, VaultId},
+    vault::{ClientId, DbView, Key as PKey, VaultId},
 };
 
 use serde::{Deserialize, Serialize};
@@ -86,10 +86,12 @@ impl Snapshot {
         &mut self,
         cid0: ClientId,
         cid1: ClientId,
-        mapper: Option<Mapper<(VaultId, RecordId)>>,
+        mapper: Option<MergeClientsMapper>,
         merge_policy: SelectOrMerge<SelectOne>,
     ) {
         let mut state0 = self.state.0.remove(&cid0).unwrap();
+        // Init target client if it does not exists yet.
+        self.state.0.entry(cid1).or_default();
         let mut state1 = self.state.0.remove(&cid1).unwrap();
 
         let source: sync::ClientState = (&mut state0).into();
@@ -108,7 +110,7 @@ impl Snapshot {
     pub fn sync_with_snapshot(
         &mut self,
         other: &mut SnapshotState,
-        mapper: Option<Mapper<(ClientId, VaultId, RecordId)>>,
+        mapper: Option<MergeSnapshotsMapper>,
         merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
     ) {
         let source: sync::SnapshotState = other.into();
@@ -157,7 +159,7 @@ impl Snapshot {
         &mut self,
         bytes: Vec<u8>,
         key: Key,
-        mapper: Option<Mapper<(ClientId, VaultId, RecordId)>>,
+        mapper: Option<MergeSnapshotsMapper>,
         merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
     ) {
         let pt = engine::snapshot::read(&mut bytes.as_slice(), &key, &[]).unwrap();
