@@ -46,7 +46,7 @@ To use a `LockedMemory` one needs to unlock it before.
 - [] Stable `LockedMemory` API
 - [] Implementation 
   - [ x ] `Buffer`
-  - [] `EncryptedRam`
+  - [ x ] `EncryptedRam`
   - [] `EncryptedFile`
   - [] `NonContiguousMemory` 
 - [] Tests

@@ -64,7 +64,7 @@ impl<P: BoxProvider, const AD_SIZE: usize> LockedMemory<u8, P> for
 
     fn dealloc(&mut self) -> Result<(), MemoryError> {
         self.cypher.dealloc()?;
-        self.config = ZeroedConfig();
+        self.config = LockedConfiguration::ZeroedConfig();
         Ok(())
     }
 

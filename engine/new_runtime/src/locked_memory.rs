@@ -10,11 +10,14 @@ pub enum MemoryError {
     DecryptionError,
     SizeNeededForAllocation,
     ConfigurationNotAllowed,
+    FileSystemError,
 }
 
+#[derive(Debug)]
 pub enum ProtectedConfiguration {
+    ZeroedConfig(),
     BufferConfig(usize),
-    // FileConfig(usize),
+    FileConfig(usize)
 }
 
 // Different possible configuration for the memory
@@ -25,7 +28,7 @@ pub enum LockedConfiguration<P: BoxProvider> {
     ZeroedConfig(),
     // Encrypted ram memory
     // Needs a key for encryption/decryption
-    // Needs size for allocation but not for unlocking 
+    // Needs size for allocation but not for unlocking
     EncryptedRamConfig(Key<P>, Option<usize>),
     // Encrypted file memory, needs a key and size of non encrypted data
     EncryptedFileConfig(Key<P>, usize),
@@ -33,7 +36,7 @@ pub enum LockedConfiguration<P: BoxProvider> {
     NonContiguousInRamAndFileConfig(usize)
 }
 
-/// Memory buffers to store with default protections to store sensitive data
+/// Memory storage with default protections to store sensitive data
 pub trait ProtectedMemory<T: Bytes>:
 Debug + Sized {
     /// Writes the payload into a LockedMemory then locks it
