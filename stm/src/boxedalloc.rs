@@ -68,7 +68,7 @@ where
     }
 }
 
-pub trait BoxedMemory: Zeroize + Sized + Clone + std::fmt::Debug {
+pub trait LockedMemory: Zeroize + Sized + Clone + PartialEq + std::fmt::Debug {
     /// Writes the payload into a GuardedMem then locks it
     fn alloc<T>(payload: T, config: MemoryConfiguration, key: Option<Vec<u8>>) -> Result<Self, MemoryError>
     where
@@ -92,7 +92,7 @@ pub trait BoxedMemory: Zeroize + Sized + Clone + std::fmt::Debug {
     }
 }
 
-impl BoxedMemory for usize {
+impl LockedMemory for usize {
     fn alloc<T>(payload: T, config: MemoryConfiguration, key: Option<Vec<u8>>) -> Result<Self, MemoryError>
     where
         T: Zeroize + AsRef<Vec<u8>>,

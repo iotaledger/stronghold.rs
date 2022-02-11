@@ -31,3 +31,5 @@ Since only write operations actually change the object, this operation must be c
 - No nested transactions yet ( not explicit lock in values )
 - No explicit separation of memory clearing
 - Feature gated secured memory 
+- read / write parity confuses the transction handling and results in mutual failing. 
+  - specifically if both transaction might end in a read
