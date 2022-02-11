@@ -1,6 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use zeroize::Zeroize;
 use crate::types::*;
 
 use core::{
@@ -213,6 +214,19 @@ impl<T: Bytes + Randomized> Boxed<T> {
 impl<T: Bytes + Zeroed> Boxed<T> {
     pub(crate) fn zero(len: usize) -> Self {
         Self::new(len, |b| b.as_mut_slice().zero())
+    }
+}
+
+// This may create undefined behaviour if not used correctly
+// Zeroes out the memory and configuration 
+impl <T: Bytes> Zeroize for Boxed<T> {
+    fn zeroize(&mut self) {
+        self.unlock();
+        self.as_mut_slice().zero();
+        self.lock();
+        self.refs.set(0);
+        self.prot.set(Prot::NoAccess);
+        self.len = 0;
     }
 }
 

@@ -5,6 +5,8 @@ use core::fmt::{self, Debug, Formatter};
 use core::ops::{Deref, DerefMut};
 use core::marker::PhantomData;
 
+use zeroize::{Zeroize};
+
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
     ser::{Serialize, SerializeSeq, Serializer},
@@ -42,11 +44,6 @@ impl<T: Bytes> ProtectedMemory<T> for Buffer<T> {
             _ => Err(ConfigurationNotAllowed)
         }
     }
-
-
-    fn dealloc(&mut self) -> Result<(), MemoryError> {
-        todo!();
-    }
 }
 
 impl<T: Bytes> Buffer<T> {
@@ -76,6 +73,12 @@ impl<T: Bytes + Randomized> Buffer<T> {
         Self {
             boxed: Boxed::random(len),
         }
+    }
+}
+
+impl<T: Bytes> Zeroize for Buffer<T> {
+    fn zeroize(&mut self) {
+        self.boxed.zeroize()
     }
 }
 

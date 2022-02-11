@@ -7,6 +7,7 @@ use std::fs::{self, File};
 use std::io::prelude::*;
 use rand_ascii::{thread_rng, Rng};
 use rand_ascii::distributions::Alphanumeric;
+use zeroize::Zeroize;
 
 fn main() {
     let rand_string: String = thread_rng()
@@ -72,13 +73,13 @@ impl<T: Bytes> ProtectedMemory<T> for FileMemory {
             _ => Err(ConfigurationNotAllowed)
         }
     }
+}
 
-
-    fn dealloc(&mut self) -> Result<(), MemoryError> {
-        self.clear_and_delete_file().or(Err(FileSystemError))?;
+impl Zeroize for FileMemory {
+    fn zeroize(&mut self) {
+        self.clear_and_delete_file();
         self.fname = String::new();
         self.config = ProtectedConfiguration::ZeroedConfig();
-        Ok(())
     }
 }
 

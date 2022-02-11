@@ -1,6 +1,7 @@
 use crate::types::Bytes;
 use crate::memories::buffer::Buffer;
 use crate::crypto_utils::crypto_box::{BoxProvider, Key};
+use zeroize::{Zeroize};
 use core::fmt::Debug;
 
 
@@ -37,27 +38,36 @@ pub enum LockedConfiguration<P: BoxProvider> {
 }
 
 /// Memory storage with default protections to store sensitive data
-pub trait ProtectedMemory<T: Bytes>:
-Debug + Sized {
+pub trait ProtectedMemory<T: Bytes>
+    : Debug + Sized + Zeroize {
+
     /// Writes the payload into a LockedMemory then locks it
     fn alloc(payload: &[T], config: ProtectedConfiguration)
              -> Result<Self, MemoryError>;
 
     /// Cleans up any trace of the memory used
-    /// Shall be called in drop()
-    fn dealloc(&mut self) -> Result<(), MemoryError>;
+    /// Does not free any memory, the name may be misleading
+    fn dealloc(&mut self) -> Result<(), MemoryError> {
+        self.zeroize();
+        Ok(())
+    }
 }
 
 
 /// Memory that can be locked (unreadable) when storing sensitive data for longer period of time
-pub trait LockedMemory<T: Bytes, P: BoxProvider>: Debug + Sized {
+pub trait LockedMemory<T: Bytes, P: BoxProvider>
+    : Debug + Sized + Zeroize {
+
     /// Writes the payload into a LockedMemory then locks it
     fn alloc(payload: &[T], config: LockedConfiguration<P>)
              -> Result<Self, MemoryError>;
 
     /// Cleans up any trace of the memory used
     /// Shall be called in drop()
-    fn dealloc(&mut self) -> Result<(), MemoryError>;
+    fn dealloc(&mut self) -> Result<(), MemoryError> {
+        self.zeroize();
+        Ok(())
+    }
 
     /// Locks the memory and possibly reallocates
     fn lock(self, payload: Buffer<T>,  config: LockedConfiguration<P>)

@@ -4,6 +4,7 @@ use crate::memories::buffer::Buffer;
 use core::fmt::{self, Debug, Formatter};
 use core::marker::PhantomData;
 use crate::crypto_utils::crypto_box::{BoxProvider, Key};
+use zeroize::Zeroize;
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
@@ -62,12 +63,6 @@ impl<P: BoxProvider, const AD_SIZE: usize> LockedMemory<u8, P> for
         }
     }
 
-    fn dealloc(&mut self) -> Result<(), MemoryError> {
-        self.cypher.dealloc()?;
-        self.config = LockedConfiguration::ZeroedConfig();
-        Ok(())
-    }
-
     /// Locks the memory and possibly reallocates
     // Currently we reallocate a new EncryptedRam at each lock
     // This improves security but decreases performance
@@ -96,6 +91,13 @@ impl<P: BoxProvider, const AD_SIZE: usize> LockedMemory<u8, P> for
         } else {
             return Err(ConfigurationNotAllowed);
         }
+    }
+}
+
+impl<P: BoxProvider, const AD_SIZE: usize> Zeroize for EncryptedRam<P, AD_SIZE> {
+    fn zeroize(&mut self) {
+        self.cypher.zeroize();
+        self.config = LockedConfiguration::ZeroedConfig();
     }
 }
 
