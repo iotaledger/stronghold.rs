@@ -10,7 +10,7 @@ pub enum TransactionError {
     #[error("Transaction failed {0}")]
     Failed(String),
 
-    #[error("Inner error occured {0}")]
+    #[error("Inner error occured")]
     Inner(String),
 
     #[error("Transactional state is inconsistent")]

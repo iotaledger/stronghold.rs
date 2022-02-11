@@ -18,12 +18,14 @@ thiserror   = "1.0.30"
 log         = "0.4.14"
 zeroize     = { version = "1.5.0", features = ["zeroize_derive"] }
 guardmem    = { package = "stronghold_engine", path = "../engine", optional = true}
+lazy_static = { version = "1.4.0" }
 
 [dev-dependencies]
 tokio       = { version = "1.15.0", features = ["full"] }
 criterion   = { version = "0.3", features = ["async_tokio"] }
 env_logger  = { version = "0.9.0" }
 ctor        = { version = "0.1.21"}
+rand        = { version = "0.8.4" }
 
 [[bench]]
 name        = "config"
