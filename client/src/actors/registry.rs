@@ -117,12 +117,9 @@ impl Handler<messages::SpawnClient> for Registry {
     type Result = Addr<SecureClient>;
 
     fn handle(&mut self, msg: messages::SpawnClient, ctx: &mut Self::Context) -> Self::Result {
-        if let Some(addr) = self.clients.get(&msg.id) {
-            return addr.clone();
-        }
-        let addr = SecureClient::new(msg.id).start();
-        self.clients.insert(msg.id, addr);
-
+        self.clients
+            .entry(msg.id)
+            .or_insert_with(|| SecureClient::new(msg.id).start());
         Self::handle(self, messages::SwitchTarget { id: msg.id }, ctx).unwrap()
     }
 }

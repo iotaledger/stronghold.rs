@@ -15,7 +15,7 @@ use crate::{
             CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
             ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
-        snapshot_messages::{FillSnapshot, MergeClients, ReadFromSnapshot, WriteSnapshot},
+        snapshot_messages::{FillSnapshot, LoadFromState, MergeClients, ReadFromSnapshot, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
@@ -383,6 +383,17 @@ impl Stronghold {
         Ok(Ok(()))
     }
 
+    /// Fill snapshot state with state from all active clients.
+    pub async fn fill_snapshot_state(&mut self) -> StrongholdResult<()> {
+        let clients: Vec<(ClientId, Addr<SecureClient>)> = self.registry.send(GetAllClients).await?;
+        let snapshot = self.registry.send(GetSnapshot {}).await?;
+        for (id, client) in clients {
+            let data = client.send(GetData {}).await?;
+            snapshot.send(FillSnapshot { data, id }).await?;
+        }
+        Ok(())
+    }
+
     /// Writes the entire state of the [`Stronghold`] into a snapshot.  All Actors and their associated data will be
     /// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be
     /// specified. The Keydata should implement and use Zeroize.
@@ -414,6 +425,41 @@ impl Stronghold {
         // write snapshot
         let res = snapshot.send(WriteSnapshot { key, filename, path }).await?;
         Ok(res)
+    }
+
+    /// Load a client state from the snapshot state that was loaded from a file in
+    /// `[Stronghold::read_snapshot]`. This switches to the new client.
+    /// If the client does not exist nothing changes and `false` returned.
+    pub async fn load_state(
+        &mut self,
+        client_path: Vec<u8>,
+        former_client_path: Option<Vec<u8>>,
+    ) -> StrongholdResult<bool> {
+        let snapshot_actor = self.registry.send(GetSnapshot {}).await?;
+
+        let client_id = ClientId::load_from_path(&client_path, &client_path);
+        let former_client_id = former_client_path.map(|p| ClientId::load_from_path(&p, &p));
+
+        let content = snapshot_actor
+            .send(LoadFromState {
+                id: client_id,
+                fid: former_client_id,
+            })
+            .await?;
+        let content = match content {
+            Some(content) => content,
+            None => return Ok(false),
+        };
+
+        let target = self.switch_client(client_id).await?;
+
+        target
+            .send(ReloadData {
+                data: content.data,
+                id: content.id,
+            })
+            .await?;
+        Ok(true)
     }
 
     /// Merge the state of a *source* client into a *target* client, following the specified merge
@@ -451,18 +497,7 @@ impl Stronghold {
             .await?;
 
         if let Some(client) = target_client {
-            let content = snapshot
-                // TODO: This is a hack for loading client states from the snapshot state.
-                // It will be solved with the upcoming refactoring.
-                .send(ReadFromSnapshot {
-                    key: [0; 32],
-                    filename: None,
-                    path: None,
-                    id: target,
-                    fid: None,
-                })
-                .await?
-                .unwrap();
+            let content = snapshot.send(LoadFromState { id: target, fid: None }).await?.unwrap();
             client
                 .send(ReloadData {
                     data: content.data,
@@ -886,7 +921,16 @@ impl Stronghold {
             request: GetHierarchy,
         };
         let hierarchy = network_actor.send(send_request).await??;
+
         let snapshot = self.registry.send(GetSnapshot {}).await?;
+
+        // Persist active states in snapshot state.
+        let clients: Vec<(ClientId, Addr<SecureClient>)> = self.registry.send(GetAllClients).await?;
+        for (id, client) in clients {
+            let data = client.send(GetData {}).await?;
+            snapshot.send(FillSnapshot { data, id }).await?;
+        }
+
         // Calculate diff compared to local hierarchy.
         let diff = snapshot
             .send(GetDiff {

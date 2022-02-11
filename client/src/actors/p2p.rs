@@ -168,13 +168,13 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for NetworkActor {
                 ctx.wait(fut);
             }),
             ShRequest::Snapshot(request) => sh_request_dispatch!(snapshot, request => |inner| {
-            let fut = self.registry
-                .send(GetSnapshot)
-                .and_then(|snapshot| snapshot.send(inner))
-                .map_ok(|response| response_tx.send(response.into()))
-                .map(|_| ())
-                .into_actor(self);
-            ctx.wait(fut);
+                let fut = self.registry
+                    .send(GetSnapshot)
+                    .and_then(|snapshot| snapshot.send(inner))
+                    .map_ok(|response| response_tx.send(response.into()))
+                    .map(|_| ())
+                    .into_actor(self);
+                ctx.wait(fut);
             }),
         }
     }
@@ -192,10 +192,7 @@ where
         async move {
             let request: ShRequest = msg.request.into();
             let res = network.send_request(msg.peer, request).await;
-            res.map(|wrapper| {
-                let res: Rq::Result = wrapper.try_into().unwrap();
-                res
-            })
+            res.map(|wrapper| wrapper.try_into().unwrap())
         }
         .into_actor(self)
         .boxed_local()

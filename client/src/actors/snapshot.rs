@@ -81,6 +81,15 @@ pub mod messages {
         type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
     }
 
+    pub struct LoadFromState {
+        pub id: ClientId,
+        pub fid: Option<ClientId>,
+    }
+
+    impl Message for LoadFromState {
+        type Result = Option<returntypes::ReturnReadSnapshot>;
+    }
+
     #[derive(Message)]
     #[rtype(result = "()")]
     pub struct MergeClients {
@@ -160,6 +169,25 @@ impl Handler<messages::ReadFromSnapshot> for Snapshot {
                 data: Box::new(data),
             })
         }
+    }
+}
+
+impl Handler<messages::LoadFromState> for Snapshot {
+    type Result = Option<returntypes::ReturnReadSnapshot>;
+
+    /// This will load from a local snapshot state in memory. Return `None` if there is no client with
+    /// this id.
+    fn handle(&mut self, msg: messages::LoadFromState, _ctx: &mut Self::Context) -> Self::Result {
+        let id = msg.fid.unwrap_or(msg.id);
+        if !self.has_data(id) {
+            return None;
+        }
+        let data = self.get_state(id);
+
+        Some(ReturnReadSnapshot {
+            id,
+            data: Box::new(data),
+        })
     }
 }
 
