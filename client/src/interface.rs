@@ -15,7 +15,7 @@ use crate::{
             CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
             ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
-        snapshot_messages::{FillSnapshot, LoadFromState, MergeClients, ReadFromSnapshot, WriteSnapshot},
+        snapshot_messages::{FillSnapshot, GetDhPub, LoadFromState, MergeClients, ReadFromSnapshot, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
@@ -59,8 +59,6 @@ use p2p::{
 };
 #[cfg(feature = "p2p")]
 use std::io;
-#[cfg(feature = "p2p")]
-use stronghold_utils::random;
 
 pub type StrongholdResult<T> = Result<T, ActorError>;
 
@@ -940,20 +938,22 @@ impl Stronghold {
             })
             .await?;
 
-        // TODO: wrap key.
-        let key: [u8; 32] = random::random();
+        // Get the public key to create a shared secret with the remote
+        // that is then used to decrypt the snapshot with the exported entries.
+        let dh_pub_key = snapshot.send(GetDhPub).await?;
+
         // Get serialized snapshot with exported data from remote.
         let send_request = network_messages::SendRequest {
             peer,
-            request: ExportDiff { diff, key },
+            request: ExportDiff { diff, dh_pub_key },
         };
 
-        let blob = network_actor.send(send_request).await??;
+        let (blob, dh_pub_key) = network_actor.send(send_request).await??;
         // Import data
         snapshot
             .send(ImportSnapshot {
                 blob,
-                key,
+                dh_pub_key,
                 mapper,
                 merge_policy,
             })

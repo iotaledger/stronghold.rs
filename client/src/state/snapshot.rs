@@ -9,6 +9,7 @@ use crate::{
     Provider,
 };
 
+use crypto::keys::x25519;
 use engine::{
     snapshot::{self, read_from, write_to, Key, ReadError as EngineReadError, WriteError as EngineWriteError},
     vault::{ClientId, DbView, Key as PKey, VaultId},
@@ -19,9 +20,13 @@ use std::{collections::HashMap, io, path::Path};
 use thiserror::Error as DeriveError;
 
 /// Wrapper for the [`SnapshotState`] data structure.
-#[derive(Default)]
 pub struct Snapshot {
     pub state: SnapshotState,
+    // Local secret key used to perform Diffie-Hellman key exchanges with remote
+    // peers to derive the encryption key for the snapshot sync.
+    // **TODO: this is only a mock key and will be stored securely after the upcoming
+    // refactoring.**
+    pub dh_sk: x25519::SecretKey,
 }
 
 /// Data structure that is written to the snapshot.
@@ -31,7 +36,10 @@ pub struct SnapshotState(pub(crate) HashMap<ClientId, (HashMap<VaultId, PKey<Pro
 impl Snapshot {
     /// Creates a new [`Snapshot`] from a buffer of [`SnapshotState`] state.
     pub fn new(state: SnapshotState) -> Self {
-        Self { state }
+        Self {
+            state,
+            dh_sk: x25519::SecretKey::generate().unwrap(),
+        }
     }
 
     /// Gets the state component parts as a tuple.
@@ -126,7 +134,11 @@ impl Snapshot {
     /// snapshot state alongside with the exported records.
     ///
     /// Deserialize, encrypt and compress the new state to a bytestring.
-    pub fn export_to_serialized_state(&mut self, diff: <SnapshotState as MergeLayer>::Hierarchy, key: Key) -> Vec<u8> {
+    pub fn export_to_serialized_state(
+        &mut self,
+        diff: <SnapshotState as MergeLayer>::Hierarchy,
+        dh_key: [u8; x25519::PUBLIC_KEY_LENGTH],
+    ) -> (Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]) {
         let exported = self.state.export_entries(Some(diff));
         let old_key_store = self.state.0.iter().map(|(cid, state)| (*cid, &state.0)).collect();
         let mut blank_state = SnapshotState(HashMap::default());
@@ -134,25 +146,37 @@ impl Snapshot {
         let data = self.state.serialize().unwrap();
         let compressed_plain = engine::snapshot::compress(data.as_slice());
         let mut buffer = Vec::new();
-        engine::snapshot::write(&compressed_plain, &mut buffer, &key, &[]).unwrap();
-        buffer
+        // Create encryption key from Diffie-Hellman handshake with the remote.
+        let key = self.diffie_hellman(x25519::PublicKey::from_bytes(dh_key));
+        engine::snapshot::write(&compressed_plain, &mut buffer, key.as_bytes(), &[]).unwrap();
+        (buffer, self.get_dh_pub_key().to_bytes())
     }
 
     /// Import from serialized snapshot state.
     pub fn import_from_serialized_state(
         &mut self,
         bytes: Vec<u8>,
-        key: Key,
+        dh_key: [u8; x25519::PUBLIC_KEY_LENGTH],
         mapper: Option<&MergeSnapshotsMapper>,
         merge_policy: &SelectOrMerge<SelectOrMerge<SelectOne>>,
     ) {
-        let pt = engine::snapshot::read(&mut bytes.as_slice(), &key, &[]).unwrap();
+        // Derive encryption key from Diffie-Hellman handshake with the remote.
+        let key = self.diffie_hellman(x25519::PublicKey::from_bytes(dh_key));
+        let pt = engine::snapshot::read(&mut bytes.as_slice(), key.as_bytes(), &[]).unwrap();
         let data = engine::snapshot::decompress(&pt).unwrap();
         let mut other_state = SnapshotState::deserialize(data).unwrap();
         let exported = other_state.export_entries(None);
 
         self.state
             .import_entries(exported, merge_policy, mapper, Some(&other_state.as_key_provider()));
+    }
+
+    pub fn get_dh_pub_key(&self) -> x25519::PublicKey {
+        self.dh_sk.public_key()
+    }
+
+    fn diffie_hellman(&self, other: x25519::PublicKey) -> x25519::SharedSecret {
+        self.dh_sk.diffie_hellman(&other)
     }
 }
 

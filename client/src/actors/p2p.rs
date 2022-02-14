@@ -360,6 +360,7 @@ pub mod messages {
         procedures::ProcedureError,
         Location, RecordHint, RecordId,
     };
+    use crypto::keys::x25519;
     use engine::vault::{BlobId, ClientId, VaultId};
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
@@ -556,7 +557,7 @@ pub mod messages {
         WriteRemoteVault(Result<(), RemoteRecordError>),
         ListIds(Vec<(RecordId, RecordHint)>),
         Proc(Result<CollectedOutput, ProcedureError>),
-        Vec(Vec<u8>),
+        Exported((Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH])),
         Diff(HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>),
     }
 
@@ -565,7 +566,7 @@ pub mod messages {
     sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
     sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
     sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
-    sh_result_mapping!(ShResult::Vec => Vec<u8>);
+    sh_result_mapping!(ShResult::Exported => (Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]));
     sh_result_mapping!(ShResult::Diff => HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>);
 
     impl From<Result<(), RecordError>> for ShResult {

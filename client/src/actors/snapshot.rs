@@ -3,15 +3,6 @@
 
 #![allow(clippy::type_complexity)]
 
-use actix::{Actor, Handler, Message, MessageResult, Supervised};
-
-use std::path::PathBuf;
-
-use engine::{
-    snapshot,
-    vault::{BlobId, ClientId, DbView, Key, RecordId, VaultId},
-};
-
 use crate::{
     internals,
     state::{
@@ -21,7 +12,12 @@ use crate::{
     sync::MergeLayer,
     Provider,
 };
-use std::collections::HashMap;
+use actix::{Actor, Handler, Message, MessageResult, Supervised};
+use engine::{
+    snapshot,
+    vault::{BlobId, ClientId, DbView, Key, RecordId, VaultId},
+};
+use std::{collections::HashMap, path::PathBuf};
 
 /// re-export local modules
 pub use messages::*;
@@ -45,6 +41,7 @@ pub mod returntypes {
 
 pub mod messages {
 
+    use crypto::keys::x25519;
     use serde::{Deserialize, Serialize};
 
     use crate::sync::{MergeClientsMapper, MergeSnapshotsMapper, SelectOne, SelectOrMerge};
@@ -100,6 +97,11 @@ pub mod messages {
         pub merge_policy: SelectOrMerge<SelectOne>,
     }
 
+    // Get the public key of the stored x25519 private key.
+    #[derive(Message)]
+    #[rtype(result = "[u8; x25519::PUBLIC_KEY_LENGTH]")]
+    pub struct GetDhPub;
+
     /// Export local hierarchy.
     #[derive(Message, Debug, Clone, Serialize, Deserialize)]
     #[rtype(result = "HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>")]
@@ -114,17 +116,25 @@ pub mod messages {
         pub merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
     }
 
+    // Export the given diff from the local vaults.
+    // Returns the serialized snapshot and the local public key.
+    // The snapshot is encrypted with a shared secret created from the local x25519
+    // secret key and the remote's public key.
     #[derive(Message, Debug, Clone, Serialize, Deserialize)]
-    #[rtype(result = "Vec<u8>")]
+    #[rtype(result = "(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH])")]
     pub struct ExportDiff {
-        pub key: snapshot::Key,
+        // Public key of the remote.
+        pub dh_pub_key: [u8; x25519::PUBLIC_KEY_LENGTH],
         pub diff: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>,
     }
 
     #[derive(Message, Debug, Clone)]
     #[rtype(result = "()")]
     pub struct ImportSnapshot {
-        pub key: snapshot::Key,
+        // Public key of the remote.
+        pub dh_pub_key: [u8; x25519::PUBLIC_KEY_LENGTH],
+        // Serialized snapshot, encrypted with a diffie-hellmann shared secret created from the key
+        // sent in `ExportDiff` and the remote's secret key.
         pub blob: Vec<u8>,
         pub mapper: Option<MergeSnapshotsMapper>,
         pub merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
@@ -214,6 +224,15 @@ impl Handler<messages::MergeClients> for Snapshot {
     }
 }
 
+impl Handler<messages::GetDhPub> for Snapshot {
+    type Result = MessageResult<messages::GetDhPub>;
+
+    fn handle(&mut self, _: messages::GetDhPub, _ctx: &mut Self::Context) -> Self::Result {
+        let key = self.get_dh_pub_key().to_bytes();
+        MessageResult(key)
+    }
+}
+
 impl Handler<messages::GetHierarchy> for Snapshot {
     type Result = MessageResult<messages::GetHierarchy>;
 
@@ -233,10 +252,11 @@ impl Handler<messages::GetDiff> for Snapshot {
 }
 
 impl Handler<messages::ExportDiff> for Snapshot {
-    type Result = Vec<u8>;
+    type Result = MessageResult<messages::ExportDiff>;
 
     fn handle(&mut self, msg: messages::ExportDiff, _ctx: &mut Self::Context) -> Self::Result {
-        self.export_to_serialized_state(msg.diff, msg.key)
+        let exported = self.export_to_serialized_state(msg.diff, msg.dh_pub_key);
+        MessageResult(exported)
     }
 }
 
@@ -244,6 +264,6 @@ impl Handler<messages::ImportSnapshot> for Snapshot {
     type Result = ();
 
     fn handle(&mut self, msg: messages::ImportSnapshot, _ctx: &mut Self::Context) -> Self::Result {
-        self.import_from_serialized_state(msg.blob, msg.key, msg.mapper.as_ref(), &msg.merge_policy)
+        self.import_from_serialized_state(msg.blob, msg.dh_pub_key, msg.mapper.as_ref(), &msg.merge_policy)
     }
 }
