@@ -6,13 +6,13 @@
 //! prose ...
 #![allow(unused_variables, dead_code, clippy::type_complexity)]
 
-pub mod ctrl;
-pub mod errors;
-pub mod transaction;
-pub mod types;
-
 /// TODO: This mod should be replaced by the upcoming memory features in the runtime!
 pub mod boxedalloc;
+pub mod ctrl;
+pub mod errors;
+pub mod rlu;
+pub mod transaction;
+pub mod types;
 
 pub use errors::TransactionError;
 use transaction::Strategy;
