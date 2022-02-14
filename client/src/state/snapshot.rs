@@ -11,7 +11,7 @@ use crate::{
 
 use engine::{
     snapshot::{self, read_from, write_to, Key, ReadError as EngineReadError, WriteError as EngineWriteError},
-    vault::{ClientId, DbView, Key as PKey, VaultId},
+    vault::{BlobId, ClientId, DbView, Key as PKey, RecordId, VaultId},
 };
 
 use serde::{Deserialize, Serialize};
@@ -130,7 +130,7 @@ impl Snapshot {
     /// Deserialize, encrypt and compress the new state to a bytestring.
     pub fn export_to_serialized_state(
         &mut self,
-        diff: <SyncSnapshotState as MergeLayer>::Hierarchy,
+        diff: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>,
         key: Key,
     ) -> Vec<u8> {
         let exported = SyncSnapshotState::new(&mut self.state).export_entries(Some(diff));
@@ -172,17 +172,17 @@ impl Snapshot {
     }
 
     /// Export local hierarchy.
-    pub fn get_hierarchy(&mut self) -> <SyncSnapshotState as MergeLayer>::Hierarchy {
+    pub fn get_hierarchy(&mut self) -> HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>> {
         SyncSnapshotState::new(&mut self.state).get_hierarchy()
     }
 
     /// Calculate diff between local hierarchy and the given one.
     pub fn get_diff(
         &mut self,
-        other: <SyncSnapshotState as MergeLayer>::Hierarchy,
+        other: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>,
         mapper: Option<&MergeSnapshotsMapper>,
         merge_policy: &SelectOrMerge<SelectOrMerge<SelectOne>>,
-    ) -> <SyncSnapshotState as MergeLayer>::Hierarchy {
+    ) -> HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>> {
         SyncSnapshotState::new(&mut self.state).get_diff(other, mapper, merge_policy)
     }
 }
