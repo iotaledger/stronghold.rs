@@ -41,6 +41,27 @@ To use a `LockedMemory` one needs to unlock it before.
   - Currently very close to `GuardedVec` using `Ref` and `RefMut`
   - Maybe get values directly by implementing `AsRef` and `AsMut` traits
     
+  + `Buffer`
+    * change the boxed type, implement deref and derefMut
+    * implement `AsRef` 
+      - we currently have an issue because `Boxed` do their own memory protection 
+        management. Therefore we need concrete type `Ref` that increments 
+        memory protection counter when allocating and dropping the type
+  + `LockedMemory`
+    * what should `dealloc()` do? remove `dealloc()`?
+  + `RamMemory`
+    * Reimplementation of GuardedVec, do we need all these functions?
+    * Encryption 
+    * Shall we allocate a new `RamMemory` every time that we `lock` it?
+      - if we do: better security, worse performance
+    * Serialization
+  + `FileMemory`
+    * async for file creation/write
+  + __Encryption__
+    * `box_seal` and `box_open` should use a `Buffer` in their type instead of a Vec
+- __no-std__
+  + Use `ArrayVec` instead of Vec no need to rely on alloc crate
+
 
 # Objectives 
 - [] Stable `LockedMemory` API

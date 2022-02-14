@@ -1,11 +1,11 @@
 use crate::boxed::Boxed;
-use crate::locked_memory::{*, ProtectedConfiguration::*, MemoryError::*};
-use crate::types::{Bytes, Zeroed, Randomized, ConstEq};
+use crate::locked_memory::{MemoryError::*, ProtectedConfiguration::*, *};
+use crate::types::{Bytes, ConstEq, Randomized, Zeroed};
 use core::fmt::{self, Debug, Formatter};
-use core::ops::{Deref, DerefMut};
 use core::marker::PhantomData;
+use core::ops::{Deref, DerefMut};
 
-use zeroize::{Zeroize};
+use zeroize::Zeroize;
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
@@ -16,7 +16,7 @@ use serde::{
 /// This shall always be short lived
 #[derive(Clone, Eq)]
 pub struct Buffer<T: Bytes> {
-    boxed : Boxed<T>, // the boxed type of current GuardedVec
+    boxed: Boxed<T>, // the boxed type of current GuardedVec
 }
 
 pub struct Ref<'a, T: Bytes> {
@@ -27,21 +27,15 @@ pub struct RefMut<'a, T: Bytes> {
     boxed: &'a mut Boxed<T>,
 }
 
-
 impl<T: Bytes> ProtectedMemory<T> for Buffer<T> {
-    fn alloc(payload: &[T], config: ProtectedConfiguration)
-             -> Result<Self, MemoryError> {
+    fn alloc(payload: &[T], config: ProtectedConfiguration) -> Result<Self, MemoryError> {
         match config {
-            BufferConfig(size) => {
-                Ok(Buffer {
-                    boxed: Boxed::new(size,
-                                      |b| b.as_mut_slice().copy_from_slice(&payload)),
-                })
-
-            },
+            BufferConfig(size) => Ok(Buffer {
+                boxed: Boxed::new(size, |b| b.as_mut_slice().copy_from_slice(payload)),
+            }),
 
             // We don't allow any other configurations for Buffer
-            _ => Err(ConfigurationNotAllowed)
+            _ => Err(ConfigurationNotAllowed),
         }
     }
 }
@@ -92,9 +86,7 @@ impl<T: Bytes + Zeroed> Buffer<T> {
 
 impl<T: Bytes + Zeroed> From<&mut [T]> for Buffer<T> {
     fn from(data: &mut [T]) -> Self {
-        Self {
-            boxed: data.into(),
-        }
+        Self { boxed: data.into() }
     }
 }
 
@@ -112,9 +104,7 @@ impl<T: Bytes + ConstEq> PartialEq for Buffer<T> {
 
 impl<'a, T: Bytes> Ref<'a, T> {
     fn new(boxed: &'a Boxed<T>) -> Self {
-        Self {
-            boxed: boxed.unlock(),
-        }
+        Self { boxed: boxed.unlock() }
     }
 }
 
@@ -260,7 +250,7 @@ where
             seq.push(e);
         }
 
-        let seq = Buffer::alloc(seq.as_slice() , BufferConfig(seq.len()))
+        let seq = Buffer::alloc(seq.as_slice(), BufferConfig(seq.len()))
             .expect("Buffer could not be allocated, this should not happen here");
 
         Ok(seq)

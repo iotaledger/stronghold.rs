@@ -1,9 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::memories::buffer::Buffer;
-use crate::locked_memory::ProtectedMemory;
 use crate::locked_memory::ProtectedConfiguration;
+use crate::locked_memory::ProtectedMemory;
+use crate::memories::buffer::Buffer;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
@@ -54,10 +54,13 @@ impl<T: BoxProvider> Key<T> {
     /// generate a random key using secure random bytes
     pub fn random() -> Self {
         Self {
-            key:
-            Buffer::alloc(T::random_vec(T::box_key_len()).
-                          expect("failed to generate random key").as_slice(),
-                          ProtectedConfiguration::BufferConfig(T::box_key_len())).expect("Failed to generate buffer"),
+            key: Buffer::alloc(
+                T::random_vec(T::box_key_len())
+                    .expect("failed to generate random key")
+                    .as_slice(),
+                ProtectedConfiguration::BufferConfig(T::box_key_len()),
+            )
+            .expect("Failed to generate buffer"),
             _box_provider: PhantomData,
         }
     }
@@ -68,8 +71,8 @@ impl<T: BoxProvider> Key<T> {
     pub fn load(key: Vec<u8>) -> Option<Self> {
         if key.len() == T::box_key_len() {
             Some(Self {
-                key:
-                Buffer::alloc(key.as_slice(), ProtectedConfiguration::BufferConfig(T::box_key_len())).expect("Failed to generate Buffer"),
+                key: Buffer::alloc(key.as_slice(), ProtectedConfiguration::BufferConfig(T::box_key_len()))
+                    .expect("Failed to generate Buffer"),
                 _box_provider: PhantomData,
             })
         } else {

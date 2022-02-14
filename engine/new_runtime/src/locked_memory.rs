@@ -1,9 +1,8 @@
-use crate::types::Bytes;
-use crate::memories::buffer::Buffer;
 use crate::crypto_utils::crypto_box::{BoxProvider, Key};
-use zeroize::{Zeroize};
+use crate::memories::buffer::Buffer;
+use crate::types::Bytes;
 use core::fmt::Debug;
-
+use zeroize::Zeroize;
 
 #[derive(Debug)]
 pub enum MemoryError {
@@ -18,7 +17,7 @@ pub enum MemoryError {
 pub enum ProtectedConfiguration {
     ZeroedConfig(),
     BufferConfig(usize),
-    FileConfig(usize)
+    FileConfig(usize),
 }
 
 // Different possible configuration for the memory
@@ -34,16 +33,13 @@ pub enum LockedConfiguration<P: BoxProvider> {
     // Encrypted file memory, needs a key and size of non encrypted data
     EncryptedFileConfig(Key<P>, usize),
     // Non contiguous memory in ram and disk
-    NonContiguousInRamAndFileConfig(usize)
+    NonContiguousInRamAndFileConfig(usize),
 }
 
 /// Memory storage with default protections to store sensitive data
-pub trait ProtectedMemory<T: Bytes>
-    : Debug + Sized + Zeroize {
-
+pub trait ProtectedMemory<T: Bytes>: Debug + Sized + Zeroize {
     /// Writes the payload into a LockedMemory then locks it
-    fn alloc(payload: &[T], config: ProtectedConfiguration)
-             -> Result<Self, MemoryError>;
+    fn alloc(payload: &[T], config: ProtectedConfiguration) -> Result<Self, MemoryError>;
 
     /// Cleans up any trace of the memory used
     /// Does not free any memory, the name may be misleading
@@ -53,14 +49,10 @@ pub trait ProtectedMemory<T: Bytes>
     }
 }
 
-
 /// Memory that can be locked (unreadable) when storing sensitive data for longer period of time
-pub trait LockedMemory<T: Bytes, P: BoxProvider>
-    : Debug + Sized + Zeroize {
-
+pub trait LockedMemory<T: Bytes, P: BoxProvider>: Debug + Sized + Zeroize {
     /// Writes the payload into a LockedMemory then locks it
-    fn alloc(payload: &[T], config: LockedConfiguration<P>)
-             -> Result<Self, MemoryError>;
+    fn alloc(payload: &[T], config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 
     /// Cleans up any trace of the memory used
     /// Shall be called in drop()
@@ -70,10 +62,8 @@ pub trait LockedMemory<T: Bytes, P: BoxProvider>
     }
 
     /// Locks the memory and possibly reallocates
-    fn lock(self, payload: Buffer<T>,  config: LockedConfiguration<P>)
-        -> Result<Self, MemoryError>;
+    fn lock(self, payload: Buffer<T>, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 
     /// Unlocks the memory and returns an unlocked Buffer
-    fn unlock(&self, config: LockedConfiguration<P>)
-        -> Result<Buffer<T>, MemoryError>;
+    fn unlock(&self, config: LockedConfiguration<P>) -> Result<Buffer<T>, MemoryError>;
 }

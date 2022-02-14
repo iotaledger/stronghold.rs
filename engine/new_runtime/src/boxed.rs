@@ -1,8 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use zeroize::Zeroize;
 use crate::types::*;
+use zeroize::Zeroize;
 
 use core::{
     cell::Cell,
@@ -218,8 +218,8 @@ impl<T: Bytes + Zeroed> Boxed<T> {
 }
 
 // This may create undefined behaviour if not used correctly
-// Zeroes out the memory and configuration 
-impl <T: Bytes> Zeroize for Boxed<T> {
+// Zeroes out the memory and configuration
+impl<T: Bytes> Zeroize for Boxed<T> {
     fn zeroize(&mut self) {
         self.unlock();
         self.as_mut_slice().zero();
