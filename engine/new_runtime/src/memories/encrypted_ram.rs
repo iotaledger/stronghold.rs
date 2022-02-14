@@ -56,9 +56,12 @@ impl<P: BoxProvider, const AD_SIZE: usize> LockedMemory<u8, P> for EncryptedRam<
     /// Locks the memory and possibly reallocates
     // Currently we reallocate a new EncryptedRam at each lock
     // This improves security but decreases performance
-    fn lock(self, payload: Buffer<u8>, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
+    fn lock(mut self, payload: Buffer<u8>, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
         match config {
-            EncryptedRamConfig(_, _) => EncryptedRam::<P, AD_SIZE>::alloc(&payload.borrow(), config),
+            EncryptedRamConfig(_, _) => {
+                self.dealloc();
+                EncryptedRam::<P, AD_SIZE>::alloc(&payload.borrow(), config)
+            },
             _ => Err(ConfigurationNotAllowed),
         }
     }

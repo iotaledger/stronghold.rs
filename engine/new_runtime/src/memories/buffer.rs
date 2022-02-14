@@ -1,5 +1,6 @@
 use crate::boxed::Boxed;
-use crate::locked_memory::{MemoryError::*, ProtectedConfiguration::*, *};
+use crate::locked_memory::{MemoryError::{self, *}, ProtectedMemory};
+use crate::locked_memory::ProtectedConfiguration::{self, *};
 use crate::types::{Bytes, ConstEq, Randomized, Zeroed};
 use core::fmt::{self, Debug, Formatter};
 use core::marker::PhantomData;

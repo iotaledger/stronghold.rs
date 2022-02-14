@@ -221,7 +221,7 @@ impl<T: Bytes + Zeroed> Boxed<T> {
 // Zeroes out the memory and configuration
 impl<T: Bytes> Zeroize for Boxed<T> {
     fn zeroize(&mut self) {
-        self.unlock();
+        self.unlock_mut();
         self.as_mut_slice().zero();
         self.lock();
         self.refs.set(0);

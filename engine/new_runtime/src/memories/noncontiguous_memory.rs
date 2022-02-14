@@ -9,7 +9,6 @@ use zeroize::Zeroize;
 // NONCONTIGUOUS MEMORY
 /// Shards of memory which composes a non contiguous memory
 enum MemoryShard<T: Zeroize + Bytes> {
-    File(FileMemory),
     Ram(Buffer<T>),
 }
 

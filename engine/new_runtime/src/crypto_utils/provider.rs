@@ -15,6 +15,7 @@ impl Provider {
     const TAG_LEN: usize = XChaCha20Poly1305::TAG_LENGTH;
 }
 
+
 impl BoxProvider for Provider {
     type Error = crypto::Error;
 

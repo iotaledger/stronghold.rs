@@ -17,24 +17,64 @@ pub enum MemoryError {
 pub enum ProtectedConfiguration {
     ZeroedConfig(),
     BufferConfig(usize),
-    FileConfig(usize),
 }
 
 // Different possible configuration for the memory
 // This is still in development
-#[derive(PartialEq, Eq)]
+// Size is an Option type because size is required for memory allocation but
+// not necessary for unlocking the memory
+#[derive(Debug)]
 pub enum LockedConfiguration<P: BoxProvider> {
     // Default configuration when zeroed out
     ZeroedConfig(),
+
+    // Non-encrypted file memory
+    FileConfig(Option<usize>),
+
     // Encrypted ram memory
     // Needs a key for encryption/decryption
     // Needs size for allocation but not for unlocking
     EncryptedRamConfig(Key<P>, Option<usize>),
     // Encrypted file memory, needs a key and size of non encrypted data
-    EncryptedFileConfig(Key<P>, usize),
+    EncryptedFileConfig(Key<P>, Option<usize>),
     // Non contiguous memory in ram and disk
-    NonContiguousInRamAndFileConfig(usize),
+    NonContiguousInRamAndFileConfig(Option<usize>),
 }
+
+impl<P: BoxProvider> LockedConfiguration<P> {
+    // Check that variants type are the same 
+    pub fn is_eq_config_type(&self, other: &Self) -> bool {
+        use LockedConfiguration::*;
+        match (self, other) {
+            (ZeroedConfig(), ZeroedConfig()) => true,
+            (FileConfig(_), FileConfig(_)) => true,
+            (EncryptedRamConfig(_, _), EncryptedRamConfig(_, _)) => true,
+            (EncryptedFileConfig(_, _), EncryptedFileConfig(_, _)) => true,
+            (NonContiguousInRamAndFileConfig(_), NonContiguousInRamAndFileConfig(_)) => true,
+            (_, _) => false
+        }
+    }
+}
+
+// We implement PartialEq for configuration which contains a key
+// We don't want to include the key in the comparison because when the
+// configuration is stored in LockedMemory, the key is actually replaced
+// with random noise to avoid storing sensitive data there
+impl<P: BoxProvider> PartialEq for LockedConfiguration<P> {
+    fn eq(&self, other: &Self) -> bool {
+        use LockedConfiguration::*;
+        match (self, other) {
+            (ZeroedConfig(), ZeroedConfig()) => true,
+            (FileConfig(s1), FileConfig(s2)) => s1 == s2,
+            (EncryptedRamConfig(_, s1), EncryptedRamConfig(_, s2)) => s1 == s2,
+            (EncryptedFileConfig(_, s1), EncryptedFileConfig(_, s2)) => s1 == s2,
+            (NonContiguousInRamAndFileConfig(s1), NonContiguousInRamAndFileConfig(s2)) => s1 == s2,
+            (_, _) => false
+        }
+    }
+}
+
+impl<P: BoxProvider> Eq for LockedConfiguration<P> {}
 
 /// Memory storage with default protections to store sensitive data
 pub trait ProtectedMemory<T: Bytes>: Debug + Sized + Zeroize {
