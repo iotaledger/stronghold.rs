@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::vault::{base64::Base64Encodable, crypto_box::BoxProvider};
+use crate::vault::{crypto_box::BoxProvider, Base64Decodable, Base64Encodable};
 
 use serde::{
     de::{self, Unexpected, Visitor},
@@ -13,7 +13,6 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     hash::Hash,
     ops::{Add, AddAssign},
-    str::FromStr,
 };
 use thiserror::Error as DeriveError;
 
@@ -233,7 +232,7 @@ impl Serialize for ChainId {
     where
         S: Serializer,
     {
-        let string: String = self.0.iter().map(|n| format!("{},", n)).collect();
+        let string: String = self.0.base64();
         serializer.serialize_str(&string)
     }
 }
@@ -290,7 +289,7 @@ impl Serialize for BlobId {
     where
         S: Serializer,
     {
-        let string: String = self.0.iter().map(|n| format!("{},", n)).collect();
+        let string: String = self.0.base64();
         serializer.serialize_str(&string)
     }
 }
@@ -391,7 +390,7 @@ impl Serialize for Id {
     where
         S: Serializer,
     {
-        let string: String = self.0.iter().map(|n| format!("{},", n)).collect();
+        let string: String = self.0.base64();
         serializer.serialize_str(&string)
     }
 }
@@ -524,8 +523,9 @@ impl<'de> Visitor<'de> for IdVisitor {
     where
         E: de::Error,
     {
-        let nums: Vec<u8> = s.split(',').filter_map(|s| u8::from_str(s).ok()).collect();
-        nums.try_into()
+        let bytes = Vec::from_base64(s).map_err(|_| de::Error::invalid_value(Unexpected::Str(s), &self))?;
+        bytes
+            .try_into()
             .map_err(|_| de::Error::invalid_value(Unexpected::Str(s), &self))
     }
 }
