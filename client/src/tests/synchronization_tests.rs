@@ -109,7 +109,6 @@ async fn sync_clients() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(feature = "p2p")]
 #[actix::test]
-#[ignore]
 async fn remote_sync() -> Result<(), Box<dyn std::error::Error>> {
     use engine::vault::ClientId;
 

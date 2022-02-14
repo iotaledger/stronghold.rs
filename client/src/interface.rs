@@ -451,7 +451,7 @@ impl Stronghold {
             None => return Ok(false),
         };
 
-        let target = self.switch_client(client_id).await?;
+        let target = self.registry.send(SpawnClient { id: client_id }).await?;
 
         target
             .send(ReloadData {
