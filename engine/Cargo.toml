@@ -44,6 +44,7 @@ tempfile = "3.1.0"
 proptest = "1.0.0"
 criterion = "0.3.3"
 json = "0.12"
+serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 
 [dev-dependencies.stronghold-utils]
 path = "../utils"

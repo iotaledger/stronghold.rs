@@ -6,7 +6,7 @@ use std::convert::Infallible;
 
 use utils::provider::Provider;
 
-use engine::vault::{DbView, Key, RecordHint, RecordId, VaultId};
+use engine::vault::{BlobId, ChainId, DbView, Id, Key, RecordHint, RecordId, VaultId};
 
 #[test]
 fn test_vaults() {
@@ -141,4 +141,22 @@ fn test_vaults() {
         Ok(())
     })
     .unwrap();
+}
+
+#[test]
+fn serialize_ids() {
+    let id = Id::random::<Provider>().unwrap();
+    let serialized = serde_json::to_vec(&id).unwrap();
+    let deserialized = serde_json::from_slice(&serialized).unwrap();
+    assert_eq!(id, deserialized);
+
+    let chain_id = ChainId::random::<Provider>().unwrap();
+    let serialized = serde_json::to_vec(&chain_id).unwrap();
+    let deserialized = serde_json::from_slice(&serialized).unwrap();
+    assert_eq!(chain_id, deserialized);
+
+    let blob_id = BlobId::random::<Provider>().unwrap();
+    let serialized = serde_json::to_vec(&blob_id).unwrap();
+    let deserialized = serde_json::from_slice(&serialized).unwrap();
+    assert_eq!(blob_id, deserialized);
 }

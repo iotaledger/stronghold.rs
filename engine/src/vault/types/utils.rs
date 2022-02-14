@@ -3,13 +3,17 @@
 
 use crate::vault::{base64::Base64Encodable, crypto_box::BoxProvider};
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{self, Unexpected, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 use std::{
     cmp::Ordering,
     convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
     hash::Hash,
     ops::{Add, AddAssign},
+    str::FromStr,
 };
 use thiserror::Error as DeriveError;
 
@@ -35,18 +39,18 @@ pub struct VaultId(pub Id);
 
 /// A chain identifier.  Used to identify a transaction.
 #[repr(transparent)]
-#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub struct ChainId([u8; 24]);
 
 /// A generic Id type used as the underlying type for the `ClientId` and `VaultId` types.
 #[repr(transparent)]
-#[derive(Copy, Clone, Hash, Default, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Hash, Default, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Id([u8; 24]);
 
 /// A blob identifier used to refer to a [`SealedBlob`].
 /// The [`BlobId`] for a record changes each time its data is updated.
 #[repr(transparent)]
-#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub struct BlobId([u8; 24]);
 
 /// a big endian encoded number used as a counter.
@@ -224,6 +228,26 @@ impl Debug for ChainId {
     }
 }
 
+impl Serialize for ChainId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let string: String = self.0.iter().map(|n| format!("{},", n)).collect();
+        serializer.serialize_str(&string)
+    }
+}
+
+impl<'de> Deserialize<'de> for ChainId {
+    fn deserialize<D>(deserializer: D) -> Result<ChainId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let array = deserializer.deserialize_string(IdVisitor)?;
+        Ok(ChainId(array))
+    }
+}
+
 impl From<RecordId> for ChainId {
     fn from(id: RecordId) -> Self {
         id.0
@@ -258,6 +282,26 @@ impl TryFrom<Vec<u8>> for ChainId {
 impl AsRef<[u8]> for BlobId {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl Serialize for BlobId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let string: String = self.0.iter().map(|n| format!("{},", n)).collect();
+        serializer.serialize_str(&string)
+    }
+}
+
+impl<'de> Deserialize<'de> for BlobId {
+    fn deserialize<D>(deserializer: D) -> Result<BlobId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let array = deserializer.deserialize_string(IdVisitor)?;
+        Ok(BlobId(array))
     }
 }
 
@@ -339,6 +383,26 @@ impl AsRef<[u8]> for Id {
 impl Debug for Id {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "Chain({})", self.0.base64())
+    }
+}
+
+impl Serialize for Id {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let string: String = self.0.iter().map(|n| format!("{},", n)).collect();
+        serializer.serialize_str(&string)
+    }
+}
+
+impl<'de> Deserialize<'de> for Id {
+    fn deserialize<D>(deserializer: D) -> Result<Id, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let array = deserializer.deserialize_string(IdVisitor)?;
+        Ok(Id(array))
     }
 }
 
@@ -444,5 +508,24 @@ impl Into<String> for ClientId {
 impl Into<String> for VaultId {
     fn into(self) -> String {
         self.0.as_ref().base64()
+    }
+}
+
+struct IdVisitor;
+
+impl<'de> Visitor<'de> for IdVisitor {
+    type Value = [u8; 24];
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a [u8; 24] array.")
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        let nums: Vec<u8> = s.split(',').filter_map(|s| u8::from_str(s).ok()).collect();
+        nums.try_into()
+            .map_err(|_| de::Error::invalid_value(Unexpected::Str(s), &self))
     }
 }
