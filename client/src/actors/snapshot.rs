@@ -18,6 +18,7 @@ use crate::{
         secure::Store,
         snapshot::{ReadError, Snapshot, SnapshotState, WriteError},
     },
+    sync::MergeLayer,
     Provider,
 };
 use std::collections::HashMap;
@@ -99,10 +100,12 @@ pub mod messages {
         pub merge_policy: SelectOrMerge<SelectOne>,
     }
 
+    /// Export local hierarchy.
     #[derive(Message, Debug, Clone, Serialize, Deserialize)]
     #[rtype(result = "HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>")]
     pub struct GetHierarchy;
 
+    /// Calculate diff between local hierarchy and the given one.
     #[derive(Message, Debug, Clone)]
     #[rtype(result = "HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>")]
     pub struct GetDiff {
@@ -215,7 +218,7 @@ impl Handler<messages::GetHierarchy> for Snapshot {
     type Result = MessageResult<messages::GetHierarchy>;
 
     fn handle(&mut self, _: messages::GetHierarchy, _ctx: &mut Self::Context) -> Self::Result {
-        let hierarchy = self.get_hierarchy();
+        let hierarchy = self.state.get_hierarchy();
         MessageResult(hierarchy)
     }
 }
@@ -224,7 +227,7 @@ impl Handler<messages::GetDiff> for Snapshot {
     type Result = MessageResult<messages::GetDiff>;
 
     fn handle(&mut self, msg: messages::GetDiff, _ctx: &mut Self::Context) -> Self::Result {
-        let diff = self.get_diff(msg.other, msg.mapper.as_ref(), &msg.merge_policy);
+        let diff = self.state.get_diff(msg.other, msg.mapper.as_ref(), &msg.merge_policy);
         MessageResult(diff)
     }
 }

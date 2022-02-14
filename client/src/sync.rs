@@ -16,7 +16,7 @@ use std::collections::HashMap;
 /// 2. `A::get_diff` compares the hierarchy from step 1 with the local one, and selects the paths that A does not have.
 /// 3. `B::export_entries` exports the entries from B that A selected in step 2.
 /// 4. `A::import_entries` extends the entries in A with the entries from B.
-pub trait MergeLayer {
+pub trait MergeLayer<'a> {
     /// Full hierarchy of entries with Ids.
     type Hierarchy;
     /// Full hierarchy of entries with with the encrypted data.
@@ -133,7 +133,7 @@ impl<'a, T> From<&'a mut (HashMap<VaultId, Key<Provider>>, DbView<Provider>, T)>
 }
 
 /// Merge two client states.
-impl<'a> MergeLayer for SyncClientState<'a> {
+impl<'a> MergeLayer<'a> for SyncClientState<'a> {
     type Hierarchy = HashMap<VaultId, Vec<(RecordId, BlobId)>>;
     type Exported = HashMap<VaultId, Vec<(RecordId, Record)>>;
     type Path = (VaultId, RecordId);
@@ -290,30 +290,18 @@ impl<'a> MergeLayer for SyncClientState<'a> {
     }
 }
 
-pub struct SyncSnapshotState<'a> {
-    state: &'a mut SnapshotState,
-}
-
-impl<'a> SyncSnapshotState<'a> {
-    pub fn new(state: &'a mut SnapshotState) -> Self {
-        Self { state }
-    }
-
-    pub fn as_key_provider(&mut self) -> HashMap<ClientId, &HashMap<VaultId, Key<Provider>>> {
-        self.state
-            .0
-            .iter()
-            .map(|(cid, (keystore, ..))| (*cid, &*keystore))
-            .collect()
+impl SnapshotState {
+    pub fn as_key_provider(&mut self) -> <Self as MergeLayer>::KeyProvider {
+        self.0.iter().map(|(cid, (keystore, ..))| (*cid, &*keystore)).collect()
     }
 
     pub fn get_client(&mut self, id: &ClientId) -> Option<SyncClientState> {
-        let (keystore, db, _) = self.state.0.get_mut(id)?;
+        let (keystore, db, _) = self.0.get_mut(id)?;
         Some(SyncClientState { db, keystore })
     }
 
     pub fn get_client_or_default(&mut self, id: ClientId) -> SyncClientState {
-        let (keystore, db, _) = self.state.0.entry(id).or_default();
+        let (keystore, db, _) = self.0.entry(id).or_default();
         SyncClientState { db, keystore }
     }
 }
@@ -321,16 +309,16 @@ impl<'a> SyncSnapshotState<'a> {
 /// Merge two snapshot states.
 /// Apart from merging the state from another snapshot file into the already loaded snapshot state, this also allows
 /// to import the state from remote snapshots partially or fully.
-impl<'a> MergeLayer for SyncSnapshotState<'a> {
-    type Hierarchy = HashMap<ClientId, <SyncClientState<'a> as MergeLayer>::Hierarchy>;
-    type Exported = HashMap<ClientId, <SyncClientState<'a> as MergeLayer>::Exported>;
+impl<'a> MergeLayer<'a> for SnapshotState {
+    type Hierarchy = HashMap<ClientId, <SyncClientState<'a> as MergeLayer<'a>>::Hierarchy>;
+    type Exported = HashMap<ClientId, <SyncClientState<'a> as MergeLayer<'a>>::Exported>;
     type Path = (ClientId, VaultId, RecordId);
-    type MergePolicy = SelectOrMerge<<SyncClientState<'a> as MergeLayer>::MergePolicy>;
-    type KeyProvider = HashMap<ClientId, &'a <SyncClientState<'a> as MergeLayer>::KeyProvider>;
+    type MergePolicy = SelectOrMerge<<SyncClientState<'a> as MergeLayer<'a>>::MergePolicy>;
+    type KeyProvider = HashMap<ClientId, &'a <SyncClientState<'a> as MergeLayer<'a>>::KeyProvider>;
 
     fn get_hierarchy(&mut self) -> Self::Hierarchy {
         let mut map = HashMap::new();
-        for (client_id, state) in &mut self.state.0 {
+        for (client_id, state) in &mut self.0 {
             let vault_map = <SyncClientState as MergeLayer>::get_hierarchy(&mut state.into());
             map.insert(*client_id, vault_map);
         }
@@ -389,7 +377,7 @@ impl<'a> MergeLayer for SyncSnapshotState<'a> {
     fn export_entries(&mut self, hierarchy: Option<Self::Hierarchy>) -> Self::Exported {
         let hierarchy: HashMap<ClientId, Option<_>> = hierarchy
             .map(|h| h.into_iter().map(|(cid, vaults)| (cid, Some(vaults))).collect())
-            .unwrap_or_else(|| self.state.0.keys().map(|cid| (*cid, None)).collect());
+            .unwrap_or_else(|| self.0.keys().map(|cid| (*cid, None)).collect());
         hierarchy
             .into_iter()
             .filter_map(|(cid, vaults)| {
@@ -462,7 +450,7 @@ impl<'a> MergeLayer for SyncSnapshotState<'a> {
                 mapped = exported
                     .into_iter()
                     .filter_map(|(cid, vaults)| match merge_policy {
-                        SelectOrMerge::KeepOld if self.state.0.contains_key(&cid) => None,
+                        SelectOrMerge::KeepOld if self.0.contains_key(&cid) => None,
                         _ => Some((cid, vaults)),
                     })
                     .collect();

@@ -5,13 +5,13 @@
 
 use crate::{
     state::secure::Store,
-    sync::{self, MergeClientsMapper, MergeLayer, MergeSnapshotsMapper, SelectOne, SelectOrMerge, SyncSnapshotState},
+    sync::{self, MergeClientsMapper, MergeLayer, MergeSnapshotsMapper, SelectOne, SelectOrMerge},
     Provider,
 };
 
 use engine::{
     snapshot::{self, read_from, write_to, Key, ReadError as EngineReadError, WriteError as EngineWriteError},
-    vault::{BlobId, ClientId, DbView, Key as PKey, RecordId, VaultId},
+    vault::{ClientId, DbView, Key as PKey, VaultId},
 };
 
 use serde::{Deserialize, Serialize};
@@ -113,14 +113,12 @@ impl Snapshot {
         mapper: Option<&MergeSnapshotsMapper>,
         merge_policy: &SelectOrMerge<SelectOrMerge<SelectOne>>,
     ) {
-        let mut source = SyncSnapshotState::new(other);
-        let mut target = SyncSnapshotState::new(&mut self.state);
+        let hierarchy = other.get_hierarchy();
+        let diff = self.state.get_diff(hierarchy, mapper, merge_policy);
+        let exported = other.export_entries(Some(diff));
 
-        let hierarchy = source.get_hierarchy();
-        let diff = target.get_diff(hierarchy, mapper, merge_policy);
-        let exported = source.export_entries(Some(diff));
-
-        target.import_entries(exported, merge_policy, mapper, Some(&source.as_key_provider()));
+        self.state
+            .import_entries(exported, merge_policy, mapper, Some(&other.as_key_provider()));
     }
 
     /// Export the entries specified in the diff to a blank snapshot state.
@@ -128,20 +126,11 @@ impl Snapshot {
     /// snapshot state alongside with the exported records.
     ///
     /// Deserialize, encrypt and compress the new state to a bytestring.
-    pub fn export_to_serialized_state(
-        &mut self,
-        diff: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>,
-        key: Key,
-    ) -> Vec<u8> {
-        let exported = SyncSnapshotState::new(&mut self.state).export_entries(Some(diff));
+    pub fn export_to_serialized_state(&mut self, diff: <SnapshotState as MergeLayer>::Hierarchy, key: Key) -> Vec<u8> {
+        let exported = self.state.export_entries(Some(diff));
         let old_key_store = self.state.0.iter().map(|(cid, state)| (*cid, &state.0)).collect();
         let mut blank_state = SnapshotState(HashMap::default());
-        SyncSnapshotState::new(&mut blank_state).import_entries(
-            exported,
-            &SelectOrMerge::Replace,
-            None,
-            Some(&old_key_store),
-        );
+        blank_state.import_entries(exported, &SelectOrMerge::Replace, None, Some(&old_key_store));
         let data = self.state.serialize().unwrap();
         let compressed_plain = engine::snapshot::compress(data.as_slice());
         let mut buffer = Vec::new();
@@ -159,31 +148,11 @@ impl Snapshot {
     ) {
         let pt = engine::snapshot::read(&mut bytes.as_slice(), &key, &[]).unwrap();
         let data = engine::snapshot::decompress(&pt).unwrap();
-        let mut other_snapshot = SnapshotState::deserialize(data).unwrap();
-        let mut other_state = SyncSnapshotState::new(&mut other_snapshot);
+        let mut other_state = SnapshotState::deserialize(data).unwrap();
         let exported = other_state.export_entries(None);
 
-        SyncSnapshotState::new(&mut self.state).import_entries(
-            exported,
-            merge_policy,
-            mapper,
-            Some(&other_state.as_key_provider()),
-        );
-    }
-
-    /// Export local hierarchy.
-    pub fn get_hierarchy(&mut self) -> HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>> {
-        SyncSnapshotState::new(&mut self.state).get_hierarchy()
-    }
-
-    /// Calculate diff between local hierarchy and the given one.
-    pub fn get_diff(
-        &mut self,
-        other: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>,
-        mapper: Option<&MergeSnapshotsMapper>,
-        merge_policy: &SelectOrMerge<SelectOrMerge<SelectOne>>,
-    ) -> HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>> {
-        SyncSnapshotState::new(&mut self.state).get_diff(other, mapper, merge_policy)
+        self.state
+            .import_entries(exported, merge_policy, mapper, Some(&other_state.as_key_provider()));
     }
 }
 
