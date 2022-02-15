@@ -1,11 +1,23 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-//! Software Transactional Memory: RLU Variant
+//! # Software Transactional Memory: RLU Variant
 //! ---
 //! This module implements the read log update synchronization mechanism
 //! to enable non-blocking concurrent reads and concurrent writes on
 //! data.
+//!
+//! ## Algorithm
+//! ---
+//! The main idea is to allow readers non-blocking access to data. RLU employs a global clock (counter)
+//! for (single) versioned updates on objects. On writes, a thread will create a copy of the target
+//! object, locking it before, and conduct any modification to the object inside the log. This ensure
+//! that any modification is hidden from other threads. The writing thread increments the global clock,
+//! so that readers are split into two sets: the readers reading the old state, and readers reading the
+//! new state from the logs of the writing thread.
+//!
+//! The writing thread waits until all readers have concluded their reads, then commits the changes to memory
+//! and update the global clock.
 //!
 //! # Sources
 //! - [notes](https://chaomai.github.io/2015/2015-09-26-notes-of-rlu/)
@@ -21,27 +33,26 @@ use std::{
     collections::HashMap,
     hash::Hash,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering},
         Arc, Mutex,
     },
-    thread::ThreadId,
     thread_local,
 };
 
 /// Returns the calling function name
-macro_rules! caller {
-    () => {{
-        fn f() {}
-        fn type_name_of<T>(_: T) -> &'static str {
-            std::any::type_name::<T>()
-        }
-        let name = type_name_of(f);
-        &name[..name.len() - 3]
-    }};
-}
+// macro_rules! caller {
+//     () => {{
+//         fn f() {}
+//         fn type_name_of<T>(_: T) -> &'static str {
+//             std::any::type_name::<T>()
+//         }
+//         let name = type_name_of(f);
+//         &name[..name.len() - 3]
+//     }};
+// }
 
 /// Virtual Type to use as return
-pub trait ReturnType: Clone + Send + Sync + Sized + std::fmt::Debug {}
+pub trait ReturnType: Clone + Send + Sync + Sized {}
 
 /// Global return type
 pub type Result<T> = std::result::Result<T, TransactionError>;
@@ -50,7 +61,7 @@ pub type Result<T> = std::result::Result<T, TransactionError>;
 pub type ClonableMutex<T> = Arc<Mutex<T>>;
 
 /// auto impl for return type
-impl<T> ReturnType for T where T: Send + Sync + Clone + std::fmt::Debug {}
+impl<T> ReturnType for T where T: Send + Sync + Clone + Sized {}
 
 pub struct DataMap<K, V>
 where
@@ -64,22 +75,7 @@ static G_CLOCK: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
     // pub static Guard: Cell<HashMap<Box<dyn Future<Output = Result<(), Box<dyn Error>>>>,bool>> = Cell::new(HashMap::new());
-    pub static GUARD: Cell<bool> = Cell::new(false);
-}
-
-/// Returns the global clock
-pub(crate) fn g_clock() -> usize {
-    G_CLOCK.load(Ordering::Acquire)
-}
-
-/// Updates the global clock
-pub(crate) fn g_clock_mut(val: usize) {
-    G_CLOCK.store(val, Ordering::Release)
-}
-
-/// Increments the globoal clock
-pub(crate) fn clock_inc() {
-    G_CLOCK.fetch_add(1, Ordering::Acquire);
+    static GUARD: Cell<bool> = Cell::new(false);
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -94,429 +90,227 @@ pub enum TransactionError {
     Inner(String),
 }
 
-/// a lightweight controller lock on concurrent readers
-/// of [`TVar`]. The [`ReadLock`] takes care of decrementing
-/// the number of readers on a [`TVar`].
-pub struct ReadLock<T>
+/// Returns the active thread by id
+fn get_rlu_context<T>(id: &usize) -> RLUContext<T>
 where
     T: ReturnType,
 {
-    var: TVar<T>,
-    data: ClonableMutex<T>,
-}
-
-impl<T> ReadLock<T>
-where
-    T: ReturnType,
-{
-    pub fn read(&self) -> Result<T> {
-        let result = self
-            .data
-            .lock()
-            .map_err(|e| TransactionError::Inner(format!("{} -> {}", caller!(), e)))?
-            .clone();
-
-        Ok(result)
-    }
-}
-
-impl<T> Drop for ReadLock<T>
-where
-    T: ReturnType,
-{
-    fn drop(&mut self) {
-        info!("caller {}: Release read lock", caller!());
-        self.var.release()
-    }
-}
-
-pub enum WriteLock<T>
-where
-    T: ReturnType,
-{
-    Writer(ThreadId, RLUThread<T>),
-    None,
-}
-
-impl<T> Clone for WriteLock<T>
-where
-    T: ReturnType,
-{
-    fn clone(&self) -> Self {
-        match self {
-            WriteLock::Writer(id, tx) => WriteLock::Writer(*id, tx.clone()),
-            WriteLock::None => WriteLock::None,
-        }
-    }
+    todo!()
 }
 
 /// This is the global object for reading and writing
-pub struct TVar<T>
+
+pub struct TVar<'a, T>
 where
     T: ReturnType,
 {
-    // g_clock: Arc<AtomicUsize>,
-    data: Arc<Mutex<T>>,
-    readers: Arc<AtomicUsize>,
+    /// the actual data
+    data: Arc<AtomicPtr<T>>,
 
-    /// a map of all writers holding a lock on this object
-    locked_by: Arc<Mutex<WriteLock<T>>>,
+    /// a ptr to the write log copy inside an RLU thread
+    copy_ptr: Arc<AtomicPtr<TVar<'a, T>>>,
 
-    /// mutator
-    mutator: Arc<Mutex<Box<dyn Fn(&mut T, T) + Send + Sync>>>,
+    /// inidicating, if this is a copy
+    copy: Arc<AtomicBool>,
+
+    /// the current thread locking this object
+    rlu_thread_id: Arc<AtomicUsize>,
+
+    /// if this is a copy, this is the reference to the 'original'
+    obj_reference: Arc<AtomicPtr<TVar<'a, T>>>,
+
+    /// alll global related rlu objects reside here, since there are interested in synchronizing one object at a time
+    global_clock: Arc<AtomicUsize>,
+
+    /// a list of all threads monitoring this variable
+    threads: Arc<Mutex<HashMap<usize, &'a RLUContext<'a, T>>>>,
 }
 
-impl<T> TVar<T>
-where
-    T: ReturnType,
-{
-    pub fn new<F>(data: T, mutator: F) -> Self
-    where
-        F: Fn(&mut T, T) + Send + Sync + 'static,
-    {
-        Self {
-            // g_clock: Arc::new(AtomicUsize::new(0)),
-            data: Arc::new(Mutex::new(data)),
-            readers: Arc::new(AtomicUsize::new(0)),
-
-            locked_by: Arc::new(Mutex::new(WriteLock::None)),
-
-            mutator: Arc::new(Mutex::new(Box::new(mutator))),
-        }
-    }
-
-    /// Read returns a [`ReadLock`] to read from
-    /// the inner data. [`ReadLock`] keeps control over
-    /// the number of readers inside the [`TVar<T>`]
-    pub fn lock_read(&self) -> ReadLock<T> {
-        // increment the number of readers
-        self.acquire();
-
-        // return a read lock
-        ReadLock {
-            var: self.clone(),
-            data: self.data.clone(),
-        }
-    }
-
-    pub fn lock_write(&self, id: ThreadId, tx: RLUThread<T>) -> Result<()> {
-        let mut locked_by = self
-            .locked_by
-            .lock()
-            .map_err(|e| TransactionError::Inner(format!("{} -> {}", caller!(), e)))?;
-
-        *locked_by = WriteLock::Writer(id, tx);
-
-        Ok(())
-    }
-
-    pub fn unlock_write(&self) -> Result<()> {
-        let mut locked_by = self
-            .locked_by
-            .try_lock()
-            .map_err(|e| TransactionError::Inner(format!("{} -> {}", caller!(), e)))?;
-
-        *locked_by = WriteLock::None;
-
-        Ok(())
-    }
-
-    pub fn write(&self, var: T) -> Result<()> {
-        let mut inner = self
-            .data
-            .lock()
-            .map_err(|e| TransactionError::Inner(format!("{} -> {}", caller!(), e)))?;
-
-        match self
-            .mutator
-            .lock()
-            .map_err(|e| TransactionError::Inner(format!("EXECUTE UPDATE {} -> {}", caller!(), e)))
-        {
-            Ok(updater) => {
-                updater(&mut inner, var);
-                Ok(())
-            }
-            Err(e) => {
-                error!("Failed to get lock on mutator function");
-                Err(e)
-            }
-        }
-
-        // *inner = var;
-
-        // Ok(())
-    }
-
-    /// waits until all readers have been released
-    pub(crate) fn wait(&self) {
-        info!("caller {}: Wait for reader locks to release", caller!());
-        while self.readers.load(Ordering::SeqCst) > 0 {
-            warn!(
-                "caller {}: Thread parked id: {:?}",
-                caller!(),
-                std::thread::current().id()
-            );
-            std::thread::park();
-            warn!(
-                "caller {}: Thread unparked id: {:?}",
-                caller!(),
-                std::thread::current().id()
-            );
-        }
-
-        info!("caller {}: Reader lock has been released", caller!());
-    }
-
-    /// Acquires a reader, and increments the number of readers
-    fn acquire(&self) {
-        info!("caller {}: Increment reader lock", caller!());
-        self.readers.fetch_add(1, Ordering::SeqCst);
-    }
-
-    /// Decrements the number of readers
-    pub(crate) fn release(&self) {
-        info!("caller {}: Releasing reader lock.", caller!());
-        self.readers.fetch_sub(1, Ordering::SeqCst);
-
-        loop {
-            if self.readers.load(Ordering::SeqCst) == 0 {
-                info!(
-                    "caller {}: Current thread {:?} can now continue",
-                    caller!(),
-                    std::thread::current().id()
-                );
-
-                std::thread::current().unpark();
-                break;
-            }
-        }
-    }
-
-    pub(crate) fn is_locked(&self) -> Result<WriteLock<T>> {
-        let write_lock = self
-            .locked_by
-            .lock()
-            .map_err(|e| TransactionError::Inner(format!("{} -> {}", caller!(), e)))?;
-
-        Ok(write_lock.clone())
-    }
-}
-
-impl<T> Clone for TVar<T>
+impl<'a, T> Clone for TVar<'a, T>
 where
     T: ReturnType,
 {
     fn clone(&self) -> Self {
-        Self {
-            data: self.data.clone(),
-            readers: self.readers.clone(),
-            locked_by: self.locked_by.clone(),
-            mutator: self.mutator.clone(),
-        }
+        todo!()
     }
 }
 
-// impl<T> From<T> for TVar<T>
-// where
-//     T: ReturnType,
-// {
-//     fn from(value: T) -> Self {
-//         Self::new(value)
-//     }
-// }
-
-pub struct RLUThread<T>
+impl<'a, T> TVar<'a, T>
 where
     T: ReturnType,
 {
-    /// identifier
-    id: ThreadId,
-
-    /// the local clock will be used to indicate the most recent
-    /// state
-    l_clock: Arc<AtomicUsize>,
-
-    /// the write clock will be used to decide wether to
-    /// read from the real state, or from the local log
-    w_clock: Arc<AtomicUsize>,
-
-    /// a list of recorded writes
-    writes: Arc<Mutex<Vec<T>>>,
-}
-
-impl<T> Clone for RLUThread<T>
-where
-    T: ReturnType,
-{
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            l_clock: self.l_clock.clone(),
-            w_clock: self.w_clock.clone(),
-            writes: self.writes.clone(),
-        }
+    fn get_rlu_context(&self, id: &usize) -> &'a RLUContext<T> {
+        self.threads.lock().expect("").get(id).unwrap()
     }
 }
 
-impl<T> RLUThread<T>
+pub struct RLUContext<'a, T>
 where
     T: ReturnType,
 {
-    pub fn with_func<F>(f: F) -> Result<()>
-    where
-        F: Fn(Self) -> Result<()>,
-    {
-        if GUARD.with(|inner| match inner.get() {
-            true => true,
-            false => {
-                inner.set(true);
-                false
+    // the thread id
+    thread_id: Arc<AtomicUsize>,
+
+    /// first write log
+    w_log: Arc<AtomicPtr<TVar<'a, T>>>,
+
+    /// second write log
+    w_log_quiescence: Arc<AtomicPtr<TVar<'a, T>>>,
+
+    // according to the paper we need a run counter
+    // where even indicates a running state, and odd
+    // is a rest
+    running: Arc<AtomicUsize>,
+
+    /// The local clock to decide wether to read from log, or object
+    local_clock: Arc<AtomicUsize>,
+
+    /// the write clock to signal reading from
+    write_clock: Arc<AtomicUsize>,
+
+    /// sets if writer, or not. may be obsolete
+    is_writer: Arc<AtomicBool>,
+}
+
+impl<'a, T> RLUContext<'a, T>
+where
+    T: ReturnType,
+{
+    // pub fn with_func<F>(f: F) -> Result<()>
+    // where
+    //     F: Fn(Self) -> Result<()>,
+    // {
+    //     if GUARD.with(|inner| match inner.get() {
+    //         true => true,
+    //         false => {
+    //             inner.set(true);
+    //             false
+    //         }
+    //     }) {
+    //         return Err(TransactionError::InProgress);
+    //     }
+
+    //     todo!()
+    // }
+
+    pub fn reader_lock(&self) {
+        // set as reader
+        self.is_writer.store(false, Ordering::Release);
+
+        // increment number of runners. odd = running, evening = rest
+        self.running
+            .store(self.running.load(Ordering::Acquire) + 1, Ordering::Release);
+
+        // update local clock
+        self.local_clock
+            .store(G_CLOCK.load(Ordering::Acquire), Ordering::Release)
+    }
+
+    pub fn reader_unlock(&self, var: &'a TVar<'a, T>) {
+        // increment number of runners
+        self.running
+            .store(self.running.load(Ordering::Acquire) + 1, Ordering::Release);
+
+        if self.is_writer.load(Ordering::Acquire) {
+            self.commit_write_log(var)
+        }
+    }
+
+    pub fn deref(&self, var: &'a TVar<'a, T>) -> &'a TVar<'a, T> {
+        if var.copy.load(Ordering::Acquire) {
+            return unsafe { &*var.copy_ptr.load(Ordering::Acquire) };
+        }
+
+        let copy_ptr = var.copy_ptr.load(Ordering::Acquire);
+
+        // is unlocked
+        if copy_ptr.is_null() {
+            return var;
+        }
+
+        let copy_ptr = unsafe { &*copy_ptr };
+
+        if self.thread_id.load(Ordering::Acquire) == copy_ptr.rlu_thread_id.load(Ordering::Acquire) {
+            return copy_ptr;
+        }
+
+        let thread_id = copy_ptr.rlu_thread_id.load(Ordering::Acquire);
+
+        let thread: &RLUContext<'a, T> = var.get_rlu_context(&thread_id);
+
+        if self.local_clock.load(Ordering::Acquire) >= thread.write_clock.load(Ordering::Acquire) {
+            return copy_ptr;
+        }
+
+        var
+    }
+
+    pub fn try_lock(&self, var: &'a TVar<'a, T>) -> *const TVar<'a, T> {
+        // write operation
+        self.is_writer.store(true, Ordering::Release);
+
+        // get actual object
+        let original_data = var.data.load(Ordering::Acquire);
+
+        // get pointer to copy, most probably null
+        let copy_ptr = var.copy_ptr.load(Ordering::Acquire);
+
+        // is locked
+        if !copy_ptr.is_null() {
+            let copy_ptr = unsafe { &mut *copy_ptr };
+            let thread_id = copy_ptr.rlu_thread_id.load(Ordering::Acquire);
+
+            if self.thread_id.load(Ordering::Acquire) == thread_id {
+                return copy_ptr as *mut _;
             }
-        }) {
-            return Err(TransactionError::InProgress);
+
+            // retry / abort
         }
 
-        let tx = Self {
-            id: std::thread::current().id(),
-            l_clock: Arc::new(AtomicUsize::new(0)),
-            w_clock: Arc::new(AtomicUsize::new(usize::MAX)),
-            writes: Arc::new(Mutex::new(Vec::new())),
-        };
+        let mut copy = var.clone();
 
-        match f(tx) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e),
-        }
+        copy.obj_reference
+            .store(var as *const _ as *mut TVar<'a, T>, Ordering::Release);
+
+        let self_thread_id = self.thread_id.load(Ordering::Acquire);
+        var.rlu_thread_id.store(self_thread_id, Ordering::Release);
+
+        //
+        self.w_log.store(&mut copy, Ordering::Release);
+
+        // TBD: try to install copy, if that fails abort
+
+        &copy as *const _
     }
 
-    pub fn read(&self, var: &TVar<T>) -> Result<T> {
-        info!("caller {}: Update local clock", caller!());
-        self.l_clock_update();
+    pub fn commit_write_log(&self, var: &'a TVar<'a, T>) {
+        self.write_clock
+            .store(var.global_clock.load(Ordering::Acquire) + 1, Ordering::Release);
 
-        if let WriteLock::Writer(_, lock) = var.is_locked()? {
-            if self.l_clock() >= lock.w_clock() {
-                info!("caller {}: read from log", caller!());
-                return lock.read_from_log();
-            }
-        }
+        var.global_clock.fetch_add(1, Ordering::SeqCst);
+        self.synchronize(var);
 
-        var.lock_read().read()
+        // - write back write log
+        // - unlock write lock
+        self.write_clock.store(usize::MAX, Ordering::Release);
+        // - swap write logs
     }
 
-    pub fn read_from_log(&self) -> Result<T> {
-        let log = self
-            .writes
-            .lock()
-            .map_err(|e| TransactionError::Inner(format!("{} -> {}", caller!(), e)))?;
-
-        // value is cloned again
-        log.last()
-            .cloned()
-            .ok_or_else(|| TransactionError::Inner("No last element present".to_string()))
-    }
-
-    pub fn write(&self, value: T, var: &TVar<T>) -> Result<()> {
-        // Write creates a copy of the value into the write log
-        // and increments the write clock, which is newer than the global clock.
-        // Older readers must be waited upon (quiescence loop: wait until all threads reading the value are finished),
-        // before updating the values
-        // while newer readers will read from the per thread write log
-        self.l_clock_update();
-
-        // enter critical section
-        info!("caller {}: Set write lock", caller!());
-        var.lock_write(std::thread::current().id(), self.clone())?;
-
-        let mut writes = self
-            .writes
-            .try_lock()
-            .map_err(|e| TransactionError::Inner(format!("{} -> {}", caller!(), e)))?;
-
-        // this should create a copy of read value
-        (*writes).push(value);
-
-        self.w_clock_update();
-
-        // this is higher than the g_clock
-        self.w_clock_inc();
-        g_clock_mut(self.w_clock());
-
-        // wait for all reads
-        var.wait();
-
-        // commit
-        info!("caller {}: Committing writes", caller!());
-
-        for val in writes.drain(0..) {
-            info!("caller {}: Comitting value {:?}", caller!(), val);
-            var.write(val)?;
-        }
-
-        info!("caller {}: Unlock write section", caller!());
-        // leave critical section
-        var.unlock_write()?;
-
-        info!("caller {}: Update global clock", caller!());
-        g_clock_mut(self.w_clock());
-
-        info!("caller {}: Reset write clock", caller!());
-        // reset w_clock
-        self.w_clock_mut(usize::MAX);
-
-        Ok(())
-    }
-
-    pub(crate) fn l_clock(&self) -> usize {
-        self.l_clock.load(Ordering::SeqCst)
-    }
-
-    pub(crate) fn l_clock_update(&self) {
-        self.l_clock.store(g_clock(), Ordering::SeqCst);
-    }
-
-    pub(crate) fn w_clock(&self) -> usize {
-        self.w_clock.load(Ordering::SeqCst)
-    }
-
-    pub(crate) fn w_clock_mut(&self, val: usize) {
-        self.w_clock.store(val, Ordering::SeqCst)
-    }
-
-    pub(crate) fn w_clock_update(&self) {
-        self.w_clock.store(g_clock(), Ordering::SeqCst);
-    }
-
-    pub(crate) fn w_clock_inc(&self) {
-        self.w_clock.fetch_add(1, Ordering::SeqCst);
-    }
-}
-
-impl<T> Drop for RLUThread<T>
-where
-    T: ReturnType,
-{
-    fn drop(&mut self) {
-        GUARD.with(|inner| inner.set(false));
-    }
+    pub fn synchronize(&self, var: &'a TVar<'a, T>) {}
 }
 
 #[cfg(test)]
 mod tests {
 
-    use super::*;
-    use rand::{distributions::Alphanumeric, Rng};
-    use std::collections::HashMap;
+    use rand_utils::random::{string, usize};
 
     fn rand_string() -> String {
-        rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(rand::thread_rng().gen_range(1..32))
-            .map(char::from)
-            .collect()
+        string(255)
     }
 
+    #[inline(always)]
     fn rand_usize() -> usize {
-        rand::thread_rng().gen_range(0..255)
+        usize(usize::MAX)
     }
 
     /// This function will be run before any of the tests
@@ -530,42 +324,42 @@ mod tests {
 
     #[test]
     fn test_read_write() {
-        let t: TVar<_> = TVar::new(HashMap::new(), |inner, update| inner.extend(update.into_iter()));
-        let num_threads = 4;
+        // let t: TVar<_> = TVar::new(HashMap::new(), |inner, update| inner.extend(update.into_iter()));
+        // let num_threads = 4;
 
-        let test_values: Vec<(TVar<_>, usize, String)> =
-            std::iter::repeat_with(|| (t.clone(), rand_usize(), rand_string()))
-                .take(num_threads)
-                .collect();
+        // let test_values: Vec<(TVar<_>, usize, String)> =
+        //     std::iter::repeat_with(|| (t.clone(), rand_usize(), rand_string()))
+        //         .take(num_threads)
+        //         .collect();
 
-        let pool = threadpool::ThreadPool::new(num_threads);
+        // let pool = threadpool::ThreadPool::new(num_threads);
 
-        for _ in 0..5 {
-            for (tcopy, id, value) in test_values.clone() {
-                pool.execute(move || {
-                    RLUThread::with_func(|tx| {
-                        let v = tx.read(&tcopy)?;
+        // for _ in 0..5 {
+        //     for (tcopy, id, value) in test_values.clone() {
+        //         pool.execute(move || {
+        //             RLUThread::with_func(|tx| {
+        //                 let v = tx.read(&tcopy)?;
 
-                        let mut h = v;
-                        h.insert(id, value.clone());
-                        tx.write(h, &tcopy)?;
+        //                 let mut h = v;
+        //                 h.insert(id, value.clone());
+        //                 tx.write(h, &tcopy)?;
 
-                        // what happens, if we send an error
-                        Ok(())
-                    })
-                    .expect("Failed");
-                });
-            }
-        }
+        //                 // what happens, if we send an error
+        //                 Ok(())
+        //             })
+        //             .expect("Failed");
+        //         });
+        //     }
+        // }
 
-        pool.join();
+        // pool.join();
 
-        println!("Fails {}", pool.panic_count());
+        // println!("Fails {}", pool.panic_count());
 
-        let inner = t.lock_read().read().expect("Failed to access inner data");
-        info!("caller {}: inner: {:?}", caller!(), inner);
-        for (_, id, value) in test_values {
-            assert!(inner.contains_key(&id));
-        }
+        // let inner = t.lock_read().read().expect("Failed to access inner data");
+        // info!("caller {}: inner: {:?}", caller!(), inner);
+        // for (_, id, value) in test_values {
+        //     assert!(inner.contains_key(&id));
+        // }
     }
 }
