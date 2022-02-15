@@ -1,7 +1,10 @@
 // Copyright 2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use rand::distributions::{Distribution, Standard};
+use rand::{
+    distributions::{Alphanumeric, Distribution, Standard},
+    Rng,
+};
 
 // Random value for `T`.
 pub fn random<T>() -> T
@@ -23,13 +26,11 @@ pub fn bytestring(max_len: usize) -> Vec<u8> {
 
 // Random string with random length in range 1..max_len.
 pub fn string(max_len: usize) -> String {
-    let l = (random::<usize>() % (max_len - 1)) + 1;
-
-    let mut s = String::with_capacity(l);
-    for _ in 0..l {
-        s.push(random())
-    }
-    s
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(rand::thread_rng().gen_range(1..max_len))
+        .map(char::from)
+        .collect()
 }
 
 // Random bool.
