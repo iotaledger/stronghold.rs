@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{secure_messages::WriteToVault, GetTarget, RecordError, Registry},
+    actors::{
+        secure_messages::WriteToVault,
+        snapshot_messages::{ExportDiff, GetHierarchy},
+        GetTarget, RecordError, Registry,
+    },
     enum_from_inner,
     procedures::{CollectedOutput, Procedure},
 };
@@ -44,7 +48,11 @@ macro_rules! sh_request_dispatch {
             ClientRequest::ReadFromStore($inner) => $body
             ClientRequest::DeleteFromStore($inner) => $body
             ClientRequest::WriteToRemoteVault($inner) =>  {
-                let $inner: WriteToVault = $inner.into();
+                let $inner: WriteToVault = WriteToVault {
+                    location: $inner.location,
+                    payload: $inner.payload,
+                    hint: $inner.hint,
+                };
                 $body
             }
             #[cfg(test)]
@@ -57,8 +65,17 @@ macro_rules! sh_request_dispatch {
     };
     (snapshot, $request:ident => |$inner: ident| $body:block) => {
         match $request {
-            SnapshotRequest::GetHierarchy($inner) => $body
-            SnapshotRequest::ExportDiff($inner) => $body
+            SnapshotRequest::GetRemoteHierarchy($inner) =>  {
+                let $inner = GetHierarchy;
+                $body
+            }
+            SnapshotRequest::ExportRemoteDiff($inner) => {
+                let $inner: ExportDiff = ExportDiff {
+                    dh_pub_key: $inner.dh_pub_key,
+                    diff: $inner.diff,
+                };
+                $body
+            }
         }
     }
 }
@@ -167,10 +184,10 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for NetworkActor {
                     .into_actor(self);
                 ctx.wait(fut);
             }),
-            ShRequest::Snapshot(request) => sh_request_dispatch!(snapshot, request => |inner| {
+            ShRequest::Snapshot(request) => sh_request_dispatch!(snapshot, request => |_inner| {
                 let fut = self.registry
                     .send(GetSnapshot)
-                    .and_then(|snapshot| snapshot.send(inner))
+                    .and_then(|snapshot| snapshot.send(_inner))
                     .map_ok(|response| response_tx.send(response.into()))
                     .map(|_| ())
                     .into_actor(self);
@@ -352,22 +369,19 @@ impl NetworkConfig {
 
 pub mod messages {
 
-    use std::collections::HashMap;
-
     use super::*;
     use crate::{
-        actors::snapshot_messages::{ExportDiff, GetHierarchy},
-        procedures::ProcedureError,
-        Location, RecordHint, RecordId,
+        actors::VaultError, procedures::ProcedureError, sync::SnapshotStateHierarchy, Location, MergeError, RecordHint,
+        RecordId,
     };
     use crypto::keys::x25519;
-    use engine::vault::{BlobId, ClientId, VaultId};
+    use engine::vault::VaultId;
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
+    use thiserror::Error as DeriveError;
 
     use crate::actors::secure_messages::{
         CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore, WriteToStore,
-        WriteToVault,
     };
     #[cfg(test)]
     use crate::actors::secure_testing::ReadFromVault;
@@ -510,37 +524,56 @@ pub mod messages {
         pub hint: RecordHint,
     }
 
-    impl From<WriteToRemoteVault> for WriteToVault {
-        fn from(t: WriteToRemoteVault) -> Self {
-            let WriteToRemoteVault {
-                location,
-                payload,
-                hint,
-            } = t;
-            WriteToVault {
-                location,
-                payload,
-                hint,
-            }
-        }
-    }
-
-    impl From<WriteToVault> for WriteToRemoteVault {
-        fn from(t: WriteToVault) -> Self {
-            let WriteToVault {
-                location,
-                payload,
-                hint,
-            } = t;
-            WriteToRemoteVault {
-                location,
-                payload,
-                hint,
-            }
-        }
-    }
-
     pub type RemoteRecordError = String;
+
+    #[derive(Debug, Message, Clone, Serialize, Deserialize)]
+    #[rtype(result = "Result<SnapshotStateHierarchy, RemoteVaultError>")]
+    pub struct GetRemoteHierarchy;
+
+    #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
+    pub enum RemoteVaultError {
+        #[error("vault `{0:?}` does not exist")]
+        VaultNotFound(VaultId),
+        #[error("record error: `{0:?}`")]
+        Record(RemoteRecordError),
+    }
+
+    impl From<VaultError> for RemoteVaultError {
+        fn from(e: VaultError) -> Self {
+            match e {
+                VaultError::Record(e) => RemoteVaultError::Record(e.to_string()),
+                VaultError::VaultNotFound(vid) => RemoteVaultError::VaultNotFound(vid),
+                VaultError::Procedure(_) => unreachable!("Infallible."),
+            }
+        }
+    }
+
+    #[derive(Debug, Message, Clone, Serialize, Deserialize)]
+    #[rtype(result = "Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), RemoteMergeError>")]
+    pub struct ExportRemoteDiff {
+        pub dh_pub_key: [u8; x25519::PUBLIC_KEY_LENGTH],
+        pub diff: SnapshotStateHierarchy,
+    }
+
+    #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
+    pub enum RemoteMergeError {
+        #[error("parsing snapshot state from bytestring failed: {0}")]
+        ReadExported(String),
+        #[error("converting snapshot state into bytestring failed: {0}")]
+        WriteExported(String),
+        #[error("vault error: {0}")]
+        Vault(RemoteVaultError),
+    }
+
+    impl From<MergeError> for RemoteMergeError {
+        fn from(e: MergeError) -> Self {
+            match e {
+                MergeError::Vault(e) => RemoteMergeError::Vault(e.into()),
+                MergeError::WriteExported(e) => RemoteMergeError::WriteExported(e.to_string()),
+                MergeError::ReadExported(e) => RemoteMergeError::ReadExported(e.to_string()),
+            }
+        }
+    }
 
     // Wrapper for Requests to a remote Secure Client
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -557,8 +590,8 @@ pub mod messages {
         WriteRemoteVault(Result<(), RemoteRecordError>),
         ListIds(Vec<(RecordId, RecordHint)>),
         Proc(Result<CollectedOutput, ProcedureError>),
-        Exported((Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH])),
-        Diff(HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>),
+        Hierarchy(Result<SnapshotStateHierarchy, RemoteVaultError>),
+        Exported(Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), RemoteMergeError>),
     }
 
     sh_result_mapping!(ShResult::Empty => ());
@@ -566,8 +599,6 @@ pub mod messages {
     sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
     sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
     sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
-    sh_result_mapping!(ShResult::Exported => (Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]));
-    sh_result_mapping!(ShResult::Diff => HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>);
 
     impl From<Result<(), RecordError>> for ShResult {
         fn from(inner: Result<(), RecordError>) -> Self {
@@ -579,6 +610,40 @@ pub mod messages {
         type Error = ();
         fn try_from(t: ShResult) -> Result<Self, Self::Error> {
             if let ShResult::WriteRemoteVault(result) = t {
+                Ok(result)
+            } else {
+                Err(())
+            }
+        }
+    }
+
+    impl From<Result<SnapshotStateHierarchy, VaultError>> for ShResult {
+        fn from(inner: Result<SnapshotStateHierarchy, VaultError>) -> Self {
+            ShResult::Hierarchy(inner.map_err(|e| e.into()))
+        }
+    }
+
+    impl TryFrom<ShResult> for Result<SnapshotStateHierarchy, RemoteVaultError> {
+        type Error = ();
+        fn try_from(t: ShResult) -> Result<Self, Self::Error> {
+            if let ShResult::Hierarchy(result) = t {
+                Ok(result)
+            } else {
+                Err(())
+            }
+        }
+    }
+
+    impl From<Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), MergeError>> for ShResult {
+        fn from(inner: Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), MergeError>) -> Self {
+            ShResult::Exported(inner.map_err(|e| e.into()))
+        }
+    }
+
+    impl TryFrom<ShResult> for Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), RemoteMergeError> {
+        type Error = ();
+        fn try_from(t: ShResult) -> Result<Self, Self::Error> {
+            if let ShResult::Exported(result) = t {
                 Ok(result)
             } else {
                 Err(())
@@ -616,10 +681,10 @@ pub mod messages {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum SnapshotRequest {
-        GetHierarchy(GetHierarchy),
-        ExportDiff(ExportDiff),
+        GetRemoteHierarchy(GetRemoteHierarchy),
+        ExportRemoteDiff(ExportRemoteDiff),
     }
 
-    enum_from_inner!(ShRequest::Snapshot, SnapshotRequest::GetHierarchy from GetHierarchy);
-    enum_from_inner!(ShRequest::Snapshot, SnapshotRequest::ExportDiff from ExportDiff);
+    enum_from_inner!(ShRequest::Snapshot, SnapshotRequest::GetRemoteHierarchy from GetRemoteHierarchy);
+    enum_from_inner!(ShRequest::Snapshot, SnapshotRequest::ExportRemoteDiff from ExportRemoteDiff);
 }

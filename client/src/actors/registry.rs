@@ -14,10 +14,7 @@ use std::collections::HashMap;
 
 #[cfg(feature = "p2p")]
 use super::p2p::NetworkActor;
-use crate::state::{
-    secure::SecureClient,
-    snapshot::{Snapshot, SnapshotState},
-};
+use crate::state::{secure::SecureClient, snapshot::Snapshot};
 
 pub mod messages {
     use super::*;
@@ -165,9 +162,7 @@ impl Handler<messages::GetSnapshot> for Registry {
     type Result = Addr<Snapshot>;
 
     fn handle(&mut self, _: messages::GetSnapshot, _: &mut Self::Context) -> Self::Result {
-        self.snapshot
-            .get_or_insert(Snapshot::new(SnapshotState::default()).start())
-            .clone()
+        self.snapshot.get_or_insert(Snapshot::default().start()).clone()
     }
 }
 

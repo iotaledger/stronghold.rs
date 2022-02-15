@@ -4,8 +4,11 @@
 #![allow(clippy::type_complexity)]
 
 use crate::{
+    actors::VaultError,
     state::secure::Store,
-    sync::{self, MergeClientsMapper, MergeLayer, MergeSnapshotsMapper, SelectOne, SelectOrMerge},
+    sync::{
+        self, MergeClientsMapper, MergeLayer, MergeSnapshotsMapper, SelectOne, SelectOrMerge, SnapshotStateHierarchy,
+    },
     Provider,
 };
 
@@ -29,6 +32,12 @@ pub struct Snapshot {
     pub dh_sk: x25519::SecretKey,
 }
 
+impl Default for Snapshot {
+    fn default() -> Self {
+        Self::new(SnapshotState::default())
+    }
+}
+
 /// Data structure that is written to the snapshot.
 #[derive(Deserialize, Serialize, Default)]
 pub struct SnapshotState(pub(crate) HashMap<ClientId, (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store)>);
@@ -38,6 +47,7 @@ impl Snapshot {
     pub fn new(state: SnapshotState) -> Self {
         Self {
             state,
+            // TODO: this is only a mock key
             dh_sk: x25519::SecretKey::generate().unwrap(),
         }
     }
@@ -90,14 +100,18 @@ impl Snapshot {
     }
 
     /// Sync two client states.
+    /// Return `Ok(`None`)` if the source client does not exist.
     pub fn sync_clients(
         &mut self,
         cid0: ClientId,
         cid1: ClientId,
         mapper: Option<MergeClientsMapper>,
         merge_policy: SelectOrMerge<SelectOne>,
-    ) {
-        let mut state0 = self.state.0.remove(&cid0).unwrap();
+    ) -> Result<Option<()>, VaultError> {
+        let mut state0 = match self.state.0.remove(&cid0) {
+            Some(state) => state,
+            None => return Ok(None),
+        };
         // Init target client if it does not exists yet.
         self.state.0.entry(cid1).or_default();
         let mut state1 = self.state.0.remove(&cid1).unwrap();
@@ -105,13 +119,14 @@ impl Snapshot {
         let mut source: sync::SyncClientState = (&mut state0).into();
         let mut target: sync::SyncClientState = (&mut state1).into();
 
-        let hierarchy = source.get_hierarchy();
-        let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy);
-        let exported = source.export_entries(Some(diff));
-        target.import_entries(exported, &merge_policy, mapper.as_ref(), Some(source.keystore));
+        let hierarchy = source.get_hierarchy()?;
+        let diff = target.get_diff(hierarchy, mapper.as_ref(), &merge_policy)?;
+        let exported = source.export_entries(Some(diff))?;
+        target.import_entries(exported, &merge_policy, mapper.as_ref(), Some(source.keystore))?;
 
         self.state.0.insert(cid0, state0);
         self.state.0.insert(cid1, state1);
+        Ok(Some(()))
     }
 
     /// Sync the local state with another snapshot, which imports the entries from `other` to `local`.
@@ -120,13 +135,14 @@ impl Snapshot {
         other: &mut SnapshotState,
         mapper: Option<&MergeSnapshotsMapper>,
         merge_policy: &SelectOrMerge<SelectOrMerge<SelectOne>>,
-    ) {
-        let hierarchy = other.get_hierarchy();
-        let diff = self.state.get_diff(hierarchy, mapper, merge_policy);
-        let exported = other.export_entries(Some(diff));
+    ) -> Result<(), VaultError> {
+        let hierarchy = other.get_hierarchy()?;
+        let diff = self.state.get_diff(hierarchy, mapper, merge_policy)?;
+        let exported = other.export_entries(Some(diff))?;
 
         self.state
-            .import_entries(exported, merge_policy, mapper, Some(&other.as_key_provider()));
+            .import_entries(exported, merge_policy, mapper, Some(&other.as_key_provider()))?;
+        Ok(())
     }
 
     /// Export the entries specified in the diff to a blank snapshot state.
@@ -136,20 +152,23 @@ impl Snapshot {
     /// Deserialize, encrypt and compress the new state to a bytestring.
     pub fn export_to_serialized_state(
         &mut self,
-        diff: <SnapshotState as MergeLayer>::Hierarchy,
+        diff: SnapshotStateHierarchy,
         dh_key: [u8; x25519::PUBLIC_KEY_LENGTH],
-    ) -> (Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]) {
-        let exported = self.state.export_entries(Some(diff));
+    ) -> Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), MergeError> {
+        let exported = self.state.export_entries(Some(diff))?;
         let old_key_store = self.state.0.iter().map(|(cid, state)| (*cid, &state.0)).collect();
         let mut blank_state = SnapshotState(HashMap::default());
-        blank_state.import_entries(exported, &SelectOrMerge::Replace, None, Some(&old_key_store));
-        let data = self.state.serialize().unwrap();
+        blank_state.import_entries(exported, &SelectOrMerge::Replace, None, Some(&old_key_store))?;
+        let data = self
+            .state
+            .serialize()
+            .map_err(|e| WriteError::CorruptedData(e.to_string()))?;
         let compressed_plain = engine::snapshot::compress(data.as_slice());
         let mut buffer = Vec::new();
         // Create encryption key from Diffie-Hellman handshake with the remote.
         let key = self.diffie_hellman(x25519::PublicKey::from_bytes(dh_key));
-        engine::snapshot::write(&compressed_plain, &mut buffer, key.as_bytes(), &[]).unwrap();
-        (buffer, self.get_dh_pub_key().to_bytes())
+        engine::snapshot::write(&compressed_plain, &mut buffer, key.as_bytes(), &[]).map_err(WriteError::from)?;
+        Ok((buffer, self.get_dh_pub_key().to_bytes()))
     }
 
     /// Import from serialized snapshot state.
@@ -159,16 +178,18 @@ impl Snapshot {
         dh_key: [u8; x25519::PUBLIC_KEY_LENGTH],
         mapper: Option<&MergeSnapshotsMapper>,
         merge_policy: &SelectOrMerge<SelectOrMerge<SelectOne>>,
-    ) {
+    ) -> Result<(), MergeError> {
         // Derive encryption key from Diffie-Hellman handshake with the remote.
         let key = self.diffie_hellman(x25519::PublicKey::from_bytes(dh_key));
-        let pt = engine::snapshot::read(&mut bytes.as_slice(), key.as_bytes(), &[]).unwrap();
-        let data = engine::snapshot::decompress(&pt).unwrap();
-        let mut other_state = SnapshotState::deserialize(data).unwrap();
-        let exported = other_state.export_entries(None);
+        let pt = engine::snapshot::read(&mut bytes.as_slice(), key.as_bytes(), &[]).map_err(ReadError::from)?;
+        let data = engine::snapshot::decompress(&pt).map_err(|e| ReadError::CorruptedContent(e.to_string()))?;
+        let mut other_state =
+            SnapshotState::deserialize(data).map_err(|e| ReadError::CorruptedContent(e.to_string()))?;
+        let exported = other_state.export_entries(None)?;
 
         self.state
-            .import_entries(exported, merge_policy, mapper, Some(&other_state.as_key_provider()));
+            .import_entries(exported, merge_policy, mapper, Some(&other_state.as_key_provider()))?;
+        Ok(())
     }
 
     pub fn get_dh_pub_key(&self) -> x25519::PublicKey {
@@ -248,4 +269,16 @@ impl From<EngineWriteError> for WriteError {
             EngineWriteError::GenerateRandom(_) => WriteError::Io(io::ErrorKind::Other.into()),
         }
     }
+}
+
+#[derive(Debug, DeriveError)]
+pub enum MergeError {
+    #[error("parsing snapshot state from bytestring failed: {0}")]
+    ReadExported(#[from] ReadError),
+
+    #[error("converting snapshot state into bytestring failed: {0}")]
+    WriteExported(#[from] WriteError),
+
+    #[error("vault error: {0}")]
+    Vault(#[from] VaultError),
 }

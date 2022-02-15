@@ -68,6 +68,7 @@ hex = "0.4.2"
 criterion = { version = "0.3.3", features = ["async_tokio"] }
 clap = { version = "3.0.0-rc.4", features = ["derive"]}
 tokio = {version = "1.9", features = ["rt-multi-thread"] }
+iota-crypto = { version = "0.8.0", features = ["std"] }
 
 [[example]]
 name = "p2p"

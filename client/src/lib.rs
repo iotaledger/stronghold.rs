@@ -40,7 +40,7 @@ mod tests;
 pub use crate::{
     interface::{ActorError, FatalEngineError, Stronghold, StrongholdResult},
     internals::Provider,
-    state::snapshot::{ReadError, WriteError},
+    state::snapshot::{MergeError, ReadError, WriteError},
     utils::{Location, StrongholdFlags, VaultFlags},
 };
 pub use engine::{
@@ -55,7 +55,10 @@ pub use engine::{
 pub mod p2p {
     pub use crate::{
         actors::{
-            network_messages::{ClientRequest, ShRequest, ShResult, SnapshotRequest, SwarmInfo},
+            network_messages::{
+                ClientRequest, RemoteMergeError, RemoteRecordError, RemoteVaultError, ShRequest, ShResult,
+                SnapshotRequest, SwarmInfo,
+            },
             NetworkConfig,
         },
         interface::{P2pError, P2pResult, SpawnNetworkError},

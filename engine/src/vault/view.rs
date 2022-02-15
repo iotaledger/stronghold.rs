@@ -208,7 +208,7 @@ impl<P: BoxProvider> DbView<P> {
             .unwrap_or_default()
     }
 
-    /// List [`RecordId`] and [`BlobId`] in a vault.
+    /// List [`RecordId`] and [`BlobId`] of all entries in the vault.
     pub fn list_records_with_blob_id(
         &self,
         key: &Key<P>,
@@ -220,20 +220,21 @@ impl<P: BoxProvider> DbView<P> {
             .and_then(|v| v.list_entries(key).map_err(|e| e.into()))
     }
 
+    /// Clone the all records from all vaults without removing them.
     pub fn export_all(&self) -> HashMap<VaultId, Vec<(RecordId, Record)>> {
         self.vaults
             .iter()
             .map(|(vid, vault)| {
-                let entries = vault
-                    .entries
-                    .iter()
-                    .map(|(id, record)| (RecordId(*id), record.clone()))
-                    .collect();
+                let entries = vault.entries.iter().map(|(&id, r)| (id.into(), r.clone())).collect();
                 (*vid, entries)
             })
             .collect()
     }
 
+    /// Clone the specified records from the vault without removing them.
+    ///
+    /// **Note:** before importing these records to a new vault with [`DbView::import_records`], [`Record::update_meta`]
+    /// has to be called on each [`Record`] to re-encrypt it with the target vault's encryption key.
     pub fn export_records<I>(&self, vid: VaultId, records: I) -> Result<Vec<(RecordId, Record)>, VaultError<P::Error>>
     where
         I: IntoIterator<Item = RecordId>,
@@ -246,6 +247,12 @@ impl<P: BoxProvider> DbView<P> {
         Ok(list)
     }
 
+    /// Import records to the [`Vault`]. In case of duplicated records, the existing record is dropped in favor of the
+    /// new one.
+    ///
+    /// **Note:** This expects that all records are encrypted with the vault's encryption key and the correct
+    /// `RecordId`. In case that the records was previously stored at a different `RecordId` or in a vault with a
+    /// different encryption key, [`Record::update_meta`] has to be called before the import.
     pub fn import_records(
         &mut self,
         key: &Key<P>,
@@ -298,7 +305,7 @@ impl<P: BoxProvider> Vault<P> {
         Ok(())
     }
 
-    /// Extend entries with entries from another vault with the same key.
+    /// Extend the stored entries with entries from another vault with the same key.
     /// In case of duplicated records, the existing record is dropped in favor of the new one.
     pub fn extend<I>(&mut self, key: &Key<P>, entries: I) -> Result<(), RecordError<P::Error>>
     where
@@ -309,6 +316,8 @@ impl<P: BoxProvider> Vault<P> {
         Ok(())
     }
 
+    /// Export record stored in the current vault. This clones the encrypted record without
+    /// removing it.
     pub fn export_record(&self, rid: &RecordId) -> Option<Record> {
         self.entries.get(&rid.0).cloned()
     }
@@ -329,7 +338,7 @@ impl<P: BoxProvider> Vault<P> {
         buf
     }
 
-    /// List the [`RecordId`] values of the specified [`Vault`].
+    /// List the [`RecordId`]s of the entries stored in this [`Vault`].
     fn list_entries(&self, key: &Key<P>) -> Result<Vec<(RecordId, BlobId)>, RecordError<P::Error>> {
         let mut buf = Vec::new();
         for (&id, record) in self.entries.iter() {
@@ -339,7 +348,7 @@ impl<P: BoxProvider> Vault<P> {
         Ok(buf)
     }
 
-    /// Check if the [`Vault`] contains a [`Record`]
+    /// Check if the [`Vault`] contains a [`Record`].
     fn contains_record(&self, rid: RecordId) -> bool {
         self.entries.values().into_iter().any(|entry| entry.check_id(rid))
     }
@@ -353,7 +362,7 @@ impl<P: BoxProvider> Vault<P> {
         Ok(())
     }
 
-    /// Gets the decrypted [`GuardedVec`] from the [`Record`]
+    /// Gets the decrypted [`GuardedVec`] from the [`Record`].
     pub fn get_guard(&self, key: &Key<P>, id: ChainId) -> Result<GuardedVec<u8>, RecordError<P::Error>> {
         self.check_key(key)?;
         let entry = self.entries.get(&id).ok_or(RecordError::RecordNotFound(id))?;
@@ -376,20 +385,21 @@ impl<P: BoxProvider> Vault<P> {
         });
     }
 
-    pub fn check_key(&self, key: &Key<P>) -> Result<(), RecordError<P::Error>> {
-        if key == &self.key {
-            Ok(())
-        } else {
-            Err(RecordError::InvalidKey)
-        }
-    }
-
+    /// Gets the [`BlobId`] of the record with the given [`ChainId`].
     pub fn get_blob_id(&self, key: &Key<P>, id: ChainId) -> Result<BlobId, RecordError<P::Error>> {
         self.check_key(key)?;
         self.entries
             .get(&id)
             .ok_or(RecordError::RecordNotFound(id))
             .and_then(|r| r.get_blob_id(key, id))
+    }
+
+    fn check_key(&self, key: &Key<P>) -> Result<(), RecordError<P::Error>> {
+        if key == &self.key {
+            Ok(())
+        } else {
+            Err(RecordError::InvalidKey)
+        }
     }
 }
 
@@ -431,7 +441,7 @@ impl Record {
         }
     }
 
-    /// gets the [`RecordHint`] and [`RecordId`] of the [`Record`].
+    /// Gets the [`RecordHint`] and [`RecordId`] of the [`Record`].
     fn get_hint_and_id<P: BoxProvider>(&self, key: &Key<P>) -> Result<(RecordId, RecordHint), RecordError<P::Error>> {
         let tx = self.get_transaction(key)?;
         let tx = tx.typed::<DataTransaction>().ok_or_else(|| {

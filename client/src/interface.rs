@@ -7,17 +7,15 @@
 //! are provided in an asynchronous way, and should be run by the
 //! actor's system [`SystemRunner`].
 
-#[cfg(feature = "p2p")]
-use crate::procedures::FatalProcedureError;
 use crate::{
     actors::{
         secure_messages::{
             CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
             ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
-        snapshot_messages::{FillSnapshot, GetDhPub, LoadFromState, MergeClients, ReadFromSnapshot, WriteSnapshot},
+        snapshot_messages::{FillSnapshot, LoadFromState, MergeClients, ReadFromSnapshot, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
-        SwitchTarget,
+        SwitchTarget, VaultError,
     },
     procedures::{CollectedOutput, Procedure, ProcedureError},
     state::{
@@ -28,11 +26,8 @@ use crate::{
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
 };
-use engine::vault::{ClientId, RecordHint, RecordId};
-#[cfg(feature = "p2p")]
-use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
-
 use actix::prelude::*;
+use engine::vault::{ClientId, RecordHint, RecordId};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use thiserror::Error as DeriveError;
@@ -46,21 +41,45 @@ use crate::{
     actors::{
         client_p2p_messages::{DeriveNoiseKeypair, GenerateP2pKeypair, WriteP2pKeypair},
         network_messages,
-        network_messages::{ShRequest, SwarmInfo},
-        snapshot_messages::{ExportDiff, GetDiff, GetHierarchy, ImportSnapshot},
+        network_messages::{RemoteMergeError, ShRequest, SwarmInfo},
+        snapshot_messages::{GetDhPub, GetDiff, ImportSnapshot},
         GetNetwork, InsertNetwork, NetworkActor, NetworkConfig, RemoveNetwork,
     },
+    procedures::FatalProcedureError,
     sync::MergeSnapshotsMapper,
 };
 #[cfg(feature = "p2p")]
 use p2p::{
     firewall::{Rule, RuleDirection},
-    Multiaddr, PeerId,
+    identity::Keypair,
+    DialErr, InitKeypair, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId, RelayNotSupported,
 };
 #[cfg(feature = "p2p")]
 use std::io;
 
 pub type StrongholdResult<T> = Result<T, ActorError>;
+
+#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
+#[error("fatal engine error: {0}")]
+pub struct FatalEngineError(String);
+
+impl From<VaultError> for FatalEngineError {
+    fn from(e: VaultError) -> Self {
+        FatalEngineError(e.to_string())
+    }
+}
+
+impl From<RecordError> for FatalEngineError {
+    fn from(e: RecordError) -> Self {
+        FatalEngineError(e.to_string())
+    }
+}
+
+impl From<String> for FatalEngineError {
+    fn from(e: String) -> Self {
+        FatalEngineError(e)
+    }
+}
 
 #[derive(DeriveError, Debug)]
 pub enum ActorError {
@@ -118,22 +137,6 @@ impl From<ActorError> for SpawnNetworkError {
             ActorError::Mailbox(e) => SpawnNetworkError::ActorMailbox(e),
             ActorError::TargetNotFound => SpawnNetworkError::ClientNotFound,
         }
-    }
-}
-
-#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
-#[error("fatal engine error: {0}")]
-pub struct FatalEngineError(String);
-
-impl From<RecordError> for FatalEngineError {
-    fn from(e: RecordError) -> Self {
-        FatalEngineError(e.to_string())
-    }
-}
-
-impl From<String> for FatalEngineError {
-    fn from(e: String) -> Self {
-        FatalEngineError(e)
     }
 }
 
@@ -462,13 +465,14 @@ impl Stronghold {
 
     /// Merge the state of a *source* client into a *target* client, following the specified merge
     /// policy on conflict.
+    /// Returns `Ok(None))` if the source client does not exist.
     pub async fn sync_clients(
         &mut self,
         source_client_path: Vec<u8>,
         target_client_path: Vec<u8>,
         merge_policy: SelectOrMerge<SelectOne>,
         mapper: Option<MergeClientsMapper>,
-    ) -> StrongholdResult<()> {
+    ) -> StrongholdResult<Result<Option<()>, FatalEngineError>> {
         let source = ClientId::load_from_path(&source_client_path.clone(), &source_client_path);
         let target = ClientId::load_from_path(&target_client_path.clone(), &target_client_path);
 
@@ -485,14 +489,18 @@ impl Stronghold {
             }
         }
 
-        snapshot
+        match snapshot
             .send(MergeClients {
                 source,
                 target,
                 merge_policy,
                 mapper,
             })
-            .await?;
+            .await?
+        {
+            Ok(Some(())) => {}
+            other => return Ok(other.map_err(|e| e.into())),
+        }
 
         if let Some(client) = target_client {
             let content = snapshot.send(LoadFromState { id: target, fid: None }).await?.unwrap();
@@ -504,7 +512,7 @@ impl Stronghold {
                 .await?;
         }
 
-        Ok(())
+        Ok(Ok(Some(())))
     }
 
     /// Used to kill a stronghold actor or clear the cache of the given actor system based on the client_path. If
@@ -911,14 +919,17 @@ impl Stronghold {
         peer: PeerId,
         merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
         mapper: Option<MergeSnapshotsMapper>,
-    ) -> P2pResult<()> {
+    ) -> P2pResult<Result<(), RemoteMergeError>> {
         let network_actor = self.network_actor().await?;
         // Get hierarchy from remote.
         let send_request = network_messages::SendRequest {
             peer,
-            request: GetHierarchy,
+            request: network_messages::GetRemoteHierarchy,
         };
-        let hierarchy = network_actor.send(send_request).await??;
+        let hierarchy = match network_actor.send(send_request).await?? {
+            Ok(ok) => ok,
+            Err(e) => return Ok(Err(RemoteMergeError::Vault(e))),
+        };
 
         let snapshot = self.registry.send(GetSnapshot {}).await?;
 
@@ -930,13 +941,17 @@ impl Stronghold {
         }
 
         // Calculate diff compared to local hierarchy.
-        let diff = snapshot
+        let diff = match snapshot
             .send(GetDiff {
                 other: hierarchy,
                 mapper: mapper.clone(),
                 merge_policy,
             })
-            .await?;
+            .await?
+        {
+            Ok(ok) => ok,
+            Err(e) => return Ok(Err(RemoteMergeError::Vault(e.into()))),
+        };
 
         // Get the public key to create a shared secret with the remote
         // that is then used to decrypt the snapshot with the exported entries.
@@ -945,19 +960,23 @@ impl Stronghold {
         // Get serialized snapshot with exported data from remote.
         let send_request = network_messages::SendRequest {
             peer,
-            request: ExportDiff { diff, dh_pub_key },
+            request: network_messages::ExportRemoteDiff { diff, dh_pub_key },
         };
 
-        let (blob, dh_pub_key) = network_actor.send(send_request).await??;
+        let (blob, dh_pub_key) = match network_actor.send(send_request).await?? {
+            Ok(ok) => ok,
+            Err(e) => return Ok(Err(e)),
+        };
         // Import data
-        snapshot
+        let res = snapshot
             .send(ImportSnapshot {
                 blob,
                 dh_pub_key,
                 mapper,
                 merge_policy,
             })
-            .await?;
-        Ok(())
+            .await?
+            .map_err(|e| e.into());
+        Ok(res)
     }
 }

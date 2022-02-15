@@ -7,21 +7,24 @@ use crate::{
     internals,
     state::{
         secure::Store,
-        snapshot::{ReadError, Snapshot, SnapshotState, WriteError},
+        snapshot::{MergeError, ReadError, Snapshot, SnapshotState, WriteError},
     },
-    sync::MergeLayer,
+    sync::{MergeLayer, SnapshotStateHierarchy},
     Provider,
 };
 use actix::{Actor, Handler, Message, MessageResult, Supervised};
+use crypto::keys::x25519;
 use engine::{
     snapshot,
-    vault::{BlobId, ClientId, DbView, Key, RecordId, VaultId},
+    vault::{ClientId, DbView, Key, VaultId},
 };
 use std::{collections::HashMap, path::PathBuf};
 
 /// re-export local modules
 pub use messages::*;
 pub use returntypes::*;
+
+use super::VaultError;
 
 pub mod returntypes {
 
@@ -44,7 +47,7 @@ pub mod messages {
     use crypto::keys::x25519;
     use serde::{Deserialize, Serialize};
 
-    use crate::sync::{MergeClientsMapper, MergeSnapshotsMapper, SelectOne, SelectOrMerge};
+    use crate::sync::{MergeClientsMapper, MergeSnapshotsMapper, SelectOne, SelectOrMerge, SnapshotStateHierarchy};
 
     use super::*;
 
@@ -89,7 +92,7 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "()")]
+    #[rtype(result = "Result<Option<()>, VaultError>")]
     pub struct MergeClients {
         pub source: ClientId,
         pub target: ClientId,
@@ -104,14 +107,14 @@ pub mod messages {
 
     /// Export local hierarchy.
     #[derive(Message, Debug, Clone, Serialize, Deserialize)]
-    #[rtype(result = "HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>")]
+    #[rtype(result = "Result<SnapshotStateHierarchy, VaultError>")]
     pub struct GetHierarchy;
 
     /// Calculate diff between local hierarchy and the given one.
     #[derive(Message, Debug, Clone)]
-    #[rtype(result = "HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>")]
+    #[rtype(result = "Result<SnapshotStateHierarchy, VaultError>")]
     pub struct GetDiff {
-        pub other: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>,
+        pub other: SnapshotStateHierarchy,
         pub mapper: Option<MergeSnapshotsMapper>,
         pub merge_policy: SelectOrMerge<SelectOrMerge<SelectOne>>,
     }
@@ -121,15 +124,15 @@ pub mod messages {
     // The snapshot is encrypted with a shared secret created from the local x25519
     // secret key and the remote's public key.
     #[derive(Message, Debug, Clone, Serialize, Deserialize)]
-    #[rtype(result = "(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH])")]
+    #[rtype(result = "Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), MergeError>")]
     pub struct ExportDiff {
         // Public key of the remote.
         pub dh_pub_key: [u8; x25519::PUBLIC_KEY_LENGTH],
-        pub diff: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>,
+        pub diff: SnapshotStateHierarchy,
     }
 
     #[derive(Message, Debug, Clone)]
-    #[rtype(result = "()")]
+    #[rtype(result = "Result<(), MergeError>")]
     pub struct ImportSnapshot {
         // Public key of the remote.
         pub dh_pub_key: [u8; x25519::PUBLIC_KEY_LENGTH],
@@ -217,7 +220,7 @@ impl Handler<messages::WriteSnapshot> for Snapshot {
 }
 
 impl Handler<messages::MergeClients> for Snapshot {
-    type Result = ();
+    type Result = Result<Option<()>, VaultError>;
 
     fn handle(&mut self, msg: messages::MergeClients, _ctx: &mut Self::Context) -> Self::Result {
         self.sync_clients(msg.source, msg.target, msg.mapper, msg.merge_policy)
@@ -234,34 +237,31 @@ impl Handler<messages::GetDhPub> for Snapshot {
 }
 
 impl Handler<messages::GetHierarchy> for Snapshot {
-    type Result = MessageResult<messages::GetHierarchy>;
+    type Result = Result<SnapshotStateHierarchy, VaultError>;
 
     fn handle(&mut self, _: messages::GetHierarchy, _ctx: &mut Self::Context) -> Self::Result {
-        let hierarchy = self.state.get_hierarchy();
-        MessageResult(hierarchy)
+        self.state.get_hierarchy()
     }
 }
 
 impl Handler<messages::GetDiff> for Snapshot {
-    type Result = MessageResult<messages::GetDiff>;
+    type Result = Result<SnapshotStateHierarchy, VaultError>;
 
     fn handle(&mut self, msg: messages::GetDiff, _ctx: &mut Self::Context) -> Self::Result {
-        let diff = self.state.get_diff(msg.other, msg.mapper.as_ref(), &msg.merge_policy);
-        MessageResult(diff)
+        self.state.get_diff(msg.other, msg.mapper.as_ref(), &msg.merge_policy)
     }
 }
 
 impl Handler<messages::ExportDiff> for Snapshot {
-    type Result = MessageResult<messages::ExportDiff>;
+    type Result = Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), MergeError>;
 
     fn handle(&mut self, msg: messages::ExportDiff, _ctx: &mut Self::Context) -> Self::Result {
-        let exported = self.export_to_serialized_state(msg.diff, msg.dh_pub_key);
-        MessageResult(exported)
+        self.export_to_serialized_state(msg.diff, msg.dh_pub_key)
     }
 }
 
 impl Handler<messages::ImportSnapshot> for Snapshot {
-    type Result = ();
+    type Result = Result<(), MergeError>;
 
     fn handle(&mut self, msg: messages::ImportSnapshot, _ctx: &mut Self::Context) -> Self::Result {
         self.import_from_serialized_state(msg.blob, msg.dh_pub_key, msg.mapper.as_ref(), &msg.merge_policy)

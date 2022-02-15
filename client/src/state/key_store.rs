@@ -17,7 +17,7 @@ impl KeyStore {
         Self { store: HashMap::new() }
     }
 
-    /// Gets the key from the [`KeyStore`] without removing it. Returns an [`Option<Key<Provider>>`]
+    /// Gets the key from the [`KeyStore`] without removing it.
     pub fn get_key(&self, id: VaultId) -> Option<&Key<Provider>> {
         self.store.get(&id)
     }

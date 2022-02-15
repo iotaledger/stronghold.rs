@@ -31,6 +31,7 @@ pub struct SecureClient {
     // Contains the Record Ids for the most recent Record in each vault.
     pub store: Store,
 }
+
 impl SecureClient {
     /// Creates a new Client given a `ClientID` and `ChannelRef<SHResults>`
     pub fn new(client_id: ClientId) -> Self {

@@ -29,7 +29,7 @@ pub trait MergeLayer<'a> {
     type KeyProvider;
 
     /// Get the full hierarchy with the ids of all stored entries.
-    fn get_hierarchy(&mut self) -> Self::Hierarchy;
+    fn get_hierarchy(&mut self) -> Result<Self::Hierarchy, VaultError>;
 
     /// Compare a hierarchy of entries with the local hierarchy.
     /// Returns the entries from `other` that self does not have.
@@ -41,10 +41,10 @@ pub trait MergeLayer<'a> {
         other: Self::Hierarchy,
         mapper: Option<&Mapper<Self::Path>>,
         merge_policy: &Self::MergePolicy,
-    ) -> Self::Hierarchy;
+    ) -> Result<Self::Hierarchy, VaultError>;
 
     /// Export the encrypted entries that are specified in `hierarchy`. If no hierarchy is specified export all entries.
-    fn export_entries(&mut self, hierarchy: Option<Self::Hierarchy>) -> Self::Exported;
+    fn export_entries(&mut self, hierarchy: Option<Self::Hierarchy>) -> Result<Self::Exported, VaultError>;
 
     /// Import the entries from another instance. This overwrites the local locations if they already exists, therefore
     /// [`MergeLayer::get_hierarchy`] and [`MergeLayer::get_diff`] should be used beforehand to select only the entries
@@ -60,7 +60,7 @@ pub trait MergeLayer<'a> {
         merge_policy: &Self::MergePolicy,
         mapper: Option<&Mapper<Self::Path>>,
         old_key_provider: Option<&Self::KeyProvider>,
-    );
+    ) -> Result<(), VaultError>;
 }
 
 /// Policy for deciding between two records on the same location, with different [`BlobId`]s.
@@ -140,10 +140,10 @@ impl<'a> MergeLayer<'a> for SyncClientState<'a> {
     type MergePolicy = SelectOrMerge<SelectOne>;
     type KeyProvider = HashMap<VaultId, Key<Provider>>;
 
-    fn get_hierarchy(&mut self) -> Self::Hierarchy {
+    fn get_hierarchy(&mut self) -> Result<Self::Hierarchy, VaultError> {
         let mut map = HashMap::new();
         for vid in self.db.list_vaults() {
-            let key = self.keystore.get(&vid).unwrap();
+            let key = self.keystore.get(&vid).ok_or(VaultError::VaultNotFound(vid))?;
             match self.db.list_records_with_blob_id(key, vid) {
                 Ok(list) => {
                     map.insert(vid, list);
@@ -152,14 +152,15 @@ impl<'a> MergeLayer<'a> for SyncClientState<'a> {
                 e => panic!("{:?}", e),
             }
         }
-        map
+        Ok(map)
     }
+
     fn get_diff(
         &mut self,
         other: Self::Hierarchy,
         mapper: Option<&Mapper<Self::Path>>,
         merge_policy: &Self::MergePolicy,
-    ) -> Self::Hierarchy {
+    ) -> Result<Self::Hierarchy, VaultError> {
         let mut diff = HashMap::<VaultId, Vec<_>>::new();
         for (vid0, records) in other {
             for (rid0, bid) in records {
@@ -175,8 +176,8 @@ impl<'a> MergeLayer<'a> for SyncClientState<'a> {
                     SelectOrMerge::Merge(SelectOne::KeepOld) if self.db.contains_record(vid1, rid1) => continue,
                     _ => {
                         if self.db.contains_record(vid1, rid1) {
-                            let key = self.keystore.get(&vid1).unwrap();
-                            if self.db.get_blob_id(key, vid1, rid1).unwrap() == bid {
+                            let key = self.keystore.get(&vid1).ok_or(VaultError::VaultNotFound(vid1))?;
+                            if self.db.get_blob_id(key, vid1, rid1)? == bid {
                                 continue;
                             }
                         }
@@ -186,23 +187,22 @@ impl<'a> MergeLayer<'a> for SyncClientState<'a> {
                 vault_entry.push((rid0, bid));
             }
         }
-        diff
+        Ok(diff)
     }
 
-    fn export_entries(&mut self, hierarchy: Option<Self::Hierarchy>) -> Self::Exported {
-        match hierarchy {
-            Some(hierarchy) => hierarchy
-                .into_iter()
-                .map(|(vid, entries)| {
-                    let exported = self
-                        .db
-                        .export_records(vid, entries.into_iter().map(|(rid, _)| rid))
-                        .unwrap();
-                    (vid, exported)
-                })
-                .collect(),
+    fn export_entries(&mut self, hierarchy: Option<Self::Hierarchy>) -> Result<Self::Exported, VaultError> {
+        let exported = match hierarchy {
+            Some(hierarchy) => {
+                let mut map = HashMap::new();
+                for (vid, entries) in hierarchy {
+                    let exported = self.db.export_records(vid, entries.into_iter().map(|(rid, _)| rid))?;
+                    map.insert(vid, exported);
+                }
+                map
+            }
             None => self.db.export_all(),
-        }
+        };
+        Ok(exported)
     }
 
     fn import_entries(
@@ -211,7 +211,7 @@ impl<'a> MergeLayer<'a> for SyncClientState<'a> {
         merge_policy: &Self::MergePolicy,
         mapper: Option<&Mapper<Self::Path>>,
         old_key_provider: Option<&Self::KeyProvider>,
-    ) {
+    ) -> Result<(), VaultError> {
         let mut mapped: HashMap<VaultId, Vec<_>> = HashMap::new();
         match mapper {
             Some(mapper) => {
@@ -230,12 +230,16 @@ impl<'a> MergeLayer<'a> for SyncClientState<'a> {
                         // Re-encrypt record if record-id or encryption key changed.
                         let key = self.keystore.entry(vid1).or_insert_with(Key::random);
                         if rid0 != rid1 {
-                            let old_key = old_key_provider.as_ref().map(|k| k.get(&vid0).unwrap()).unwrap_or(key);
-                            record.update_meta(old_key, rid0.into(), key, rid1.into()).unwrap();
+                            let old_key = old_key_provider
+                                .as_ref()
+                                .map(|k| k.get(&vid0).ok_or(VaultError::VaultNotFound(vid0)))
+                                .transpose()?
+                                .unwrap_or(key);
+                            record.update_meta(old_key, rid0.into(), key, rid1.into())?;
                         } else if let Some(old_key_provider) = old_key_provider.as_ref() {
-                            let old_key = old_key_provider.get(&vid0).unwrap();
+                            let old_key = old_key_provider.get(&vid0).ok_or(VaultError::VaultNotFound(vid0))?;
                             if old_key != key {
-                                record.update_meta(old_key, rid0.into(), key, rid1.into()).unwrap();
+                                record.update_meta(old_key, rid0.into(), key, rid1.into())?;
                             }
                         }
                         let vault_entry = mapped.entry(vid1).or_default();
@@ -244,49 +248,48 @@ impl<'a> MergeLayer<'a> for SyncClientState<'a> {
                 }
             }
             None => {
-                mapped = exported
-                    .into_iter()
-                    .filter_map(|(vid, entries)| {
-                        // Skip entries according to merge policy if the vault already exists.
+                for (vid, mut entries) in exported {
+                    // Skip entries according to merge policy if the vault already exists.
+                    match merge_policy {
+                        SelectOrMerge::KeepOld if self.db.contains_vault(&vid) => continue,
+                        _ => {}
+                    }
+                    self.keystore.entry(vid).or_insert_with(Key::random);
+                    let new_key = self.keystore.remove(&vid).unwrap();
+                    let mut old_key = old_key_provider
+                        .as_ref()
+                        .map(|ks| ks.get(&vid).ok_or(VaultError::VaultNotFound(vid)))
+                        .transpose()?;
+                    if old_key == Some(&new_key) {
+                        old_key = None
+                    }
+                    let mut updated = Vec::new();
+                    for (rid, record) in &mut entries {
+                        let rid = *rid;
+                        // Skip entry according to merge policy if the record already exists.
                         match merge_policy {
-                            SelectOrMerge::KeepOld if self.db.contains_vault(&vid) => return None,
+                            SelectOrMerge::Merge(SelectOne::KeepOld) if self.db.contains_record(vid, rid) => {
+                                continue;
+                            }
                             _ => {}
                         }
-                        self.keystore.entry(vid).or_insert_with(Key::random);
-                        let new_key = self.keystore.remove(&vid).unwrap();
-                        let mut old_key = old_key_provider.as_ref().map(|ks| ks.get(&vid).unwrap());
-                        if old_key == Some(&new_key) {
-                            old_key = None
+                        // Update encryption key if it has changed.
+                        if let Some(old_key) = old_key {
+                            record.update_meta(old_key, rid.into(), &new_key, rid.into())?;
                         }
-                        let entries = entries
-                            .into_iter()
-                            .filter_map(|(rid, mut record)| {
-                                // Skip entry according to merge policy if the record already exists.
-                                match merge_policy {
-                                    SelectOrMerge::Merge(SelectOne::KeepOld) if self.db.contains_record(vid, rid) => {
-                                        return None;
-                                    }
-                                    _ => {}
-                                }
-                                // Update encryption key if it has changed.
-                                if let Some(old_key) = old_key {
-                                    record.update_meta(old_key, rid.into(), &new_key, rid.into()).unwrap();
-                                }
-                                Some((rid, record))
-                            })
-                            .collect();
-                        self.keystore.insert(vid, new_key);
-                        Some((vid, entries))
-                    })
-                    .collect();
+                        updated.push((rid, record));
+                    }
+                    self.keystore.insert(vid, new_key);
+                    mapped.insert(vid, entries);
+                }
             }
         }
         for (vid, entries) in mapped {
             let key = self.keystore.entry(vid).or_insert_with(Key::random);
             self.db
-                .import_records(key, vid, entries, matches!(merge_policy, SelectOrMerge::Replace))
-                .unwrap();
+                .import_records(key, vid, entries, matches!(merge_policy, SelectOrMerge::Replace))?;
         }
+        Ok(())
     }
 }
 
@@ -306,6 +309,8 @@ impl SnapshotState {
     }
 }
 
+pub type SnapshotStateHierarchy = HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>;
+
 /// Merge two snapshot states.
 /// Apart from merging the state from another snapshot file into the already loaded snapshot state, this also allows
 /// to import the state from remote snapshots partially or fully.
@@ -316,13 +321,13 @@ impl<'a> MergeLayer<'a> for SnapshotState {
     type MergePolicy = SelectOrMerge<<SyncClientState<'a> as MergeLayer<'a>>::MergePolicy>;
     type KeyProvider = HashMap<ClientId, &'a <SyncClientState<'a> as MergeLayer<'a>>::KeyProvider>;
 
-    fn get_hierarchy(&mut self) -> Self::Hierarchy {
+    fn get_hierarchy(&mut self) -> Result<Self::Hierarchy, VaultError> {
         let mut map = HashMap::new();
         for (client_id, state) in &mut self.0 {
-            let vault_map = <SyncClientState as MergeLayer>::get_hierarchy(&mut state.into());
+            let vault_map = <SyncClientState as MergeLayer>::get_hierarchy(&mut state.into())?;
             map.insert(*client_id, vault_map);
         }
-        map
+        Ok(map)
     }
 
     fn get_diff(
@@ -330,7 +335,7 @@ impl<'a> MergeLayer<'a> for SnapshotState {
         other: Self::Hierarchy,
         mapper: Option<&Mapper<Self::Path>>,
         merge_policy: &Self::MergePolicy,
-    ) -> Self::Hierarchy {
+    ) -> Result<Self::Hierarchy, VaultError> {
         let mut diff = HashMap::<ClientId, HashMap<VaultId, Vec<_>>>::new();
         for (cid0, vaults) in other {
             for (vid0, records) in vaults {
@@ -358,7 +363,7 @@ impl<'a> MergeLayer<'a> for SnapshotState {
                         }
                         (Some(state), _) => {
                             if let Some(key) = state.keystore.get(&vid1) {
-                                if state.db.get_blob_id(key, vid1, rid1).unwrap() == bid {
+                                if state.db.get_blob_id(key, vid1, rid1)? == bid {
                                     continue;
                                 }
                             }
@@ -371,21 +376,23 @@ impl<'a> MergeLayer<'a> for SnapshotState {
                 }
             }
         }
-        diff
+        Ok(diff)
     }
 
-    fn export_entries(&mut self, hierarchy: Option<Self::Hierarchy>) -> Self::Exported {
+    fn export_entries(&mut self, hierarchy: Option<Self::Hierarchy>) -> Result<Self::Exported, VaultError> {
         let hierarchy: HashMap<ClientId, Option<_>> = hierarchy
             .map(|h| h.into_iter().map(|(cid, vaults)| (cid, Some(vaults))).collect())
             .unwrap_or_else(|| self.0.keys().map(|cid| (*cid, None)).collect());
-        hierarchy
-            .into_iter()
-            .filter_map(|(cid, vaults)| {
-                let mut state = self.get_client(&cid)?;
-                let vaults = state.export_entries(vaults);
-                Some((cid, vaults))
-            })
-            .collect()
+        let mut exported = HashMap::new();
+        for (cid, vaults) in hierarchy {
+            let mut state = match self.get_client(&cid) {
+                Some(state) => state,
+                None => continue,
+            };
+            let vaults = state.export_entries(vaults)?;
+            exported.insert(cid, vaults);
+        }
+        Ok(exported)
     }
 
     fn import_entries(
@@ -394,7 +401,7 @@ impl<'a> MergeLayer<'a> for SnapshotState {
         merge_policy: &Self::MergePolicy,
         mapper: Option<&Mapper<Self::Path>>,
         mut old_key_provider: Option<&Self::KeyProvider>,
-    ) {
+    ) -> Result<(), VaultError> {
         let mut mapped: HashMap<ClientId, HashMap<VaultId, Vec<_>>> = HashMap::new();
         match mapper {
             Some(mapper) => {
@@ -426,15 +433,16 @@ impl<'a> MergeLayer<'a> for SnapshotState {
                             let old_key = old_key_provider
                                 .as_ref()
                                 .and_then(|kp| kp.get(&cid0))
-                                .map(|ks| ks.get(&vid0).unwrap());
+                                .map(|ks| ks.get(&vid0).ok_or(VaultError::VaultNotFound(vid0)))
+                                .transpose()?;
 
                             // Re-encrypt record if record-id or encryption key changed.
                             if rid0 != rid1 {
                                 let old_key = old_key.unwrap_or(new_key);
-                                record.update_meta(old_key, rid0.into(), new_key, rid1.into()).unwrap();
+                                record.update_meta(old_key, rid0.into(), new_key, rid1.into())?;
                             } else if let Some(old_key) = old_key {
                                 if old_key != new_key {
-                                    record.update_meta(old_key, rid0.into(), new_key, rid1.into()).unwrap();
+                                    record.update_meta(old_key, rid0.into(), new_key, rid1.into())?;
                                 }
                             }
                             let client_entry = mapped.entry(cid1).or_default();
@@ -467,8 +475,9 @@ impl<'a> MergeLayer<'a> for SnapshotState {
                 Some(kp) => kp.get(&cid).copied(),
                 None => None,
             };
-            state.import_entries(vaults, merge_policy, None, old_keystore);
+            state.import_entries(vaults, merge_policy, None, old_keystore)?;
         }
+        Ok(())
     }
 }
 
@@ -507,52 +516,63 @@ mod test {
         target: &mut SyncClientState,
         mapper: Option<&Mapper<(VaultId, RecordId)>>,
         merge_policy: SelectOrMerge<SelectOne>,
-    ) {
-        let hierarchy = source.get_hierarchy();
-        let diff = target.get_diff(hierarchy, mapper, &merge_policy);
-        let exported = source.export_entries(Some(diff));
-        target.import_entries(exported, &merge_policy, mapper, Some(&*source.keystore))
+    ) -> Result<(), VaultError> {
+        let hierarchy = source.get_hierarchy()?;
+        let diff = target.get_diff(hierarchy, mapper, &merge_policy)?;
+        let exported = source.export_entries(Some(diff))?;
+        target.import_entries(exported, &merge_policy, mapper, Some(&*source.keystore))?;
+        Ok(())
     }
 
     #[test]
-    fn test_get_hierarchy() {
-        let cid = ClientId::random::<Provider>().unwrap();
+    fn test_get_hierarchy() -> Result<(), Box<dyn std::error::Error>> {
+        let cid = ClientId::random::<Provider>()?;
         let mut client = SecureClient::new(cid);
-        let hierarchy = SyncClientState::from(&mut client).get_hierarchy();
+        let hierarchy = SyncClientState::from(&mut client).get_hierarchy()?;
         assert!(hierarchy.is_empty());
 
         let location_1 = test_location();
         let (vid1, rid1) = SecureClient::resolve_location(location_1.clone());
-        client.write_to_vault(&location_1, test_hint(), test_value()).unwrap();
+        client.write_to_vault(&location_1, test_hint(), test_value())?;
 
         let v_path_2 = random::bytestring(4096);
         let r_path_2 = random::bytestring(4096);
         let location_2 = Location::generic(v_path_2.clone(), r_path_2);
         let (vid2, rid2) = SecureClient::resolve_location(location_2.clone());
-        client.write_to_vault(&location_2, test_hint(), test_value()).unwrap();
+        client.write_to_vault(&location_2, test_hint(), test_value())?;
 
         // Same vault as value nr 2.
         let r_path_3 = random::bytestring(4096);
         let location_3 = Location::generic(v_path_2, r_path_3);
         let (vid23, rid3) = SecureClient::resolve_location(location_3.clone());
         assert_eq!(vid2, vid23);
-        client.write_to_vault(&location_3, test_hint(), test_value()).unwrap();
+        client.write_to_vault(&location_3, test_hint(), test_value())?;
 
-        let hierarchy = SyncClientState::from(&mut client).get_hierarchy();
+        let hierarchy = SyncClientState::from(&mut client).get_hierarchy()?;
 
         assert_eq!(hierarchy.len(), 2);
-        let records_1 = hierarchy.iter().find(|(k, _)| **k == vid1).unwrap().1;
+        let records_1 = hierarchy
+            .iter()
+            .find(|(k, _)| **k == vid1)
+            .expect("Vault does not exist.")
+            .1;
         assert_eq!(records_1.len(), 1);
         assert_eq!(records_1[0].0, rid1);
 
-        let records_2 = hierarchy.iter().find(|(k, _)| **k == vid2).unwrap().1;
+        let records_2 = hierarchy
+            .iter()
+            .find(|(k, _)| **k == vid2)
+            .expect("Vault does not exist.")
+            .1;
         assert_eq!(records_2.len(), 2);
         assert!(records_2.iter().any(|(rid, _)| rid == &rid2));
         assert!(records_2.iter().any(|(rid, _)| rid == &rid3));
+
+        Ok(())
     }
 
     #[test]
-    fn test_export_with_mapping() {
+    fn test_export_with_mapping() -> Result<(), Box<dyn std::error::Error>> {
         let mapping = |(vid, rid)| {
             if vid == vault_path_to_id("vault_1") {
                 if rid == r_ctr_to_id("vault_1", 11) {
@@ -578,7 +598,7 @@ mod test {
         };
         let mapper = Mapper { f: mapping };
 
-        let cid0 = ClientId::random::<Provider>().unwrap();
+        let cid0 = ClientId::random::<Provider>()?;
         let mut source_client = SecureClient::new(cid0);
 
         // Fill test vaults.
@@ -586,9 +606,7 @@ mod test {
             for j in 1..5usize {
                 let vault_path = format!("vault_{}", i);
                 let location = Location::counter(vault_path, i * 10 + j);
-                source_client
-                    .write_to_vault(&location, test_hint(), test_value())
-                    .unwrap();
+                source_client.write_to_vault(&location, test_hint(), test_value())?;
             }
         }
 
@@ -604,22 +622,24 @@ mod test {
             _ => unreachable!("0 <= n % 4 <= 3"),
         };
 
-        let source_hierarchy = source.get_hierarchy();
-        let target_hierarchy = target.get_hierarchy();
+        let source_hierarchy = source.get_hierarchy()?;
+        let target_hierarchy = target.get_hierarchy()?;
         assert!(target_hierarchy.is_empty());
 
         // Do sync.
-        perform_sync(&mut source, &mut target, Some(&mapper), merge_policy);
+        perform_sync(&mut source, &mut target, Some(&mapper), merge_policy)?;
 
         // Check that old state still contains all values
-        let check_hierarchy = source.get_hierarchy();
+        let check_hierarchy = source.get_hierarchy()?;
         assert_eq!(source_hierarchy, check_hierarchy);
 
-        let mut target_hierarchy = target.get_hierarchy();
+        let mut target_hierarchy = target.get_hierarchy()?;
         assert_eq!(target_hierarchy.keys().len(), 4);
 
         // Vault-1 was partly mapped.
-        let v_1_entries = target_hierarchy.remove(&vault_path_to_id("vault_1")).unwrap();
+        let v_1_entries = target_hierarchy
+            .remove(&vault_path_to_id("vault_1"))
+            .expect("Vault does not exist.");
         assert_eq!(v_1_entries.len(), 2);
         // Record-14 was not moved.
         assert!(v_1_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_1", 14)));
@@ -628,7 +648,9 @@ mod test {
 
         // All records from Vault-2 were moved to Vault-5.
         assert!(!target_hierarchy.contains_key(&vault_path_to_id("vault_2")));
-        let v_5_entries = target_hierarchy.remove(&vault_path_to_id("vault_5")).unwrap();
+        let v_5_entries = target_hierarchy
+            .remove(&vault_path_to_id("vault_5"))
+            .expect("Vault does not exist.");
         assert_eq!(v_5_entries.len(), 4);
         assert!(v_5_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 21)));
         assert!(v_5_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22)));
@@ -636,19 +658,25 @@ mod test {
         assert!(v_5_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 24)));
 
         // Vault-3 from source was skipped, but Record-12 from Vault-1 was moved to Vault-3 Record-121.
-        let v_3_entries = target_hierarchy.remove(&vault_path_to_id("vault_3")).unwrap();
+        let v_3_entries = target_hierarchy
+            .remove(&vault_path_to_id("vault_3"))
+            .expect("Vault does not exist.");
         assert_eq!(v_3_entries.len(), 1);
         assert!(v_3_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_3", 121)));
 
         // Record-13 from Vault-1 was moved to new Vault-4.
-        let v_4_entries = target_hierarchy.remove(&vault_path_to_id("vault_4")).unwrap();
+        let v_4_entries = target_hierarchy
+            .remove(&vault_path_to_id("vault_4"))
+            .expect("Vault does not exist.");
         assert_eq!(v_4_entries.len(), 1);
         assert!(v_4_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_4", 13)));
+
+        Ok(())
     }
 
     #[test]
-    fn test_merge_policy() {
-        let cid0 = ClientId::random::<Provider>().unwrap();
+    fn test_merge_policy() -> Result<(), Box<dyn std::error::Error>> {
+        let cid0 = ClientId::random::<Provider>()?;
         let mut source_client = SecureClient::new(cid0);
 
         // Fill test vaults.
@@ -656,45 +684,48 @@ mod test {
             for j in 1..3usize {
                 let vault_path = format!("vault_{}", i);
                 let location = Location::counter(vault_path, i * 10 + j);
-                source_client
-                    .write_to_vault(&location, test_hint(), test_value())
-                    .unwrap();
+                source_client.write_to_vault(&location, test_hint(), test_value())?;
             }
         }
 
         let mut source = SyncClientState::from(&mut source_client);
-        let mut source_vault_2_hierarchy = source.get_hierarchy().remove(&vault_path_to_id("vault_2")).unwrap();
+        let mut source_vault_2_hierarchy = source
+            .get_hierarchy()?
+            .remove(&vault_path_to_id("vault_2"))
+            .expect("Vault does not exist.");
         source_vault_2_hierarchy.sort();
         let source_v2_r2_bid = source_vault_2_hierarchy
             .iter()
             .find(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22))
             .map(|(_, bid)| *bid)
-            .unwrap();
+            .expect("Record does not exist.");
 
-        let set_up_target = || {
+        let set_up_target = || -> Result<SecureClient, VaultError> {
             let mut target_client = SecureClient::new(cid0);
             for i in 2..4usize {
                 for j in 2..4usize {
                     let vault_path = format!("vault_{}", i);
                     let location = Location::counter(vault_path, i * 10 + j);
-                    target_client
-                        .write_to_vault(&location, test_hint(), test_value())
-                        .unwrap();
+                    target_client.write_to_vault(&location, test_hint(), test_value())?;
                 }
             }
-            target_client
+            Ok(target_client)
         };
 
         let assert_for_distinct_vaults = |hierarchy: &mut HashMap<VaultId, Vec<(RecordId, BlobId)>>| {
             // Imported full vault-1;
             assert_eq!(hierarchy.keys().len(), 3);
-            let v_1_entries = hierarchy.remove(&vault_path_to_id("vault_1")).unwrap();
+            let v_1_entries = hierarchy
+                .remove(&vault_path_to_id("vault_1"))
+                .expect("Vault does not exist.");
             assert_eq!(v_1_entries.len(), 2);
             assert!(v_1_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_1", 11)));
             assert!(v_1_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_1", 12)));
 
             // Kept old vault-3;
-            let v_3_entries = hierarchy.remove(&vault_path_to_id("vault_3")).unwrap();
+            let v_3_entries = hierarchy
+                .remove(&vault_path_to_id("vault_3"))
+                .expect("Vault does not exist.");
             assert_eq!(v_3_entries.len(), 2);
             assert!(v_3_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_3", 32)));
             assert!(v_3_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_3", 33)));
@@ -702,56 +733,65 @@ mod test {
 
         // == Test merge policy SelectOrMerge::KeepOld
 
-        let mut target_client_1 = set_up_target();
+        let mut target_client_1 = set_up_target()?;
         let mut target_1 = SyncClientState::from(&mut target_client_1);
-        let mut old_vault_2_hierarchy = target_1.get_hierarchy().remove(&vault_path_to_id("vault_2")).unwrap();
+        let mut old_vault_2_hierarchy = target_1
+            .get_hierarchy()?
+            .remove(&vault_path_to_id("vault_2"))
+            .expect("Vault does not exist.");
         old_vault_2_hierarchy.sort();
         let merge_policy = SelectOrMerge::KeepOld;
 
-        perform_sync(&mut source, &mut target_1, None, merge_policy);
+        perform_sync(&mut source, &mut target_1, None, merge_policy)?;
 
-        let mut hierarchy_1 = target_1.get_hierarchy();
+        let mut hierarchy_1 = target_1.get_hierarchy()?;
 
         assert_for_distinct_vaults(&mut hierarchy_1);
 
         // Kept old vault-2.
-        let mut v_2_entries = hierarchy_1.remove(&vault_path_to_id("vault_2")).unwrap();
+        let mut v_2_entries = hierarchy_1
+            .remove(&vault_path_to_id("vault_2"))
+            .expect("Vault does not exist.");
         v_2_entries.sort();
         assert_eq!(v_2_entries, old_vault_2_hierarchy);
 
         // == Test merge policy SelectOrMerge::Replace
 
-        let mut target_client_2 = set_up_target();
+        let mut target_client_2 = set_up_target()?;
         let mut target_2 = SyncClientState::from(&mut target_client_2);
         let merge_policy = SelectOrMerge::Replace;
-        perform_sync(&mut source, &mut target_2, None, merge_policy);
-        let mut hierarchy_2 = target_2.get_hierarchy();
+        perform_sync(&mut source, &mut target_2, None, merge_policy)?;
+        let mut hierarchy_2 = target_2.get_hierarchy()?;
 
         assert_for_distinct_vaults(&mut hierarchy_2);
 
         // Replace vault-2 completely with imported one;
-        let mut v_2_entries = hierarchy_2.remove(&vault_path_to_id("vault_2")).unwrap();
+        let mut v_2_entries = hierarchy_2
+            .remove(&vault_path_to_id("vault_2"))
+            .expect("Vault does not exist.");
         v_2_entries.sort();
         assert_eq!(v_2_entries, source_vault_2_hierarchy);
 
         // == Test merge policy SelectOrMerge::Merge(SelectOne::KeepOld)
 
-        let mut target_client_3 = set_up_target();
+        let mut target_client_3 = set_up_target()?;
         let mut target_3 = SyncClientState::from(&mut target_client_3);
         let old_v2_r2_bid = target_3
-            .get_hierarchy()
+            .get_hierarchy()?
             .remove(&vault_path_to_id("vault_2"))
             .and_then(|vec| vec.into_iter().find(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22)))
             .map(|(_, bid)| bid)
-            .unwrap();
+            .expect("Record does not exist.");
         let merge_policy = SelectOrMerge::Merge(SelectOne::KeepOld);
-        perform_sync(&mut source, &mut target_3, None, merge_policy);
-        let mut hierarchy_3 = target_3.get_hierarchy();
+        perform_sync(&mut source, &mut target_3, None, merge_policy)?;
+        let mut hierarchy_3 = target_3.get_hierarchy()?;
 
         assert_for_distinct_vaults(&mut hierarchy_3);
 
         // Merge vault-2 with imported one, keep old record on conflict.
-        let v_2_entries = hierarchy_3.remove(&vault_path_to_id("vault_2")).unwrap();
+        let v_2_entries = hierarchy_3
+            .remove(&vault_path_to_id("vault_2"))
+            .expect("Vault does not exist.");
         assert_eq!(v_2_entries.len(), 3);
         assert!(v_2_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 21)));
         assert!(v_2_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 23)));
@@ -759,21 +799,23 @@ mod test {
             .into_iter()
             .find(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22))
             .map(|(_, bid)| bid)
-            .unwrap();
+            .expect("Record does not exist.");
         assert_eq!(v2_r2_bid, old_v2_r2_bid);
 
         // == Test merge policy SelectOrMerge::Merge(SelectOne::Replace)
 
-        let mut target_client_4 = set_up_target();
+        let mut target_client_4 = set_up_target()?;
         let mut target_4 = SyncClientState::from(&mut target_client_4);
         let merge_policy = SelectOrMerge::Merge(SelectOne::Replace);
-        perform_sync(&mut source, &mut target_4, None, merge_policy);
-        let mut hierarchy_4 = target_4.get_hierarchy();
+        perform_sync(&mut source, &mut target_4, None, merge_policy)?;
+        let mut hierarchy_4 = target_4.get_hierarchy()?;
 
         assert_for_distinct_vaults(&mut hierarchy_4);
 
         // Merge vault-2 with imported one, keep old record on conflict.
-        let v_2_entries = hierarchy_4.remove(&vault_path_to_id("vault_2")).unwrap();
+        let v_2_entries = hierarchy_4
+            .remove(&vault_path_to_id("vault_2"))
+            .expect("Vault does not exist.");
         assert_eq!(v_2_entries.len(), 3);
         assert!(v_2_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 21)));
         assert!(v_2_entries.iter().any(|(rid, _)| rid == &r_ctr_to_id("vault_2", 23)));
@@ -781,7 +823,9 @@ mod test {
             .into_iter()
             .find(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22))
             .map(|(_, bid)| bid)
-            .unwrap();
+            .expect("Record does not exist.");
         assert_eq!(v2_r2_bid, source_v2_r2_bid);
+
+        Ok(())
     }
 }

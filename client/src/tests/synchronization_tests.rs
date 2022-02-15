@@ -66,7 +66,8 @@ async fn sync_clients() -> Result<(), Box<dyn std::error::Error>> {
             SelectOrMerge::Merge(SelectOne::KeepOld),
             None,
         )
-        .await?;
+        .await??
+        .unwrap();
 
     // Source client should be unchanged.
     stronghold.switch_actor_target(source_client).await?;
@@ -207,7 +208,7 @@ async fn remote_sync() -> Result<(), Box<dyn std::error::Error>> {
     let merge_policy = SelectOrMerge::Merge(SelectOrMerge::Merge(SelectOne::Replace));
     target_stronghold
         .sync_with(source_id, merge_policy, Some(mapping.into()))
-        .await?;
+        .await??;
 
     // Client-01 was skipped;
     assert!(!target_stronghold.load_state(client_01, None).await?);
