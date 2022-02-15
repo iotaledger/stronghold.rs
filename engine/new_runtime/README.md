@@ -73,3 +73,6 @@ To use a `LockedMemory` one needs to unlock it before.
 - [] Tests
   - [] Security tests for `ProtectedMemory` and `LockedMemory`
   - [] Tests specific to new memory types
+    - Test functionality 
+    - Test security when locked 
+    - Test if Zeroize is done correctly

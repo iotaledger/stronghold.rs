@@ -3,7 +3,7 @@ use crate::locked_memory::{LockedConfiguration::*, MemoryError::*, ProtectedConf
 use crate::memories::buffer::Buffer;
 use core::fmt::{self, Debug, Formatter};
 use core::marker::PhantomData;
-use zeroize::Zeroize;
+use zeroize::{Zeroize};
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
@@ -84,6 +84,13 @@ impl<P: BoxProvider, const AD_SIZE: usize> LockedMemory<u8, P> for EncryptedRam<
         }
     }
 }
+
+impl<P: BoxProvider, const AD_SIZE: usize> Drop for EncryptedRam<P, AD_SIZE> {
+    fn drop(&mut self) {
+        self.zeroize()
+    }
+}
+
 
 impl<P: BoxProvider, const AD_SIZE: usize> Zeroize for EncryptedRam<P, AD_SIZE> {
     fn zeroize(&mut self) {
@@ -189,9 +196,10 @@ mod tests {
             EncryptedRam::<Provider, 16>::alloc(&[1, 2, 3, 4, 5, 6][..], EncryptedRamConfig(key.clone(), Some(6)));
         assert!(ram.is_ok());
         let ram = ram.unwrap();
-        let cypher = ram.cypher;
+        let cypher = &ram.cypher;
         assert_ne!(*cypher.borrow(), [1, 2, 3, 4, 5, 6]);
     }
+
 
     #[test]
     fn test_moving_and_cloning() {}

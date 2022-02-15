@@ -42,7 +42,7 @@ pub enum LockedConfiguration<P: BoxProvider> {
 }
 
 impl<P: BoxProvider> LockedConfiguration<P> {
-    // Check that variants type are the same 
+    // Check that variants type are the same
     pub fn is_eq_config_type(&self, other: &Self) -> bool {
         use LockedConfiguration::*;
         match (self, other) {
@@ -53,6 +53,12 @@ impl<P: BoxProvider> LockedConfiguration<P> {
             (NonContiguousInRamAndFileConfig(_), NonContiguousInRamAndFileConfig(_)) => true,
             (_, _) => false
         }
+    }
+}
+
+impl<P: BoxProvider> Zeroize for LockedConfiguration<P> {
+    fn zeroize(&mut self) {
+        *self = LockedConfiguration::ZeroedConfig()
     }
 }
 
@@ -77,7 +83,7 @@ impl<P: BoxProvider> PartialEq for LockedConfiguration<P> {
 impl<P: BoxProvider> Eq for LockedConfiguration<P> {}
 
 /// Memory storage with default protections to store sensitive data
-pub trait ProtectedMemory<T: Bytes>: Debug + Sized + Zeroize {
+pub trait ProtectedMemory<T: Bytes>: Debug + Sized + Zeroize + Drop {
     /// Writes the payload into a LockedMemory then locks it
     fn alloc(payload: &[T], config: ProtectedConfiguration) -> Result<Self, MemoryError>;
 
@@ -90,7 +96,7 @@ pub trait ProtectedMemory<T: Bytes>: Debug + Sized + Zeroize {
 }
 
 /// Memory that can be locked (unreadable) when storing sensitive data for longer period of time
-pub trait LockedMemory<T: Bytes, P: BoxProvider>: Debug + Sized + Zeroize {
+pub trait LockedMemory<T: Bytes, P: BoxProvider>: Debug + Sized + Zeroize + Drop {
     /// Writes the payload into a LockedMemory then locks it
     fn alloc(payload: &[T], config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 

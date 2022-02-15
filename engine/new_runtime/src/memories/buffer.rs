@@ -6,7 +6,7 @@ use core::fmt::{self, Debug, Formatter};
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize};
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
@@ -68,6 +68,12 @@ impl<T: Bytes + Randomized> Buffer<T> {
         Self {
             boxed: Boxed::random(len),
         }
+    }
+}
+
+impl<T: Bytes> Drop for Buffer<T> {
+    fn drop(&mut self) {
+        self.zeroize()
     }
 }
 

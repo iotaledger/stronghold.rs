@@ -10,7 +10,7 @@ use rand_ascii::distributions::Alphanumeric;
 use rand_ascii::{thread_rng, Rng};
 use std::fs::{self, File};
 use std::io::prelude::*;
-use zeroize::Zeroize;
+use zeroize::{Zeroize};
 
 static ERR_SIZE_NONE: &'static str = "FileMemory: the size should not be None if allocated properly";
 
@@ -143,6 +143,12 @@ impl<P: BoxProvider> LockedMemory<u8, P> for FileMemory<P> {
         }
 
         Buffer::alloc(&data, ProtectedConfiguration::BufferConfig(self.get_data_size()))
+    }
+}
+
+impl<P: BoxProvider> Drop for FileMemory<P> {
+    fn drop(&mut self) {
+        self.zeroize()
     }
 }
 
