@@ -1,11 +1,17 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-//! # Software Transactional Memory: RLU Variant
+//! # Read-Log-Update (RLU)
 //! ---
 //! This module implements the read log update synchronization mechanism
 //! to enable non-blocking concurrent reads and concurrent writes on
 //! data.
+//!
+//! ## Objective
+//! ---
+//! RLU solves the problem with having multiple concurrent readers being non-block, while having a writer synchronizing
+//! with the reads. RLU still suffers from writer-writer synchronization, eg. two writers with the same memory location
+//! want to update the value.
 //!
 //! ## Algorithm
 //! ---
@@ -18,6 +24,7 @@
 //!
 //! The writing thread waits until all readers have concluded their reads, then commits the changes to memory
 //! and update the global clock.
+//!
 //!
 //! # Sources
 //! - [notes](https://chaomai.github.io/2015/2015-09-26-notes-of-rlu/)
@@ -33,23 +40,14 @@ use std::{
     collections::HashMap,
     hash::Hash,
     sync::{
-        atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
         Arc, Mutex,
     },
-    thread_local,
 };
 
-/// Returns the calling function name
-// macro_rules! caller {
-//     () => {{
-//         fn f() {}
-//         fn type_name_of<T>(_: T) -> &'static str {
-//             std::any::type_name::<T>()
-//         }
-//         let name = type_name_of(f);
-//         &name[..name.len() - 3]
-//     }};
-// }
+thread_local! {
+    static GUARD : Cell<bool> = Cell::new(false);
+}
 
 /// Virtual Type to use as return
 pub trait ReturnType: Clone + Send + Sync + Sized {}
@@ -70,14 +68,6 @@ where
     inner: HashMap<K, V>,
 }
 
-/// the global clock
-static G_CLOCK: AtomicUsize = AtomicUsize::new(0);
-
-thread_local! {
-    // pub static Guard: Cell<HashMap<Box<dyn Future<Output = Result<(), Box<dyn Error>>>>,bool>> = Cell::new(HashMap::new());
-    static GUARD: Cell<bool> = Cell::new(false);
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum TransactionError {
     #[error("Transaction failed")]
@@ -90,16 +80,7 @@ pub enum TransactionError {
     Inner(String),
 }
 
-/// Returns the active thread by id
-fn get_rlu_context<T>(id: &usize) -> RLUContext<T>
-where
-    T: ReturnType,
-{
-    todo!()
-}
-
 /// This is the global object for reading and writing
-
 pub struct TVar<'a, T>
 where
     T: ReturnType,
@@ -110,20 +91,21 @@ where
     /// a ptr to the write log copy inside an RLU thread
     copy_ptr: Arc<AtomicPtr<TVar<'a, T>>>,
 
-    /// inidicating, if this is a copy
-    copy: Arc<AtomicBool>,
+    /// indicating, if this is a copy
+    is_copy: Arc<AtomicBool>,
 
     /// the current thread locking this object
-    rlu_thread_id: Arc<AtomicUsize>,
+    rlu_thread_id: Arc<AtomicIsize>,
 
     /// if this is a copy, this is the reference to the 'original'
     obj_reference: Arc<AtomicPtr<TVar<'a, T>>>,
 
-    /// alll global related rlu objects reside here, since there are interested in synchronizing one object at a time
+    /// all global related rlu objects reside here, since they are interested in synchronizing
+    /// one object at a time
     global_clock: Arc<AtomicUsize>,
 
     /// a list of all threads monitoring this variable
-    threads: Arc<Mutex<HashMap<usize, &'a RLUContext<'a, T>>>>,
+    threads: Arc<AtomicPtr<HashMap<isize, &'a RLUContext<'a, T>>>>,
 }
 
 impl<'a, T> Clone for TVar<'a, T>
@@ -131,7 +113,23 @@ where
     T: ReturnType,
 {
     fn clone(&self) -> Self {
-        todo!()
+        Self {
+            data: Arc::new(AtomicPtr::new(self.data.load(Ordering::Acquire))), // ?
+
+            /// TODO: self needs to be update to this
+            copy_ptr: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
+
+            is_copy: Arc::new(AtomicBool::new(true)),
+
+            rlu_thread_id: self.rlu_thread_id.clone(),
+
+            obj_reference: Arc::new(AtomicPtr::new(&self as *const _ as *mut TVar<'a, T>)),
+
+            global_clock: Arc::new(AtomicUsize::new(self.global_clock.load(Ordering::Acquire))),
+
+            // the pointer to active threads can be safely cloned
+            threads: self.threads.clone(),
+        }
     }
 }
 
@@ -139,8 +137,21 @@ impl<'a, T> TVar<'a, T>
 where
     T: ReturnType,
 {
-    fn get_rlu_context(&self, id: &usize) -> &'a RLUContext<T> {
-        self.threads.lock().expect("").get(id).unwrap()
+    fn new(mut value: T) -> Self {
+        Self {
+            data: Arc::new(AtomicPtr::new(&mut value)),
+            copy_ptr: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
+            is_copy: Arc::new(AtomicBool::new(false)),
+            rlu_thread_id: Arc::new(AtomicIsize::new(-1)),
+            obj_reference: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
+            global_clock: Arc::new(AtomicUsize::new(0)),
+            threads: Arc::new(AtomicPtr::new(&mut HashMap::new())),
+        }
+    }
+
+    fn get_rlu_context(&self, id: &isize) -> &'a RLUContext<T> {
+        let threads = unsafe { &*self.threads.load(Ordering::Acquire) };
+        threads.get(id).unwrap()
     }
 }
 
@@ -149,7 +160,7 @@ where
     T: ReturnType,
 {
     // the thread id
-    thread_id: Arc<AtomicUsize>,
+    thread_id: Arc<AtomicIsize>,
 
     /// first write log
     w_log: Arc<AtomicPtr<TVar<'a, T>>>,
@@ -160,7 +171,7 @@ where
     // according to the paper we need a run counter
     // where even indicates a running state, and odd
     // is a rest
-    running: Arc<AtomicUsize>,
+    run_count: Arc<AtomicUsize>,
 
     /// The local clock to decide wether to read from log, or object
     local_clock: Arc<AtomicUsize>,
@@ -170,54 +181,95 @@ where
 
     /// sets if writer, or not. may be obsolete
     is_writer: Arc<AtomicBool>,
+
+    /// sync counts
+    sync_counts: Arc<AtomicPtr<HashMap<isize, isize>>>,
 }
 
 impl<'a, T> RLUContext<'a, T>
 where
-    T: ReturnType,
+    T: ReturnType + 'a,
 {
-    // pub fn with_func<F>(f: F) -> Result<()>
-    // where
-    //     F: Fn(Self) -> Result<()>,
-    // {
-    //     if GUARD.with(|inner| match inner.get() {
-    //         true => true,
-    //         false => {
-    //             inner.set(true);
-    //             false
-    //         }
-    //     }) {
-    //         return Err(TransactionError::InProgress);
-    //     }
+    pub fn with_func<F>(f: F) -> Result<()>
+    where
+        F: Fn(Self) -> Result<()>,
+    {
+        if GUARD.with(|inner| match inner.get() {
+            true => true,
+            false => {
+                inner.set(true);
+                false
+            }
+        }) {
+            return Err(TransactionError::InProgress);
+        }
 
-    //     todo!()
-    // }
+        let tx = RLUContext {
+            thread_id: Arc::new(AtomicIsize::new(-1)),
+            w_log: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
+            w_log_quiescence: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
+            run_count: Arc::new(AtomicUsize::new(0)),
+            local_clock: Arc::new(AtomicUsize::new(0)),
+            write_clock: Arc::new(AtomicUsize::new(0)),
+            is_writer: Arc::new(AtomicBool::new(false)),
+            sync_counts: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
+        };
 
-    pub fn reader_lock(&self) {
+        f(tx)
+    }
+
+    /// reads a snapshot of `T` and returns it
+    pub fn read(&self, var: &'a T) -> &'a T {
+        // self.reader_lock(var);
+        // let _inner = unsafe { &*self.deref(var).data.load(Ordering::Acquire).clone() };
+        // self.reader_unlock(var);
+
+        // _inner
+        todo!()
+    }
+
+    pub fn write(&self, value: T, var: &'a TVar<'a, T>) {
+        self.try_lock(var);
+    }
+
+    /// --- inner API
+
+    fn reader_lock(&self, var: &'a TVar<'a, T>) {
         // set as reader
         self.is_writer.store(false, Ordering::Release);
 
         // increment number of runners. odd = running, evening = rest
-        self.running
-            .store(self.running.load(Ordering::Acquire) + 1, Ordering::Release);
+        // important, when synchronizing the threads
+        self.run_count
+            .store(self.run_count.load(Ordering::Acquire) + 1, Ordering::Release);
 
         // update local clock
         self.local_clock
-            .store(G_CLOCK.load(Ordering::Acquire), Ordering::Release)
+            .store(var.global_clock.load(Ordering::Acquire), Ordering::Release)
     }
 
-    pub fn reader_unlock(&self, var: &'a TVar<'a, T>) {
+    fn reader_unlock(&self, var: &'a TVar<'a, T>) {
         // increment number of runners
-        self.running
-            .store(self.running.load(Ordering::Acquire) + 1, Ordering::Release);
+        self.run_count
+            .store(self.run_count.load(Ordering::Acquire) + 1, Ordering::Release);
 
         if self.is_writer.load(Ordering::Acquire) {
             self.commit_write_log(var)
         }
     }
 
-    pub fn deref(&self, var: &'a TVar<'a, T>) -> &'a TVar<'a, T> {
-        if var.copy.load(Ordering::Acquire) {
+    /// function marker to abort at specific point
+    /// may be replace with a function return
+    fn retry(&self) {
+        self.run_count.fetch_add(1, Ordering::SeqCst);
+        if self.is_writer.load(Ordering::Acquire) {}
+
+        // TODO: signal retry
+    }
+
+    /// This is `read`
+    fn deref(&self, var: &'a TVar<'a, T>) -> &'a TVar<'a, T> {
+        if var.is_copy.load(Ordering::Acquire) {
             return unsafe { &*var.copy_ptr.load(Ordering::Acquire) };
         }
 
@@ -236,7 +288,7 @@ where
 
         let thread_id = copy_ptr.rlu_thread_id.load(Ordering::Acquire);
 
-        let thread: &RLUContext<'a, T> = var.get_rlu_context(&thread_id);
+        let thread: &RLUContext<'a, T> = var.get_rlu_context(&(thread_id));
 
         if self.local_clock.load(Ordering::Acquire) >= thread.write_clock.load(Ordering::Acquire) {
             return copy_ptr;
@@ -245,7 +297,8 @@ where
         var
     }
 
-    pub fn try_lock(&self, var: &'a TVar<'a, T>) -> *const TVar<'a, T> {
+    /// This is `write`
+    fn try_lock(&self, var: &'a TVar<'a, T>) -> Option<*const TVar<'a, T>> {
         // write operation
         self.is_writer.store(true, Ordering::Release);
 
@@ -261,10 +314,14 @@ where
             let thread_id = copy_ptr.rlu_thread_id.load(Ordering::Acquire);
 
             if self.thread_id.load(Ordering::Acquire) == thread_id {
-                return copy_ptr as *mut _;
+                return Some(copy_ptr as *mut _);
             }
 
             // retry / abort
+            self.retry();
+
+            // indicate retry
+            return None;
         }
 
         let mut copy = var.clone();
@@ -273,36 +330,86 @@ where
             .store(var as *const _ as *mut TVar<'a, T>, Ordering::Release);
 
         let self_thread_id = self.thread_id.load(Ordering::Acquire);
-        var.rlu_thread_id.store(self_thread_id, Ordering::Release);
+        var.rlu_thread_id.store(self_thread_id as isize, Ordering::Release);
 
         //
         self.w_log.store(&mut copy, Ordering::Release);
 
-        // TBD: try to install copy, if that fails abort
+        if var
+            .copy_ptr
+            .compare_exchange(std::ptr::null_mut(), &mut copy, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            self.retry()
+        }
 
-        &copy as *const _
+        Some(&copy as *const _)
     }
 
-    pub fn commit_write_log(&self, var: &'a TVar<'a, T>) {
+    fn commit_write_log(&self, var: &'a TVar<'a, T>) {
         self.write_clock
             .store(var.global_clock.load(Ordering::Acquire) + 1, Ordering::Release);
 
         var.global_clock.fetch_add(1, Ordering::SeqCst);
+
         self.synchronize(var);
 
         // - write back write log
         // - unlock write lock
         self.write_clock.store(usize::MAX, Ordering::Release);
+
         // - swap write logs
+        self.swap_write_logs();
     }
 
-    pub fn synchronize(&self, var: &'a TVar<'a, T>) {}
+    /// block this thread, until all other reading threads have finished
+    fn synchronize(&self, var: &'a TVar<'a, T>) {
+        let threads = unsafe { &*var.threads.load(Ordering::Acquire) };
+        let syncs = unsafe { &mut *self.sync_counts.load(Ordering::Acquire) };
+        let self_thread_id = self.thread_id.load(Ordering::Acquire);
+
+        for (id, thread) in threads.iter().filter(|(a, b)| **a != self_thread_id) {
+            let thread_run_count = thread.run_count.load(Ordering::Acquire);
+            syncs.insert(*id, thread_run_count as isize);
+        }
+
+        // this inner loop is per thread and shall wait until the reader threads are
+        // finished
+        for (id, thread) in threads.iter().filter(|(a, b)| **a != self_thread_id) {
+            'per_thread: loop {
+                if let Some(sync_counts) = syncs.get(id) {
+                    if (sync_counts & 0x1) != 1 {
+                        break 'per_thread;
+                    }
+
+                    if sync_counts != &(thread.run_count.load(Ordering::Acquire) as isize) {
+                        break 'per_thread;
+                    }
+
+                    if self.write_clock.load(Ordering::Acquire) <= thread.local_clock.load(Ordering::Acquire) {
+                        break 'per_thread;
+                    }
+                }
+            }
+        }
+    }
+
+    fn swap_write_logs(&self) {
+        let log = self.w_log.load(Ordering::Acquire);
+
+        self.w_log
+            .store(self.w_log_quiescence.load(Ordering::Acquire), Ordering::Release);
+
+        self.w_log_quiescence.store(log, Ordering::Release);
+    }
 }
 
 #[cfg(test)]
 mod tests {
 
     use rand_utils::random::{string, usize};
+
+    use super::TVar;
 
     fn rand_string() -> String {
         string(255)
@@ -324,42 +431,6 @@ mod tests {
 
     #[test]
     fn test_read_write() {
-        // let t: TVar<_> = TVar::new(HashMap::new(), |inner, update| inner.extend(update.into_iter()));
-        // let num_threads = 4;
-
-        // let test_values: Vec<(TVar<_>, usize, String)> =
-        //     std::iter::repeat_with(|| (t.clone(), rand_usize(), rand_string()))
-        //         .take(num_threads)
-        //         .collect();
-
-        // let pool = threadpool::ThreadPool::new(num_threads);
-
-        // for _ in 0..5 {
-        //     for (tcopy, id, value) in test_values.clone() {
-        //         pool.execute(move || {
-        //             RLUThread::with_func(|tx| {
-        //                 let v = tx.read(&tcopy)?;
-
-        //                 let mut h = v;
-        //                 h.insert(id, value.clone());
-        //                 tx.write(h, &tcopy)?;
-
-        //                 // what happens, if we send an error
-        //                 Ok(())
-        //             })
-        //             .expect("Failed");
-        //         });
-        //     }
-        // }
-
-        // pool.join();
-
-        // println!("Fails {}", pool.panic_count());
-
-        // let inner = t.lock_read().read().expect("Failed to access inner data");
-        // info!("caller {}: inner: {:?}", caller!(), inner);
-        // for (_, id, value) in test_values {
-        //     assert!(inner.contains_key(&id));
-        // }
+        let t_var = TVar::new(0usize);
     }
 }
