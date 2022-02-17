@@ -202,7 +202,8 @@ mod tests {
 
     #[test]
     fn test_zeroize() {
-        let fm = FileMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], FileConfig(Some(6)));
+        let data = &[1, 2, 3, 4, 5, 6][..];
+        let fm = FileMemory::<Provider>::alloc(data, FileConfig(Some(6)));
         assert!(fm.is_ok());
         let mut fm = fm.unwrap();
         let fname = fm.fname.clone();
@@ -211,7 +212,6 @@ mod tests {
         // Check that file has been removed
         assert!(!std::path::Path::new(&fname).exists());
         assert!(fm.fname.is_empty());
-        // assert_eq!(fm.config, ZeroedConfig());
     }
 
     #[test]

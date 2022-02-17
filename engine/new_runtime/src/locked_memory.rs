@@ -9,6 +9,7 @@ pub enum MemoryError {
     EncryptionError,
     DecryptionError,
     SizeNeededForAllocation,
+    NCSizeNotAllowed,
     ConfigurationNotAllowed,
     FileSystemError,
 }
@@ -35,10 +36,15 @@ pub enum LockedConfiguration<P: BoxProvider> {
     // Needs a key for encryption/decryption
     // Needs size for allocation but not for unlocking
     EncryptedRamConfig(Key<P>, Option<usize>),
+
     // Encrypted file memory, needs a key and size of non encrypted data
     EncryptedFileConfig(Key<P>, Option<usize>),
-    // Non contiguous memory in ram and disk
-    NonContiguousInRamAndFileConfig(Option<usize>),
+
+    // Non contiguous non encrypted memory in ram and disk
+    NCRamAndFileConfig(Option<usize>),
+
+    // Non contiguous non encrypted memory in ram
+    NCRamConfig(Option<usize>),
 }
 
 impl<P: BoxProvider> LockedConfiguration<P> {
@@ -50,7 +56,8 @@ impl<P: BoxProvider> LockedConfiguration<P> {
             (FileConfig(_), FileConfig(_)) => true,
             (EncryptedRamConfig(_, _), EncryptedRamConfig(_, _)) => true,
             (EncryptedFileConfig(_, _), EncryptedFileConfig(_, _)) => true,
-            (NonContiguousInRamAndFileConfig(_), NonContiguousInRamAndFileConfig(_)) => true,
+            (NCRamAndFileConfig(_), NCRamAndFileConfig(_)) => true,
+            (NCRamConfig(_), NCRamConfig(_)) => true,
             (_, _) => false
         }
     }
@@ -74,7 +81,8 @@ impl<P: BoxProvider> PartialEq for LockedConfiguration<P> {
             (FileConfig(s1), FileConfig(s2)) => s1 == s2,
             (EncryptedRamConfig(_, s1), EncryptedRamConfig(_, s2)) => s1 == s2,
             (EncryptedFileConfig(_, s1), EncryptedFileConfig(_, s2)) => s1 == s2,
-            (NonContiguousInRamAndFileConfig(s1), NonContiguousInRamAndFileConfig(s2)) => s1 == s2,
+            (NCRamAndFileConfig(s1), NCRamAndFileConfig(s2)) => s1 == s2,
+            (NCRamConfig(s1), NCRamConfig(s2)) => s1 == s2,
             (_, _) => false
         }
     }
