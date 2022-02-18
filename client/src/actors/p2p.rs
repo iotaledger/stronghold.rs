@@ -4,7 +4,7 @@
 use crate::{
     actors::{secure_messages::WriteToVault, GetTarget, RecordError, Registry},
     enum_from_inner,
-    procedures::Procedure,
+    procedures::ChainedProcedures,
 };
 use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
@@ -535,7 +535,7 @@ pub mod messages {
         DeleteFromStore(DeleteFromStore),
         GarbageCollect(GarbageCollect),
         ClearCache(ClearCache),
-        Procedure(Procedure),
+        Procedure(ChainedProcedures),
     }
 
     enum_from_inner!(ShRequest from CheckVault);
@@ -548,7 +548,7 @@ pub mod messages {
     enum_from_inner!(ShRequest from DeleteFromStore);
     enum_from_inner!(ShRequest from GarbageCollect);
     enum_from_inner!(ShRequest from ClearCache);
-    enum_from_inner!(ShRequest from Procedure);
+    enum_from_inner!(ShRequest::Procedure from ChainedProcedures);
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {

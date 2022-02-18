@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::types::*;
-use crate::{enum_from_inner, Location};
+use crate::Location;
 pub use crypto::keys::slip10::{Chain, ChainCode};
 use crypto::{
     ciphers::{
@@ -26,7 +26,7 @@ use crypto::{
 };
 use engine::{runtime::GuardedVec, vault::RecordHint};
 use serde::{Deserialize, Serialize};
-use std::convert::{From, Into, TryFrom};
+use std::convert::TryFrom;
 use stronghold_utils::GuardDebug;
 
 /// Enum that wraps all cryptographic procedures that are supported by Stronghold.
@@ -40,7 +40,7 @@ use stronghold_utils::GuardDebug;
 /// non-secret output, the [`PersistOutput`] is implemented and [`PersistOutput::store_output`]
 /// has to be called if the procedure's output should be returned to the user.
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
-pub enum PrimitiveProcedure {
+pub enum StrongholdProcedure {
     CopyRecord(CopyRecord),
     Slip10Generate(Slip10Generate),
     Slip10Derive(Slip10Derive),
@@ -58,10 +58,10 @@ pub enum PrimitiveProcedure {
     AeadDecrypt(AeadDecrypt),
 }
 
-impl ProcedureStep for PrimitiveProcedure {
+impl ProcedureStep for StrongholdProcedure {
     type Output = ProcedureIo;
     fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
-        use PrimitiveProcedure::*;
+        use StrongholdProcedure::*;
         match self {
             CopyRecord(proc) => proc.execute(runner).map(|o| o.into()),
             Slip10Generate(proc) => proc.execute(runner).map(|o| o.into()),
@@ -82,40 +82,46 @@ impl ProcedureStep for PrimitiveProcedure {
     }
 }
 
-impl PrimitiveProcedure {
+impl StrongholdProcedure {
     pub fn output(&self) -> Option<Location> {
         match self {
-            PrimitiveProcedure::CopyRecord(CopyRecord { output, .. })
-            | PrimitiveProcedure::Slip10Generate(Slip10Generate { output, .. })
-            | PrimitiveProcedure::Slip10Derive(Slip10Derive { output, .. })
-            | PrimitiveProcedure::BIP39Generate(BIP39Generate { output, .. })
-            | PrimitiveProcedure::BIP39Recover(BIP39Recover { output, .. })
-            | PrimitiveProcedure::GenerateKey(GenerateKey { output, .. })
-            | PrimitiveProcedure::X25519DiffieHellman(X25519DiffieHellman { shared_key: output, .. })
-            | PrimitiveProcedure::Hkdf(Hkdf { okm: output, .. })
-            | PrimitiveProcedure::Pbkdf2Hmac(Pbkdf2Hmac { output, .. }) => Some(output.clone()),
+            StrongholdProcedure::CopyRecord(CopyRecord { output, .. })
+            | StrongholdProcedure::Slip10Generate(Slip10Generate { output, .. })
+            | StrongholdProcedure::Slip10Derive(Slip10Derive { output, .. })
+            | StrongholdProcedure::BIP39Generate(BIP39Generate { output, .. })
+            | StrongholdProcedure::BIP39Recover(BIP39Recover { output, .. })
+            | StrongholdProcedure::GenerateKey(GenerateKey { output, .. })
+            | StrongholdProcedure::X25519DiffieHellman(X25519DiffieHellman { shared_key: output, .. })
+            | StrongholdProcedure::Hkdf(Hkdf { okm: output, .. })
+            | StrongholdProcedure::Pbkdf2Hmac(Pbkdf2Hmac { output, .. }) => Some(output.clone()),
             _ => None,
         }
     }
 }
 
-// === implement From Traits from inner types to wrapper enums
+#[macro_export]
+macro_rules! procedures {
+    { $($Trait:ident => { $($Proc:ident),+ }),+ } => {
+        $(
+            $(
+                impl Procedure for $Proc {
+                    type Output = <$Proc as $Trait>::Output;
 
-enum_from_inner!(PrimitiveProcedure::CopyRecord from CopyRecord);
-enum_from_inner!(PrimitiveProcedure::Slip10Generate from Slip10Generate);
-enum_from_inner!(PrimitiveProcedure::Slip10Derive from Slip10Derive);
-enum_from_inner!(PrimitiveProcedure::BIP39Generate from BIP39Generate);
-enum_from_inner!(PrimitiveProcedure::BIP39Recover from BIP39Recover);
-enum_from_inner!(PrimitiveProcedure::GenerateKey from GenerateKey);
-enum_from_inner!(PrimitiveProcedure::PublicKey from PublicKey);
-enum_from_inner!(PrimitiveProcedure::Ed25519Sign from Ed25519Sign);
-enum_from_inner!(PrimitiveProcedure::X25519DiffieHellman from X25519DiffieHellman);
-enum_from_inner!(PrimitiveProcedure::Hash from Hash);
-enum_from_inner!(PrimitiveProcedure::Hmac from Hmac);
-enum_from_inner!(PrimitiveProcedure::Hkdf from Hkdf);
-enum_from_inner!(PrimitiveProcedure::Pbkdf2Hmac from Pbkdf2Hmac);
-enum_from_inner!(PrimitiveProcedure::AeadEncrypt from AeadEncrypt);
-enum_from_inner!(PrimitiveProcedure::AeadDecrypt from AeadDecrypt);
+                    fn into_stronghold_proc(self) -> StrongholdProcedure {
+                        StrongholdProcedure::$Proc(self)
+                    }
+                }
+            )+
+        )+
+    };
+}
+
+procedures! {
+    GenerateSecret => { BIP39Generate, BIP39Recover, Slip10Generate, GenerateKey },
+    DeriveSecret => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf },
+    UseSecret => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
+    ProcessData => { Hash }
+}
 
 // ==========================
 // Helper Procedure

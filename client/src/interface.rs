@@ -19,7 +19,7 @@ use crate::{
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
-    procedures::{PrimitiveProcedure, Procedure, ProcedureError, ProcedureIo},
+    procedures::{ChainedProcedures, Procedure, ProcedureError, ProcedureIo},
     state::{
         secure::SecureClient,
         snapshot::{ReadError, WriteError},
@@ -33,7 +33,7 @@ use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, Ou
 
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::Duration};
+use std::{convert::TryInto, path::PathBuf, time::Duration};
 use thiserror::Error as DeriveError;
 use zeroize::Zeroize;
 
@@ -290,25 +290,25 @@ impl Stronghold {
         Ok(list)
     }
 
-    /// Executes a runtime command given a single [`PrimitiveProcedure`]
-    pub async fn runtime_exec<P>(&self, procedure: P) -> StrongholdResult<Result<ProcedureIo, ProcedureError>>
+    /// Executes a runtime command given a single [`StrongholdProcedure`]
+    pub async fn runtime_exec<P>(&self, procedure: P) -> StrongholdResult<Result<P::Output, ProcedureError>>
     where
-        P: Into<PrimitiveProcedure>,
+        P: Procedure,
     {
-        let res = self.runtime_exec_chained(procedure.into()).await;
-        res.map(|res| res.map(|mut vec| vec.pop().unwrap()))
+        let res = self.runtime_exec_chained(procedure).await;
+        res.map(|res| res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap()))
     }
 
-    /// Executes a runtime command given a [`Procedure`] that wraps one or multiple [`PrimitiveProcedure`]s.
+    /// Executes a runtime command given a [`Procedure`] that wraps one or multiple [`StrongholdProcedure`]s.
     pub async fn runtime_exec_chained<P>(
         &self,
         control_request: P,
     ) -> StrongholdResult<Result<Vec<ProcedureIo>, ProcedureError>>
     where
-        P: Into<Procedure>,
+        P: Into<ChainedProcedures>,
     {
         let target = self.target().await?;
-        let result = target.send::<Procedure>(control_request.into()).await?;
+        let result = target.send::<ChainedProcedures>(control_request.into()).await?;
         Ok(result)
     }
 
@@ -804,10 +804,10 @@ impl Stronghold {
         control_request: P,
     ) -> P2pResult<Result<Vec<ProcedureIo>, ProcedureError>>
     where
-        P: Into<Procedure>,
+        P: Into<ChainedProcedures>,
     {
         let actor = self.network_actor().await?;
-        let send_request = network_messages::SendRequest::<Procedure> {
+        let send_request = network_messages::SendRequest::<ChainedProcedures> {
             peer,
             request: control_request.into(),
         };

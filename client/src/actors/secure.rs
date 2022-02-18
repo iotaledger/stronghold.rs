@@ -10,7 +10,7 @@
 
 use crate::{
     internals::Provider,
-    procedures::{Procedure, ProcedureError, ProcedureIo, ProcedureStep, Runner},
+    procedures::{ChainedProcedures, ProcedureError, ProcedureIo, ProcedureStep, Runner},
     state::secure::SecureClient,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, MessageResult, Supervised};
@@ -360,10 +360,10 @@ impl_handler!(
     }
 );
 
-impl Handler<Procedure> for SecureClient {
+impl Handler<ChainedProcedures> for SecureClient {
     type Result = Result<Vec<ProcedureIo>, ProcedureError>;
 
-    fn handle(&mut self, proc: Procedure, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, proc: ChainedProcedures, _: &mut Self::Context) -> Self::Result {
         proc.execute(self)
     }
 }

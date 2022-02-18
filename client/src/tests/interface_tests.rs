@@ -548,7 +548,7 @@ async fn test_stronghold_p2p() {
             .await
             .unwrap_or_else(|e| panic!("Could not execute remote procedure: {}", e))
         {
-            Ok(out) => assert_eq!(out, Vec::new().into()),
+            Ok(_) => {}
             Err(e) => panic!("unexpected error: {:?}", e),
         };
 

@@ -94,7 +94,7 @@ async fn usecase_ed25519() {
         msg: msg.clone(),
     };
     let sig: [u8; ed25519::SIGNATURE_LENGTH] = match sh.runtime_exec(ed25519_sign).await.unwrap() {
-        Ok(data) => data.try_into().unwrap(),
+        Ok(data) => data,
         Err(e) => panic!("unexpected error: {:?}", e),
     };
 
@@ -145,7 +145,7 @@ async fn usecase_Slip10Derive_intermediate_keys() {
         };
 
         match sh.runtime_exec(slip10_derive).await.unwrap() {
-            Ok(data) => data.try_into().unwrap(),
+            Ok(data) => data,
             Err(e) => panic!("unexpected error: {:?}", e),
         }
     };
@@ -175,7 +175,7 @@ async fn usecase_Slip10Derive_intermediate_keys() {
         };
 
         match sh.runtime_exec(slip10_derive_child).await.unwrap() {
-            Ok(data) => data.try_into().unwrap(),
+            Ok(data) => data,
             Err(e) => panic!("unexpected error: {:?}", e),
         }
     };

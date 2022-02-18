@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use super::primitives::PrimitiveProcedure;
+use super::primitives::StrongholdProcedure;
 use crate::{
     actors::{RecordError, VaultError},
     FatalEngineError, Location,
@@ -25,7 +25,7 @@ use thiserror::Error as DeriveError;
 // Types
 // ==========================
 
-/// Complex Procedure that for executing one or multiple [`PrimitiveProcedure`]s.
+/// Complex Procedure that for executing one or multiple [`StrongholdProcedure`]s.
 ///
 /// Example:
 /// // ```
@@ -67,11 +67,11 @@ use thiserror::Error as DeriveError;
 /// # }
 /// // ```
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
-pub struct Procedure {
-    inner: Vec<PrimitiveProcedure>,
+pub struct ChainedProcedures {
+    inner: Vec<StrongholdProcedure>,
 }
 
-impl ProcedureStep for Procedure {
+impl ProcedureStep for ChainedProcedures {
     type Output = Vec<ProcedureIo>;
 
     fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
@@ -97,16 +97,18 @@ impl ProcedureStep for Procedure {
     }
 }
 
-impl Message for Procedure {
+impl Message for ChainedProcedures {
     type Result = Result<Vec<ProcedureIo>, ProcedureError>;
 }
 
-impl<P> From<P> for Procedure
+impl<P> From<P> for ChainedProcedures
 where
-    P: Into<PrimitiveProcedure>,
+    P: Procedure,
 {
     fn from(p: P) -> Self {
-        Self { inner: vec![p.into()] }
+        Self {
+            inner: vec![p.into_stronghold_proc()],
+        }
     }
 }
 
@@ -176,31 +178,6 @@ impl From<String> for FatalProcedureError {
     }
 }
 
-/// State that is passed to the each procedure on execution.
-#[derive(Debug, Clone)]
-pub struct State {
-    /// Collected output from each primitive procedure in the chain.
-    aggregated: Vec<ProcedureIo>,
-    /// Log of newly created records in the vault.
-    change_log: Vec<Location>,
-}
-
-impl State {
-    /// Add a procedure output to the collected output.
-    pub fn insert_output(&mut self, value: ProcedureIo) {
-        self.aggregated.push(value)
-    }
-
-    /// Get the output from a previously executed procedure.
-    pub fn get_output(&self, index: usize) -> Option<&ProcedureIo> {
-        self.aggregated.get(index)
-    }
-
-    /// Log a newly created record.
-    pub fn add_log(&mut self, location: Location) {
-        self.change_log.push(location)
-    }
-}
 // ==========================
 // Traits
 // ==========================
@@ -213,10 +190,10 @@ pub trait ProcedureStep {
     fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError>;
 
     /// Chain a next procedure to the current one.
-    fn then<P>(self, next: P) -> Procedure
+    fn then<P>(self, next: P) -> ChainedProcedures
     where
-        Self: Into<Procedure>,
-        P: Into<Procedure>,
+        Self: Into<ChainedProcedures>,
+        P: Into<ChainedProcedures>,
     {
         let mut procedure = self.into();
         procedure.inner.extend(next.into().inner);
@@ -326,6 +303,12 @@ pub trait UseSecret: Sized {
         let output = runner.get_guard(&source, f)?;
         Ok(output)
     }
+}
+
+pub trait Procedure {
+    type Output: Into<ProcedureIo> + TryFrom<ProcedureIo>;
+
+    fn into_stronghold_proc(self) -> StrongholdProcedure;
 }
 
 // ==========================
